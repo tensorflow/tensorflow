@@ -11,4 +11,50 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
  * (C3) `same(shape(updates...))`.
  * (C4) `shape(updates[0]) = combine(update_scatter_dim_sizes,
         update_window_dim_sizes)` where:
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
+@@ -17,8 +17,9 @@
+ // CHECK-LABEL: @iota_dimension_0
+ func.func @iota_dimension_0() -> tensor<4x8xf32> {
+   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
+-  // CHECK-SAME{LITERAL}: <{value = dense<[[0.000000e+00], [1.000000e+00], [2.000000e+00], [3.000000e+00]]> : tensor<4x1xf32>}>
+-  // CHECK-DAG: %[[VAR1:.*]] = tosa.tile %[[VAR0]] {multiples = array<i64: 1, 8>}
++  // CHECK-SAME{LITERAL}: <{value = dense<[[0.000000e+00], [1.000000e+00], [2.000000e+00], [3.000000e+00]]> : tensor<4x1xf32>}> : () -> tensor<4x1xf32>
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape  {value = dense<[1, 8]> : vector<2xindex>} : () -> !tosa.shape<2>
++  // CHECK-DAG: %[[VAR2:.*]] = tosa.tile %[[VAR0]], %[[VAR1]]
+   %0 = "stablehlo.iota"() {iota_dimension = 0 : i64} : () -> (tensor<4x8xf32>)
+   return %0 : tensor<4x8xf32>
+ }
+@@ -26,8 +27,9 @@
+ // CHECK-LABEL: @iota_dimension_1
+ func.func @iota_dimension_1() -> tensor<4x8xi32> {
+   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"()
+-  // CHECK-SAME{LITERAL}: <{value = dense<[[0, 1, 2, 3, 4, 5, 6, 7]]> : tensor<1x8xi32>}>
+-  // CHECK-DAG: %[[VAR1:.*]] = tosa.tile %[[VAR0]] {multiples = array<i64: 4, 1>}
++  // CHECK-SAME{LITERAL}: <{value = dense<[[0, 1, 2, 3, 4, 5, 6, 7]]> : tensor<1x8xi32>}> : () -> tensor<1x8xi32>
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.const_shape  {value = dense<[4, 1]> : vector<2xindex>} : () -> !tosa.shape<2>
++  // CHECK-DAG: %[[VAR2:.*]] = tosa.tile %[[VAR0]], %[[VAR1]]
+   %0 = "stablehlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<4x8xi32>)
+   return %0 : tensor<4x8xi32>
+ }
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
+@@ -258,9 +258,13 @@
+       }
+     }
+ 
++    auto shapeType = rewriter.getType<tosa::shapeType>(tileMultiples.size());
++    auto shapedMultiples = rewriter.create<tosa::ConstShapeOp>(
++        op.getLoc(), shapeType, rewriter.getIndexVectorAttr(tileMultiples));
++
+     // Tile the const array to the result shape of the iota op.
+-    rewriter.replaceOpWithNewOp<tosa::TileOp>(
+-        op, resultType, constOp, rewriter.getDenseI64ArrayAttr(tileMultiples));
++    rewriter.replaceOpWithNewOp<tosa::TileOp>(op, resultType, constOp,
++                                              shapedMultiples);
+     return success();
+   }
+ };
 
