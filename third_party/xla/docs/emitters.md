@@ -535,4 +535,4 @@ ENTRY main {
 * Partition logic: [computation_partitioner.h](https://github.com/openxla/xla/blob/ca62f3e1bc9ea1d808c3a4de0a78bae7453389eb/xla/codegen/emitters/computation_partitioner.h)
 * Hero-based emitters: [backends/gpu/codegen/emitters](https://github.com/openxla/xla/tree/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/emitters)
 * XLA:GPU ops: [xla_gpu_ops.td](https://github.com/openxla/xla/blob/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/ir/xla_gpu_types.td)
-* Correctness and lit tests: [gpu/fusions/tests](https://github.com/openxla/xla/tree/925722533aa2ca55219f5c88c1ec333f4e1cbd7c/xla/service/gpu/fusions/tests)
+* Correctness and lit tests: [backends/gpu/codegen/emitters/tests](https://github.com/openxla/xla/tree/30229c9836cafa6b05c6d42f0d918e5f8dc0b2dd/xla/backends/gpu/codegen/emitters/tests)
