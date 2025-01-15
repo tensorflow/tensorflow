@@ -16,6 +16,7 @@ limitations under the License.
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <random>
@@ -23,23 +24,30 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class ConvertTest : public ClientLibraryTestBase {
+class ConvertTest : public ClientLibraryTestRunnerMixin<
+                        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  public:
-  explicit ConvertTest(se::Platform* platform = nullptr)
-      : ClientLibraryTestBase(platform) {
+  explicit ConvertTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
     mutable_debug_options()->add_xla_disable_hlo_passes("inline");
     mutable_debug_options()->add_xla_disable_hlo_passes(
@@ -242,8 +250,6 @@ XLA_TEST_F(ConvertTest, ConvertR1S64ToR1F32) {
   };
   Literal arg_literal = LiteralUtil::CreateR1<int64_t>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
-  std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, F32);
 
@@ -251,7 +257,7 @@ XLA_TEST_F(ConvertTest, ConvertR1S64ToR1F32) {
   for (int64_t i = 0; i < arg.size(); ++i) {
     expected[i] = static_cast<float>(arg[i]);
   }
-  ComputeAndCompareR1<float>(&builder, expected, {arg_data.get()});
+  ComputeAndCompareR1<float>(&builder, expected, {&arg_literal});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1U32ToR1F32) {
@@ -261,8 +267,6 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1F32) {
                             0x80000080, 0x80000081, 0x80000082, 0xFFFFFFFF};
   Literal arg_literal = LiteralUtil::CreateR1<uint32_t>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
-  std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, F32);
 
@@ -270,7 +274,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1F32) {
   for (int64_t i = 0; i < arg.size(); ++i) {
     expected[i] = static_cast<float>(arg[i]);
   }
-  ComputeAndCompareR1<float>(&builder, expected, {arg_data.get()});
+  ComputeAndCompareR1<float>(&builder, expected, {&arg_literal});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1F32ToR1U32) {
@@ -279,8 +283,6 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1U32) {
                          16777218.0f, 2147483647.0f, 4294967040.0f};
   Literal arg_literal = LiteralUtil::CreateR1<float>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
-  std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, U32);
 
@@ -288,7 +290,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1U32) {
   for (int64_t i = 0; i < arg.size(); ++i) {
     expected[i] = static_cast<uint32_t>(arg[i]);
   }
-  ComputeAndCompareR1<uint32_t>(&builder, expected, {arg_data.get()});
+  ComputeAndCompareR1<uint32_t>(&builder, expected, {&arg_literal});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
@@ -296,8 +298,6 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
   std::vector<uint32_t> arg{0, 1, 0x1000, 0x7fffffff, 0x80000082, 0xFFFFFFFF};
   Literal arg_literal = LiteralUtil::CreateR1<uint32_t>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
-  std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, S64);
 
@@ -305,7 +305,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
   for (int64_t i = 0; i < arg.size(); ++i) {
     expected[i] = static_cast<int64_t>(arg[i]);
   }
-  ComputeAndCompareR1<int64_t>(&builder, expected, {arg_data.get()});
+  ComputeAndCompareR1<int64_t>(&builder, expected, {&arg_literal});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1S32ToR1S64) {
@@ -313,8 +313,6 @@ XLA_TEST_F(ConvertTest, ConvertR1S32ToR1S64) {
   std::vector<int32_t> arg{0, 1, 0x1000, -1, -0x1000};
   Literal arg_literal = LiteralUtil::CreateR1<int32_t>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
-  std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, S64);
 
@@ -322,7 +320,7 @@ XLA_TEST_F(ConvertTest, ConvertR1S32ToR1S64) {
   for (int64_t i = 0; i < arg.size(); ++i) {
     expected[i] = static_cast<int64_t>(arg[i]);
   }
-  ComputeAndCompareR1<int64_t>(&builder, expected, {arg_data.get()});
+  ComputeAndCompareR1<int64_t>(&builder, expected, {&arg_literal});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
@@ -350,8 +348,6 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
                          -9223370937343148032.f};
   Literal arg_literal = LiteralUtil::CreateR1<float>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
-  std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, S64);
 
@@ -359,7 +355,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
   for (int64_t i = 0; i < arg.size(); ++i) {
     expected[i] = static_cast<int64_t>(arg[i]);
   }
-  ComputeAndCompareR1<int64_t>(&builder, expected, {arg_data.get()});
+  ComputeAndCompareR1<int64_t>(&builder, expected, {&arg_literal});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1U8ToR1F32) {
@@ -483,9 +479,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F16ToR1F32) {
   absl::c_transform(input, std::back_inserter(expected_output),
                     [](Eigen::half h) { return static_cast<float>(h); });
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<GlobalData> dot_lhs_handle,
-      client_->TransferToServer(LiteralUtil::CreateR1<half>(input)));
+  Literal dot_lhs_literal = LiteralUtil::CreateR1<half>(input);
 
   XlaBuilder builder(TestName());
   ConvertElementType(
@@ -494,7 +488,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F16ToR1F32) {
                 "param"),
       F32);
 
-  ComputeAndCompareR1<float>(&builder, expected_output, {dot_lhs_handle.get()});
+  ComputeAndCompareR1<float>(&builder, expected_output, {&dot_lhs_literal});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1F32ToR1F16) {
@@ -503,9 +497,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1F16) {
   absl::c_transform(input, std::back_inserter(expected_output),
                     [](float f) { return Eigen::half(f); });
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<GlobalData> dot_lhs_handle,
-      client_->TransferToServer(LiteralUtil::CreateR1<float>(input)));
+  Literal dot_lhs_literal = LiteralUtil::CreateR1<float>(input);
 
   XlaBuilder builder(TestName());
   ConvertElementType(
@@ -514,7 +506,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1F16) {
                 "param"),
       F16);
 
-  ComputeAndCompareR1<half>(&builder, expected_output, {dot_lhs_handle.get()});
+  ComputeAndCompareR1<half>(&builder, expected_output, {&dot_lhs_literal});
 }
 
 XLA_TEST_F(ConvertTest, ConvertC64ToC64) {
@@ -568,13 +560,11 @@ TEST_F(ConvertTest, ConvertR1S4ParameterToR1S8) {
   Literal arg_literal =
       LiteralUtil::CreateR1<s4>({s4(0), s4(1), s4(2), s4(-8)});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
-  std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, S8);
 
   std::vector<int8_t> expected = {0, 1, 2, -8};
-  ComputeAndCompareR1<int8_t>(&builder, expected, {arg_data.get()});
+  ComputeAndCompareR1<int8_t>(&builder, expected, {&arg_literal});
 }
 
 TEST_F(ConvertTest, ConvertR1U4ToR1U8) {
@@ -591,13 +581,11 @@ TEST_F(ConvertTest, ConvertR1U4ParameterToR1U8) {
   Literal arg_literal =
       LiteralUtil::CreateR1<u4>({u4(0), u4(1), u4(2), u4(15)});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
-  std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, U8);
 
   std::vector<uint8_t> expected = {0, 1, 2, 15};
-  ComputeAndCompareR1<uint8_t>(&builder, expected, {arg_data.get()});
+  ComputeAndCompareR1<uint8_t>(&builder, expected, {&arg_literal});
 }
 
 TEST_F(ConvertTest, ConvertR1S8ToR1S4) {
@@ -735,7 +723,7 @@ XLA_TEST_F(ConvertTest, ConvertF32BF16) {
       // NaNs may not be preserved, any NaN will do.
       ASSERT_TRUE(std::isnan(absl::bit_cast<bfloat16>(correct)));
       EXPECT_TRUE(std::isnan(absl::bit_cast<bfloat16>(result)));
-      if (client_->platform()->Name() == "Host") {
+      if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
         // The sign bits must match.
         EXPECT_EQ(result >> 15, correct >> 15);
       }
@@ -2159,7 +2147,7 @@ XLA_TYPED_TEST(ConvertTestT,
 
 XLA_TYPED_TEST(ConvertTestT,
                DISABLED_ON_TPU(ConvertF8e8m0fnuRoundtripExhaustive2)) {
-  if (this->client_->platform()->Name() == "Host") {
+  if (this->test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     // This test is disabled on CPU, as converting 0x1p-127 from double to float
     // using CVTSD2SS on x64 results in an underflow (even though the result is
     // representable as denormalized float32).

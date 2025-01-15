@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/service/computation_layout.h"
@@ -665,5 +666,22 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
 }
 
 absl::string_view HloRunnerPjRt::Name() const { return "HloRunnerPjRt"; }
+
+bool HloRunnerPjRt::HasProperty(const HloRunnerPropertyTag::Type tag) const {
+  if (tag == HloRunnerPropertyTag::kUsingGpuRocm5_7_0) {
+    // PjRt uses xla::GetStreamExecutorGpuClient for GPU tests, which returns
+    // StreamExecutorGpuClient. See definitions for platform_name() and
+    // platform_version() for background on this check.
+    return pjrt_client_->platform_name() == xla::RocmName() &&
+           pjrt_client_->platform_version() == "rocm 50700";
+  }
+  if (tag == HloRunnerPropertyTag::kUsingGpuRocm) {
+    return pjrt_client_->platform_name() == xla::RocmName();
+  }
+  if (tag == HloRunnerPropertyTag::kCpu) {
+    return pjrt_client_->platform_name() == xla::CpuName();
+  }
+  return false;
+}
 
 }  // namespace xla

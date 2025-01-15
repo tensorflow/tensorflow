@@ -46,7 +46,8 @@ std::unique_ptr<HloRunnerInterface> GetHloRunnerForTest() {
       pjrt_registry.GetDeviceShapeSizeFn(client->get());
 
   return std::make_unique<HloRunnerPjRt>(
-      *std::move(client), device_shape_representation_fn, device_shape_size_fn);
+      *std::move(client), device_shape_representation_fn, device_shape_size_fn,
+      /*use_parameter_layout_on_device=*/true);
 }
 
 }  // namespace
