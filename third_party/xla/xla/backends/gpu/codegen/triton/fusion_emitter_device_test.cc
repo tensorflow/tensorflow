@@ -222,8 +222,8 @@ CHECK-DAG:        %[[ZERO:.*]] = arith.constant 0 : i32
 CHECK-DAG:        %[[C125:.*]] = arith.constant 125 : i64
 CHECK-DAG:        %[[C127:.*]] = arith.constant 127 : i64
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
-CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
-CHECK-DAG:        %[[PID_I64:.*]] = arith.index_cast %[[PID_INDEX]] : index to i64
+CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
+CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
 CHECK-DAG:        %[[SUB:.*]] = arith.subi %[[C125]], %[[PID_I64]] : i64
 CHECK-DAG:        %[[OFFSET_IDX:.*]] = xla.apply_indexing #indexing_map(%[[PID_INDEX]])
 CHECK-DAG:        %[[OFFSET_I64:.*]] = arith.index_castui %[[OFFSET_IDX]] : index to i64
@@ -290,8 +290,8 @@ CHECK-DAG:        %[[ZERO:.*]] = arith.constant 0 : i32
 CHECK-DAG:        %[[C125:.*]] = arith.constant 125 : i64
 CHECK-DAG:        %[[C127:.*]] = arith.constant 127 : i64
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
-CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
-CHECK-DAG:        %[[PID_I64:.*]] = arith.index_cast %[[PID_INDEX]] : index to i64
+CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
+CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
 CHECK-DAG:        %[[SUB:.*]] = arith.subi %[[C125]], %[[PID_I64]] : i64
 CHECK-DAG:        %[[OFFSET_IDX:.*]] = xla.apply_indexing #indexing_map(%[[PID_INDEX]])
 CHECK-DAG:        %[[OFFSET_I64:.*]] = arith.index_castui %[[OFFSET_IDX]] : index to i64
@@ -359,11 +359,12 @@ CHECK-DAG:        %[[C10:.*]] = arith.constant 10 : i64
 CHECK-DAG:        %[[C125:.*]] = arith.constant 125 : i64
 CHECK-DAG:        %[[C127:.*]] = arith.constant 127 : i64
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
-CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
+CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
+CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
 CHECK-DAG:        %[[ROW_INDEX:.*]] = xla.apply_indexing #[[MAP]](%[[PID_INDEX]]
 CHECK-DAG:        %[[COL_INDEX:.*]] = xla.apply_indexing #[[MAP1]](%[[PID_INDEX]]
-CHECK-DAG:        %[[ROW_64:.*]] = arith.index_cast %[[ROW_INDEX]] : index to i64
-CHECK-DAG:        %[[COL_64:.*]] = arith.index_cast %[[COL_INDEX]] : index to i64
+CHECK-DAG:        %[[ROW_64:.*]] = arith.index_castui %[[ROW_INDEX]] : index to i64
+CHECK-DAG:        %[[COL_64:.*]] = arith.index_castui %[[COL_INDEX]] : index to i64
 CHECK-DAG:        %[[ROW_SUB:.*]] = arith.subi %[[C10]], %[[ROW_64]] : i64
 CHECK-DAG:        %[[COL_SUB:.*]] = arith.subi %[[C125]], %[[COL_64]] : i64
 CHECK-DAG:        %[[OFFSET_IDX:.*]] = xla.apply_indexing #[[MAP2]](%[[PID_INDEX]])
@@ -373,7 +374,6 @@ CHECK-DAG:        tt.make_tensor_ptr %[[BASE_PTR0_LOAD]], [%[[ROW_SUB]], %[[COL_
 CHECK-NEXT:       tt.load {{.*}} : !tt.ptr<tensor<1x1x128xf32>>
 CHECK-DAG:        tt.make_tensor_ptr %[[P1]], [%[[C127]]], {{.*}} [%[[ZERO]]] {order = array<i32: 0>} : <tensor<128xf32>>
 CHECK-NEXT:       tt.load {{.*}} : !tt.ptr<tensor<128xf32>>
-CHECK-DAG:        %[[PID_I64:.*]] = arith.index_castui %[[PID_INDEX]] : index to i64
 CHECK-DAG:        %[[BASE_PTR2_LOAD:.*]] = tt.addptr %[[P2]], %[[PID_I64]] : !tt.ptr<f32>, i64
 CHECK-DAG:        tt.make_tensor_ptr %[[BASE_PTR2_LOAD]], [%[[ROW_SUB]], %[[COL_SUB]]], {{.*}} [%[[ZERO]], %[[ZERO]]] {order = array<i32: 1, 0>} : <tensor<1x1xf32>>
 CHECK-NEXT:       tt.load {{.*}} : !tt.ptr<tensor<1x1xf32>>

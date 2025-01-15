@@ -17,9 +17,10 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
-#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -32,11 +33,15 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -58,11 +63,14 @@ using mlir::AffineExprKind;
 using mlir::AffineMap;
 using mlir::AffineSymbolExpr;
 using mlir::ImplicitLocOpBuilder;
+using mlir::IndexType;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
+using mlir::ModuleOp;
 using mlir::OpRewritePattern;
 using mlir::PatternRewriter;
 using mlir::SmallVector;
+using mlir::Type;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::affine::AffineApplyOp;
@@ -295,6 +303,53 @@ struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
   }
 };
 
+// Rewrites a binary elementwise op on 'index' types to a binary elementwise op
+// on integers with the specified bit width.
+template <typename BinaryElementwiseOp>
+class RewriteIndexBinaryElementwiseOp
+    : public OpRewritePattern<BinaryElementwiseOp> {
+ public:
+  using OpRewritePattern<BinaryElementwiseOp>::OpRewritePattern;
+  RewriteIndexBinaryElementwiseOp(MLIRContext* context, uint64_t index_bitwidth)
+      : OpRewritePattern<BinaryElementwiseOp>(context, 2),
+        index_bitwidth_(index_bitwidth) {}
+
+  LogicalResult matchAndRewrite(BinaryElementwiseOp op,
+                                PatternRewriter& rewriter) const override {
+    CHECK_EQ(op->getNumOperands(), 2);
+    CHECK_EQ(op->getNumResults(), 1);
+
+    auto is_index = [](Type type) { return llvm::isa<mlir::IndexType>(type); };
+
+    bool operands_are_indices = absl::c_all_of(op->getOperandTypes(), is_index);
+    bool result_is_index = is_index(op->getResultTypes().front());
+
+    if (!operands_are_indices || !result_is_index) {
+      return rewriter.notifyMatchFailure(
+          op, "operation has non-index operands or results");
+    }
+
+    ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+    b.setInsertionPoint(op);
+
+    Type index_type = IndexType::get(op->getContext());
+    Type dst_type = b.getIntegerType(index_bitwidth_);
+
+    auto lhs = b.create<arith::IndexCastUIOp>(dst_type, op->getOperand(0));
+    auto rhs = b.create<arith::IndexCastUIOp>(dst_type, op->getOperand(1));
+    auto new_op = b.create<BinaryElementwiseOp>(lhs, rhs);
+
+    rewriter.replaceAllUsesWith(
+        op.getResult(),
+        b.create<arith::IndexCastUIOp>(index_type, new_op.getResult()));
+
+    return mlir::success();
+  }
+
+ private:
+  uint64_t index_bitwidth_;
+};
+
 struct SimplifyAffinePass
     : public impl::SimplifyAffinePassBase<SimplifyAffinePass> {
  public:
@@ -302,11 +357,33 @@ struct SimplifyAffinePass
     MLIRContext* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
     patterns.add<RewriteAffineApply, RewriteApplyIndexingOp>(ctx);
-    mlir::GreedyRewriteConfig config;
+    mlir::GreedyRewriteConfig config1;
     // There's no point simplifying more than once.
-    config.strictMode = mlir::GreedyRewriteStrictness::ExistingOps;
+    config1.strictMode = mlir::GreedyRewriteStrictness::ExistingOps;
     if (mlir::failed(mlir::applyPatternsGreedily(
-            getOperation(), std::move(patterns), config))) {
+            getOperation(), std::move(patterns), config1))) {
+      signalPassFailure();
+    }
+
+    auto parent_module = getOperation()->getParentOfType<ModuleOp>();
+    mlir::DataLayout layout(parent_module);
+    std::optional<uint64_t> index_bitwidth =
+        layout.getTypeIndexBitwidth(IndexType::get(ctx));
+    CHECK(index_bitwidth.has_value());
+
+    mlir::RewritePatternSet index_patterns(ctx);
+    index_patterns.add<RewriteIndexBinaryElementwiseOp<arith::AddIOp>,
+                       RewriteIndexBinaryElementwiseOp<arith::DivUIOp>,
+                       RewriteIndexBinaryElementwiseOp<arith::MulIOp>,
+                       RewriteIndexBinaryElementwiseOp<arith::RemUIOp>,
+                       RewriteIndexBinaryElementwiseOp<arith::SubIOp>>(
+        ctx, *index_bitwidth);
+    arith::IndexCastUIOp::getCanonicalizationPatterns(index_patterns, ctx);
+
+    mlir::GreedyRewriteConfig config2;
+    config2.maxIterations = mlir::GreedyRewriteConfig::kNoLimit;
+    if (mlir::failed(mlir::applyPatternsAndFoldGreedily(
+            getOperation(), std::move(index_patterns), config2))) {
       signalPassFailure();
     }
   }

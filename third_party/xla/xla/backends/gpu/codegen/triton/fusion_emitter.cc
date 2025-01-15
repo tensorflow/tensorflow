@@ -815,8 +815,13 @@ namespace ir_emitter_triton_internal {
 SmallVector<Value, 3> ComputeDelinearizedTileIndex(
     EmitterLocOpBuilder& b,
     absl::Span<const int64_t> num_output_tiles_per_dim) {
+  // TODO(b/389955087): we can decide whether to sign extend by understanding if
+  // we need 64 bits to encode indices or if 32 bits are enough. For now, just
+  // use 64 bits to avoid issues.
   Value pid = b.create<arith::IndexCastUIOp>(
-      b.getIndexType(), b.create<ttir::GetProgramIdOp>(ttir::ProgramIDDim::X));
+      b.getIndexType(),
+      b.create<arith::ExtSIOp>(b.getI64Type(), b.create<ttir::GetProgramIdOp>(
+                                                   ttir::ProgramIDDim::X)));
 
   // Delinearize the block id.
   mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, b.getContext());
@@ -885,7 +890,10 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
     Value parent_size =
         CreateConst(b, b.getI64Type(), shape.dimensions(dim_idx))
             .UnwrapScalar();
-    Value offset = b.create<arith::IndexCastOp>(
+    // Offsets are necessarily positive since they represent a distance between
+    // 0 and the size of the tensor on the given axis. Therefore, it is safe to
+    // use 'IndexCastUI' here. This allows index canonicalizations later on.
+    Value offset = b.create<arith::IndexCastUIOp>(
         b.getI64Type(), tile_offsets_as_indices[dim_idx]);
     residual_shape.push_back(b.create<arith::SubIOp>(parent_size, offset));
 

@@ -724,6 +724,38 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "fusion_emitter_long_device_test",
+    timeout = "long",
+    srcs = if_gpu_is_configured(["fusion_emitter_long_device_test.cc"]),
+    backends = [
+        "gpu_h100",
+    ],
+    tags = [
+        "no_mac",
+        "no_oss",  # requires-mem:28g tag doesn't work in open source
+    ] + if_google([
+        "requires-mem:28g",
+    ]),
+    deps = [
+        "//xla:autotuning_proto_cc",
+        "//xla:error_spec",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:path",
+    ],
+)
+
 cc_library(
     name = "kernel_name_tracer_cuda",
     testonly = True,
