@@ -650,6 +650,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   // CustomCall handlers per call target.
   absl::Status HandleCustomCallTopK(HloInstruction* hlo);
+  absl::Status HandleCustomCallJaxLog(HloInstruction* hlo);
+
   // Convenient custom ops defined by the partitioner itself.
   absl::Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
 

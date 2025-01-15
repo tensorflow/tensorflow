@@ -5389,7 +5389,8 @@ absl::Status SpmdPartitioner::PreprocessSharding(
     for (HloInstruction* hlo : computation->instructions()) {
       if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng &&
           (hlo->opcode() != HloOpcode::kCustomCall ||
-           GetCustomCallPartitioner(hlo->custom_call_target()) == nullptr)) {
+           (hlo->custom_call_target() != "__gpu$jax.gpu.log" &&
+            GetCustomCallPartitioner(hlo->custom_call_target()) == nullptr))) {
         TF_RET_CHECK(hlo->has_sharding())
             << "Side-effect HLO must have sharding: " << hlo->ToString();
         TF_RET_CHECK(!HasReplicatedSharding(hlo->sharding()) ||
