@@ -114,18 +114,33 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
   return id;
 }
 
+static absl::StatusOr<std::vector<ncclUniqueId>> AsNcclUniqueIds(
+    const CliqueIds& clique_ids) {
+  std::vector<ncclUniqueId> ids;
+  auto ids_vect = clique_ids.data();
+  ids.reserve(ids_vect.size());
+  for (const auto& clique_id : ids_vect) {
+    auto id = AsNcclUniqueId(clique_id);
+    if (!id.ok()) {
+      return id.status();
+    }
+    ids.push_back(id.value());
+  }
+  return ids;
+}
+
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
 NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
-                                     const std::optional<CliqueId>& clique_id,
+                                     const std::optional<CliqueIds>& clique_ids,
                                      absl::Span<const DeviceRank> ranks,
                                      const Collectives::Config& config) {
-  // With NCCL backend we rely on host to exchange unique clique id.
-  if (!clique_id.has_value()) {
+  // With NCCL backend we rely on host to exchange unique clique ids.
+  if (!clique_ids.has_value() || clique_ids->data().empty()) {
     return InvalidArgument("CliqueId is required to create NCCL communicators");
   }
 
   VLOG(1) << "Initialize NCCL communicator for " << ranks.size() << " devices"
-          << "; fingerprint(id)=" << clique_id->fingerprint();
+          << "; fingerprint(id)=" << clique_ids->fingerprint();
 
   TF_ASSIGN_OR_RETURN(auto* gpu_config, TryCast(&config));
   ncclConfig_t comm_config = AsNcclConfig(*gpu_config);
@@ -140,14 +155,22 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
   for (size_t i = 0; i < ranks.size(); ++i) {
     VLOG(1) << "Initialize NCCL communicator for rank #" << ranks[i].rank
             << " of " << clique_key.num_devices()
-            << "; fingerprint(id)=" << clique_id->fingerprint();
+            << "; fingerprint(id)=" << clique_ids->fingerprint()
+            << "; size(id)=" << clique_ids->data().size();
     TF_ASSIGN_OR_RETURN(auto* device, TryCast(ranks[i].device));
     auto activate_context = device->stream_executor()->Activate();
 
-    TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(*clique_id));
+#if !defined(TENSORFLOW_USE_ROCM)
+    TF_ASSIGN_OR_RETURN(auto nccl_unique_ids, AsNcclUniqueIds(*clique_ids));
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankScalable(
+        &comm_handles[i], clique_key.num_devices(), ranks[i].rank.value(),
+        nccl_unique_ids.size(), nccl_unique_ids.data(), &comm_config));
+#else
+    TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_ids->at(0)));
     XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
         &comm_handles[i], clique_key.num_devices(), nccl_unique_id,
         ranks[i].rank.value(), &comm_config));
+#endif
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 

@@ -50,7 +50,7 @@ class GpuCollectivesStub : public GpuCollectives {
   }
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-  CreateCommunicators(const CliqueKey&, const std::optional<CliqueId>&,
+  CreateCommunicators(const CliqueKey&, const std::optional<CliqueIds>&,
                       absl::Span<const DeviceRank>,
                       const Collectives::Config&) final {
     return UnimplementedError();
