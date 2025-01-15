@@ -1,1 +1,22 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Vector/Transforms/VectorEmulateNarrowType.cpp b/mlir/lib/Dialect/Vector/Transforms/VectorEmulateNarrowType.cpp
+--- a/mlir/lib/Dialect/Vector/Transforms/VectorEmulateNarrowType.cpp
++++ b/mlir/lib/Dialect/Vector/Transforms/VectorEmulateNarrowType.cpp
+@@ -1291,7 +1291,7 @@
+ /// bitwise ops to avoid leaving LLVM to scramble with peephole optimizations.
+ static Value rewriteI4ToI8Ext(PatternRewriter &rewriter, Location loc,
+                               Value srcValue, const ExtractNBitsFn &extFn) {
+-  auto srcVecType = cast<VectorType>(srcValue.getType());
++  [[maybe_unused]] auto srcVecType = cast<VectorType>(srcValue.getType());
+   assert(srcVecType.getElementType().isSignlessInteger(4) &&
+          "Expected i4 type");
+ 
+@@ -1311,7 +1311,7 @@
+ /// bitwise ops to avoid leaving LLVM to scramble with peephole optimizations.
+ static Value rewriteI2ToI8Ext(PatternRewriter &rewriter, Location loc,
+                               Value srcValue, const ExtractNBitsFn &extFn) {
+-  VectorType srcVecType = cast<VectorType>(srcValue.getType());
++  [[maybe_unused]] VectorType srcVecType = cast<VectorType>(srcValue.getType());
+   assert(srcVecType.getElementType().isSignlessInteger(2) &&
+          "Expected i2 type");
+ 
