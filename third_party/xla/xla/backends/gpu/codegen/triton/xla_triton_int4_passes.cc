@@ -401,43 +401,30 @@ std::vector<Operation *> FindInt4ExtSIOp(const ModuleOp &module) {
   return result;
 }
 
-// When both strides are 1 then the tensor is actually a vector.
-bool IsSingleDimTensor(MakeTensorPtrOp &op) {
-  auto strides = op.getStrides();
-  if (strides.size() != 2) return false;
-
-  auto major_stride = GetConstValue(strides[0]);
-  bool is_major_stride_1 = major_stride.has_value() && *major_stride == 1;
-  auto minor_stride = GetConstValue(strides[1]);
-  bool is_minor_stride_2 = minor_stride.has_value() && *minor_stride == 1;
-  return is_major_stride_1 && is_minor_stride_2;
-}
-
-// Checks which dimension is packed. We use packed_dim attribute to determine
-// which dimension is packed. The tensor (Nx1) which is packed along the minor
-// dimension, but every byte has two i4 elements belonging to different rows, so
-// the tensor is packed along the major dimension and vice versa. In these
-// cases we replace the Major dimension with the Minor dimension and vice versa.
+// Finds the packed dimension idx from the MakeTensorPtrOp.
+// The tensor is packed along the minor dimension. Minor dimension is the one
+// that has the stride 1. If there are two dimensions with the stride 1, then we
+// need to check which exact shape dim is equal to 1.
+// We relay on the fact that shape and strides are the const values.
 int GetPackedDimIdx(MLIRContext *ctx, const std::vector<Operation *> &ops) {
   for (auto *op : ops) {
     if (!isa<MakeTensorPtrOp>(op)) continue;
 
     auto make_tensor_ptr = dyn_cast<MakeTensorPtrOp>(op);
-    int packed_dim = 0;
-    auto attr_dict = make_tensor_ptr->getAttrDictionary();
-    if (attr_dict.contains("packed_dim")) {
-      auto packed_dim_attr = attr_dict.get(StringRef("packed_dim"));
-      auto packed_dim_int_attr = dyn_cast<IntegerAttr>(packed_dim_attr);
-      VLOG(2) << "packed_dim: " << packed_dim_int_attr.getInt();
-      packed_dim = packed_dim_int_attr.getInt();
-    }
-
-    if (IsSingleDimTensor(make_tensor_ptr)) {
-      return packed_dim == 0 ? 1 : 0;
-    }
-
-    return packed_dim;
+    auto shape = make_tensor_ptr.getShape();
+    auto strides = make_tensor_ptr.getStrides();
+    int stride_0 = GetConstValue(strides[0]).value_or(1);
+    int stride_1 = GetConstValue(strides[1]).value_or(1);
+    int dim_0 = GetConstValue(shape[0]).value_or(1);
+    int dim_1 = GetConstValue(shape[1]).value_or(1);
+    if (stride_0 != 1 && stride_1 == 1) return 0;
+    if (stride_0 == 1 && stride_1 != 1) return 1;
+    if (stride_0 == 1 && stride_1 == 1 && dim_0 == 1 && dim_1 != 1) return 0;
+    if (stride_0 == 1 && stride_1 == 1 && dim_0 != 1 && dim_1 == 1) return 1;
+    LOG(FATAL) << "Unsupported case for the MakeTensorPtrOp: "
+               << DumpToString(static_cast<Operation *>(make_tensor_ptr));
   }
+  LOG(FATAL) << "No MakeTensorPtrOp found";
   return 0;  // Default to minor dimension.
 }
 

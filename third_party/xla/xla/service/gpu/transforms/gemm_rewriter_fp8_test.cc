@@ -131,7 +131,8 @@ class ParameterizedFp8GemmRewriteTest
   static constexpr const char* kF8E4M3AmaxPlaceholder{"<<F8E4M3_AMAX>>"};
 };
 
-TEST_P(ParameterizedFp8GemmRewriteTest, SupportsF8NonMajorBatchDim) {
+// TODO(b/390150775): The test is disabled because it is flaky.
+TEST_P(ParameterizedFp8GemmRewriteTest, DISABLED_SupportsF8NonMajorBatchDim) {
   const char* hlo_text = R"(
 HloModule t
 

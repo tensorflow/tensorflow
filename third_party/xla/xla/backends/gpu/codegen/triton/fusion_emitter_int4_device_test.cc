@@ -96,6 +96,40 @@ class PlainInt4ToPackedInt4RewritePassTest : public TritonTest {
 };
 
 TEST_F(PlainInt4ToPackedInt4RewritePassTest,
+       DotWithI4WeightsOnLhsWithBitcastTo3dTensor) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule DotWithI4WeightsOnLhsWithBitcastTo3dTensor
+
+    fusion {
+      p_0 = s4[256,16]{1,0:E(4)} parameter(0)
+      p_0.2 = bf16[256,16]{1,0} convert(p_0)
+      p_0.3 = bf16[4,64,16]{2,1,0} bitcast(p_0.2)
+      p_1 = bf16[4,32,64]{2,1,0} parameter(1)
+      ROOT dot = bf16[4,16,32]{2,1,0} dot(p_0.3, p_1),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={2}
+    }
+
+    ENTRY %entry_computation {
+      p_0 = s4[256,16]{1,0:E(4)} parameter(0)
+      p_1 = bf16[4,32,64]{2,1,0} parameter(1)
+      ROOT dot = bf16[4,16,32]{2,1,0} fusion(p_0, p_1),
+        kind=kCustom,
+        calls=fusion,
+        backend_config={
+          "fusion_backend_config":{
+            "kind":"__triton_gemm"
+          }
+        }
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
+}
+
+TEST_F(PlainInt4ToPackedInt4RewritePassTest,
        DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue) {
   constexpr absl::string_view kHloText = R"(
     HloModule DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue
