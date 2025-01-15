@@ -64,6 +64,7 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
     TargetDeviceFunctionID funcid, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
     absl::string_view name) {
+  QCHECK(false) << "EmitDeviceMathCall";
   // Device functions don't have f16 math functions, so we convert the operands
   // to f32 before calling the function and then convert the result back to f16.
   std::vector<llvm::Value*> converted_operands(operands.begin(),
@@ -107,6 +108,7 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
     const std::string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
     absl::string_view name) {
+  QCHECK(false) << "EmitMathCall";
   // Binary math functions transform are of type [T] -> T.
   for (PrimitiveType input_type : input_types) {
     if (output_type != input_type) {
@@ -150,6 +152,7 @@ llvm_ir::IrArray::Index GpuElementalIrEmitter::GetSourceIndexOfBitcast(
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
+  QCHECK(false) << "EmitFloatBinaryOp";
   PrimitiveType lhs_input_type = op->operand(0)->shape().element_type();
   PrimitiveType rhs_input_type = op->operand(1)->shape().element_type();
   PrimitiveType output_type = op->shape().element_type();
@@ -179,6 +182,7 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
+  QCHECK(false) << "EmitPowerOp";
   CHECK_EQ(op->opcode(), HloOpcode::kPower);
   PrimitiveType lhs_input_type = op->operand(0)->shape().element_type();
   PrimitiveType rhs_input_type = op->operand(1)->shape().element_type();
@@ -190,42 +194,49 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog(
     PrimitiveType prim_type, llvm::Value* value) {
+  QCHECK(false) << "EmitLog";
   return EmitDeviceMathCall(TargetDeviceFunctionID::kLog, {value}, {prim_type},
                             prim_type);
 }
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog1p(
     PrimitiveType prim_type, llvm::Value* value) {
+  QCHECK(false) << "EmitLog1p";
   return EmitDeviceMathCall(TargetDeviceFunctionID::kLog1p, {value},
                             {prim_type}, prim_type);
 }
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSin(
     PrimitiveType prim_type, llvm::Value* value) {
+  QCHECK(false) << "EmitSin";
   return EmitDeviceMathCall(TargetDeviceFunctionID::kSin, {value}, {prim_type},
                             prim_type);
 }
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCos(
     PrimitiveType prim_type, llvm::Value* value) {
+  QCHECK(false) << "EmitCos";
   return EmitDeviceMathCall(TargetDeviceFunctionID::kCos, {value}, {prim_type},
                             prim_type);
 }
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTan(
     PrimitiveType prim_type, llvm::Value* value) {
+  QCHECK(false) << "EmitTan";
   return EmitDeviceMathCall(TargetDeviceFunctionID::kTan, {value}, {prim_type},
                             prim_type);
 }
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExp(
     PrimitiveType prim_type, llvm::Value* value, absl::string_view /*name*/) {
+  QCHECK(false) << "EmitExp";
   return EmitDeviceMathCall(TargetDeviceFunctionID::kExp, {value}, {prim_type},
                             prim_type);
 }
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExpm1(
     PrimitiveType prim_type, llvm::Value* value) {
+  QCHECK(false) << "EmitExpm1";
   return EmitDeviceMathCall(TargetDeviceFunctionID::kExpm1, {value},
                             {prim_type}, prim_type);
 }
@@ -258,6 +269,7 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
     PrimitiveType prim_type, llvm::Value* value) {
+  QCHECK(false) << "EmitTanh";
   // When F64 is being requested, assume performance is less important and use
   // the more numerically precise tanh function.
   if (prim_type == F64) {
@@ -292,6 +304,7 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
 
 absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErf(
     PrimitiveType prim_type, llvm::Value* value) {
+  QCHECK(false) << "EmitErf";
   if (prim_type == F64) {
     return EmitDeviceMathCall(TargetDeviceFunctionID::kErf, {value},
                               {prim_type}, prim_type);
