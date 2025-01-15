@@ -100,6 +100,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/event_pool.h"
@@ -1119,20 +1120,20 @@ PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                                PjRtDevice* device) {
+PjRtStreamExecutorClient::BufferFromHostLiteralImpl(const LiteralSlice& literal,
+                                                    PjRtDevice* device,
+                                                    const Shape& shape) {
   tsl::profiler::TraceMe traceme(
-      "PjRtStreamExecutorClient::BufferFromHostLiteral");
-  VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostLiteral: shape: "
-          << literal.shape().ToString() << " device: " << device->DebugString();
+      "PjRtStreamExecutorClient::BufferFromHostLiteralImpl");
+  VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostLiteralImpl: shape: "
+          << shape.ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                           ->GetLocalDeviceState());
 
   TransferManager* transfer_manager = client()->backend().transfer_manager();
-  TF_ASSIGN_OR_RETURN(
-      Shape compact_shape,
-      transfer_manager->ChooseCompactLayoutForShape(literal.shape()));
+  TF_ASSIGN_OR_RETURN(Shape compact_shape,
+                      transfer_manager->ChooseCompactLayoutForShape(shape));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtStreamExecutorBuffer> py_buffer,
       AllocateDestinationBuffer(compact_shape, device, local_device,
@@ -1183,14 +1184,42 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
+                                                PjRtDevice* device) {
+  return BufferFromHostLiteralImpl(literal, device, literal.shape());
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
                                                 PjRtMemorySpace* memory_space) {
   if (memory_space->devices().size() == 1) {
-    return BufferFromHostLiteral(literal, memory_space->devices()[0]);
+    return BufferFromHostLiteralImpl(literal, memory_space->devices()[0],
+                                     literal.shape());
   }
   return absl::UnimplementedError(absl::StrCat(
       "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "
       "platform: ",
       platform_name()));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
+                                                PjRtMemorySpace* memory_space,
+                                                const Layout* device_layout) {
+  if (memory_space->devices().size() != 1) {
+    return absl::UnimplementedError(
+        absl::StrCat("BufferFromHostLiteral with PjRtMemorySpace is not "
+                     "implemented on platform: ",
+                     platform_name()));
+  }
+  PjRtDevice* const device = memory_space->devices()[0];
+  if (device_layout == nullptr || !literal.shape().has_layout() ||
+      LayoutUtil::Equal(literal.shape().layout(), *device_layout)) {
+    return BufferFromHostLiteralImpl(literal, device, literal.shape());
+  }
+
+  Shape new_shape = literal.shape();
+  *new_shape.mutable_layout() = *device_layout;
+  return BufferFromHostLiteralImpl(literal, device, new_shape);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>

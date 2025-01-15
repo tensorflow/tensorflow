@@ -934,13 +934,12 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                     PjRtDevice* device) {
-  tsl::profiler::TraceMe traceme("TfrtCpuClient::BufferFromHostLiteral");
-  VLOG(1) << "TfrtCpuClient::BufferFromHostLiteral: shape: "
-          << literal.shape().DebugString()
-          << " device: " << device->DebugString();
-  const Shape& shape = literal.shape();
+TfrtCpuClient::BufferFromHostLiteralImpl(const LiteralSlice& literal,
+                                         PjRtDevice* device,
+                                         const Shape& shape) {
+  tsl::profiler::TraceMe traceme("TfrtCpuClient::BufferFromHostLiteralImpl");
+  VLOG(1) << "TfrtCpuClient::BufferFromHostLiteralImpl: shape: "
+          << shape.DebugString() << " device: " << device->DebugString();
 
   absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> avs;
   TF_ASSIGN_OR_RETURN(
@@ -955,9 +954,32 @@ TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
+                                     PjRtDevice* device) {
+  return BufferFromHostLiteralImpl(literal, device, literal.shape());
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
                                      PjRtMemorySpace* memory_space) {
   CHECK_EQ(memory_space->devices().size(), 1);
-  return BufferFromHostLiteral(literal, memory_space->devices()[0]);
+  return BufferFromHostLiteralImpl(literal, memory_space->devices()[0],
+                                   literal.shape());
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
+                                     PjRtMemorySpace* memory_space,
+                                     const Layout* device_layout) {
+  CHECK_EQ(memory_space->devices().size(), 1);
+  PjRtDevice* const device = memory_space->devices()[0];
+  if (device_layout == nullptr || !literal.shape().has_layout() ||
+      LayoutUtil::Equal(literal.shape().layout(), *device_layout)) {
+    return BufferFromHostLiteralImpl(literal, device, literal.shape());
+  }
+
+  Shape new_shape = literal.shape();
+  *new_shape.mutable_layout() = *device_layout;
+  return BufferFromHostLiteralImpl(literal, device, new_shape);
 }
 
 TfrtCpuBuffer::TfrtCpuBuffer(

@@ -379,6 +379,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+      const Layout* device_layout) override;
+
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
@@ -478,6 +482,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtDevice* device, const Layout* device_layout,
       PjRtMemorySpace* memory_space);
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteralImpl(
+      const LiteralSlice& literal, PjRtDevice* device, const Shape& shape);
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;

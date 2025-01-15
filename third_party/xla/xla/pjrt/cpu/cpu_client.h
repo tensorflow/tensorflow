@@ -182,6 +182,10 @@ class TfrtCpuClient final : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+      const Layout* device_layout) override;
+
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
@@ -243,6 +247,9 @@ class TfrtCpuClient final : public PjRtClient {
 
  private:
   friend class TfrtCpuExecutable;
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteralImpl(
+      const LiteralSlice& literal, PjRtDevice* device, const Shape& shape);
 
   int process_index_;
   // Includes all devices, including non-addressable devices.
