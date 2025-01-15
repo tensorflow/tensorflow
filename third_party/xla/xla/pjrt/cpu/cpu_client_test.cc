@@ -638,6 +638,30 @@ TEST(TfrtCpuClientTest, PassAttrToFfiHandler) {
       LiteralUtil::CreateR1<float>({3.0f, 3.0f, 3.0f, 3.0f}), *result_literal));
 }
 
+TEST(TfrtCpuClientTest, CopyRawToHost) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
+  xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
+  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                          client->CreateBuffersForAsyncHostToDevice(
+                              {shape}, client->addressable_devices()[0]));
+  auto buffer = transfer_manager->RetrieveBuffer(0);
+  auto ready_future = buffer->GetReadyFuture();
+  EXPECT_THAT(ready_future.IsReady(), IsFalse());
+  constexpr size_t raw_data_size = 3 * 2 * 4;
+  char raw_data[raw_data_size];
+  std::fill(raw_data, raw_data + raw_data_size, 0x42);
+  absl::string_view raw_data_view(raw_data, raw_data_size);
+  TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
+      0, absl::string_view(raw_data, raw_data_size), []() {}));
+
+  char raw_data_result[raw_data_size];
+  TF_ASSERT_OK(
+      buffer->CopyRawToHost(&raw_data_result[0], 0, raw_data_size).Await());
+
+  ASSERT_EQ(absl::string_view(raw_data, raw_data_size),
+            absl::string_view(raw_data_result, raw_data_size));
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//

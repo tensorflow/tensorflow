@@ -980,6 +980,12 @@ static std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
   return avs;
 }
 
+PjRtFuture<> TfrtCpuBuffer::CopyRawToHost(void* dst, int64_t offset,
+                                          int64_t transfer_size) {
+  return CopyRawToHostHelper(dst, offset, transfer_size,
+                             client()->async_work_runner());
+}
+
 PjRtFuture<> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   return ToLiteralHelper(literal, client()->async_work_runner());
 }
