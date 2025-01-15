@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
