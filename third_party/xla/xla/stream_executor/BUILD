@@ -428,6 +428,35 @@ cc_library(
 )
 
 cc_library(
+    name = "memory_allocator",
+    hdrs = ["memory_allocator.h"],
+    deps = [
+        ":memory_allocation",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "generic_memory_allocator",
+    hdrs = ["generic_memory_allocator.h"],
+    deps = [
+        ":memory_allocation",
+        ":memory_allocator",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "generic_memory_allocation",
+    hdrs = ["generic_memory_allocation.h"],
+    deps = [
+        ":memory_allocation",
+        "@com_google_absl//absl/functional:any_invocable",
+    ],
+)
+
+cc_library(
     name = "stream",
     hdrs = ["stream.h"],
     deps = [
@@ -693,6 +722,34 @@ cc_library(
 #===--------------------------------------------------------------------------------------------===#
 # StreamExecutor tests
 #===--------------------------------------------------------------------------------------------===#
+
+cc_test(
+    name = "generic_memory_allocation_test",
+    srcs = ["generic_memory_allocation_test.cc"],
+    deps = [
+        ":generic_memory_allocation",
+        "//xla/tsl/platform:macros",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_test(
+    name = "generic_memory_allocator_test",
+    srcs = ["generic_memory_allocator_test.cc"],
+    deps = [
+        ":generic_memory_allocation",
+        ":generic_memory_allocator",
+        ":memory_allocation",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
 
 cc_test(
     name = "semantic_version_test",
