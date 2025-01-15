@@ -115,7 +115,7 @@ REQUIRED_PACKAGES = [
     # issues with numpy 2.1.0 is fixed.
     'numpy >= 1.26.0, < 2.1.0',
     'h5py >= 3.11.0',
-    'ml_dtypes >= 0.4.0, < 0.5.0',
+    'ml_dtypes >= 0.4.0, < 1.0.0',
 ]
 
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
