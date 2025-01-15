@@ -690,6 +690,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mlir_module_utils",
+    hdrs = ["utils/mlir_module_utils.h"],
+    deps = [
+        ":const_tensor_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 tf_cc_test(
     name = "size_utils_test",
     size = "small",
@@ -1545,6 +1556,7 @@ cc_library(
         ":flatbuffer_tflite_operator_lib",
         ":lite_version",
         ":low_bit_utils",
+        ":mlir_module_utils",
         ":region_isolation",
         ":stateful_ops_utils",
         ":string_utils",
@@ -1577,7 +1589,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
         "@flatbuffers",
         "@llvm-project//llvm:Support",
@@ -1587,7 +1598,6 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:tstring",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
@@ -1904,13 +1914,14 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":const_tensor_utils",
         ":converter_flags_proto_cc",
         ":flatbuffer_translate_lib",
+        ":mlir_module_utils",
         ":tensorflow_lite",
         ":tf_tfl_passes",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
+        "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/debug",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
         "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_cc",
@@ -1960,7 +1971,6 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
     ],
