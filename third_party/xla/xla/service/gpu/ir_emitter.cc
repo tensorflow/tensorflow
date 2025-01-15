@@ -154,18 +154,6 @@ absl::Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   return absl::OkStatus();
 }
 
-absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
-  // kFusion for library calls should be handled by
-  // IrEmitterUnnested::HandleFusion.
-  CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
-  GpuElementalIrEmitter elemental_emitter(*ir_emitter_context_, &b_);
-  FusedIrEmitter fused_emitter(elemental_emitter);
-  BindFusionArguments(fusion, &fused_emitter);
-  TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
-                                          *fusion->fused_expression_root()));
-  return EmitTargetElementLoop(*fusion, generator);
-}
-
 absl::Status IrEmitter::HandleCall(HloInstruction* call) {
   std::vector<llvm::Value*> operand_addresses;
   for (HloInstruction* operand : call->operands()) {
