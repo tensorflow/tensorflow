@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_
-#define XLA_SERVICE_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_
+#ifndef XLA_BACKENDS_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_
+#define XLA_BACKENDS_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -54,4 +54,4 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
 
 }  // namespace xla::cpu
 
-#endif  // XLA_SERVICE_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_
+#endif  // XLA_BACKENDS_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_

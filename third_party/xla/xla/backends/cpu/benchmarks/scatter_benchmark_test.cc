@@ -21,9 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/logging.h"
@@ -52,7 +52,7 @@ Literal createR1ScatterIndices(int64_t domain_size, int64_t scatter_size,
   return scatter_indices;
 }
 
-// For simplicity all these benchamrks use square operands and only scatter on
+// For simplicity all these benchmarks use square operands and only scatter on
 // the first dimension.
 // This may not be representative of all use cases but should work for now.
 
