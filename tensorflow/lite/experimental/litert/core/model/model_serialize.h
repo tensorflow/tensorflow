@@ -15,6 +15,9 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_SERIALIZE_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_SERIALIZE_H_
 
+#include <cstddef>
+#include <cstdint>
+
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 
 #ifdef __cplusplus
