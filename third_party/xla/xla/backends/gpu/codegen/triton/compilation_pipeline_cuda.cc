@@ -90,6 +90,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   // Even though we don't run on pre-Ampere architectures anymore, we keep this
   // check for consistency with the upstream pipeline
   if (cc.IsAtLeastAmpere()) {
+    pm->addPass(mt::gpu::createTritonGPUOptimizeAccumulatorInit());
     pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
     pm->addPass(mt::gpu::createTritonGPULoopScheduling({num_stages}));
     pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));
