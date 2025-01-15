@@ -414,7 +414,8 @@ func.func @test_log(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
 // -----
 
 // CHECK-LABEL: test_negate
-// CHECK: %[[VAR0:.*]] = tosa.negate %arg0
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
+// CHECK-DAG: %[[VAR1:.*]] = tosa.negate %arg0, %[[VAR0]], %[[VAR0]]
 func.func @test_negate(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
   %2 = "tf.Neg"(%arg0)   : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   func.return %2 : tensor<13x21x3xf32>

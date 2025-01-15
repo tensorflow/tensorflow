@@ -869,7 +869,8 @@ func.func @test_log(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 // -----
 
 // CHECK-LABEL: test_negate
-// CHECK: %[[VAR0:.*]] = tosa.negate %arg0
+// CHECK-DAG: %[[CONST_0:.*]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
+// CHECK-DAG: %[[VAR0:.*]] = tosa.negate %arg0, %[[CONST_0]], %[[CONST_0]]
 func.func @test_negate(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %0 = "tfl.neg"(%arg0) : (tensor<13x21x3xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
@@ -936,6 +937,7 @@ func.func @test_cos(%arg0: tensor<10xf32>) -> tensor<*xf32> {
 
 // CHECK-LABEL: test_atan2
 // CHECK-SAME: -> tensor<13x21x3xf32>
+// CHECK-DAG: %[[CONST_0:.*]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
 // CHECK-DAG: %[[VAL_2:.*]] = "tosa.const"() <{values = dense<2.000000e+00> : tensor<1x1x1xf32>}> : () -> tensor<1x1x1xf32>
 // CHECK-DAG: %[[VAL_3:.*]] = "tosa.const"() <{values = dense<1.000000e+00> : tensor<1x1x1xf32>}> : () -> tensor<1x1x1xf32>
 // CHECK-DAG: %[[VAL_4:.*]] = "tosa.const"() <{values = dense<3.276700e+04> : tensor<1x1x1xf32>}> : () -> tensor<1x1x1xf32>
@@ -964,7 +966,7 @@ func.func @test_cos(%arg0: tensor<10xf32>) -> tensor<*xf32> {
 // CHECK: %[[VAL_26:.*]] = tosa.sub %[[VAL_7]], %[[VAL_25]] : (tensor<1x1x1xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
 // CHECK: %[[VAL_27:.*]] = tosa.greater %[[VAL_8]], %arg1 : (tensor<1x1x1xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xi1>
 // CHECK: %[[VAL_28:.*]] = tosa.select %[[VAL_27]], %[[VAL_26]], %[[VAL_25]] : (tensor<13x21x3xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
-// CHECK: %[[VAL_29:.*]] = tosa.negate %[[VAL_28]] : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAL_29:.*]] = tosa.negate %[[VAL_28]], %[[CONST_0]], %[[CONST_0]] : (tensor<13x21x3xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<13x21x3xf32>
 // CHECK: %[[VAL_30:.*]] = tosa.greater %[[VAL_8]], %arg0 : (tensor<1x1x1xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xi1>
 // CHECK: %[[VAL_31:.*]] = tosa.select %[[VAL_30]], %[[VAL_29]], %[[VAL_28]] : (tensor<13x21x3xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
 // CHECK: return %[[VAL_31]] : tensor<13x21x3xf32>
@@ -2971,8 +2973,9 @@ func.func @test_arg_max_negative_dim(%arg0: tensor<13x21x3xf32>) -> tensor<13x21
 
 // CHECK-LABEL: @test_arg_min_f32
 func.func @test_arg_min_f32(%arg0: tensor<13x21x3xf32>) -> tensor<*xi32> {
-  // CHECK: %[[NEG:.+]] = tosa.negate %arg0 : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
-  // CHECK: tosa.argmax %[[NEG]] {axis = 1 : i32}
+  // CHECK-DAG: %[[CONST_0:.*]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1xf32>}> : () -> tensor<1xf32>
+  // CHECK-DAG: %[[NEG:.+]] = tosa.negate %arg0, %[[CONST_0]], %[[CONST_0]] : (tensor<13x21x3xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<13x21x3xf32>
+  // CHECK-DAG: tosa.argmax %[[NEG]] {axis = 1 : i32}
   %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %1 = "tfl.arg_min"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<*xi32>
   func.return %1 : tensor<*xi32>
