@@ -48,7 +48,7 @@ xla_cc_binary(
     # set linkopts in such a way that dynamic libraries are found, which are
     # symlinked from the lit_lib directory.
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
-    visibility = ["//xla/service/gpu/fusions:__subpackages__"],
+    visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
     deps = [
         ":test_lib",
         "@com_google_absl//absl/log:check",
@@ -67,7 +67,7 @@ xla_cc_binary(
     # set linkopts in such a way that dynamic libraries are found, which are
     # symlinked from the lit_lib directory.
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
-    visibility = ["//xla/service/gpu/fusions:__subpackages__"],
+    visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
     deps = [
         ":test_lib",
         "//xla:debug_options_flags",
@@ -96,7 +96,7 @@ xla_cc_binary(
     name = "fusion_wrapper",
     testonly = 1,
     srcs = ["fusion_wrapper.cc"],
-    visibility = ["//xla/service/gpu/fusions:__subpackages__"],
+    visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
     deps = [
         ":test_lib",
         "//xla/tsl/platform:statusor",
