@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -28,10 +29,13 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo_module_util.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/logging.h"
@@ -712,6 +716,20 @@ const Backend& HloRunner::backend() const {
 
 absl::string_view HloRunner::Name() const {
   return backend_->platform()->Name();
+}
+
+bool HloRunner::HasProperty(const HloRunnerPropertyTagT tag) const {
+  if (tag == static_cast<HloRunnerPropertyTagT>(
+                 HloRunnerPropertyTag::kUsingGpuRocm5_7_0)) {
+    const stream_executor::DeviceDescription& device_description =
+        backend().default_stream_executor()->GetDeviceDescription();
+    const bool is_rocm =
+        std::holds_alternative<stream_executor::RocmComputeCapability>(
+            device_description.gpu_compute_capability());
+    return is_rocm && device_description.runtime_version() ==
+                          stream_executor::SemanticVersion(5, 7, 0);
+  }
+  return false;
 }
 
 }  // namespace xla
