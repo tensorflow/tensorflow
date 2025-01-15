@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_ffi_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
@@ -71,15 +73,14 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -1826,6 +1827,42 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   return args;
 }
 
+static absl::StatusOr<PJRT_ExecuteContext*> ForwardExecuteContext(
+    const PJRT_Api* c_api, const ExecuteContext* context) {
+  // If the execute context is null, we don't have anything to forward.
+  if (context == nullptr) return nullptr;
+
+  // If we can't find the FFI extension, we can't forward anything from the
+  // execute context to the C API.
+  PJRT_FFI_Extension* ffi_extension = pjrt::FindExtension<PJRT_FFI_Extension>(
+      c_api, PJRT_Extension_Type::PJRT_Extension_Type_FFI);
+  if (ffi_extension == nullptr) return nullptr;
+
+  // Create a new instance of the PJRT_ExecuteContext.
+  PJRT_ExecuteContext_Create_Args create_args = {
+      PJRT_ExecuteContext_Create_Args_STRUCT_SIZE, nullptr, nullptr};
+  RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_ExecuteContext_Create(&create_args),
+                              c_api);
+
+  // Forward FFI user data to the C API execute context.
+  using TypeId = ffi::ExecutionContext::TypeId;
+  auto forward_user_data = [&](TypeId type_id, void* data) -> absl::Status {
+    PJRT_FFI_UserData_Add_Args add_args{
+        PJRT_FFI_UserData_Add_Args_STRUCT_SIZE,
+        nullptr,
+        create_args.context,
+        PJRT_FFI_UserData{type_id.value(), data, /*deleter=*/nullptr},
+    };
+    RETURN_STATUS_IF_PJRT_ERROR(ffi_extension->user_data_add(&add_args), c_api);
+    return absl::OkStatus();
+  };
+
+  TF_RETURN_IF_ERROR(
+      context->ffi_context().ForEachWithStatus(forward_user_data));
+
+  return create_args.context;
+}
+
 absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtCApiLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
@@ -1835,14 +1872,27 @@ PjRtCApiLoadedExecutable::Execute(
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
   std::vector<int64_t> non_donatable_input_indices_storage;
-  PJRT_ExecuteOptions c_options;
-  c_options.num_send_ops = 0;
-  c_options.num_recv_ops = 0;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (returned_futures.has_value()) {
     device_complete_events.emplace();
   }
+
+  PJRT_ExecuteOptions c_options = {PJRT_ExecuteOptions_STRUCT_SIZE, nullptr};
+  TF_ASSIGN_OR_RETURN(c_options.context,
+                      ForwardExecuteContext(pjrt_c_api(), options.context));
+
+  // Don't forget to destroy execute context if we created it.
+  auto destroy_context = absl::MakeCleanup([&]() {
+    if (c_options.context != nullptr) {
+      PJRT_ExecuteContext_Destroy_Args destroy_args = {
+          PJRT_ExecuteContext_Destroy_Args_STRUCT_SIZE, nullptr,
+          c_options.context};
+      pjrt::LogFatalIfPjrtError(
+          pjrt_c_api()->PJRT_ExecuteContext_Destroy(&destroy_args),
+          pjrt_c_api());
+    }
+  });
 
   auto callback_data = std::make_shared<SendRecvCallbackData>();
   TF_ASSIGN_OR_RETURN(
@@ -1907,9 +1957,6 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
   std::vector<int64_t> non_donatable_input_indices_storage;
-  PJRT_ExecuteOptions c_options;
-  c_options.num_send_ops = 0;
-  c_options.num_recv_ops = 0;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (fill_future) {
@@ -1917,6 +1964,8 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   }
 
   auto callback_data = std::make_shared<SendRecvCallbackData>();
+
+  PJRT_ExecuteOptions c_options = {PJRT_ExecuteOptions_STRUCT_SIZE, nullptr};
   TF_ASSIGN_OR_RETURN(
       PJRT_LoadedExecutable_Execute_Args args,
       GetCommonExecuteArgs(argument_handles_vec, options, c_options,
