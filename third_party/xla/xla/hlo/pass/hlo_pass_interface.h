@@ -59,7 +59,7 @@ class HloPassInterface {
 
     // Transition to the next iteration.
     //
-    // Depending on the pass implmentation, one iteration includes all the work
+    // Depending on the pass implementation, one iteration includes all the work
     // done between two IncrementIteration calls, there can be arbitrary number
     // of passes that ran arbitrary times with this state.
     void IncrementIteration() {
