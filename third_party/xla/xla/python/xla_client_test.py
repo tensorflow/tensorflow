@@ -3333,8 +3333,19 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       self.assertGreaterEqual(self.backend.pjrt_c_api_major_version, 0)
       self.assertGreaterEqual(self.backend.pjrt_c_api_minor_version, 0)
 
+    @unittest.skipUnless(
+        not pjrt_c_api and tfrt_tpu,
+        "Test that attributes are zero for non-plugin tfrt_tpu",
+    )
+    def testStaticTfrtTpuAttributes(self):
+      self.assertEqual(self.backend.pjrt_c_api_major_version, 0)
+      self.assertEqual(self.backend.pjrt_c_api_minor_version, 0)
+      # CL number is defined as -1 when running as test.
+      self.assertEqual(self.backend.__getattr__("cl_number"), -1)
+
     @unittest.skipIf(
-        cloud_tpu or pjrt_c_api, "PJRT version only exist for plugins"
+        cloud_tpu or pjrt_c_api or (not pjrt_c_api and tfrt_tpu),
+        "PJRT version only exist for plugins",
     )
     def testNotExistPjRtCApiVersion(self):
       with self.assertRaises(AttributeError):
