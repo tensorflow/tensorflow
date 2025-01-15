@@ -16,8 +16,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/topology_util.h"
 
 #include <algorithm>
-#include <cstdint>
-#include <cstdio>
 #include <fstream>
 #include <map>
 #include <set>
@@ -30,13 +28,13 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/substitute.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
@@ -46,34 +44,6 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
-
-namespace {
-bool SameDevice(const DeviceProto& a, const DeviceProto& b) {
-  return (a.name() == b.name() && a.vendor() == b.vendor() &&
-          a.local_device_ordinal() == b.local_device_ordinal() &&
-          a.core_count() == b.core_count() &&
-          a.device_kind() == b.device_kind() &&
-          a.slice_index() == b.slice_index() &&
-          // Global device ID Might not be set for LocalTopologyProto, still
-          // check it for default value.
-          a.global_device_id() == b.global_device_id() &&
-          a.compute_capability() == b.compute_capability());
-}
-
-bool SameLocalTopology(const LocalTopologyProto& a,
-                       const LocalTopologyProto& b) {
-  if (a.node_id() != b.node_id() || a.devices_size() != b.devices_size()) {
-    return false;
-  }
-  for (int i = 0; i < a.devices_size(); ++i) {
-    if (!SameDevice(a.devices(i), b.devices(i))) {
-      return false;
-    }
-  }
-  return true;
-}
-
-}  // namespace
 
 // Exists on Linux systems. Unique per OS kernel restart.
 static constexpr char kBootIdPath[] = "/proc/sys/kernel/random/boot_id";
@@ -209,34 +179,8 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
     return absl::OkStatus();
   }
   CHECK(kv_store != nullptr);
-  const std::string local_topology_key = GetLocalTopologyKey(platform, node_id);
-  const std::string serialized_local_topology =
-      local_topology.SerializeAsString();
-
-  absl::StatusOr<std::string> existing_local_topology =
-      kv_store->TryGet(local_topology_key);
-  printf("existing_local_topology status: %s\n",
-         existing_local_topology.status().ToString().c_str());
-
-  if (existing_local_topology.ok()) {
-    printf("existing topology found");
-    // Local topology has been set previously from the same node before
-    // restart.
-    LocalTopologyProto existing_local_topology_proto;
-    existing_local_topology_proto.ParseFromString(*existing_local_topology);
-    if (!SameLocalTopology(existing_local_topology_proto, local_topology)) {
-      return absl::InternalError(absl::Substitute(
-          "Different local topology for node $0 has been set previously, "
-          "possibly before a restart.\nBefore: $1\nAfter: $2",
-          node_id, existing_local_topology_proto.DebugString(),
-          local_topology.DebugString()));
-    }
-  } else if (absl::IsNotFound(existing_local_topology.status())) {
-    TF_RETURN_IF_ERROR(kv_store->Set(GetLocalTopologyKey(platform, node_id),
-                                     serialized_local_topology));
-  } else {
-    return existing_local_topology.status();
-  }
+  TF_RETURN_IF_ERROR(kv_store->Set(GetLocalTopologyKey(platform, node_id),
+                                   local_topology.SerializeAsString()));
 
   // The lead node gets all local topologies, builds the global topology and
   // puts it to the key-value store.
