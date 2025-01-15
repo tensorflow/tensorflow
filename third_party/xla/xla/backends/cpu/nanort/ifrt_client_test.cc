@@ -46,38 +46,61 @@
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 
-// For now, all of the tests we run are provided by IFRT, they use
-// NanoIfrtClient via the "register_nanort_for_ifrt_tests" target, which can
-// also be used to run NanoIfrtClient in other tests. see the BUILD file for the
-// list. We need a main function to filter out one test that doesn't seem worth
-// supporting.
+namespace xla::cpu {
 
-int main(int argc, char** argv) {
-  // This test expects copies to multiple devices to fail, but we only have one
-  // device and it doesn't seem worth pretending that we have more.
-  static constexpr absl::string_view kFilter =
-      "-ArrayImplTest.CopyMixedSourceDevices";
-  xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);
+// Many of the tests we run are provided by IFRT, they use NanoIfrtClient via
+// the "register_nanort_for_ifrt_tests" target, which can also be used to run
+// NanoIfrtClient in other tests. see the BUILD file for the list. We need a
+// main function to filter out one test that doesn't seem worth supporting.
 
-  for (int i = 1; i < argc; i++) {
-    if (absl::StartsWith(argv[i], "--benchmark_filter=")) {
-      ::benchmark::Initialize(&argc, argv);
+TEST(NanoIfrtClientTest, BigResult) {
+  // A program that is likely to need some temporary buffers to be allocated.
+  absl::string_view kBigResult =
+      R"(module {
+        func.func @main(%arg: tensor<f32>) -> tensor<1024x1024xf32> {
+          %0 = "mhlo.broadcast"(%arg) {broadcast_sizes = dense<[1024, 1024]> : tensor<2xi64>} : (tensor<f32>) -> tensor<1024x1024xf32>
+          %1 = "mhlo.add"(%0, %0) : (tensor<1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<1024x1024xf32>
+          %2 = "mhlo.dot"(%1, %1) : (tensor<1024x1024xf32>, tensor<1024x1024xf32>) -> tensor<1024x1024xf32>
+          return %2 : tensor<1024x1024xf32>
+        }
+      })";
+  auto client = NanoIfrtClient::Create();
+  auto compiler = client->GetDefaultCompiler();
 
-      testing::InitGoogleTest(&argc, argv);
-      ::benchmark::RunSpecifiedBenchmarks();
-      return 0;
-    }
+  mlir::MLIRContext context;
+  auto module = xla::ParseMlirModuleString(kBigResult, context);
+
+  auto executable =
+      compiler->Compile(std::make_unique<ifrt::HloProgram>(**module), nullptr);
+  CHECK_OK(executable);
+
+  ifrt::DType dtype(ifrt::DType::kF32);
+  ifrt::Shape shape({});
+  const float a = 13.0f;
+
+  auto a_array = client->MakeArrayFromHostBuffer(
+      &a, dtype, shape, std::nullopt, client->default_sharding(),
+      ifrt::Client::HostBufferSemantics::kImmutableZeroCopy, nullptr);
+  CHECK_OK(a_array);
+
+  auto result =
+      (*executable)->Execute(absl::MakeSpan(&*a_array, 1), {}, std::nullopt);
+  CHECK_EQ(result->outputs.size(), 1);
+
+  std::vector<float> result_data(1024 * 1024);
+  CHECK_OK(result->outputs[0]
+               ->CopyToHostBuffer(result_data.data(), std::nullopt,
+                                  ifrt::ArrayCopySemantics::kAlwaysCopy)
+               .Await());
+  for (const auto& v : result_data) {
+    // Should be (a+a)^2 * 1024
+    EXPECT_EQ(v, 692224.0);
   }
-
-  testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }
 
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
-
-namespace xla::cpu {
 
 static constexpr absl::string_view kAddScalars =
     R"(module {
@@ -143,3 +166,24 @@ static void BM_IfRtAddScalars(benchmark::State& state) {
 BENCHMARK(BM_IfRtAddScalars);
 
 }  // namespace xla::cpu
+
+int main(int argc, char** argv) {
+  // This test expects copies to multiple devices to fail, but we only have one
+  // device and it doesn't seem worth pretending that we have more.
+  static constexpr absl::string_view kFilter =
+      "-ArrayImplTest.CopyMixedSourceDevices";
+  xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);
+
+  for (int i = 1; i < argc; i++) {
+    if (absl::StartsWith(argv[i], "--benchmark_filter=")) {
+      ::benchmark::Initialize(&argc, argv);
+
+      testing::InitGoogleTest(&argc, argv);
+      ::benchmark::RunSpecifiedBenchmarks();
+      return 0;
+    }
+  }
+
+  testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}
