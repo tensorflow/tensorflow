@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -331,7 +332,7 @@ TEST_F(LayoutAssignmentTest, DotLayoutS8) {
                                 m::Op().WithShape(S8, {64, 96}, {0, 1}))));
 }
 
-TEST_F(LayoutAssignmentTest, SortLayout) {
+TEST_F(LayoutAssignmentTest, SameLayoutOnOperandsAndOutputsOfSort) {
   const char* hlo_text = R"(
   HloModule SortLayout
 
@@ -366,6 +367,37 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Sort(m::Op().WithShape(F32, {3, 2}, {1, 0}),
                                  m::Op().WithShape(F32, {3, 2}, {1, 0}))));
+}
+
+TEST_F(LayoutAssignmentTest,
+       SameLayoutOnOperandsAndOutputsOfCubDeviceRadixSort) {
+  const char* hlo_text = R"(
+  HloModule SortLayout
+
+  ENTRY sort {
+    keys = f32[3,2]{0,1} constant({{0,1},{0,1},{0,1}})
+    values = f32[2,3]{1,0} parameter(0)
+    transpose = f32[3,2]{1,0} transpose(values), dimensions={1,0}
+    ROOT sort = (f32[3,2]{1,0}, f32[3,2]{1,0}, u8[128]{0})
+        custom-call(keys, transpose), custom_call_target="__cub$DeviceRadixSort"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
+      GetDeviceDescription());
+
+  EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall(m::Op().WithShape(F32, {3, 2}, {1, 0}),
+                                       m::Op().WithShape(F32, {3, 2}, {1, 0}))))
+      << module->ToString();
 }
 
 TEST_F(LayoutAssignmentTest, TopKLayout) {

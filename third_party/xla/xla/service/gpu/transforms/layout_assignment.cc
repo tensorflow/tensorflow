@@ -51,6 +51,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -472,7 +474,8 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       LayoutUtil::SetToDefaultLayout(&output_shape);
       TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
       TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
-    } else if (HloPredicateIsOp<HloOpcode::kSort>(instruction) &&
+    } else if ((HloPredicateIsOp<HloOpcode::kSort>(instruction) ||
+                IsCubDeviceRadixSort(*instruction)) &&
                instruction->operand(0)->shape().rank() > 1) {
       // Make sure that all the operands and the output(s) have the same layout.
       Shape keys_shape = instruction->operand(0)->shape();

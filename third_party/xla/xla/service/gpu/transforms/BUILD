@@ -2167,6 +2167,8 @@ cc_library(
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -2198,6 +2200,7 @@ xla_cc_test(
         "//xla/stream_executor:dnn",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:status_matchers",
