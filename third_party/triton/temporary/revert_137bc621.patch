@@ -1,0 +1,877 @@
+Revert Triton PR https://github.com/triton-lang/triton/pull/5389
+
+This has been reverted in triton at head & is causing many of our internal tests
+to fail as well. See b/389925439 and b/389940021. The next integrate should pick
+up the reverts and cause this patch to be obsolete.
+diff --git a/include/triton/Dialect/Triton/IR/Dialect.h b/include/triton/Dialect/Triton/IR/Dialect.h
+--- a/include/triton/Dialect/Triton/IR/Dialect.h
++++ b/include/triton/Dialect/Triton/IR/Dialect.h
+@@ -55,19 +55,13 @@ public:
+ 
+   // Tries to compute the encoding for the result of a reshape operation that
+   // makes the reshape a "nop", i.e. the same GPU threads contain the same
+-  // elements as before the reshape using legacy layouts.  This is not always
+-  // possible (in which case we fallback to using LinearLayouts)
+-  // In the future we'll always use LinearLayouts
++  // elements as before the reshape.  Note that this is not always possible (in
++  // which case you'd need to choose a different layout for the input to the
++  // reshape).
+   virtual LogicalResult
+-  inferReshapeOpEncoding(ArrayRef<int64_t> srcShape, Attribute srcEnc,
+-                         ArrayRef<int64_t> dstShape, Attribute &dstEnc,
+-                         std::optional<Location> loc) const = 0;
+-
+-  // Check if two layouts are structurally the same, even if their names are
+-  // different
+-  virtual LogicalResult verifyLayoutsAreEqual(ArrayRef<int64_t> shape,
+-                                              Attribute expected, Attribute got,
+-                                              Location loc) const = 0;
++  inferReshapeOpNoReorderEncoding(ArrayRef<int64_t> srcShape, Attribute srcEnc,
++                                  ArrayRef<int64_t> dstShape, Attribute &dstEnc,
++                                  std::optional<Location> loc) const = 0;
+ 
+   virtual LogicalResult
+   inferJoinOpEncoding(Attribute srcEnc, Attribute &dstEnc,
+diff --git a/lib/Dialect/Triton/IR/Ops.cpp b/lib/Dialect/Triton/IR/Ops.cpp
+--- a/lib/Dialect/Triton/IR/Ops.cpp
++++ b/lib/Dialect/Triton/IR/Ops.cpp
+@@ -8,7 +8,6 @@
+ #include "triton/Dialect/Triton/IR/Dialect.h"
+ #include "triton/Dialect/Triton/IR/Types.h"
+ #include "triton/Dialect/Triton/IR/Utility.h"
+-#include "triton/Tools/LinearLayout.h"
+ #include "llvm/Support/ErrorHandling.h"
+ 
+ namespace mlir {
+@@ -702,21 +701,24 @@ LogicalResult ReshapeOp::verify() {
+                      "encodings, or (b) neither does.");
+   }
+ 
+-  if (!srcEnc || getAllowReorder()) {
+-    return success();
++  if (srcEnc && !getAllowReorder()) {
++    Attribute inferredDstEnc;
++    if (cast<DialectInferLayoutInterface>(&srcEnc.getDialect())
++            ->inferReshapeOpNoReorderEncoding(srcTy.getShape(), srcEnc,
++                                              dstTy.getShape(), inferredDstEnc,
++                                              getLoc())
++            .failed()) {
++      return emitError("This reshape is impossible without reordering, but "
++                       "reordering is not allowed.  Try choosing a different "
++                       "encoding for the input tensor (or allow reordering).");
++    }
++    if (inferredDstEnc != dstEnc) {
++      return emitError("Expected result encoding ")
++             << inferredDstEnc << " but was " << dstEnc;
++    }
+   }
+ 
+-  // Check that we can infer the dst encoding from the src encoding
+-  // and that the inferred dst encoding is the same as the given dst encoding
+-  Attribute inferredDstEnc;
+-  auto result =
+-      cast<DialectInferLayoutInterface>(&srcEnc.getDialect())
+-          ->inferReshapeOpEncoding(srcTy.getShape(), srcEnc, dstTy.getShape(),
+-                                   inferredDstEnc, getLoc());
+-  assert(succeeded(result));
+-  return cast<DialectInferLayoutInterface>(&srcEnc.getDialect())
+-      ->verifyLayoutsAreEqual(dstTy.getShape(), inferredDstEnc, dstEnc,
+-                              getLoc());
++  return success();
+ }
+ 
+ //-- FpToFpOp --
+diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dialect.cpp
+--- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
++++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
+@@ -1597,14 +1597,12 @@ LinearEncodingAttr::toLinearLayout(Array
+ 
+ SmallVector<unsigned>
+ LinearEncodingAttr::getElemsPerThread(ArrayRef<int64_t> shape, Type) const {
+-  // When broadcasting the layout the shape changes, otherwise the shape is
+-  // the same as the shape of the tensor
+-  // We can either have BroadcastOp with SameOperandsAndResultEncoding, or keep
+-  // the invariant that the shape of the LL is that of the tensor
+-  // We choose the former for BC
+-  auto ll = *toLinearLayout(shape);
+-  return basesPerDim(ll, StringAttr::get(getContext(), "register"),
+-                     /*skipBroadcast=*/false);
++  // We can relax this assert by calling toLinearLayout rather than
++  // getLinearLayout
++  SmallVector<int32_t> shapeVec(shape.begin(), shape.end());
++  assert(shapeVec == llvm::to_vector(getLinearLayout().getOutDimSizes()));
++  auto ll = getLinearLayout();
++  return basesPerDim(ll, StringAttr::get(getContext(), "register"));
+ }
+ 
+ // Start of Selection
+@@ -2674,8 +2672,8 @@ struct TritonGPUInferLayoutInterface
+   // contains elements [a,b,c,d] before the reshape, it contains those same
+   // elements after the reshape, they're just "renamed".
+   //
+-  // Using legacy layouts, a dst encoding that satisfies this property may not
+-  // exist.  Here are some positive and negative examples.
++  // A dst encoding that satisfies this property does not exist for all inputs.
++  // Here are some positive and negative examples.
+   //
+   //   - NOT OK: 4x4 order=[0,1] -> 16.  Reshape merges elements so
+   //     dim 1 is the fastest-changing in the dst, but the src has the opposite
+@@ -2689,19 +2687,17 @@ struct TritonGPUInferLayoutInterface
+   //   - OK: 32x4 sizePerThread=[4,4] -> 128.  dst with sizePerThread=[16] will
+   //     contain the same elements as before.
+   //
+-  // With linear layouts, we can always find a dst encoding that satisfies
+-  // this property. See inferReshapeOpEncoding.
+-  //
+   // Users of this function require that it is symmetrical: if
+   // (srcShape,srcEnc,dstShape) => dstEnc, then (dstShape,dstEnc,srcShape) =>
+   // srcEnc.
+-  LogicalResult inferReshapeOpLegacyEncoding(ArrayRef<int64_t> srcShape,
+-                                             Attribute srcEnc,
+-                                             ArrayRef<int64_t> dstShape,
+-                                             Attribute &dstEnc) const {
++  LogicalResult
++  inferReshapeOpNoReorderEncoding(ArrayRef<int64_t> srcShape, Attribute srcEnc,
++                                  ArrayRef<int64_t> dstShape, Attribute &dstEnc,
++                                  std::optional<Location> loc) const override {
+     auto src = mlir::dyn_cast<BlockedEncodingAttr>(srcEnc);
+     if (!src) {
+-      return failure();
++      return emitOptionalError(
++          loc, "Non-reordering reshape only supports BlockedEncoding");
+     }
+ 
+     // Nop reshape; we can always infer an encoding.
+@@ -2734,7 +2730,9 @@ struct TritonGPUInferLayoutInterface
+     // to handle CTASplitNum.
+     if (!all_of(src.getCTAsPerCGA(), [](int32_t x) { return x == 1; }) ||
+         !all_of(src.getCTASplitNum(), [](int32_t x) { return x == 1; })) {
+-      return failure();
++      return emitOptionalError(
++          loc, "Non-reordering reshape does not currently support multi-CTA "
++               "layouts other than the default layout.");
+     }
+ 
+     // Cowardly refuse to handle encodings where shape[dim] is not divisible by
+@@ -2744,7 +2742,12 @@ struct TritonGPUInferLayoutInterface
+       for (int dim = 0; dim < srcShape.size(); dim++) {
+         if (srcShape[dim] >= subblock[dim] &&
+             srcShape[dim] % subblock[dim] != 0) {
+-          return failure();
++          return emitOptionalError(loc,
++                                   "Can't do a non-reordering reshape because "
++                                   "the size of dimension ",
++                                   dim, " (", srcShape[dim], ")",
++                                   " is not divisible by ", name, "[", dim, "]",
++                                   " = ", subblock[dim]);
+         }
+       }
+       return success();
+@@ -2769,7 +2772,11 @@ struct TritonGPUInferLayoutInterface
+     // physical order, with `a` being the most major.
+     for (const auto &[srcDims, dstDims] : decomp) {
+       if (!isConsecutive(to_vector(reverse(gather(srcInvOrder, srcDims))))) {
+-        return failure();
++        return emitOptionalError(loc,
++                                 "Cannot do a non-reordering reshape given "
++                                 "this src encoding order.  Dimensions [",
++                                 join(srcDims),
++                                 "] must be physically consecutive.");
+       }
+     }
+ 
+@@ -2816,7 +2823,11 @@ struct TritonGPUInferLayoutInterface
+           // Check that more-minor dims all have 1 in shapeRemaining.
+           for (int j = i + 1; j < srcDims.size(); j++) {
+             if (shapeRemaining[j] != 1) {
+-              return failure();
++              return emitOptionalError(
++                  loc,
++                  "Invalid src encoding for non-reordering reshape.  Must use "
++                  "up sizePerThread / threadsPerWarp / warpsPerCTA for "
++                  "more-minor dimensions before more major-dims can use them.");
+             }
+           }
+ 
+@@ -2831,7 +2842,13 @@ struct TritonGPUInferLayoutInterface
+           // only if we're the most-major dimension of the chunk and in all
+           // future chunks, only this most-major dim has a non-1 size.
+           if (shapeRemaining[i] == 0 && i != 0) {
+-            return failure();
++            return emitOptionalError(
++                loc,
++                "Invalid src encoding for non-reordering reshape.  Block "
++                "size in dimension ",
++                dim,
++                " is larger than the shape that dimension, but this is only "
++                "allowed for the most-major dimension of a reshape chunk");
+           }
+         }
+         return success();
+@@ -2921,65 +2938,6 @@ struct TritonGPUInferLayoutInterface
+     return success();
+   }
+ 
+-  LogicalResult verifyLayoutsAreEqual(ArrayRef<int64_t> shape,
+-                                      Attribute expected, Attribute got,
+-                                      Location loc) const override {
+-    if (expected == got) {
+-      return success();
+-    }
+-    // Check whether the encodings are structurally the same.
+-    auto expectedLL = triton::gpu::toLinearLayout(shape, expected);
+-    auto gotLL = triton::gpu::toLinearLayout(shape, got);
+-    if (expectedLL != gotLL) {
+-      return emitError(loc, "Expected result encoding ")
+-             << expected << " but was " << got;
+-    }
+-    return success();
+-  }
+-
+-  LogicalResult
+-  inferReshapeOpEncoding(ArrayRef<int64_t> srcShape, Attribute srcEnc,
+-                         ArrayRef<int64_t> dstShape, Attribute &dstEnc,
+-                         std::optional<Location> loc) const override {
+-    auto result =
+-        inferReshapeOpLegacyEncoding(srcShape, srcEnc, dstShape, dstEnc);
+-    if (succeeded(result)) {
+-      return result;
+-    }
+-
+-    // If the legacy encoding failed use LinearLayouts.
+-    // Once LinearLayouts are more widely used, we can remove
+-    // inferReshapeOpLegacyEncoding and simply use LLs.
+-    auto *ctx = getContext();
+-    auto src = triton::gpu::toLinearLayout(srcShape, srcEnc);
+-    if (!src) {
+-      return emitOptionalError(loc,
+-                               "src encoding does not support linear layout");
+-    }
+-
+-    if (product(srcShape) != product(dstShape)) {
+-      return emitOptionalError(loc, "numel of dst shape does not match "
+-                                    "numel of src shape");
+-    }
+-
+-    auto newRank = dstShape.size();
+-    SmallVector<std::pair<StringAttr, int32_t>> newOutDims;
+-    for (auto [dim, size] :
+-         llvm::zip(standardOutDimNames(ctx, newRank), dstShape)) {
+-      newOutDims.emplace_back(dim, size);
+-    }
+-    auto srcOutDims = llvm::to_vector(src->getOutDimNames());
+-    // reshapeOp assumes minor-to-major, so we need to transpose the out dims
+-    // before the reshape
+-    std::reverse(srcOutDims.begin(), srcOutDims.end());
+-    std::reverse(newOutDims.begin(), newOutDims.end());
+-    auto dst = src->transposeOuts(srcOutDims)
+-                   .reshapeOuts(newOutDims)
+-                   .transposeOuts(standardOutDimNames(ctx, newRank));
+-    dstEnc = LinearEncodingAttr::get(ctx, dst);
+-    return success();
+-  }
+-
+   LogicalResult
+   inferJoinOpEncoding(Attribute srcEnc, Attribute &dstEnc,
+                       std::optional<Location> loc) const override {
+diff --git a/lib/Dialect/TritonGPU/IR/Ops.cpp b/lib/Dialect/TritonGPU/IR/Ops.cpp
+--- a/lib/Dialect/TritonGPU/IR/Ops.cpp
++++ b/lib/Dialect/TritonGPU/IR/Ops.cpp
+@@ -42,16 +42,6 @@ struct CanonicalizeConvertFromReshape
+     auto convert = op.getSrc().getDefiningOp<ConvertLayoutOp>();
+     if (!convert)
+       return failure();
+-    // If the layouts are structurally the same, the convert is trivial
+-    auto srcType = convert.getSrc().getType();
+-    auto dstType = convert.getType();
+-    auto srcLL = toLinearLayout(srcType.getShape(), srcType.getEncoding());
+-    auto dstLL = toLinearLayout(dstType.getShape(), dstType.getEncoding());
+-    if (srcLL && dstLL && *srcLL == *dstLL) {
+-      rewriter.replaceOpWithNewOp<triton::ReshapeOp>(
+-          op, op.getType(), convert.getSrc(), op.getAllowReorder());
+-      return mlir::success();
+-    }
+     if (isExpensiveView(convert.getSrc().getType(), op.getType()))
+       return failure();
+     if (!op.getAllowReorder() || op.getEfficientLayout())
+diff --git a/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp b/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
+--- a/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
+@@ -1025,7 +1025,9 @@ void LayoutRematerialization::backwardRe
+   // we don't handle conversions to DotOperandEncodingAttr
+   // this is a heuristic to accommodate fused attention
+   RankedTensorType targetType = convertOp.getType();
+-  if (isa<DotOperandEncodingAttr>(targetType.getEncoding()))
++  // We stop the rematerialization of linear layouts as we have to be a bit more
++  // careful with the heuristics for both correctness and perf
++  if (isa<DotOperandEncodingAttr, LinearEncodingAttr>(targetType.getEncoding()))
+     return;
+   Value oldV = convertOp.getSrc();
+   LDBG("check backward remat with source " << oldV << " encoding "
+@@ -1067,8 +1069,11 @@ void LayoutRematerialization::hoistConve
+     ConvertLayoutOp convertOp) {
+   // we don't handle conversions to DotOperandEncodingAttr
+   // this is a heuristics to accommodate fused attention
++  // We stop the rematerialization of linear layouts as we have to be a bit more
++  // careful with the heuristics for both correctness and perf
+   RankedTensorType targetType = convertOp.getType();
+-  if (isa<DotOperandEncodingAttr>(targetType.getEncoding()))
++  if (mlir::isa<DotOperandEncodingAttr, LinearEncodingAttr>(
++          targetType.getEncoding()))
+     return;
+ 
+   auto isExtOrBroadcastOp = [](Operation *op) {
+diff --git a/lib/Dialect/TritonGPU/Transforms/Utility.cpp b/lib/Dialect/TritonGPU/Transforms/Utility.cpp
+--- a/lib/Dialect/TritonGPU/Transforms/Utility.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/Utility.cpp
+@@ -407,13 +407,14 @@ static Attribute inferReshapeOpDstEncodi
+     return {};
+ 
+   Attribute dstEnc;
+-  auto result =
+-      srcEnc.getDialect()
+-          .getRegisteredInterface<triton::DialectInferLayoutInterface>()
+-          ->inferReshapeOpEncoding(srcShape, srcEnc, dstShape, dstEnc,
+-                                   /*loc=*/std::nullopt);
+-  assert(succeeded(result));
+-  return dstEnc;
++  if (succeeded(
++          srcEnc.getDialect()
++              .getRegisteredInterface<triton::DialectInferLayoutInterface>()
++              ->inferReshapeOpNoReorderEncoding(
++                  srcShape, srcEnc, dstShape, dstEnc, /*loc=*/std::nullopt))) {
++    return dstEnc;
++  }
++  return {};
+ }
+ 
+ static Attribute inferDstEncoding(triton::ReshapeOp op, Attribute encoding) {
+@@ -991,7 +992,8 @@ getSharedEncIfAllUsersAreDotEnc(Value va
+       if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
+         return std::nullopt;
+       auto enc =
+-          cast<triton::gpu::TensorOrMemDesc>(user->getResult(0).getType()).getEncoding();
++          cast<triton::gpu::TensorOrMemDesc>(user->getResult(0).getType())
++              .getEncoding();
+       if (isa<ttg::DotOperandEncodingAttr>(enc)) {
+         auto srcTy = cast<triton::gpu::TensorOrMemDesc>(val.getType());
+         auto CTALayout = ttg::getCTALayout(srcTy.getEncoding());
+diff --git a/unittest/Dialect/TritonGPU/DialectTest.cpp b/unittest/Dialect/TritonGPU/DialectTest.cpp
+--- a/unittest/Dialect/TritonGPU/DialectTest.cpp
++++ b/unittest/Dialect/TritonGPU/DialectTest.cpp
+@@ -77,6 +77,135 @@ int64_t getFlatIdx(ArrayRef<unsigned> id
+   return flatIdx;
+ }
+ 
++// Represents the many indices of one element of a tensor with a
++// BlockedEncoding.
++//
++// The purpose of this class is we can say, if two MultiIdx's have the same
++// flatFoo values before and after a reshape, then the same GPU thread contains
++// the same element (and the reshape is a nop, at least for that element).
++struct MultiIdx {
++  using Vec = SmallVector<unsigned, 5>;
++
++  // Logical index into the tensor.
++  Vec idx;
++
++  // If the tensor's encoding has e.g. numPerThread = [2,2], then idxInThread
++  // tells us which of the four elements per thread this is.  Same for idxInWarp
++  // and idxInCTA.
++  Vec idxInThread;
++  Vec idxInWarp;
++  Vec idxInCTA;
++
++  // If the tensor's encoding defines a block of size [x,y,z], the tensor itself
++  // may be larger than this, comprising multiple blocks.  This tells us which
++  // block we're in.
++  Vec idxOuter;
++
++  // flatIdx is flattened according to the tensor's logical order (i.e. ignoring
++  // the encoding).  The others are flattened according to the tensor's physical
++  // encoding.
++  int64_t flatIdx;
++  int64_t flatIdxInThread;
++  int64_t flatIdxInWarp;
++  int64_t flatIdxInCTA;
++  int64_t flatIdxOuter;
++};
++
++bool sameFlatIdxs(const MultiIdx &a, const MultiIdx &b) {
++  return a.flatIdx == b.flatIdx && //
++         a.flatIdxInThread == b.flatIdxInThread &&
++         a.flatIdxInWarp == b.flatIdxInWarp &&
++         a.flatIdxInCTA == b.flatIdxInCTA && //
++         a.flatIdxOuter == b.flatIdxOuter;
++}
++
++std::string multiIdxsToString(ArrayRef<std::unique_ptr<MultiIdx>> idxs) {
++  std::stringstream ss;
++  for (const auto &idxPtr : idxs) {
++    const MultiIdx &idx = *idxPtr;
++    ss //
++        << "  [" << triton::join(idx.idx, ",") << "] (" << idx.flatIdx << ") "
++        << "elem=[" << triton::join(idx.idxInThread, ",") << "] ("
++        << idx.flatIdxInThread << ") "
++        << "thread=[" << triton::join(idx.idxInWarp, ",") << "] ("
++        << idx.flatIdxInWarp << ") "
++        << "warp=[" << triton::join(idx.idxInCTA, ",") << "] ("
++        << idx.flatIdxInCTA << ") "
++        << "outer=[" << triton::join(idx.idxOuter, ",") << "] ("
++        << idx.flatIdxOuter << ")\n";
++  }
++  return ss.str();
++}
++
++std::vector<std::unique_ptr<MultiIdx>> getMultiIdxs(ArrayRef<unsigned> shape,
++                                                    BlockedEncodingAttr enc) {
++  using Vec = MultiIdx::Vec;
++
++  const unsigned rank = shape.size();
++  auto sizePerThread = enc.getSizePerThread();
++  auto threadsPerWarp = enc.getThreadsPerWarp();
++  auto warpsPerCTA = enc.getWarpsPerCTA();
++  auto order = enc.getOrder();
++
++  Vec numBlocks;
++  for (int i = 0; i < rank; i++) {
++    numBlocks.push_back(ceil<unsigned>(
++        shape[i], sizePerThread[i] * threadsPerWarp[i] * warpsPerCTA[i]));
++  }
++
++  Vec idxInThread(rank, 0);
++  Vec idxInWarp(rank, 0);
++  Vec idxInCTA(rank, 0);
++  Vec idxOuter(rank, 0);
++
++  int64_t nElems = product(sizePerThread) * product(threadsPerWarp) *
++                   product(warpsPerCTA) * product(numBlocks);
++
++  // We eventually sort this array, and if the elements are plain MultiIdx
++  // elements rather than pointers, we have to swap them, which ends up being
++  // expensive.
++  std::vector<std::unique_ptr<MultiIdx>> elems;
++  elems.reserve(nElems);
++
++  for (int64_t i = 0; i < nElems; i++) {
++    auto e = std::make_unique<MultiIdx>();
++    e->idxInThread = idxInThread;
++    e->idxInWarp = idxInWarp;
++    e->idxInCTA = idxInCTA;
++    e->idxOuter = idxOuter;
++
++    for (int i = 0; i < rank; i++) {
++      e->idx.push_back(    //
++          idxInThread[i] + //
++          idxInWarp[i] * sizePerThread[i] +
++          idxInCTA[i] * sizePerThread[i] * threadsPerWarp[i] +
++          idxOuter[i] * sizePerThread[i] * threadsPerWarp[i] * warpsPerCTA[i]);
++    }
++
++    e->flatIdxInThread = getFlatIdx(e->idxInThread, sizePerThread, order);
++    e->flatIdxInWarp = getFlatIdx(e->idxInWarp, threadsPerWarp, order);
++    e->flatIdxInCTA = getFlatIdx(e->idxInCTA, warpsPerCTA, order);
++    e->flatIdxOuter = getFlatIdx(e->idxOuter, numBlocks, order);
++    e->flatIdx = getFlatIdx(e->idx, shape,
++                            llvm::to_vector(llvm::reverse(llvm::seq(rank))));
++
++    elems.push_back(std::move(e));
++
++    if (advance(idxInThread, sizePerThread, order)) {
++      if (advance(idxInWarp, threadsPerWarp, order)) {
++        if (advance(idxInCTA, warpsPerCTA, order)) {
++          advance(idxOuter, numBlocks, order);
++        }
++      }
++    }
++  }
++  llvm::sort(elems, [](const std::unique_ptr<MultiIdx> &a,
++                       const std::unique_ptr<MultiIdx> &b) {
++    return a->flatIdx < b->flatIdx;
++  });
++  return elems;
++}
++
+ class InferLayoutTest : public ::testing::Test {
+ public:
+   InferLayoutTest()
+@@ -92,12 +221,25 @@ protected:
+ 
+ /*static*/ MLIRContext InferLayoutTest::ctx;
+ 
++// The optional outparam couldReshape tells the caller whether the reshape
++// worked.  You might want this to be a return value instead, but gtest ASSERT
++// and FAIL have an implicit `return`, so only work in fns that return void.
+ void testReshape(RankedTensorType srcTy, RankedTensorType dstTy,
+                  std::optional<BlockedEncodingAttr> expectedDstEnc,
++                 std::optional<bool> expectSuccess,
+                  DialectInferLayoutInterface *inferLayout,
+-                 bool longErrors = true) {
++                 bool longErrors = true, bool *couldReshape = nullptr) {
++  std::unique_ptr<bool> couldReshapeStorage;
++  if (!couldReshape) {
++    couldReshapeStorage = std::make_unique<bool>();
++    couldReshape = couldReshapeStorage.get();
++  }
++  *couldReshape = false;
+ 
+   MLIRContext *ctx = srcTy.getContext();
++  ASSERT_TRUE(expectSuccess || !dstTy.getEncoding())
++      << "dstTy shouldn't have an expected encoding if we're expecting the "
++         "reshape to be impossible!";
+ 
+   // Capture any errors from calling inferReshapeNoOpReorderEncoding, so we can
+   // print them if we expected the reshape to succeed but it failed.
+@@ -107,17 +249,29 @@ void testReshape(RankedTensorType srcTy,
+   {
+     ScopedDiagnosticHandler scopedHandler(
+         ctx, [&](Diagnostic &diag) { diags.push_back("  - " + diag.str()); });
+-    result = inferLayout->inferReshapeOpEncoding(
++    result = inferLayout->inferReshapeOpNoReorderEncoding(
+         srcTy.getShape(), srcTy.getEncoding(), dstTy.getShape(), inferredEnc,
+         UnknownLoc::get(ctx));
+   }
+ 
+-  // We expect the reshape to succeed as long as the inputs have the same
+-  // number of elements
+-  EXPECT_TRUE(succeeded(result))
+-      << "Expected reshape to succeed, but it didn't!  Error(s):\n"
+-      << join(diags, "\n");
++  if (!expectSuccess.has_value() && !succeeded(result)) {
++    // We didn't know whether or not it was supposed to succeed, and it didn't.
++    // Test passes!
++    return;
++  }
+ 
++  if (expectSuccess.has_value() && !*expectSuccess) {
++    EXPECT_FALSE(succeeded(result))
++        << "Expected reshape to be impossible, but got dst encoding: "
++        << stringifyLLVMType(inferredEnc);
++    *couldReshape = true;
++    return;
++  }
++
++  if (!succeeded(result)) {
++    FAIL() << "Expected reshape to succeed, but it didn't!  Error(s):\n"
++           << join(diags, "\n");
++  }
+   if (auto expectedEnc = dstTy.getEncoding()) {
+     EXPECT_EQ(inferredEnc, expectedEnc);
+   }
+@@ -125,14 +279,12 @@ void testReshape(RankedTensorType srcTy,
+   // We know that infer(srcShape, srcEnc, dstShape) => dstEnc.  Check that it
+   // works the other way around too: infer(dstShape, dstEnc, srcShape) =>
+   // srcEnc.  (This is an invariant of the inference function.)
+-  // Even more, we check that the inferred encoding is structurally the same as
+-  // the src encoding, showing that the inference is consistent.
+   {
+     std::vector<std::string> diags;
+     ScopedDiagnosticHandler scopedHandler(
+         ctx, [&](Diagnostic &diag) { diags.push_back("  - " + diag.str()); });
+     Attribute inferredSrcEnc;
+-    auto result = inferLayout->inferReshapeOpEncoding(
++    auto result = inferLayout->inferReshapeOpNoReorderEncoding(
+         dstTy.getShape(), inferredEnc, srcTy.getShape(), inferredSrcEnc,
+         UnknownLoc::get(ctx));
+     EXPECT_TRUE(succeeded(result))
+@@ -140,40 +292,56 @@ void testReshape(RankedTensorType srcTy,
+         << " " << stringifyLLVMType(inferredEnc) << " -> "
+         << triton::join(srcTy.getShape(), "x") << "failed:\n"
+         << join(diags, "\n");
+-    auto srcLinear = toLinearLayout(srcTy.getShape(), srcTy.getEncoding());
+-    auto inferredSrcLinear = toLinearLayout(srcTy.getShape(), inferredSrcEnc);
+-    EXPECT_EQ(inferredSrcLinear, srcLinear)
+-        << "Inverse encoding inference (" << triton::join(dstTy.getShape(), "x")
+-        << " " << stringifyLLVMType(inferredEnc) << " -> "
+-        << triton::join(srcTy.getShape(), "x")
+-        << " gave the wrong result.  Expected " << srcLinear->toString()
+-        << " but "
+-        << "got " << inferredSrcLinear->toString() << ".\n";
++    if (succeeded(result)) {
++      EXPECT_EQ(inferredSrcEnc, srcTy.getEncoding())
++          << "Inverse encoding inference ("
++          << triton::join(dstTy.getShape(), "x") << " "
++          << stringifyLLVMType(inferredEnc) << " -> "
++          << triton::join(srcTy.getShape(), "x")
++          << " gave the wrong result.  Expected "
++          << stringifyLLVMType(srcTy.getEncoding()) << " but got "
++          << stringifyLLVMType(inferredSrcEnc) << ".\n";
++    }
+   }
+ 
+-  // The funtional characterisation of resize is that, if we have a srcLayout
+-  // and a dstLayout, then the flattened layouts are views of the same data
+-  // when considered as C-contiguous.
+-  auto makeFlattenedCContig = [](ArrayRef<int64_t> shape, Attribute layout) {
+-    auto ctx = layout.getContext();
+-    auto linear = *toLinearLayout(shape, layout);
+-    auto dims = standardOutDimNames(ctx, shape.size());
+-    std::reverse(dims.begin(), dims.end());
+-    return linear.transposeOuts(dims).reshapeOuts(
+-        {{dims.back(), linear.getTotalOutDimSize()}});
+-  };
+-  EXPECT_EQ(makeFlattenedCContig(srcTy.getShape(), srcTy.getEncoding()),
+-            makeFlattenedCContig(dstTy.getShape(), inferredEnc));
++  std::vector<std::unique_ptr<MultiIdx>> srcMultiIdxs =
++      getMultiIdxs(SmallVector<unsigned>(srcTy.getShape()),
++                   mlir::cast<BlockedEncodingAttr>(srcTy.getEncoding()));
++
++  std::vector<std::unique_ptr<MultiIdx>> dstMultiIdxs =
++      getMultiIdxs(SmallVector<unsigned>(dstTy.getShape()),
++                   mlir::cast<BlockedEncodingAttr>(inferredEnc));
++
++  if (srcMultiIdxs.size() != dstMultiIdxs.size() ||
++      !llvm::all_of(llvm::zip_equal(srcMultiIdxs, dstMultiIdxs),
++                    [](const auto &pair) {
++                      const auto &[a, b] = pair;
++                      return sameFlatIdxs(*a, *b);
++                    })) {
++    SCOPED_TRACE(longErrors ? "dst indices:\n" + multiIdxsToString(dstMultiIdxs)
++                            : "");
++    SCOPED_TRACE(longErrors ? "src indices:\n" + multiIdxsToString(srcMultiIdxs)
++                            : "");
++    ADD_FAILURE() << "Reified indices do not match for encodings:\n"
++                  << "  src: [" << triton::join(srcTy.getShape(), "x") << "] "
++                  << stringifyLLVMType(srcTy.getEncoding()) << "\n"
++                  << "  dst: [" << triton::join(dstTy.getShape(), "x") << "] "
++                  << stringifyLLVMType(inferredEnc);
++  } else {
++    *couldReshape = true;
++  }
+ }
+ 
+-class InferReshapeOpEncodingTest
++class InferReshapeOpNoReorderEncodingTest
+     : public InferLayoutTest,
+       public ::testing::WithParamInterface<
+-          std::tuple<std::string /*srcTy*/, std::string /*dstTy*/>> {};
++          std::tuple<std::string /*srcTy*/, std::string /*dstTy*/,
++                     bool /*expectSuccess*/>> {};
+ 
+-TEST_P(InferReshapeOpEncodingTest, DoIt) {
++TEST_P(InferReshapeOpNoReorderEncodingTest, DoIt) {
+   std::string srcTyStr = expandTyStr(std::get<0>(GetParam()));
+   std::string dstTyStr = expandTyStr(std::get<1>(GetParam()));
++  bool expectSuccess = std::get<2>(GetParam());
+ 
+   auto src = mlir::parseType(srcTyStr, &ctx);
+   if (!src)
+@@ -189,7 +357,7 @@ TEST_P(InferReshapeOpEncodingTest, DoIt)
+   }
+ 
+   testReshape(cast<RankedTensorType>(src), cast<RankedTensorType>(dst),
+-              expectedDstEnc, inferLayout, /*longErrors=*/true);
++              expectedDstEnc, expectSuccess, inferLayout, /*longErrors=*/true);
+ }
+ 
+ // A testcase of {a, b, c} means:
+@@ -200,70 +368,81 @@ TEST_P(InferReshapeOpEncodingTest, DoIt)
+ //      encoding that makes the reshape a nop, and
+ //    - if b has an encoding, check that the inferred encoding matches b's.
+ INSTANTIATE_TEST_SUITE_P(
+-    Reshapes, InferReshapeOpEncodingTest,
+-    ::testing::ValuesIn(std::vector<std::tuple<std::string /*srcTy*/,
+-                                               std::string /*dstTy*/>>({
++    Reshapes, InferReshapeOpNoReorderEncodingTest,
++    ::testing::ValuesIn(std::vector<
++                        std::tuple<std::string /*srcTy*/, std::string /*dstTy*/,
++                                   bool /*expectSuccess*/>>({
+         // Use raw strings in here so clang-format doesn't try to wrap them.
+         {R"(T<128x64xf32, #B<{spt=[1,1], tpw=[1,32], wpc=[1,1], ord=[1,0]}>>)",
+-         R"(T<8192xf32,   #B<{spt=[1],   tpw=[32],   wpc=[1],   ord=[0]}>>)"},
++         R"(T<8192xf32,   #B<{spt=[1],   tpw=[32],   wpc=[1],   ord=[0]}>>)",
++         true},
+ 
+         {R"(T<128xf32,  #B<{spt=[4],   tpw=[32],   wpc=[1],   ord=[0]}>>)",
+-         R"(T<32x4xf32, #B<{spt=[1,4], tpw=[32,1], wpc=[1,1], ord=[1,0]}>>)"},
++         R"(T<32x4xf32, #B<{spt=[1,4], tpw=[32,1], wpc=[1,1], ord=[1,0]}>>)",
++         true},
+ 
+         {R"(T<128xf32,  #B<{spt=[4],   tpw=[32],   wpc=[1],   ord=[0]}>>)",
+-         R"(T<16x8xf32, #B<{spt=[1,4], tpw=[16,2], wpc=[1,1], ord=[1,0]}>>)"},
++         R"(T<16x8xf32, #B<{spt=[1,4], tpw=[16,2], wpc=[1,1], ord=[1,0]}>>)",
++         true},
+ 
+         {R"(T<32x32xf32, #B<{spt=[2,2], tpw=[32,1], wpc=[1,1], ord=[1,0]}>>)",
+-         "T<1024xf32>"},
++         "T<128xf32>", false},
+ 
+         {R"(T<32x4xf32,     #B<{spt=[1,4],     tpw=[32,1],     wpc=[1,1],     ord=[1,0]}>>)",
+-         R"(T<2x16x2x2xf32, #B<{spt=[1,1,2,2], tpw=[2,16,1,1], wpc=[1,1,1,1], ord=[3,2,1,0]}>>)"},
++         R"(T<2x16x2x2xf32, #B<{spt=[1,1,2,2], tpw=[2,16,1,1], wpc=[1,1,1,1], ord=[3,2,1,0]}>>)",
++         true},
+ 
+         {R"(T<4x32xf32,     #B<{spt=[4,1],     tpw=[1,32],     wpc=[1,1],     ord=[0,1]}>>)",
+-         R"(T<2x2x2x16xf32, #B<{spt=[2,2,1,1], tpw=[1,1,2,16], wpc=[1,1,1,1], ord=[1,0,3,2]}>>)"},
++         R"(T<2x2x2x16xf32, #B<{spt=[2,2,1,1], tpw=[1,1,2,16], wpc=[1,1,1,1], ord=[1,0,3,2]}>>)",
++         true},
+ 
+         {R"(T<32x32xf32,     #B<{spt=[4,4],     tpw=[4,8],     wpc=[1,1],     ord=[1,0]}>>)",
+-         R"(T<2x16x2x16xf32, #B<{spt=[1,4,1,4], tpw=[1,4,2,4], wpc=[1,1,1,1], ord=[3,2,1,0]}>>)"},
++         R"(T<2x16x2x16xf32, #B<{spt=[1,4,1,4], tpw=[1,4,2,4], wpc=[1,1,1,1], ord=[3,2,1,0]}>>)",
++         true},
+ 
+         {R"(T<32x32xf32,     #B<{spt=[4,4],     tpw=[4,8],     wpc=[1,1],     ord=[1,0]}>>)",
+-         R"(T<16x2x16x2xf32, #B<{spt=[2,2,2,2], tpw=[4,1,8,1], wpc=[1,1,1,1], ord=[3,2,1,0]}>>)"},
++         R"(T<16x2x16x2xf32, #B<{spt=[2,2,2,2], tpw=[4,1,8,1], wpc=[1,1,1,1], ord=[3,2,1,0]}>>)",
++         true},
+ 
+         {R"(T<32x32xf32, #B<{spt=[4,4], tpw=[4,8], wpc=[1,1], ord=[0,1]}>>)",
+-         R"(T<16x2x16x2xf32>)"},
++         R"(T<16x2x16x2xf32>)", true},
+ 
+         // nop reshape, but the block size is 2x larger than the tensor.
+         {R"(T<4x2x2x4xf32, #B<{spt=[2,1,1,2], tpw=[2,1,1,2], wpc=[2,2,1,1], ord=[0,3,1,2]}>>)",
+-         R"(T<4x2x2x4xf32, #B<{spt=[2,1,1,2], tpw=[2,1,1,2], wpc=[2,2,1,1], ord=[0,3,1,2]}>>)"},
++         R"(T<4x2x2x4xf32, #B<{spt=[2,1,1,2], tpw=[2,1,1,2], wpc=[2,2,1,1], ord=[0,3,1,2]}>>)",
++         true},
+ 
+         {R"(T<2x4x2x4xf32, #B<{spt=[1,2,2,1], tpw=[1,2,1,2], wpc=[1,2,2,1], ord=[2,1,0,3]}>>)",
+-         R"(T<4x2x2x4xf32>)"},
++         R"(T<4x2x2x4xf32>)", false},
+ 
+         {R"(T<1x2x2x4xf32, #B<{spt=[1,32,4,4], tpw=[4,4,16,16], wpc=[8,8,8,1], ord=[0,1,2,3]}>>)",
+-         R"(T<2x2x4x1xf32>)"},
++         R"(T<2x2x4x1xf32>)", false},
+ 
+         {R"(T<2x2x2x2xf32, #B<{spt=[2,2,2,2], tpw=[1,1,1,1], wpc=[1,1,1,1], ord=[1,0,3,2]}>>)",
+-         R"(T<4x4xf32>)"},
++         R"(T<4x4xf32>)", true},
+ 
+         {R"(T<16x8xf32, #B<{spt=[1,2], tpw=[2,4], wpc=[2,1], ord=[1,0]}>>)",
+-         R"(T<128xf32>)"},
++         R"(T<128xf32>)", true},
+ 
+         {R"(T<16x1x8xf32, #B<{spt=[8,1,1], tpw=[2,1,1], wpc=[1,1,8], ord=[2,1,0]}>>)",
+-         R"(T<128x1xf32>)"},
++         R"(T<128x1xf32>)", false},
+ 
+         {R"(T<16x1x8xf32, #B<{spt=[1,1,8], tpw=[2,1,1], wpc=[8,1,1], ord=[2,1,0]}>>)",
+-         R"(T<128x1xf32>)"},
++         R"(T<128x1xf32>)", true},
+ 
+         {R"(T<32x32xf32, #B<{spt=[1,2], tpw=[1,8], wpc=[1,1], ord=[1,0]}>>)",
+-         R"(T<1024xf32>)"},
++         R"(T<1024xf32>)", true},
+ 
+         {R"(T<4x4xf32, #B<{spt=[1,1], tpw=[2,4], wpc=[2,1], ord=[0,1]}>>)",
+-         R"(T<16xf32>)"},
++         R"(T<16xf32>)", false},
+ 
+         {R"(T<32xf32,   #B<{spt=[2],   tpw=[32],   wpc=[2],   ord=[0]}>>)",
+-         R"(T<16x2xf32, #B<{spt=[1,2], tpw=[32,1], wpc=[2,1], ord=[1,0]}>>)"},
++         R"(T<16x2xf32, #B<{spt=[1,2], tpw=[32,1], wpc=[2,1], ord=[1,0]}>>)",
++         true},
+ 
+         {R"(T<2x1x2xf32, #B<{spt=[2,1,1], tpw=[2,1,2], wpc=[4,1,8], ord=[2,1,0]}>>)",
+-         R"(T<2x2xf32,   #B<{spt=[2,1],   tpw=[2,2],   wpc=[4,8],   ord=[1,0]}>>)"},
++         R"(T<2x2xf32,   #B<{spt=[2,1],   tpw=[2,2],   wpc=[4,8],   ord=[1,0]}>>)",
++         true},
+     })));
+ 
+ class AMDLayoutTest : public ::testing::Test {
+diff --git a/test/Conversion/reduce_to_llvm.mlir b/test/Conversion/reduce_to_llvm.mlir
+deleted file mode 100644
+--- a/test/Conversion/reduce_to_llvm.mlir
++++ /dev/null
+@@ -1,70 +0,0 @@
+-// RUN: triton-opt %s --allocate-shared-memory --convert-triton-gpu-to-llvm --convert-nv-gpu-to-llvm | mlir-translate -mlir-to-llvmir | opt -S -O1 | FileCheck %s
+-
+-#linear = #ttg.linear<{register = [[0, 2], [2, 0]], lane = [[0, 8], [8, 0], [1, 0], [4, 0], [16, 0]], warp = [[0, 1], [0, 4]], block = []}>
+-
+-module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 32 : i32} {
+-
+-// CHECK-LABEL: @reduce_linear_layout
+-tt.func private @reduce_linear_layout(%arg0: tensor<32x16xi32, #linear>) -> tensor<16xi32, #ttg.slice<{dim = 0, parent = #linear}>> {
+-  // CHECK-NEXT: [[SRC0:%.*]] = extractvalue {{.*}} %0, 0
+-  // CHECK-NEXT: [[SRC1:%.*]] = extractvalue {{.*}} %0, 1
+-  // CHECK-NEXT: [[SRC2:%.*]] = extractvalue {{.*}} %0, 2
+-  // CHECK-NEXT: [[SRC3:%.*]] = extractvalue {{.*}} %0, 3
+-
+-  // The layout looks lke
+-  // [[  T0:0,  T32:0,   T0:1,  T32:1, ...
+-  // [   T4:0,  T36:0,   T4:1,  T36:1, ...
+-  // [   T0:2,  T32:2,   T0:3,  T32:3, ...
+-  // [   T4:2,  T36:2,   T4:3,  T36:3,
+-  // ...
+-  //
+-  // A reduction along axis=0 consists of adding registers (0, 2) and (1, 3)
+-  // before shuffling.
+-  //
+-  // Columns along axis=0 are contained within a warp, so reduction arcoss warps
+-  // is not needed.
+-
+-  // Reduce within threads
+-  // CHECK-NEXT: [[SUM0:%.*]] = add i32 [[SRC0]], [[SRC2]]
+-  // CHECK-NEXT: [[SUM1:%.*]] = add i32 [[SRC1]], [[SRC3]]
+-
+-  // Reduce within warp.
+-  // CHECK-NEXT: [[W0:%.*]] = tail call i32 @llvm.nvvm.shfl.sync.bfly.i32(i32 -1, i32 [[SUM0]], i32 16, i32 31)
+-  // CHECK-NEXT: [[WSUM0:%.*]] = add i32 [[W0]], [[SUM0]]
+-  // CHECK-NEXT: [[W1:%.*]] = tail call i32 @llvm.nvvm.shfl.sync.bfly.i32(i32 -1, i32 [[WSUM0]], i32 8, i32 31)
+-  // CHECK-NEXT: [[WSUM1:%.*]] = add i32 [[WSUM0]], [[W1]]
+-  // CHECK-NEXT: [[W2:%.*]] = tail call i32 @llvm.nvvm.shfl.sync.bfly.i32(i32 -1, i32 [[WSUM1]], i32 4, i32 31)
+-  // CHECK-NEXT: [[WSUM2:%.*]] = add i32 [[WSUM1]], [[W2]]
+-  // CHECK-NEXT: [[W3:%.*]] = tail call i32 @llvm.nvvm.shfl.sync.bfly.i32(i32 -1, i32 [[WSUM2]], i32 2, i32 31)
+-  // CHECK-NEXT: [[WSUM3:%.*]] = add i32 [[WSUM2]], [[W3]]
+-
+-  // CHECK-NEXT: [[W4:%.*]] = tail call i32 @llvm.nvvm.shfl.sync.bfly.i32(i32 -1, i32 [[SUM1]], i32 16, i32 31)
+-  // CHECK-NEXT: [[WSUM4:%.*]] = add i32 [[W4]], [[SUM1]]
+-  // CHECK-NEXT: [[W5:%.*]] = tail call i32 @llvm.nvvm.shfl.sync.bfly.i32(i32 -1, i32 [[WSUM4]], i32 8, i32 31)
+-  // CHECK-NEXT: [[WSUM5:%.*]] = add i32 [[WSUM4]], [[W5]]
+-  // CHECK-NEXT: [[W6:%.*]] = tail call i32 @llvm.nvvm.shfl.sync.bfly.i32(i32 -1, i32 [[WSUM5]], i32 4, i32 31)
+-  // CHECK-NEXT: [[WSUM6:%.*]] = add i32 [[WSUM5]], [[W6]]
+-  // CHECK-NEXT: [[W7:%.*]] = tail call i32 @llvm.nvvm.shfl.sync.bfly.i32(i32 -1, i32 [[WSUM6]], i32 2, i32 31)
+-  // CHECK-NEXT: [[WSUM7:%.*]] = add i32 [[WSUM6]], [[W7]]
+-
+-  // CHECK-NEXT: [[DST0:%.*]] = insertvalue { i32, i32 } undef, i32 [[WSUM3]], 0
+-  // CHECK-NEXT: [[DST1:%.*]] = insertvalue { i32, i32 } [[DST0]], i32 [[WSUM7]], 1
+-
+-  %0 = "tt.reduce"(%arg0) ({
+-  ^bb0(%arg1: i32, %arg2: i32):
+-    %1 = arith.addi %arg1, %arg2 : i32
+-    tt.reduce.return %1 : i32
+-  }) {axis = 0 : i32} : (tensor<32x16xi32, #linear>) -> tensor<16xi32, #ttg.slice<{dim = 0, parent = #linear}>>
+-
+-  // CHECK-NEXT: ret { i32, i32 } [[DST1]]
+-  tt.return %0 : tensor<16xi32, #ttg.slice<{dim = 0, parent = #linear}>>
+-}
+-
+-tt.func @anchor(%ptr: !llvm.ptr, %arg0: tensor<32x16xi32, #linear>) {
+-  %0 = tt.call @reduce_linear_layout(%arg0) : (tensor<32x16xi32, #linear>) -> tensor<16xi32, #ttg.slice<{dim = 0, parent = #linear}>>
+-  %1 = builtin.unrealized_conversion_cast %0 : tensor<16xi32, #ttg.slice<{dim = 0, parent = #linear}>> to !llvm.struct<(i32, i32)>
+-  llvm.store volatile %1, %ptr : !llvm.struct<(i32, i32)>, !llvm.ptr
+-  tt.return
+-}
+-
+-}
+diff --git a/test/TritonGPU/combine.mlir b/test/TritonGPU/combine.mlir
+--- a/test/TritonGPU/combine.mlir
++++ b/test/TritonGPU/combine.mlir
+@@ -2829,26 +2829,3 @@ tt.func @remat_across_regions(%arg0: i1,
+ }
+ 
+ }
+-
+-// -----
+-
+-#linear = #ttg.linear<{register = [[1, 0], [0, 8], [0, 16]], lane = [[2, 0], [4, 0], [8, 0], [16, 0], [0, 1]], warp = [[0, 2], [0, 4]], block = []}>
+-#blocked = #ttg.blocked<{sizePerThread = [2, 4], threadsPerWarp = [16, 2], warpsPerCTA = [1, 4], order = [1, 0]}>
+-
+-module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:90", "ttg.threads-per-warp" = 32 : i32}  {
+-
+-// CHECK-LABEL: reduce_linear_layouts
+-tt.func @reduce_linear_layouts(%arg0: tensor<32x32xi32, #linear>) -> tensor<32xi32, #ttg.slice<{dim = 1, parent = #linear}>> {
+-  // CHECK-NOT: convert_layout
+-  %0 = ttg.convert_layout %arg0 : tensor<32x32xi32, #linear> -> tensor<32x32xi32, #blocked>
+-  // CHECK-NEXT: tt.reduce
+-  %1 = "tt.reduce" (%0) ({
+-  ^bb0(%arg1: i32, %arg2: i32):
+-    tt.reduce.return %arg1 : i32
+-  // CHECK: (tensor<32x32xi32, #linear>) -> tensor<32xi32, #ttg.slice<{dim = 1, parent = #linear}>
+-  }) {axis = 1 : i32} : (tensor<32x32xi32, #blocked>) -> tensor<32xi32, #ttg.slice<{dim = 1, parent = #blocked}>>
+-  %2 = ttg.convert_layout %1 : tensor<32xi32, #ttg.slice<{dim = 1, parent = #blocked}>> -> tensor<32xi32, #ttg.slice<{dim = 1, parent = #linear}>>
+-  tt.return %2 : tensor<32xi32, #ttg.slice<{dim = 1, parent = #linear}>>
+-}
+-
+-}
