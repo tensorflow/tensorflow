@@ -49,7 +49,7 @@ absl::StatusOr<CliqueId> NcclIdStore::GetNcclUniqueId(const CliqueKey& key) {
     }
   }
   CliqueId clique_id;
-  int primary_node_id = device_to_node_.at(gpu_key->devices()[0]);
+  int primary_node_id = device_to_node_.at(gpu_key->root_device());
   if (node_id_ == primary_node_id) {
     TF_ASSIGN_OR_RETURN(clique_id,
                         gpu::GpuCollectives::Default()->CreateUniqueCliqueId());

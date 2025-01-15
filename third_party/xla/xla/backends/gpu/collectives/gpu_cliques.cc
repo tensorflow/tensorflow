@@ -205,13 +205,32 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
   using RendezvousArg = std::pair<DeviceRank, /*synchronized=*/bool>;
 
+  // Check how many roots are needed to initialize the GpuClique
+  static const int64_t nccl_init_rank_per_root_ratio =
+      xla::GetDebugOptionsFromFlags()
+          .xla_gpu_nccl_init_max_rank_per_root_ratio();
+  int64_t nranks = clique_key.num_devices();
+  int64_t nroots = 1;
+  // Ceiling division to get number of roots
+  if (nccl_init_rank_per_root_ratio > 0) {
+    nroots = (nranks + nccl_init_rank_per_root_ratio - 1) /
+             nccl_init_rank_per_root_ratio;
+  }
   // Initializes a GpuClique for given device ranks and returns a lock that
   // gives access to clique communicators.
   auto initialize = [&](absl::Span<const RendezvousArg* const> args)
       -> absl::StatusOr<LockableGpuClique::Lock> {
     tsl::profiler::TraceMe trace("InitializeGpuClique");
 
-    TF_ASSIGN_OR_RETURN(auto clique_id, clique_id_callback(clique_key));
+    CliqueIds clique_ids;
+    const auto& subkeys = clique_key.GetSubKeys(nroots);
+    for (const auto& subkey : subkeys) {
+      VLOG(3) << absl::StreamFormat(
+          "Get CliqueId for sub clique key %s; nroots=%lld", subkey.ToString(),
+          nroots);
+      TF_ASSIGN_OR_RETURN(auto clique_id, clique_id_callback(subkey));
+      clique_ids.Add(clique_id);
+    }
 
     // Check that all ranks successfully synchronized device activity before
     // trying to instantiate GPU communicators.
@@ -233,13 +252,14 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
     VLOG(3) << absl::StreamFormat(
         "Create GPU communicators for clique %s; ranks=[%s]; "
-        "fingerprint(id)=%d",
-        clique_key.ToString(), DeviceRanksToString(ranks),
-        clique_id.fingerprint());
+        "nroots=%lld; fingerprint(id)=%d",
+        clique_key.ToString(), DeviceRanksToString(ranks), nroots,
+        clique_ids.fingerprint());
 
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<Communicator>> created_comms,
-        collectives->CreateCommunicators(clique_key, clique_id, ranks, config));
+        collectives->CreateCommunicators(clique_key, clique_ids, ranks,
+                                         config));
 
     absl::btree_map<RankId, std::unique_ptr<Communicator>> comms;
     for (size_t i = 0; i < ranks.size(); ++i) {
@@ -248,15 +268,15 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
 
     VLOG(3) << absl::StreamFormat(
         "Created GPU communicators for clique %s; ranks=[%s]; "
-        "fingerprint(id)=%d",
-        clique_key.ToString(), DeviceRanksToString(ranks),
-        clique_id.fingerprint());
+        "nroots=%lld; fingerprint(id)=%d",
+        clique_key.ToString(), DeviceRanksToString(ranks), nroots,
+        clique_ids.fingerprint());
 
     ProcessGpuCliques& cliques = GetProcessGpuCliques();
     absl::MutexLock lock(&cliques.mu);
 
     // Create a new clique with given clique key and communicators.
-    auto emplaced = cliques.map.try_emplace(clique_key, clique_key, clique_id,
+    auto emplaced = cliques.map.try_emplace(clique_key, clique_key, clique_ids,
                                             std::move(comms));
 
     // We can have a race to create a clique for a given key, the winner

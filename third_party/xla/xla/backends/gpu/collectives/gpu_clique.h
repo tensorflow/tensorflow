@@ -40,7 +40,7 @@ class LockableGpuClique;
 class GpuClique : public Clique {
  public:
   GpuClique(
-      GpuCliqueKey key, std::optional<CliqueId> id,
+      GpuCliqueKey key, std::optional<CliqueIds> ids,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators);
 
   // Returns true if clique is local: all communicators belong to current
@@ -48,7 +48,7 @@ class GpuClique : public Clique {
   bool IsLocal() const { return num_communicators() == key_.devices().size(); }
 
   const GpuCliqueKey& key() const { return key_; }
-  const std::optional<CliqueId>& id() const { return id_; }
+  const std::optional<CliqueIds>& ids() const { return ids_; }
 
   std::string DebugString() const final;
   absl::Status HealthCheck() const final;
@@ -62,7 +62,7 @@ class GpuClique : public Clique {
   };
 
   GpuCliqueKey key_;
-  std::optional<CliqueId> id_;
+  std::optional<CliqueIds> ids_;
 };
 
 // A lockable version of GpuClique that guarantees exclusive access to the
@@ -70,7 +70,7 @@ class GpuClique : public Clique {
 class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
  public:
   LockableGpuClique(
-      GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
+      GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators);
 
   std::string DebugString() const;

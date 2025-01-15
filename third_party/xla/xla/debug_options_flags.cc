@@ -161,6 +161,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
   opts.set_xla_gpu_enable_nccl_per_stream_comms(false);
+  opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(128);
 
   opts.set_xla_gpu_temp_buffer_use_separate_color(false);
   opts.set_xla_gpu_require_exclusive_lock(false);
@@ -1539,6 +1540,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "NCCL collective is executed on. This can lead to higher performance if "
       "NCCL collectives are issued concurrently at the cost of more GPU memory"
       " usage."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_nccl_init_max_rank_per_root_ratio",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_nccl_init_max_rank_per_root_ratio),
+      debug_options->xla_gpu_nccl_init_max_rank_per_root_ratio(),
+      "Maximum number of ranks associated with a root rank to initialize a "
+      "NCCL communicator via ncclCommInitRankScalable. "
+      "A value of zero will lead to a single root."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_redzone_scratch_max_megabytes",
       int64_setter_for(
