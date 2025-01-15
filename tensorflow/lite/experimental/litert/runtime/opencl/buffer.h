@@ -22,7 +22,7 @@
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "third_party/opencl_headers/CL/cl.h"
+#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/runtime/opencl/cl_command_queue.h"
 #include "tensorflow/lite/experimental/litert/runtime/opencl/cl_context.h"
 
@@ -72,6 +72,12 @@ class Buffer {
 
 Buffer CreateBufferShared(cl_mem buffer);
 
+absl::Status CreateClBuffer(cl_context context, int size_in_bytes,
+                            bool read_only, void* data, cl_mem* result);
+
+absl::Status CreateBuffer(size_t size_in_bytes, bool gpu_read_only,
+                          const void* data, ClContext* context, Buffer* result);
+
 absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, ClContext* context,
                                   Buffer* result);
 
@@ -93,7 +99,10 @@ absl::Status Buffer::WriteData(ClCommandQueue* queue,
     return absl::InvalidArgumentError(
         "absl::Span<T> data size is greater from buffer allocated size.");
   }
-  RETURN_IF_ERROR(queue->EnqueueWriteBuffer(buffer_, size_, data.data()));
+  auto status = queue->EnqueueWriteBuffer(buffer_, size_, data.data());
+  if (!status.ok()) {
+    return status;
+  }
   return absl::OkStatus();
 }
 

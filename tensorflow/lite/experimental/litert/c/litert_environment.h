@@ -25,6 +25,10 @@ extern "C" {
 typedef enum {
   kLiteRtEnvOptionTagCompilerPluginLibraryPath = 0,
   kLiteRtEnvOptionTagDispatchLibraryPath = 1,
+  kLiteRtEnvOptionTagOpenClDeviceId = 2,
+  kLiteRtEnvOptionTagOpenClPlatformId = 3,
+  kLiteRtEnvOptionTagOpenClContext = 4,
+  kLiteRtEnvOptionTagOpenClCommandQueue = 5,
 } LiteRtEnvOptionTag;
 
 typedef struct {

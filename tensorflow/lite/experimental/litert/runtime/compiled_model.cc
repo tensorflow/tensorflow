@@ -42,7 +42,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
@@ -288,7 +287,8 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
   if (backend_requires_cpu_buffer) {
     // When backend requires CPU buffer.
     bool buffer_is_cpu_compatible =
-        buffer->buffer_type() == kLiteRtTensorBufferTypeHostMemory;
+        buffer->buffer_type() == kLiteRtTensorBufferTypeHostMemory ||
+        buffer->buffer_type() == kLiteRtTensorBufferTypeOpenCl;
 #if defined(__ANDROID__)
     if (buffer->buffer_type() == kLiteRtTensorBufferTypeAhwb) {
       if (__builtin_available(android 26, *)) {
