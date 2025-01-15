@@ -13,6 +13,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//xla/backends/gpu:__subpackages__",
         "//xla/hlo/tools/hlo_opt:__subpackages__",
         "//xla/service/gpu:__subpackages__",
         "//xla/tools/hlo_opt:__subpackages__",
@@ -1049,7 +1050,7 @@ cc_library(
     ],
 )
 
-# Tested via //third_party/tensorflow/compiler/xla/service/gpu/fusions:cudnn_test
+# Tested via //third_party/tensorflow/compiler/xla/backends/gpu/codegen:cudnn_test
 cc_library(
     name = "cudnn_fusion_compiler",
     srcs = if_cuda_is_configured(["cudnn_fusion_compiler.cc"]),

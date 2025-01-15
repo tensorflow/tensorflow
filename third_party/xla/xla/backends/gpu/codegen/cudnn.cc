@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fusions/cudnn.h"
+#include "xla/backends/gpu/codegen/cudnn.h"
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"

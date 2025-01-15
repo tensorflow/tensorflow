@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_CUSTOM_H_
-#define XLA_SERVICE_GPU_FUSIONS_CUSTOM_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_CUSTOM_H_
+#define XLA_BACKENDS_GPU_CODEGEN_CUSTOM_H_
 
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -76,4 +76,4 @@ class DynamicSliceFusion : public FusionInterface {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_CUSTOM_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_CUSTOM_H_

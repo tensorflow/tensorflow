@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/custom.h"
+#include "xla/backends/gpu/codegen/custom.h"
 
 #include <cstddef>
 #include <cstdint>
