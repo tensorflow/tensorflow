@@ -113,7 +113,7 @@ class SavedModel {
     // Make a best-effort guess at the model type and emit a metric. E.g.
     // detecting JAX models by looking for the `XlaCallModule` op in the
     // MetaGraphDef.
-    bool emit_model_type_metric = false;
+    bool emit_model_type_metric = true;
 
     GraphExecutionOptions graph_execution_options;
   };
