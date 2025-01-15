@@ -36,7 +36,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/core:byte_code_util",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/container:flat_hash_map",
