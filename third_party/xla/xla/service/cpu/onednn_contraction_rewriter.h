@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/cpu/onednn_convolution.h"
 #include "xla/service/cpu/onednn_matmul.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace cpu {

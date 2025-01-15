@@ -71,11 +71,11 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {

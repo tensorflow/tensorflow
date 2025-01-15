@@ -75,9 +75,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/byte_order.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {

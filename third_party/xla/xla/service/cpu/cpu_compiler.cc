@@ -208,6 +208,8 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -216,7 +218,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 

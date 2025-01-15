@@ -57,7 +57,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime_topk.h"
 #include "xla/service/cpu/windows_compatibility.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 #include "xla/service/cpu/onednn_convolution.h"

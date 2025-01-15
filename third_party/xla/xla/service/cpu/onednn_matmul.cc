@@ -36,9 +36,9 @@ limitations under the License.
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/onednn_threadpool.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
 

@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {

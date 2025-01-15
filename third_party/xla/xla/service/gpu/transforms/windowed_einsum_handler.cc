@@ -1427,10 +1427,8 @@ absl::StatusOr<bool> WindowedEinsumHandler::Run(
       // The loop is fully unrolled but has a trip count of 1
       // To prevent it from being inlined by while loop simplifier,
       // we add this attribute to it.
-      xla::FrontendAttributes attributes;
-      (*attributes.mutable_map())["skip-simplify-while-loops_trip-count-one"] =
-          "true";
-      result.new_while_op->add_frontend_attributes(attributes);
+      result.new_while_op->set_frontend_attribute(
+          "skip-simplify-while-loops_trip-count-one", "true");
       TF_RETURN_IF_ERROR(
           PostProcessUnrolledLoop(result.new_while_op, stream_id));
     }

@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "llvm/IR/Function.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla::cpu {
 

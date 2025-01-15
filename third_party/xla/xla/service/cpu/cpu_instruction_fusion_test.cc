@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 

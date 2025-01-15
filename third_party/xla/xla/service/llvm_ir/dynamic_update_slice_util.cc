@@ -45,8 +45,8 @@ limitations under the License.
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace llvm_ir {

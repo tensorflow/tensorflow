@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/layout_assignment.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace xla {
 namespace cpu {

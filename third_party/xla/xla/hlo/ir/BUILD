@@ -117,6 +117,18 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "hlo_instruction_test",
+    srcs = ["hlo_instruction_test.cc"],
+    deps = [
+        ":hlo",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "hlo_sharding",
     srcs = ["hlo_sharding.cc"],

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_RUNTIME_CONV2D_ACL_H_
 #define XLA_SERVICE_CPU_RUNTIME_CONV2D_ACL_H_
 
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 #ifdef XLA_CPU_USE_ACL
 #include "arm_compute/runtime/NEON/NEFunctions.h"

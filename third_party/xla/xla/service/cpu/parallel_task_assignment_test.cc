@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

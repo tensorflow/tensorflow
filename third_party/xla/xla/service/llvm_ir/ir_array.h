@@ -33,9 +33,9 @@ limitations under the License.
 #include "xla/map_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {

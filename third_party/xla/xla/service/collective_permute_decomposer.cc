@@ -163,12 +163,10 @@ absl::StatusOr<DecomposedCp> DecomposeCollectivePermute(
   TF_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
 
   if (!pipeline_decision.empty()) {
-    xla::FrontendAttributes attributes;
-    (*attributes.mutable_map())[kSendRecvPipelineAttr] = pipeline_decision;
-    send->add_frontend_attributes(attributes);
-    send_done->add_frontend_attributes(attributes);
-    recv->add_frontend_attributes(attributes);
-    recv_done->add_frontend_attributes(attributes);
+    send->set_frontend_attribute(kSendRecvPipelineAttr, pipeline_decision);
+    send_done->set_frontend_attribute(kSendRecvPipelineAttr, pipeline_decision);
+    recv->set_frontend_attribute(kSendRecvPipelineAttr, pipeline_decision);
+    recv_done->set_frontend_attribute(kSendRecvPipelineAttr, pipeline_decision);
   }
   return DecomposedCp{send, recv, cp->source_target_pairs()};
 }

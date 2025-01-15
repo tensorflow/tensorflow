@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
