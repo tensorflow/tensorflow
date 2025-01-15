@@ -14,5 +14,6 @@ those to this list.
 """
 
 temporary_patch_list = [
+    "//third_party/triton:temporary/cherrypick_a312ea92.patch",
     # Add new patches just above this line
 ]
