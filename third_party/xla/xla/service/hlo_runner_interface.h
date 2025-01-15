@@ -41,6 +41,47 @@ namespace xla {
 
 class BufferAssignmentProto;
 
+using HloRunnerPropertyTagT = int;
+
+// Tags to identify particular properties of a HloRunnerInterface
+// implementation.
+//
+// Tags are an opaque way to expose arbitrary details about the runner backend.
+// Tags should be added whenever a decision must be made based on the property
+// of a particular backend or runner implementation.
+//
+// For example, if a specific feature is only supported under certain conditions
+// and only known to the backend, a tag can be added here and exposed via all
+// applicable backends. A test or other functionality can then be gated on the
+// presence of that particular tag.
+//
+// Custom tags that cannot be added in this file can be defined elsewhere but
+// should use negative values to avoid conflicts.
+class HloRunnerPropertyTag final {
+ public:
+  // Underlying type for HloRunnerPropertyTag properties as well as other fields
+  // that represent property tags.
+  //
+  // e.g. a custom grouping class for a proprietary codebase could be defined
+  // as:
+  //
+  // class MyCorpPropertyTag final {
+  //  public:
+  //   static constexpr HloRunnerPropertyTag::Type kInternalFeature1 = -1;
+  //   static constexpr HloRunnerPropertyTag::Type kInternalFeature2 = -2;
+  // };
+  using Type = int;
+
+  // Default, reserved value for HloRunnerPropertyTag. Perhaps this could be
+  // used as a sentinel value for a tag that is not present. Do not use.
+  static constexpr Type kDefault = 0;
+  // Indicates that the runner is using ROCm 5.7.0.
+  static constexpr Type kUsingGpuRocm5_7_0 = 1;
+
+ private:
+  HloRunnerPropertyTag() = default;
+};
+
 // A base class for running an HloModule. This executes the given HloModule on a
 // certain backend directly without using the client interface. HloModule can be
 // explicitly built, or loaded from a serialization file (e.g., hlo proto
@@ -232,6 +273,10 @@ class HloRunnerInterface {
   // Returns the number of devices which are known. Not all of these devices may
   // be usable by XLA.
   virtual int device_count() const = 0;
+
+  // Returns true if the condition corresponding to the given tag is true for
+  // this runner.
+  virtual bool HasProperty(HloRunnerPropertyTag::Type tag) const = 0;
 };
 
 }  // namespace xla
