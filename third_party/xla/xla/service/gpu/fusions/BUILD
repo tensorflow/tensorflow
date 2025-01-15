@@ -1,5 +1,4 @@
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
@@ -179,6 +178,7 @@ cc_library(
     hdrs = ["fusion_emitter.h"],
     visibility = [
         "//xla/backends/gpu/codegen/emitters:__subpackages__",
+        "//xla/backends/gpu/codegen/triton:__subpackages__",
         "//xla/service/gpu:__subpackages__",
     ],
     deps = [
@@ -216,13 +216,15 @@ cc_library(
     name = "fusions",
     srcs = ["fusions.cc"],
     hdrs = ["fusions.h"],
-    visibility = ["//xla/service/gpu:__subpackages__"],
+    visibility = [
+        "//xla/backends/gpu/codegen/triton:__subpackages__",
+        "//xla/service/gpu:__subpackages__",
+    ],
     deps = [
         ":copy",
         ":cudnn",
         ":custom",
         ":fusion_emitter",
-        ":triton",
         "//xla:shape_util",
         "//xla/backends/gpu/codegen/emitters:concatenate",
         "//xla/backends/gpu/codegen/emitters:in_place_dynamic_update_slice",
@@ -231,6 +233,7 @@ cc_library(
         "//xla/backends/gpu/codegen/emitters:reduction",
         "//xla/backends/gpu/codegen/emitters:scatter",
         "//xla/backends/gpu/codegen/emitters:transpose",
+        "//xla/backends/gpu/codegen/triton:fusion",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
@@ -240,70 +243,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "triton",
-    srcs = ["triton.cc"],
-    hdrs = ["triton.h"],
-    visibility = ["//xla/service/gpu:__subpackages__"],
-    deps = [
-        ":fusion_emitter",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla/backends/gpu/codegen/triton:fusion_emitter",
-        "//xla/backends/gpu/codegen/triton:fusion_emitter_legacy_matmul",
-        "//xla/backends/gpu/runtime:kernel_thunk",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu:ir_emitter_context",
-        "//xla/service/gpu:kernel_arguments",
-        "//xla/service/gpu:kernel_reuse_cache",
-        "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu:triton_fusion_analysis",
-        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
-        "//xla/service/llvm_ir:ir_array",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "triton_test",
-    srcs = ["triton_test.cc"],
-    tags = ["gpu"],
-    deps = [
-        ":fusion_emitter",
-        ":fusions",
-        ":triton",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

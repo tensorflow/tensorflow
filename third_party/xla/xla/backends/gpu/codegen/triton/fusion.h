@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_TRITON_H_
-#define XLA_SERVICE_GPU_FUSIONS_TRITON_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_H_
+#define XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_H_
 
 #include <optional>
 
@@ -67,4 +67,4 @@ class TritonFusion : public FusionInterface {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_H_
