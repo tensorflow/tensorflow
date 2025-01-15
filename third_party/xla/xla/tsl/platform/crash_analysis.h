@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_STACK_FRAME_H_
-#define TENSORFLOW_CORE_PLATFORM_STACK_FRAME_H_
+#ifndef XLA_TSL_PLATFORM_CRASH_ANALYSIS_H_
+#define XLA_TSL_PLATFORM_CRASH_ANALYSIS_H_
 
-#include "xla/tsl/platform/stack_frame.h"
+#include "tsl/platform/platform.h"
 
-namespace tensorflow {
-typedef tsl::StackFrame StackFrame;
-}  // namespace tensorflow
+// Include appropriate platform-dependent implementations
+#if defined(PLATFORM_GOOGLE)
+#include "xla/tsl/platform/google/crash_analysis.h"  // IWYU pragma: export
+#else
+#include "xla/tsl/platform/default/crash_analysis.h"  // IWYU pragma: export
+#endif
 
-#endif  // TENSORFLOW_CORE_PLATFORM_STACK_FRAME_H_
+#endif  // XLA_TSL_PLATFORM_CRASH_ANALYSIS_H_

@@ -341,7 +341,7 @@ cc_library(
 #         "@local_xla//xla/tsl/framework:fixedpoint_types",
 #         "@local_tsl//tsl/platform:bfloat16",
 #         "@local_tsl//tsl/platform:blocking_counter",
-#         "@local_tsl//tsl/platform:byte_order",
+#         "@local_xla//xla/tsl/platform:byte_order",
 #         "@local_tsl//tsl/platform:cord",
 #         "@local_tsl//tsl/platform:env_time",
 #         "@local_tsl//tsl/platform:ml_dtypes",

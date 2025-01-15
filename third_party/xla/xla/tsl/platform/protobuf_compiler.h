@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_ROCM_ROCDL_PATH_H_
-#define TENSORFLOW_TSL_PLATFORM_ROCM_ROCDL_PATH_H_
+#ifndef XLA_TSL_PLATFORM_PROTOBUF_COMPILER_H_
+#define XLA_TSL_PLATFORM_PROTOBUF_COMPILER_H_
 
-#include "xla/tsl/platform/types.h"
+#include "google/protobuf/compiler/importer.h"  // IWYU pragma: export
 
-namespace tsl {
-
-// Returns the root directory of the ROCM SDK, which contains sub-folders such
-// as bin, lib, and rocdl.
-string RocmRoot();
-
-// Returns the directory that contains ROCm-Device-Libs files in the ROCm SDK.
-string RocdlRoot();
-
-}  // namespace tsl
-
-#endif  // TENSORFLOW_TSL_PLATFORM_ROCM_ROCDL_PATH_H_
+#endif  // XLA_TSL_PLATFORM_PROTOBUF_COMPILER_H_

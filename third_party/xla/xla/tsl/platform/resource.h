@@ -13,20 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Small helper library to access "data" dependencies defined in BUILD files.
-// Requires the relative paths starting from tensorflow/...
-// For example, to get this file, a user would call:
-// GetDataDependencyFilepath("tensorflow/core/platform/resource_loadder.h")
+#ifndef XLA_TSL_PLATFORM_RESOURCE_H_
+#define XLA_TSL_PLATFORM_RESOURCE_H_
 
-#ifndef TENSORFLOW_TSL_PLATFORM_RESOURCE_LOADER_H_
-#define TENSORFLOW_TSL_PLATFORM_RESOURCE_LOADER_H_
+#include <memory>
 
-#include <string>
+#include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 
-std::string GetDataDependencyFilepath(const std::string& relative_path);
+// ResourceTagger objects should only be allocated on the stack.
+class ResourceTagger {
+ public:
+  ResourceTagger(absl::string_view key, absl::string_view value);
+  ~ResourceTagger();
+
+  // Do not allow copying or moving ResourceTagger
+  ResourceTagger(const ResourceTagger&) = delete;
+  ResourceTagger(ResourceTagger&&) = delete;
+  ResourceTagger& operator=(const ResourceTagger&) = delete;
+  ResourceTagger& operator=(ResourceTagger&&) = delete;
+
+ private:
+  class ResourceTaggerImpl;
+  const std::unique_ptr<ResourceTaggerImpl> impl_;
+};
 
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PLATFORM_RESOURCE_LOADER_H_
+#endif  // XLA_TSL_PLATFORM_RESOURCE_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/intrusive_ptr.h"
+#include "xla/tsl/platform/intrusive_ptr.h"
 
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/refcount.h"

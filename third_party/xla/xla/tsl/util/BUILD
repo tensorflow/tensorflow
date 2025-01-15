@@ -127,9 +127,9 @@ cc_library(
     srcs = ["byte_swap_array.cc"],
     hdrs = ["byte_swap_array.h"],
     deps = [
+        "//xla/tsl/platform:byte_order",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
-        "@local_tsl//tsl/platform:byte_order",
     ],
 )
 

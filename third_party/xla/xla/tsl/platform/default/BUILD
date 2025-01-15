@@ -130,8 +130,8 @@ cc_library(
         "//xla/tsl/platform:env.h",
         "//xla/tsl/platform:file_system.h",
         "//xla/tsl/platform:file_system_helper.h",
+        "//xla/tsl/platform:ram_file_system.h",
         "//xla/tsl/platform:threadpool.h",
-        "@local_tsl//tsl/platform:ram_file_system.h",
     ],
     copts = tsl_copts(),
     tags = [
@@ -228,7 +228,7 @@ cc_library(
 cc_library(
     name = "grpc_credentials",
     srcs = ["grpc_credentials.cc"],
-    hdrs = ["@local_tsl//tsl/platform:grpc_credentials.h"],
+    hdrs = ["//xla/tsl/platform:grpc_credentials.h"],
     tags = [
         "manual",
         "no_oss",
@@ -352,14 +352,14 @@ cc_library(
         "nobuilder",
     ],
     deps = [
+        "//xla/tsl/platform:byte_order",
+        "//xla/tsl/platform:dynamic_annotations",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "@com_google_absl//absl/base",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:byte_order",
-        "@local_tsl//tsl/platform:dynamic_annotations",
         "@snappy",
     ] + select({
         # TF Additional NUMA dependencies
@@ -374,7 +374,7 @@ cc_library(
 cc_library(
     name = "resource",
     srcs = ["resource.cc"],
-    hdrs = ["@local_tsl//tsl/platform:resource.h"],
+    hdrs = ["//xla/tsl/platform:resource.h"],
     tags = [
         "manual",
         "no_oss",
@@ -388,7 +388,7 @@ cc_library(
 cc_library(
     name = "rocm_rocdl_path",
     srcs = ["rocm_rocdl_path.cc"],
-    hdrs = ["@local_tsl//tsl/platform:rocm_rocdl_path.h"],
+    hdrs = ["//xla/tsl/platform:rocm_rocdl_path.h"],
     compatible_with = [],
     tags = [
         "manual",
@@ -506,7 +506,7 @@ cc_library(
     srcs = [
         "crash_analysis.cc",
     ],
-    hdrs = ["@local_tsl//tsl/platform:crash_analysis.h"],
+    hdrs = ["//xla/tsl/platform:crash_analysis.h"],
     tags = [
         "manual",
         "no_oss",

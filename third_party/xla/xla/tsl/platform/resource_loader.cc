@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/resource_loader.h"
+#include "xla/tsl/platform/resource_loader.h"
 
 #include <cstdlib>
 #include <string>

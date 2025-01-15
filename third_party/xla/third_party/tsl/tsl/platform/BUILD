@@ -17,12 +17,9 @@ load(
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_platform_deps",
-    "tf_protobuf_compiler_deps",
-    "tf_resource_deps",
     "tf_stream_executor_deps",
     "tf_windows_aware_platform_deps",
     "tsl_cc_test",
-    "tsl_grpc_credentials_deps",
     "tsl_protobuf_deps",
 )
 load(
@@ -63,19 +60,13 @@ cc_library(
 )
 
 cc_library(
-    name = "byte_order",
-    hdrs = ["byte_order.h"],
-    compatible_with = get_compatible_with_portable(),
-)
-
-cc_library(
     name = "coding",
     srcs = ["coding.cc"],
     hdrs = ["coding.h"],
     deps = [
-        ":byte_order",
         ":stringpiece",
         ":tstring",
+        "@local_xla//xla/tsl/platform:byte_order",
         "@local_xla//xla/tsl/platform:types",
     ],
 )
@@ -179,15 +170,6 @@ cc_library(
 )
 
 cc_library(
-    name = "dynamic_annotations",
-    hdrs = ["dynamic_annotations.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "@com_google_absl//absl/base:dynamic_annotations",
-    ],
-)
-
-cc_library(
     name = "mutex",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["mutex.h"],
@@ -252,20 +234,6 @@ cc_library(
         ":platform",
         "@com_googlesource_code_re2//:re2",
     ],
-)
-
-cc_library(
-    name = "resource",
-    textual_hdrs = ["resource.h"],
-    deps = [
-        ":stringpiece",
-    ] + tf_resource_deps(),
-)
-
-cc_library(
-    name = "stack_frame",
-    hdrs = ["stack_frame.h"],
-    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -396,9 +364,7 @@ filegroup(
         "coding.h",
         "context.h",
         "cpu_info.h",
-        "crash_analysis.h",
         "criticality.h",
-        "dynamic_annotations.h",
         "env.h",
         "errors.h",
         "file_statistics.h",
@@ -412,12 +378,8 @@ filegroup(
         "null_file_system.h",
         "numa.h",
         "path.h",
-        "prefetch.h",
         "protobuf.h",
-        "ram_file_system.h",
         "random.h",
-        "resource.h",
-        "stack_frame.h",
         "stacktrace.h",
         "stacktrace_handler.h",
         "statusor.h",
@@ -438,7 +400,6 @@ filegroup(
 filegroup(
     name = "base_hdrs",
     srcs = [
-        "byte_order.h",
         "env_time.h",
         "macros.h",
         "threadpool.h",
@@ -453,12 +414,9 @@ filegroup(
     name = "framework_lite_hdrs",
     srcs = [
         "bfloat16.h",
-        "byte_order.h",
         "cpu_info.h",
-        "dynamic_annotations.h",
         "macros.h",
         "platform.h",
-        "prefetch.h",
         "protobuf.h",
         "thread_annotations.h",
         "@local_xla//xla/tsl/platform:framework_lite_hdrs",
@@ -476,7 +434,6 @@ filegroup(
         "base64.h",
         "bfloat16.h",
         "blocking_counter.h",
-        "byte_order.h",
         "casts.h",
         "coding.cc",
         "coding.h",
@@ -487,7 +444,6 @@ filegroup(
         "demangle.h",
         "denormal.cc",
         "denormal.h",
-        "dynamic_annotations.h",
         "env.h",
         "env_time.h",
         "errors.h",
@@ -498,7 +454,6 @@ filegroup(
         "hash.h",
         "host_info.h",
         "init_main.h",
-        "intrusive_ptr.h",
         "load_library.h",
         "macros.h",
         "mem.h",
@@ -509,15 +464,12 @@ filegroup(
         "path.h",
         "platform.h",
         "platform_strings_computed.h",
-        "prefetch.h",
         "protobuf.cc",
         "protobuf.h",
         "protobuf_util.cc",
-        "ram_file_system.h",
         "raw_coding.h",
         "refcount.h",
         "regexp.h",
-        "resource.h",
         "scanner.cc",
         "scanner.h",
         "setround.cc",
@@ -598,7 +550,6 @@ exports_files(
         "context.h",
         "cpu_info.cc",
         "cpu_info.h",
-        "crash_analysis.h",
         "criticality.h",
         "cuda_root_path.h",
         "demangle.h",
@@ -608,7 +559,6 @@ exports_files(
         "file_system.cc",
         "file_system.h",
         "file_system_helper.h",
-        "grpc_credentials.h",
         "host_info.h",
         "human_readable_json.h",
         "init_main.h",
@@ -616,10 +566,6 @@ exports_files(
         "mem.h",
         "net.h",
         "numa.h",
-        "ram_file_system.h",
-        "resource.h",
-        "resource_loader.h",
-        "rocm_rocdl_path.h",
         "snappy.h",
         "stacktrace_handler.h",
         "mutex.h",
@@ -652,12 +598,6 @@ filegroup(
     ]),
 )
 
-cc_library(
-    name = "intrusive_ptr",
-    hdrs = ["intrusive_ptr.h"],
-    deps = [],
-)
-
 filegroup(
     name = "lib_internal_public_hdrs",
     srcs = [
@@ -665,7 +605,6 @@ filegroup(
         "demangle.h",
         "denormal.h",
         "host_info.h",
-        "intrusive_ptr.h",
         "platform.h",
         "refcount.h",
         "setround.h",
@@ -702,7 +641,6 @@ filegroup(
     name = "jpeg_internal_hdrs",
     srcs = [
         "bfloat16.h",
-        "dynamic_annotations.h",
         "macros.h",
         "mem.h",
         "platform.h",
@@ -721,7 +659,6 @@ filegroup(
     name = "gif_internal_hdrs",
     srcs = [
         "bfloat16.h",
-        "dynamic_annotations.h",
         "macros.h",
         "mem.h",
         "platform.h",
@@ -747,7 +684,6 @@ cc_library(
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
-        "dynamic_annotations.h",
         "env_time.h",
         "macros.h",
         "platform.h",
@@ -791,12 +727,6 @@ cc_library(
 )
 
 cc_library(
-    name = "protobuf_compiler",
-    hdrs = ["protobuf_compiler.h"],
-    deps = tf_protobuf_compiler_deps(),
-)
-
-cc_library(
     name = "random",
     srcs = ["random.cc"],
     hdrs = ["random.h"],
@@ -804,25 +734,6 @@ cc_library(
         ":mutex",
         "@local_xla//xla/tsl/platform:types",
     ],
-)
-
-cc_library(
-    name = "resource_loader",
-    testonly = 1,
-    srcs = ["resource_loader.cc"],
-    textual_hdrs = ["resource_loader.h"],
-    deps = [
-        ":path",
-        ":platform",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:test",
-    ],
-)
-
-cc_library(
-    name = "rocm_rocdl_path",
-    textual_hdrs = ["rocm_rocdl_path.h"],
-    deps = tf_platform_deps("rocm_rocdl_path"),
 )
 
 filegroup(
@@ -902,15 +813,6 @@ cc_library(
 )
 
 cc_library(
-    name = "crash_analysis",
-    hdrs = ["crash_analysis.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":platform",
-    ] + tf_platform_deps("crash_analysis"),
-)
-
-cc_library(
     name = "stringprintf",
     srcs = ["stringprintf.cc"],
     hdrs = ["stringprintf.h"],
@@ -954,7 +856,6 @@ cc_library(
         "//tensorflow/core/platform:__pkg__",
     ]),
     deps = [
-        ":byte_order",
         ":fingerprint",
         ":net",
         ":platform",
@@ -962,6 +863,7 @@ cc_library(
         ":platform_strings",
         ":stacktrace_handler",
         ":stringpiece",
+        "@local_xla//xla/tsl/platform:byte_order",
         "@local_xla//xla/tsl/platform:macros",
         "@local_xla//xla/tsl/platform:threadpool_interface",
     ],
@@ -972,8 +874,8 @@ cc_library(
     hdrs = ["bfloat16.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":byte_order",
         "@eigen_archive//:eigen3",
+        "@local_xla//xla/tsl/platform:byte_order",
     ],
 )
 
@@ -1022,22 +924,6 @@ cc_library(
 )
 
 cc_library(
-    name = "grpc_credentials",
-    compatible_with = get_compatible_with_portable(),
-    textual_hdrs = ["grpc_credentials.h"],
-    deps = tsl_grpc_credentials_deps(),
-)
-
-cc_library(
-    name = "prefetch",
-    hdrs = ["prefetch.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "@com_google_absl//absl/base:prefetch",
-    ],
-)
-
-cc_library(
     name = "hash",
     srcs = ["hash.cc"],
     hdrs = ["hash.h"],
@@ -1061,7 +947,7 @@ cc_library(
     hdrs = ["raw_coding.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":byte_order",
+        "@local_xla//xla/tsl/platform:byte_order",
         "@local_xla//xla/tsl/platform:types",
     ],
 )
@@ -1347,20 +1233,6 @@ cc_library(
     hdrs = ["null_file_system.h"],
     deps = [
         "@local_xla//xla/tsl/platform:env",
-    ],
-)
-
-tsl_cc_test(
-    name = "intrusive_ptr_test",
-    size = "small",
-    srcs = [
-        "intrusive_ptr_test.cc",
-    ],
-    deps = [
-        ":intrusive_ptr",
-        ":refcount",
-        "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
     ],
 )
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,33 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_PREFETCH_H_
-#define TENSORFLOW_TSL_PLATFORM_PREFETCH_H_
+#ifndef XLA_TSL_PLATFORM_BYTE_ORDER_H_
+#define XLA_TSL_PLATFORM_BYTE_ORDER_H_
 
-#include "absl/base/prefetch.h"
+// Byte order defines provided by gcc. MSVC doesn't define those so
+// we define them here.
+// We assume that all windows platform out there are little endian.
+#if defined(_MSC_VER) && !defined(__clang__)
+#define __ORDER_LITTLE_ENDIAN__ 0x4d2
+#define __ORDER_BIG_ENDIAN__ 0x10e1
+#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
+#endif
 
 namespace tsl {
 namespace port {
 
-// Prefetching support.
-// Deprecated. Prefer to call absl::Prefetch* directly.
-
-enum PrefetchHint {
-  PREFETCH_HINT_T0 = 3,  // Temporal locality
-  PREFETCH_HINT_NTA = 0  // No temporal locality
-};
-
-template <PrefetchHint hint>
-void prefetch(const void* x) {
-  absl::PrefetchToLocalCache(x);
-}
-
-template <>
-inline void prefetch<PREFETCH_HINT_NTA>(const void* x) {
-  absl::PrefetchToLocalCacheNta(x);
-}
+// TODO(jeff,sanjay): Make portable
+constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 
 }  // namespace port
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PLATFORM_PREFETCH_H_
+#endif  // XLA_TSL_PLATFORM_BYTE_ORDER_H_

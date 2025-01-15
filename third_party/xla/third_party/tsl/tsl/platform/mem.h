@@ -19,8 +19,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+// TODO(cwhipkey): remove this when callers use annotations directly.
+#include "xla/tsl/platform/dynamic_annotations.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/dynamic_annotations.h"
 #include "tsl/platform/platform.h"
 
 namespace tsl {

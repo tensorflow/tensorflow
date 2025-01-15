@@ -13,13 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_STACK_FRAME_H_
-#define TENSORFLOW_CORE_PLATFORM_STACK_FRAME_H_
+// Small helper library to access "data" dependencies defined in BUILD files.
+// Requires the relative paths starting from tensorflow/...
+// For example, to get this file, a user would call:
+// GetDataDependencyFilepath("tensorflow/core/platform/resource_loadder.h")
 
-#include "xla/tsl/platform/stack_frame.h"
+#ifndef XLA_TSL_PLATFORM_RESOURCE_LOADER_H_
+#define XLA_TSL_PLATFORM_RESOURCE_LOADER_H_
 
-namespace tensorflow {
-typedef tsl::StackFrame StackFrame;
-}  // namespace tensorflow
+#include <string>
 
-#endif  // TENSORFLOW_CORE_PLATFORM_STACK_FRAME_H_
+namespace tsl {
+
+std::string GetDataDependencyFilepath(const std::string& relative_path);
+
+}  // namespace tsl
+
+#endif  // XLA_TSL_PLATFORM_RESOURCE_LOADER_H_

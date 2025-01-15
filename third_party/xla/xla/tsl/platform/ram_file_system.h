@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_RAM_FILE_SYSTEM_H_
-#define TENSORFLOW_TSL_PLATFORM_RAM_FILE_SYSTEM_H_
+#ifndef XLA_TSL_PLATFORM_RAM_FILE_SYSTEM_H_
+#define XLA_TSL_PLATFORM_RAM_FILE_SYSTEM_H_
 
 // Implementation of an in-memory TF filesystem for simple prototyping (e.g.
 // via Colab). The TPU TF server does not have local filesystem access, which
@@ -358,4 +358,4 @@ class RamFileSystem : public FileSystem {
 
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PLATFORM_RAM_FILE_SYSTEM_H_
+#endif  // XLA_TSL_PLATFORM_RAM_FILE_SYSTEM_H_

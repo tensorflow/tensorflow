@@ -13,9 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_PROTOBUF_COMPILER_H_
-#define TENSORFLOW_TSL_PLATFORM_PROTOBUF_COMPILER_H_
+#ifndef XLA_TSL_PLATFORM_PREFETCH_H_
+#define XLA_TSL_PLATFORM_PREFETCH_H_
 
-#include "google/protobuf/compiler/importer.h"  // IWYU pragma: export
+#include "absl/base/prefetch.h"
 
-#endif  // TENSORFLOW_TSL_PLATFORM_PROTOBUF_COMPILER_H_
+namespace tsl {
+namespace port {
+
+// Prefetching support.
+// Deprecated. Prefer to call absl::Prefetch* directly.
+
+enum PrefetchHint {
+  PREFETCH_HINT_T0 = 3,  // Temporal locality
+  PREFETCH_HINT_NTA = 0  // No temporal locality
+};
+
+template <PrefetchHint hint>
+void prefetch(const void* x) {
+  absl::PrefetchToLocalCache(x);
+}
+
+template <>
+inline void prefetch<PREFETCH_HINT_NTA>(const void* x) {
+  absl::PrefetchToLocalCacheNta(x);
+}
+
+}  // namespace port
+}  // namespace tsl
+
+#endif  // XLA_TSL_PLATFORM_PREFETCH_H_

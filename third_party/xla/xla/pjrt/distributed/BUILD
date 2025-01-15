@@ -102,8 +102,8 @@ cc_library(
     deps = [
         ":client",
         ":service",
+        "//xla/tsl/platform:grpc_credentials",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:grpc_credentials",
     ] + tsl_grpc_cc_dependencies(),
 )
 

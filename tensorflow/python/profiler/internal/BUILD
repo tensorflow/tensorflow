@@ -259,7 +259,7 @@ tsl_pybind_extension(
         "//tensorflow/core/lib/strings:ordered_code",
         "//tensorflow/core/platform:platform_strings",
         "@local_tsl//tsl/platform:random",
-        "@local_tsl//tsl/platform:resource",
+        "@local_xla//xla/tsl/platform:resource",
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",
     ]),

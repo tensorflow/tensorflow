@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_DYNAMIC_ANNOTATIONS_H_
-#define TENSORFLOW_TSL_PLATFORM_DYNAMIC_ANNOTATIONS_H_
+#ifndef XLA_TSL_PLATFORM_DYNAMIC_ANNOTATIONS_H_
+#define XLA_TSL_PLATFORM_DYNAMIC_ANNOTATIONS_H_
 
 #include "absl/base/dynamic_annotations.h"
 
@@ -33,4 +33,4 @@ limitations under the License.
 #define TF_ATTRIBUTE_NO_SANITIZE_MEMORY
 #endif
 
-#endif  // TENSORFLOW_TSL_PLATFORM_DYNAMIC_ANNOTATIONS_H_
+#endif  // XLA_TSL_PLATFORM_DYNAMIC_ANNOTATIONS_H_
