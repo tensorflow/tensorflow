@@ -96,8 +96,7 @@ void CanonicalizeBoundaryValuePass::runOnOperation() {
   patterns.add<ClampInfToMinMaxFloat<stablehlo::ConstantOp>,
                ClampInfToMinMaxFloat<TF::ConstOp>,
                ClampInfToMinMaxFloat<arith::ConstantOp>>(ctx);
-  if (failed(
-          applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
   }
 }
