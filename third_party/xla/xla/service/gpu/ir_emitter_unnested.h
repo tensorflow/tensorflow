@@ -330,8 +330,6 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Container for async copy-start/copy-done events.
   std::shared_ptr<CopyThunk::AsyncEvents> copy_events_;
-
-  GpuElementalIrEmitter elemental_emitter_;
 };
 
 }  // namespace gpu
