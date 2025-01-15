@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 
 #if defined(__ANDROID__)
@@ -59,7 +60,6 @@ using litert::Error;
 using litert::Expected;
 using litert::OwningBufferRef;
 using litert::TensorBuffer;
-using litert::TensorBufferScopedLock;
 using litert::Unexpected;
 using litert::internal::ExternalLiteRtBufferContext;
 
@@ -252,7 +252,7 @@ tflite::SignatureRunner* LiteRtCompiledModelT::GetSignatureRunner(
 Expected<void> LiteRtCompiledModelT::RegisterBuffer(
     tflite::SignatureRunner* runner, const TfLiteTensor* tensor,
     const char* tensor_name, LiteRtTensorBuffer buffer, bool is_input,
-    std::vector<TensorBufferScopedLock>& scoped_locks) {
+    std::vector<LiteRtTensorBuffer>& locked_buffers) {
   bool backend_requires_cpu_buffer = false;
 
   auto requirements = buffer_context_->GetBufferRequirement(tensor);
@@ -304,15 +304,14 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
     }
 #endif
     if (buffer_is_cpu_compatible) {
-      auto lock_and_addr = TensorBufferScopedLock::Create(buffer);
-      if (!lock_and_addr) {
-        return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                          absl::StrCat("Failed to lock input tensor buffer: ",
-                                       lock_and_addr.Error().Message()));
+      void* host_mem_addr;
+      if (auto status =
+              LiteRtLockTensorBuffer(buffer, &host_mem_addr, /*event=*/nullptr);
+          status != kLiteRtStatusOk) {
+        return Unexpected(status, "Failed to lock the tensor buffer");
       }
-      scoped_locks.push_back(std::move(lock_and_addr->first));
-      TfLiteCustomAllocation custom_allocation{lock_and_addr->second,
-                                               tensor->bytes};
+      locked_buffers.push_back(buffer);
+      TfLiteCustomAllocation custom_allocation{host_mem_addr, tensor->bytes};
       if (is_input) {
         runner->SetCustomAllocationForInputTensor(tensor_name,
                                                   custom_allocation,
@@ -376,14 +375,21 @@ Expected<void> LiteRtCompiledModelT::Run(
     }
   }
 
-  std::vector<TensorBufferScopedLock> scoped_locks;
-  scoped_locks.reserve(num_inputs + num_outputs);
+  // The collection of locked buffers. It is used to unlock the buffers after
+  // the inference is done.
+  std::vector<LiteRtTensorBuffer> locked_buffers;
+  locked_buffers.reserve(num_inputs + num_outputs);
+  auto unlock_buffers = absl::MakeCleanup([&locked_buffers]() {
+    for (auto locked_buffer : locked_buffers) {
+      LiteRtUnlockTensorBuffer(locked_buffer);
+    }
+  });
   for (int i = 0; i < num_inputs; ++i) {
     const auto& input_name = runner->input_names()[i];
     auto* input_tensor = runner->input_tensor(input_name);
     auto res =
         RegisterBuffer(runner, input_tensor, input_name, input_buffers[i],
-                       /*is_input=*/true, scoped_locks);
+                       /*is_input=*/true, locked_buffers);
     if (!res) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                         absl::StrCat("Failed to register input tensor buffer: ",
@@ -396,7 +402,7 @@ Expected<void> LiteRtCompiledModelT::Run(
     auto* output_tensor = runner->output_tensor(output_name);
     auto res =
         RegisterBuffer(runner, output_tensor, output_name, output_buffers[i],
-                       /*is_input=*/false, scoped_locks);
+                       /*is_input=*/false, locked_buffers);
     if (!res) {
       return Unexpected(
           kLiteRtStatusErrorRuntimeFailure,

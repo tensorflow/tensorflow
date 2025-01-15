@@ -140,6 +140,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/core/model:model_serialize",
         "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
