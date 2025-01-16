@@ -124,9 +124,9 @@ class ClientLibraryTestRunnerMixin : public T {
   void ComputeAndCompare(XlaBuilder* const builder,
                          const absl::Span<Literal* const> arguments,
                          const std::optional<ErrorSpec> error = std::nullopt) {
-    ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder->Build());
-    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                         BuildAndVerifyHloModule(computation));
+    TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder->Build());
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            BuildAndVerifyHloModule(computation));
     EXPECT_TRUE(this->RunAndCompare(std::move(module), arguments, error));
   }
 
@@ -136,11 +136,11 @@ class ClientLibraryTestRunnerMixin : public T {
       XlaBuilder* const builder, const Literal& expected,
       const absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec> error = std::nullopt) {
-    ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder->Build());
-    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                         BuildAndVerifyHloModule(computation));
-    ASSERT_OK_AND_ASSIGN(Literal actual,
-                         this->Execute(std::move(module), arguments));
+    TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder->Build());
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            BuildAndVerifyHloModule(computation));
+    TF_ASSERT_OK_AND_ASSIGN(Literal actual,
+                            this->Execute(std::move(module), arguments));
     if (!error.has_value()) {
       EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));
     } else {
