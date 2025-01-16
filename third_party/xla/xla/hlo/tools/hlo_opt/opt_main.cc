@@ -16,6 +16,7 @@ limitations under the License.
 // A tool for reading a HloModule from a HloProto file and execute the module on
 // given platform(s). See kUsage for details.
 
+#include <algorithm>
 #include <cstdio>
 #include <iostream>
 #include <memory>
@@ -69,6 +70,7 @@ struct HloOptConfig {
   bool list_stages{false};
   std::string passes{""};
   bool list_passes{false};
+  bool gen_pass_doc{false};
 };
 
 }  // namespace
@@ -142,7 +144,10 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
   return out;
 }
 
-std::unique_ptr<HloModule> GetDummyModule() {
+// Some passes require a module config to be registered.
+// This is less important when only help text or pass list is needed, so use
+// a dummy module to register passes.
+void DummyInitPassRegistry(OptProvider* provider) {
   std::string hlo_text = R"(
       HloModule m
         ENTRY main {
@@ -150,7 +155,20 @@ std::unique_ptr<HloModule> GetDummyModule() {
           b = f32[] parameter(1)
         ROOT res = f32[] multiply(a, b)
       })";
-  return std::make_unique<HloModule>(hlo_text, HloModuleConfig());
+  auto dummy_module = std::make_unique<HloModule>(hlo_text, HloModuleConfig());
+  provider->RegisterProviderPasses(*dummy_module);
+}
+
+// Create comma separated list of pass names.
+std::string ListPasses(OptProvider* provider) {
+  std::vector<std::string> names;
+  const auto& pass_registry = provider->GetRegisteredPasses();
+  names.reserve(pass_registry.size());
+  for (const auto& [name, pass_func] : pass_registry) {
+    names.push_back(name);
+  }
+  std::sort(names.begin(), names.end());
+  return absl::StrJoin(names, ",");
 }
 
 absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
@@ -164,9 +182,8 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
   // Use a dummy module for "list-passes" because pipelines compilation
   // requires a module.
   if (opts.list_passes) {
-    auto dummy_module = GetDummyModule();
-    provider->RegisterProviderPasses(*dummy_module);
-    return provider->GetRegisteredPassNames();
+    DummyInitPassRegistry(provider);
+    return ListPasses(provider);
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<HloModule>> modules,

@@ -1,0 +1,9 @@
+// RUN: hlo-opt --list-passes | FileCheck %s
+
+// Test that the list passes feature for hlo-opt is working
+// Pick a few random passes to check for, this is not an exhaustive list.
+
+// CHECK: all-gather-bcast-reorder
+// CHECK: dce
+// CHECK: dot_decomposer
+// CHECK: simplify-sorts

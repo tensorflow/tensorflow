@@ -108,10 +108,6 @@ class GpuOptProvider : public CompiledOptProvider {
     return supported;
   }
 
-  std::string GetRegisteredPassNames() override {
-    return GetRegisteredPassNamesHelper(pass_registry_);
-  }
-
   // Register only GPU specific passes here.
   void RegisterProviderPasses(HloModule& module) override {
     // go/keep-sorted start
