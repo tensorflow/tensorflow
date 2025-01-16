@@ -9,9 +9,11 @@ add {
 
 fusion {
   param_0 = f64[100,128] parameter(0)
-  param_1 = f64[] parameter(1)
-  ROOT reduce = f64[100] reduce(param_0, param_1), dimensions={1}, to_apply=add
+  zero = f64[] constant(0.0)
+  ROOT reduce = f64[100] reduce(param_0, zero), dimensions={1}, to_apply=add
 }
 
 // This reduction is small enough to not require any shared memory.
 // CHECK-NOT: allocate_shared
+// Check that the addf op in the reducer has the nsz fastmath flag
+// CHECK: arith.addf %{{.*}}, %{{.*}} fastmath<nsz> : f64

@@ -207,7 +207,14 @@ PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
       reduce_args.append(ProvideParameterRange(computation, reduction, 0, arity,
                                                indices, call_target,
                                                entry_function, nested_b));
-      const auto& reducer = GetReducer(reduction);
+      auto reducer = GetReducer(reduction);
+      // Annotate all AddF ops in the reducer with the no signed zeros fastmath
+      // flag. This allows to fold the initial add with the zero init constant.
+      auto no_signed_zeros = mlir::arith::FastMathFlagsAttr::get(
+          nested_b.getContext(), mlir::arith::FastMathFlags::nsz);
+      reducer.walk([&](mlir::arith::AddFOp addf) {
+        addf->setAttr("fastmath", no_signed_zeros);
+      });
       absl::c_copy(
           nested_b.create<PureCallOp>(reducer, reduce_args).getResults(),
           results.begin() + start);
