@@ -35,7 +35,7 @@ namespace xla::cpu {
 namespace {
 
 // Generate random indices to be used in the scatter.
-// They must be unique so we randomly select from the range [0, slice_size)
+// To make them unique, we randomly select from the range [0, slice_size)
 // by first shuffling the full range and then taking the first slice_size
 // elements
 Literal createR1ScatterIndices(int64_t domain_size, int64_t scatter_size,
@@ -77,8 +77,7 @@ void BM_ScatterS32_R1(benchmark::State& state) {
           update_window_dims={},
           inserted_window_dims={0},
           scatter_dims_to_operand_dims={0},
-          index_vector_dim=1,
-          unique_indices=true
+          index_vector_dim=1
     }
     )";
 
@@ -125,8 +124,7 @@ void BM_ScatterS32_R2(benchmark::State& state) {
           update_window_dims={1},
           inserted_window_dims={0},
           scatter_dims_to_operand_dims={0},
-          index_vector_dim=1,
-          unique_indices=true
+          index_vector_dim=1
     }
     )";
 
@@ -172,8 +170,7 @@ void BM_ScatterS32_R3(benchmark::State& state) {
           update_window_dims={1, 2},
           inserted_window_dims={0},
           scatter_dims_to_operand_dims={0},
-          index_vector_dim=1,
-          unique_indices=true
+          index_vector_dim=1
     }
     )";
 
