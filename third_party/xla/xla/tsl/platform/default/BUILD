@@ -293,6 +293,8 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:mutex",
