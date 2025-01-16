@@ -12,16 +12,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "stablehlo_ext/transforms/stablehlo_refine_shapes.h"
+
 #include <cstdint>
 #include <functional>
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/Base.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/dialect/TypeInference.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "stablehlo_ext/IR/base.h"
 #include "stablehlo_ext/IR/stablehlo_ops.h"
 #include "stablehlo_ext/transforms/passes.h"  // NOLINT: Used in passes.h.inc
+#include "stablehlo_ext/transforms/sdy_refine_shapes.h"
 
 namespace mlir {
 namespace stablehlo_ext {
@@ -149,6 +153,7 @@ struct StablehloRefineShapesPass
           patterns->add<RefineDynamicReduceWindowOpPattern>(context);
           patterns->add<RefineDynamicRngBitGeneratorOpPattern>(context);
           patterns->add<RefineDynamicTopKOpPattern>(context);
+          populateSdyShapeRefinementPatterns(patterns, context);
         };
 
     if (failed(stablehlo::refineEntryFunction(*context, func,
@@ -158,5 +163,16 @@ struct StablehloRefineShapesPass
 };
 
 }  // namespace
+
+void populateStablehloExtRefineShapesPatterns(RewritePatternSet *patterns,
+                                              MLIRContext *context) {
+  stablehlo::populateStablehloRefineShapesPatterns(patterns, context);
+  stablehlo::populateStablehloShapeFolderPatterns(patterns, context);
+  patterns->add<RefineDynamicReduceWindowOpPattern>(context);
+  patterns->add<RefineDynamicRngBitGeneratorOpPattern>(context);
+  patterns->add<RefineDynamicTopKOpPattern>(context);
+  populateSdyShapeRefinementPatterns(patterns, context);
+}
+
 }  // namespace stablehlo_ext
 }  // namespace mlir
