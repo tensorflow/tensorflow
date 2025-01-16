@@ -186,7 +186,7 @@ void LiftQuantizableSpotsAsFunctionsDRQPass::runOnOperation() {
                                     min_num_elements_for_weights_);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
   for (auto func : module.getOps<func::FuncOp>()) {
-    if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+    if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError()
           << "quant-lift-quantizable-spots-as-functions-drq failed.";
       signalPassFailure();

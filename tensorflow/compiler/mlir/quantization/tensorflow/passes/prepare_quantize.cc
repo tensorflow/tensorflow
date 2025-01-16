@@ -402,7 +402,7 @@ void PrepareQuantizePass::runOnOperation() {
   // Currently, only activation stats are imported, so narrow_range = false.
   patterns.add<PrepareQuantStats>(bit_width, false, true,
                                   /*legacy_float_scale=*/false, ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     signalPassFailure();
   }
 
@@ -417,7 +417,7 @@ void PrepareQuantizePass::runOnOperation() {
 
   RewritePatternSet patterns2(ctx);
   patterns2.add<MergeConsecutiveQuantizeCast>(ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns2)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns2)))) {
     signalPassFailure();
   }
 }

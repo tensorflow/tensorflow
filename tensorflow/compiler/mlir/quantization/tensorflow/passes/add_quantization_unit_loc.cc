@@ -181,7 +181,7 @@ void AddQuantizationUnitLocPass::runOnOperation() {
   func::FuncOp func = getOperation();
 
   patterns.add<AddQuantizationUnitLoc>(ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-add-quantization-unit-loc pattern "
                         "conversion did not converge.";
     signalPassFailure();
