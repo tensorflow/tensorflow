@@ -604,6 +604,7 @@ xla_test(
     name = "gpu_test_kernels_fatbin_test",
     srcs = ["gpu_test_kernels_fatbin_test.cc"],
     backends = ["gpu"],
+    data = [":gpu_test_kernels_fatbin"],
     deps = [
         ":gpu_test_kernels_fatbin",
         "@local_tsl//tsl/platform:statusor",
@@ -639,6 +640,7 @@ xla_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
+    data = [":gpu_test_kernels_fatbin"],
 )
 
 xla_test(
@@ -773,10 +775,10 @@ xla_test(
     local_defines = if_cuda_is_configured([
         'GPU_SPEC_FILE_NAMES=(std::string[]){\\"a100_pcie_80\\", \\"a100_sxm_40\\", \
          \\"a100_sxm_80\\", \\"a6000\\", \\"h100_pcie\\", \\"h100_sxm\\", \\"p100\\", \\"v100\\"}',
-         'PLATFORM_NAME=\\"CUDA\\"'
+        'PLATFORM_NAME=\\"CUDA\\"',
     ]) + if_rocm_is_configured([
         'GPU_SPEC_FILE_NAMES=(std::string[]){\\"mi200\\"}',
-        'PLATFORM_NAME=\\"ROCM\\"'
+        'PLATFORM_NAME=\\"ROCM\\"',
     ]),
     deps = [
         "//xla/service:platform_util",

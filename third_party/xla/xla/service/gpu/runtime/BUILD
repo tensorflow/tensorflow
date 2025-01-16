@@ -387,6 +387,7 @@ xla_test(
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
+    data = ["//xla/stream_executor/gpu:gpu_test_kernels_fatbin"]
 )
 
 cc_library(
