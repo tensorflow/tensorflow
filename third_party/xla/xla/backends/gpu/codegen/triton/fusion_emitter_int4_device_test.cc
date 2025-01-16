@@ -192,6 +192,60 @@ TEST_F(TritonTest, DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
       kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
+TEST_F(TritonTest, FuseMultiplyInPrologue) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule FuseMultiplyInPrologue
+
+    ENTRY main {
+      t = (s4[32,64,128]{2,1,0}, f32[32,128]{0,1}, f32[32,64,256]{2,1,0}) parameter(0)
+      w = s4[32,64,128]{2,1,0} get-tuple-element(t), index=0
+      w.i8 = s8[32,64,128]{2,1,0} convert(w)
+      w.f32 = f32[32,64,128]{2,1,0} convert(w.i8)
+      scales = f32[32,128]{0,1} get-tuple-element(t), index=1
+      scales.broadcast = f32[32,64,128]{2,1,0} broadcast(scales), dimensions={0,2}
+      weights.scaled = f32[32,64,128]{2,1,0} multiply(w.f32, scales.broadcast)
+      activations = f32[32,64,256]{2,1,0} get-tuple-element(t), index=2
+      ROOT dot = f32[32,128,256]{2,1,0} dot(weights.scaled, activations),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK:    %[[multiply:.*]] = f32[32,64,128]{2,1,0} multiply
+    CHECK:    %[[dot:.*]] = f32[32,128,256]{2,1,0} dot
+    CHECK:    ENTRY %main
+  )"));
+}
+
+TEST_F(TritonTest, FuseMultiplyInEpilogue) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule FuseMultiplyInEpilogue
+
+    ENTRY main {
+      p_0 = s4[4,32,128]{2,1,0:E(4)} parameter(0)
+      p_0.1 = bf16[4,32,128]{2,1,0} convert(p_0)
+      p_1 = bf16[4,128,64]{2,1,0} parameter(1)
+      dot = bf16[4,32,64]{2,1,0} dot(p_0.1, p_1),
+        lhs_batch_dims={0},
+        lhs_contracting_dims={2},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+      p_2 = bf16[4,32]{1,0} parameter(2)
+      p_2.1 = bf16[4,32,64]{2,1,0} broadcast(p_2), dimensions={0,1}
+      ROOT m = bf16[4,32,64]{2,1,0} multiply(dot, p_2.1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+      CHECK:  %[[dot:.*]] = bf16[4,64,32]{1,2,0} dot
+      CHECK:  %[[multiply:.*]] = [[type:.*]][4,32,64]{2,1,0} multiply
+      CHECK:  ENTRY %main
+    )"));
+}
+
 TEST_F(TritonTest, NonstandardLayoutInt4) {
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutInt4
