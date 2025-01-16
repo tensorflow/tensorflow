@@ -828,6 +828,22 @@ GatherDimensionNumbersAttr GetGatherDimNumsAttr(StringAttr attr,
 }
 
 //===----------------------------------------------------------------------===//
+// XlaScatter op utilities.
+//===----------------------------------------------------------------------===//
+
+bool HasValidScatterDims(StringAttr attr) {
+  ::xla::ScatterDimensionNumbers dims;
+  return dims.ParseFromString(attr.getValue().str());
+}
+
+ScatterDimensionNumbersAttr GetScatterDimNumsAttr(StringAttr attr,
+                                                  Builder *builder) {
+  ::xla::ScatterDimensionNumbers dims;
+  if (!dims.ParseFromString(attr.getValue().str())) return {};
+  return ::xla::ConvertScatterDimensionNumbers(dims, builder);
+}
+
+//===----------------------------------------------------------------------===//
 // XlaDot op utilities.
 //===----------------------------------------------------------------------===//
 
@@ -6697,6 +6713,40 @@ class ConvertXlaReducePrecisionOp
   }
 };
 
+// Converts tf.XlaScatter to mhlo.Scatter
+class ConvertXlaScatterOp : public OpRewritePattern<TF::XlaScatterOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaScatterOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!HasValidScatterDims(op.getDimensionNumbersAttr())) {
+      return failure();
+    }
+    ScatterDimensionNumbersAttr dimension_numbers_attr =
+        GetScatterDimNumsAttr(op.getDimensionNumbersAttr(), &rewriter);
+
+    // Create the mhlo.scatter op.
+    Location loc = op.getLoc();
+    auto scatter_op = rewriter.create<mhlo::ScatterOp>(
+        loc, op.getType(), op.getOperand(), op.getScatterIndices(),
+        op.getUpdates(), dimension_numbers_attr, op.getIndicesAreSortedAttr(),
+        /*unique_indices=*/rewriter.getBoolAttr(false));
+
+    mlir::SymbolRefAttr func = op.getUpdateComputation();
+    auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
+        op->getParentOfType<mlir::ModuleOp>(), func));
+    auto func_ty = func_op.getFunctionType();
+    // Insert a call to the update function in the region of the mhlo op.
+    BuildBodyWithCall(rewriter, loc, func, func_ty,
+                      &scatter_op.getUpdateComputation());
+
+    rewriter.replaceOp(op, scatter_op.getResults());
+
+    return success();
+  }
+};
+
 class LowerYieldOp : public OpConversionPattern<TF::YieldOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -6794,7 +6844,6 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
 // version for now.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_legalize_tf.inc"
 
-// LINT.IfChange
 void PopulatePatterns(MLIRContext *context, RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
   // clang-format off
@@ -6877,6 +6926,7 @@ void PopulatePatterns(MLIRContext *context, RewritePatternSet *patterns) {
     ConvertXlaReduceScatterOp,
     ConvertXlaReduceWindowOp,
     ConvertXlaRngBitGeneratorOp,
+    ConvertXlaScatterOp,
     ConvertXlaSelectAndScatterOp,
     ConvertXlaSortOp,
     ConvertXlaVariadicReduceV2Op,
@@ -6898,7 +6948,6 @@ void PopulatePatterns(MLIRContext *context, RewritePatternSet *patterns) {
     LowerYieldOp>(context);
   // clang-format on
 }
-// LINT.ThenChange(:MlirAlwaysOps)
 }  // end namespace
 }  // end namespace mhlo
 
