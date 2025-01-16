@@ -43,8 +43,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -190,10 +191,7 @@ class LatencyHidingSchedulerTest : public HloTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> ParseHloText(
       absl::string_view hlo_string) {
-    TF_ASSIGN_OR_RETURN(
-        auto hlo_module,
-        ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest()));
-    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
+    return ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest());
   }
 };
 
@@ -233,7 +231,7 @@ ENTRY %module {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -296,7 +294,7 @@ ENTRY %module {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -372,7 +370,7 @@ ENTRY %module {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -430,7 +428,7 @@ ENTRY %module {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -492,7 +490,7 @@ ENTRY %module {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -555,7 +553,7 @@ ENTRY %module {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -634,7 +632,7 @@ ENTRY %module {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -711,7 +709,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* while_body = hlo_module->GetComputationWithName("while_body");
 
@@ -771,7 +769,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* while_body = hlo_module->GetComputationWithName("while_body");
 
@@ -805,7 +803,7 @@ TEST_F(LatencyHidingSchedulerTest, SingleCollectivePermuteTest) {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
   if (VLOG_IS_ON(1)) {
@@ -850,7 +848,7 @@ ENTRY %module_spmd () -> f32[4,4,128] {
   HloComputation* entry_computation = hlo_module->entry_computation();
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
   if (VLOG_IS_ON(1)) {
@@ -903,7 +901,7 @@ ENTRY %module () -> f32[33708,1024] {
   HloComputation* entry_computation = hlo_module->entry_computation();
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
   if (VLOG_IS_ON(1)) {
@@ -962,7 +960,7 @@ ENTRY entry {
   HloComputation* entry_computation = hlo_module->entry_computation();
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
   if (VLOG_IS_ON(1)) {
@@ -1032,7 +1030,7 @@ TEST_F(LatencyHidingSchedulerTest, SerialCollectivePermutesTest) {
   HloComputation* entry_computation = hlo_module->entry_computation();
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -1114,7 +1112,7 @@ TEST_F(LatencyHidingSchedulerTest, BackToBackCollectivePerGmutesTest) {
   HloComputation* entry_computation = hlo_module->entry_computation();
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -1186,7 +1184,7 @@ TEST_F(LatencyHidingSchedulerTest, ParallelCollectivePermutesTest) {
   HloComputation* entry_computation = hlo_module->entry_computation();
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -1254,7 +1252,7 @@ TEST_F(LatencyHidingSchedulerTest, MaxConcurrentCollectivePermutesTest) {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -1283,7 +1281,7 @@ ENTRY entry {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -1319,7 +1317,7 @@ TEST_F(LatencyHidingSchedulerTest, ExistingSingleCollectivePermuteAsyncTest) {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -1373,7 +1371,7 @@ ENTRY entry {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -1577,7 +1575,7 @@ ENTRY entry {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -1637,7 +1635,7 @@ ENTRY entry {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -1830,7 +1828,7 @@ ENTRY entry {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -2014,7 +2012,7 @@ ENTRY entry {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -2075,7 +2073,7 @@ ENTRY entry {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
   if (VLOG_IS_ON(1)) {
@@ -2141,7 +2139,7 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.collective_permute_overlap_limit = 2;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -2213,7 +2211,7 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.collective_permute_overlap_limit = 2;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -2270,7 +2268,7 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.collective_permute_overlap_limit = 3;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -2327,7 +2325,7 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.collective_permute_overlap_limit = 2;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -2385,7 +2383,7 @@ ENTRY entry {
   auto sched_config = GetDefaultSchedConfig();
   sched_config.collective_permute_overlap_limit = 2;
   sched_config.all_gather_overlap_limit = 2;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -2461,7 +2459,7 @@ ENTRY %module {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
-  EXPECT_TRUE(RunScheduler(hlo_module.get()).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -2524,9 +2522,8 @@ ENTRY entry {
   auto sched_config = GetDefaultSchedConfig();
   sched_config.collective_permute_overlap_limit = 2;
   sched_config.all_gather_overlap_limit = 2;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -2573,9 +2570,8 @@ ENTRY entry {
   auto sched_config = GetDefaultSchedConfig();
   sched_config.aggressive_scheduling_policies = true;
   sched_config.enable_release_start_policy = true;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -2885,7 +2881,7 @@ TEST_F(LatencyHidingSchedulerTest, DepthPressureReduction) {
   auto sched_config = GetDefaultSchedConfig();
   sched_config.memory_limit = 0;
   sched_config.depth_based_memory_pressure_reduction = true;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -2923,7 +2919,7 @@ TEST_F(LatencyHidingSchedulerTest, RerunWithSmallerMemoryLimit) {
   auto sched_config = GetDefaultSchedConfig();
   sched_config.memory_limit = 110;
   sched_config.rerun = 1;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   // LatencyHidingScheduler runs an additional "rerun" iteration because the
   // peak memory usage after the first run was 136 bytes (> 110 bytes), so it
   // sets the new limit to 99 and obtains a peak memory usage of 88 bytes at
@@ -2998,7 +2994,7 @@ ENTRY main {
   auto sched_config = GetDefaultSchedConfig();
   // The double indirection of the buffer aliasing in the module above should
   // not create a failure of scheduling by the async done checks.
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
 }
 
 TEST_F(LatencyHidingSchedulerTest, CopyScheduling) {
@@ -3022,7 +3018,7 @@ ENTRY AddR2 {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
   auto sched_config = GetDefaultSchedConfig();
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   const HloInstruction* conv = FindInstruction(hlo_module.get(), "convolution");
   const HloInstruction* cps = FindInstruction(hlo_module.get(), "copy-start");
   const HloInstruction* cpd = FindInstruction(hlo_module.get(), "copy-done");
@@ -3059,7 +3055,7 @@ ENTRY AddR2 {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
   auto sched_config = GetDefaultSchedConfig();
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   const HloInstruction* conv = FindInstruction(hlo_module.get(), "convolution");
   const HloInstruction* cps = FindInstruction(hlo_module.get(), "copy-start");
   const HloInstruction* cps2 = FindInstruction(hlo_module.get(), "copy-start2");
@@ -3114,7 +3110,7 @@ ENTRY %entry {
   auto sched_config = GetDefaultSchedConfig();
   sched_config.collective_permute_overlap_limit = 2;
   sched_config.all_gather_overlap_limit = 2;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3232,10 +3228,9 @@ ENTRY %module {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<ApproximateLatencyEstimator>(),
-                           std::move(async_tracker))
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<ApproximateLatencyEstimator>(),
+                            std::move(async_tracker)));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -3288,9 +3283,8 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.aggressive_scheduling_policies = true;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3337,9 +3331,8 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.aggressive_scheduling_policies = true;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3386,9 +3379,8 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.aggressive_scheduling_policies = true;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3439,9 +3431,8 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.aggressive_scheduling_policies = true;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3488,9 +3479,8 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.aggressive_scheduling_policies = true;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3537,9 +3527,8 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.aggressive_scheduling_policies = true;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3587,9 +3576,8 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.aggressive_scheduling_policies = true;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3646,9 +3634,8 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.aggressive_scheduling_policies = true;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3694,9 +3681,8 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.aggressive_scheduling_policies = true;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3742,9 +3728,8 @@ ENTRY entry {
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3805,9 +3790,8 @@ ENTRY main {
   auto sched_config = GetDefaultSchedConfig();
   sched_config.schedule_send_recvs = true;
   sched_config.send_recv_host_overlap_limit = 2;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3844,9 +3828,8 @@ ENTRY entry {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   auto sched_config = GetDefaultSchedConfig();
   sched_config.collective_permute_overlap_limit = 1;
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
-                           std::make_unique<TestLatencyEstimator>())
-                  .ok());
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
   EXPECT_TRUE(hlo_module->has_entry_computation());
 
   std::vector<HloInstruction*> new_instruction_sequence =

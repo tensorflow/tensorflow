@@ -615,8 +615,8 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   }
 
   // Run the scheduler which minimizes peak memory usage.
-  // We need to run it anyway because LHS relies on it track buffers. See
-  // `xla::BufferInfoTracker::BufferInfoTracker()`.
+  // We need to run it anyway because LHS relies on it.
+  // See `xla::LatencyHidingScheduler::Run`.
   TF_RETURN_IF_ERROR(RunP2PSchedulePreparation(module));
   TF_ASSIGN_OR_RETURN(
       HloSchedule schedule,

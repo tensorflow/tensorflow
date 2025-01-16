@@ -2675,6 +2675,8 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
   // Currently we expect that a schedule that minimizes memory pressure is
   // provided as a base. It's not necessary for the algorithm itself but it
   // allows us to not having to think for now about memory pressure.
+  CHECK(module->has_schedule()) << "LatencyHidingScheduler expects a base "
+                                   "schedule that minimizes memory pressure.";
   std::vector<HloComputation*> computations_to_schedule;
   computations_to_schedule.reserve(module->computation_count());
   // Collect which computations have latency hiding opportunities.
