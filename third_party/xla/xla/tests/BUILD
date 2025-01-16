@@ -2057,7 +2057,7 @@ xla_test(
     srcs = ["custom_call_test.cc"],
     backends = ["cpu"],
     deps = [
-        ":client_library_test_base",
+        ":client_library_test_runner_mixin",
         ":hlo_test_base",
         ":literal_test_util",
         ":test_macros_header",
@@ -2077,6 +2077,7 @@ xla_test(
         "//xla/ffi:ffi_api",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:test_helpers",
         "//xla/service",
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
@@ -2084,6 +2085,8 @@ xla_test(
         "//xla/service:shaped_buffer",
         "//xla/stream_executor:platform",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/status",
@@ -2093,8 +2096,6 @@ xla_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
