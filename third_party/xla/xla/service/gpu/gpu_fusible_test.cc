@@ -405,7 +405,6 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_ElementalReduction) {
     ENTRY entry {
       c0 = f32[] parameter(0)
       p1 = f32[8,512,5,16,1,1]{5,4,3,2,1,0} parameter(1)
-      // Reduction lowered by GpuElementalIrEmitter.
       ROOT reduce = f32[512,5,1,1]{3,2,1,0} reduce(p1, c0), dimensions={3,0},
         to_apply=scalar_add
     })"))

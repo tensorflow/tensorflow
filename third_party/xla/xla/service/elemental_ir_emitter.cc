@@ -15,14 +15,12 @@ limitations under the License.
 
 #include "xla/service/elemental_ir_emitter.h"
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -33,6 +31,7 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -50,17 +49,15 @@ limitations under the License.
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
-#include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/float8_fnuz_ir_emitter.h"
@@ -68,7 +65,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
-#include "xla/service/llvm_ir/math_ops.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -76,8 +72,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -3784,6 +3778,13 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   return primitive_type == BF16 ? FPTrunc(result, b_->getBFloatTy()) : result;
 }
 
+absl::StatusOr<std::vector<llvm::Value*>>
+ElementalIrEmitter::EmitThreadLocalCall(
+    const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+    absl::string_view name, bool is_reducer) {
+  return Unimplemented("EmitThreadLocalCall is not implemented");
+}
+
 llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator) {
@@ -4545,6 +4546,11 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EvaluatePolynomial(
     poly = FAdd(FMul(poly, x), llvm::ConstantFP::get(type, c));
   }
   return poly;
+}
+
+bool ElementalIrEmitter::fast_min_max() {
+  LOG(FATAL) << "not implemented";
+  return false;
 }
 
 }  // namespace xla
