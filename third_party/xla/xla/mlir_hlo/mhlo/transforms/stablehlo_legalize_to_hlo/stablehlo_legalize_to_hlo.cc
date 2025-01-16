@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iterator>
+#include <type_traits>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -24,11 +25,11 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -150,14 +151,14 @@ Attribute convertAttr(Attribute stablehloAttr) {
   // Handle non-StableHLO attributes.
   // If an attribute is not defined in StableHLO, then it is unchanged,
   // with the exception of ArrayAttr which is converted recursively.
-  if (auto stablehloAttrs = mlir::dyn_cast<ArrayAttr>(stablehloAttr)) {
+  if (auto attrs = mlir::dyn_cast<ArrayAttr>(stablehloAttr)) {
     SmallVector<Attribute> hloAttrs;
-    for (auto stablehloAttr : stablehloAttrs) {
-      auto hloAttr = convertAttr(stablehloAttr);
+    for (auto attr : attrs) {
+      auto hloAttr = convertAttr(attr);
       if (!hloAttr) return {};
       hloAttrs.push_back(hloAttr);
     }
-    return ArrayAttr::get(stablehloAttrs.getContext(), hloAttrs);
+    return ArrayAttr::get(attrs.getContext(), hloAttrs);
   }
   return stablehloAttr;
 }
