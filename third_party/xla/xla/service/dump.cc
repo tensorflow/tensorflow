@@ -218,6 +218,14 @@ struct CanonicalDebugOptions {
         should_dump_pipeline = [](string_view) { return false; };
       }
     }
+
+    // Dumping unoptimized HLO snapshots should not trigger dumping of all
+    // available information for the HLO module and pipelines.
+
+    if (dump_unoptimized_snapshots) {
+      should_dump_module = [](string_view) { return false; };
+      should_dump_pipeline = [](string_view) { return false; };
+    }
   }
 
   bool dumping_to_stdout() const { return dump_to == "-"; }
@@ -889,8 +897,7 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
     const HloUnoptimizedSnapshot& hlo_snapshot, const DebugOptions& opts) {
   CanonicalDebugOptions canonical_opts(opts);
   std::string name = hlo_snapshot.hlo_module().name();
-  if (!canonical_opts.should_dump_module(name) ||
-      !canonical_opts.dump_unoptimized_snapshots) {
+  if (!canonical_opts.dump_unoptimized_snapshots) {
     return;
   }
 
