@@ -1746,18 +1746,24 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
   CrossProgramPrefetches cross_program_prefetches =
       FindCrossProgramPrefetches(alias_analysis_, hlo_live_range_, options_);
-  // Crash if cross program prefetch is disabled and user has requested
+  // Return error if cross program prefetch is disabled and user has requested
   // cross program prefetch.
-  CHECK(options_.enable_cross_program_prefetch ||
-        cross_program_prefetches.prefetches.empty())
-      << "Cross program prefetch is disabled but user has requested cross "
-         "program prefetch.";
-  // Crash if number of user requested cross program prefetches is greater than
-  // the maximum number of cross program prefetches allowed.
-  CHECK(cross_program_prefetches.prefetches.size() <=
-        options().max_cross_program_prefetches)
-      << "Number of user requested cross program prefetches is greater than "
-         "the maximum number of cross program prefetches allowed.";
+  if (!options_.enable_cross_program_prefetch &&
+      !cross_program_prefetches.prefetches.empty()) {
+    return absl::FailedPreconditionError(
+        "Cross program prefetch is disabled but user has requested cross "
+        "program prefetch.");
+  }
+
+  // Return error if number of user requested cross program prefetches is
+  // greater than the maximum number of cross program prefetches allowed.
+  if (cross_program_prefetches.prefetches.size() >
+      options().max_cross_program_prefetches) {
+    return absl::FailedPreconditionError(
+        "Number of user requested cross program prefetches is greater than the "
+        "maximum number of cross program prefetches allowed.");
+  }
+
   // Allocate user requested cross program prefetches first.
   for (auto& prefetch : cross_program_prefetches.prefetches) {
     HloModule* module = prefetch.buffer->instruction()->GetModule();
@@ -1844,11 +1850,14 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
         }
       }
       if (result_is(result, AllocationResult::kFailSyncDataMoveReplacement)) {
-        CHECK(options_.enable_sync_copy_replacement ||
-              options_.enable_sync_slice_replacement)
-            << "Allocation result is "
-               "AllocationResult::kFailSyncCopyReplacement, but "
-               "no sync replacement is enabled.";
+        if (!options_.enable_sync_copy_replacement &&
+            !options_.enable_sync_slice_replacement) {
+          return absl::FailedPreconditionError(
+              "Allocation result is "
+              "AllocationResult::kFailSyncCopyReplacement, but "
+              "no sync replacement is enabled.");
+        }
+
         UncommitPendingChunks(absl::MakeSpan(proposal.allocation_values));
         proposal = GetJointProposal(interval);
         if (proposal.allocation_values.empty()) {
@@ -1877,7 +1886,10 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
         UncommitPendingChunks(absl::MakeSpan(proposal.allocation_values));
         ++num_repacks_;
         repacked = true;
-        CHECK_NE(options_.repacker, nullptr);
+        if (!options_.repacker) {
+          return absl::FailedPreconditionError("Repacker not provided.");
+        }
+
         std::vector<AllocationBlock*> repack_allocation_blocks;
         ExportAllocationsForRepacking(repack_allocation_blocks);
         VLOG(2) << "Repacking.";
@@ -1934,16 +1946,24 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   }
 
   if (options_.repack_after_every_allocation) {
-    CHECK_NE(options_.repacker, nullptr);
-    CHECK(!RepackAllocationsIncludeConvertedSyncMemOp())
-        << "Repacking is not supported yet when there are converted sync mem "
-           "ops.";
+    if (!options_.repacker) {
+      return absl::FailedPreconditionError("Repacker cannot be null.");
+    }
+
+    if (RepackAllocationsIncludeConvertedSyncMemOp()) {
+      return absl::InternalError(
+          "Repacking is not supported yet when there are converted sync mem "
+          "ops.");
+    }
+
     std::vector<AllocationBlock*> repack_allocation_blocks;
     ExportAllocationsForRepacking(repack_allocation_blocks);
     VLOG(2) << "Final Repacking.";
     auto repack_status =
         options_.repacker->Repack(absl::MakeSpan(repack_allocation_blocks));
-    CHECK_EQ(repack_status.status(), absl::OkStatus());
+    if (!repack_status.ok()) {
+      return repack_status.status();
+    }
     VLOG(2) << "Final Repack complete. Modified = " << *repack_status;
   }
 

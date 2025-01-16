@@ -1049,8 +1049,8 @@ TEST_F(CollectiveOpsTestE2E, NoAsyncCollectives) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
       CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-  ASSERT_TRUE(executable->has_module());
-  HloModule* executable_module = &executable->module();
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
 
   // Verify that the all-to-all is a sync collective.
   const HloInstruction* all_to_all =

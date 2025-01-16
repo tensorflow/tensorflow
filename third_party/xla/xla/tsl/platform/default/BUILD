@@ -296,6 +296,8 @@ cc_library(
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:mutex",
     ],
