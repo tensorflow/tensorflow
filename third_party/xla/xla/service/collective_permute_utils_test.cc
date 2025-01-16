@@ -50,7 +50,7 @@ class CollectivePermuteUtilsTest : public ::testing::Test {
       const SourceTargetPairs& pairs) {
     return HloCollectivePermuteInstruction(HloOpcode::kCollectivePermute,
                                            ShapeUtil::MakeShape(U32, {8, 8}),
-                                           simple_input_.get(), pairs, 1);
+                                           {simple_input_.get()}, pairs, 1);
   }
 };
 

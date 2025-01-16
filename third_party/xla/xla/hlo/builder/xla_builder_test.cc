@@ -831,6 +831,15 @@ TEST(XlaBuilderTest, CollectivePermute) {
   EXPECT_EQ(GetRoot(*module)->opcode(), HloOpcode::kCollectivePermute);
 }
 
+TEST(XlaBuilderTest, CombinedCollectivePermute) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  auto y = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {5, 7}), "y");
+  MultiCollectivePermute({x, y}, {{0, 1}, {1, 2}, {2, 3}});
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_EQ(GetRoot(*module)->opcode(), HloOpcode::kCollectivePermute);
+}
+
 TEST(XlaBuilderTest, GetDimensionSize) {
   XlaBuilder b(TestName());
   auto x =
