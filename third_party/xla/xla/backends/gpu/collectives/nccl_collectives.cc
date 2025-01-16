@@ -151,6 +151,11 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
   comm_handles.resize(ranks.size(), nullptr);
   comms.reserve(ranks.size());
 
+  if (clique_ids->data().size() != 1) {
+    return InvalidArgument(
+        "CliqueIds size must be 1 for NCCL communicator initialization");
+  }
+
   TF_RETURN_IF_ERROR(GroupStart());
   for (size_t i = 0; i < ranks.size(); ++i) {
     VLOG(1) << "Initialize NCCL communicator for rank #" << ranks[i].rank
@@ -160,17 +165,10 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
     TF_ASSIGN_OR_RETURN(auto* device, TryCast(ranks[i].device));
     auto activate_context = device->stream_executor()->Activate();
 
-#if !defined(TENSORFLOW_USE_ROCM)
-    TF_ASSIGN_OR_RETURN(auto nccl_unique_ids, AsNcclUniqueIds(*clique_ids));
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankScalable(
-        &comm_handles[i], clique_key.num_devices(), ranks[i].rank.value(),
-        nccl_unique_ids.size(), nccl_unique_ids.data(), &comm_config));
-#else
     TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_ids->at(0)));
     XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
         &comm_handles[i], clique_key.num_devices(), nccl_unique_id,
         ranks[i].rank.value(), &comm_config));
-#endif
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 
