@@ -566,12 +566,10 @@ BufferInfoTracker::BufferInfoTracker(
   // collecting buffer information. Effectively flattening the HLO schedule
   // across called computations.
   std::function<void(const HloComputation*)> process_computation =
-      [&process_computation, module, alias_analysis, this,
+      [&process_computation, alias_analysis, this,
        &shape_size_bytes](const HloComputation* computation) {
-        const HloInstructionSequence& sequence =
-            module->schedule().sequence(computation);
-        for (int idx = 0; idx < sequence.size(); ++idx) {
-          const HloInstruction* instruction = sequence.instructions()[idx];
+        for (const HloInstruction* instruction :
+             computation->MakeInstructionPostOrder()) {
           for (auto* called_computation : instruction->called_computations()) {
             if (called_computation->IsFusionComputation()) {
               continue;
