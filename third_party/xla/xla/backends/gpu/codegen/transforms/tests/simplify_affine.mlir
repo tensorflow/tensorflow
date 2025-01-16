@@ -1,4 +1,4 @@
-// RUN: emitters_opt --allow-unregistered-dialect %s -split-input-file -xla-gpu-simplify-affine -cse | FileCheck %s
+// RUN: emitters_opt --allow-unregistered-dialect %s -split-input-file -xla-gpu-simplify-affine | FileCheck %s
 
 func.func @op_and_for_ranges(%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: !llvm.ptr) {
   %c0 = arith.constant 0 : index
@@ -26,13 +26,10 @@ func.func @op_and_for_ranges(%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: !llvm.pt
 // CHECK-DAG: %[[TID_X:.*]] = gpu.thread_id x
 // CHECK-DAG: %[[BID_X:.*]] = gpu.block_id x
 // CHECK:     scf.for %[[I:.*]] =
-// CHECK-DAG:   %[[CAST_TID_X:.*]] = arith.index_castui %[[TID_X]]
-// CHECK-DAG:   %[[CAST_BID_X:.*]] = arith.index_castui %[[BID_X]]
-// CHECK-DAG:   %[[BLOCK_OFFSET:.*]] = arith.muli %[[CAST_BID_X]], %[[C512]]
-// CHECK-DAG:   %[[THREAD_OFFSET:.*]] = arith.muli %[[CAST_TID_X]], %[[C4]]
+// CHECK:       %[[BLOCK_OFFSET:.*]] = arith.muli %[[BID_X]], %[[C512]]
+// CHECK:       %[[THREAD_OFFSET:.*]] = arith.muli %[[TID_X]], %[[C4]]
 // CHECK:       %[[OFFSET:.*]] = arith.addi %[[BLOCK_OFFSET]], %[[THREAD_OFFSET]]
-// CHECK:       %[[I64:.*]] = arith.index_castui %[[I]]
-// CHECK:       arith.addi %[[OFFSET]], %[[I64]]
+// CHECK:       arith.addi %[[OFFSET]], %[[I]]
 
 // -----
 
@@ -42,9 +39,9 @@ func.func @arg_ranges(%arg0: index {xla.range = [0 : index, 42 : index]}, %arg1:
 }
 
 // CHECK-LABEL: @arg_ranges
-// CHECK:  %[[C100:.*]] = arith.constant 100
-// CHECK:  %[[RET:.*]] = arith.divui %{{.*}}, %[[C100]]
-// CHECT:  return {{.*}} : index
+// CHECK-NEXT:  %[[C100:.*]] = arith.constant 100
+// CHECK-NEXT:  %[[RET:.*]] = arith.divui %{{.*}}, %[[C100]]
+// CHECK-NEXT:  return %[[RET]]
 
 // -----
 
@@ -87,13 +84,10 @@ func.func @op_and_for_ranges(%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: !llvm.pt
 // CHECK-DAG: %[[TID_X:.*]] = gpu.thread_id x
 // CHECK-DAG: %[[BID_X:.*]] = gpu.block_id x
 // CHECK:     scf.for %[[I:.*]] =
-// CHECK-DAG:   %[[CAST_TID_X:.*]] = arith.index_castui %[[TID_X]]
-// CHECK-DAG:   %[[CAST_BID_X:.*]] = arith.index_castui %[[BID_X]]
-// CHECK-DAG:   %[[BLOCK_OFFSET:.*]] = arith.muli %[[CAST_BID_X]], %[[C512]]
-// CHECK-DAG:   %[[THREAD_OFFSET:.*]] = arith.muli %[[CAST_TID_X]], %[[C4]]
+// CHECK:       %[[BLOCK_OFFSET:.*]] = arith.muli %[[BID_X]], %[[C512]]
+// CHECK:       %[[THREAD_OFFSET:.*]] = arith.muli %[[TID_X]], %[[C4]]
 // CHECK:       %[[OFFSET:.*]] = arith.addi %[[BLOCK_OFFSET]], %[[THREAD_OFFSET]]
-// CHECK:       %[[I64:.*]] = arith.index_castui %[[I]]
-// CHECK:       arith.addi %[[OFFSET]], %[[I64]]
+// CHECK:       arith.addi %[[OFFSET]], %[[I]]
 
 // -----
 
@@ -106,9 +100,9 @@ func.func @arg_ranges(%arg0: index, %arg1: index) -> index {
 }
 
 // CHECK-LABEL: @arg_ranges
-// CHECK:  %[[C100:.*]] = arith.constant 100
-// CHECK:  %[[RET:.*]] = arith.divui %{{.*}}, %[[C100]] : i64
-// CHECK:  return {{.*}} : index
+// CHECK-NEXT:  %[[C100:.*]] = arith.constant 100
+// CHECK-NEXT:  %[[RET:.*]] = arith.divui %{{.*}}, %[[C100]]
+// CHECK-NEXT:  return %[[RET]]
 
 // -----
 
@@ -121,7 +115,7 @@ func.func @cant_lower(%arg0: index, %arg1: index) -> (index, index) {
 
 // CHECK-LABEL: @cant_lower
 // CHECK:         affine.apply
-// CHECK:         arith.addi
+// CHECK-NEXT:    arith.addi
 
 // -----
 
@@ -145,41 +139,11 @@ func.func @order_summands(%arg1: index) {
 // CHECK-SAME:    (%[[ARG1:.*]]: index)
 // CHECK: scf.for %[[ARG2:.*]] =
 // CHECK: scf.for %[[ARG3:.*]] =
-// CHECK-DAG: %[[ARG1_CAST:.*]] = arith.index_castui %[[ARG1]]
-// CHECK-DAG: %[[ARG2_CAST:.*]] = arith.index_castui %[[ARG2]]
-// CHECK-DAG: arith.muli %[[ARG1_CAST]]
-// CHECK-DAG: arith.muli %[[ARG2_CAST]]
-// CHECK:     arith.addi
-// CHECK:     arith.addi %[[ARG1_CAST]], %[[ARG2_CAST]]
-// CHECK:     arith.divui
-// CHECK:     arith.addi
-// CHECK:     %[[ARG3_CAST:.*]] = arith.index_castui %[[ARG3]]
-// CHECK:     arith.muli %[[ARG3_CAST]]
-// CHECK:     arith.addi %7, %9 : i64
-
-// -----
-
-func.func @index_binop_canonicalization(
-    %p0: i64, %p1: i64, %p2: i64, %p3: i64, %p4: i64, %p5: i64) -> i64 {
-  %i0 = arith.index_castui %p0 : i64 to index
-  %i1 = arith.index_castui %p1 : i64 to index
-  %i2 = arith.index_castui %p2 : i64 to index
-  %i3 = arith.index_castui %p3 : i64 to index
-  %i4 = arith.index_castui %p4 : i64 to index
-  %i5 = arith.index_castui %p5 : i64 to index
-  %add = arith.addi %i0, %i1 : index
-  %sub = arith.subi %add, %i2 : index
-  %mul = arith.muli %sub, %i3 : index
-  %div = arith.divui %mul, %i4 : index
-  %rem = arith.remui %div, %i5 : index
-  %result = arith.index_castui %rem : index to i64
-  return %result : i64
-}
-
-// CHECK-LABEL: @index_binop_canonicalization
-// CHECK: arith.addi {{.*}} : i64
-// CHECK: arith.subi {{.*}} : i64
-// CHECK: arith.muli {{.*}} : i64
-// CHECK: arith.divui {{.*}} : i64
-// CHECK: arith.remui {{.*}} : i64
-// CHECK-NOT: arith.index_castui
+// CHECK: arith.muli %[[ARG1]]
+// CHECK: arith.muli %[[ARG2]]
+// CHECK: arith.addi
+// CHECK: arith.addi %[[ARG1]], %[[ARG2]]
+// CHECK: arith.divui
+// CHECK: arith.addi
+// CHECK: arith.muli %[[ARG3]]
+// CHECK: arith.addi %5, %6 : index

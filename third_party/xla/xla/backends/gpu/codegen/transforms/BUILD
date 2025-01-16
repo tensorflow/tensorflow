@@ -40,6 +40,7 @@ cc_library(
     srcs = [
         "atomic_rmw_utils.cc",
         "convert_float_nvidia.cc",
+        "convert_index_type.cc",
         "convert_xla_gpu_pure_call_ops.cc",
         "erase_dead_functions.cc",
         "expand_float_ops.cc",
