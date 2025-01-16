@@ -38,6 +38,14 @@ class ConditionalThunk final : public Thunk {
   BufferUses buffer_uses() const final;
   ResourceUses resource_uses() const final;
 
+  const std::vector<ThunkExecutor>& branch_executors() const {
+    return branch_executors_;
+  }
+
+  const BufferAllocation::Slice& branch_index_buffer() const {
+    return branch_index_buffer_;
+  }
+
  private:
   ConditionalThunk(Info info, BufferAllocation::Slice branch_index_buffer,
                    std::vector<ThunkExecutor> branch_executors);

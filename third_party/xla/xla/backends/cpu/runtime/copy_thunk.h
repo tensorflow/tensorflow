@@ -50,6 +50,12 @@ class CopyThunk final : public Thunk {
     return {{src_buffer_, BufferUse::kRead}, {dst_buffer_, BufferUse::kWrite}};
   }
 
+  const Shape& src_shape() const { return src_shape_; }
+  const Shape& dst_shape() const { return dst_shape_; }
+
+  const BufferAllocation::Slice& src_buffer() const { return src_buffer_; }
+  const BufferAllocation::Slice& dst_buffer() const { return dst_buffer_; }
+
  private:
   CopyThunk(Info info, BufferAllocation::Slice src_buffer,
             const Shape& src_shape, BufferAllocation::Slice dst_buffer,

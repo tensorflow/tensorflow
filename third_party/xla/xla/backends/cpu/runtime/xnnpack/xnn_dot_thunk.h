@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -45,6 +46,9 @@ class XnnDotThunk final : public XnnFusionThunk {
       BufferAllocation::Slice lhs_buffer, Shape lhs_shape,
       BufferAllocation::Slice rhs_buffer, Shape rhs_shape,
       BufferAllocation::Slice out_buffer, Shape out_shape);
+
+  DotDimensionNumbers dot_dimensions() const { return dot_dimensions_; }
+  DotSlices dot_slices() const { return dot_slices_; }
 
  protected:
   std::string fusion_kind() const final;

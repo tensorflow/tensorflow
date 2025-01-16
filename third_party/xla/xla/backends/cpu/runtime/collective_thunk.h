@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -76,6 +77,10 @@ class CollectiveThunk : public Thunk {
                   OpBuffers op_buffers, OpResources op_resources);
 
   const OpParams& op_params() const { return op_params_; }
+
+  const OpBuffers& op_buffers() const { return op_buffers_; }
+
+  const OpResources& op_resources() const { return op_resources_; }
 
   // Resolves operation's device memory from the buffers and buffer allocations.
   absl::StatusOr<OpDeviceMemory> GetOpDeviceMemory(const ExecuteParams& params);

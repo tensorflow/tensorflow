@@ -50,6 +50,14 @@ class OutfeedThunk final : public Thunk {
   BufferUses buffer_uses() const final;
   ResourceUses resource_uses() const final;
 
+  const std::vector<OutfeedBuffer>& outfeed_buffers() const {
+    return outfeed_buffers_;
+  }
+
+  const OutfeedResources& outfeed_resources() const {
+    return outfeed_resources_;
+  }
+
  private:
   OutfeedThunk(Info info, absl::Span<const OutfeedBuffer> outfeed_buffers,
                OutfeedResources outfeed_resources);

@@ -34,6 +34,9 @@ class AllReduceThunk final : public CollectiveThunk {
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
+  ReductionKind reduction_kind() const { return reduction_kind_; }
+  bool single_replica() const { return single_replica_; }
+
  private:
   AllReduceThunk(Info info, ReductionKind reduction_kind, OpParams op_params,
                  OpBuffers op_buffers, OpResources op_resources,

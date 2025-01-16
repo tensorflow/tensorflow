@@ -63,6 +63,15 @@ class SortThunk final : public Thunk {
 
   BufferUses buffer_uses() const final;
 
+  SortDirection direction() const { return direction_.value(); }
+  int64_t dimension() const { return dimension_; }
+  bool is_stable() const { return is_stable_; }
+  const std::vector<Input>& inputs() const { return inputs_; }
+
+  const std::string& comparator_name() const { return comparator_name_; }
+
+  bool has_less_than() const { return less_than_.ok(); }
+
  private:
   SortThunk(Info info, absl::Span<const Input> inputs, int64_t dimension,
             bool is_stable, LessThan less_than,

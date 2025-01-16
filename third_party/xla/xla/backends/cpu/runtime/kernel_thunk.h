@@ -62,6 +62,20 @@ class KernelThunk : public Thunk {
  public:
   BufferUses buffer_uses() const final;
 
+  const std::string& kernel_name() const { return kernel_name_; }
+  const se::ThreadDim& thread_dim() const { return thread_dim_; }
+  const std::optional<uint64_t>& min_alignment() const {
+    return min_alignment_;
+  }
+
+  const std::vector<BufferAllocation::Slice>& arguments_buffers() const {
+    return arguments_buffers_;
+  }
+
+  const std::vector<BufferAllocation::Slice>& results_buffers() const {
+    return results_buffers_;
+  }
+
  protected:
   tsl::AsyncValueRef<ExecuteEvent> ExecuteInternal(const ExecuteParams& params);
 

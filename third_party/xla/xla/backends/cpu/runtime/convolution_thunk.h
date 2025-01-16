@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -54,24 +55,34 @@ class ConvolutionThunk final : public Thunk {
             {output_buffer_, BufferUse::kWrite}};
   }
 
+  ConvolutionDimensionNumbers dnums() const { return dnums_; }
+  Window window() const { return window_; }
+  int64_t feature_group_count() const { return feature_group_count_; }
+  const Options& options() const { return options_; }
+  BufferAllocation::Slice input_buffer() const { return input_buffer_; }
+  Shape input_shape() const { return input_shape_; }
+  BufferAllocation::Slice kernel_buffer() const { return kernel_buffer_; }
+  Shape kernel_shape() const { return kernel_shape_; }
+  BufferAllocation::Slice output_buffer() const { return output_buffer_; }
+  Shape output_shape() const { return output_shape_; }
+
  private:
-  ConvolutionThunk(Info info, BufferAllocation::Slice input_buffer,
-                   const Shape& input_shape,
-                   BufferAllocation::Slice kernel_buffer,
-                   const Shape& kernel_shape,
-                   BufferAllocation::Slice output_buffer,
-                   const Shape& output_shape, int64_t input_batch,
-                   const absl::InlinedVector<int64_t, 2>& input_dims,
-                   int64_t input_channels,
-                   const absl::InlinedVector<int64_t, 2>& kernel_dims,
-                   int64_t kernel_channels, int64_t kernel_filters,
-                   const absl::InlinedVector<int64_t, 2>& output_dims,
-                   const absl::InlinedVector<int64_t, 2>& strides,
-                   const absl::InlinedVector<int64_t, 2>& padding_before,
-                   const absl::InlinedVector<int64_t, 2>& padding_after,
-                   const absl::InlinedVector<int64_t, 2>& base_dilation,
-                   const absl::InlinedVector<int64_t, 2>& window_dilation,
-                   int64_t feature_group_count, Options options);
+  ConvolutionThunk(
+      Info info, BufferAllocation::Slice input_buffer, const Shape& input_shape,
+      BufferAllocation::Slice kernel_buffer, const Shape& kernel_shape,
+      BufferAllocation::Slice output_buffer, const Shape& output_shape,
+      int64_t input_batch, const absl::InlinedVector<int64_t, 2>& input_dims,
+      int64_t input_channels,
+      const absl::InlinedVector<int64_t, 2>& kernel_dims,
+      int64_t kernel_channels, int64_t kernel_filters,
+      const absl::InlinedVector<int64_t, 2>& output_dims,
+      const absl::InlinedVector<int64_t, 2>& strides,
+      const absl::InlinedVector<int64_t, 2>& padding_before,
+      const absl::InlinedVector<int64_t, 2>& padding_after,
+      const absl::InlinedVector<int64_t, 2>& base_dilation,
+      const absl::InlinedVector<int64_t, 2>& window_dilation,
+      int64_t feature_group_count, Options options,
+      const ConvolutionDimensionNumbers& dnums, const Window& window);
 
   void HandleACLConvolution(const ExecuteParams& params,
                             se::DeviceMemoryBase input,
@@ -137,6 +148,8 @@ class ConvolutionThunk final : public Thunk {
   int64_t feature_group_count_;
   int convolution_rank_;
   Options options_;
+  ConvolutionDimensionNumbers dnums_;
+  Window window_;
 };
 
 }  // namespace xla::cpu

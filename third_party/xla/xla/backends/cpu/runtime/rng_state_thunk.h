@@ -43,6 +43,10 @@ class RngGetAndUpdateStateThunk final : public Thunk {
     return {{state_buffer_, BufferUse::kWrite}};
   }
 
+  int64_t delta() const { return delta_; }
+
+  const BufferAllocation::Slice& state_buffer() const { return state_buffer_; }
+
  private:
   RngGetAndUpdateStateThunk(Info info, BufferAllocation::Slice state_buffer,
                             int64_t delta);
