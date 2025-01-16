@@ -1,28 +1,14 @@
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/python/pjrt_ifrt:pjrt_ifrt.bzl", "pjrt_ifrt_package_groups")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
-
-package_group(
-    name = "friends",
-    includes = [
-        "//xla/python:friends",
-    ],
-    packages = [
-        "//xla/python/...",
-    ],
-)
-
-package_group(
-    name = "internal",
-    packages = [
-        "//xla/python/pjrt_ifrt/...",
-    ],
-)
+# copybara:uncomment load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
+        ":users",
         ":friends",
         ":internal",
     ]),
@@ -31,6 +17,8 @@ package(
 exports_files([
     "BUILD",
 ])
+
+pjrt_ifrt_package_groups()
 
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.
 cc_library(
@@ -455,3 +443,19 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+# copybara:uncomment_begin
+# bzl_library(
+#     name = "pjrt_ifrt_bzl",
+#     srcs = ["pjrt_ifrt.bzl"],
+#     parse_tests = False,
+#     visibility = ["//visibility:private"],
+# )
+#
+# bzl_library(
+#     name = "pjrt_ifrt_google_bzl",
+#     srcs = ["pjrt_ifrt.google.bzl"],
+#     parse_tests = False,
+#     visibility = ["//visibility:private"],
+# )
+# copybara:uncomment_end
