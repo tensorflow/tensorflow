@@ -36,7 +36,7 @@
 #include "xla/python/ifrt_proxy/server/grpc_service_impl.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/ifrt_backend.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
