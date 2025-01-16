@@ -136,10 +136,6 @@ size_t TensorWrapper::GetTensorSize() const {
                          GetDataTypeSize(GetDataType()), std::multiplies<>());
 }
 
-void TensorWrapper::SetDataType(Qnn_DataType_t data_type) {
-  qnn_tensor_.v2.dataType = data_type;
-}
-
 void TensorWrapper::SetTensorData(std::uint32_t bytes, const void* data) {
   if (!IsSubgraphInput() && !IsTensorStatic()) {
     // TODO: error log
