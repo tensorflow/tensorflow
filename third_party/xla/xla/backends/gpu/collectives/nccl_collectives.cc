@@ -117,14 +117,9 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
 static absl::StatusOr<std::vector<ncclUniqueId>> AsNcclUniqueIds(
     const CliqueIds& clique_ids) {
   std::vector<ncclUniqueId> ids;
-  auto ids_vect = clique_ids.data();
-  ids.reserve(ids_vect.size());
-  for (const auto& clique_id : ids_vect) {
-    auto id = AsNcclUniqueId(clique_id);
-    if (!id.ok()) {
-      return id.status();
-    }
-    ids.push_back(id.value());
+  ids.reserve(clique_ids.data().size());
+  for (const CliqueId& clique_id : clique_ids.data()) {
+    TF_ASSIGN_OR_RETURN(ids.emplace_back(), AsNcclUniqueId(clique_id));
   }
   return ids;
 }
