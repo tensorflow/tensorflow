@@ -179,6 +179,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   sol_estimator_defaults->emplace(
       "nccl_op_launch_us",
       absl::StrCat(static_cast<int>(100.0f * kDefaultNcclCostModelCoeff)));
+  // GBytes per second = 10^9 bytes per second
   sol_estimator_defaults->emplace(
       "nic_speed_gbps",
       absl::StrCat(static_cast<int>(55.56f * kDefaultNcclCostModelCoeff)));

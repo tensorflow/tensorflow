@@ -35,7 +35,8 @@ constexpr int64_t kDefaultReduceScatterCombineThreshold = 30 * 1024 * 1024 + 7;
 // Defines the default coefficient for the SoL NCCL collective cost model.
 // Note: XLA flags allow a user to override the default values of the model.
 constexpr float kDefaultNcclCostModelCoeff = 0.45f;
-constexpr int64_t kDefaultNcclCostModelChunkSizeBytes = 4194304;  // 4MB
+// Chunk size is 4MiBytes (4*1024*1024 bytes)
+constexpr int64_t kDefaultNcclCostModelChunkSizeBytes = 4194304;
 constexpr int64_t kDefaultNcclCostModelGPUsPerNode = 8;
 }  // namespace xla
 
