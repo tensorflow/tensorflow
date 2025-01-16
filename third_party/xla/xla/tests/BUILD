@@ -1284,6 +1284,7 @@ xla_test(
 
 CONVOLUTION_TEST_DEPS = [
     ":test_macros_header",
+    "@com_google_googletest//:gtest_main",
     "//xla:array2d",
     "//xla:array4d",
     "//xla:literal",
