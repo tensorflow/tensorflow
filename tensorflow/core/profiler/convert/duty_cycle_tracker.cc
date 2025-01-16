@@ -68,7 +68,9 @@ void DutyCycleTracker::AddInterval(tsl::profiler::Timespan time_span,
     return;
   }
 
-  MergeOrInsert(time_span, active_time_spans_.lower_bound(time_span));
+  auto hint = active_time_spans_.lower_bound(time_span);
+  if (hint != active_time_spans_.begin()) --hint;
+  MergeOrInsert(time_span, hint);
 }
 
 void DutyCycleTracker::Union(const DutyCycleTracker& other) {
@@ -76,6 +78,7 @@ void DutyCycleTracker::Union(const DutyCycleTracker& other) {
   if (other.active_time_spans_.empty()) return;
   ActiveTimeSpans::const_iterator hint_it =
       active_time_spans_.lower_bound(*other.active_time_spans_.begin());
+  if (hint_it != active_time_spans_.begin()) --hint_it;
   for (const auto& interval : other.active_time_spans_) {
     hint_it = MergeOrInsert(interval, hint_it);
   }
