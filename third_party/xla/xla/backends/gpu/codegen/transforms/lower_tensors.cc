@@ -48,6 +48,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
@@ -847,36 +848,63 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     bool is_supported_f64_atomic =
         element_type.isF64() &&
         cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::PASCAL_);
-    auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type);
-    bool is_supported_vector_atomic =
-        vector_type && vector_type.getElementType().isF32() &&
-        (vector_type.getNumElements() == 2 ||
-         vector_type.getNumElements() == 4) &&
-        cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
+    if (auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type)) {
+      return emitNvidiaVectorizedAtomicFAdd(
+          loc, modifier_arg, addr, vector_type, cuda_compute_capability, b);
+    }
     if (!element_type.isF32() && !is_supported_f16_atomic &&
-        !is_supported_bf16_atomic && !is_supported_f64_atomic &&
-        !is_supported_vector_atomic) {
+        !is_supported_bf16_atomic && !is_supported_f64_atomic) {
+      return failure();
+    }
+
+    b.create<ml::AtomicRMWOp>(loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
+                              ml::AtomicOrdering::seq_cst, sync_scope);
+    return success();
+  }
+
+  LogicalResult emitNvidiaVectorizedAtomicFAdd(
+      Location loc, Value modifier_arg, Value addr,
+      mlir::VectorType vector_type,
+      const se::CudaComputeCapability& cuda_compute_capability,
+      OpBuilder& b) const {
+    // Hopper supports 2-element and 4-element vectors of f32.
+    if (!(vector_type && vector_type.getElementType().isF32() &&
+          (vector_type.getNumElements() == 2 ||
+           vector_type.getNumElements() == 4) &&
+          cuda_compute_capability.IsAtLeast(
+              se::CudaComputeCapability::HOPPER))) {
       return failure();
     }
 
     // TODO(389862360): Currently vectorized AtomicRMWOp lowers incorrectly to
-    // PTX due to a bug in NVPTX. We scalarize it for now.
-    if (is_supported_vector_atomic) {
-      mlir::ImplicitLocOpBuilder imp_b(loc, b);
-      auto base = GetLinearIndex(op.getIndices(), imp_b);
-      for (int i = 0; i < vector_type.getNumElements(); ++i) {
-        auto modifier_arg_i = imp_b.create<vector::ExtractOp>(modifier_arg, i);
-        auto offset = imp_b.create<ml::ConstantOp>(base.getType(), i);
-        auto addr_i = imp_b.create<ml::AddOp>(base, offset);
-        Value gep = CreateGep(op.getInput(), addr_i, imp_b);
-        imp_b.create<ml::AtomicRMWOp>(ml::AtomicBinOp::fadd, gep,
-                                      modifier_arg_i,
-                                      ml::AtomicOrdering::seq_cst, sync_scope);
-      }
-      return success();
+    // PTX due to a bug in NVPTX. We use inline asm to work around this.
+    auto asmDialectAttr =
+        ml::AsmDialectAttr::get(b.getContext(), ml::AsmDialect::AD_ATT);
+    std::string asm_string;
+    std::string constraints;
+    if (vector_type.getNumElements() == 2) {
+      asm_string = "atom.global.v2.f32.add {$0, $1}, [$2], {$3, $4};";
+      constraints = "=f,=f,l,f,f";
+    } else if (vector_type.getNumElements() == 4) {
+      asm_string =
+          "atom.global.v4.f32.add {$0, $1, $2, $3}, [$4], {$5, $6, $7, $8};";
+      constraints = "=f,=f,=f,=f,l,f,f,f,f";
     }
-    b.create<ml::AtomicRMWOp>(loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
-                              ml::AtomicOrdering::seq_cst, sync_scope);
+    SmallVector<Value> asm_operands{addr};
+    for (int i = 0; i < vector_type.getNumElements(); ++i) {
+      asm_operands.push_back(b.create<vector::ExtractOp>(
+          loc, modifier_arg,
+          b.create<arith::ConstantIndexOp>(loc, i).getResult()));
+    }
+    SmallVector<Type> outputTypes(vector_type.getNumElements(),
+                                  vector_type.getElementType());
+    auto outputType =
+        ml::LLVMStructType::getLiteral(b.getContext(), outputTypes);
+    b.create<ml::InlineAsmOp>(loc, outputType, asm_operands, asm_string,
+                              constraints,
+                              /*has_side_effects=*/true,
+                              /*is_align_stack=*/true, asmDialectAttr,
+                              /*operand_attrs=*/mlir::ArrayAttr());
     return success();
   }
 
@@ -896,8 +924,8 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     auto addr_type = mlir::cast<ml::LLVMPointerType>(addr.getType());
     // adds to shared memory are always atomic.
     if (addr_type.getAddressSpace() != kSharedMemory) {
-      // The compiler will only generate a global_atomic_fadd if the pointer is
-      // in global addrspace (1)
+      // The compiler will only generate a global_atomic_fadd if the pointer
+      // is in global addrspace (1)
       addr = b.create<ml::AddrSpaceCastOp>(
           loc, ml::LLVMPointerType::get(b.getContext(), kGlobalMemory), addr);
     }
@@ -989,9 +1017,9 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   //     pointed to by output_address, and compares the value with old_output.
   //     If the two values equal, new_output is written to the same memory
   //     location and true is returned to indicate that the atomic operation
-  //     succeeds. Otherwise, the new value read from the memory is returned. In
-  //     this case, the new value is copied to old_output, and steps 2. and 3.
-  //     are repeated until atomicCAS succeeds.
+  //     succeeds. Otherwise, the new value read from the memory is returned.
+  //     In this case, the new value is copied to old_output, and steps 2.
+  //     and 3. are repeated until atomicCAS succeeds.
   //
   // On Nvidia GPUs, atomicCAS can only operate on 32 bit and 64 bit integers.
   // If the element type of the binary operation is 32 bits or 64 bits, the
@@ -1002,8 +1030,8 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   // by the original atomic binary operation. We mask off the last two bits of
   // the output_address and use the result as an address to read the 32 bit
   // values from the memory. This can avoid out of bound memory accesses if
-  // tensor buffers are 4 byte aligned and have a size of 4N, an assumption that
-  // the runtime can guarantee.
+  // tensor buffers are 4 byte aligned and have a size of 4N, an assumption
+  // that the runtime can guarantee.
   void rewriteAsAtomicCAS(AtomicRMWOp op,
                           mlir::PatternRewriter& rewriter) const {
     Location loc = op.getLoc();
@@ -1037,9 +1065,9 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       Value index = rewriter.create<ml::MulOp>(
           loc, addr_offset,
           rewriter.create<ml::ConstantOp>(loc, addr_int_ty, -1));
-      addr =
-          rewriter.create<ml::GEPOp>(loc, addr.getType(), rewriter.getI8Type(),
-                                     addr, index, /*inbounds=*/true);
+      addr = rewriter.create<ml::GEPOp>(loc, addr.getType(),
+                                        rewriter.getI8Type(), addr, index,
+                                        /*inbounds=*/true);
 
       // Calculate the bit shift (assume little-endianness).
       Value offset = rewriter.create<ml::TruncOp>(loc, atomic_ty, addr_offset);
