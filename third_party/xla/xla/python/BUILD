@@ -696,6 +696,7 @@ cc_library(
         # placeholder for index annotation deps
         "@com_google_absl//absl/types:span",
         "@nanobind",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
