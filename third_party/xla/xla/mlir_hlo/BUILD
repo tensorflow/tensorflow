@@ -1083,6 +1083,7 @@ cc_library(
         "stablehlo_ext/transforms/chlo_recompose_ops.cpp",
         "stablehlo_ext/transforms/sdy_refine_shapes.cpp",
         "stablehlo_ext/transforms/stablehlo_canonicalize_dynamism.cpp",
+        "stablehlo_ext/transforms/stablehlo_prepare_for_hlo_export.cpp",
         "stablehlo_ext/transforms/stablehlo_refine_shapes.cpp",
     ],
     hdrs = [

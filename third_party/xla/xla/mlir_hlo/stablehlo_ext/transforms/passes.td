@@ -37,3 +37,17 @@ def ChloRecomposeOpsPass : Pass<"stablehlo-ext-chlo-recompose-ops", "ModuleOp"> 
   }];
   let dependentDialects = ["chlo::ChloDialect"];
 }
+
+def StablehloPrepareForHloExportPass : Pass<"stablehlo-ext-prepare-for-hlo-export", "mlir::func::FuncOp"> {
+  let summary = "Prepare StableHLO for HLO export";
+
+  let description = [{
+    This pass transforms functions in preparation for exporting to HLO. This
+
+    * converts splat constants to constants and broadcasts to reduce size of
+      and speedup the creation of the generated proto during export.
+
+    Note: The result of this pass need not be a module in canonical form and
+    canonicalization may undo transformations.
+  }];
+}
