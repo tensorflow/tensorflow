@@ -102,34 +102,57 @@ TEST(NanoIfrtClientTest, BigResult) {
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
 
-static constexpr absl::string_view kAddScalars =
-    R"(module {
+static absl::StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> Compile(
+    NanoIfrtClient* client, absl::string_view program) {
+  auto compiler = client->GetDefaultCompiler();
+
+  mlir::MLIRContext context;
+  auto module = xla::ParseMlirModuleString(program, context);
+
+  auto compile_options =
+      std::make_unique<ifrt::XlaCompileOptions>(xla::CompileOptions());
+  compile_options->compile_options.compile_portable_executable = true;
+
+  return compiler->Compile(std::make_unique<ifrt::HloProgram>(**module),
+                           std::move(compile_options));
+}
+
+static ifrt::DType DTypeFromPrimitiveType(PrimitiveType type) {
+  switch (type) {
+    case PrimitiveType::F32:
+      return ifrt::DType(ifrt::DType::kF32);
+    default:
+      return ifrt::DType(ifrt::DType::kInvalid);
+  }
+}
+
+static absl::StatusOr<tsl::RCReference<ifrt::Array>> MakeArrayFromLiteral(
+    NanoIfrtClient* client, const Literal& literal,
+    std::shared_ptr<const ifrt::Sharding> sharding) {
+  return client->MakeArrayFromHostBuffer(
+      literal.untyped_data(),
+      DTypeFromPrimitiveType(literal.shape().element_type()),
+      ifrt::Shape(literal.shape().dimensions()),
+      /*byte_strides=*/std::nullopt, std::move(sharding),
+      ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
+      /*on_done_with_host_buffer=*/{});
+}
+
+static void BM_IfRtAddScalars(benchmark::State& state) {
+  constexpr absl::string_view program =
+      R"(module {
         func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
           %0 = mhlo.add %arg0, %arg1 : tensor<f32>
           return %0 : tensor<f32>
         }
       })";
 
-static void BM_IfRtAddScalars(benchmark::State& state) {
   auto client = NanoIfrtClient::Create();
-  auto compiler = client->GetDefaultCompiler();
-
-  mlir::MLIRContext context;
-  auto module = xla::ParseMlirModuleString(kAddScalars, context);
-
-  auto compile_options =
-      std::make_unique<ifrt::XlaCompileOptions>(xla::CompileOptions());
-  compile_options->compile_options.compile_portable_executable = true;
-
-  auto executable = compiler->Compile(
-      std::make_unique<ifrt::HloProgram>(**module), std::move(compile_options));
+  auto executable = Compile(client.get(), program);
 
   ifrt::Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const ifrt::Sharding> sharding =
       ifrt::SingleDeviceSharding::Create(device, ifrt::MemoryKind());
-
-  ifrt::DType dtype(ifrt::DType::kF32);
-  ifrt::Shape shape({});
 
   ifrt::ExecuteOptions execute_options;
   execute_options.fill_status = true;
@@ -138,19 +161,9 @@ static void BM_IfRtAddScalars(benchmark::State& state) {
   Literal b = LiteralUtil::CreateR0<float>(2.0f);
 
   for (auto _ : state) {
-    auto a_array = client->MakeArrayFromHostBuffer(
-        a.untyped_data(), dtype, shape,
-        /*byte_strides=*/std::nullopt, sharding,
-        ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-        /*on_done_with_host_buffer=*/{});
-    CHECK_OK(a_array);
-
-    auto b_array = client->MakeArrayFromHostBuffer(
-        b.untyped_data(), dtype, shape,
-        /*byte_strides=*/std::nullopt, sharding,
-        ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-        /*on_done_with_host_buffer=*/{});
-    CHECK_OK(b_array);
+    auto a_array = MakeArrayFromLiteral(client.get(), a, sharding);
+    auto b_array = MakeArrayFromLiteral(client.get(), b, sharding);
+    CHECK(a_array.ok() && b_array.ok());
 
     std::array<tsl::RCReference<ifrt::Array>, 2> args = {std::move(*a_array),
                                                          std::move(*b_array)};
@@ -164,6 +177,60 @@ static void BM_IfRtAddScalars(benchmark::State& state) {
 }
 
 BENCHMARK(BM_IfRtAddScalars);
+
+static void BM_IfRtAddManyScalars(benchmark::State& state) {
+  constexpr absl::string_view program =
+      R"(module {
+        func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>)
+           -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>,
+               tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>)
+        {
+          %0 = mhlo.add %arg0, %arg1 : tensor<f32>
+          %1 = mhlo.add %arg0, %0 : tensor<f32>
+          %2 = mhlo.add %arg0, %1 : tensor<f32>
+          %3 = mhlo.add %arg0, %2 : tensor<f32>
+          %4 = mhlo.add %arg0, %3 : tensor<f32>
+          %5 = mhlo.add %arg0, %4 : tensor<f32>
+          %6 = mhlo.add %arg0, %5 : tensor<f32>
+          %7 = mhlo.add %arg0, %6 : tensor<f32>
+          %8 = mhlo.add %arg0, %7 : tensor<f32>
+          %9 = mhlo.add %arg0, %8 : tensor<f32>
+          return %0, %1, %2, %3, %4, %5, %6, %7, %8, %9
+            : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>,
+              tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
+        }
+      })";
+
+  auto client = NanoIfrtClient::Create();
+  auto executable = Compile(client.get(), program);
+
+  ifrt::Device* device = client->addressable_devices().at(0);
+  std::shared_ptr<const ifrt::Sharding> sharding =
+      ifrt::SingleDeviceSharding::Create(device, ifrt::MemoryKind());
+
+  ifrt::ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  Literal a = LiteralUtil::CreateR0<float>(1.0f);
+  Literal b = LiteralUtil::CreateR0<float>(2.0f);
+
+  for (auto _ : state) {
+    auto a_array = MakeArrayFromLiteral(client.get(), a, sharding);
+    auto b_array = MakeArrayFromLiteral(client.get(), b, sharding);
+    CHECK(a_array.ok() && b_array.ok());
+
+    std::array<tsl::RCReference<ifrt::Array>, 2> args = {std::move(*a_array),
+                                                         std::move(*b_array)};
+
+    auto result = (*executable)
+                      ->Execute(absl::MakeSpan(args), execute_options,
+                                /*devices=*/std::nullopt);
+    CHECK_OK(result->status.Await());
+    CHECK_EQ(result->outputs.size(), 10);
+  }
+}
+
+BENCHMARK(BM_IfRtAddManyScalars);
 
 }  // namespace xla::cpu
 
