@@ -65,7 +65,8 @@ class WhileLoopSimplifier : public HloModulePass {
       : simplify_compare_instrs_(simplify_compare_instrs) {}
 
   ~WhileLoopSimplifier() override = default;
-  absl::string_view name() const override { return "simplify-while-loops"; }
+  static constexpr absl::string_view kName = "simplify-while-loops";
+  absl::string_view name() const override { return kName; }
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
