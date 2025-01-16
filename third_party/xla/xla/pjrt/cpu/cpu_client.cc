@@ -960,6 +960,17 @@ TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   return BufferFromHostLiteral(literal, memory_space->devices()[0]);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
+                                     PjRtMemorySpace* memory_space,
+                                     const Layout* device_layout) {
+  if (device_layout == nullptr || !literal.shape().has_layout() ||
+      LayoutUtil::Equal(literal.shape().layout(), *device_layout)) {
+    return BufferFromHostLiteral(literal, memory_space);
+  }
+  return BufferFromHostLiteral(literal.Relayout(*device_layout), memory_space);
+}
+
 TfrtCpuBuffer::TfrtCpuBuffer(
     Shape on_device_shape,
     std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,

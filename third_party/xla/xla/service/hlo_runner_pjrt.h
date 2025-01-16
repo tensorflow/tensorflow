@@ -125,9 +125,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
 
   int device_count() const override { return pjrt_client_->device_count(); }
 
-  bool HasProperty(const HloRunnerPropertyTag::Type tag) const override {
-    return false;
-  }
+  bool HasProperty(HloRunnerPropertyTag::Type tag) const override;
 
  private:
   absl::StatusOr<CompileOptions> GenerateDefaultCompileOptions(

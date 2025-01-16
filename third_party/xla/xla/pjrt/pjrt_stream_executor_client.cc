@@ -100,6 +100,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/event_pool.h"
@@ -1191,6 +1192,17 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
       "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "
       "platform: ",
       platform_name()));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
+                                                PjRtMemorySpace* memory_space,
+                                                const Layout* device_layout) {
+  if (device_layout == nullptr || !literal.shape().has_layout() ||
+      LayoutUtil::Equal(literal.shape().layout(), *device_layout)) {
+    return BufferFromHostLiteral(literal, memory_space);
+  }
+  return BufferFromHostLiteral(literal.Relayout(*device_layout), memory_space);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
