@@ -11,4 +11,540 @@ diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
  * (C3) `same(shape(updates...))`.
  * (C4) `shape(updates[0]) = combine(update_scatter_dim_sizes,
         update_window_dim_sizes)` where:
+diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+--- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
++++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+@@ -3927,3 +3927,68 @@
+   %result = "chlo.square"(%arg) : (tensor<f32>) -> tensor<f32>
+   func.return %result : tensor<f32>
+ }
++
++// -----
++
++// CHECK-LABEL: @ragged_dot_mode_1
++// CHECK-SAME:  (%[[ARG_0:.*]]: tensor<2x11x5xf32>, %[[ARG_1:.*]]: tensor<3x2x5x7xf32>, %[[ARG_2:.*]]: tensor<3xi64>) -> tensor<2x11x7xf32> {
++// CHECK: %[[VAL_0:.*]] = stablehlo.iota dim = 1 : tensor<1x11x1xi64>
++// CHECK: %[[VAL_C:.*]] = stablehlo.constant dense<0> : tensor<1xi64>
++// CHECK: %[[VAL_CST:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<2x11x7xf32>
++// CHECK: %[[VAL_CST_0:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<2x11x7xf32>
++// CHECK: %[[VAL_1:.*]] = stablehlo.slice %[[ARG_2]] [0:1] : (tensor<3xi64>) -> tensor<1xi64>
++// CHECK: %[[VAL_2:.*]] = stablehlo.broadcast_in_dim %[[VAL_C]], dims = [0] : (tensor<1xi64>) -> tensor<1x11x1xi64>
++// CHECK: %[[VAL_3:.*]] = stablehlo.compare  LE, %[[VAL_2]], %[[VAL_0]] : (tensor<1x11x1xi64>, tensor<1x11x1xi64>) -> tensor<1x11x1xi1>
++// CHECK: %[[VAL_4:.*]] = stablehlo.add %[[VAL_C]], %[[VAL_1]] : tensor<1xi64>
++// CHECK: %[[VAL_5:.*]] = stablehlo.broadcast_in_dim %[[VAL_4]], dims = [0] : (tensor<1xi64>) -> tensor<1x11x1xi64>
++// CHECK: %[[VAL_6:.*]] = stablehlo.compare  LT, %[[VAL_0]], %[[VAL_5]] : (tensor<1x11x1xi64>, tensor<1x11x1xi64>) -> tensor<1x11x1xi1>
++// CHECK: %[[VAL_7:.*]] = stablehlo.and %[[VAL_3]], %[[VAL_6]] : tensor<1x11x1xi1>
++// CHECK: %[[VAL_8:.*]] = stablehlo.broadcast_in_dim %[[VAL_7]], dims = [0, 1, 2] : (tensor<1x11x1xi1>) -> tensor<2x11x7xi1>
++// CHECK: %[[VAL_9:.*]] = stablehlo.slice %[[ARG_1]] [0:1, 0:2, 0:5, 0:7] : (tensor<3x2x5x7xf32>) -> tensor<1x2x5x7xf32>
++// CHECK: %[[VAL_10:.*]] = stablehlo.reshape %[[VAL_9]] : (tensor<1x2x5x7xf32>) -> tensor<2x5x7xf32>
++// CHECK: %[[VAL_11:.*]] = stablehlo.dot_general %[[ARG_0]], %[[VAL_10]], batching_dims = [0] x [0], contracting_dims = [2] x [1], precision = [DEFAULT, DEFAULT] : (tensor<2x11x5xf32>, tensor<2x5x7xf32>) -> tensor<2x11x7xf32>
++// CHECK: %[[VAL_12:.*]] = stablehlo.select %[[VAL_8]], %[[VAL_11]], %[[VAL_CST_0]] : tensor<2x11x7xi1>, tensor<2x11x7xf32>
++// CHECK: %[[VAL_13:.*]] = stablehlo.add %[[VAL_CST]], %[[VAL_12]] : tensor<2x11x7xf32>
++// CHECK: %[[VAL_14:.*]] = stablehlo.add %[[VAL_C]], %[[VAL_1]] : tensor<1xi64>
++// CHECK: %[[VAL_15:.*]] = stablehlo.slice %[[ARG_2]] [1:2] : (tensor<3xi64>) -> tensor<1xi64>
++// CHECK: %[[VAL_16:.*]] = stablehlo.broadcast_in_dim %[[VAL_14]], dims = [0] : (tensor<1xi64>) -> tensor<1x11x1xi64>
++// CHECK: %[[VAL_17:.*]] = stablehlo.compare  LE, %[[VAL_16]], %[[VAL_0]] : (tensor<1x11x1xi64>, tensor<1x11x1xi64>) -> tensor<1x11x1xi1>
++// CHECK: %[[VAL_18:.*]] = stablehlo.add %[[VAL_14]], %[[VAL_15]] : tensor<1xi64>
++// CHECK: %[[VAL_19:.*]] = stablehlo.broadcast_in_dim %[[VAL_18]], dims = [0] : (tensor<1xi64>) -> tensor<1x11x1xi64>
++// CHECK: %[[VAL_20:.*]] = stablehlo.compare  LT, %[[VAL_0]], %[[VAL_19]] : (tensor<1x11x1xi64>, tensor<1x11x1xi64>) -> tensor<1x11x1xi1>
++// CHECK: %[[VAL_21:.*]] = stablehlo.and %[[VAL_17]], %[[VAL_20]] : tensor<1x11x1xi1>
++// CHECK: %[[VAL_22:.*]] = stablehlo.broadcast_in_dim %[[VAL_21]], dims = [0, 1, 2] : (tensor<1x11x1xi1>) -> tensor<2x11x7xi1>
++// CHECK: %[[VAL_23:.*]] = stablehlo.slice %[[ARG_1]] [1:2, 0:2, 0:5, 0:7] : (tensor<3x2x5x7xf32>) -> tensor<1x2x5x7xf32>
++// CHECK: %[[VAL_24:.*]] = stablehlo.reshape %[[VAL_23]] : (tensor<1x2x5x7xf32>) -> tensor<2x5x7xf32>
++// CHECK: %[[VAL_25:.*]] = stablehlo.dot_general %[[ARG_0]], %[[VAL_24]], batching_dims = [0] x [0], contracting_dims = [2] x [1], precision = [DEFAULT, DEFAULT] : (tensor<2x11x5xf32>, tensor<2x5x7xf32>) -> tensor<2x11x7xf32>
++// CHECK: %[[VAL_26:.*]] = stablehlo.select %[[VAL_22]], %[[VAL_25]], %[[VAL_CST_0]] : tensor<2x11x7xi1>, tensor<2x11x7xf32>
++// CHECK: %[[VAL_27:.*]] = stablehlo.add %[[VAL_13]], %[[VAL_26]] : tensor<2x11x7xf32>
++// CHECK: %[[VAL_28:.*]] = stablehlo.add %[[VAL_14]], %[[VAL_15]] : tensor<1xi64>
++// CHECK: %[[VAL_29:.*]] = stablehlo.slice %[[ARG_2]] [2:3] : (tensor<3xi64>) -> tensor<1xi64>
++// CHECK: %[[VAL_30:.*]] = stablehlo.broadcast_in_dim %[[VAL_28]], dims = [0] : (tensor<1xi64>) -> tensor<1x11x1xi64>
++// CHECK: %[[VAL_31:.*]] = stablehlo.compare  LE, %[[VAL_30]], %[[VAL_0]] : (tensor<1x11x1xi64>, tensor<1x11x1xi64>) -> tensor<1x11x1xi1>
++// CHECK: %[[VAL_32:.*]] = stablehlo.add %[[VAL_28]], %[[VAL_29]] : tensor<1xi64>
++// CHECK: %[[VAL_33:.*]] = stablehlo.broadcast_in_dim %[[VAL_32]], dims = [0] : (tensor<1xi64>) -> tensor<1x11x1xi64>
++// CHECK: %[[VAL_34:.*]] = stablehlo.compare  LT, %[[VAL_0]], %[[VAL_33]] : (tensor<1x11x1xi64>, tensor<1x11x1xi64>) -> tensor<1x11x1xi1>
++// CHECK: %[[VAL_35:.*]] = stablehlo.and %[[VAL_31]], %[[VAL_34]] : tensor<1x11x1xi1>
++// CHECK: %[[VAL_36:.*]] = stablehlo.broadcast_in_dim %[[VAL_35]], dims = [0, 1, 2] : (tensor<1x11x1xi1>) -> tensor<2x11x7xi1>
++// CHECK: %[[VAL_37:.*]] = stablehlo.slice %[[ARG_1]] [2:3, 0:2, 0:5, 0:7] : (tensor<3x2x5x7xf32>) -> tensor<1x2x5x7xf32>
++// CHECK: %[[VAL_38:.*]] = stablehlo.reshape %[[VAL_37]] : (tensor<1x2x5x7xf32>) -> tensor<2x5x7xf32>
++// CHECK: %[[VAL_39:.*]] = stablehlo.dot_general %[[ARG_0]], %[[VAL_38]], batching_dims = [0] x [0], contracting_dims = [2] x [1], precision = [DEFAULT, DEFAULT] : (tensor<2x11x5xf32>, tensor<2x5x7xf32>) -> tensor<2x11x7xf32>
++// CHECK: %[[VAL_40:.*]] = stablehlo.select %[[VAL_36]], %[[VAL_39]], %[[VAL_CST_0]] : tensor<2x11x7xi1>, tensor<2x11x7xf32>
++// CHECK: %[[VAL_41:.*]] = stablehlo.add %[[VAL_27]], %[[VAL_40]] : tensor<2x11x7xf32>
++// CHECK: %[[VAL_42:.*]] = stablehlo.add %[[VAL_28]], %[[VAL_29]] : tensor<1xi64>
++func.func @ragged_dot_mode_1(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3x2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<2x11x7xf32> {
++  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
++    ragged_dot_dimension_numbers = #chlo.ragged_dot<
++      lhs_batching_dimensions = [0],
++      rhs_batching_dimensions = [1],
++      lhs_contracting_dimensions = [2],
++      rhs_contracting_dimensions = [2],
++      lhs_ragged_dimensions = [1],
++      rhs_group_dimensions = [0]
++    >,
++    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
++  } : (tensor<2x11x5xf32>, tensor<3x2x5x7xf32>, tensor<3xi64>) -> tensor<2x11x7xf32>
++  func.return %0 : tensor<2x11x7xf32>
++}
+diff --ruN a/stablehlo/stablehlo/tests/interpret/chlo/ragged_dot.mlir b/stablehlo/stablehlo/tests/interpret/chlo/ragged_dot.mlir
+--- stablehlo/stablehlo/tests/interpret/chlo/ragged_dot.mlir
++++ stablehlo/stablehlo/tests/interpret/chlo/ragged_dot.mlir
+@@ -0,0 +1,189 @@
++// RUN: stablehlo-opt --chlo-legalize-to-stablehlo --split-input-file --verify-diagnostics %s > %t.mlir
++// RUN: stablehlo-translate --interpret --split-input-file %t.mlir
++
++func.func @ragged_dot_mode_1() {
++  %lhs = stablehlo.constant dense<
++    [
++      [ -0.0999976546, -0.0605386607, 0.126681596, 0.0375950411, 0.0598301813 ],
++      [ -0.0343122408, -0.0858866125, 0.103659429, 0.103788935, 0.180407882 ],
++      [ 0.0150506198, 0.055824928, 0.149289608, -0.0896283686, -0.0839615092 ],
++      [ 0.0589100644, 0.101344816, -0.097690545, 0.0150246918, -0.0799473301 ],
++      [ 0.0252457932, 0.106031813, 0.076692991, 0.179130971, 0.153850079 ],
++      [ 0.0580786392, -0.0724105313, 0.0961757079, 0.0247998089, 0.110357188 ],
++      [ 0.173096269, 0.128659427, -0.0212640986, -0.0857606456, 0.120824583 ],
++      [ -0.00152973086, 0.0897915736, 0.126923144, 0.197311223, 0.00960160792 ],
++      [ -0.0258883312, 0.194765091, 0.11679814, 0.126006752, 0.0954555795 ],
++      [ -0.0781942382, 0.0894904211, 0.165412158, -0.0181870088, 0.0309234336 ],
++      [ 0.129948437, 0.0433195308, -0.028667666, -0.0175279453, 0.00777949393 ]
++    ]> : tensor<11x5xf32>
++  %rhs = stablehlo.constant dense<[
++    [
++      [ 0.186608255, 0.124487795, 0.0663751587, 0.167221248, 0.0874548, 0.152611881, -0.0520697422 ],
++      [ -0.0361745432, 0.114412986, -0.0608718246, -0.0727029, -0.0176235586, -0.0991001204, 0.0242879838 ],
++      [ -0.0919371173, 0.112945892, 0.181369215, -0.0280267522, -0.0457312278, -0.00473813713, 0.166097224 ],
++      [ 0.0956176, -0.0548994839, 0.104403876, 0.0157444105, 0.0163175985, 0.0499223098, -0.0557401 ],
++      [ 0.076156, 0.153672695, 0.0770325884, 0.186622649, 0.066843845, -0.0555545315, 0.194991559 ]
++    ],
++    [
++      [ 0.00485724211, 0.0356900468, 0.142683387, 0.179502338, 0.0954938307, -0.0354254842, 0.103877716 ],
++      [ 0.172676593, -0.0249623209, 0.158257961, 0.0413787, 0.0517867729, 0.0801181123, 0.14526847 ],
++      [ 0.126753062, 0.0386734977, 0.185410261, 0.0898216143, 0.0317991, 0.14740923, 0.106694289 ],
++      [ 0.110662006, 0.196143657, 0.186324477, 0.155380905, -0.0132051334, 0.0612277314, 0.054330416 ],
++      [ -0.0689698234, 0.0242085531, 0.073015, 0.162969738, 0.0320116058, 0.118924297, 0.160779119 ]
++    ],
++    [
++      [ -0.0998214856, -0.0997363, 0.132005602, 0.118200503, -0.00424671918, 0.025317125, 0.104748271 ],
++      [ 0.104168601, -0.0384214334, 0.150926, 0.112676181, 0.14861238, -0.071635358, -0.0754787177 ],
++      [ 0.129201442, 0.088871561, -0.0358443409, -0.0359359607, -0.0756817609, 0.0166469738, 0.185647905 ],
++      [ 0.184263527, 0.0169560835, -0.0192355737, 0.10765069, -0.0147894919, 0.13305977, 0.135159582 ],
++      [ 0.0267379507, -0.0153532401, -0.0418097563, -0.096605137, -0.0424528457, 0.194970757, -0.0267837271 ]
++    ]]> : tensor<3x5x7xf32>
++  %group_sizes = stablehlo.constant dense<[4, 4, 3]> : tensor<3xi64>
++  %result = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
++    ragged_dot_dimension_numbers = #chlo.ragged_dot<
++      lhs_batching_dimensions = [],
++      rhs_batching_dimensions = [],
++      lhs_contracting_dimensions = [1],
++      rhs_contracting_dimensions = [1],
++      lhs_ragged_dimensions = [0],
++      rhs_group_dimensions = [0]
++    >,
++    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
++  } : (tensor<11x5xf32>, tensor<3x5x7xf32>, tensor<3xi64>) -> tensor<11x7xf32>
++  check.expect_almost_eq_const %result, dense<[
++    [-0.0199659951, 0.00206358638, 0.0285578221, -0.00411329232, -0.00885893404, -0.0113086831, 0.0343487822],
++    [0.0108370036, 0.0196357146, 0.0464844741, 0.032903526, 0.00752512738, -0.00205732603, 0.0463109687],
++    [-0.0279003512, 0.0171403233, 0.00885203853, -0.022806216, -0.0135696121, -0.00375272054, 0.0139928926],
++    [0.0116565451, -0.00521556707, -0.0245668497, -0.00946252606, 2.734600e-03, 0.00460146647, -0.0332586318],
++    [0.0373648889, 0.040080104, 0.0792120546, 0.0687142611, 0.0129001699, 0.048170276, 6.067640e-02],
++    [-0.00489785476, 0.0151357278, 0.0273378156, 0.0379059538, 0.0080597708, 0.0209609158, 0.0248660222],
++    [0.00253825542, -1.175260e-02, 0.0339594558, 0.0408501513, 0.0275165718, 0.0101594552, 0.0491689071],
++    [5.275800e-02, 0.0415463448, 0.0749897882, 0.0470644757, 0.00624182029, 0.0391805507, 0.03869069],
++    [0.0637338459, 0.00614991458, 0.0153763723, 0.0190313365, 0.0142990183, 0.0227143262, 0.0187453162],
++    [0.0359746702, 0.0182777364, -0.00368779944, -0.0100486111, 6.89582666E-5, -0.00202751439, 0.0124766938],
++    [-0.0151847685, -0.0175893605, 0.0247314386, 0.018632818, 0.00798455066, -0.00110600982, 0.00244264561]
++  ]> : tensor<11x7xf32>
++  func.return
++}
++
++// -----
++
++func.func @ragged_dot_mode_1_batching() {
++  %lhs = stablehlo.constant dense<[
++    [
++      [ -0.0999976546, -0.0605386607, 0.126681596, 0.0375950411, 0.0598301813 ],
++      [ -0.0343122408, -0.0858866125, 0.103659429, 0.103788935, 0.180407882 ],
++      [ 0.0150506198, 0.055824928, 0.149289608, -0.0896283686, -0.0839615092 ],
++      [ 0.0589100644, 0.101344816, -0.097690545, 0.0150246918, -0.0799473301 ],
++      [ 0.0252457932, 0.106031813, 0.076692991, 0.179130971, 0.153850079 ],
++      [ 0.0580786392, -0.0724105313, 0.0961757079, 0.0247998089, 0.110357188 ],
++      [ 0.173096269, 0.128659427, -0.0212640986, -0.0857606456, 0.120824583 ],
++      [ -0.00152973086, 0.0897915736, 0.126923144, 0.197311223, 0.00960160792 ],
++      [ -0.0258883312, 0.194765091, 0.11679814, 0.126006752, 0.0954555795 ],
++      [ -0.0781942382, 0.0894904211, 0.165412158, -0.0181870088, 0.0309234336 ],
++      [ 0.129948437, 0.0433195308, -0.028667666, -0.0175279453, 0.00777949393 ]
++    ],
++    [
++      [ -0.0500478409, 0.0459552184, 0.16929689, 0.172762454, -0.0818307 ],
++      [ 0.171395928, 0.0513568744, 0.0548876, -0.00429011881, 0.195992649 ],
++      [ 0.0481930152, -0.0201566443, -0.0727801323, 0.184329301, -0.0778752789 ],
++      [ 0.0502121374, 0.0152426511, -0.0168754607, 0.174145252, 0.0589242205 ],
++      [ 0.0393337533, 0.182294011, -0.0849748, 0.128454268, 0.131061375 ],
++      [ 0.148345202, -0.0623903871, -0.0952396914, 0.10653659, 0.160474151 ],
++      [ 0.0888630375, 0.120867364, 0.117623605, 0.199837387, 0.166571677 ],
++      [ -0.0300415382, -0.00810345262, 0.00530457497, 0.0539821163, 0.0773340687 ],
++      [ 0.153794467, 0.0236242339, 0.152453214, -0.0192048177, 0.0246183872 ],
++      [ 0.0611911938, 0.0403752252, -0.013836287, -0.0465016849, -0.053884007 ],
++      [ 0.0714964494, 0.140721709, -0.0900838748, 0.0603349432, 0.0495440438 ]
++    ]]> : tensor<2x11x5xf32>
++  %rhs = stablehlo.constant dense<[
++    [
++      [
++        [ 0.186608255, 0.124487795, 0.0663751587, 0.167221248, 0.0874548, 0.152611881, -0.0520697422 ],
++        [ -0.0361745432, 0.114412986, -0.0608718246, -0.0727029, -0.0176235586, -0.0991001204, 0.0242879838 ],
++        [ -0.0919371173, 0.112945892, 0.181369215, -0.0280267522, -0.0457312278, -0.00473813713, 0.166097224 ],
++        [ 0.0956176, -0.0548994839, 0.104403876, 0.0157444105, 0.0163175985, 0.0499223098, -0.0557401 ],
++        [ 0.076156, 0.153672695, 0.0770325884, 0.186622649, 0.066843845, -0.0555545315, 0.194991559 ]
++      ],
++      [
++        [ 0.0226300061, -0.0574540682, 0.0694696084, -0.0243620798, 0.0465543643, 0.0392091647, 0.188328564 ],
++        [ -0.0621907599, -0.0400728397, -0.0042250976, 0.0887807682, -0.0619863532, 0.0953761414, 0.0864902064 ],
++        [ 0.140921891, -0.0256474689, 0.0429295525, 0.0167942569, -0.0390249, -0.0914874449, 0.170502067 ],
++        [ 0.0279492214, -0.0573936924, 0.184246033, 0.0230939165, -0.060643442, 0.165694535, -0.0723479092 ],
++        [ -0.051340431, -0.0786809325, 0.00960171223, -0.0240827873, -0.059467189, 0.134945959, 0.0365921929 ]
++      ]
++    ],
++    [
++      [
++        [ 0.00485724211, 0.0356900468, 0.142683387, 0.179502338, 0.0954938307, -0.0354254842, 0.103877716 ],
++        [ 0.172676593, -0.0249623209, 0.158257961, 0.0413787, 0.0517867729, 0.0801181123, 0.14526847 ],
++        [ 0.126753062, 0.0386734977, 0.185410261, 0.0898216143, 0.0317991, 0.14740923, 0.106694289 ],
++        [ 0.110662006, 0.196143657, 0.186324477, 0.155380905, -0.0132051334, 0.0612277314, 0.054330416 ],
++        [ -0.0689698234, 0.0242085531, 0.073015, 0.162969738, 0.0320116058, 0.118924297, 0.160779119 ]
++      ],
++      [
++        [ 0.11469271, 0.140216112, 0.111960642, 0.122514777, -0.0942722782, 0.165809333, 0.0574962273 ],
++        [ 0.0389968231, -0.08044184, 0.114026703, 0.0466829464, 0.100303732, 0.104614742, -0.0401335768 ],
++        [ 0.174990177, 0.159764826, 0.167005628, 0.0631844923, -0.0582415, 0.0351042375, 0.196808755 ],
++        [ -0.035340406, 0.0338070318, -0.00528027117, 0.0543978438, 0.164451241, 0.0319176689, 0.0402595326 ],
++        [ 0.141994983, 0.00954742, -0.0365443081, 0.199735016, -0.053918656, 0.0891464874, 0.0849051103 ]
++      ]
++    ],
++    [
++      [
++        [ -0.0998214856, -0.0997363, 0.132005602, 0.118200503, -0.00424671918, 0.025317125, 0.104748271 ],
++        [ 0.104168601, -0.0384214334, 0.150926, 0.112676181, 0.14861238, -0.071635358, -0.0754787177 ],
++        [ 0.129201442, 0.088871561, -0.0358443409, -0.0359359607, -0.0756817609, 0.0166469738, 0.185647905 ],
++        [ 0.184263527, 0.0169560835, -0.0192355737, 0.10765069, -0.0147894919, 0.13305977, 0.135159582 ],
++        [ 0.0267379507, -0.0153532401, -0.0418097563, -0.096605137, -0.0424528457, 0.194970757, -0.0267837271 ]
++      ],
++      [
++        [ 0.145917833, -0.0590635166, 0.0194431096, 0.0803030357, -0.0469358861, 0.148506433, -0.0526806451 ],
++        [ 0.196381122, -0.0228494033, -0.0299202427, -0.069508791, -0.0341768041, 0.0904152468, 0.108802207 ],
++        [ 0.138430953, 0.108872853, 0.125882119, 0.100856192, 0.0900289789, -0.0830678046, 0.0794649944 ],
++        [ -0.0318976864, -0.00436662883, 0.109950341, -0.0647689179, 0.128771216, 0.0578369871, 0.0661734 ],
++        [ 0.0763966814, -0.00110008568, 0.110896833, -0.057086423, -0.0514936894, 0.0455975607, 0.158067733 ]
++      ]
++    ]]> : tensor<3x2x5x7xf32>
++  %group_sizes = stablehlo.constant dense<[4, 4, 3]> : tensor<3xi64>
++  %result = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
++    ragged_dot_dimension_numbers = #chlo.ragged_dot<
++      lhs_batching_dimensions = [0],
++      rhs_batching_dimensions = [1],
++      lhs_contracting_dimensions = [2],
++      rhs_contracting_dimensions = [2],
++      lhs_ragged_dimensions = [1],
++      rhs_group_dimensions = [0]
++    >,
++    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
++  } : (tensor<2x11x5xf32>, tensor<3x2x5x7xf32>, tensor<3xi64>) -> tensor<2x11x7xf32>
++  check.expect_almost_eq_const %result, dense<[
++    [
++      [-0.0199659951, 0.00206358638, 0.0285578221, -0.00411329232, -0.00885893404, -0.0113086831, 0.0343487822],
++      [0.0108370036, 0.0196357146, 0.0464844741, 0.032903526, 0.00752512738, -0.00205732603, 0.0463109687],
++      [-0.0279003512, 0.0171403233, 0.00885203853, -0.022806216, -0.0135696121, -0.00375272054, 0.0139928926],
++      [0.0116565451, -0.00521556707, -0.0245668497, -0.00946252606, 2.734600e-03, 0.00460146647, -0.0332586318],
++      [0.0373648889, 0.040080104, 0.0792120546, 0.0687142611, 0.0129001699, 0.048170276, 6.067640e-02],
++      [-0.00489785476, 0.0151357278, 0.0273378156, 0.0379059538, 0.0080597708, 0.0209609158, 0.0248660222],
++      [0.00253825542, -1.175260e-02, 0.0339594558, 0.0408501513, 0.0275165718, 0.0101594552, 0.0491689071],
++      [5.275800e-02, 0.0415463448, 0.0749897882, 0.0470644757, 0.00624182029, 0.0391805507, 0.03869069],
++      [0.0637338459, 0.00614991458, 0.0153763723, 0.0190313365, 0.0142990183, 0.0227143262, 0.0187453162],
++      [0.0359746702, 0.0182777364, -0.00368779944, -0.0100486111, 6.89582666E-5, -0.00202751439, 0.0124766938],
++      [-0.0151847685, -0.0175893605, 0.0247314386, 0.018632818, 0.00798455066, -0.00110600982, 0.00244264561]
++    ],
++    [
++      [0.0288968664, -0.00678509939, 0.0346419513, 0.0141028976, -0.017396003, 0.00451522879, 0.00792134088],
++      [-0.0017626211, -0.0284877941, 0.0151375476, -0.00351338694, -0.00874114502, 0.0323345512, 0.0535612516],
++      [0.00123786228, -0.00454656407, 0.0335229039, 0.0019464466, -2.14070082E-4, 0.0266590156, -0.0212618597],
++      [-3.47743975E-4, -0.017693948, 0.0353507064, 0.00244920771, -0.0120135043, 0.0417729542, -0.0025454592],
++      [0.0108208582, -0.0171308704, 0.00553112756, 0.0411250815, 0.0335835591, 0.038393192, -0.00547906291],
++      [0.0169365555, 0.0157370344, -0.0128378682, 0.0470919088, -0.00582840201, 0.0324328542, 0.010203423],
++      [0.0520783663, 0.0298755895, 0.0362326317, 0.0681023895, 0.0207777359, 0.052735541, 0.0455959477],
++      [0.00623999349, -1.49650674E-4, -0.00651274621, 0.0146591738, 0.00641800836, 0.00297434814, 0.00838128477],
++      [0.0506783053, 0.00703135319, 0.0220930576, 0.0259224195, 0.001958607, 0.0123232938, 0.00920359604],
++      [0.0123091843, -5.780780e-03, -0.0128484722, 0.00679983944, -0.00871101767, 0.0087406747, -0.0115246754],
++      [0.0274577513, -0.0175638888, -0.00203213934, -0.0198616516, -0.0110571291, 0.0365728177, 0.0162097216]
++    ]
++  ]> : tensor<2x11x7xf32>
++  func.return
++}
+diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -14,15 +14,16 @@
+ #include <cstdint>
+ #include <limits>
+ #include <memory>
++#include <numeric>
+ #include <optional>
+ #include <utility>
++#include <vector>
+ 
+ #include "llvm/ADT/APFloat.h"
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/Sequence.h"
+ #include "llvm/ADT/SmallVector.h"
+-#include "llvm/Support/ErrorHandling.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Complex/IR/Complex.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+@@ -1962,6 +1963,232 @@
+       loc, absXLtOne, smallSinhResult, largeSinhResult);
+ }
+ 
++namespace {
++
++ArrayAttr convertPrecisionConfig(mlir::ArrayAttr precisionConfig,
++                                 ConversionPatternRewriter &rewriter) {
++  std::vector<Attribute> precisions;
++  for (Attribute precision : precisionConfig.getValue()) {
++    switch (dyn_cast<mlir::chlo::PrecisionAttr>(precision).getValue()) {
++      case mlir::chlo::Precision::HIGHEST:
++        precisions.push_back(rewriter.getAttr<mlir::stablehlo::PrecisionAttr>(
++            mlir::stablehlo::Precision::HIGHEST));
++        break;
++      case mlir::chlo::Precision::HIGH:
++        precisions.push_back(rewriter.getAttr<mlir::stablehlo::PrecisionAttr>(
++            mlir::stablehlo::Precision::HIGH));
++        break;
++      default:
++        precisions.push_back(rewriter.getAttr<mlir::stablehlo::PrecisionAttr>(
++            mlir::stablehlo::Precision::DEFAULT));
++        break;
++    }
++  }
++  return ArrayAttr::get(rewriter.getContext(), precisions);
++};
++
++// Mode 1, where the ragged dimension is an lhs non-contracting dim (m).
++//   lhs : [b, m, k]
++//   rhs : [g, b, k, n]
++//   group_sizes : [g]
++//   result : [b, m, n]
++// This pass basically does g iterations of [b, m, k] x [b, k, n] dot_general
++// operations, apply partial mask of size group_sizes[i] and then add them
++// together. This is a slow implementation that's simple enough to understand
++// with the hope that there's already an efficient hardware kernel.
++// Note:
++// In this implementation, the IR size increases by a factor of g. If this
++// becomes a problem, we can try adding stablehlo.while to reduce the IR size.
++LogicalResult handleRaggedDotMode1(mlir::chlo::RaggedDotOp op,
++                                   ConversionPatternRewriter &rewriter) {
++  Value lhs = op.getLhs();
++  Value rhs = op.getRhs();
++  chlo::RaggedDotDimensionNumbersAttr raggedDotDimensionNumbers =
++      op.getRaggedDotDimensionNumbers();
++  ArrayRef<int64_t> lhsBatchingDimensions =
++      raggedDotDimensionNumbers.getLhsBatchingDimensions();
++  ArrayRef<int64_t> lhsContractingDimensions =
++      raggedDotDimensionNumbers.getLhsContractingDimensions();
++  int64_t rhsGroupDimension =
++      raggedDotDimensionNumbers.getRhsGroupDimensions()[0];
++
++  auto groupSizes = op.getGroupSizes();
++  auto precisionConfig = op.getPrecisionConfig();
++  if (precisionConfig.has_value()) {
++    precisionConfig = convertPrecisionConfig(precisionConfig.value(), rewriter);
++  }
++  RankedTensorType lhsTy = cast<RankedTensorType>(lhs.getType());
++  RankedTensorType rhsTy = cast<RankedTensorType>(rhs.getType());
++  int64_t lhsRank = lhsTy.getRank();
++  int64_t rhsRank = rhsTy.getRank();
++  auto outDType = op.getResult().getType().getElementType();
++
++  int64_t m = lhsTy.getShape()[lhsTy.getRank() - 2];
++  int64_t k = lhsTy.getShape()[lhsTy.getRank() - 1];
++  int64_t g = rhsTy.getShape()[0];
++  int64_t n = rhsTy.getShape()[rhsTy.getRank() - 1];
++
++  std::vector<int64_t> outDims = {m, n};
++  std::vector<int64_t> iotaShape = {m, 1};
++  auto iotaDim = 0;
++  std::vector<int64_t> rhsBatchingDims = {};
++  std::vector<int64_t> rhsContractingDims = {0};
++  std::vector<int64_t> rhsReshapedSliceShape = {k, n};
++
++  // If LHS has batching dimension, then decompose ragged dot based on shape
++  // [b, m, k], otherwise assume shape with no batch [m, k].
++  if (lhsRank == 3) {
++    int64_t b = lhsTy.getShape()[0];
++    outDims = {b, m, n};
++    iotaShape = {1, m, 1};
++    iotaDim = 1;
++    rhsBatchingDims = {0};
++    rhsContractingDims = {1};
++    rhsReshapedSliceShape = {b, k, n};
++  }
++
++  // result_iota = iota of shape [m, 1] or [1, m, 1]
++  Value resultIota = rewriter.create<mlir::stablehlo::IotaOp>(
++      op.getLoc(), RankedTensorType::get(iotaShape, rewriter.getI64Type()),
++      /*dimension=*/iotaDim);
++  Value start = rewriter.create<mlir::stablehlo::ConstantOp>(
++      op.getLoc(),
++      rewriter.getZeroAttr(RankedTensorType::get({1}, rewriter.getI64Type())));
++
++  std::vector<int64_t> broadcastDimensions(lhsRank);
++  std::iota(broadcastDimensions.begin(), broadcastDimensions.end(), 0);
++
++  Value out = rewriter.create<mlir::stablehlo::ConstantOp>(
++      op.getLoc(),
++      rewriter.getZeroAttr(RankedTensorType::get(outDims, outDType)));
++
++  Value outZeros = rewriter.create<mlir::stablehlo::ConstantOp>(
++      op.getLoc(),
++      rewriter.getZeroAttr(RankedTensorType::get(outDims, outDType)));
++  for (auto i = 0; i < g; ++i) {
++    // groupSize = group_sizes[i]
++    Value groupSize = rewriter.create<mlir::stablehlo::SliceOp>(
++        op.getLoc(), RankedTensorType::get({1}, rewriter.getI64Type()),
++        groupSizes,
++        /*startIndices=*/rewriter.getDenseI64ArrayAttr({i}),
++        /*limitIndices=*/rewriter.getDenseI64ArrayAttr({i + 1}),
++        /*strides=*/rewriter.getDenseI64ArrayAttr({1}));
++
++    Value startBroadcasted = rewriter.create<mlir::stablehlo::BroadcastInDimOp>(
++        op.getLoc(), resultIota.getType(), start,
++        /*broadcast_dimensions=*/
++        rewriter.getDenseI64ArrayAttr(0));
++
++    // start <= result_iota
++    Value startLEResultIota = rewriter.create<mlir::stablehlo::CompareOp>(
++        op.getLoc(), startBroadcasted, resultIota, ComparisonDirection::LE);
++
++    // result_iota < (start + size)
++    Value resultIotaLTStartPlusGroupSize =
++        rewriter.create<mlir::stablehlo::CompareOp>(
++            op.getLoc(), resultIota,
++            rewriter.create<mlir::stablehlo::BroadcastInDimOp>(
++                op.getLoc(), resultIota.getType(),
++                rewriter.create<mlir::stablehlo::AddOp>(op.getLoc(), start,
++                                                        groupSize),
++                /*broadcast_dimensions=*/rewriter.getDenseI64ArrayAttr(0)),
++            ComparisonDirection::LT);
++
++    // (start <= result_iota) & (result_iota < (start + size))
++    Value logicalAnd = rewriter.create<mlir::stablehlo::AndOp>(
++        op.getLoc(), startLEResultIota, resultIotaLTStartPlusGroupSize);
++    Value logicalAndBroadcasted =
++        rewriter.create<mlir::stablehlo::BroadcastInDimOp>(
++            op.getLoc(),
++            RankedTensorType::get(op.getResult().getType().getShape(),
++                                  rewriter.getI1Type()),
++            logicalAnd,
++            /*broadcast_dimensions=*/
++            rewriter.getDenseI64ArrayAttr(broadcastDimensions));
++
++    // rhs_rehaped_slice = rhs[i, :, :, :]
++    std::vector<int64_t> rhs_start_indices(rhsTy.getRank(), 0);
++    rhs_start_indices[rhsGroupDimension] = i;
++    std::vector<int64_t> rhs_limit_indices = rhsTy.getShape();
++    rhs_limit_indices[rhsGroupDimension] = i + 1;
++    Value rhsSliced = rewriter.create<mlir::stablehlo::SliceOp>(
++        op.getLoc(), rhs,
++        /*startIndices=*/rewriter.getDenseI64ArrayAttr(rhs_start_indices),
++        /*limitIndices=*/rewriter.getDenseI64ArrayAttr(rhs_limit_indices),
++        /*strides=*/
++        rewriter.getDenseI64ArrayAttr(std::vector<int64_t>(rhsRank, 1)));
++    Value rhsReshapedSlice = rewriter.create<mlir::stablehlo::ReshapeOp>(
++        op.getLoc(),
++        RankedTensorType::get(rhsReshapedSliceShape, rhsTy.getElementType()),
++        rhsSliced);
++
++    // Einsum of (b)mk,(b)kn->(b)mn
++    Value dotGeneral = rewriter.create<mlir::stablehlo::DotGeneralOp>(
++        op.getLoc(), TypeRange{out.getType()},
++        ValueRange{lhs, rhsReshapedSlice},
++        ArrayRef<mlir::NamedAttribute>{
++            rewriter.getNamedAttr(
++                "dot_dimension_numbers",
++                rewriter.getAttr<mlir::stablehlo::DotDimensionNumbersAttr>(
++                    /*lhs_batching_dimensions=*/lhsBatchingDimensions,
++                    /*rhs_batching_dimensions=*/rhsBatchingDims,
++                    /*lhs_contracting_dimensions=*/lhsContractingDimensions,
++                    /*rhs_contracting_dimensions=*/rhsContractingDims)),
++            rewriter.getNamedAttr("precision_config",
++                                  precisionConfig.value())});
++
++    // Place the i'th dot_general to the corresponding position in the result.
++    Value select = rewriter.create<mlir::stablehlo::SelectOp>(
++        op.getLoc(), logicalAndBroadcasted, dotGeneral, outZeros);
++    out = rewriter.create<mlir::stablehlo::AddOp>(op.getLoc(), out, select);
++    start =
++        rewriter.create<mlir::stablehlo::AddOp>(op.getLoc(), start, groupSize);
++  }
++  rewriter.replaceOp(op, {out});
++  return success();
++}
++
++// Mode 2, where the ragged dimension is an lhs/rhs contracting dim (k).
++//   lhs : [b, m, k]
++//   rhs : [b, k, n]
++//   group_sizes : [g]
++//   result : [g, b, m, n]
++LogicalResult handleRaggedDotMode2(mlir::chlo::RaggedDotOp op,
++                                   ConversionPatternRewriter &rewriter) {
++  return failure();
++}
++
++// Mode 3, where the ragged dimension is an lhs/rhs batch dim (b).
++//   lhs : [b, m, k]
++//   rhs : [b, k, n]
++//   group_sizes : [g]
++//   result : [b, m, n]
++LogicalResult handleRaggedDotMode3(mlir::chlo::RaggedDotOp op,
++                                   ConversionPatternRewriter &rewriter) {
++  return failure();
++}
++
++}  // namespace
++
++struct ConvertRaggedDotOp final : OpConversionPattern<mlir::chlo::RaggedDotOp> {
++  using OpConversionPattern::OpConversionPattern;
++
++  // RaggedDot has three general modes, based on the kind of the ragged
++  // dimension.
++  LogicalResult matchAndRewrite(
++      mlir::chlo::RaggedDotOp op, OpAdaptor,
++      ConversionPatternRewriter &rewriter) const override {
++    if (op.getLhs().getType().getRank() < op.getRhs().getType().getRank()) {
++      return handleRaggedDotMode1(op, rewriter);
++    } else if (op.getLhs().getType().getRank() <
++               op.getResult().getType().getRank()) {
++      return handleRaggedDotMode2(op, rewriter);
++    } else {
++      return handleRaggedDotMode3(op, rewriter);
++    }
++  }
++};
++
+ struct ConvertSinhOp final : OpConversionPattern<mlir::chlo::SinhOp> {
+   using OpConversionPattern::OpConversionPattern;
+ 
+@@ -2193,10 +2420,12 @@
+ static void populateChloDecompositionPatterns(MLIRContext *context,
+                                               RewritePatternSet *patterns) {
+   populateWithGenerated(*patterns);
+-  patterns->add<ConvertConstantOp, ConvertBesselI1eOp, ConvertCoshOp,
+-                ConvertDigammaOp, ConvertErfOp, ConvertErfcOp, ConvertErfInvOp,
+-                ConvertLgammaOp, ConvertNextAfterOp, ConvertPolygammaOp,
+-                ConvertSinhOp, ConvertTopKOp, ConvertZetaOp>(context);
++  patterns
++      ->add<ConvertConstantOp, ConvertBesselI1eOp, ConvertCoshOp,
++            ConvertDigammaOp, ConvertErfOp, ConvertErfcOp, ConvertErfInvOp,
++            ConvertLgammaOp, ConvertNextAfterOp, ConvertPolygammaOp,
++            ConvertRaggedDotOp, ConvertSinhOp, ConvertTopKOp, ConvertZetaOp>(
++          context);
+ }
+ }  // namespace
+ 
 
