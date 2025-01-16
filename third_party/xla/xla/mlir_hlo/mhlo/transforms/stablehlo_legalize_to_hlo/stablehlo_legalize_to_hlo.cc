@@ -363,7 +363,7 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
       hloAttrs.push_back({stablehloAttr.getName(), hloAttr});
     }
 
-    // Convert the MHLO operation to a StableHLO equivalent.
+    // Convert the StableHLO operation to a MHLO equivalent.
     // This can almost be done in a generic fashion, except for mhlo.case
     // that uses a variadic number of regions which means an additional argument
     // for the generic builder.
