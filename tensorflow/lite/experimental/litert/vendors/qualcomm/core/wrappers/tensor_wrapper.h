@@ -65,8 +65,6 @@ class TensorWrapper final {
 
   Qnn_DataType_t GetDataType() const;
 
-  void SetDataType(Qnn_DataType_t data_type);
-
   bool IsSubgraphInput() const {
     return GetTensorType() == QNN_TENSOR_TYPE_APP_WRITE;
   }

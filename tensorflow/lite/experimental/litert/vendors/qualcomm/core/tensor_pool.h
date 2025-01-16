@@ -48,6 +48,9 @@ class TensorPool {
   TensorWrapper& CloneNativeTensorFrom(
       const TensorWrapper& src, const std::vector<std::uint32_t>& dimentions);
 
+  TensorWrapper& CloneStaticTensorFrom(const TensorWrapper& src,
+                                       Qnn_DataType_t data_type);
+
  private:
   std::function<void(TensorWrapper&)> tensor_callback_{};
   std::list<TensorWrapper> tensor_wrappers_{};

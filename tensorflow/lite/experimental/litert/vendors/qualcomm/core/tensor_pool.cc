@@ -99,4 +99,18 @@ TensorWrapper& TensorPool::CloneNativeTensorFrom(
   return back;
 }
 
+TensorWrapper& TensorPool::CloneStaticTensorFrom(const TensorWrapper& src,
+                                                 Qnn_DataType_t data_type) {
+  const auto id = tensor_wrappers_.size();
+  auto& back = tensor_wrappers_.emplace_back(
+      id, QNN_TENSOR_TYPE_STATIC, data_type, src.quantize_params_,
+      src.dimentions_, src.owned_data_.size(), src.owned_data_.data());
+
+  if (tensor_callback_) {
+    tensor_callback_(back);
+  }
+
+  return back;
+}
+
 }  // namespace qnn
