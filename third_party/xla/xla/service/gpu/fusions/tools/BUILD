@@ -13,7 +13,7 @@ cc_library(
     deps = [
         "//xla:status_macros",
         "//xla/backends/gpu/codegen/emitters:emitter_base",
-        "//xla/backends/gpu/codegen/ir:xla_gpu",
+        "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",

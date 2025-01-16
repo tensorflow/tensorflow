@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
-#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

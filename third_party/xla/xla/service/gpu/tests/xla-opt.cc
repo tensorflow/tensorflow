@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "mlir/InitAllExtensions.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
-#include "xla/backends/gpu/codegen/transforms/passes.h"
+#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/triton/xla_triton_ops.h"
 #include "xla/backends/gpu/codegen/triton/xla_triton_passes.h"
 #include "third_party/triton/bin/RegisterTritonDialects.h"

@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
