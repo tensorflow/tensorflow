@@ -93,13 +93,12 @@ cc_library(
 
 cc_library(
     name = "mlir_roundtrip_flags",
+    srcs = ["mlir_roundtrip_flags.cc"],
     hdrs = ["mlir_roundtrip_flags.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
