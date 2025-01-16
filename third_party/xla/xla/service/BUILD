@@ -5903,12 +5903,18 @@ xla_cc_test(
     srcs = ["scatter_simplifier_test.cc"],
     deps = [
         ":scatter_simplifier",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
     ],
 )
 
