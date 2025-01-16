@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
+#include "xla/codegen/emitter_loc_op_builder.h"
 
 #include <string>
 
@@ -30,7 +30,7 @@ limitations under the License.
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 
-namespace xla::gpu {
+namespace xla {
 namespace {
 
 using mlir::NameLoc;
@@ -39,7 +39,7 @@ using ::tsl::testing::IsOkAndHolds;
 
 class EmitterLocOpBuilderTest : public ::testing::Test {
  protected:
-  void SetUp() override { LoadMlirDialectsForTriton(context_); }
+  void SetUp() override { gpu::LoadMlirDialectsForTriton(context_); }
 
   mlir::MLIRContext context_;
 };
@@ -63,7 +63,8 @@ TEST_F(EmitterLocOpBuilderTest, IRWithAnnotations) {
   auto loc = NameLoc(context_, "IRWithAnnotations");
   EmitterLocOpBuilder b(loc, &context_, /*annotate_loc=*/true);
   auto triton_module = MakeModuleWithOneOp(context_, b);
-  std::string ir = DumpTritonIR(triton_module.get(), /*dump_annotations=*/true);
+  std::string ir =
+      gpu::DumpTritonIR(triton_module.get(), /*dump_annotations=*/true);
   if constexpr (EmitterLocOpBuilder::kSourceLocationSupported) {
     EXPECT_THAT(RunFileCheck(ir, R"(
       CHECK: "IRWithAnnotations -> [[FILE:.*_test.cc]]:[[LINE:[0-9]+]]"
@@ -82,7 +83,7 @@ TEST_F(EmitterLocOpBuilderTest, IRWithoutAnnotations) {
   EmitterLocOpBuilder b(loc, &context_, /*annotate_loc=*/false);
   auto triton_module = MakeModuleWithOneOp(context_, b);
   std::string ir =
-      DumpTritonIR(triton_module.get(), /*dump_annotations=*/false);
+      gpu::DumpTritonIR(triton_module.get(), /*dump_annotations=*/false);
   EXPECT_THAT(RunFileCheck(ir, R"(
     CHECK-NOT: IRWithoutAnnotations
   )"),
@@ -90,5 +91,4 @@ TEST_F(EmitterLocOpBuilderTest, IRWithoutAnnotations) {
 }
 
 }  // namespace
-
-}  // namespace xla::gpu
+}  // namespace xla

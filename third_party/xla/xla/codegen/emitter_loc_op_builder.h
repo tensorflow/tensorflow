@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_FUSIONS_EMITTER_LOC_OP_BUILDER_H_
-#define XLA_SERVICE_GPU_FUSIONS_EMITTER_LOC_OP_BUILDER_H_
+#ifndef XLA_CODEGEN_EMITTER_LOC_OP_BUILDER_H_
+#define XLA_CODEGEN_EMITTER_LOC_OP_BUILDER_H_
 
 #include <string>
 
@@ -32,7 +32,7 @@ limitations under the License.
 #include <string_view>
 #endif
 
-namespace xla::gpu {
+namespace xla {
 
 // The builder that could add the NameLoc attribute to the newly created
 // operations and fills this attribute with the SourceLocation(file:line) of the
@@ -201,6 +201,6 @@ class EmitterLocOpBuilder : public mlir::ImplicitLocOpBuilder {
   const mlir::Location current_loc_;
 };
 
-}  // namespace xla::gpu
+}  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_EMITTER_LOC_OP_BUILDER_H_
+#endif  // XLA_CODEGEN_EMITTER_LOC_OP_BUILDER_H_

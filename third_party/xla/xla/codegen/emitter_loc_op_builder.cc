@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fusions/emitter_loc_op_builder.h"
+#include "xla/codegen/emitter_loc_op_builder.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
 
-namespace xla::gpu {
+namespace xla {
 
 // Aligns the annotations to the Nth character of the lines.
 constexpr size_t kAnnotationPadding = 100ul;
@@ -76,4 +76,4 @@ mlir::Location EmitterLocOpBuilder::Loc(
   return mlir::NameLoc::get(mlir::StringAttr::get(getContext(), text));
 }
 
-}  // namespace xla::gpu
+}  // namespace xla
