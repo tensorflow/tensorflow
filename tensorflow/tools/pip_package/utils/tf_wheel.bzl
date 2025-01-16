@@ -34,7 +34,12 @@ load(
     "WHEEL_COLLAB",
     "WHEEL_NAME",
 )
-load("//tensorflow:tensorflow.bzl", "VERSION", "WHEEL_VERSION")
+load(
+    "//tensorflow:tf_version.bzl",
+    "TF_VERSION",
+    "TF_WHEEL_BUILD_TAG",
+    "TF_WHEEL_VERSION_SUFFIX",
+)
 
 def _get_wheel_platform_name(platform_name, platform_tag):
     macos_platform_version = "{}_".format(MACOSX_DEPLOYMENT_TARGET.replace(".", "_")) if MACOSX_DEPLOYMENT_TARGET else ""
@@ -49,14 +54,19 @@ def _get_wheel_platform_name(platform_name, platform_tag):
         platform_version = macos_platform_version,
     )
 
-def _get_full_wheel_name(platform_name, platform_tag):
+def _get_full_wheel_name(
+        platform_name,
+        platform_tag,
+        wheel_version):
     python_version = HERMETIC_PYTHON_VERSION.replace(".", "")
-    wheel_version = WHEEL_VERSION.replace("-dev", ".dev").replace("-", "")
     return "{wheel_name}-{wheel_version}-cp{python_version}-cp{python_version}-{wheel_platform_tag}.whl".format(
         wheel_name = WHEEL_NAME,
         wheel_version = wheel_version,
         python_version = python_version,
-        wheel_platform_tag = _get_wheel_platform_name(platform_name, platform_tag),
+        wheel_platform_tag = _get_wheel_platform_name(
+            platform_name,
+            platform_tag,
+        ),
     )
 
 def _is_dest_file(basename, dest_files_suffixes):
@@ -75,9 +85,17 @@ def _tf_wheel_impl(ctx):
              " `--@local_config_cuda//cuda:override_include_cuda_libs=true`.")
     executable = ctx.executable.wheel_binary
 
+    full_wheel_version = (TF_VERSION + TF_WHEEL_VERSION_SUFFIX)
+
+    build_tag = None
+    if TF_WHEEL_BUILD_TAG:
+        build_tag = TF_WHEEL_BUILD_TAG
+        full_wheel_version += "-{}".format(TF_WHEEL_BUILD_TAG)
+
     full_wheel_name = _get_full_wheel_name(
         platform_name = ctx.attr.platform_name,
         platform_tag = ctx.attr.platform_tag,
+        wheel_version = full_wheel_version,
     )
     wheel_dir_name = "wheel_house"
     output_file = ctx.actions.declare_file("{wheel_dir}/{wheel_name}".format(
@@ -93,7 +111,9 @@ def _tf_wheel_impl(ctx):
     ))
     args.add("--collab", str(WHEEL_COLLAB))
     args.add("--output-name", wheel_dir)
-    args.add("--version", VERSION)
+    args.add("--version", TF_VERSION)
+    if build_tag:
+        args.add("--build-tag", build_tag)
 
     headers = ctx.files.headers[:]
     for f in headers:
