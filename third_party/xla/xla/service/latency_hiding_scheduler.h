@@ -343,12 +343,10 @@ class AnnotationTracker {
       absl::flat_hash_set<int64_t> annotations;
       for (const HloInstruction* instr : comp->instructions()) {
         if (auto annotation = GetAnnotation(instr)) {
-          // LegalizeSchedulingAnnotations pass should have made sure that the
-          // same annotation id is not used in multiple computations.
           if (annotations.insert(annotation.value()).second) {
             comp_annotation_map_[comp].push_back(annotation.value());
           }
-          annotations_[annotation.value()].push_back(instr);
+          annotations_[annotation.value()][comp].push_back(instr);
         }
       }
     }
@@ -367,16 +365,19 @@ class AnnotationTracker {
     return std::nullopt;
   }
   std::vector<const HloInstruction*> GetInstructions(
-      const int64_t annotation) const {
-    return annotations_.at(annotation);
+      const HloComputation* comp, const int64_t annotation) const {
+    return annotations_.at(annotation).at(comp);
   }
-  int64_t GetNumInstructions(const int64_t annotation) {
-    return annotations_[annotation].size();
+  int64_t GetNumInstructions(const HloComputation* comp,
+                             const int64_t annotation) {
+    return annotations_[annotation][comp].size();
   }
-  void FindAnnotationRoots(const int64_t annotation) {
+  void FindAnnotationRoots(const HloComputation* comp,
+                           const int64_t annotation) {
     absl::flat_hash_set<const HloInstruction*> seen_instructions(
-        annotations_[annotation].begin(), annotations_[annotation].end());
-    for (const HloInstruction* instr : annotations_.at(annotation)) {
+        annotations_[annotation][comp].begin(),
+        annotations_[annotation][comp].end());
+    for (const HloInstruction* instr : annotations_.at(annotation).at(comp)) {
       bool has_annotated_user = false;
       for (const PtrVec<HloInstruction*>& users :
            {instr->users(), instr->control_successors()}) {
@@ -389,29 +390,32 @@ class AnnotationTracker {
       }
       if (!has_annotated_user) {
         VLOG(3) << "Annotation: " << annotation << ", root: " << instr->name();
-        annotation_roots_[annotation].push_back(instr);
+        annotation_roots_[annotation][comp].push_back(instr);
       }
     }
   }
-  int64_t GetNumRootInstructions(const int64_t annotation) {
-    if (!annotation_roots_.contains(annotation)) {
-      FindAnnotationRoots(annotation);
+  int64_t GetNumRootInstructions(const HloComputation* comp,
+                                 const int64_t annotation) {
+    if (!annotation_roots_[annotation].contains(comp)) {
+      FindAnnotationRoots(comp, annotation);
     }
-    return annotation_roots_[annotation].size();
+    return annotation_roots_[annotation][comp].size();
   }
   std::vector<const HloInstruction*> GetRootInstructions(
-      const int64_t annotation) {
+      const HloComputation* comp, const int64_t annotation) {
     if (!annotation_roots_.contains(annotation)) {
-      FindAnnotationRoots(annotation);
+      FindAnnotationRoots(comp, annotation);
     }
-    return annotation_roots_[annotation];
+    return annotation_roots_[annotation][comp];
   }
   void PrintAnnotationSets(int64_t level) const {
-    for (const auto& [annotation, instrs] : annotations_) {
-      VLOG(level) << "Annotation " << annotation << " has " << instrs.size()
-                  << " instructions";
-      for (const HloInstruction* instr : instrs) {
-        VLOG(level) << "  " << instr->name();
+    for (const auto& [annotation, comp_instr_vector] : annotations_) {
+      for (const auto& [comp, instrs] : comp_instr_vector) {
+        VLOG(level) << "Annotation " << annotation << " has " << instrs.size()
+                    << " instructions in computation " << comp->name();
+        for (const HloInstruction* instr : instrs) {
+          VLOG(level) << "  " << instr->name();
+        }
       }
     }
   }
@@ -420,8 +424,13 @@ class AnnotationTracker {
   const HloModule* module_;
   absl::flat_hash_map<const HloComputation*, std::vector<int64_t>>
       comp_annotation_map_;
-  absl::flat_hash_map<int64_t, std::vector<const HloInstruction*>> annotations_;
-  absl::flat_hash_map<int64_t, std::vector<const HloInstruction*>>
+  absl::flat_hash_map<int64_t,
+                      absl::flat_hash_map<const HloComputation*,
+                                          std::vector<const HloInstruction*>>>
+      annotations_;
+  absl::flat_hash_map<int64_t,
+                      absl::flat_hash_map<const HloComputation*,
+                                          std::vector<const HloInstruction*>>>
       annotation_roots_;
 };
 
@@ -1064,9 +1073,9 @@ class DefaultSchedulerCore : public SchedulerCore {
   absl::Status AnnotatedSchedulingStep(
       HloGraphNode* node,
       DefaultSchedulerCore::SchedulingState* sched_state) const;
-  // Schedules all of the nodes in the given annotation.
+  // Schedules all of the nodes with the given annotation in computation.
   absl::Status ScheduleAnnotation(
-      int64_t annotation,
+      const HloComputation* computation, int64_t annotation,
       DefaultSchedulerCore::SchedulingState* sched_state) const;
   // Update node that has been scheduled.
   virtual absl::StatusOr<HloGraphNode::TimeCost> ScheduleNode(
