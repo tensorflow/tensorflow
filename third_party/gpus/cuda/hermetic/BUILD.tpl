@@ -98,7 +98,7 @@ alias(
     name = "cuda_driver",
     actual = select({
         "@cuda_driver//:forward_compatibility": "@cuda_driver//:nvidia_driver",
-        "//conditions:default": "@cuda_cudart//:cuda_driver",
+        "//conditions:default": "@cuda_cudart//:cuda_driver_stub",
     }),
 )
 
