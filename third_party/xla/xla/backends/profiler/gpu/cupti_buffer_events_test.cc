@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace profiler {

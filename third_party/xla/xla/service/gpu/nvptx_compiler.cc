@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
@@ -93,6 +94,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/caching_compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_solver_context.h"
@@ -100,6 +102,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -547,20 +550,25 @@ void WarnIfBadDriverJITVersion() {
   });
 }
 
-static absl::StatusOr<std::unique_ptr<se::cuda::CompilationProvider>>
-CreateCompilationProvider(const DebugOptions& debug_options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::cuda::CompilationProvider> delegate,
-                      se::cuda::AssembleCompilationProvider(debug_options));
-  return std::make_unique<se::cuda::CachingCompilationProvider>(
-      std::move(delegate));
+absl::StatusOr<const se::cuda::CompilationProvider*>
+NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options) {
+  absl::MutexLock lock(&compilation_providers_mutex_);
+  std::unique_ptr<se::cuda::CompilationProvider>& compilation_provider =
+      compilation_providers_[se::cuda::CompilationProviderOptions::
+                                 FromDebugOptions(debug_options)];
+  if (compilation_provider == nullptr) {
+    TF_ASSIGN_OR_RETURN(
+        compilation_provider,
+        se::cuda::AssembleCompilationProvider(
+            se::cuda::CompilationProviderOptions::FromDebugOptions(
+                debug_options)));
+  }
+  return compilation_provider.get();
 }
 
-NVPTXCompiler::NVPTXCompiler(const DebugOptions& debug_options)
+NVPTXCompiler::NVPTXCompiler()
     : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::TargetTriple(),
-                  nvptx::DataLayout()),
-      compilation_provider_{CreateCompilationProvider(debug_options)} {}
-
-NVPTXCompiler::NVPTXCompiler() : NVPTXCompiler(GetDebugOptionsFromFlags()) {}
+                  nvptx::DataLayout()) {}
 
 HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer(
     const se::DeviceDescription& device_description) const {
@@ -611,9 +619,8 @@ NVPTXCompiler::CompileTargetBinary(
     return BackendCompileResult{};
   }
 
-  TF_RETURN_IF_ERROR(compilation_provider_.status());
-  se::cuda::CompilationProvider* compilation_provider =
-      compilation_provider_->get();
+  TF_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
+                      GetCompilationProvider(module_config.debug_options()));
 
   se::cuda::CompilationOptions compilation_options =
       PtxCompileOptionsFromDebugOptions(
@@ -665,9 +672,11 @@ NVPTXCompiler::CompileTargetBinary(
 absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config,
     const stream_executor::DeviceDescription& device_description) {
-  TF_RETURN_IF_ERROR(compilation_provider_.status());
-  return compilation_provider_->get()->SupportsCompileAndLink() &&
-         compilation_provider_->get()->SupportsCompileToRelocatableModule();
+  TF_ASSIGN_OR_RETURN(
+      const se::cuda::CompilationProvider* compilation_provider,
+      GetCompilationProvider(hlo_module_config.debug_options()));
+  return compilation_provider->SupportsCompileAndLink() &&
+         compilation_provider->SupportsCompileToRelocatableModule();
 }
 
 absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
@@ -679,9 +688,8 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   auto cc = std::get<stream_executor::CudaComputeCapability>(
       device_description.gpu_compute_capability());
 
-  TF_RETURN_IF_ERROR(compilation_provider_.status());
-  se::cuda::CompilationProvider* compilation_provider =
-      compilation_provider_->get();
+  TF_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
+                      GetCompilationProvider(debug_options));
 
   std::vector<se::cuda::CompilationProvider::RelocatableModuleOrPtx> inputs;
   inputs.reserve(modules.size());

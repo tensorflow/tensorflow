@@ -41,6 +41,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_occupancy.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/parse_annotation.h"
 #include "xla/tsl/profiler/utils/timespan.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "tsl/platform/mem.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {

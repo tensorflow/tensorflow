@@ -19,7 +19,7 @@ limitations under the License.
 #include <stack>
 
 #include "absl/strings/string_view.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
 
 namespace xla {
 namespace profiler {
