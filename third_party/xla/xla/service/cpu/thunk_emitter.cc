@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
 #include "xla/backends/cpu/xnn_emitter.h"
+#include "xla/backends/cpu/xnn_fusion.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/comparison_util.h"
@@ -839,8 +840,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       // Decide whether to use XNNPACK or Eigen.
       bool use_xnn = hlo_module_config_.debug_options().xla_cpu_use_xnnpack();
       if (use_xnn) {
-        TF_ASSIGN_OR_RETURN(
-            use_xnn, XnnDotThunk::IsSupported(dnums, lhs->shape(), rhs->shape(),
+        TF_ASSIGN_OR_RETURN(use_xnn,
+                            IsXnnDotSupported(dnums, lhs->shape(), rhs->shape(),
                                               instruction->shape()));
       }
 

@@ -855,6 +855,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:xnn_emitter",
+        "//xla/backends/cpu:xnn_fusion",
         "//xla/backends/cpu/codegen:elemental_kernel_emitter",
         "//xla/backends/cpu/codegen:llvm_ir_kernel_spec",
         "//xla/backends/cpu/codegen:target_machine_features",

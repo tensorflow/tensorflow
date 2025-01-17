@@ -79,27 +79,6 @@ absl::StatusOr<xnn_subgraph_t> XnnDotThunk::BuildDotSubgraph(
   return subgraph;
 }
 
-absl::StatusOr<bool> XnnDotThunk::IsSupported(
-    const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
-    const Shape& rhs_shape, const Shape& out_shape) {
-  // TODO(ezhulenev): Support other element types.
-  if (lhs_shape.element_type() != F32 || rhs_shape.element_type() != F32 ||
-      out_shape.element_type() != F32) {
-    return false;
-  }
-
-  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
-                                                      rhs_shape, out_shape));
-
-  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
-                      GetDotCanonicalDims(dot_dimensions, dot_shape));
-
-  // XNNPACK does not support transposing LHS or col-major layouts.
-  return dot_canonical_dims.lhs_canonical &&
-         !dot_canonical_dims.lhs_column_major &&
-         !dot_canonical_dims.rhs_column_major;
-}
-
 absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunk::Create(
     Info info, DotDimensionNumbers dot_dimensions,
     BufferAllocation::Slice lhs_buffer, Shape lhs_shape,
