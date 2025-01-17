@@ -1,16 +1,3 @@
-diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
---- stablehlo/docs/spec.md
-+++ stablehlo/docs/spec.md
-@@ -5593,8 +5593,7 @@
- #### Constraints
- 
- * (C1) `same(shape(inputs...))`.
--* (C2) `rank(inputs[0]) = size(update_window_dims) + size(inserted_window_dims)
--       + size(input_batching_dims)`.
-+* (C2) `rank(inputs[0]) = size(update_window_dims) + size(inserted_window_dims) + size(input_batching_dims)`.
- * (C3) `same(shape(updates...))`.
- * (C4) `shape(updates[0]) = combine(update_scatter_dim_sizes,
-        update_window_dim_sizes)` where:
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
 --- stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
 +++ stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
