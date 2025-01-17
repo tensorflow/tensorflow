@@ -339,6 +339,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/translate:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow/translate:upgrade_graph",
         "//tensorflow/compiler/mlir/tf2xla/internal:graph_to_tf_executor_util",
