@@ -32,6 +32,9 @@ using tsl::profiler::Timespan;
 DutyCycleTracker::ActiveTimeSpans::const_iterator
 DutyCycleTracker::MergeOrInsert(const Timespan& timespan,
                                 ActiveTimeSpans::const_iterator hint) {
+  DCHECK(hint == active_time_spans_.end() ||
+         hint == active_time_spans_.begin() ||
+         hint->begin_ps() <= timespan.begin_ps());
   ActiveTimeSpans::const_iterator merge_begin = hint;
   while (merge_begin != active_time_spans_.end() &&
          merge_begin->end_ps() < timespan.begin_ps()) {

@@ -164,10 +164,7 @@ cc_library(
     hdrs = ["xplane_schema.h"],
     copts = tf_profiler_copts(),
     visibility = [":friends"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/profiler/utils:xplane_schema",
-    ],
+    deps = ["@local_xla//xla/tsl/profiler/utils:xplane_schema"],
 )
 
 cc_library(
