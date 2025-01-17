@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 

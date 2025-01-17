@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
