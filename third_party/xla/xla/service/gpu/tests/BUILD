@@ -735,9 +735,9 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu/transforms:sort_rewriter",
         "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

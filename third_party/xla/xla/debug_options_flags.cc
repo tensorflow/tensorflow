@@ -1643,8 +1643,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "estimator precision; comma-separated list of 'key=val' "
       "strings (=val may be omitted); no whitespace around commas."
       "Available options: "
-      "--xla_gpu_analytical_latency_estimator_options='nccl_op_launch_ms=55,"
-      "nic_speed_gbps=40,chunk_prep_ms=1,rtt_ms=2,gpus_per_node=4,"
+      "--xla_gpu_analytical_latency_estimator_options='nccl_op_launch_us=55,"
+      "nic_speed_gbps=40,chunk_prep_us=1,rtt_us=2,gpus_per_node=4,"
       "chunk_size_bytes=1024'"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_pgle_profile_file_or_directory_path",
