@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
 
 namespace xla::cpu {
 

@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_RUNTIME_OUTFEED_THUNK_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"

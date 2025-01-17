@@ -17,12 +17,10 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_RUNTIME_ALL_GATHER_THUNK_H_
 
 #include <memory>
-#include <string>
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"

@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -88,7 +87,6 @@ class CollectiveThunk : public Thunk {
   BufferUses buffer_uses() const final;
   ResourceUses resource_uses() const final;
 
- protected:
   // Callback for collective thunk implementations.
   using Callback = absl::AnyInvocable<absl::Status(const RendezvousKey& key,
                                                    Communicator& comm)>;

@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 

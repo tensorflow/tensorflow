@@ -128,13 +128,17 @@ message SortThunkProto {
   repeated ShapeBufferAllocationSliceProto inputs_shapes = 5;
 }
 
-message XnnFusionThunkProto {}
-
 message XnnDotThunkProto {
   DotDimensionNumbers dot_dimensions = 1;
   ShapeBufferAllocationSliceProto lhs_buffer_shape = 2;
   ShapeBufferAllocationSliceProto rhs_buffer_shape = 3;
   ShapeBufferAllocationSliceProto out_buffer_shape = 4;
+}
+
+message XnnFusionThunkProto {
+  oneof impl {
+    XnnDotThunkProto xnn_dot_thunk = 1;
+  }
 }
 
 message DotThunkProto {
@@ -241,19 +245,18 @@ message ThunkProto {
     ConditionalThunkProto conditional_thunk = 4;
     SortThunkProto sort_thunk = 5;
     XnnFusionThunkProto xnn_fusion_thunk = 6;
-    XnnDotThunkProto xnn_dot_thunk = 7;
-    DotThunkProto dot_thunk = 8;
-    RngGetAndUpdateStateThunkProto rng_get_and_update_state_thunk = 9;
-    TopKThunkProto top_k_thunk = 10;
-    WhileThunkProto while_thunk = 11;
-    KernelThunkProto kernel_thunk = 12;
-    CopyThunkProto copy_thunk = 13;
-    FftThunkProto fft_thunk = 14;
-    InfeedThunkProto infeed_thunk = 15;
-    OutfeedThunkProto outfeed_thunk = 16;
-    CustomCallThunkProto custom_call_thunk = 17;
-    ConvolutionThunkProto convolution_thunk = 18;
-    CollectiveThunkProto collective_thunk = 19;
+    DotThunkProto dot_thunk = 7;
+    RngGetAndUpdateStateThunkProto rng_get_and_update_state_thunk = 8;
+    TopKThunkProto top_k_thunk = 9;
+    WhileThunkProto while_thunk = 10;
+    KernelThunkProto kernel_thunk = 11;
+    CopyThunkProto copy_thunk = 12;
+    FftThunkProto fft_thunk = 13;
+    InfeedThunkProto infeed_thunk = 14;
+    OutfeedThunkProto outfeed_thunk = 15;
+    CustomCallThunkProto custom_call_thunk = 16;
+    ConvolutionThunkProto convolution_thunk = 17;
+    CollectiveThunkProto collective_thunk = 18;
   }
 }
 

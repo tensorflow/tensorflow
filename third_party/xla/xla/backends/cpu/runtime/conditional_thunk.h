@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {

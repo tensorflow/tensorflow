@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 

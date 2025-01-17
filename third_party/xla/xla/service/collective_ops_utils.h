@@ -58,6 +58,9 @@ constexpr absl::string_view ReductionKindToString(
   }
 }
 
+absl::StatusOr<ReductionKind> StringToReductionKind(
+    absl::string_view reduction_kind);
+
 // Attempts to match instruction to one of the possible cases for ReductionKind.
 std::optional<ReductionKind> MatchReductionInstruction(
     const HloInstruction* hlo);

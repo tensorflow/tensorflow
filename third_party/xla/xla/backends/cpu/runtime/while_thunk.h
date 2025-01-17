@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"

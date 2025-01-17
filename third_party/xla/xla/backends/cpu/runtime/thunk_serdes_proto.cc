@@ -16,10 +16,14 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_serdes_proto.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -52,10 +56,94 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
+
+static Thunk::Kind ProtoThunkToThunkKind(const ThunkProto& proto) {
+  auto collective_proto_kind_to_kind =
+      [](const CollectiveThunkProto::ImplCase& proto_kind) {
+        switch (proto_kind) {
+          case CollectiveThunkProto::ImplCase::kAllGatherThunk:
+            return Thunk::Kind::kAllGather;
+          case CollectiveThunkProto::ImplCase::kAllReduceThunk:
+            return Thunk::Kind::kAllReduce;
+          case CollectiveThunkProto::ImplCase::kAllToAllThunk:
+            return Thunk::Kind::kAllToAll;
+          case CollectiveThunkProto::ImplCase::kCollectivePermuteThunk:
+            return Thunk::Kind::kCollectivePermute;
+          case CollectiveThunkProto::ImplCase::kReduceScatterThunk:
+            return Thunk::Kind::kReduceScatter;
+          default:
+            return Thunk::Kind::kUnknown;
+        }
+      };
+
+  auto xnn_fusion_proto_kind_to_kind =
+      [](const XnnFusionThunkProto::ImplCase& proto_kind) {
+        switch (proto_kind) {
+          case XnnFusionThunkProto::ImplCase::kXnnDotThunk:
+            // NOTE(basioli) follow up CL should add XnnDotThunk, we should
+            // abide by the same inheritance pattern as the other thunks.
+            return Thunk::Kind::kXnnFusion;
+          default:
+            return Thunk::Kind::kUnknown;
+        }
+      };
+
+  switch (proto.impl_case()) {
+    case ThunkProto::ImplCase::kCollectiveThunk:
+      return collective_proto_kind_to_kind(
+          proto.collective_thunk().impl_case());
+    case ThunkProto::ImplCase::kCallThunk:
+      return Thunk::Kind::kCall;
+    case ThunkProto::ImplCase::kConditionalThunk:
+      return Thunk::Kind::kConditional;
+    case ThunkProto::ImplCase::kConvolutionThunk:
+      return Thunk::Kind::kConvolution;
+    case ThunkProto::ImplCase::kCopyThunk:
+      return Thunk::Kind::kCopy;
+    case ThunkProto::ImplCase::kCustomCallThunk:
+      return Thunk::Kind::kCustomCall;
+    case ThunkProto::ImplCase::kDotThunk:
+      return Thunk::Kind::kDot;
+    case ThunkProto::ImplCase::kFftThunk:
+      return Thunk::Kind::kFft;
+    case ThunkProto::ImplCase::kInfeedThunk:
+      return Thunk::Kind::kInfeed;
+    case ThunkProto::ImplCase::kKernelThunk:
+      return Thunk::Kind::kKernel;
+    case ThunkProto::ImplCase::kOutfeedThunk:
+      return Thunk::Kind::kOutfeed;
+    case ThunkProto::ImplCase::kRngGetAndUpdateStateThunk:
+      return Thunk::Kind::kRngGetAndUpdateState;
+    case ThunkProto::ImplCase::kSortThunk:
+      return Thunk::Kind::kSort;
+    case ThunkProto::ImplCase::kTopKThunk:
+      return Thunk::Kind::kTopK;
+    case ThunkProto::ImplCase::kWhileThunk:
+      return Thunk::Kind::kWhile;
+    case ThunkProto::ImplCase::kXnnFusionThunk:
+      return xnn_fusion_proto_kind_to_kind(
+          proto.xnn_fusion_thunk().impl_case());
+    default:
+      return Thunk::Kind::kUnknown;
+  }
+}
+
+static absl::StatusOr<std::shared_ptr<Resource>> CreateResourceFromProto(
+    const ResourceProto& proto) {
+  switch (proto.kind()) {
+    case ResourceProto::TOKEN:
+      return Resource::Create(Resource::kToken);
+    case ResourceProto::COLLECTIVE_COMMUNICATOR:
+      return Resource::Create(Resource::kCollectiveCommunicator);
+    default:
+      return absl::UnimplementedError("Resource kind not supported.");
+  }
+}
 
 static absl::StatusOr<ResourceProto> ToProto(const Resource& resource) {
   ResourceProto proto;
@@ -80,6 +168,104 @@ static InfoProto ThunkInfoToProto(const Thunk::Info& info) {
   return proto;
 }
 
+static absl::StatusOr<Thunk::Info> ThunkInfoFromProto(const InfoProto& proto) {
+  Thunk::Info info;
+  info.op_name = proto.op_name();
+  info.module_name = proto.module_name();
+  info.module_id = proto.module_id();
+  return info;
+}
+
+static absl::StatusOr<CollectiveThunk::OpParams> OpParamsFromProto(
+    const OpParamsProto& proto) {
+  CollectiveThunk::OpParams op_params;
+  op_params.has_channel_id = proto.has_channel_id();
+  op_params.use_global_device_ids = proto.use_global_device_ids();
+  op_params.op_id = proto.op_id();
+  for (const auto& replica_group : proto.replica_group()) {
+    ReplicaGroup group;
+    for (const auto& replica_id : replica_group.replica_ids()) {
+      group.add_replica_ids(replica_id);
+    }
+    op_params.group.push_back(group);
+  }
+  return op_params;
+}
+
+static absl::StatusOr<BufferAllocationSliceProto> SerializeSliceIntoProto(
+    const BufferAllocation::Slice& slice) {
+  BufferAllocationSliceProto proto;
+  proto.set_offset(slice.offset());
+  proto.set_size(slice.size());
+  proto.set_buffer_allocation_index(
+      slice.allocation() == nullptr ? -1 : slice.index());
+  return proto;
+}
+
+static absl::StatusOr<BufferAllocation::Slice> DeserializeSliceFromProto(
+    const BufferAllocationSliceProto& proto,
+    const BufferAssignment& buffer_assignment) {
+  const BufferAllocation& allocation =
+      buffer_assignment.GetAllocation(proto.buffer_allocation_index());
+  return BufferAllocation::Slice(&allocation, proto.offset(), proto.size());
+}
+
+static absl::Status SerializeSliceShapeIntoProto(
+    const BufferAllocation::Slice& slice, const Shape& shape,
+    ShapeBufferAllocationSliceProto* proto) {
+  *proto->mutable_shape() = shape.ToProto();
+  TF_ASSIGN_OR_RETURN(*proto->mutable_slice(), SerializeSliceIntoProto(slice));
+  return absl::OkStatus();
+}
+
+static absl::StatusOr<std::pair<BufferAllocation::Slice, Shape>>
+DeserializeSliceShapeFromProto(const ShapeBufferAllocationSliceProto& proto,
+                               const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice slice,
+      DeserializeSliceFromProto(proto.slice(), buffer_assignment));
+  Shape shape(proto.shape());
+  return std::make_pair(slice, shape);
+}
+
+static absl::StatusOr<
+    std::tuple<CollectiveThunk::OpParams, CollectiveThunk::OpBuffers,
+               CollectiveThunk::OpResources>>
+GetCollectiveThunkParamsFromProto(const CollectiveThunkProto& proto,
+                                  const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(CollectiveThunk::OpParams op_params,
+                      OpParamsFromProto(proto.op_params()));
+
+  CollectiveThunk::OpBuffers op_buffers;
+  for (const auto& shape_buffer_slice_proto :
+       proto.op_buffers().source_shapes_buffer_slices()) {
+    TF_ASSIGN_OR_RETURN(auto slice_shape,
+                        DeserializeSliceShapeFromProto(shape_buffer_slice_proto,
+                                                       buffer_assignment));
+    const auto& [slice, shape] = slice_shape;
+    op_buffers.source_buffers.push_back(slice);
+    op_buffers.source_shapes.push_back(shape);
+  }
+
+  for (const auto& shape_buffer_slice_proto :
+       proto.op_buffers().destination_shapes_buffer_slices()) {
+    TF_ASSIGN_OR_RETURN(auto slice_shape,
+                        DeserializeSliceShapeFromProto(shape_buffer_slice_proto,
+                                                       buffer_assignment));
+
+    const auto& [slice, shape] = slice_shape;
+    op_buffers.destination_buffers.push_back(slice);
+    op_buffers.destination_shapes.push_back(shape);
+  }
+
+  CollectiveThunk::OpResources op_resources;
+  TF_ASSIGN_OR_RETURN(
+      op_resources.communicator_resource,
+      CreateResourceFromProto(proto.op_resources().communicator_resource()));
+
+  return std::make_tuple(op_params, op_buffers, op_resources);
+}
+
 static absl::StatusOr<OpParamsProto> ToProto(
     const CollectiveThunk::OpParams& op_params) {
   OpParamsProto proto;
@@ -94,24 +280,6 @@ static absl::StatusOr<OpParamsProto> ToProto(
     }
   }
   return proto;
-}
-
-static absl::StatusOr<BufferAllocationSliceProto> ToProto(
-    const BufferAllocation::Slice& slice) {
-  BufferAllocationSliceProto proto;
-  proto.set_offset(slice.offset());
-  proto.set_size(slice.size());
-  proto.set_buffer_allocation_index(
-      slice.allocation() == nullptr ? -1 : slice.index());
-  return proto;
-}
-
-static absl::Status SerializeSliceShapeIntoProto(
-    const BufferAllocation::Slice& slice, const Shape& shape,
-    ShapeBufferAllocationSliceProto* proto) {
-  *proto->mutable_shape() = shape.ToProto();
-  TF_ASSIGN_OR_RETURN(*proto->mutable_slice(), ToProto(slice));
-  return absl::OkStatus();
 }
 
 class ThunkSerDesProtobuf : public SerDesBase<Thunk> {
@@ -421,11 +589,11 @@ static absl::Status ToProto(const TopKThunk& thunk, ThunkProto& proto) {
   top_k_thunk_proto->set_k(thunk.k());
 
   TF_ASSIGN_OR_RETURN(*top_k_thunk_proto->mutable_values_buffer(),
-                      ToProto(thunk.values_buffer()));
+                      SerializeSliceIntoProto(thunk.values_buffer()));
   TF_ASSIGN_OR_RETURN(*top_k_thunk_proto->mutable_indices_buffer(),
-                      ToProto(thunk.indices_buffer()));
+                      SerializeSliceIntoProto(thunk.indices_buffer()));
   TF_ASSIGN_OR_RETURN(*top_k_thunk_proto->mutable_output_buffer(),
-                      ToProto(thunk.output_buffer()));
+                      SerializeSliceIntoProto(thunk.output_buffer()));
   return absl::OkStatus();
 }
 
@@ -443,12 +611,13 @@ static absl::Status ToProto(const WhileThunk& thunk, ThunkProto& proto) {
       thunk_sequence_serdes.ToProto(thunk.body_executor().thunk_sequence()));
 
   TF_ASSIGN_OR_RETURN(*while_thunk_proto->mutable_cond_buffer(),
-                      ToProto(thunk.cond_buffer()));
+                      SerializeSliceIntoProto(thunk.cond_buffer()));
   return absl::OkStatus();
 }
 
 static absl::Status ToProto(const XnnDotThunk& thunk, ThunkProto& proto) {
-  XnnDotThunkProto* xnn_dot_thunk_proto = proto.mutable_xnn_dot_thunk();
+  XnnDotThunkProto* xnn_dot_thunk_proto =
+      proto.mutable_xnn_fusion_thunk()->mutable_xnn_dot_thunk();
   *xnn_dot_thunk_proto->mutable_dot_dimensions() = thunk.dot_dimensions();
   TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
       thunk.dot_slices().lhs_buffer, thunk.dot_slices().lhs_shape,
@@ -490,7 +659,7 @@ static absl::Status ToProto(const RngGetAndUpdateStateThunk& thunk,
 
   TF_ASSIGN_OR_RETURN(
       *rng_get_and_update_state_thunk_proto->mutable_state_buffer(),
-      ToProto(thunk.state_buffer()));
+      SerializeSliceIntoProto(thunk.state_buffer()));
 
   return absl::OkStatus();
 }
@@ -506,12 +675,12 @@ static absl::Status ToProto(const KernelThunk& thunk, ThunkProto& proto) {
 
   for (const BufferAllocation::Slice& buffer : thunk.arguments_buffers()) {
     TF_ASSIGN_OR_RETURN(*kernel_thunk_proto->add_arguments_buffers(),
-                        ToProto(buffer));
+                        SerializeSliceIntoProto(buffer));
   }
 
   for (const BufferAllocation::Slice& buffer : thunk.results_buffers()) {
     TF_ASSIGN_OR_RETURN(*kernel_thunk_proto->add_results_buffers(),
-                        ToProto(buffer));
+                        SerializeSliceIntoProto(buffer));
   }
   return absl::OkStatus();
 }
@@ -530,7 +699,7 @@ static absl::Status ToProto(const ConditionalThunk& thunk, ThunkProto& proto) {
   }
 
   TF_ASSIGN_OR_RETURN(*conditional_thunk_proto->mutable_branch_index_buffer(),
-                      ToProto(thunk.branch_index_buffer()));
+                      SerializeSliceIntoProto(thunk.branch_index_buffer()));
   return absl::OkStatus();
 }
 
@@ -623,9 +792,546 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
   return proto;
 }
 
+static absl::StatusOr<std::unique_ptr<AllGatherThunk>> AllGatherThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  TF_ASSIGN_OR_RETURN(auto collective_thunk_params,
+                      GetCollectiveThunkParamsFromProto(
+                          proto.collective_thunk(), buffer_assignment));
+
+  const auto& [op_params, op_buffers, op_resources] = collective_thunk_params;
+  return AllGatherThunk::Create(info, op_params, op_buffers, op_resources);
+}
+
+static absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  TF_ASSIGN_OR_RETURN(auto collective_thunk_params,
+                      GetCollectiveThunkParamsFromProto(
+                          proto.collective_thunk(), buffer_assignment));
+
+  const auto& [op_params, op_buffers, op_resources] = collective_thunk_params;
+  TF_ASSIGN_OR_RETURN(
+      ReductionKind reduction_kind,
+      StringToReductionKind(
+          proto.collective_thunk().all_reduce_thunk().reduction_kind()));
+
+  return AllReduceThunk::Create(
+      info, reduction_kind, op_params, op_buffers, op_resources,
+      proto.collective_thunk().all_reduce_thunk().single_replica());
+}
+
+static absl::StatusOr<std::unique_ptr<AllToAllThunk>> AllToAllThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  TF_ASSIGN_OR_RETURN(auto collective_thunk_params,
+                      GetCollectiveThunkParamsFromProto(
+                          proto.collective_thunk(), buffer_assignment));
+
+  const auto& [op_params, op_buffers, op_resources] = collective_thunk_params;
+  return AllToAllThunk::Create(info, op_params, op_buffers, op_resources);
+}
+
+static absl::StatusOr<std::unique_ptr<CollectivePermuteThunk>>
+CollectivePermuteThunkFromProto(const ThunkProto& proto,
+                                const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  TF_ASSIGN_OR_RETURN(auto collective_thunk_params,
+                      GetCollectiveThunkParamsFromProto(
+                          proto.collective_thunk(), buffer_assignment));
+
+  const auto& [op_params, op_buffers, op_resources] = collective_thunk_params;
+  std::vector<CollectivePermuteThunk::SourceTargetPair> source_target_pairs;
+  for (const auto& source_target_pair_proto : proto.collective_thunk()
+                                                  .collective_permute_thunk()
+                                                  .source_target_pairs()) {
+    source_target_pairs.push_back(
+        {source_target_pair_proto.source(), source_target_pair_proto.target()});
+  }
+  return CollectivePermuteThunk::Create(info, op_params, op_buffers,
+                                        op_resources, source_target_pairs);
+}
+
+static absl::StatusOr<std::unique_ptr<ReduceScatterThunk>>
+ReduceScatterThunkFromProto(const ThunkProto& proto,
+                            const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  TF_ASSIGN_OR_RETURN(auto collective_thunk_params,
+                      GetCollectiveThunkParamsFromProto(
+                          proto.collective_thunk(), buffer_assignment));
+
+  const auto& [op_params, op_buffers, op_resources] = collective_thunk_params;
+
+  TF_ASSIGN_OR_RETURN(
+      ReductionKind reduction_kind,
+      StringToReductionKind(
+          proto.collective_thunk().reduce_scatter_thunk().reduction_kind()));
+  return ReduceScatterThunk::Create(info, reduction_kind, op_params, op_buffers,
+                                    op_resources);
+}
+
+static absl::StatusOr<std::unique_ptr<CallThunk>> CallThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
+      /*buffer_assignment=*/nullptr);  // NOTE buffer assignment isn't needed
+                                       // for deserialization.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<ThunkSequence> call_sequence,
+      thunk_sequence_serdes.FromProto(proto.call_thunk().called_sequence()));
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  return CallThunk::Create(std::move(info), std::move(*call_sequence));
+}
+
+static absl::StatusOr<std::unique_ptr<ConditionalThunk>>
+ConditionalThunkFromProto(const ThunkProto& proto,
+                          const BufferAssignment& buffer_assignment) {
+  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
+      /*buffer_assignment=*/nullptr);  // NOTE buffer assignment isn't needed
+                                       // for deserialization.
+  std::vector<ThunkSequence> branch_sequences;
+  for (const ThunkSequenceProto& branch_sequence_proto :
+       proto.conditional_thunk().branch_sequences()) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<ThunkSequence> branch_sequence,
+                        thunk_sequence_serdes.FromProto(branch_sequence_proto));
+    branch_sequences.push_back(std::move(*branch_sequence));
+  }
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice branch_index_buffer,
+      DeserializeSliceFromProto(proto.conditional_thunk().branch_index_buffer(),
+                                buffer_assignment));
+
+  return ConditionalThunk::Create(std::move(info),
+                                  std::move(branch_index_buffer),
+                                  std::move(branch_sequences));
+}
+
+static absl::StatusOr<std::unique_ptr<ConvolutionThunk>>
+ConvolutionThunkFromProto(const ThunkProto& proto,
+                          const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  // Parse options.
+  ConvolutionThunk::Options options;
+  options.multi_threaded = proto.convolution_thunk().options().multi_threaded();
+  options.use_acl = proto.convolution_thunk().options().use_acl();
+
+  // Dimension numbers.
+  ConvolutionDimensionNumbers dnums =
+      proto.convolution_thunk().dimension_numbers();
+
+  // Window.
+  Window window = proto.convolution_thunk().window();
+
+  // Feature group count.
+  int64_t feature_group_count = proto.convolution_thunk().feature_group_count();
+
+  TF_ASSIGN_OR_RETURN(
+      auto input_slice_shape,
+      DeserializeSliceShapeFromProto(
+          proto.convolution_thunk().input_buffer_shape(), buffer_assignment));
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_slice_shape,
+      DeserializeSliceShapeFromProto(
+          proto.convolution_thunk().kernel_buffer_shape(), buffer_assignment));
+  TF_ASSIGN_OR_RETURN(
+      auto output_slice_shape,
+      DeserializeSliceShapeFromProto(
+          proto.convolution_thunk().output_buffer_shape(), buffer_assignment));
+
+  const auto& [input_buffer, input_shape] = input_slice_shape;
+  const auto& [kernel_buffer, kernel_shape] = kernel_slice_shape;
+  const auto& [output_buffer, output_shape] = output_slice_shape;
+
+  return ConvolutionThunk::Create(
+      std::move(info), std::move(options), std::move(input_buffer), input_shape,
+      std::move(kernel_buffer), kernel_shape, std::move(output_buffer),
+      output_shape, dnums, window, feature_group_count);
+}
+
+static absl::StatusOr<std::unique_ptr<CopyThunk>> CopyThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  TF_ASSIGN_OR_RETURN(
+      auto src_slice_shape,
+      DeserializeSliceShapeFromProto(proto.copy_thunk().src_buffer_shape(),
+                                     buffer_assignment));
+  TF_ASSIGN_OR_RETURN(
+      auto dst_slice_shape,
+      DeserializeSliceShapeFromProto(proto.copy_thunk().dst_buffer_shape(),
+                                     buffer_assignment));
+
+  const auto& [src_buffer, src_shape] = src_slice_shape;
+  const auto& [dst_buffer, dst_shape] = dst_slice_shape;
+
+  return CopyThunk::Create(std::move(info), std::move(src_buffer), src_shape,
+                           std::move(dst_buffer), dst_shape);
+}
+
+static absl::StatusOr<std::unique_ptr<CustomCallThunk>>
+CustomCallThunkFromProto(const ThunkProto& proto,
+                         const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  CustomCallThunk::OpBuffers op_buffers;
+  for (const ShapeBufferAllocationSliceProto& arg_buff_shape :
+       proto.custom_call_thunk().op_buffers().arguments_shapes()) {
+    TF_ASSIGN_OR_RETURN(
+        auto args_slice_shape,
+        DeserializeSliceShapeFromProto(arg_buff_shape, buffer_assignment));
+
+    const auto& [args_buffer, args_shape] = args_slice_shape;
+    op_buffers.arguments_buffers.push_back(args_buffer);
+    op_buffers.arguments_shapes.push_back(args_shape);
+  }
+
+  for (const ShapeBufferAllocationSliceProto& res_buff_shape :
+       proto.custom_call_thunk().op_buffers().results_shapes()) {
+    TF_ASSIGN_OR_RETURN(
+        auto res_slice_shape,
+        DeserializeSliceShapeFromProto(res_buff_shape, buffer_assignment));
+
+    const auto& [res_buffer, res_shape] = res_slice_shape;
+    op_buffers.results_buffers.push_back(res_buffer);
+    op_buffers.results_shapes.push_back(res_shape);
+  }
+
+  return CustomCallThunk::Create(
+      std::move(info), proto.custom_call_thunk().target_name(),
+      std::move(op_buffers), proto.custom_call_thunk().backend_config(),
+      proto.custom_call_thunk().api_version());
+}
+
+static absl::StatusOr<std::unique_ptr<DotThunk>> DotThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  TF_ASSIGN_OR_RETURN(
+      auto lhs_slice_shape,
+      DeserializeSliceShapeFromProto(proto.dot_thunk().lhs_buffer_shape(),
+                                     buffer_assignment));
+  TF_ASSIGN_OR_RETURN(
+      auto rhs_slice_shape,
+      DeserializeSliceShapeFromProto(proto.dot_thunk().rhs_buffer_shape(),
+                                     buffer_assignment));
+  TF_ASSIGN_OR_RETURN(
+      auto out_slice_shape,
+      DeserializeSliceShapeFromProto(proto.dot_thunk().out_buffer_shape(),
+                                     buffer_assignment));
+
+  const auto& [lhs_buffer, lhs_shape] = lhs_slice_shape;
+  const auto& [rhs_buffer, rhs_shape] = rhs_slice_shape;
+  const auto& [out_buffer, out_shape] = out_slice_shape;
+
+  return DotThunk::Create(std::move(info), proto.dot_thunk().dot_dimensions(),
+                          std::move(lhs_buffer), lhs_shape,
+                          std::move(rhs_buffer), rhs_shape,
+                          std::move(out_buffer), out_shape);
+}
+
+static absl::StatusOr<std::unique_ptr<FftThunk>> FftThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  TF_ASSIGN_OR_RETURN(
+      auto input_slice_shape,
+      DeserializeSliceShapeFromProto(proto.fft_thunk().input_buffer_shape(),
+                                     buffer_assignment));
+  TF_ASSIGN_OR_RETURN(
+      auto output_slice_shape,
+      DeserializeSliceShapeFromProto(proto.fft_thunk().output_buffer_shape(),
+                                     buffer_assignment));
+
+  const auto& [input_buffer, input_shape] = input_slice_shape;
+  const auto& [output_buffer, output_shape] = output_slice_shape;
+
+  return FftThunk::Create(
+      std::move(info), proto.fft_thunk().is_multi_thread_eigen(),
+      proto.fft_thunk().fft_type(), proto.fft_thunk().fft_length(),
+      input_buffer, input_shape, output_buffer, output_shape);
+}
+
+static absl::StatusOr<std::unique_ptr<InfeedThunk>> InfeedThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  std::vector<InfeedThunk::InfeedBuffer> infeed_buffers;
+  for (const ShapeBufferAllocationSliceProto& infeed_buffer_shape :
+       proto.infeed_thunk().infeed_buffers_shapes()) {
+    TF_ASSIGN_OR_RETURN(
+        auto infeed_buffer_slice_shape,
+        DeserializeSliceShapeFromProto(infeed_buffer_shape, buffer_assignment));
+
+    const auto& [infeed_buffer, infeed_shape] = infeed_buffer_slice_shape;
+    infeed_buffers.push_back(
+        {std::move(infeed_buffer), std::move(infeed_shape)});
+  }
+
+  InfeedThunk::InfeedResources infeed_resources;
+  TF_ASSIGN_OR_RETURN(
+      infeed_resources.consume_token,
+      CreateResourceFromProto(
+          proto.infeed_thunk().infeed_resources().consume_token()));
+  TF_ASSIGN_OR_RETURN(
+      infeed_resources.produce_token,
+      CreateResourceFromProto(
+          proto.infeed_thunk().infeed_resources().produce_token()));
+
+  return InfeedThunk::Create(std::move(info), std::move(infeed_buffers),
+                             std::move(infeed_resources));
+}
+
+static absl::StatusOr<std::unique_ptr<Thunk>> KernelThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  std::vector<BufferAllocation::Slice> arguments_buffers;
+  std::vector<BufferAllocation::Slice> results_buffers;
+
+  for (const BufferAllocationSliceProto& buffer_proto :
+       proto.kernel_thunk().arguments_buffers()) {
+    TF_ASSIGN_OR_RETURN(auto buffer, DeserializeSliceFromProto(
+                                         buffer_proto, buffer_assignment));
+    arguments_buffers.push_back(std::move(buffer));
+  }
+
+  for (const BufferAllocationSliceProto& buffer_proto :
+       proto.kernel_thunk().results_buffers()) {
+    TF_ASSIGN_OR_RETURN(auto buffer, DeserializeSliceFromProto(
+                                         buffer_proto, buffer_assignment));
+    results_buffers.push_back(std::move(buffer));
+  }
+
+  se::ThreadDim thread_dim(proto.kernel_thunk().thread_dim().x(),
+                           proto.kernel_thunk().thread_dim().y(),
+                           proto.kernel_thunk().thread_dim().z());
+
+  absl::flat_hash_set<int64_t> invariant_arguments;
+  for (int64_t invariant_argument :
+       proto.kernel_thunk().invariant_arguments()) {
+    invariant_arguments.insert(invariant_argument);
+  }
+
+  return KernelThunk::Create(
+      std::move(info), std::move(arguments_buffers), std::move(results_buffers),
+      proto.kernel_thunk().kernel_name(), thread_dim, invariant_arguments,
+      proto.kernel_thunk().min_alignment());
+}
+
+static absl::StatusOr<std::unique_ptr<OutfeedThunk>> OutfeedThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  std::vector<OutfeedThunk::OutfeedBuffer> outfeed_buffers;
+  for (const ShapeBufferAllocationSliceProto& buffer_proto :
+       proto.outfeed_thunk().outfeed_buffers_shapes()) {
+    TF_ASSIGN_OR_RETURN(
+        auto buffer_slice_shape,
+        DeserializeSliceShapeFromProto(buffer_proto, buffer_assignment));
+
+    const auto& [buffer_slice, buffer_shape] = buffer_slice_shape;
+    outfeed_buffers.push_back(
+        {std::move(buffer_slice), std::move(buffer_shape)});
+  }
+
+  OutfeedThunk::OutfeedResources outfeed_resources;
+  TF_ASSIGN_OR_RETURN(
+      outfeed_resources.consume_token,
+      CreateResourceFromProto(
+          proto.outfeed_thunk().outfeed_resources().consume_token()));
+  TF_ASSIGN_OR_RETURN(
+      outfeed_resources.produce_token,
+      CreateResourceFromProto(
+          proto.outfeed_thunk().outfeed_resources().produce_token()));
+
+  return OutfeedThunk::Create(std::move(info), outfeed_buffers,
+                              outfeed_resources);
+}
+
+static absl::StatusOr<std::unique_ptr<RngGetAndUpdateStateThunk>>
+RngGetAndUpdateStateThunkFromProto(const ThunkProto& proto,
+                                   const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice state_buffer,
+                      DeserializeSliceFromProto(
+                          proto.rng_get_and_update_state_thunk().state_buffer(),
+                          buffer_assignment));
+
+  return RngGetAndUpdateStateThunk::Create(
+      std::move(info), state_buffer,
+      proto.rng_get_and_update_state_thunk().delta());
+}
+
+static absl::StatusOr<std::unique_ptr<SortThunk>> SortThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+  std::vector<SortThunk::Input> inputs;
+  for (const ShapeBufferAllocationSliceProto& buffer_proto :
+       proto.sort_thunk().inputs_shapes()) {
+    TF_ASSIGN_OR_RETURN(
+        auto buffer_slice_shape,
+        DeserializeSliceShapeFromProto(buffer_proto, buffer_assignment));
+
+    const auto& [buffer_slice, buffer_shape] = buffer_slice_shape;
+    inputs.push_back({std::move(buffer_slice), std::move(buffer_shape)});
+  }
+
+  SortThunk::SortDirection sort_direction =
+      proto.sort_thunk().direction() == SortThunkProto::ASCENDING
+          ? SortThunk::SortDirection::kAscending
+          : SortThunk::SortDirection::kDescending;
+
+  return SortThunk::Create(
+      std::move(info), inputs, proto.sort_thunk().dimension(),
+      proto.sort_thunk().is_stable(), proto.sort_thunk().comparator_name(),
+      sort_direction);
+}
+
+static absl::StatusOr<std::unique_ptr<TopKThunk>> TopKThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice values_buffer,
+      DeserializeSliceFromProto(proto.top_k_thunk().values_buffer(),
+                                buffer_assignment));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice output_buffer,
+      DeserializeSliceFromProto(proto.top_k_thunk().output_buffer(),
+                                buffer_assignment));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice indices_buffer,
+      DeserializeSliceFromProto(proto.top_k_thunk().indices_buffer(),
+                                buffer_assignment));
+
+  return TopKThunk::Create(std::move(info), values_buffer, output_buffer,
+                           indices_buffer, proto.top_k_thunk().batch_size(),
+                           proto.top_k_thunk().input_size(),
+                           proto.top_k_thunk().k());
+}
+
+static absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
+      /*buffer_assignment=*/nullptr);  // NOTE buffer assignment isn't needed
+                                       // for deserialization.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<ThunkSequence> cond_sequence,
+      thunk_sequence_serdes.FromProto(proto.while_thunk().cond_sequence()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<ThunkSequence> body_sequence,
+      thunk_sequence_serdes.FromProto(proto.while_thunk().body_sequence()));
+
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice cond_buffer,
+      DeserializeSliceFromProto(proto.while_thunk().cond_buffer(),
+                                buffer_assignment));
+
+  return WhileThunk::Create(
+      std::move(info), cond_buffer, std::move(*cond_sequence),
+      std::move(*body_sequence), proto.while_thunk().trip_count());
+}
+
+static absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunkFromProto(
+    const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  TF_ASSIGN_OR_RETURN(
+      auto lhs_slice_shape,
+      DeserializeSliceShapeFromProto(
+          proto.xnn_fusion_thunk().xnn_dot_thunk().lhs_buffer_shape(),
+          buffer_assignment));
+
+  TF_ASSIGN_OR_RETURN(
+      auto rhs_slice_shape,
+      DeserializeSliceShapeFromProto(
+          proto.xnn_fusion_thunk().xnn_dot_thunk().rhs_buffer_shape(),
+          buffer_assignment));
+  TF_ASSIGN_OR_RETURN(
+      auto out_slice_shape,
+      DeserializeSliceShapeFromProto(
+          proto.xnn_fusion_thunk().xnn_dot_thunk().out_buffer_shape(),
+          buffer_assignment));
+
+  const auto& [lhs_buffer, lhs_shape] = lhs_slice_shape;
+  const auto& [rhs_buffer, rhs_shape] = rhs_slice_shape;
+  const auto& [out_buffer, out_shape] = out_slice_shape;
+
+  return XnnDotThunk::Create(
+      std::move(info),
+      proto.xnn_fusion_thunk().xnn_dot_thunk().dot_dimensions(), lhs_buffer,
+      lhs_shape, rhs_buffer, rhs_shape, out_buffer, out_shape);
+}
+
 absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
     const ThunkProto& proto) const {
-  // big switch case here
+  Thunk::Kind kind = ProtoThunkToThunkKind(proto);
+  if (Thunk::KindToString(kind) != proto.kind()) {
+    return absl::Status(
+        absl::StatusCode::kInvalidArgument,
+        absl::StrFormat(
+            "Kind mismatch between proto kind `%s` and thunk kind `%s`.",
+            proto.kind(), Thunk::KindToString(kind)));
+  }
+
+  switch (kind) {
+    case Thunk::Kind::kAllGather:
+      return AllGatherThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kAllReduce:
+      return AllReduceThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kAllToAll:
+      return AllToAllThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kCollectivePermute:
+      return CollectivePermuteThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kReduceScatter:
+      return ReduceScatterThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kCall:
+      return CallThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kConditional:
+      return ConditionalThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kConvolution:
+      return ConvolutionThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kCopy:
+      return CopyThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kCustomCall:
+      return CustomCallThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kDot:
+      return DotThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kFft:
+      return FftThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kInfeed:
+      return InfeedThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kKernel:
+      return KernelThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kOutfeed:
+      return OutfeedThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kRngGetAndUpdateState:
+      return RngGetAndUpdateStateThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kSort:
+      return SortThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kTopK:
+      return TopKThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kWhile:
+      return WhileThunkFromProto(proto, *buffer_assignment_);
+    case Thunk::Kind::kXnnFusion:
+      // TODO(basioli) follow up CL should add XnnDotThunk, we should
+      // abide by the same inheritance pattern as the other thunks.
+      return XnnDotThunkFromProto(proto, *buffer_assignment_);
+    default:
+      return absl::Status(absl::StatusCode::kInvalidArgument,
+                          absl::StrFormat("Unsupported thunk kind: %s",
+                                          Thunk::KindToString(kind)));
+  }
   return absl::UnimplementedError("FromProto is not implemented");
 }
 
