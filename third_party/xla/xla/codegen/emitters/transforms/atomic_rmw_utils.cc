@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/codegen/emitters/transforms/atomic_rmw_utils.h"
+#include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 
 #include <optional>
 #include <utility>
@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 
 namespace xla {
-namespace gpu {
+namespace emitters {
 namespace {
 
 using mlir::Operation;
@@ -118,5 +118,5 @@ std::optional<std::pair<Value, ml::AtomicBinOp>> GetAtomicModifierParameters(
   return std::make_pair(modifier_arg, *kind);
 }
 
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla

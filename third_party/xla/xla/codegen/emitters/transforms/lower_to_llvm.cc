@@ -42,16 +42,19 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
-namespace gpu {
+namespace emitters {
 namespace {
 
+namespace se = ::stream_executor;
+
 #define GEN_PASS_DEF_LOWERTOLLVMPASS
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+#include "xla/codegen/emitters/transforms/passes.h.inc"
 
 class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
  public:
@@ -136,5 +139,5 @@ std::unique_ptr<::mlir::Pass> CreateLowerToLLVMPass(
   return std::make_unique<LowerToLLVMPass>(device_description);
 }
 
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla

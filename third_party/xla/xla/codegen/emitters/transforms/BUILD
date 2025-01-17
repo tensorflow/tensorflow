@@ -1,9 +1,4 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load(
-    "//xla/tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -18,13 +13,27 @@ package_group(
     ],
 )
 
+cc_library(
+    name = "atomic_rmw_utils",
+    srcs = ["atomic_rmw_utils.cc"],
+    hdrs = ["atomic_rmw_utils.h"],
+    deps = [
+        "//xla/codegen/emitters/ir:xla",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 gentbl_cc_library(
     name = "passes_inc_gen",
     tbl_outs = [
         (
             [
                 "-gen-pass-decls",
-                "-name=GpuFusionTransforms",
+                "-name=Transforms",
             ],
             "passes.h.inc",
         ),
@@ -38,59 +47,37 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "convert_float_nvidia.cc",
-        "convert_xla_gpu_pure_call_ops.cc",
-        "erase_dead_functions.cc",
-        "fuse_loops.cc",
-        "lower_xla_gpu_to_scf.cc",
-        "merge_pointers_to_same_slice.cc",
-        "optimize_loops.cc",
-        "peel_loops.cc",
-        "propagate_slice_indices.cc",
-        "simplify_affine.cc",
-        "simplify_arith.cc",
-        "unswitch_loops.cc",
-        "vectorize_loads_stores.cc",
+        "expand_float_ops.cc",
+        "flatten_tensors.cc",
+        "lower_tensors.cc",
+        "lower_to_llvm.cc",
     ],
     hdrs = ["passes.h"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
+        ":atomic_rmw_utils",
         ":passes_inc_gen",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
-        "//xla/codegen/emitters:elemental_hlo_to_mlir",
-        "//xla/codegen/emitters/ir:xla",
-        "//xla/codegen/emitters/transforms:atomic_rmw_utils",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
-        "//xla/service/gpu:gpu_fusible",
-        "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu/llvm_gpu_backend",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:semantic_version",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithToLLVM",
         "@llvm-project//mlir:ArithTransforms",
-        "@llvm-project//mlir:CallOpInterfaces",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ComplexToLLVM",
         "@llvm-project//mlir:ControlFlowToLLVM",
         "@llvm-project//mlir:DataLayoutInterfaces",
-        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:GPUDialect",
@@ -115,9 +102,5 @@ cc_library(
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
         "@local_tsl//tsl/platform:protobuf",
-    ] + if_cuda_is_configured([
-        "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
-    ]) + if_rocm_is_configured([
-        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
-    ]),
+    ],
 )

@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s -split-input-file -xla-gpu-flatten-tensors \
+// RUN: emitters_opt %s -split-input-file -xla-flatten-tensors \
 // RUN: --verify-diagnostics | FileCheck %s
 
 func.func @tensor_extract(

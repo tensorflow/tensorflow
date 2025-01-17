@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_BACKENDS_GPU_CODEGEN_EMITTERS_TRANSFORMS_ATOMIC_RMW_UTILS_H_
-#define XLA_BACKENDS_GPU_CODEGEN_EMITTERS_TRANSFORMS_ATOMIC_RMW_UTILS_H_
+#ifndef XLA_CODEGEN_EMITTERS_TRANSFORMS_ATOMIC_RMW_UTILS_H_
+#define XLA_CODEGEN_EMITTERS_TRANSFORMS_ATOMIC_RMW_UTILS_H_
 
 #include <optional>
 #include <utility>
@@ -23,13 +23,13 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 
 namespace xla {
-namespace gpu {
+namespace emitters {
 
 // Returns atomic op modifier and the atomic bin op kind.
 std::optional<std::pair<mlir::Value, mlir::LLVM::AtomicBinOp>>
 GetAtomicModifierParameters(AtomicRMWOp op);
 
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_CODEGEN_EMITTERS_TRANSFORMS_ATOMIC_RMW_UTILS_H_
+#endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_ATOMIC_RMW_UTILS_H_

@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 
@@ -58,6 +59,7 @@ int main(int argc, char** argv) {
   mlir::registerCanonicalizerPass();
   mlir::registerCSEPass();
   mlir::registerInliner();
+  xla::emitters::registerTransformsPasses();
   xla::gpu::registerGpuFusionTransformsPasses();
   xla::cpu::registerXlaCpuTransformsPasses();
   mlir::registerPassPipeline(

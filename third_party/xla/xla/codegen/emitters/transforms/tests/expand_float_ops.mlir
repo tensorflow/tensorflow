@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s -split-input-file -xla-gpu-expand-float-ops -canonicalize | FileCheck %s
+// RUN: emitters_opt %s -split-input-file -xla-expand-float-ops -canonicalize | FileCheck %s
 
 module {
   func.func @tanh(%arg0: f32) -> f32 {

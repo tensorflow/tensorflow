@@ -16,6 +16,7 @@ xla_cc_binary(
         "//xla/backends/cpu/codegen:__subpackages__",
         "//xla/backends/gpu/codegen:__subpackages__",
         "//xla/codegen/emitters/ir/tests:__subpackages__",
+        "//xla/codegen/emitters/transforms/tests:__subpackages__",
     ],
     deps = [
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
@@ -24,6 +25,7 @@ xla_cc_binary(
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/transforms:passes",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "@llvm-project//llvm:Support",

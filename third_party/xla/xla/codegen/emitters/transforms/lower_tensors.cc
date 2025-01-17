@@ -61,19 +61,19 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
-#include "xla/backends/gpu/codegen/emitters/transforms/atomic_rmw_utils.h"
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
+#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
-namespace gpu {
+namespace emitters {
 namespace {
 
 #define GEN_PASS_DEF_LOWERTENSORSPASS
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+#include "xla/codegen/emitters/transforms/passes.h.inc"
 
 using llvm::dyn_cast_or_null;
 using mlir::failure;
@@ -115,7 +115,7 @@ Value GetDestinationBuffer(Value dest) {
     } else if (auto scf_for = dest.getDefiningOp<scf::ForOp>()) {
       dest = scf_for.getInitArgs()[result_number];
     } else if (dest.getDefiningOp<UnrealizedConversionCastOp>() ||
-               dest.getDefiningOp<AllocateSharedOp>()) {
+               dest.getDefiningOp<gpu::AllocateSharedOp>()) {
       break;
     } else if (auto transfer_write =
                    dest.getDefiningOp<vector::TransferWriteOp>()) {
@@ -617,11 +617,12 @@ ml::GlobalOp CreateGlobalOp(mlir::Attribute value,
                                 /*alignment=*/0, addr_space);
 }
 
-struct RewriteAllocateShared : OpRewritePattern<AllocateSharedOp> {
+struct RewriteAllocateShared : OpRewritePattern<gpu::AllocateSharedOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
-      AllocateSharedOp op, mlir::PatternRewriter& rewriter) const override {
+      gpu::AllocateSharedOp op,
+      mlir::PatternRewriter& rewriter) const override {
     auto module = op->getParentOfType<mlir::ModuleOp>();
     auto shaped_ty = mlir::cast<mlir::ShapedType>(op.getResult().getType());
     constexpr int kGPUSharedMemoryAddrSpace = 3;
@@ -678,11 +679,11 @@ struct RewriteNonScalarConstants : OpRewritePattern<mlir::arith::ConstantOp> {
   }
 };
 
-struct RewriteSyncThreads : OpRewritePattern<SyncThreadsOp> {
+struct RewriteSyncThreads : OpRewritePattern<gpu::SyncThreadsOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(
-      SyncThreadsOp op, mlir::PatternRewriter& rewriter) const override {
+      gpu::SyncThreadsOp op, mlir::PatternRewriter& rewriter) const override {
     rewriter.create<mlir::gpu::BarrierOp>(op.getLoc());
     rewriter.replaceOp(op, op.getOperands());
     return success();
@@ -1236,5 +1237,5 @@ std::unique_ptr<::mlir::Pass> CreateLowerTensorsPass(
   return std::make_unique<LowerTensorsPass>(device_description);
 }
 
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla
