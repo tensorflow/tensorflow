@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -39,13 +40,14 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -1438,6 +1440,61 @@ CHECK:     tt.store
 
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+// Reproducer from b/384110192.
+TEST_F(TritonEmitterTest,
+       FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly) {
+  // The point here is to check the output of the Triton fusion. The `slice` op
+  // at the end is inserted to allow the comparison of output to run in a
+  // reasonable amount of time, and has been proven to still correctly capture
+  // the indexing overflow behaviour of the Triton fusion that we're checking
+  // for.
+  constexpr absl::string_view kTritonHloText = R"(
+computation {
+  p0 = s8[256]{0} parameter(0)
+  ROOT broadcast = s8[16777217,256]{1,0} broadcast(p0), dimensions={1}
+}
+
+ENTRY entry_computation {
+  p0 = s8[256]{0} parameter(0)
+  fusion = s8[16777217,256]{1,0} fusion(p0), kind=kCustom,
+    calls=computation,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tile_sizes":["2","256"],"num_warps":"1"}}}
+  ROOT slice = s8[1000,256]{1,0} slice(fusion), slice={[16776217:16777217], [0:256]}
+})";
+
+  constexpr absl::string_view kEmittersHloText = R"(
+computation {
+  p0 = s8[256]{0} parameter(0)
+  ROOT broadcast = s8[16777217,256]{1,0} broadcast(p0), dimensions={1}
+}
+
+ENTRY entry_computation {
+  p0 = s8[256]{0} parameter(0)
+  fusion = s8[16777217,256]{1,0} fusion(p0), kind=kCustom,
+    calls=computation
+  ROOT slice = s8[1000,256]{1,0} slice(fusion), slice={[16776217:16777217], [0:256]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_module,
+                          ParseAndReturnVerifiedModule(kTritonHloText));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> emitters_module,
+                          ParseAndReturnVerifiedModule(kEmittersHloText));
+
+  const Shape& triton_fusion_shape = triton_module->entry_computation()
+                                         ->root_instruction()
+                                         ->operand(0)
+                                         ->shape();
+
+  ASSERT_GT(Product(triton_fusion_shape.dimensions()), 1l << 32);
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(triton_module), std::move(emitters_module),
+      ErrorSpec{/*aabs=*/0, /*arel=*/0}, /*run_hlo_passes=*/false));
 }
 
 }  // namespace
