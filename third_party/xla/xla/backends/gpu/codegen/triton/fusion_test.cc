@@ -21,11 +21,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"

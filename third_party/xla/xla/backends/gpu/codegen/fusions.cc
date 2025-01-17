@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/fusions.h"
+#include "xla/backends/gpu/codegen/fusions.h"
 
 #include <memory>
 #include <optional>
@@ -30,13 +30,13 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/reduction.h"
 #include "xla/backends/gpu/codegen/emitters/scatter.h"
 #include "xla/backends/gpu/codegen/emitters/transpose.h"
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
