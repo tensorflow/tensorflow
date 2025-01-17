@@ -833,7 +833,7 @@ func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
 
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<6xf32>, %arg1: tensor<6xf32>, %arg2: tensor<3xi32>, %arg3: tensor<3xi32>, %arg4: tensor<3xi32>, %arg5: tensor<3xi32>) -> (tensor<6xf32>) {
-  %0 = mhlo.custom_call @ragged_all_to_all(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5) {api_version = 4 : i32, backend_config = {replica_groups = dense<[[0, 1, 2]]> : tensor<1x3xi64>}} : (tensor<6xf32>, tensor<6xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<6xf32>
+  %0 = mhlo.custom_call @ragged_all_to_all(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5) {api_version = 4 : i32, backend_config = {channel_handle = #mhlo.channel_handle<handle = 1, type = 1>, replica_groups = dense<[[0, 1, 2]]> : tensor<1x3xi64>}} : (tensor<6xf32>, tensor<6xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<6xf32>
   return %0 : tensor<6xf32>
 }
 
@@ -846,7 +846,7 @@ func.func @main(%arg0: tensor<6xf32>, %arg1: tensor<6xf32>, %arg2: tensor<3xi32>
 // CHECK: [[ARG_5:%.*]] = s32[3] parameter(5)
 // CHECK: ROOT
 // CHECK-SAME: f32[6] ragged-all-to-all(f32[6] [[ARG_0]], f32[6] [[ARG_1]], s32[3] [[ARG_2]], s32[3] [[ARG_3]], s32[3] [[ARG_4]], /*index=5*/s32[3] [[ARG_5]])
-// CHECK-SAME{LITERAL}: replica_groups={{0,1,2}}
+// CHECK-SAME{LITERAL}: channel_id=1, replica_groups={{0,1,2}}
 
 // -----
 
