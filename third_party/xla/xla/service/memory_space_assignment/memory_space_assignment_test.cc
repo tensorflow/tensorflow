@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/heap_simulator/allocation_block.h"
@@ -77,6 +78,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/testing_utils.h"
 #include "xla/service/memory_space_assignment/utils.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -159,6 +161,83 @@ TEST_F(MemorySpaceAssignmentTest, Simple) {
       /*tiles=*/{},
       /*tail_padding_alignment_in_elements=*/1,
       /*element_size_in_bits=*/0, kAlternateMemorySpace);
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  EXPECT_THAT(mul, op::ShapeWithLayout(shape));
+  EXPECT_THAT(add, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(sub, op::ShapeWithLayout(shape_in_alternate_mem));
+
+  // Make sure the preset assignments is sane.
+  EXPECT_EQ(preset_assignments->chunks().size(), 3);
+  EXPECT_EQ(preset_assignments->assignment_informations().size(), 1);
+  // Ensure the offset assigned to add and sub are different.
+  EXPECT_NE(preset_assignments->chunks()[0].second.offset,
+            preset_assignments->chunks()[1].second.offset);
+}
+
+TEST_F(MemorySpaceAssignmentTest, BasicSplit) {
+  constexpr int64_t kSplitDimension = 1;
+  constexpr int64_t kSplitIndex = 256;
+  SplitConfig split_config(/*dimension=*/kSplitDimension, {kSplitIndex});
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {256, 512});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p1));
+  HloInstruction* sub = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, p0, p1));
+  HloInstruction* mul = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, add, sub));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, add, sub, mul});
+  CHECK_OK(module->set_schedule(schedule));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 256 * 512 * 16;
+  options.init_split_tree_fn =
+      [&options](const HloInstruction* instruction,
+                 absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*
+                     split_map) {
+        if (split_map != nullptr) {
+          auto result = split_map->find(instruction);
+          if (result != split_map->end()) {
+            return result->second;
+          }
+        }
+        return ShapeTree<int64_t>(instruction->shape(),
+                                  options.any_split_dimension);
+      };
+
+  options.determine_split_dimension_fn =
+      [&split_config](
+          const HloValue& hlo_value,
+          absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*
+              split_map) -> std::optional<SplitConfig> {
+    if (hlo_value.instruction()->opcode() == HloOpcode::kAdd ||
+        hlo_value.instruction()->opcode() == HloOpcode::kSubtract) {
+      return split_config;
+    }
+    return std::nullopt;
+  };
+
+  auto preset_assignments = AssignMemorySpace(module.get(), options);
+
+  // Inputs and outputs are currently placed in the default memory. Everything
+  // else should be in the alternate memory.
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {256, 512},
+      /*minor_to_major=*/{1, 0},
+      /*tiles=*/{},
+      /*tail_padding_alignment_in_elements=*/1,
+      /*element_size_in_bits=*/0, kAlternateMemorySpace);
+  shape_in_alternate_mem.mutable_layout()->add_split_configs(split_config);
   EXPECT_THAT(p0, op::ShapeWithLayout(shape));
   EXPECT_THAT(p1, op::ShapeWithLayout(shape));
   EXPECT_THAT(mul, op::ShapeWithLayout(shape));

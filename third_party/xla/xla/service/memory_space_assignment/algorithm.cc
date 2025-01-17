@@ -47,13 +47,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
-#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/computation_layout.h"
@@ -74,11 +74,10 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/utils.h"
 #include "xla/service/time_utils.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -1786,7 +1785,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
     }
   }
   VLOG(2) << "Total reserved bytes = " << reserved_in_bytes_;
-  for (auto& interval : sorted_buffer_intervals) {
+  for (MsaBufferInterval& interval : sorted_buffer_intervals) {
     if (finalized_values_.contains(interval.buffer)) {
       VLOG(3) << "Skip entrance interval" << interval.buffer->ToShortString()
               << " because it is already processed.";
@@ -2306,6 +2305,69 @@ void MsaAlgorithm::CreateAllocationValuesFromColocatedIntervals(
   absl::c_move(new_allocation_values, std::back_inserter(allocation_values));
 }
 
+void MsaAlgorithm::MaybeSplitAllocationValues(
+    absl::Span<AllocationValue> allocation_values) {
+  if (options_.determine_split_dimension_fn == nullptr ||
+      options_.shape_size_fn == nullptr ||
+      options_.init_split_tree_fn == nullptr) {
+    return;
+  }
+
+  std::vector<std::optional<SplitConfig>> results;
+
+  for (AllocationValue& allocation_value : allocation_values) {
+    std::optional<SplitConfig> result = options_.determine_split_dimension_fn(
+        *allocation_value.value(), &instruction_to_split_dims_);
+    results.push_back(std::move(result));
+  }
+  for (int i = 0; i < results.size(); ++i) {
+    if (results[i] != results[0]) {
+      VLOG(3) << "Skipping splitting joint allocation values with different "
+                 "split choices: "
+              << allocation_values[0].ToShortString() << " -> "
+              << (results[0].has_value() ? results[0]->ToString() : "nullopt")
+              << " vs " << allocation_values[i].ToShortString() << " -> "
+              << (results[i].has_value() ? results[i]->ToString() : "nullopt");
+      return;
+    }
+  }
+
+  for (int i = 0; i < allocation_values.size(); ++i) {
+    auto& allocation_value = allocation_values[i];
+    HloInstruction* defining_instruction =
+        allocation_value.value()->defining_instruction();
+    auto& result = results[i];
+    if (!instruction_to_split_dims_.contains(defining_instruction)) {
+      instruction_to_split_dims_[allocation_value.value()
+                                     ->defining_instruction()] =
+          options_.init_split_tree_fn(defining_instruction, nullptr);
+    }
+    int64_t* mutable_element =
+        instruction_to_split_dims_[defining_instruction].mutable_element(
+            allocation_value.value()->defining_position().index);
+    if (!result.has_value()) {
+      *mutable_element = options_.replicated_split_dimension;
+      VLOG(4) << "Splitting allocation value: "
+              << allocation_value.ToShortString() << ": kReplicated.";
+      continue;
+    }
+    // TODO(b/382592216): Delay this assignment until after the AllocationValue
+    //  actually gets an alternate memory allocation.
+    *mutable_element = result->dimension();
+    Shape new_shape = allocation_value.value()->shape();
+    if (new_shape.has_layout() &&
+        new_shape.layout().split_configs_size() == 0) {
+      new_shape.mutable_layout()->add_split_configs(result.value());
+    }
+    allocation_value.set_split_shape(new_shape);
+    int64_t shape_size = options_.shape_size_fn(new_shape);
+
+    VLOG(4) << "Splitting allocation value: "
+            << allocation_value.ToShortString() << ": " << result->ToString();
+    allocation_value.set_size(shape_size);
+  }
+}
+
 bool MsaAlgorithm::RequiresNoCopyAlternateMemAllocation(
     AllocationValue& allocation_value) const {
   return allocation_value.value()->shape().has_layout() &&
@@ -2424,6 +2486,8 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
   for (int i = 0; i < all_use_times.size(); ++i) {
     VLOG(3) << "all_use_times[" << i << "] = " << all_use_times[i];
   }
+
+  MaybeSplitAllocationValues(allocation_values);
 
   // Data structure to contain the preferred offset for a given computation.
   // We ensure that the same offset will be allocated outside the while loop
@@ -4240,6 +4304,10 @@ void MsaAlgorithm::FinalizeAllocations(
   absl::flat_hash_map<const AliasedOffset*, size_t> offset_to_index;
   for (AllocationValue& allocation_value : allocation_values) {
     for (auto& allocation : *allocation_value.mutable_allocation_sequence()) {
+      if (allocation->memory_space() == MemorySpace::kAlternate &&
+          allocation_value.mutable_split_shape().has_value()) {
+        allocation->set_split_shape(allocation_value.mutable_split_shape());
+      }
       if ((allocation->memory_space() == MemorySpace::kAlternate) &&
           (!allocation->is_scoped_allocation())) {
         for (const HloUse& use : allocation->uses()) {
@@ -4902,7 +4970,7 @@ AllocationResult MsaAlgorithm::AllocateInAlternateMemoryNoCopy(
 
   if (request.preferred_offset) {
     // If there is a preferred offset provided in the request and if it doesn't
-    // match the previous allocation, this request cannot be satisified.
+    // match the previous allocation, this request cannot be satisfied.
     if (preferred_offset && request.preferred_offset != preferred_offset) {
       VLOG(3) << "Cannot perform no-copy allocation due to mismatch: "
                  "preferred_offset = "
