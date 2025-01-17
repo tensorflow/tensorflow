@@ -979,7 +979,6 @@ xla_cc_binary(
         "//xla:xla_data_proto_cc",
         "//xla/client",
         "//xla/client:client_library",
-        "//xla/client:global_data",
         "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",

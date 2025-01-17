@@ -259,7 +259,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:util",
-        "@local_xla//xla/client:global_data",
         "@local_xla//xla/client:local_client",
     ],
 )
