@@ -1741,6 +1741,15 @@ def FuseSqueezingLhsReshapeIntoFC_Output: Pat<
    (HasRank<2> $filter),
    (IsReducedTailOfShape $input, $reshaped_input)]>;
 
+def FuseTransposeIntoBatchMatMulRHSAdjY: Pat<
+  (TFL_BatchMatMulOp
+    $lhs,
+    (TFL_TransposeOp:$transposed_value $input, (Arith_ConstantOp:$perm_value $p0)),
+    $adj_x, $adj_y, $asymmetric_quantize_inputs),
+  (TFL_BatchMatMulOp $lhs, $input, $adj_x, ConstBoolAttrTrue, $asymmetric_quantize_inputs),
+  [(AreLastTwoDimsTransposed $perm_value),
+   (IsBoolAttrEqual<"false"> $adj_y)]>;
+
 // Replace conv-->transpose-->add with conv-->add-->transpose
 // The bias needs only reshape (i.e. ReshapeNCHWBiasToNHWC) and not transpose
 // because the bias's shape simply changes from NxCx1x1 to Nx1x1xC.
