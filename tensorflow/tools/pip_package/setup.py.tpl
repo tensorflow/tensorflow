@@ -43,12 +43,16 @@ from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
 
+# A genrule //tensorflow/tools/pip_package:setup_py replaces dummy string by
+# by the data provided in //tensorflow/tf_version.bzl.
+# The version suffix can be set by passing the build parameters
+# --repo_env=ML_WHEEL_BUILD_DATE=<date> and
+# --repo_env=ML_WHEEL_VERSION_SUFFIX=<suffix>.
+# To update the project version, update tf_version.bzl.
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-# Also update tensorflow/tensorflow.bzl and
-# tensorflow/core/public/version.h
-_VERSION = '2.19.0'
+_VERSION = '0.0.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly

@@ -21,12 +21,16 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
 fi
 
 # This generates a pure python wheel of the format "*-py3-none-any.whl"
-python3 tensorflow/tools/pip_package/setup.py bdist_wheel --dist-dir "$TFCI_OUTPUT_DIR"
+pwd
+uname -a
+#python3 tensorflow/tools/pip_package/setup.py.tpl bdist_wheel --dist-dir "$TFCI_OUTPUT_DIR"
+bazel run //tensorflow/tools/pip_package:setup_py_binary --repo_env=HERMETIC_PYTHON_VERSION=3.10 -- bdist_wheel --dist-dir "$TFCI_OUTPUT_DIR"
 
 # Get the name of the pure python wheel that was built. This should
 # resolve to either
 # 1. tensorflow-a.b.c-py3-none-any.whl  or, for nightly builds,
 # 2. tf_nightly-a.b.c.devYYYYMMDD-py3-none-any.whl
+ls -lh "$TFCI_OUTPUT_DIR"
 pure_python_whl=$(ls "$TFCI_OUTPUT_DIR"/*py3-none-any*)
 pure_python_whl=$(basename "${pure_python_whl}")
 
@@ -45,6 +49,8 @@ pushd "${TFCI_OUTPUT_DIR}"
 # re-pack it to generate it as a platform specific wheel with this new wheel
 #tag.
 python3 -m wheel unpack "${pure_python_whl}"
+ls -lh .
+ls -lh tensorflow-2.19.0
 
 # Remove the pure python wheel.
 rm -rf "${pure_python_whl}"
@@ -74,7 +80,7 @@ popd
 echo "Following installer wheels were generated: "
 ls "${TFCI_OUTPUT_DIR}"/*.whl
 
-if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
-  # Note: -n disables overwriting previously created files.
-  gsutil cp -n "$TFCI_OUTPUT_DIR"/*.whl "$TFCI_ARTIFACT_STAGING_GCS_URI"
-fi
+# if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
+#   # Note: -n disables overwriting previously created files.
+#   gsutil cp -n "$TFCI_OUTPUT_DIR"/*.whl "$TFCI_ARTIFACT_STAGING_GCS_URI"
+# fi

@@ -84,7 +84,7 @@ def verify_manylinux_compliance(
   Raises:
     RuntimeError: if the wheel is not manyLinux compliant.
   """
-  regex = 'following platform tag: "{}"'.format(compliance_tag)
+  regex = 'following platform tag:\s+"{}"'.format(compliance_tag)
   if not re.search(regex, auditwheel_log):
     raise RuntimeError(
         ("The wheel is not compliant with the tag {tag}.\n{result}").format(

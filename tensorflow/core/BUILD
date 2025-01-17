@@ -430,7 +430,6 @@ tf_cuda_library(
         "//tensorflow/core/framework:variant_tensor_data.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework/registration:registration.h",
-        "//tensorflow/core/public:version.h",
         "//tensorflow/core/util:determinism_hdr",
         "//tensorflow/core/util:framework_srcs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
@@ -445,6 +444,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":framework_internal",
+        "//tensorflow/core/public:version",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/functional:any_invocable",
     ],
@@ -1582,7 +1582,6 @@ filegroup(
         "//tensorflow/core/framework:framework_internal_private_hdrs",
         "//tensorflow/core/graph:framework_internal_private_headers",
         "//tensorflow/core/public:session_options.h",
-        "//tensorflow/core/public:version.h",
         "//tensorflow/core/util:framework_internal_private_hdrs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/util/sparse:framework_internal_private_headers_group",
@@ -1620,6 +1619,7 @@ tf_cuda_library(
     deps = [
         ":framework_internal_headers_lib",
         ":lib",
+        "//tensorflow/core/public:version",
         "@eigen_archive//:eigen3",
     ] + if_static(
         extra_deps = [
@@ -1705,6 +1705,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/public:version",
         "//tensorflow/core/util:determinism",
         "//tensorflow/core/util:einsum_op_util",
         "//tensorflow/core/util:managed_stack_trace",

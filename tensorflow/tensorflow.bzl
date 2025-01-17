@@ -25,6 +25,7 @@ load(
     "if_mkldnn_openmp",
     "onednn_v3_define",
 )
+load("//tensorflow:tf_version.bzl", "TF_VERSION")
 
 #
 # Returns the options to use for a C++ library or binary build.
@@ -93,10 +94,7 @@ def register_extension_info(**kwargs):
 
 # version for the shared libraries, can
 # not contain rc or alpha, only numbers.
-# Also update tensorflow/core/public/version.h
-# and tensorflow/tools/pip_package/setup.py
-WHEEL_VERSION = "2.19.0"
-VERSION = "2.19.0"
+VERSION = TF_VERSION
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
