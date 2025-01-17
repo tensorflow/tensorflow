@@ -39,9 +39,9 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 // TODO(jmudigonda): Several BasicStringArray operations such as
 // DisassembleIntoSingleDeviceArrays, Reshard, FullyReplicatedShard,

@@ -42,6 +42,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -51,7 +52,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -88,11 +88,11 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:sharding_serdes",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = True,
 )
@@ -108,10 +108,10 @@ xla_cc_test(
         "//xla/python/ifrt:device_test_util",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:sharding_serdes",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -129,12 +129,12 @@ cc_library(
         "//xla/python/ifrt:test_util",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
     alwayslink = True,
 )
@@ -165,11 +165,11 @@ xla_cc_test(
         "//xla/python/ifrt:device_test_util",
         "//xla/python/ifrt:tuple_impl_test_lib",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -231,6 +231,9 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -251,9 +254,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -267,8 +267,8 @@ cc_library(
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = True,
 )
@@ -283,8 +283,8 @@ cc_library(
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = True,
 )
@@ -343,6 +343,7 @@ cc_library(
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
@@ -355,7 +356,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -370,6 +370,9 @@ xla_cc_test(
         "//xla/python/ifrt:test_util",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -379,9 +382,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
