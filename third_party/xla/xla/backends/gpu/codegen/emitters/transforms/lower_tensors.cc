@@ -723,7 +723,8 @@ bool IsAtomicIntegral(Type element_type) {
   return element_bitwidth == 32 || element_bitwidth == 64;
 }
 
-Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type ty) {
+Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, mlir::Operation* op,
+                    Value value, Type ty) {
   if (value.getType().isIntOrFloat() && ty.isIntOrFloat()) {
     return b.create<ml::BitcastOp>(ty, value);
   }
@@ -734,10 +735,15 @@ Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type ty) {
   Type llvm_input_ty = converter.convertType(value.getType());
   Type llvm_result_ty = converter.convertType(ty);
   Type ptr_ty = ml::LLVMPointerType::get(b.getContext());
+  auto func = op->getParentOfType<mlir::func::FuncOp>();
+  // AMDGPU backend needs allocas to be out of loops.
+  // Move them to the entry block to be on the safe side.
+  auto entry_builder = mlir::ImplicitLocOpBuilder::atBlockBegin(
+      b.getLoc(), &func.getBody().front(), b.getListener());
 
   Value llvm_value =
       b.create<UnrealizedConversionCastOp>(llvm_input_ty, value).getResult(0);
-  Value alloca = b.create<ml::AllocaOp>(
+  Value alloca = entry_builder.create<ml::AllocaOp>(
       ptr_ty, llvm_input_ty, b.create<ml::ConstantOp>(b.getI32Type(), 1));
   b.create<ml::StoreOp>(llvm_value, alloca);
   auto result = b.create<ml::LoadOp>(llvm_result_ty, alloca).getResult();
@@ -1101,7 +1107,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
                                       b.create<ml::LShrOp>(old_value, shift));
             input_value = b.create<ml::BitcastOp>(result_ty, short_value);
           } else {
-            input_value = CreateBitcast(b, old_value, result_ty);
+            input_value = CreateBitcast(b, op, old_value, result_ty);
           }
 
           // Perform computation on the loaded input value.
@@ -1121,7 +1127,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
                 b.create<ml::OrOp>(b.create<ml::AndOp>(old_value, mask),
                                    b.create<ml::ShlOp>(cast_value, shift));
           } else {
-            new_value = CreateBitcast(b, result, atomic_ty);
+            new_value = CreateBitcast(b, op, result, atomic_ty);
           }
 
           // Try saving the result atomically, retry if failed.

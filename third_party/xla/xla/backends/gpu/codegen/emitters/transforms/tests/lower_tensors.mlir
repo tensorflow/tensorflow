@@ -625,8 +625,8 @@ func.func @atomic_rmw_c32(%in: tensor<8xcomplex<f32>>, %i: index)
 }
 // CHECK-LABEL: @atomic_rmw_c32
 
+// CHECK: %[[TMP:.*]] = llvm.alloca %{{.*}} x i64 : (i32) -> !llvm.ptr
 // CHECK: scf.while (%[[ITER_ARG:.*]] = %{{.*}}) : (i64) -> i64
-// CHECK: %[[TMP:.*]] = llvm.alloca
 // CHECK: llvm.store %[[ITER_ARG]], %[[TMP]]
 // CHECK: %[[LD:.*]] = llvm.load %[[TMP]] : {{.*}} -> !llvm.struct<(f32, f32)>
 // CHECK: builtin.unrealized_conversion_cast %[[LD]] : {{.*}} to complex<f32>
