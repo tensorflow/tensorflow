@@ -110,7 +110,7 @@ cc_library(
     name = "verified_hlo_module",
     testonly = True,
     hdrs = ["verified_hlo_module.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/testlib:verified_hlo_module instead.",
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/testlib:verified_hlo_module instead.",
     deps = [
         "//xla/hlo/testlib:verified_hlo_module",
     ],
@@ -426,7 +426,7 @@ cc_library(
     name = "filecheck",
     testonly = True,
     hdrs = ["filecheck.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/testlib:filecheck instead.",
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/testlib:filecheck instead.",
     deps = [
         "//xla/hlo/testlib:filecheck",
     ],

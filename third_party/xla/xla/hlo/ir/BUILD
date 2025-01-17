@@ -248,14 +248,14 @@ xla_cc_test(
 cc_library(
     name = "hlo_reachability",
     hdrs = ["hlo_reachability.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_reachability instead.",
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_reachability instead.",
     deps = ["//xla/hlo/analysis:hlo_reachability"],
 )
 
 cc_library(
     name = "hlo_dfs_reachability",
     hdrs = ["hlo_dfs_reachability.h"],
-    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_dfs_reachability instead.",
+    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_dfs_reachability instead.",
     deps = ["//xla/hlo/analysis:hlo_dfs_reachability"],
 )
 
