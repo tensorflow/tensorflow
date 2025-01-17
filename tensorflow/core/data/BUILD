@@ -53,8 +53,6 @@ exports_files([
     "unbounded_thread_pool.h",
     "utils.cc",
     "utils.h",
-    "log_lineage.cc",
-    "log_lineage.h",
 ])
 
 cc_library(
@@ -759,12 +757,4 @@ tf_cc_test(
         ":utils",
         "@com_google_googletest//:gtest_main",
     ],
-)
-
-cc_library(
-    name = "log_lineage",
-    srcs = ["log_lineage.cc"],
-    hdrs = ["log_lineage.h"],
-    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
-    deps = [],
 )
