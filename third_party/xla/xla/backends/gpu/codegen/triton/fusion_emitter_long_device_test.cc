@@ -47,6 +47,10 @@ class TritonEmitterLongDeviceTest : public GpuCodegenTest {
 
 TEST_F(TritonEmitterLongDeviceTest,
        FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly) {
+  // Note: if you break this test, the test infrastructure will break trying to
+  // write the output to a file because it is larger than the maximum protobuf
+  // size. To bypass this crash, it's possible to comment out the `Write*`
+  // callbacks, in `literal_test_util.cc`'s `OnMiscompare`).
   constexpr absl::string_view kTritonHloText = R"(
 computation {
   p0 = s8[256]{0} parameter(0)
