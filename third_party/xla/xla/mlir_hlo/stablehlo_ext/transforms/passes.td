@@ -51,3 +51,9 @@ def StablehloPrepareForHloExportPass : Pass<"stablehlo-ext-prepare-for-hlo-expor
     canonicalization may undo transformations.
   }];
 }
+
+def StablehloFlattenTuplePass : Pass<"stablehlo-ext-flatten-tuple", "func::FuncOp"> {
+  let summary = "Flatten tuples in operands and results of operators that "
+    "support both tuple and variadic type.";
+  let constructor = "createStablehloFlattenTuplePass()";
+}
