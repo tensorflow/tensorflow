@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/util/json_util.h"
 #include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -62,6 +65,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/roofline_model.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
