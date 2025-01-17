@@ -33,10 +33,6 @@ namespace gpu {
 #define GEN_PASS_DECL
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
 
-// Returns atomic op modifier and the atomic bin op kind.
-std::optional<std::pair<mlir::Value, mlir::LLVM::AtomicBinOp>>
-GetAtomicModifierParameters(AtomicRMWOp op);
-
 std::unique_ptr<mlir::Pass> CreateConvertFloatNvidiaPass();
 std::optional<std::unique_ptr<mlir::Pass>> MaybeCreateConvertFloatNvidiaPass(
     const se::DeviceDescription& device_description);

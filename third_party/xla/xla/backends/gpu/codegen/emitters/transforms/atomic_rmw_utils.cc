@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/backends/gpu/codegen/emitters/transforms/atomic_rmw_utils.h"
+
 #include <optional>
 #include <utility>
 
@@ -24,13 +26,11 @@ limitations under the License.
 #include "mlir/IR/UseDefLists.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 
 namespace xla {
 namespace gpu {
-
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+namespace {
 
 using mlir::Operation;
 using mlir::Type;
@@ -83,6 +83,8 @@ std::optional<ml::AtomicBinOp> GetAtomicBinOp(Operation* modifier_op,
       })
       .Default([](Operation* op) { return std::nullopt; });
 }
+
+}  // namespace
 
 // Returns atomic op modifier and the atomic bin op kind.
 std::optional<std::pair<Value, ml::AtomicBinOp>> GetAtomicModifierParameters(

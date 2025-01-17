@@ -18,6 +18,20 @@ package_group(
     ],
 )
 
+cc_library(
+    name = "atomic_rmw_utils",
+    srcs = ["atomic_rmw_utils.cc"],
+    hdrs = ["atomic_rmw_utils.h"],
+    deps = [
+        "//xla/codegen/emitters/ir:xla",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 gentbl_cc_library(
     name = "passes_inc_gen",
     tbl_outs = [
@@ -38,7 +52,6 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "atomic_rmw_utils.cc",
         "convert_float_nvidia.cc",
         "convert_xla_gpu_pure_call_ops.cc",
         "erase_dead_functions.cc",
@@ -60,6 +73,7 @@ cc_library(
     hdrs = ["passes.h"],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
+        ":atomic_rmw_utils",
         ":passes_inc_gen",
         "//xla:shape_util",
         "//xla:util",
