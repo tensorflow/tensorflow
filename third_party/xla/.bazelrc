@@ -108,6 +108,9 @@ build --enable_platform_specific_config
 # Enable XLA support by default.
 build --define=with_xla_support=true
 
+# Prevent XNNPACK from using `-mavxvnniint8` (only available in clang 16+/gcc 13+).
+build --define=xnn_enable_avxvnniint8=false
+
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --config=short_logs
 
