@@ -38,11 +38,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"
-#include "mlir/Support/FileUtilities.h"
 #include "mlir/Transforms/LocationSnapshot.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -55,13 +52,15 @@ limitations under the License.
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/regexp.h"
-#include "tsl/platform/status.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
+
+// BuildData isn't available in OSS.
+#if !TSL_IS_IN_OSS
+#include "absl/base/builddata.h"
+#endif  // TSL_IS_IN_OSS
 
 namespace xla {
 
@@ -642,11 +641,20 @@ std::string FilenameFor(int unique_id, string_view module_name,
   if (!module_name.empty()) {
     absl::StrAppend(&filename, ".", module_name);
   }
+
+#if !TSL_IS_IN_OSS
+  absl::string_view cl_number = BuildData::Changelist();
+  if (!cl_number.empty()) {
+    absl::StrAppend(&filename, ".cl_", cl_number);
+  }
+#endif  // !TSL_IS_IN_OSS
+
   absl::StrAppend(&filename, ".", suffix);
   // Skip the module name if the resulting length is too long.
   if (!module_name.empty() && filename.size() > 255) {
     return FilenameFor(unique_id, "", prefix, suffix);
   }
+
   return filename;
 }
 

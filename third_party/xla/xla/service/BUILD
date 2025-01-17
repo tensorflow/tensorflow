@@ -486,20 +486,21 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:regexp",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
-    ],
+    ] + if_google([
+        "@com_google_absl//absl/base:builddata",
+    ]),
 )
 
 xla_cc_test(
     name = "dump_test",
     srcs = ["dump_test.cc"],
+    # Required to create BuildData as stamp data is disabled by default in tests.
+    stamp = 1,
     deps = [
         ":dump",
         ":hlo_module_config",
@@ -508,6 +509,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",
