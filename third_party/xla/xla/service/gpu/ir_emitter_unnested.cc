@@ -96,10 +96,10 @@ limitations under the License.
 #ifdef GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_solver_context.h"
 #endif  // GOOGLE_CUDA
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"

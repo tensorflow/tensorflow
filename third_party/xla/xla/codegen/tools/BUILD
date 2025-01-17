@@ -16,7 +16,6 @@ xla_cc_binary(
         "//xla/backends/cpu/codegen:__subpackages__",
         "//xla/backends/gpu/codegen:__subpackages__",
         "//xla/codegen/emitters/ir/tests:__subpackages__",
-        "//xla/service/gpu/fusions:__subpackages__",
     ],
     deps = [
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",

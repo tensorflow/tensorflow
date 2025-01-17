@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_FUSIONS_FUSIONS_H_
-#define XLA_SERVICE_GPU_FUSIONS_FUSIONS_H_
+#ifndef XLA_BACKENDS_GPU_CODEGEN_FUSIONS_H_
+#define XLA_BACKENDS_GPU_CODEGEN_FUSIONS_H_
 
 #include <memory>
 #include <optional>
 
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 
@@ -96,4 +96,4 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FUSIONS_FUSIONS_H_
+#endif  // XLA_BACKENDS_GPU_CODEGEN_FUSIONS_H_
