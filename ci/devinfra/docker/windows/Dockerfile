@@ -1,3 +1,7 @@
+# NOTE: This Dockerfile is no longer in use.
+# It is kept just in case, but it's recommended to use the 2022 version,
+# and that is what internal CI uses as well.
+
 # This Dockerfile creates an image that has:
 # - the correct MTU setting for networking from inside the container to work.
 # - Visual Studio 2022 Build Tools
