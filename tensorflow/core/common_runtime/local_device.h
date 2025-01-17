@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_LOCAL_DEVICE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_LOCAL_DEVICE_H_
 
+#include <memory>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/macros.h"
