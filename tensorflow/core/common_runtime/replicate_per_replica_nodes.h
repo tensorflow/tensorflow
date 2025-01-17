@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
