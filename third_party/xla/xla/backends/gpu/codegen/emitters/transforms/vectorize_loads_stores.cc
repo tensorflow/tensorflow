@@ -176,8 +176,7 @@ mlir::VectorType GetVectorTypeForAtomicRMW(mlir::RankedTensorType tensor_type,
     return nullptr;
   }
 
-  if (tensor_type.getElementType() !=
-      mlir::FloatType::getF32(loop.getContext()))
+  if (tensor_type.getElementType() != mlir::Float32Type::get(loop.getContext()))
     return nullptr;
 
   if (mlir::getConstantIntValue(loop.getStep()) != 1 ||
