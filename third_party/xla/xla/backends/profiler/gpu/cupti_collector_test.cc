@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
-#include "tsl/platform/test.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {

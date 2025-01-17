@@ -26,7 +26,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/driver_types.h"
 #endif
 
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace profiler {

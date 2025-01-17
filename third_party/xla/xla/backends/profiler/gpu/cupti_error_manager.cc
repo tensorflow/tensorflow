@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/debugging/leak_check.h"
 #include "absl/synchronization/mutex.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace profiler {

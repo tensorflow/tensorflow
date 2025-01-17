@@ -18,11 +18,11 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
 #include "tsl/platform/host_info.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
 
 namespace xla {
 namespace profiler {

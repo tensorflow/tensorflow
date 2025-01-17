@@ -22,7 +22,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "xla/backends/profiler/gpu/cupti_interface.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace profiler {
