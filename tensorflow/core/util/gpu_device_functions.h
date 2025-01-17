@@ -743,7 +743,7 @@ __device__ inline double GpuAtomicAdd(double* ptr, double value) {
 }
 #endif
 
-#if __gfx908__ || __gfx90a__ || __gfx940__ || __gfx941__ || __gfx942__
+#if __gfx908__ || __gfx90a__ || __gfx940__ || __gfx941__ || __gfx942__ || __gfx1200__ || __gfx1201__ || __gfx1102__
 
 #define ADDRSP1 __attribute__((address_space(1)))
 __device__ float
@@ -963,7 +963,7 @@ __device__ inline int64_t GpuAtomicMin(int64_t* ptr, int64_t value) {
 }
 #endif
 
-#if __gfx908__ || __gfx90a__ || __gfx940__ || __gfx941__ || __gfx942__
+#if __gfx908__ || __gfx90a__ || __gfx940__ || __gfx941__ || __gfx942__|| __gfx1200__ || __gfx1201__ || __gfx1102__
 // Low level instructions don't return. For now, assume that return value
 // is always unused.
 __device__ float GpuAtomicAdd(float* dst, float val) {
@@ -978,7 +978,7 @@ __device__ inline T GpuAtomicAddShared(T* ptr, T value) {
   return GpuAtomicAdd(ptr, value);
 }
 
-#if __gfx908__ || __gfx90a__ || __gfx940__ || __gfx941__ || __gfx942__
+#if __gfx908__ || __gfx90a__ || __gfx940__ || __gfx941__ || __gfx942__|| __gfx1200__ || __gfx1201__ || __gfx1102__
 __device__ float GpuAtomicAddShared(float* dst, float val) {
   atomicAdd(dst, val);
   return val;
