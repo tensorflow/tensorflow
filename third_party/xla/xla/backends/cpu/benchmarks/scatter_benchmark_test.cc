@@ -21,9 +21,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
+#include "xla/array2d.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/scatter_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/logging.h"
@@ -52,9 +59,18 @@ Literal createR1ScatterIndices(int64_t domain_size, int64_t scatter_size,
   return scatter_indices;
 }
 
-// For simplicity all these benchmarks use square operands and only scatter on
-// the first dimension.
-// This may not be representative of all use cases but should work for now.
+// Creates a 2D literal to reduce from num_elems * step to num_elems elements.
+Literal CreateReduceIndices(int32_t num_elems, int32_t step) {
+  CHECK_GE(num_elems, step);
+  CHECK_EQ(num_elems % step, 0);
+  Array2D<int32_t> array(num_elems * step, 1);
+  for (int i = 0; i < num_elems; ++i) {
+    for (int j = 0; j < step; ++j) {
+      array(i * step + j, 0) = i;
+    }
+  }
+  return LiteralUtil::CreateR2FromArray2D(array);
+}
 
 void BM_ScatterS32_R1(benchmark::State& state) {
   const int64_t d0 = state.range(0);
@@ -195,11 +211,73 @@ void BM_ScatterS32_R3(benchmark::State& state) {
                             {"$slice_size", absl::StrCat(slice_size)}}));
 }
 
+void BM_SimpleScatterReduceF32_R3(benchmark::State& state) {
+  const int64_t d0 = state.range(0);
+  const int64_t d1 = state.range(1);
+  const int64_t d2 = state.range(2);
+  const int64_t num_reduce_elems = state.range(3);
+  const int64_t num_slices = d0 * num_reduce_elems;
+
+  constexpr absl::string_view hlo_string = R"(
+    HloModule m
+    add {
+      %lhs = f32[] parameter(0)
+      %rhs = f32[] parameter(1)
+      ROOT %add.2 = f32[] add(%lhs, %rhs)
+    }
+    ENTRY main {
+      %operand = f32[$d0,$d1,$d2] parameter(0)
+      %indices = s32[$num_slices, 1]{1,0} parameter(1)
+      %updates = f32[$num_slices,1,$d1,$d2] parameter(2)
+      ROOT %scatter = f32[$d0,$d1,$d2] scatter(%operand, %indices, %updates),
+        update_window_dims={1,2,3},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=add
+    })";
+  std::string hlo = absl::StrReplaceAll(
+      hlo_string, {{"$d0", absl::StrCat(d0)},
+                   {"$d1", absl::StrCat(d1)},
+                   {"$d2", absl::StrCat(d2)},
+                   {"$num_slices", absl::StrCat(num_slices)}});
+
+  {
+    // Make sure this is a simple scatter.
+    auto module = ParseAndReturnUnverifiedModule(hlo).value();
+    auto scatter = module->entry_computation()->root_instruction();
+    CHECK(ScatterSimplifier::IsSimplifiedScatter(
+        Cast<HloScatterInstruction>(scatter)));
+  }
+
+  std::minstd_rand0 engine;
+
+  const Shape operand_shape = ShapeUtil::MakeShape(F32, {d0, d1, d2});
+  const Literal operand = *LiteralUtil::CreateRandomLiteral<F32>(
+      operand_shape, &engine, /*mean=*/50, /*stddev=*/10);
+
+  const Literal indices = CreateReduceIndices(d0, num_reduce_elems);
+
+  const Shape update_shape = ShapeUtil::MakeShape(F32, {num_slices, d1, d2});
+  const Literal update = *LiteralUtil::CreateRandomLiteral<F32>(
+      update_shape, &engine, /*mean=*/50, /*stddev=*/10);
+
+  std::vector<const Literal*> args = {&operand, &indices, &update};
+  CHECK_OK(RunHloBenchmark(state, hlo, args));
+}
+
 // these all have the same number of elements in the operand
 // (2^18) == (2^9)^2 == (2^6)^3
 BENCHMARK(BM_ScatterS32_R1)->MeasureProcessCPUTime()->Args({1 << 18, 1 << 18});
 BENCHMARK(BM_ScatterS32_R2)->MeasureProcessCPUTime()->Args({1 << 9, 1 << 9});
 BENCHMARK(BM_ScatterS32_R3)->MeasureProcessCPUTime()->Args({1 << 6, 1 << 6});
+
+BENCHMARK(BM_SimpleScatterReduceF32_R3)
+    ->MeasureProcessCPUTime()
+    ->ArgNames({"d0", "d1", "d2", "num_slices"})
+    ->Args({1, 64, 8, 1})
+    ->Args({50, 64, 8, 10})
+    ->Args({500, 64, 8, 100});
 
 }  // namespace
 }  // namespace xla::cpu
