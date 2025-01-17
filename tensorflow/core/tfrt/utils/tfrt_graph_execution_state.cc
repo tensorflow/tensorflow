@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/function_body.h"

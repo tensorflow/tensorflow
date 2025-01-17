@@ -1730,7 +1730,6 @@ aliased_targets = [
     "mlir_roundtrip_flags",
     "mlir_import_options",
     "translate_lib",
-    "upgrade_graph",
 ]
 
 [
