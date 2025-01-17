@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_EXECUTOR_MGR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_EXECUTOR_MGR_H_
 
+#include <cstdint>
+#include <memory>
+
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/unbounded_work_queue.h"
