@@ -1806,6 +1806,27 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "compilation_provider_options",
+    srcs = ["compilation_provider_options.cc"],
+    hdrs = ["compilation_provider_options.h"],
+    deps = [
+        "//xla:xla_proto_cc",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+xla_cc_test(
+    name = "compilation_provider_options_test",
+    srcs = ["compilation_provider_options_test.cc"],
+    deps = [
+        ":compilation_provider_options",
+        "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "assemble_compilation_provider",
     srcs = ["assemble_compilation_provider.cc"],
     hdrs = ["assemble_compilation_provider.h"],
@@ -1815,6 +1836,7 @@ cc_library(
     ],
     deps = [
         ":compilation_provider",
+        ":compilation_provider_options",
         ":composite_compilation_provider",
         ":defer_relocatable_compilation_compilation_provider",
         ":driver_compilation_provider",
@@ -1827,14 +1849,12 @@ cc_library(
         ":subprocess_compilation_provider",
         "//xla:xla_proto_cc",
         "//xla/stream_executor:semantic_version",
-        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1853,19 +1873,16 @@ xla_cc_test(
     deps = [
         ":assemble_compilation_provider",
         ":compilation_provider",
+        ":compilation_provider_options",
         ":cuda_platform",
         ":nvjitlink_support",
         ":ptx_compiler_support",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:cuda_root_path",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 

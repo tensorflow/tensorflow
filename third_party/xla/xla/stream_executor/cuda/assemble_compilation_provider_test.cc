@@ -22,13 +22,13 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/cuda_root_path.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor::cuda {
 
@@ -45,15 +45,14 @@ TEST(AssembleCompilationProviderTest,
                     "the testrunner machine. Therefore we skip this test.";
   }
 
-  xla::DebugOptions debug_options;
-  debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
-  debug_options.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
-  debug_options.set_xla_gpu_enable_libnvptxcompiler(false);
-  debug_options.set_xla_gpu_libnvjitlink_mode(
-      xla::DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
-  debug_options.set_xla_gpu_cuda_data_dir("/does/not/exist");
-
-  EXPECT_THAT(AssembleCompilationProvider(debug_options),
+  CompilationProviderOptions options{
+      CompilationProviderOptions::NvJitLinkMode::kDisabled,
+      /*enable_libnvptxcompiler=*/false,
+      /*enable_llvm_module_compilation_parallelism=*/false,
+      /*enable_driver_compilation=*/false,
+      /*cuda_data_dir=*/"/does/not/exist",
+  };
+  EXPECT_THAT(AssembleCompilationProvider(options),
               StatusIs(absl::StatusCode::kUnavailable));
 }
 
@@ -65,17 +64,17 @@ TEST(AssembleCompilationProviderTest,
                     "the testrunner machine. Therefore we skip this test.";
   }
 
-  xla::DebugOptions debug_options;
-  debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
-  debug_options.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(true);
-  debug_options.set_xla_gpu_enable_libnvptxcompiler(false);
-  debug_options.set_xla_gpu_libnvjitlink_mode(
-      xla::DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
-  debug_options.set_xla_gpu_cuda_data_dir("/does/not/exist");
+  CompilationProviderOptions options{
+      CompilationProviderOptions::NvJitLinkMode::kDisabled,
+      /*enable_libnvptxcompiler=*/false,
+      /*enable_llvm_module_compilation_parallelism=*/false,
+      /*enable_driver_compilation=*/true,
+      /*cuda_data_dir=*/"/does/not/exist",
+  };
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompilationProvider> compilation_provider,
-      AssembleCompilationProvider(debug_options));
+      AssembleCompilationProvider(options));
 
   EXPECT_THAT(compilation_provider->name(),
               HasSubstr("DriverCompilationProvider"));
@@ -89,17 +88,17 @@ TEST(AssembleCompilationProviderTest,
                     "run this test. Was this called in a Bazel environment?";
   }
 
-  xla::DebugOptions debug_options;
-  debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
-  debug_options.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
-  debug_options.set_xla_gpu_enable_libnvptxcompiler(false);
-  debug_options.set_xla_gpu_libnvjitlink_mode(
-      xla::DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED);
-  debug_options.set_xla_gpu_cuda_data_dir(cuda_dir);
+  CompilationProviderOptions options{
+      CompilationProviderOptions::NvJitLinkMode::kDisabled,
+      /*enable_libnvptxcompiler=*/false,
+      /*enable_llvm_module_compilation_parallelism=*/false,
+      /*enable_driver_compilation=*/false,
+      /*cuda_data_dir=*/cuda_dir,
+  };
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompilationProvider> compilation_provider,
-      AssembleCompilationProvider(debug_options));
+      AssembleCompilationProvider(options));
 
   EXPECT_THAT(compilation_provider->name(),
               HasSubstr("SubprocessCompilationProvider"));
@@ -112,17 +111,17 @@ TEST(
     GTEST_SKIP() << "LibNvJitLink is not supported in this build.";
   }
 
-  xla::DebugOptions debug_options;
-  debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
-  debug_options.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
-  debug_options.set_xla_gpu_enable_libnvptxcompiler(false);
-  debug_options.set_xla_gpu_libnvjitlink_mode(
-      xla::DebugOptions::LIB_NV_JIT_LINK_MODE_AUTO);
-  debug_options.set_xla_gpu_cuda_data_dir("/does/not/exist");
+  CompilationProviderOptions options{
+      CompilationProviderOptions::NvJitLinkMode::kAuto,
+      /*enable_libnvptxcompiler=*/false,
+      /*enable_llvm_module_compilation_parallelism=*/false,
+      /*enable_driver_compilation=*/false,
+      /*cuda_data_dir=*/"/does/not/exist",
+  };
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompilationProvider> compilation_provider,
-      AssembleCompilationProvider(debug_options));
+      AssembleCompilationProvider(options));
 
   EXPECT_THAT(compilation_provider->name(),
               AllOf(HasSubstr("DeferRelocatableCompilation"),
@@ -138,17 +137,17 @@ TEST(AssembleCompilationProviderTest,
     GTEST_SKIP() << "LibNvPtxCompiler is not supported in this build.";
   }
 
-  xla::DebugOptions debug_options;
-  debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
-  debug_options.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
-  debug_options.set_xla_gpu_enable_libnvptxcompiler(true);
-  debug_options.set_xla_gpu_libnvjitlink_mode(
-      xla::DebugOptions::LIB_NV_JIT_LINK_MODE_AUTO);
-  debug_options.set_xla_gpu_cuda_data_dir("/does/not/exist");
+  CompilationProviderOptions options{
+      CompilationProviderOptions::NvJitLinkMode::kAuto,
+      /*enable_libnvptxcompiler=*/true,
+      /*enable_llvm_module_compilation_parallelism=*/false,
+      /*enable_driver_compilation=*/false,
+      /*cuda_data_dir=*/"/does/not/exist",
+  };
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CompilationProvider> compilation_provider,
-      AssembleCompilationProvider(debug_options));
+      AssembleCompilationProvider(options));
 
   EXPECT_THAT(compilation_provider->name(),
               AllOf(HasSubstr("CompositeCompilationProvider"),
