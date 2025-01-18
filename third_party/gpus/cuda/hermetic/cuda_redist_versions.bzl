@@ -169,6 +169,8 @@ REDIST_VERSIONS_TO_BUILD_TEMPLATES = {
             "555": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
             "550": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
             "545": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
+            "530": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
+            "520": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
         },
     },
     "cuda_nccl": {
