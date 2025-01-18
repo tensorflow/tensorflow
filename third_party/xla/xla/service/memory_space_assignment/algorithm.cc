@@ -1325,6 +1325,11 @@ bool IsTrivialInstruction(const HloInstruction* instruction) {
          instruction->opcode() == HloOpcode::kBitcast;
 }
 
+bool IsSliceLikeInstruction(const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kSlice ||
+         instruction->opcode() == HloOpcode::kDynamicSlice;
+}
+
 }  // namespace
 
 MsaAlgorithm::AsyncConversionResult
@@ -1336,7 +1341,7 @@ MsaAlgorithm::IsAsyncConversionSliceCandidate(
   if (failed_async_conversions_.contains(instruction)) {
     return failed_async_conversions_.at(instruction);
   }
-  if (instruction->opcode() != HloOpcode::kSlice) {
+  if (!IsSliceLikeInstruction(instruction)) {
     return AsyncConversionResult::kFailedPrecondition;
   }
 
@@ -1401,8 +1406,9 @@ std::vector<const HloValue*> MsaAlgorithm::GenerateJointProcessedValues(
       // value as sync copy operands, if any.
       HloInstruction* defining_instruction = value->instruction();
       if (IsAsyncConversionCandidate(defining_instruction)) {
-        CHECK_EQ(defining_instruction->operands().size(), 1);
-        add_to_worklist(defining_instruction->operands().back());
+        // The first operand of slice like instruction (slice or dynamic-slice)
+        // is the defining instruction.
+        add_to_worklist(defining_instruction->operand(0));
       }
     }
     // We're sensitive to the order of the worklist.
@@ -1544,7 +1550,7 @@ void MsaAlgorithm::CreateAllocationValuesForJointProcessedValues(
           interval.buffer->instruction();
       auto may_be_replaced_by_slice_fn = [this](const HloInstruction* user) {
         return IsInstructionPendingReplacements(user) &&
-               user->opcode() == HloOpcode::kSlice;
+               IsSliceLikeInstruction(user);
       };
       bool may_be_replaced_by_slice = std::any_of(
           defining_instruction->users().begin(),

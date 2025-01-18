@@ -994,7 +994,7 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
         for (HloInstruction* new_instruction : insts_before_iter->second) {
           if (new_instruction->parent() == computation) {
             VLOG(4) << "before " << instruction_index << ": "
-                    << new_instruction->name();
+                    << new_instruction->ToString();
             TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
                 new_instruction, &new_sequence, &inserted_instructions));
           }
@@ -1020,7 +1020,7 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
             instruction->opcode() != HloOpcode::kTuple &&
             !inserted_instructions.contains(instruction)) {
           VLOG(4) << "inst " << instruction_index << ": "
-                  << instruction->name();
+                  << instruction->ToString();
           TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
               instruction, &new_sequence, &inserted_instructions));
         }
@@ -1031,7 +1031,7 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
         for (HloInstruction* new_instruction : insts_after_iter->second) {
           if (new_instruction->parent() == computation) {
             VLOG(4) << "after " << instruction_index << ": "
-                    << new_instruction->name();
+                    << new_instruction->ToString();
             TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
                 new_instruction, &new_sequence, &inserted_instructions));
           }
