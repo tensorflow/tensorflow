@@ -26,9 +26,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ResolveSliceAttributes::Run(Model* model,
-                                                 std::size_t op_index,
-                                                 bool* modified) {
+absl::Status ResolveSliceAttributes::Run(Model* model, std::size_t op_index,
+                                         bool* modified) {
   *modified = false;
   const auto slice_it = model->operators.begin() + op_index;
   auto* slice_op = slice_it->get();

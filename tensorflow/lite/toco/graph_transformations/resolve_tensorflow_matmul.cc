@@ -59,9 +59,8 @@ TransposeOperator* FindTransposeOpWithInput(const Model& model,
 
 }  // namespace
 
-::tensorflow::Status ResolveTensorFlowMatMul::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   auto matmul_it = model->operators.begin() + op_index;
   if (matmul_it->get()->type != OperatorType::kMatMul) {

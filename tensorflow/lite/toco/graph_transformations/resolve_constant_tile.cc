@@ -100,9 +100,8 @@ inline void Tile(const Array& input_array, const Array& multiples_array,
 }  // namespace
 
 // Resolves a constant Tile operation.
-::tensorflow::Status ResolveConstantTile::Run(Model* model,
-                                              std::size_t op_index,
-                                              bool* modified) {
+absl::Status ResolveConstantTile::Run(Model* model, std::size_t op_index,
+                                      bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
