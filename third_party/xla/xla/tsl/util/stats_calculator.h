@@ -222,7 +222,7 @@ class StatsCalculator {
 
   std::string HeaderString(const std::string& title) const;
   std::string ColumnString(const Detail& detail,
-                           const int64_t cumulative_stat_on_node,
+                           int64_t cumulative_stat_on_node,
                            const Stat<int64_t>& stat) const;
 
   Stat<int64_t> run_total_us_;
