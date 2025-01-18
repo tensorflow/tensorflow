@@ -22,8 +22,6 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/lib/io/buffered_file.h"
-#include "xla/tsl/util/byte_swap_array.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -39,6 +37,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
+#include "tensorflow/core/lib/io/buffered_inputstream.h"
+#include "tensorflow/core/lib/io/inputbuffer.h"
+#include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/bfloat16.h"
@@ -55,6 +56,8 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
+#include "xla/tsl/lib/io/buffered_file.h"
+#include "xla/tsl/util/byte_swap_array.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile
@@ -1221,6 +1224,131 @@ string BundleReader::DebugString() {
     strings::StrAppend(&shape_str, "\n");
   }
   return shape_str;
+}
+
+MixedBundleReaderWrapper::MixedBundleReaderWrapper(
+    Env* const env, absl::string_view float32_prefix,
+    absl::string_view checkpoint_entries_file,
+    bool enable_multi_threading_for_testing) {
+  this->bundle_reader_ =
+      new BundleReader(env, float32_prefix, enable_multi_threading_for_testing);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_CHECK_OK(
+      env->NewRandomAccessFile(std::string(checkpoint_entries_file), &file));
+  io::RandomAccessInputStream input_stream(file.get());
+  io::BufferedInputStream in(&input_stream, 1 << 20);
+  std::string content;
+  TF_CHECK_OK(in.ReadAll(&content));
+
+  CkptEntrySet set;
+  set.ParseFromString(content);
+  for (const auto& entry : set.entries()) {
+    if (entry.dtype() == ::tensorflow::DT_BFLOAT16) {
+      this->bfloat16_var_names_.insert(entry.var_name());
+    }
+    CHECK(entry.dtype() == ::tensorflow::DT_FLOAT)
+        << "unexpected entry type: " << entry.dtype();
+    this->varname_to_ckpt_map_[entry.var_name()] = entry.ckpt_name();
+  }
+}
+
+Status MixedBundleReaderWrapper::status() const {
+  return bundle_reader_->status();
+}
+
+Status MixedBundleReaderWrapper::GetBundleEntryProto(absl::string_view key,
+                                                     BundleEntryProto* entry) {
+  std::tuple<std::string, DataType> ret_val;
+  TF_CHECK_OK(this->GetCkptNameAndDataType(key, &ret_val));
+  const std::string ckpt_name = std::get<0>(ret_val);
+  return bundle_reader_->GetBundleEntryProto(ckpt_name, entry);
+}
+
+Status MixedBundleReaderWrapper::GetCkptNameAndDataType(
+    absl::string_view name, std::tuple<std::string, DataType>* result) const {
+  auto iter = this->varname_to_ckpt_map_.find(name);
+  if (iter == this->varname_to_ckpt_map_.end()) {
+    return errors::DataLoss("cannot find ", name, "in varname_to_ckpt_map.");
+  }
+  const std::string ckpt_name = iter->second;
+  std::get<0>(*result) = ckpt_name;
+  auto i = this->bfloat16_var_names_.find(name);
+  if (i == this->bfloat16_var_names_.end()) {
+    std::get<1>(*result) = DT_BFLOAT16;
+  } else {
+    std::get<1>(*result) = DT_FLOAT;
+  }
+  return OkStatus();
+}
+
+Status MixedBundleReaderWrapper::LookupSlice(absl::string_view full_tensor_key,
+                                             const TensorSlice& slice_spec,
+                                             Tensor* val) {
+  std::tuple<std::string, DataType> ret_val;
+  TF_CHECK_OK(this->GetCkptNameAndDataType(full_tensor_key, &ret_val));
+  const auto dtype = std::get<1>(ret_val);
+  const std::string ckpt_name = std::get<0>(ret_val);
+  if (dtype == DT_FLOAT) {
+    return bundle_reader_->Lookup(ckpt_name, val);
+  }
+
+  TensorShape full_shape, sliced_shape;
+  TF_RETURN_IF_ERROR(LookupTensorShape(ckpt_name, &full_shape));
+  TF_RETURN_IF_ERROR(slice_spec.SliceTensorShape(full_shape, &sliced_shape));
+  tensorflow::Tensor tmp(DT_FLOAT, sliced_shape);
+  TF_RETURN_IF_ERROR(bundle_reader_->Lookup(ckpt_name, &tmp));
+  RoundFloatToBFloat16(static_cast<const float*>(tmp.data()),
+                       static_cast<bfloat16*>(val->data()),
+                       sliced_shape.num_elements());
+  return OkStatus();
+}
+
+bool MixedBundleReaderWrapper::Contains(absl::string_view key) {
+  std::tuple<std::string, DataType> ret_val;
+  TF_CHECK_OK(this->GetCkptNameAndDataType(key, &ret_val));
+  const std::string ckpt_name = std::get<0>(ret_val);
+  return bundle_reader_->Contains(ckpt_name);
+}
+
+Status MixedBundleReaderWrapper::LookupDtypeAndShape(absl::string_view key,
+                                                     DataType* dtype,
+                                                     TensorShape* shape) {
+  std::tuple<std::string, DataType> ret_val;
+  TF_RETURN_IF_ERROR(this->GetCkptNameAndDataType(key, &ret_val));
+  *dtype = std::get<1>(ret_val);
+  const std::string ckpt_name = std::get<0>(ret_val);
+  DataType _;
+  TF_RETURN_IF_ERROR(bundle_reader_->LookupDtypeAndShape(ckpt_name, &_, shape));
+  CHECK(_ == DT_FLOAT)
+      << "only float typed ckpt is supported by MixedBundleReaderWrapper.";
+  return OkStatus();
+}
+
+Status MixedBundleReaderWrapper::LookupTensorShape(absl::string_view key,
+                                                   TensorShape* shape) {
+  std::tuple<std::string, DataType> ret_val;
+  TF_CHECK_OK(this->GetCkptNameAndDataType(key, &ret_val));
+  const std::string ckpt_name = std::get<0>(ret_val);
+  return bundle_reader_->LookupTensorShape(ckpt_name, shape);
+}
+
+Status MixedBundleReaderWrapper::Lookup(absl::string_view key, Tensor* val) {
+  std::tuple<std::string, DataType> ret_val;
+  TF_CHECK_OK(this->GetCkptNameAndDataType(key, &ret_val));
+  const std::string ckpt_name = std::get<0>(ret_val);
+  const DataType dtype = std::get<1>(ret_val);
+  if (dtype == DT_FLOAT) {
+    return bundle_reader_->Lookup(ckpt_name, val);
+  }
+  TensorShape shape;
+  TF_RETURN_IF_ERROR(bundle_reader_->LookupTensorShape(ckpt_name, &shape));
+  tensorflow::Tensor tmp(DT_FLOAT, shape);
+  TF_RETURN_IF_ERROR(bundle_reader_->Lookup(ckpt_name, &tmp));
+  RoundFloatToBFloat16(static_cast<const float*>(tmp.data()),
+                       static_cast<bfloat16*>(val->data()),
+                       shape.num_elements());
+  return OkStatus();
 }
 
 BundleCache::BundleCache(Env* env) : env_(env) {}

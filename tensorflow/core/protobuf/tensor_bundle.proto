@@ -64,3 +64,15 @@ message BundleEntryProto {
   //      BundleEntryProto, keyed by each "slice_name".
   repeated TensorSliceProto slices = 7;
 }
+
+
+// Describes the checkpoint entries, includes ckpt name, the corresponding var name, and the var data type.
+message CkptEntrySet {
+  message CkptEntry {
+    DataType dtype = 1;
+    string ckpt_name = 2; 
+    string var_name = 3;
+  }
+
+  repeated CkptEntry entries = 1; 
+}

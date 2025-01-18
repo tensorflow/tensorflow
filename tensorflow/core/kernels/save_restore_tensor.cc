@@ -41,6 +41,16 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+constexpr char kCkptFilePathEnv[] = "var_name_mapping_path";
+constexpr char kFloat32CkptPrefixEnv[] = "float32_ckpt_file_prefix";
+
+const std::string GetEnvAsStr(const char* var) {
+  const char* val = std::getenv(var);
+  return val == nullptr ? "" : std::string(val);
+}
+}  // namespace
+
 void SaveTensors(
     OpKernelContext* context,
     checkpoint::TensorSliceWriter::CreateBuilderFunction builder_func,
@@ -253,8 +263,8 @@ const int64_t kLargeShapeThreshold = 16 << 20;  // 16M
 
 // A restore operation for a single tensor.  Small tensors may be restored
 // directly from the op thread to improve read locality.  Large tensors can be
-// restored from a thread pool: this requires creating a separate BundleReader
-// for each restore.
+// restored from a thread pool: this requires creating a separate
+// AbstractBundleReader for each restore.
 struct RestoreOp {
   RestoreOp(OpKernelContext* context, int idx, const string& tensor_name,
             const string& shape_and_slice, const string& reader_prefix,
@@ -272,7 +282,7 @@ struct RestoreOp {
   RestoreOp(RestoreOp&&) = default;
   RestoreOp& operator=(RestoreOp&&) = default;
 
-  bool is_large_shape(BundleReader* reader) const {
+  bool is_large_shape(AbstractBundleReader* reader) const {
     TensorShape restored_full_shape;
 
     // Ignore status here; we'll catch the error later.
@@ -283,18 +293,29 @@ struct RestoreOp {
     return restored_full_shape.num_elements() > kLargeShapeThreshold;
   }
 
-  // Run this restore operation using a new BundleReader.
+  // Run this restore operation using a new AbstractBundleReader.
   void run_with_new_reader(BundleCache* cache) {
-    BundleReader reader(tsl::Env::Default(), reader_prefix, {cache, false});
-    if (!reader.status().ok()) {
-      status = reader.status();
+    std::unique_ptr<AbstractBundleReader> reader;
+
+    const std::string ckptPath = GetEnvAsStr(kCkptFilePathEnv);
+    const std::string float32CkptPrefix = GetEnvAsStr(kFloat32CkptPrefixEnv);
+
+    if (ckptPath.empty()) {
+      reader = absl::WrapUnique<BundleReader>(
+          new BundleReader(tsl::Env::Default(), reader_prefix, {cache, false}));
+    } else {
+      reader = absl::WrapUnique<MixedBundleReaderWrapper>(
+          new MixedBundleReaderWrapper(tsl::Env::Default(), float32CkptPrefix, ckptPath));
+    }
+    if (!reader->status().ok()) {
+      status = reader->status();
       return;
     }
 
-    status = run(&reader);
+    status = run(reader.get());
   }
 
-  absl::Status run(BundleReader* reader) {
+  absl::Status run(AbstractBundleReader* reader) {
     TensorShape restored_full_shape;
     TF_RETURN_IF_ERROR(
         reader->LookupTensorShape(tensor_name, &restored_full_shape));
@@ -360,6 +381,32 @@ struct RestoreOp {
   absl::Status status;
 };
 
+template <class T>
+Status SortForSequentialAccess(
+    AbstractBundleReader* reader, std::vector<T>& container,
+    absl::FunctionRef<std::string(const T&)> get_key) {
+  struct FileOffset {
+    int32_t shard_id;
+    int64_t offset;
+  };
+  absl::flat_hash_map<std::string, FileOffset> file_offsets;
+  for (const T& element : container) {
+    BundleEntryProto entry;
+    TF_RETURN_IF_ERROR(reader->GetBundleEntryProto(get_key(element), &entry));
+    file_offsets[get_key(element)] = {entry.shard_id(), entry.offset()};
+  }
+  absl::c_sort(container, [&get_key, &file_offsets](const T& a, const T& b) {
+    const FileOffset& file_offset_a = file_offsets[get_key(a)];
+    const FileOffset& file_offset_b = file_offsets[get_key(b)];
+    if (file_offset_a.shard_id == file_offset_b.shard_id) {
+      return file_offset_a.offset < file_offset_b.offset;
+    } else {
+      return file_offset_a.shard_id < file_offset_b.shard_id;
+    }
+  });
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
@@ -380,17 +427,32 @@ absl::Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
 
   tsl::Env* const env = tsl::Env::Default();
   BundleCache cache(env);
-  BundleReader default_reader(env, prefix_string, {&cache, false});
-  TF_RETURN_IF_ERROR(default_reader.status());
 
-  TF_RETURN_IF_ERROR(default_reader.SortForSequentialAccess<RestoreOp>(
-      restore_ops, [](const RestoreOp& op) { return op.tensor_name; }));
+  std::unique_ptr<AbstractBundleReader> default_reader;
+
+  const std::string ckptPath = GetEnvAsStr(kCkptFilePathEnv);
+  const std::string float32CkptPrefix = GetEnvAsStr(kFloat32CkptPrefixEnv);
+
+  if (ckptPath.empty()) {
+      default_reader = absl::WrapUnique<BundleReader>(
+              new BundleReader(env, prefix_string, {&cache, false}));
+  } else {
+    default_reader =
+        absl::WrapUnique<MixedBundleReaderWrapper>(new MixedBundleReaderWrapper(
+            env, float32CkptPrefix,  ckptPath));
+  }
+
+  TF_RETURN_IF_ERROR(default_reader->status());
+
+  TF_RETURN_IF_ERROR(SortForSequentialAccess<RestoreOp>(
+      default_reader.get(), restore_ops,
+      [](const RestoreOp& op) { return op.tensor_name; }));
 
   std::vector<string> mismatched_errors;
   for (const RestoreOp& restore_op : restore_ops) {
     TensorShape restored_full_shape;
     DataType original_dtype;
-    TF_RETURN_IF_ERROR(default_reader.LookupDtypeAndShape(
+    TF_RETURN_IF_ERROR(default_reader->LookupDtypeAndShape(
         restore_op.tensor_name, &original_dtype, &restored_full_shape));
     if (restore_op.dtype != original_dtype) {
       string error_msg = strings::StrCat(
@@ -410,7 +472,7 @@ absl::Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
   std::vector<RestoreOp*> large_restore_ops;
   std::vector<RestoreOp*> small_restore_ops;
   for (RestoreOp& restore_op : restore_ops) {
-    if (restore_op.is_large_shape(&default_reader)) {
+    if (restore_op.is_large_shape(default_reader.get())) {
       large_restore_ops.push_back(&restore_op);
     } else {
       small_restore_ops.push_back(&restore_op);
@@ -458,7 +520,7 @@ absl::Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
 
     // Read small tensors from the op thread.
     for (auto* op : small_restore_ops) {
-      TF_RETURN_IF_ERROR(op->run(&default_reader));
+      TF_RETURN_IF_ERROR(op->run(default_reader.get()));
     }
 
     // Wait for all scheduled work to finish and check the status of all

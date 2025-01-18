@@ -70,9 +70,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/lib/io/buffered_file.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -89,6 +89,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_slice_set.h"
 #include "tsl/platform/errors.h"
+#include "xla/tsl/lib/io/buffered_file.h"
 
 namespace tensorflow {
 
@@ -196,11 +197,35 @@ Status MergeBundles(Env* env, absl::Span<const tstring> prefixes,
 
 class BundleCache;
 
+class AbstractBundleReader {
+ public:
+  AbstractBundleReader() {}
+  virtual Status status() const = 0;
+  virtual bool Contains(absl::string_view key) = 0;
+  virtual Status LookupDtypeAndShape(absl::string_view key, DataType* dtype,
+                                     TensorShape* shape) = 0;
+  virtual Status LookupTensorShape(absl::string_view key,
+                                   TensorShape* shape) = 0;
+
+  virtual Status GetBundleEntryProto(absl::string_view key,
+                                     BundleEntryProto* entry) = 0;
+
+  virtual Status Lookup(absl::string_view key, Tensor* val) = 0;
+
+  virtual Status LookupSlice(absl::string_view full_tensor_key,
+                             const TensorSlice& slice_spec, Tensor* val) = 0;
+
+  virtual ~AbstractBundleReader() {}
+
+  AbstractBundleReader(const AbstractBundleReader&) = delete;
+  void operator=(const AbstractBundleReader&) = delete;
+};
+
 // On construction, silently attempts to read the metadata associated with
 // "prefix".  If caller intends to call any function afterwards, "status()"
 // must be checked.
 // All threads accessing the same BundleReader must synchronize.
-class BundleReader {
+class BundleReader : public AbstractBundleReader {
  public:
   BundleReader(Env* const env, absl::string_view prefix,
                bool enable_multi_threading_for_testing = false);
@@ -219,36 +244,23 @@ class BundleReader {
 
   // Is ok() iff the reader construction is successful (completed the read of
   // the metadata).
-  Status status() const { return status_; }
+  Status status() const override { return status_; }
 
   // Queries whether the bundle contains an entry keyed by "key".  Calls Seek()
   // internally, so this call invalidates the reader's current position.
   // REQUIRES: status().ok()
-  bool Contains(absl::string_view key);
-
-  // Sorts a `container` of tensors to read such that when `Seek(key)` is called
-  // on the elements of the sorted container, the underlying file access is
-  // sequential. Sorting can greatly improve overall read speed.
-  //
-  // `get_key` should be a function that when passed an element in `container`,
-  // returns the `key` of the tensor.
-  //
-  // REQUIRES: status().ok()
-  template <class T>
-  Status SortForSequentialAccess(
-      std::vector<T>& container,
-      absl::FunctionRef<std::string(const T&)> get_key);
+  bool Contains(absl::string_view key) override;
 
   // Looks up the dtype and the shape of the tensor keyed by "key".
   // REQUIRES: status().ok()
   Status LookupDtypeAndShape(absl::string_view key, DataType* dtype,
-                             TensorShape* shape) TF_MUST_USE_RESULT;
+                             TensorShape* shape) override TF_MUST_USE_RESULT;
 
   // Looks up the shape of the tensor keyed by "key".
   // Clears "shape" if not found.
   // REQUIRES: status().ok()
   Status LookupTensorShape(absl::string_view key,
-                           TensorShape* shape) TF_MUST_USE_RESULT;
+                           TensorShape* shape) override TF_MUST_USE_RESULT;
 
   // Looks up the tensor keyed by "key".  If "key" refers to a partitioned
   // tensor, attempts to look up the full contents using all stored slices.
@@ -262,7 +274,7 @@ class BundleReader {
   //
   // Validates the stored crc32c checksum against the restored bytes.
   // REQUIRES: status().ok()
-  Status Lookup(absl::string_view key, Tensor* val) TF_MUST_USE_RESULT;
+  Status Lookup(absl::string_view key, Tensor* val) override TF_MUST_USE_RESULT;
 
   // Looks up the tensor pointed to by the internal iterator.
   //
@@ -289,7 +301,7 @@ class BundleReader {
   // REQUIRES: status().ok()
   Status LookupSlice(absl::string_view full_tensor_key,
                      const TensorSlice& slice_spec,
-                     Tensor* val) TF_MUST_USE_RESULT;
+                     Tensor* val) override TF_MUST_USE_RESULT;
 
   // Seeks to the first position in the bundle whose key is no less than "key".
   // REQUIRES: status().ok()
@@ -310,13 +322,13 @@ class BundleReader {
 
   std::string DebugString();
 
- private:
   // Seeks for "key" and reads the metadata proto.
   // On non-OK return, clears "entry" for the caller.
   // REQUIRES: status().ok()
-  Status GetBundleEntryProto(absl::string_view key,
-                             BundleEntryProto* entry) TF_MUST_USE_RESULT;
+  Status GetBundleEntryProto(absl::string_view key, BundleEntryProto* entry)
+      override TF_MUST_USE_RESULT;
 
+ private:
   // Reads the tensor value described by the metadata proto "entry".
   // Usage for "val" follows the comment of "Lookup()".
   Status GetValue(const BundleEntryProto& entry,
@@ -364,31 +376,48 @@ class BundleReader {
   void operator=(const BundleReader&) = delete;
 };
 
-template <class T>
-Status BundleReader::SortForSequentialAccess(
-    std::vector<T>& container,
-    absl::FunctionRef<std::string(const T&)> get_key) {
-  struct FileOffset {
-    int32_t shard_id;
-    int64_t offset;
-  };
-  absl::flat_hash_map<std::string, FileOffset> file_offsets;
-  for (const T& element : container) {
-    BundleEntryProto entry;
-    TF_RETURN_IF_ERROR(GetBundleEntryProto(get_key(element), &entry));
-    file_offsets[get_key(element)] = {entry.shard_id(), entry.offset()};
-  }
-  absl::c_sort(container, [&get_key, &file_offsets](const T& a, const T& b) {
-    const FileOffset& file_offset_a = file_offsets[get_key(a)];
-    const FileOffset& file_offset_b = file_offsets[get_key(b)];
-    if (file_offset_a.shard_id == file_offset_b.shard_id) {
-      return file_offset_a.offset < file_offset_b.offset;
-    } else {
-      return file_offset_a.shard_id < file_offset_b.shard_id;
+class MixedBundleReaderWrapper : public AbstractBundleReader {
+ public:
+  MixedBundleReaderWrapper(Env* const env, absl::string_view float32_prefix,
+                           absl::string_view checkpoint_mapping_file,
+                           bool enable_multi_threading_for_testing = false);
+
+  Status status() const override;
+
+  bool Contains(absl::string_view key) override;
+
+  Status LookupDtypeAndShape(absl::string_view key, DataType* dtype,
+                             TensorShape* shape) override TF_MUST_USE_RESULT;
+
+  Status LookupTensorShape(absl::string_view key,
+                           TensorShape* shape) override TF_MUST_USE_RESULT;
+
+  Status Lookup(absl::string_view key, Tensor* val) override TF_MUST_USE_RESULT;
+
+  Status GetBundleEntryProto(absl::string_view key, BundleEntryProto* entry)
+      override TF_MUST_USE_RESULT;
+
+  Status LookupSlice(absl::string_view full_tensor_key,
+                     const TensorSlice& slice_spec,
+                     Tensor* val) override TF_MUST_USE_RESULT;
+
+  ~MixedBundleReaderWrapper() {
+    if (bundle_reader_ != nullptr) {
+      delete bundle_reader_;
     }
-  });
-  return absl::OkStatus();
-}
+  }
+
+ private:
+  Status GetCkptNameAndDataType(
+      absl::string_view name, std::tuple<std::string, DataType>* result) const;
+
+  BundleReader* bundle_reader_;  // Owned.
+  absl::flat_hash_set<std::string> bfloat16_var_names_;
+  absl::flat_hash_map<std::string, std::string> varname_to_ckpt_map_;
+
+  MixedBundleReaderWrapper(const MixedBundleReaderWrapper&) = delete;
+  void operator=(const MixedBundleReaderWrapper&) = delete;
+};
 
 // BundleCache provides cached opening of files.
 // Used internally by BundleReader.
