@@ -16,14 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_ATTR_VALUE_UTIL_H_
 #define TENSORFLOW_CORE_FRAMEWORK_ATTR_VALUE_UTIL_H_
 
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
