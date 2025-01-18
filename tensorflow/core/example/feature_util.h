@@ -437,7 +437,7 @@ void AppendFeatureValues(IteratorType first, IteratorType last,
   using FeatureType = typename internal::FeatureTrait<
       typename std::iterator_traits<IteratorType>::value_type>::Type;
   auto& values = *GetFeatureValues<FeatureType>(feature);
-  values.Reserve(std::distance(first, last));
+  values.Reserve(values.size() + std::distance(first, last));
   for (auto it = first; it != last; ++it) {
     *values.Add() = *it;
   }
@@ -448,7 +448,7 @@ void AppendFeatureValues(std::initializer_list<ValueType> container,
                          Feature* feature) {
   using FeatureType = typename internal::FeatureTrait<ValueType>::Type;
   auto& values = *GetFeatureValues<FeatureType>(feature);
-  values.Reserve(container.size());
+  values.Reserve(values.size() + container.size());
   for (auto& elt : container) {
     *values.Add() = std::move(elt);
   }
@@ -464,17 +464,17 @@ template <typename T>
 struct HasSize<T, absl::void_t<decltype(std::declval<T>().size())>>
     : std::true_type {};
 
-// Reserves the container's size, if a container.size() method exists.
+// Reserves additional size, if a container.size() method exists.
 template <typename ContainerType, typename RepeatedFieldType>
-auto ReserveIfSizeAvailable(const ContainerType& container,
-                            RepeatedFieldType& values) ->
+auto ReserveAdditionalIfSizeAvailable(const ContainerType& container,
+                                      RepeatedFieldType& values) ->
     typename std::enable_if_t<HasSize<ContainerType>::value, void> {
-  values.Reserve(container.size());
+  values.Reserve(values.size() + container.size());
 }
 
 template <typename ContainerType, typename RepeatedFieldType>
-auto ReserveIfSizeAvailable(const ContainerType& container,
-                            RepeatedFieldType& values) ->
+auto ReserveAdditionalIfSizeAvailable(const ContainerType& container,
+                                      RepeatedFieldType& values) ->
     typename std::enable_if_t<!HasSize<ContainerType>::value, void> {}
 
 }  // namespace internal
@@ -485,7 +485,7 @@ void AppendFeatureValues(const ContainerType& container, Feature* feature) {
   using FeatureType = typename internal::FeatureTrait<
       typename std::iterator_traits<IteratorType>::value_type>::Type;
   auto* values = GetFeatureValues<FeatureType>(feature);
-  internal::ReserveIfSizeAvailable(container, *values);
+  internal::ReserveAdditionalIfSizeAvailable(container, *values);
   // This is equivalent to std::copy into `values` with a
   // RepeatedFieldBackInserter, the difference is RFBI isn't compatible with
   // types that we want to convert (e.g. absl::string_view -> std::string).
