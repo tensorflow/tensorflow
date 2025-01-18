@@ -13,31 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/collective_permute_utils.h"
+#include "xla/service/source_target_pairs.h"
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/graphcycles/graphcycles.h"
 
 namespace xla {
-namespace cp_utils {
 
-using ::xla::HloCollectivePermuteInstruction;
-
-std::string SourceTargetPairsString(const HloCollectivePermuteInstruction& cp) {
-  auto formatter = absl::PairFormatter(
-      [](std::string* out, int64_t value) { absl::StrAppend(out, "{", value); },
-      ",",
-      [](std::string* out, int64_t value) {
-        absl::StrAppend(out, value, "}");
-      });
-  const std::string pairs_str =
-      absl::StrJoin(cp.source_target_pairs(), ",", formatter);
+std::string SourceTargetPairs::ToString() const {
+  auto formatter = [](std::string* out, const SourceTargetPair& pair) {
+    absl::StrAppend(out, "{", pair.source, ",", pair.target, "}");
+  };
+  const std::string pairs_str = absl::StrJoin(pairs_, ",", formatter);
   return absl::StrCat("{", pairs_str, "}");
 }
 
@@ -51,12 +44,12 @@ int32_t GetNodeId(int64_t replica, GraphCycles& graph,
 }
 }  // namespace
 
-bool HasCycles(const SourceTargetPairs& pairs) {
+bool SourceTargetPairs::HasCycles() {
   GraphCycles graph;
   absl::flat_hash_map<int64_t, int32_t> replica_to_node_id;
-  for (const SourceTargetPair& pair : pairs) {
-    const int source = GetNodeId(pair.first, graph, replica_to_node_id);
-    const int target = GetNodeId(pair.second, graph, replica_to_node_id);
+  for (const SourceTargetPair& pair : pairs_) {
+    const int source = GetNodeId(pair.source, graph, replica_to_node_id);
+    const int target = GetNodeId(pair.target, graph, replica_to_node_id);
     if (!graph.InsertEdge(source, target)) {
       return true;
     }
@@ -65,35 +58,40 @@ bool HasCycles(const SourceTargetPairs& pairs) {
 }
 
 // TODO: b/388623407 - remove assumptions that pairs are ordered and 0 based.
-bool IsForwardCycle(const SourceTargetPair& backedge,
-                    const SourceTargetPairs& others) {
+bool SourceTargetPairs::IsForwardCycle(const SourceTargetPairs& backedge,
+                                       const SourceTargetPairs& others) {
+  if (backedge.size() != 1) {
+    return false;
+  }
   const int64_t num_pairs = others.size() + 1;
-  if (backedge.first != num_pairs - 1 || backedge.second != 0) {
+  if (backedge[0].source != num_pairs - 1 || backedge[0].target != 0) {
     return false;
   }
   for (int64_t i = 0; i < num_pairs - 1; ++i) {
     const SourceTargetPair& pair = others[i];
-    if (pair.first != i || pair.second != i + 1) {
+    if (pair.source != i || pair.target != i + 1) {
       return false;
     }
   }
   return true;
 }
 
-bool IsBackwardCycle(const SourceTargetPair& backedge,
-                     const SourceTargetPairs& others) {
+bool SourceTargetPairs::IsBackwardCycle(const SourceTargetPairs& backedge,
+                                        const SourceTargetPairs& others) {
+  if (backedge.size() != 1) {
+    return false;
+  }
   const int64_t num_pairs = others.size() + 1;
-  if (backedge.first != 0 || backedge.second != num_pairs - 1) {
+  if (backedge[0].source != 0 || backedge[0].target != num_pairs - 1) {
     return false;
   }
   for (int64_t i = 0; i < num_pairs - 1; ++i) {
     const SourceTargetPair& pair = others[i];
-    if (pair.first != i + 1 || pair.second != i) {
+    if (pair.source != i + 1 || pair.target != i) {
       return false;
     }
   }
   return true;
 }
 
-}  // namespace cp_utils
 }  // namespace xla

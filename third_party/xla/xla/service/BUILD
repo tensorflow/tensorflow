@@ -256,22 +256,23 @@ cc_library(
 )
 
 cc_library(
-    name = "collective_permute_utils",
-    srcs = ["collective_permute_utils.cc"],
-    hdrs = ["collective_permute_utils.h"],
+    name = "source_target_pairs",
+    srcs = ["source_target_pairs.cc"],
+    hdrs = ["source_target_pairs.h"],
     deps = [
-        "//xla/hlo/ir:hlo",
         "//xla/service/graphcycles",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
 )
 
 xla_cc_test(
-    name = "collective_permute_utils_test",
-    srcs = ["collective_permute_utils_test.cc"],
+    name = "source_target_pairs_test",
+    srcs = ["source_target_pairs_test.cc"],
     deps = [
-        ":collective_permute_utils",
+        ":source_target_pairs",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "@com_google_googletest//:gtest_main",
@@ -284,7 +285,7 @@ cc_library(
     hdrs = ["collective_permute_decomposer.h"],
     deps = [
         ":collective_ops_utils",
-        ":collective_permute_utils",
+        ":source_target_pairs",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -296,7 +297,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
