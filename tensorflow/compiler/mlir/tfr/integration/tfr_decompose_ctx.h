@@ -49,13 +49,13 @@ class TFRDecomposeContext {
   // Constructs the decompose context from the tfr text module and the mlir
   // context. The tfr text module is added to the mlir context.
   static std::unique_ptr<TFRDecomposeContext> GetFromText(
-      StringPiece tfr_raw_text, mlir::MLIRContext* mlir_ctx);
+      absl::string_view tfr_raw_text, mlir::MLIRContext* mlir_ctx);
 
   // Decomposes the op in the NodeDef to a set of primitive ops according to the
   // decompose library in the context. Wrap the decomposed result in a
   // FunctionDef.
   absl::StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
-                                         StringPiece func_name);
+                                         absl::string_view func_name);
 
   // Runs the decompose passes on the user_module.
   absl::Status DecomposeGraph(mlir::ModuleOp user_module);
@@ -73,7 +73,7 @@ class TFRDecomposeContext {
 // Decomposes the NodeDef to a set of primitive ops according to the decompose
 // library loaded. Wrap the decomposed result in a FunctionDef.
 absl::StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
-                                       StringPiece func_name);
+                                       absl::string_view func_name);
 
 // Decomposes the ops in the ModuleOp to a set of primitive ops according to
 // decompose library in the context.
