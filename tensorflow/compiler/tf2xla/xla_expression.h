@@ -16,12 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_EXPRESSION_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_EXPRESSION_H_
 
+#include <utility>
+
+#include "absl/status/statusor.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/client/client.h"
 #include "xla/hlo/builder/value_inference.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
 
