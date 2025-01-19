@@ -26,9 +26,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ResolveReshapeAttributes::Run(Model* model,
-                                                   std::size_t op_index,
-                                                   bool* modified) {
+absl::Status ResolveReshapeAttributes::Run(Model* model, std::size_t op_index,
+                                           bool* modified) {
   *modified = false;
   const auto reshape_it = model->operators.begin() + op_index;
   auto* reshape_op = reshape_it->get();
