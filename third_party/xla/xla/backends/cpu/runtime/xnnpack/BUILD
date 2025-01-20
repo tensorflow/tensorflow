@@ -46,9 +46,12 @@ cc_library(
     deps = [
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/math:math_util",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -66,6 +69,7 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
@@ -203,6 +207,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:statusor",

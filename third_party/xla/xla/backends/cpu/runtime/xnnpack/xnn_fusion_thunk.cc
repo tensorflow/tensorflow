@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "pthreadpool.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -137,7 +138,8 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
 
   // If XLA is compiled with custom pthreadpool, use it in XNNPACK runtime,
   // otherwise we'll run all XNNPACK operations in the default pthreadpool.
-  runtime.runner = std::make_unique<ParallelLoopRunner>(device);
+  runtime.runner = std::make_unique<ParallelLoopRunner>(
+      device, /*worker_timeslice=*/absl::Microseconds(100));
   if (use_custom_threadpool) {
     runtime.threadpool = CreateCustomPthreadpool(runtime.runner.get());
   } else {

@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/fixed_array.h"
+#include "absl/time/time.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 
@@ -43,6 +44,12 @@ namespace xla::cpu {
 // Parallel loop runner is an implementation of the `pthreadpool` API adaptor
 // for XLA:CPU runtime.
 //
+// Parallel loop runner can be configured by the `worker_timeslice` parameter,
+// that defines the approximate amount of compute (in terms of wall time) that
+// each persistent worker will handle. We rely on this parameter to avoid
+// scheduling too many workers into the thread pool, because for tiny tasks the
+// overheads can be prohibitively expensive.
+//
 // WARNING: ParallelLoopRunner is not thread-safe, and must be externally
 // synchronized by the user.
 class ParallelLoopRunner {
@@ -56,7 +63,9 @@ class ParallelLoopRunner {
 #endif
 
  public:
-  explicit ParallelLoopRunner(const Eigen::ThreadPoolDevice* device);
+  explicit ParallelLoopRunner(
+      const Eigen::ThreadPoolDevice* device,
+      std::optional<absl::Duration> worker_timeslice = std::nullopt);
 
   // Takes ownership of the runner and returns a done event. After the done
   // event is transferred to the caller, it is illegal to schedule more parallel
@@ -202,6 +211,10 @@ class ParallelLoopRunner {
   // pools for different NUMA nodes, and we have to be able to switch between
   // them from run to run.
   std::atomic<const Eigen::ThreadPoolDevice*> device_;
+
+  // The approximate amount of compute (in terms of wall time) that each
+  // persistent worker should handle.
+  std::optional<absl::Duration> worker_timeslice_;
 };
 
 }  // namespace xla::cpu
