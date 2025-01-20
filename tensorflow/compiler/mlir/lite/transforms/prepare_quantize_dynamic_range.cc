@@ -235,7 +235,7 @@ class PrepareDynamicRangeQuantizableOp
     // Get types
     TensorType old_result_type =
         mlir::dyn_cast<TensorType>(op.getResult().getType());
-    FloatType quantized_type = FloatType::getF16(op.getContext());
+    FloatType quantized_type = Float16Type::get(op.getContext());
     ShapedType new_result_type = old_result_type.clone(quantized_type);
 
     // Insert CastOp if it does not exist yet. Otherwise, just rewire without
