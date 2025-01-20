@@ -236,7 +236,7 @@ TEST_F(HloConstantSplitterTest, NoSplittingSideEffectExpressions) {
 
   // The HloConstantSplitter pass duplicates several constant expressions. Then
   // the DCE pass removes the dead instructions. Although the flag changed is
-  // true, we do not alter the module in essense.
+  // true, we do not alter the module in essence.
   EXPECT_TRUE(changed);
   EXPECT_EQ(count_before, count_after_dce);
   int64_t rng_count = 0;

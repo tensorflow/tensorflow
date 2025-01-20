@@ -1210,7 +1210,7 @@ TEST_F(GemmFusionAutotunerTest, SplitKFLoatNormalization) {
   GemmFusionAutotunerImpl autotuner(autotune_config, GetToolkitVersion(),
                                     GetDebugOptionsForTest(), nullptr);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto compile_util,
+      AutotunerCompileUtil compile_util,
       AutotunerCompileUtil::Create(autotune_config, GetDebugOptionsForTest()))
 
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
@@ -1241,7 +1241,7 @@ ENTRY entry {
               /*num_stages=*/1,
               /*num_warps=*/4,
               /*num_ctas=*/1))});
-  CHECK_OK(autotuner.CompileAll(*compile_util, configs));
+  CHECK_OK(autotuner.CompileAll(compile_util, configs));
 }
 
 TEST_F(GemmFusionAutotunerTest, CreatesCustomKernelFusionConfigs) {

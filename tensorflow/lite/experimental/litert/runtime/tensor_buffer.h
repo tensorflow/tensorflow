@@ -16,9 +16,12 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TENSOR_BUFFER_H_
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <type_traits>
 #include <variant>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -72,6 +75,19 @@ class LiteRtTensorBufferT {
   LiteRtTensorBufferType buffer_type() const { return buffer_type_; }
   size_t buffer_size() const { return buffer_size_; }
   size_t buffer_offset() const { return buffer_offset_; }
+
+  bool HasEvent() const { return event_.has_value(); }
+
+  litert::Expected<LiteRtEvent> GetEvent() const {
+    if (!HasEvent()) {
+      return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                           "TensorBuffer has no event");
+    }
+    return *event_;
+  }
+
+  void SetEvent(LiteRtEvent e) { event_ = e; }
+  void ClearEvent() { event_ = std::nullopt; }
 
   litert::Expected<void*> GetHostBuffer();
   litert::Expected<AHardwareBuffer*> GetAhwbBuffer();
@@ -160,6 +176,7 @@ class LiteRtTensorBufferT {
   size_t buffer_offset_;
   std::variant<HostBuffer, AhwbBuffer, IonBuffer, DmaBufBuffer, FastRpcBuffer>
       buffer_;
+  std::optional<LiteRtEvent> event_;
   mutable std::atomic_int_fast32_t ref_;
 };
 

@@ -110,7 +110,7 @@ filegroup(
 )
 
 filegroup(
-    name = "crosstool_wrapper_driver_is_not_gcc",
-    srcs = ["clang/bin/crosstool_wrapper_driver_is_not_gcc"],
+  name = "crosstool_wrapper_driver_is_not_gcc",
+  srcs = [":clang/bin/crosstool_wrapper_driver_is_not_gcc"],
+  data = ["@local_config_rocm//rocm:all_files"],
 )
-

@@ -279,6 +279,14 @@ CUptiResult CuptiErrorManager::GetGraphExecId(CUgraphExec graph_exec,
   return error;
 }
 
+CUptiResult CuptiErrorManager::SetThreadIdType(
+    CUpti_ActivityThreadIdType type) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->SetThreadIdType(type);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
 void CuptiErrorManager::CleanUp() {
   if (undo_disabled_) {  // prevent deadlock
     return;

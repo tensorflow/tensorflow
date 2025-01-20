@@ -156,7 +156,6 @@ class GemmFusionAutotunerImpl {
   // Helper methods.
   const AutotuneConfig& GetConfig() const { return config_; }
   bool IsAutotuningEnabled() const;
-  static std::string ToString(const BackendConfig& config);
 
   static const int64_t BLAS_GEMM_DEFAULT;
 
@@ -168,7 +167,7 @@ class GemmFusionAutotunerImpl {
   //
   // If the candidate is not cuBLAS, this will check the redzones and compare
   // the outputs with the reference buffer.
-  absl::StatusOr<std::optional<AutotuneResult>> MeasurePerformance(
+  absl::StatusOr<AutotuneResult> MeasurePerformance(
       AutotunerCompileUtil& compile_util, const HloFusionInstruction& fusion,
       const ExecutableCandidate& candidate,
       std::optional<ScopedShapedBuffer>& reference_buffer);

@@ -152,6 +152,7 @@ tf_python_pybind_extension(
     name = "pywrap_quantization",
     srcs = ["pywrap_quantization.cc"],
     pytype_srcs = ["pywrap_quantization.pyi"],
+    starlark_only = True,
     visibility = [
         "//tensorflow/python:__pkg__",
     ],

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/convert_async_collectives_to_sync.h"
 
-#include <string_view>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
@@ -50,7 +48,7 @@ class GpuConvertAsyncCollectivesToSyncTest : public HloTestBase {
   }
 
   // Returns true if the instruction with the given name is synchronous.
-  bool IsSync(HloModule *module, std::string_view name) {
+  bool IsSync(HloModule *module, absl::string_view name) {
     const HloInstruction *inst = FindInstruction(module, name);
     if (inst == nullptr) {
       return false;

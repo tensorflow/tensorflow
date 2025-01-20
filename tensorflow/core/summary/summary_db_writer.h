@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_SUMMARY_SUMMARY_DB_WRITER_H_
 #define TENSORFLOW_CORE_SUMMARY_SUMMARY_DB_WRITER_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/kernels/summary_interface.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/db/sqlite.h"

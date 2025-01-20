@@ -161,7 +161,7 @@ DEFINE_GET_ATTR(tensorflow::DataType, type, "type");
 #undef DEFINE_GET_ATTR
 
 template <>
-absl::Status AttrBuilder::Get(StringPiece attr_name,
+absl::Status AttrBuilder::Get(absl::string_view attr_name,
                               absl::InlinedVector<DataType, 4>* value) const {
   auto it = encoded_attrs_.find(string(attr_name));
   if (it == encoded_attrs_.end()) {
@@ -236,7 +236,7 @@ void AttrBuilder::FillAttrValueMapWithoutDefaults(AttrValueMap* m) const {
   }
 }
 
-void AttrBuilder::AddAttrIfNotPresent(StringPiece attr_name,
+void AttrBuilder::AddAttrIfNotPresent(absl::string_view attr_name,
                                       const AttrValue& value) {
   encoded_attrs_.emplace(string(attr_name), value.SerializeAsString());
 }
@@ -284,19 +284,19 @@ void CombineUnordered(const tensorflow::Fprint128& a,
   b->high64 += a.high64;
 }
 
-inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s,
+inline tensorflow::Fprint128 CacheKeyHelper(absl::string_view s,
                                             const tensorflow::Fprint128& b) {
   tensorflow::Fprint128 a = tensorflow::Fingerprint128(s);
   return FingerprintCat128(a, b);
 }
 
-inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s, uint64 b) {
+inline tensorflow::Fprint128 CacheKeyHelper(absl::string_view s, uint64 b) {
   return CacheKeyHelper(s, {b, b});
 }
 
 }  // namespace
 
-tensorflow::Fprint128 AttrBuilder::CacheKey(const StringPiece device) {
+tensorflow::Fprint128 AttrBuilder::CacheKey(const absl::string_view device) {
   if (!cached_cache_key_ || device != device_for_cached_cache_key_) {
     cached_cache_key_ = BuildCacheKeyForDevice(device);
     device_for_cached_cache_key_ = string(device);
@@ -306,7 +306,7 @@ tensorflow::Fprint128 AttrBuilder::CacheKey(const StringPiece device) {
 }
 
 tensorflow::Fprint128 AttrBuilder::BuildCacheKeyForDevice(
-    const StringPiece device) const {
+    const absl::string_view device) const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(op_name());
   f = tsl::FingerprintCat128(f, tensorflow::Fingerprint128(device));
   for (const auto& p : encoded_attrs_) {

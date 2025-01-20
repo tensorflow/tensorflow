@@ -21,8 +21,10 @@ limitations under the License.
 
 #include "absl/container/btree_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -42,6 +44,15 @@ void Clique::ForEachComm(
   for (auto& [rank, comm] : communicators_) {
     fn(rank, comm.get());
   }
+}
+
+absl::Status Clique::AddComm(RankId rank,
+                             std::unique_ptr<Communicator> communicator) {
+  auto emplaced = communicators_.emplace(rank, std::move(communicator));
+  if (!emplaced.second) {
+    return InvalidArgument("Rank %d already exists in clique", rank.value());
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace xla

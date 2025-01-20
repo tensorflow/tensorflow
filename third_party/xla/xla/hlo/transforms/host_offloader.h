@@ -18,8 +18,11 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -56,8 +59,7 @@ class HloCostAnalysis;
 // pass.
 class HostOffloader : public HloModulePass {
  public:
-  explicit HostOffloader(int64_t host_memory_space_color)
-      : kHostMemorySpaceColor(host_memory_space_color) {}
+  HostOffloader() = default;
   ~HostOffloader() override = default;
 
   absl::string_view name() const override { return "host-offloader"; }
@@ -74,7 +76,6 @@ class HostOffloader : public HloModulePass {
   // instruction chain) are ignored.
   absl::StatusOr<bool> ProcessNextMoveToHostInstr(HloComputation* computation);
 
-  const int64_t kHostMemorySpaceColor;
   absl::flat_hash_set<HloInstruction*>
       already_visited_move_to_host_custom_calls_;
   absl::flat_hash_set<HloInstruction*> dynamic_update_slices_already_allocated_;

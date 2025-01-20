@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
-#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
@@ -39,8 +39,7 @@ struct ArraySpec {
   DType dtype;
   Shape shape;
   absl::Nonnull<std::shared_ptr<const Sharding>> sharding;
-  // TODO(hyeontaek): Add `layout` once expressing the default layout can be
-  // done in a symbolic manner.
+  absl::Nullable<std::shared_ptr<const xla::PjRtLayout>> layout;
 
   // Constructs `ArraySpec` from `ArraySpecProto`.
   static absl::StatusOr<ArraySpec> FromProto(

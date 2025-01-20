@@ -43,17 +43,17 @@ class DeviceFactory {
   static DeviceFactory* GetFactory(const std::string& device_type);
 
   // Append to "*devices" CPU devices.
-  static Status AddCpuDevices(const SessionOptions& options,
-                              const std::string& name_prefix,
-                              std::vector<std::unique_ptr<Device>>* devices);
+  static absl::Status AddCpuDevices(
+      const SessionOptions& options, const std::string& name_prefix,
+      std::vector<std::unique_ptr<Device>>* devices);
 
   // Append to "*devices" all suitable devices, respecting
   // any device type specific properties/counts listed in "options".
   //
   // CPU devices are added first.
-  static Status AddDevices(const SessionOptions& options,
-                           const std::string& name_prefix,
-                           std::vector<std::unique_ptr<Device>>* devices);
+  static absl::Status AddDevices(const SessionOptions& options,
+                                 const std::string& name_prefix,
+                                 std::vector<std::unique_ptr<Device>>* devices);
 
   // Helper for tests.  Create a single device of type "type".  The
   // returned device is always numbered zero, so if creating multiple
@@ -66,30 +66,31 @@ class DeviceFactory {
   // possible physical devices.
   //
   // CPU is are added first.
-  static Status ListAllPhysicalDevices(std::vector<string>* devices);
+  static absl::Status ListAllPhysicalDevices(std::vector<string>* devices);
 
   // Iterate through all device factories and build a list of all of the
   // possible pluggable physical devices.
-  static Status ListPluggablePhysicalDevices(std::vector<string>* devices);
+  static absl::Status ListPluggablePhysicalDevices(
+      std::vector<string>* devices);
 
   // Get details for a specific device among all device factories.
   // 'device_index' indexes into devices from ListAllPhysicalDevices.
-  static Status GetAnyDeviceDetails(
+  static absl::Status GetAnyDeviceDetails(
       int device_index, std::unordered_map<string, string>* details);
 
   // For a specific device factory list all possible physical devices.
-  virtual Status ListPhysicalDevices(std::vector<string>* devices) = 0;
+  virtual absl::Status ListPhysicalDevices(std::vector<string>* devices) = 0;
 
   // Get details for a specific device for a specific factory. Subclasses
   // can store arbitrary device information in the map. 'device_index' indexes
   // into devices from ListPhysicalDevices.
-  virtual Status GetDeviceDetails(int device_index,
-                                  std::unordered_map<string, string>* details) {
+  virtual absl::Status GetDeviceDetails(
+      int device_index, std::unordered_map<string, string>* details) {
     return absl::OkStatus();
   }
 
   // Most clients should call AddDevices() instead.
-  virtual Status CreateDevices(
+  virtual absl::Status CreateDevices(
       const SessionOptions& options, const std::string& name_prefix,
       std::vector<std::unique_ptr<Device>>* devices) = 0;
 

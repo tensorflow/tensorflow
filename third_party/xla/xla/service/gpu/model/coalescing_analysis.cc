@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -547,7 +548,7 @@ std::vector<Interval> FindContiguousIntervals(
   }
   // Case 2: f(thread_x) != thread_x * multiplier.
   auto intervals = FindIntervals(partitioned_expr.func_of_d0,
-                                 {indexing_map.GetDimVars(0).bounds});
+                                 {indexing_map.GetDimVar(0).bounds});
   // Case 2.1: g(s) != s.
   if (partitioned_expr.func_of_s0 != range) {
     return intervals;

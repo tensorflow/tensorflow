@@ -15,11 +15,10 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_status.h"
 
-#include <string_view>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
@@ -42,7 +41,7 @@ TEST(RocmStatusTest, ToStatusReturnsExpectedStatusCodes) {
 }
 
 TEST(RocmStatusTest, ToStatusIncludesDetailMessage) {
-  constexpr std::string_view kMyMessage = "Some arbitrary message";
+  constexpr absl::string_view kMyMessage = "Some arbitrary message";
   EXPECT_THAT(ToStatus(hipErrorNotInitialized, kMyMessage),
               StatusIs(absl::StatusCode::kInternal, HasSubstr(kMyMessage)));
 }

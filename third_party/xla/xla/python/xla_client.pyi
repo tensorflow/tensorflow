@@ -89,6 +89,7 @@ def make_cpu_client(
     node_id: int = ...,
     num_nodes: int = ...,
     collectives: _xla.CpuCollectives | None = ...,
+    num_devices: int | None = ...,
 ) -> Client:
   ...
 
@@ -296,6 +297,14 @@ def register_custom_call_handler(
 ) -> None: ...
 
 def custom_call_targets(platform: str) -> dict[str, Any]: ...
+
+def register_custom_type_id(
+    type_name: str,
+    type_id: Any,
+    platform: str = ...,
+) -> None: ...
+
+def register_custom_type_id_handler(platform: str, handler: Any) -> None: ...
 
 def encode_inspect_sharding_callback(handler: Any) -> bytes: ...
 

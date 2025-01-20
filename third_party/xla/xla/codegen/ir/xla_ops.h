@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_CODEGEN_IR_XLA_OPS_H_
 #define XLA_CODEGEN_IR_XLA_OPS_H_
 
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/DenseMap.h"
@@ -60,6 +61,13 @@ mlir::ParseResult parseOperands(
 // parsed into an IndexingMap.
 std::optional<IndexingMap> parseChainOfStringsAsIndexingMap(
     mlir::AsmParser& parser);
+
+// Returns the range of a given value, if it can be statically determined.
+std::optional<Interval> GetRange(mlir::Value value);
+
+// Returns the range for the induction variable, if it can be statically
+// determined.
+std::optional<Interval> GetIVRange(mlir::Value iv);
 
 }  // namespace xla
 

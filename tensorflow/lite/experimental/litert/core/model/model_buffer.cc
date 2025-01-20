@@ -15,18 +15,9 @@
 #include "tensorflow/lite/experimental/litert/core/model/model_buffer.h"
 
 #include <cstdint>
-#include <cstring>
-#include <filesystem>  // NOLINT
-#include <fstream>
-#include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/log/absl_check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -42,42 +33,27 @@ namespace internal {
 
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     LiteRtModelT&& model, BufferRef<uint8_t> npu_byte_code) {
-  LITERT_EXPECT_OK(
-      model.PushMetadata(kByteCodeMetadataKey, MakeByteCodePlaceholder()));
+  LITERT_EXPECT_OK(model.PushMetadata(
+      kByteCodeMetadataKey, npu_byte_code.Data(), npu_byte_code.Size()));
 
-  for (auto& subgraph : model.subgraphs) {
-    for (auto& op : subgraph.ops) {
-      if (op->op_code != kLiteRtOpCodeTflCustom) {
+  for (auto* subgraph : model.Subgraphs()) {
+    for (auto* op : subgraph->Ops()) {
+      if (op->OpCode() != kLiteRtOpCodeTflCustom) {
         continue;
       }
       auto exec_info =
-          MakeExecInfo(op->custom_options.StrView(), kByteCodeMetadataKey);
+          MakeExecInfo(op->CustomOptions().StrView(), kByteCodeMetadataKey);
       if (!exec_info) {
         return exec_info.Error();
       }
-      op->custom_options = std::move(*exec_info);
+      op->SetCustomOptions(std::move(*exec_info));
     }
   }
 
-  model.custom_op_code = kLiteRtDispatchOpCustomCode;
+  auto build_stamp = MakeBuildStamp("", "", Serialization::kAppend);
+  LITERT_EXPECT_OK(model.PushMetadata(kLiteRtBuildStampKey, *build_stamp));
 
-  auto serialized = SerializeModel(std::move(model));
-  if (!serialized) {
-    return serialized;
-  }
-
-  LITERT_EXPECT_OK(
-      FinishByteCodePlaceholders(*serialized, npu_byte_code.Size()));
-
-  OwningBufferRef<uint8_t> with_append(serialized->Size() +
-                                       npu_byte_code.Size());
-
-  uint8_t* write = with_append.Data();
-  std::memcpy(write, serialized->Data(), serialized->Size());
-  write += serialized->Size();
-  std::memcpy(write, npu_byte_code.Data(), npu_byte_code.Size());
-
-  return with_append;
+  return SerializeModel(std::move(model));
 }
 
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(

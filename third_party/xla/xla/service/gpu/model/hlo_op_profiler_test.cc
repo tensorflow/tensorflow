@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/hlo_op_profiler.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tests/hlo_test_base.h"

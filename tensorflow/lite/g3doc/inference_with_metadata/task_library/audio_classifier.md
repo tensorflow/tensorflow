@@ -29,7 +29,7 @@ The following models are guaranteed to be compatible with the `AudioClassifier`
 API.
 
 *   Models created by
-    [TensorFlow Lite Model Maker for Audio Classification](https://www.tensorflow.org/lite/api_docs/python/tflite_model_maker/audio_classifier).
+    [TensorFlow Lite Model Maker for Audio Classification](https://ai.google.dev/edge/litert/libraries/modify/audio_classification).
 
 *   The
     [pretrained audio event classification models on TensorFlow Hub](https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1).
@@ -237,9 +237,10 @@ for more options to configure `TFLAudioClassifier`.
 pip install tflite-support
 ```
 
-Note: Task Library's Audio APIs rely on [PortAudio](http://www.portaudio.com/docs/v19-doxydocs/index.html)
-to record audio from the device's microphone. If you intend to use Task
-Library's [AudioRecord](/lite/api_docs/python/tflite_support/task/audio/AudioRecord)
+Note: Task Library's Audio APIs rely on
+[PortAudio](http://www.portaudio.com/docs/v19-doxydocs/index.html) to record
+audio from the device's microphone. If you intend to use Task Library's
+[AudioRecord](https://ai.google.dev/edge/api/tflite/python/tflite_support/task/audio/AudioRecord)
 for audio recording, you need to install PortAudio on your system.
 
 * Linux: Run `sudo apt-get update && apt-get install libportaudio2`

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
@@ -77,8 +78,8 @@ absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
     TF_RETURN_IF_ERROR(comm->Broadcast(
         // Always use rank 0 since we always broadcast from the first id in
         // replica_groups
-        src_addr, dest_addr, buffer.element_type, buffer.element_count, 0,
-        GpuCollectives::On(stream)));
+        src_addr, dest_addr, buffer.element_type, buffer.element_count,
+        RankId(0), GpuCollectives::On(stream)));
   }
   return collectives->GroupEnd();
 }

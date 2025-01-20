@@ -25,6 +25,7 @@ limitations under the License.
 // This file provides the NNApiPlugin class, which implements the
 // TFLite Delegate Plugin for the NNAPI Delegate.
 
+#include <cstdint>
 #include <memory>
 #include <string>
 

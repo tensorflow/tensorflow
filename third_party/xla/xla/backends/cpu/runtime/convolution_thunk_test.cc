@@ -15,27 +15,25 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/convolution_thunk.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
-#include "xla/primitive_util.h"
+#include "xla/backends/cpu/runtime/thunk_testlib.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/maybe_owning_device_memory.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {
@@ -102,23 +100,6 @@ std::vector<ElementType> MakeDataVector(const std::vector<int64_t>& dims) {
   return std::vector<ElementType>(size, ElementType(0.0));
 }
 
-template <typename ElementType>
-std::vector<MaybeOwningDeviceMemory> MakeBuffers(
-    const std::vector<ElementType>& input,
-    const std::vector<ElementType>& kernel,
-    const std::vector<ElementType>& output) {
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  size_t input_size_in_bytes = input.size() * sizeof(ElementType);
-  buffers.emplace_back(se::DeviceMemoryBase(input.data(), input_size_in_bytes));
-  size_t kernel_size_in_bytes = kernel.size() * sizeof(ElementType);
-  buffers.emplace_back(
-      se::DeviceMemoryBase(kernel.data(), kernel_size_in_bytes));
-  size_t output_size_in_bytes = output.size() * sizeof(ElementType);
-  buffers.emplace_back(
-      se::DeviceMemoryBase(output.data(), output_size_in_bytes));
-  return buffers;
-}
-
 ConvolutionThunk::Options MakeConvolutionOptions() {
   ConvolutionThunk::Options options;
   options.multi_threaded = false;
@@ -175,107 +156,80 @@ Window MakeWindow(int convolution_rank) {
 template <typename ElementType>
 class ConvolutionThunkBuilder {
  public:
+  ConvolutionThunkBuilder(ConvolutionThunkBuilder&&) = delete;
+  ConvolutionThunkBuilder& operator=(ConvolutionThunkBuilder&&) = delete;
+
+  explicit ConvolutionThunkBuilder(
+      ConvolutionDimensions dims = ConvolutionDimensions())
+      : ConvolutionThunkBuilder(MakeInputDims(dims), MakeKernelDims(dims),
+                                MakeOutputDims(dims)) {}
+
+  ConvolutionThunkBuilder(absl::Span<const int64_t> input_dims,
+                          absl::Span<const int64_t> kernel_dims,
+                          absl::Span<const int64_t> output_dims) {
+    // Convolution rank inferred from the input dimensions.
+    int convolution_rank = input_dims.size() - 2;
+
+    // Convolution parameters.
+    dnums_ = MakeConvolutionDimensionNumbers(convolution_rank);
+    window_ = MakeWindow(convolution_rank);
+
+    // Actual data.
+    input_ = LiteralUtil::CreateFull(input_dims, ElementType(0.0));
+    kernel_ = LiteralUtil::CreateFull(kernel_dims, ElementType(0.0));
+    output_ = LiteralUtil::CreateFull(output_dims, ElementType(0.0));
+
+    input_alloc_ = CreateBufferAllocation(0, input_);
+    kernel_alloc_ = CreateBufferAllocation(1, kernel_);
+    output_alloc_ = CreateBufferAllocation(2, output_);
+  }
+
   // Set convolution options. If not called before Build(), default options are
   // used.
   void SetOptions(ConvolutionThunk::Options options) {
     options_ = std::move(options);
   }
 
-  // Constructor that lets the user specify the convolution dimensions.
-  auto Build(ConvolutionDimensions dims = ConvolutionDimensions()) {
-    // Data dimensions.
-    auto input_dims = MakeInputDims(dims);
-    auto kernel_dims = MakeKernelDims(dims);
-    auto output_dims = MakeOutputDims(dims);
-
-    return Build(input_dims, kernel_dims, output_dims);
+  BufferAllocations GetAllocations() {
+    return CreateBufferAllocations(input_, kernel_, output_);
   }
 
-  // Constructor that lets the user specify each data dimension separately.
-  auto Build(const std::vector<int64_t>& input_dims,
-             const std::vector<int64_t>& kernel_dims,
-             const std::vector<int64_t>& output_dims) {
-    // Convolution rank inferred from the input dimensions.
-    int convolution_rank = input_dims.size() - 2;
-
-    // Actual data.
-    input_ = MakeDataVector<ElementType>(input_dims);
-    kernel_ = MakeDataVector<ElementType>(kernel_dims);
-    output_ = MakeDataVector<ElementType>(output_dims);
-
-    // Buffers.
-    size_t input_size_in_bytes = input_.size() * sizeof(ElementType);
-    buffers_.emplace_back(
-        se::DeviceMemoryBase(input_.data(), input_size_in_bytes));
-    size_t kernel_size_in_bytes = kernel_.size() * sizeof(ElementType);
-    buffers_.emplace_back(
-        se::DeviceMemoryBase(kernel_.data(), kernel_size_in_bytes));
-    size_t output_size_in_bytes = output_.size() * sizeof(ElementType);
-    buffers_.emplace_back(
-        se::DeviceMemoryBase(output_.data(), output_size_in_bytes));
-
-    // Buffer allocations.
-    allocations_ = std::make_unique<BufferAllocations>(buffers_);
-
-    input_alloc_ =
-        std::make_unique<BufferAllocation>(0, input_size_in_bytes, 0);
-    kernel_alloc_ =
-        std::make_unique<BufferAllocation>(1, kernel_size_in_bytes, 0);
-    output_alloc_ =
-        std::make_unique<BufferAllocation>(2, output_size_in_bytes, 0);
-
-    BufferAllocation::Slice input_slice(input_alloc_.get(), 0,
-                                        input_size_in_bytes);
-    BufferAllocation::Slice kernel_slice(kernel_alloc_.get(), 0,
-                                         kernel_size_in_bytes);
-    BufferAllocation::Slice output_slice(output_alloc_.get(), 0,
-                                         output_size_in_bytes);
-
-    // Shapes.
-    auto primitive_type = primitive_util::NativeToPrimitiveType<ElementType>();
-    Shape input_shape = ShapeUtil::MakeShape(primitive_type, input_dims);
-    Shape kernel_shape = ShapeUtil::MakeShape(primitive_type, kernel_dims);
-    Shape output_shape = ShapeUtil::MakeShape(primitive_type, output_dims);
-
-    // Convolution parameters.
-    auto dnums = MakeConvolutionDimensionNumbers(convolution_rank);
-    auto window = MakeWindow(convolution_rank);
-
-    // Create thunk.
+  auto Build() {
+    auto [input_slice, kernel_slice, output_slice] =
+        CreateBufferAllocationSlice(*input_alloc_, *kernel_alloc_,
+                                    *output_alloc_);
     return ConvolutionThunk::Create(
-        {"convolution"}, options_, std::move(input_slice), input_shape,
-        std::move(kernel_slice), kernel_shape, std::move(output_slice),
-        output_shape, dnums, window,
+        {"convolution"}, options_, input_slice, input_.shape(), kernel_slice,
+        kernel_.shape(), output_slice, output_.shape(), dnums_, window_,
         /*feature_group_count=*/1);
   }
 
-  // Get execution parameters for the last created thunk.
-  auto GetExecutionParams() {
-    return Thunk::ExecuteParams{nullptr, allocations_.get()};
-  }
-
  private:
-  std::vector<ElementType> input_;
-  std::vector<ElementType> kernel_;
-  std::vector<ElementType> output_;
-  std::vector<MaybeOwningDeviceMemory> buffers_;
-  ConvolutionThunk::Options options_ = MakeConvolutionOptions();
+  ConvolutionDimensionNumbers dnums_;
+  Window window_;
 
-  // Unique pointers, because they are created only when needed.
-  std::unique_ptr<BufferAllocations> allocations_;
-  std::unique_ptr<BufferAllocation> input_alloc_;
-  std::unique_ptr<BufferAllocation> kernel_alloc_;
-  std::unique_ptr<BufferAllocation> output_alloc_;
+  Literal input_;
+  Literal kernel_;
+  Literal output_;
+
+  std::optional<BufferAllocation> input_alloc_;
+  std::optional<BufferAllocation> kernel_alloc_;
+  std::optional<BufferAllocation> output_alloc_;
+
+  ConvolutionThunk::Options options_ = MakeConvolutionOptions();
 };
 
 template <typename ElementType>
 void SuccessfulConvolution(int convolution_rank) {
-  ConvolutionThunkBuilder<ElementType> builder;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, builder.Build(ConvolutionDimensions(convolution_rank)));
+  ConvolutionThunkBuilder<ElementType> builder(
+      ConvolutionDimensions{convolution_rank});
+  TF_ASSERT_OK_AND_ASSIGN(auto thunk, builder.Build());
+  BufferAllocations allocations = builder.GetAllocations();
 
   // Execute thunk and wait for completion.
-  Thunk::ExecuteParams params = builder.GetExecutionParams();
+  Thunk::ExecuteParams params;
+  params.buffer_allocations = &allocations;
+
   auto execute_event = thunk->Execute(params);
   tsl::BlockUntilReady(execute_event);
 
@@ -308,10 +262,10 @@ TEST(ConvolutionThunkTest, CreationErrorOnUnsupportedType) {
 }
 
 TEST(ConvolutionThunkTest, CreationErrorOnTooHighConvolutionRank) {
-  ConvolutionThunkBuilder<float> builder;
+  ConvolutionThunkBuilder<float> builder(
+      ConvolutionDimensions(/*convolution_rank=*/4));
 
-  auto status_or_thunk =
-      builder.Build(ConvolutionDimensions(/*convolution_rank=*/4));
+  auto status_or_thunk = builder.Build();
   EXPECT_EQ(status_or_thunk.status().code(),
             absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(status_or_thunk.status().message(),
@@ -319,10 +273,10 @@ TEST(ConvolutionThunkTest, CreationErrorOnTooHighConvolutionRank) {
 }
 
 TEST(ConvolutionThunkTest, CreationErrorOnTooLowConvolutionRank) {
-  ConvolutionThunkBuilder<float> builder;
+  ConvolutionThunkBuilder<float> builder(
+      ConvolutionDimensions(/*convolution_rank=*/0));
 
-  auto status_or_thunk =
-      builder.Build(ConvolutionDimensions(/*convolution_rank=*/0));
+  auto status_or_thunk = builder.Build();
   EXPECT_EQ(status_or_thunk.status().code(),
             absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(status_or_thunk.status().message(),
@@ -330,8 +284,6 @@ TEST(ConvolutionThunkTest, CreationErrorOnTooLowConvolutionRank) {
 }
 
 TEST(ConvolutionThunkTest, CreationErrorOnMismatchedKernelBufferRank) {
-  ConvolutionThunkBuilder<float> builder;
-
   ConvolutionDimensions dims_2d(/*convolution_rank=*/2);
   auto input_dims = MakeInputDims(dims_2d);
   auto output_dims = MakeOutputDims(dims_2d);
@@ -340,7 +292,9 @@ TEST(ConvolutionThunkTest, CreationErrorOnMismatchedKernelBufferRank) {
   ConvolutionDimensions dims_3d(/*convolution_rank=*/3);
   auto kernel_dims = MakeKernelDims(dims_3d);
 
-  auto status_or_thunk = builder.Build(input_dims, kernel_dims, output_dims);
+  ConvolutionThunkBuilder<float> builder(input_dims, kernel_dims, output_dims);
+
+  auto status_or_thunk = builder.Build();
   EXPECT_EQ(status_or_thunk.status().code(),
             absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(status_or_thunk.status().message(),
@@ -349,8 +303,6 @@ TEST(ConvolutionThunkTest, CreationErrorOnMismatchedKernelBufferRank) {
 }
 
 TEST(ConvolutionThunkTest, CreationErrorOnMismatchedOutputBufferRank) {
-  ConvolutionThunkBuilder<float> builder;
-
   ConvolutionDimensions dims_2d(/*convolution_rank=*/2);
   auto input_dims = MakeInputDims(dims_2d);
   auto kernel_dims = MakeKernelDims(dims_2d);
@@ -359,7 +311,9 @@ TEST(ConvolutionThunkTest, CreationErrorOnMismatchedOutputBufferRank) {
   ConvolutionDimensions dims_3d(/*convolution_rank=*/3);
   auto output_dims = MakeOutputDims(dims_3d);
 
-  auto status_or_thunk = builder.Build(input_dims, kernel_dims, output_dims);
+  ConvolutionThunkBuilder<float> builder(input_dims, kernel_dims, output_dims);
+  auto status_or_thunk = builder.Build();
+
   EXPECT_EQ(status_or_thunk.status().code(),
             absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(status_or_thunk.status().message(),
@@ -368,8 +322,6 @@ TEST(ConvolutionThunkTest, CreationErrorOnMismatchedOutputBufferRank) {
 }
 
 TEST(ConvolutionThunkTest, CreationErrorOnBatchSizeMismatch) {
-  ConvolutionThunkBuilder<float> builder;
-
   ConvolutionDimensions dims;
   dims.batch_size = 1;
   auto input_dims = MakeInputDims(dims);
@@ -379,7 +331,9 @@ TEST(ConvolutionThunkTest, CreationErrorOnBatchSizeMismatch) {
   dims.batch_size = 2;
   auto output_dims = MakeOutputDims(dims);
 
-  auto status_or_thunk = builder.Build(input_dims, kernel_dims, output_dims);
+  ConvolutionThunkBuilder<float> builder(input_dims, kernel_dims, output_dims);
+  auto status_or_thunk = builder.Build();
+
   EXPECT_EQ(status_or_thunk.status().code(),
             absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(status_or_thunk.status().message(),
@@ -388,8 +342,6 @@ TEST(ConvolutionThunkTest, CreationErrorOnBatchSizeMismatch) {
 }
 
 TEST(ConvolutionThunkTest, CreationErrorOnOutputChannelsMismatch) {
-  ConvolutionThunkBuilder<float> builder;
-
   ConvolutionDimensions dims;
   dims.output_channels = 3;
   auto input_dims = MakeInputDims(dims);
@@ -399,7 +351,9 @@ TEST(ConvolutionThunkTest, CreationErrorOnOutputChannelsMismatch) {
   dims.output_channels = 4;
   auto output_dims = MakeOutputDims(dims);
 
-  auto status_or_thunk = builder.Build(input_dims, kernel_dims, output_dims);
+  ConvolutionThunkBuilder<float> builder(input_dims, kernel_dims, output_dims);
+  auto status_or_thunk = builder.Build();
+
   EXPECT_EQ(status_or_thunk.status().code(),
             absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(
@@ -411,15 +365,19 @@ TEST(ConvolutionThunkTest, CreationErrorOnOutputChannelsMismatch) {
 TEST(ConvolutionThunkTest,
      ExecutionErrorOnMissingThreadPoolInMultiThreadedMode) {
   ConvolutionThunkBuilder<float> builder;
+
   auto options = MakeConvolutionOptions();
   options.multi_threaded = true;
   builder.SetOptions(options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto thunk, builder.Build(ConvolutionDimensions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto thunk, builder.Build());
+  BufferAllocations allocations = builder.GetAllocations();
 
   // Execute thunk and wait for completion.
-  Thunk::ExecuteParams params = builder.GetExecutionParams();
+  Thunk::ExecuteParams params;
   params.intra_op_threadpool = nullptr;
+  params.buffer_allocations = &allocations;
+
   auto execute_event = thunk->Execute(params);
   tsl::BlockUntilReady(execute_event);
 

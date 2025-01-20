@@ -23,6 +23,8 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/random/random.h"
 #include "absl/strings/substitute.h"

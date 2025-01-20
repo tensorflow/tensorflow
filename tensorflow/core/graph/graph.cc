@@ -400,7 +400,7 @@ NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef)
     : NodeDebugInfo(ndef.name(), ndef.has_experimental_debug_info(),
                     ndef.experimental_debug_info()) {}
 NodeDebugInfo::NodeDebugInfo(
-    StringPiece node_name, bool has_experimental_debug_info,
+    absl::string_view node_name, bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info)
     : name(node_name) {
   if (has_experimental_debug_info) {
@@ -750,7 +750,7 @@ absl::Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
   return absl::OkStatus();
 }
 
-void Graph::AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
+void Graph::AddInput(NodeDef* dst, absl::string_view src_name, int src_slot) {
   if (src_slot == Graph::kControlSlot) {
     dst->add_input(strings::StrCat("^", src_name));
   } else if (src_slot == 0) {
@@ -911,7 +911,7 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id,
   }
 }
 
-std::string Graph::NewName(StringPiece prefix) {
+std::string Graph::NewName(absl::string_view prefix) {
   return strings::StrCat(prefix, "/_", name_counter_++);
 }
 
@@ -1005,7 +1005,7 @@ int Graph::InternDeviceName(const std::string& device_name) {
   return index;
 }
 
-absl::Status Graph::AddWhileContext(StringPiece frame_name,
+absl::Status Graph::AddWhileContext(absl::string_view frame_name,
                                     std::vector<Node*> enter_nodes,
                                     std::vector<Node*> exit_nodes,
                                     OutputTensor cond_output,
@@ -1034,7 +1034,7 @@ std::unordered_map<std::string, Node*> Graph::BuildNodeNameIndex() const {
   return result;
 }
 
-void Graph::SetNodeType(StringPiece name, const FullTypeDef& ft) {
+void Graph::SetNodeType(absl::string_view name, const FullTypeDef& ft) {
   for (Node* n : op_nodes()) {
     if (n->name() == name) {
       NodeDef& node_def = n->props_->node_def;
@@ -1045,7 +1045,7 @@ void Graph::SetNodeType(StringPiece name, const FullTypeDef& ft) {
   }
 }
 
-void Graph::NodeType(StringPiece name, const FullTypeDef** result) {
+void Graph::NodeType(absl::string_view name, const FullTypeDef** result) {
   *result = nullptr;
   for (Node* n : op_nodes()) {
     if (n->name() == name) {

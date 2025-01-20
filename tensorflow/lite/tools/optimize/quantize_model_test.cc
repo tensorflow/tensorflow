@@ -165,6 +165,7 @@ TEST_P(QuantizeConvModelTest, AvoidQuantOpForExternalStates) {
   auto status =
       QuantizeModel(&builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
                     /*allow_float=*/true, /*disable_per_channel=*/true,
+                    /*disable_per_channel_quantization_for_dense_layers=*/true,
                     &error_reporter_, /*handle_external_state=*/true);
   EXPECT_EQ(status, kTfLiteOk);
   for (const auto& subgraph : model_.subgraphs) {
@@ -846,10 +847,12 @@ TEST_P(QuantizeConvModel2Test, VerifyConvQuantization) {
 }
 
 TEST_P(QuantizeConvModel2Test, VerifyConvDisablePerChannelQuantization) {
-  auto status =
-      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
-                                false, tensor_type_, bias_type_,
-                                /*disable_per_channel=*/true, &error_reporter_);
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, tensor_type_, tensor_type_, false, tensor_type_,
+      bias_type_,
+      /*disable_per_channel=*/true,
+      /*disable_per_channel_quantization_for_dense_layers=*/true,
+      &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
   const auto& subgraph = model_.subgraphs[0];
   auto conv_op = subgraph->operators[0].get();

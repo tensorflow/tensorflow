@@ -18,8 +18,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/activate_context.h"
@@ -27,7 +30,9 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
-#include "tsl/platform/errors.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -71,6 +76,58 @@ absl::StatusOr<KernelMetadata> RocmKernel::GetKernelMetadata() {
                                       rocm_function_, &value));
   kernel_metadata.set_shared_memory_bytes(value);
   return kernel_metadata;
+}
+
+absl::Status RocmKernel::Launch(const ThreadDim& thread_dims,
+                                const BlockDim& block_dims,
+                                const std::optional<ClusterDim>& cluster_dims,
+                                Stream* stream, const KernelArgs& args) {
+  hipFunction_t function = gpu_function();
+
+  // Launch kernels with packed arguments.
+  auto launch = [this, &cluster_dims, &thread_dims, &block_dims, &function,
+                 stream](const KernelArgsPackedArrayBase& packed) {
+    int32_t expected_number_of_arguments =
+        Arity() + (packed.number_of_shared_bytes() > 0);
+
+    CHECK_EQ(expected_number_of_arguments, packed.number_of_arguments())
+        << "Kernel " << name() << " has " << packed.number_of_arguments()
+        << " arguments, but expected " << expected_number_of_arguments
+        << "; arity=" << Arity()
+        << "; number_of_shared_bytes=" << packed.number_of_shared_bytes();
+
+    void** params = const_cast<void**>(packed.argument_addresses().data());
+
+    if (cluster_dims.has_value()) {
+      return stream->LaunchKernel(thread_dims, block_dims, cluster_dims,
+                                  function, name(), params,
+                                  packed.number_of_shared_bytes());
+    } else {
+      return stream->LaunchKernel(thread_dims, block_dims, std::nullopt,
+                                  function, name(), params,
+                                  packed.number_of_shared_bytes());
+    }
+  };
+
+  // If arguments are already packed we can just launch the kernel.
+  if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
+    return launch(*packed);
+  }
+
+  // For device memory array we rely on a custom kernel arguments packing.
+  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+    auto& pack = args_packing();
+    if (!pack) {
+      return absl::InternalError(
+          "Kernel is missing a custom arguments packing function for device "
+          "memory arguments array");
+    }
+
+    TF_ASSIGN_OR_RETURN(auto packed, pack(*this, *device_mem));
+    return launch(*packed);
+  }
+
+  return absl::InternalError("Unsupported kernel arguments type");
 }
 
 }  // namespace gpu

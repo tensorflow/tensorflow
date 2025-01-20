@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_EXPANDERS_REAL_IMAG_EXPANDER_H_
 #define XLA_HLO_TRANSFORMS_EXPANDERS_REAL_IMAG_EXPANDER_H_
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
 namespace xla {

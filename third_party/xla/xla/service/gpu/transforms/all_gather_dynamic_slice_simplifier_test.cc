@@ -74,7 +74,7 @@ TEST_F(AllGatherDynamicSliceSimplifierTest, AllPartitions) {
       dimensions={0}, channel_id=1, use_global_device_ids=true
     %pid = u32[] partition-id()
     %pid_s32 = s32[] convert(%pid)
-    %slice_size = s32[] constant(32) 
+    %slice_size = s32[] constant(32)
     %offset = s32[] multiply(%pid_s32, %slice_size)
     %zero = s32[] constant(0)
     ROOT %ds = f32[32,8,128]{2,1,0} dynamic-slice(%ag, %offset, %zero, %zero),
@@ -94,7 +94,7 @@ TEST_F(AllGatherDynamicSliceSimplifierTest, AllPartitions) {
 TEST_F(AllGatherDynamicSliceSimplifierTest, AllReplicasWithReshape) {
   absl::string_view hlo_string = R"(
    HloModule AllGather
-  
+
    ENTRY %AllGather {
     %param = f32[32,8,128]{2,1,0} parameter(0)
     %ag = f32[256,8,128]{2,1,0} all-gather(%param), replica_groups={{0,1,2,3,4,5,6,7}},

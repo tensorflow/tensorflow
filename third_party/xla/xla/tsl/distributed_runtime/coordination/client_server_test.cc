@@ -44,13 +44,13 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
 
 namespace tsl {
 namespace {
@@ -1043,6 +1043,35 @@ TEST_F(ClientServerTest,
       EXPECT_EQ(statuses[i].code(), tsl::error::INVALID_ARGUMENT)
           << " node id: " << i << " status: " << statuses[i].message();
     }
+  }
+}
+
+TEST_F(ClientServerTest, GetAliveTasks_Succeed) {
+  const int num_nodes = 2;
+  StartService(num_nodes);
+
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    auto client = GetClient(node_id);
+    TF_RETURN_IF_ERROR(client->Connect());
+    absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> alive_tasks =
+        client->GetAliveTasks({GetTask(0), GetTask(1)});
+    if (!alive_tasks.ok()) {
+      return alive_tasks.status();
+    }
+    TF_RETURN_IF_ERROR(client->Shutdown());
+    return absl::OkStatus();
+  };
+
+  std::vector<absl::Status> statuses(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    TF_EXPECT_OK(statuses[i]);
   }
 }
 

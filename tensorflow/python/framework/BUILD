@@ -66,7 +66,7 @@ tf_cc_shared_object(
         ],
         if_true = [
             ":test_file_system_stripped",
-            "//tensorflow/python:_pywrap_tensorflow_common",
+            "//tensorflow/python:tensorflow_common_framework",
         ],
     ) + ["@com_google_protobuf//:protobuf_headers"],
 )
@@ -787,6 +787,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_py_context_manager.pyi",
     ],
+    starlark_only = True,
     deps = [
         ":py_context_manager",
         "//third_party/python_runtime:headers",
@@ -836,6 +837,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_op_def_util.pyi",
     ],
+    starlark_only = True,
     deps = if_pywrap(
         if_false = [":op_def_util_headers"],
         if_true = [":op_def_util_cc"],
@@ -918,6 +920,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_python_api_parameter_converter.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
@@ -1028,6 +1031,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_python_api_info.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
@@ -1185,6 +1189,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_python_tensor_converter.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
@@ -2174,14 +2179,20 @@ pytype_strict_library(
     name = "test_lib",
     srcs = ["test_util.py"],
     srcs_version = "PY3",
-    visibility = visibility + [
-        "//tensorflow:internal",
-        "//tensorflow_model_optimization:__subpackages__",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/py/neural_structured_learning:__subpackages__",
-        "//third_party/py/tf_agents:__subpackages__",
-        "//third_party/py/tf_keras:__subpackages__",
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + [
+    # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    # "//third_party/py/neural_structured_learning:__subpackages__",
+    # "//third_party/py/tf_agents:__subpackages__",
+    # "//third_party/py/tf_keras:__subpackages__",
+    # "//tensorflow:internal",
+    # "//tensorflow_model_optimization:__subpackages__",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":_test_metrics_util",
         ":config",
@@ -3188,6 +3199,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_errors_test_helper.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core/platform:status",

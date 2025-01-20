@@ -155,11 +155,11 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Span<const GpuGraphBarrierInfo> barriers(ExecutionScopeId id) const;
 
   absl::Span<const GpuGraphNodeInfo> nodes() const {
-    return nodes(kDefaulExecutionScope);
+    return nodes(kDefaultExecutionScope);
   }
 
   absl::Span<const GpuGraphBarrierInfo> barriers() const {
-    return barriers(kDefaulExecutionScope);
+    return barriers(kDefaultExecutionScope);
   }
 
   // Returns the list of dependencies for a given node. `node` must be a node

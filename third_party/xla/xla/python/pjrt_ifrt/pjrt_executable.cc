@@ -184,10 +184,9 @@ char PjRtExecutable::ID = 0;
 char PjRtLoadedExecutable::ID = 0;
 
 absl::StatusOr<std::unique_ptr<Executable>> PjRtExecutable::Create(
-    std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
-    std::unique_ptr<XlaCompileOptions> compile_options) {
-  return std::unique_ptr<Executable>(new PjRtExecutable(
-      std::move(pjrt_executable), std::move(compile_options)));
+    std::shared_ptr<xla::PjRtExecutable> pjrt_executable) {
+  return std::unique_ptr<Executable>(
+      new PjRtExecutable(std::move(pjrt_executable)));
 }
 
 absl::StatusOr<std::optional<std::string>> PjRtExecutable::Fingerprint() const {

@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -60,7 +59,7 @@ constexpr const uint8_t kPtxPrefix[] = {'P', 'T', 'X', ':', ' '};
 
 absl::StatusOr<RelocatableModule>
 DeferRelocatableCompilationCompilationProvider::CompileToRelocatableModule(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   if (ptx.empty()) return RelocatableModule{};
 
@@ -103,7 +102,7 @@ DeferRelocatableCompilationCompilationProvider::CompileAndLink(
 
 absl::StatusOr<Assembly>
 DeferRelocatableCompilationCompilationProvider::Compile(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   return delegate_->Compile(cc, ptx, options);
 }

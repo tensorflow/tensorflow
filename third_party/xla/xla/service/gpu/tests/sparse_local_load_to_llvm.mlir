@@ -8,8 +8,8 @@
 
 module attributes {"ttg.num-warps" = 4 : i32, "ttg.target" = "cuda:80"} {
   // CHECK-LABEL: sparse_local_load_ampere
-  tt.func @sparse_local_load_ampere(%A_alloc: !ttg.memdesc<32x32xf16, #shared, #ttg.shared_memory>, 
-                      %B_alloc: !ttg.memdesc<64x32xf16, #shared, #ttg.shared_memory>, 
+  tt.func @sparse_local_load_ampere(%A_alloc: !ttg.memdesc<32x32xf16, #shared, #ttg.shared_memory>,
+                      %B_alloc: !ttg.memdesc<64x32xf16, #shared, #ttg.shared_memory>,
                       %meta_alloc: !ttg.memdesc<32x4xi16, #shared, #ttg.shared_memory>) {
     // A_dot and B_dot local loads shouldn not match with -sparse-local-load-to-llvm
     // CHECK-COUNT-2: ttg.local_load

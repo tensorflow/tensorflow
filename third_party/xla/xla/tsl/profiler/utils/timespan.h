@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace profiler {
@@ -98,6 +98,12 @@ class Timespan {
   // Returns true if this timespan is equal to the given timespan.
   bool operator==(const Timespan& other) const {
     return begin_ps_ == other.begin_ps_ && duration_ps_ == other.duration_ps_;
+  }
+
+  // The compiler can't synthesize <= from < and == until C++ 20's <=>, but we
+  // can't yet assume C++20 support.
+  bool operator<=(const Timespan& other) const {
+    return *this < other || *this == other;
   }
 
   // Returns a string that shows the begin and end times.

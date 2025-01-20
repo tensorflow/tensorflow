@@ -1,4 +1,5 @@
 // RUN: tf-opt --tosa-convert-tfl-uint8  --verify-each %s | FileCheck %s
+// REQUIRES: tf_tosa
 
 // Operations for testing --tosa-convert-tfl-uint8
 

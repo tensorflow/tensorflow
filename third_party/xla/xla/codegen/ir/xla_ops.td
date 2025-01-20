@@ -153,7 +153,7 @@ def XLA_PredicatedExtractOp : XLA_Op<"predicated_extract",
      TypesMatchWith<"result type matches element type of src",
                     "src", "result",
                     "::llvm::cast<mlir::TensorType>($_self).getElementType()">]> {
-  let summary = "Inserts a value into a tensor if a condition holds";
+  let summary = "Extracts a value from a tensor if a condition holds";
   let arguments = (ins I1:$condition, AnyType:$fallback,
     AnyStaticShapeTensor:$src, Variadic<Index>:$indices);
   let results = (outs AnyType:$result);

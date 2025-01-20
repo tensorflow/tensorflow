@@ -21,21 +21,21 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
-#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
-#include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/tests/test_macros.h"
-#include "xla/tsl/framework/device_id.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/tests/test_macros.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 #ifdef TF_GPU_USE_PJRT
-#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
+#include "xla/pjrt/pjrt_client.h"
 #endif  // TF_GPU_USE_PJRT
 
 #if GOOGLE_CUDA
@@ -65,6 +65,15 @@ se::CudaComputeCapability GetComputeCapability() {
       .value()
       ->GetDeviceDescription()
       .cuda_compute_capability();
+}
+
+bool IsRocm() {
+  return std::holds_alternative<se::RocmComputeCapability>(
+      se::GPUMachineManager()
+          ->ExecutorForDevice(0)
+          .value()
+          ->GetDeviceDescription()
+          .gpu_compute_capability());
 }
 
 void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
@@ -144,7 +153,10 @@ class GPUDeviceTest : public ::testing::Test {
   }
 };
 
-TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
+TEST_F(GPUDeviceTest, CudaMallocAsync) {
+  if (IsRocm()) {
+    GTEST_SKIP();
+  }
   // cudaMallocAsync supported only when cuda toolkit and driver supporting
   // CUDA 11.2+
 #ifndef GOOGLE_CUDA

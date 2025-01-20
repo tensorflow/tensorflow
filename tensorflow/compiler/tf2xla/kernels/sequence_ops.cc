@@ -15,6 +15,9 @@ limitations under the License.
 
 // XLA-specific sequence and range Ops.
 
+#include <cstdint>
+#include <type_traits>
+
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"

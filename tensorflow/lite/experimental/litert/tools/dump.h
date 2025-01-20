@@ -64,7 +64,7 @@ void DumpOptions(const LiteRtOpT& op, std::ostream& out = std::cerr);
 void Dump(const CompilerPlugin& plugin, std::ostream& out = std::cerr);
 
 // Dumps details about the dynamic library (see "dlinfo").
-void Dump(void* lib_handle, std::ostream& out = std::cerr);
+void DumpDLL(void* lib_handle, std::ostream& out = std::cerr);
 
 }  // namespace litert::internal
 

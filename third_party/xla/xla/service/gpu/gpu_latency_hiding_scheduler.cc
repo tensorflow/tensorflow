@@ -243,19 +243,58 @@ bool GpuAsyncTrackerBase::IsSupportedAsyncStart(
   return IsGpuAsyncStart(hlo);
 }
 
+static bool IsPartiallyPipelinedSendRecvDone(const HloInstruction* instr) {
+  // Is send-done/recv-done but does not have send/recv operand.
+  return HloPredicateIsOp<HloOpcode::kSendDone, HloOpcode::kRecvDone>(instr) &&
+         HloPredicateIsNotOp<HloOpcode::kSend, HloOpcode::kRecv>(
+             instr->operand(0));
+}
+
+static bool IsPartiallyPipelinedSendRecv(const HloInstruction* instr) {
+  // Is send/recv but does not feed into send-done/recv-done.
+  return HloPredicateIsOp<HloOpcode::kSend, HloOpcode::kRecv>(instr) &&
+         instr->user_count() == 1 &&
+         HloPredicateIsNotOp<HloOpcode::kSendDone, HloOpcode::kRecvDone>(
+             instr->users().front());
+}
+
 void GpuAsyncTrackerBase::PostProcessScheduleGraph(
     HloScheduleGraph* schedule_graph,
     const LatencyEstimator* latency_estimator) const {
-  for (auto inst : schedule_graph->GetOriginalInstrList()) {
+  if (schedule_graph->GetOriginalInstrList().empty()) return;
+  auto debug_options = schedule_graph->GetOriginalInstrList()
+                           .front()
+                           ->GetModule()
+                           ->config()
+                           .debug_options();
+
+  for (const HloInstruction* inst : schedule_graph->GetOriginalInstrList()) {
+    // Schedule partially pipelined send/recv instructions late so that they can
+    // overlap with compute. Schedule send/recv late and, when unblocked,
+    // schedule send-done/recv-done early.
+    if (debug_options.xla_gpu_enable_experimental_pipeline_parallelism_opt() &&
+        IsPartiallyPipelinedSendRecv(inst)) {
+      HloGraphNode& node = schedule_graph->GetNode(inst);
+      node.SetForceDelay(true);
+      VLOG(5) << "Setting force delay for instruction: " << inst->ToString();
+    }
+    if (debug_options.xla_gpu_enable_experimental_pipeline_parallelism_opt() &&
+        IsPartiallyPipelinedSendRecvDone(inst)) {
+      HloGraphNode& node = schedule_graph->GetNode(inst);
+      node.SetForceEarly(true);
+      VLOG(5) << "Setting force early for instruction: " << inst->ToString();
+    }
+
     // Force pipelined Recv to be closed to Recvdone so that copies inserted
     // for RecvDone can be eliminated.
-    if (inst->opcode() == HloOpcode::kRecv) {
-      if (inst->frontend_attributes().map().count(kSendRecvPipelineAttr) > 0) {
-        HloGraphNode& node = schedule_graph->GetNode(inst);
-        node.SetForceEarly(true);
-        VLOG(5) << "Setting force early for instruction: " << inst->ToString();
-      }
+    if (debug_options.xla_gpu_enable_pipelined_p2p() &&
+        inst->opcode() == HloOpcode::kRecv &&
+        inst->frontend_attributes().map().count(kSendRecvPipelineAttr) > 0) {
+      HloGraphNode& node = schedule_graph->GetNode(inst);
+      node.SetForceEarly(true);
+      VLOG(5) << "Setting force early for instruction: " << inst->ToString();
     }
+
     if (inst->has_backend_config()) {
       auto gpu_config = inst->backend_config<GpuBackendConfig>();
       if (gpu_config.ok()) {

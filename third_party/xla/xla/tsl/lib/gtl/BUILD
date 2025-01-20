@@ -49,9 +49,9 @@ cc_library(
     hdrs = ["flatmap.h"],
     deps = [
         ":flatrep",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:types",
         "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -59,8 +59,8 @@ cc_library(
     name = "flatrep",
     hdrs = ["flatrep.h"],
     deps = [
+        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:prefetch",
-        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -69,9 +69,9 @@ cc_library(
     hdrs = ["flatset.h"],
     deps = [
         ":flatrep",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:types",
         "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -79,10 +79,10 @@ cc_library(
     name = "inlined_vector",
     hdrs = ["inlined_vector.h"],
     deps = [
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -90,8 +90,8 @@ cc_library(
     name = "int_type",
     hdrs = ["int_type.h"],
     deps = [
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:types",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:types",
     ],
 )
 
@@ -222,10 +222,10 @@ tsl_cc_test(
         ":int_type",
         ":iterator_range",
         ":map_util",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "//xla/tsl/platform:types",
         "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/platform:types",
     ],
 )

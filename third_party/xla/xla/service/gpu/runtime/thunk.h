@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <ostream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -33,7 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_clique_locking.h"
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -155,6 +154,9 @@ class Thunk {
     kNcclAllToAll,
     kNcclAllToAllStart,
     kNcclAllToAllDone,
+    kNcclRaggedAllToAll,
+    kNcclRaggedAllToAllStart,
+    kNcclRaggedAllToAllDone,
     kNcclSend,
     kNcclSendDone,
     kNcclRecv,
@@ -179,7 +181,7 @@ class Thunk {
   // clear what else should become a part of "executable source", we likely
   // need to keep some information about available symbols and signatures.
   struct ExecutableSource {
-    std::string_view text;             // PTX for NVIDIA backend
+    absl::string_view text;            // PTX for NVIDIA backend
     absl::Span<const uint8_t> binary;  // CUBIN for NVIDIA backends
     BinaryMap dnn_compiled_graphs;
   };
@@ -216,7 +218,8 @@ class Thunk {
   class CollectiveCliques {
    public:
     CollectiveCliques() = default;
-    explicit CollectiveCliques(AcquiredCliquesMap cliques_map);
+    CollectiveCliques(AcquiredCliquesMap cliques_map,
+                      int32_t num_transient_cliques);
 
     absl::StatusOr<Communicator*> GetComm(const GpuCliqueKey& clique_key,
                                           RankId rank) const;
@@ -231,8 +234,16 @@ class Thunk {
 
     bool empty() const { return cliques_map_.empty(); }
 
+    bool num_transient_cliques() const { return num_transient_cliques_; }
+
    private:
     AcquiredCliquesMap cliques_map_;
+
+    // The number of acquired non-persistent clique. We need to keep track of
+    // newly created communicators to insert rendezvous after first
+    // initialization, because otherwise we observe deadlocks with NCCL
+    // collectives backends.
+    int32_t num_transient_cliques_ = 0;
   };
 
   //===--------------------------------------------------------------------===//
@@ -441,7 +452,7 @@ class Thunk {
 
   virtual std::string ToString(int indent) const { return ""; }
   Kind kind() const { return kind_; }
-  std::string_view profile_annotation() const { return profile_annotation_; }
+  absl::string_view profile_annotation() const { return profile_annotation_; }
 
   // Prepares thunk for execution.
   //

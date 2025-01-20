@@ -190,6 +190,7 @@ Useful logging and error messages
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
@@ -305,7 +306,8 @@ class MemorySpaceAssignment {
       const HloAliasAnalysis& alias_analysis, const Options& options);
 
   // Calculates asynchronous copy statistics.
-  absl::StatusOr<AsyncCopyStats> CalculateAsyncCopyStats() const;
+  absl::StatusOr<AsyncCopyStats> CalculateAsyncCopyStats(
+      const HloDataflowAnalysis& dataflow_analysis) const;
 
   // Verify that allocations_ are free of overlapping Allocations in time and
   // space. This is a post-processing step called after all allocations have
@@ -318,6 +320,7 @@ class MemorySpaceAssignment {
   // If alt_mem_bytes_occupied is not null, it will be populated with the number
   // of bytes occupied in the alternate memory space at each instruction time.
   absl::Status VerifyAndExportHeapSimulatorTrace(
+      const HloAliasAnalysis& alias_analysis,
       std::vector<int64_t>* alt_mem_bytes_occupied = nullptr);
 
  protected:
@@ -372,7 +375,7 @@ class MemorySpaceAssignment {
 
   // Export the alternate memory assignments to the PresetAssignments and color
   // the HLO graph with the determined memory spaces.
-  absl::Status ExportAndColorBuffers();
+  absl::Status ExportAndColorBuffers(const HloAliasAnalysis& alias_analysis);
 
   // Schedules asynchronous copies and ensures that the CopyStarts and their
   // corresponding CopyDones follow the same order.

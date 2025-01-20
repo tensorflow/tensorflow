@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_NVJITLINK_COMPILATION_PROVIDER_H_
 
 #include <string>
-#include <string_view>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -35,11 +34,11 @@ class NvJitLinkCompilationProvider : public CompilationProvider {
   bool SupportsCompileAndLink() const override { return true; }
 
   absl::StatusOr<Assembly> Compile(
-      const CudaComputeCapability& cc, std::string_view ptx,
+      const CudaComputeCapability& cc, absl::string_view ptx,
       const CompilationOptions& options) const override;
 
   absl::StatusOr<RelocatableModule> CompileToRelocatableModule(
-      const CudaComputeCapability& cc, std::string_view ptx,
+      const CudaComputeCapability& cc, absl::string_view ptx,
       const CompilationOptions& options) const override;
 
   absl::StatusOr<Assembly> CompileAndLink(

@@ -21,6 +21,7 @@ tf_proto_library(
     srcs = ["ifrt_config.proto"],
     protodeps = [
         "@local_xla//xla:xla_data_proto",
+        "//tensorflow/core/framework:tensor_proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -268,6 +269,7 @@ cc_library(
     srcs = ["ifrt_model_context.cc"],
     hdrs = ["ifrt_model_context.h"],
     deps = [
+        ":ifrt_config_proto_cc",
         ":ifrt_executable_registry",
         ":ifrt_loaded_variable_registry",
         ":ifrt_persistent_compilation_cache",
@@ -276,6 +278,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:tf2hlo",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:core_cpu_base",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:env",
@@ -526,6 +529,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":ifrt_tensor_utils",
+        ":pjrt_cpu_client_test_lib",
         ":sharding_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
@@ -544,7 +548,6 @@ tf_cc_test(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",
-        "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
         "@local_xla//xla/tsl/concurrency:ref_count",
     ],
@@ -678,4 +681,20 @@ cc_library(
         "@local_xla//xla/python/ifrt",
         "@tf_runtime//:hostcontext",
     ],
+)
+
+cc_library(
+    name = "pjrt_cpu_client_test_lib",
+    testonly = True,
+    srcs = ["pjrt_cpu_client_test_lib.cc"],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "@local_xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt:test_util",
+        "@local_xla//xla/python/pjrt_ifrt",
+    ],
+    alwayslink = True,
 )

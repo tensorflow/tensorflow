@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/fusion_process_dump.h"
 
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -46,7 +45,7 @@ namespace {
 HloInstruction* AddFusionInstruction(HloInstruction* producer,
                                      HloInstruction* consumer,
                                      HloComputation* computation,
-                                     std::string_view fusion_name) {
+                                     absl::string_view fusion_name) {
   if (consumer->opcode() == HloOpcode::kFusion) {
     return consumer;
   }
@@ -66,7 +65,7 @@ HloInstruction* AddFusionInstruction(HloInstruction* producer,
 
 HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
                      HloComputation* computation,
-                     std::string_view fusion_name) {
+                     absl::string_view fusion_name) {
   HloInstruction* fusion_instruction =
       AddFusionInstruction(producer, consumer, computation, fusion_name);
   if (producer->opcode() == HloOpcode::kFusion) {

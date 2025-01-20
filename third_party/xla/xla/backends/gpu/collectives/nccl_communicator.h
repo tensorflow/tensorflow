@@ -19,11 +19,14 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
@@ -61,7 +64,7 @@ class NcclCommunicator : public Communicator {
 
   absl::Status Broadcast(se::DeviceMemoryBase send_buffer,
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                         size_t count, size_t root,
+                         size_t count, RankId root,
                          const Executor& executor) final;
 
   absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
@@ -74,17 +77,23 @@ class NcclCommunicator : public Communicator {
                          se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
                          size_t count, const Executor& executor) final;
 
-  absl::Status Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
-                    size_t count, int32_t peer, const Executor& executor) final;
+  absl::Status AllToAll(absl::Span<const se::DeviceMemoryBase> send_buffers,
+                        absl::Span<const se::DeviceMemoryBase> recv_buffers,
+                        PrimitiveType dtype, size_t count,
+                        const Executor& executor) final;
 
-  absl::Status SendPtrToPeer(void* ptr, int32_t peer,
-                             const Executor& executor) final;
+  absl::Status CollectivePermute(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count,
+                                 std::optional<RankId> source_rank,
+                                 absl::Span<const RankId> target_ranks,
+                                 const Executor& executor) final;
+
+  absl::Status Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
+                    size_t count, RankId peer, const Executor& executor) final;
 
   absl::Status Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                    size_t count, int32_t peer, const Executor& executor) final;
-
-  absl::Status RecvPtrFromPeer(void* ptr, int32_t peer,
-                               const Executor& executor) final;
+                    size_t count, RankId peer, const Executor& executor) final;
 
   std::string ToString() const final;
 

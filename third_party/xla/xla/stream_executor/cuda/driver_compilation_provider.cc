@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -31,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
@@ -48,14 +48,14 @@ limitations under the License.
 
 namespace stream_executor::cuda {
 absl::StatusOr<Assembly> DriverCompilationProvider::Compile(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   return CompileAndLink(cc, {Ptx{std::string{ptx}}}, options);
 }
 
 absl::StatusOr<RelocatableModule>
 DriverCompilationProvider::CompileToRelocatableModule(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   return absl::UnavailableError(
       "Compilation to relocatable module is not "
@@ -165,7 +165,7 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   CHECK(info_log_buffer_size() <= kInfoLogBufferSize);
   info_log_buffer.resize(info_log_buffer_size());
 
-  std::string_view extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
+  absl::string_view extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
   std::string architecture = absl::StrCat("sm_", cc.major, cc.minor, extension);
 
   if (result != CUDA_SUCCESS) {

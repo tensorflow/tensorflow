@@ -230,6 +230,22 @@ message BarrierResponse {
   int64 counter = 1;
 }
 
+// Request and response messages for querying the set of alive tasks.
+message GetAliveTasksRequest {
+  // The task that is making the GetAliveTasks request.
+  CoordinatedTask requesting_task = 1;
+
+  // The tasks to check for aliveness. This list must include the requesting
+  // task.
+  repeated CoordinatedTask tasks = 2;
+}
+
+message GetAliveTasksResponse {
+  // The set of alive tasks. This set is a (non-strict) subset of the tasks
+  // provided in the GetAliveTasksRequest.
+  repeated CoordinatedTask alive_tasks = 1;
+}
+
 // Request and response messages for  cancelling generic sync barriers.
 message CancelBarrierRequest {
   // Barrier key.
@@ -362,6 +378,36 @@ service CoordinationService {
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
   rpc CancelBarrier(CancelBarrierRequest) returns (CancelBarrierResponse);
+
+  // Returns the set of currently alive tasks. More specifically, given a set of
+  // tasks T, GetAliveTasks(T) returns the subset T of alive tasks.
+  //
+  // # Barrier Semantics
+  //
+  // If multiple tasks call GetAliveTasks concurrently, it's important that they
+  // all agree on which tasks are alive. Otherwise, the tasks' behavior might
+  // diverge. For example, imagine a set of tasks trying to run an AllGather,
+  // but they all disagree on which tasks should be participating in the
+  // AllGather. This is buggy.
+  //
+  // To ensure that every task agrees on which tasks are alive, the
+  // GetAliveTasks RPC has barrier-like semantics. Consider an invocation
+  // GetAliveTasks(T) for a set of tasks T. The invocation acts as a barrier,
+  // waiting for every task in T to call GetAliveTasks(T). Afterwards,
+  // GetAliveTasks returns the same set of alive tasks A to all the tasks in T.
+  // This ensures that every task agrees which tasks are alive.
+  //
+  // One small correction. GetAliveTasks doesn't act as a barrier for *every*
+  // task in T. Some tasks in T might have failed, so we should not wait for
+  // them. Instead, the GetAliveTasks RPC waits only for the returned tasks A.
+  //
+  // # An Example
+  //
+  // Imagine we have four tasks: A, B, C, and D. Further imagine that task D
+  // has failed and that every task calls GetAliveTasks([A, B, C, D]). The
+  // invocation will return tasks [A, B, C]. The GetAliveTasks call acts as a
+  // barrier across tasks A, B, and C. Task D, which failed, is ignored.
+  rpc GetAliveTasks(GetAliveTasksRequest) returns (GetAliveTasksResponse);
 
   // Polls the service for errors.
   //

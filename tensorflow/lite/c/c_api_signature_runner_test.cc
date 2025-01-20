@@ -136,6 +136,10 @@ TEST(SignatureRunnerTest, TestMultiSignatures) {
   ASSERT_EQ(signature_defs[1], "sub");
   ASSERT_EQ(TfLiteInterpreterGetSignatureRunner(interpreter, "foo"), nullptr);
 
+  // Test out-of-range values.
+  ASSERT_EQ(TfLiteInterpreterGetSignatureKey(interpreter, 2), nullptr);
+  ASSERT_EQ(TfLiteInterpreterGetSignatureKey(interpreter, -1), nullptr);
+
   TfLiteSignatureRunner* add_runner = TfLiteInterpreterGetSignatureRunner(
       interpreter, signature_defs[0].c_str());
   ASSERT_NE(add_runner, nullptr);
@@ -170,6 +174,13 @@ TEST(SignatureRunnerTest, TestMultiSignatures) {
   ASSERT_EQ(TfLiteSignatureRunnerInvoke(add_runner), kTfLiteOk);
   ASSERT_EQ(add_output->data.f[0], 4);
   ASSERT_EQ(add_output->data.f[1], 6);
+
+  // Test out-of-range values.
+  ASSERT_EQ(TfLiteSignatureRunnerGetInputName(add_runner, 1), nullptr);
+  ASSERT_EQ(TfLiteSignatureRunnerGetInputName(add_runner, -1), nullptr);
+  ASSERT_EQ(TfLiteSignatureRunnerGetOutputName(add_runner, 1), nullptr);
+  ASSERT_EQ(TfLiteSignatureRunnerGetOutputName(add_runner, -1), nullptr);
+
   TfLiteSignatureRunnerDelete(add_runner);
 
   TfLiteSignatureRunner* sub_runner =

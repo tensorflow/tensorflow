@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/builder/lib/svd.h"
 
-#include <memory>
+#include <cstdint>
 #include <numeric>
 #include <utility>
 #include <vector>

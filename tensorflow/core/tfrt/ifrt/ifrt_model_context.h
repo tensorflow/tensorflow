@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/topology.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
@@ -128,6 +131,15 @@ class IfrtModelContext {
     checkpoint_loader_queue_ = work_queue;
   }
 
+  void set_default_signature_inputs(
+      const DefaultSignatureInputConfig& default_signature_inputs) {
+    default_signature_inputs_ = default_signature_inputs;
+  }
+
+  const DefaultSignatureInputConfig& default_signature_inputs() const {
+    return default_signature_inputs_;
+  }
+
   tsl::protobuf::Message* GetCompilationEnvironmentProto() const {
     return compilation_environment_proto_.get();
   }
@@ -163,6 +175,8 @@ class IfrtModelContext {
   tfrt::ConcurrentWorkQueue* checkpoint_loader_queue_ = nullptr;
 
   std::vector<ServingExecutableRegistry::Handle> handles_;
+
+  DefaultSignatureInputConfig default_signature_inputs_;
 
   IfrtLoadedVariableRegistry loaded_variable_registry_;
   IfrtRestoreTensorRegistry restore_tensor_registry_;

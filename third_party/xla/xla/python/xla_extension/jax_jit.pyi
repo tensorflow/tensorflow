@@ -27,7 +27,6 @@ Device = xla_extension.Device
 class JitState:
   disable_jit: Optional[bool]
   enable_x64: Optional[bool]
-  enable_memories: Optional[bool]
   default_device: Optional[Any]
   extra_jit_context: Optional[Any]
   post_hook: Optional[Callable[..., Any]]

@@ -117,7 +117,7 @@ void GetXPlaneLatencyInfo(
       if (fingerprint.has_value()) {
         key = absl::StrCat(fingerprint.value(), kCostNameSep, hlo_name.value());
       }
-      (*hlo_latency_info)[key].durations.emplace_back(latency);
+      (*hlo_latency_info)[key].durations.push_back(latency);
     });
   });
 }
@@ -194,7 +194,7 @@ absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
       tensorflow::profiler::XSpace xspace;
       TF_RETURN_IF_ERROR(
           ReadBinaryProto(tsl::Env::Default(), xspace_path, &xspace));
-      xspaces.emplace_back(xspace);
+      xspaces.push_back(xspace);
     }
   }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_DFS_HLO_VISITOR_H_
 #define XLA_HLO_IR_DFS_HLO_VISITOR_H_
 
+#include <cstddef>
 #include <type_traits>
 #include <vector>
 

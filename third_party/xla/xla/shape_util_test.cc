@@ -23,15 +23,16 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/shape.h"
-#include "xla/test.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
@@ -1220,6 +1221,25 @@ TEST(ShapeUtilTest, B_251055887) {
       &proto));
   Shape shape(proto);
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
+}
+
+TEST(ShapeUtilTest, B_385192799) {
+  // This case failed the fuzzer; see b/385192799.
+  ShapeProto proto;
+
+  {
+    EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+        R"pb(element_type: 2000)pb", &proto));
+    Shape shape(proto);
+    EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
+  }
+
+  {
+    EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+        R"pb(element_type: -1)pb", &proto));
+    Shape shape(proto);
+    EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
+  }
 }
 
 TEST(ShapeUtilTest, Int4ShapeSize) {

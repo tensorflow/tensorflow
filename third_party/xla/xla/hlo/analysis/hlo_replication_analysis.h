@@ -69,7 +69,8 @@ class HloReplicationAnalysis {
     static HloReplication ReplicatedOnAllDevices();
     static HloReplication UniqueOnAllDevices();
     static HloReplication PartiallyReplicated(
-        absl::Span<const absl::Span<const int64_t>> device_sets);
+        absl::Span<const std::vector<std::vector<int64_t>>>
+            device_sets_per_replica);
     HloReplication();
     HloReplication(const HloReplication& other) = default;
     HloReplication(HloReplication&& other) = default;
@@ -87,14 +88,20 @@ class HloReplicationAnalysis {
       kUniqueOnAllDevices = 1,
       kPartiallyReplicated = 2,
     };
-    explicit HloReplication(State state,
-                            absl::Span<const int64_t> device_set_root);
+    explicit HloReplication(
+        State state,
+        absl::Span<const std::vector<int64_t>> device_set_root_per_replica);
     State state_;
     // Empty if state_ is kReplicatedOnAllDevices or kUniqueOnAllDevices.
-    // Otherwise, its size equals to the number of devices (either partitions
-    // or replications). Maps each device ID to the smallest device ID in the
-    // set.
-    std::vector<int64_t> device_set_root_;
+
+    // If cross_partition_spmd is true, groups_for_replicas_[k]'s size equals
+    // the number of partitions, and within replica k, groups_for_replicas_[k]
+    // maps each partition ID to the smallest partition ID in the set.
+    //
+    // If cross_partition_spmd is false, groups_for_replicas_[k]'s size equals
+    // the number of replicas, and within partition k, groups_for_replicas_[k]
+    // maps each replica to the smallest replica ID in the set.
+    std::vector<std::vector<int64_t>> device_set_root_per_replica_;
   };
 
   static HloReplication DetermineHloInstructionIsReplicated(

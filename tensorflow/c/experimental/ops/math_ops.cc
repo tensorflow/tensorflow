@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/ops/math_ops.h"
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_operation.h"

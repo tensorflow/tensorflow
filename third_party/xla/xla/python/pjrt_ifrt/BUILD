@@ -377,9 +377,7 @@ xla_cc_test(
     deps = [
         ":basic_string_array",
         ":pjrt_cpu_client_multi_process_test_lib",
-        "//xla:shape_util",
         "//xla/pjrt:pjrt_future",
-        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
         "//xla/tsl/concurrency:ref_count",

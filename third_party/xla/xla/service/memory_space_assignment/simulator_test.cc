@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <list>
 #include <memory>
-#include <string_view>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -37,7 +36,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
@@ -106,7 +104,8 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
         cost_analysis_.get(), kAlternateMemorySpace);
     return absl::OkStatus();
   }
-  absl::flat_hash_map<std::string_view, const HloInstruction*> instruction_map_;
+  absl::flat_hash_map<absl::string_view, const HloInstruction*>
+      instruction_map_;
   std::unique_ptr<HloCostAnalysis> hlo_cost_analysis_;
   std::unique_ptr<memory_space_assignment::HloCostAnalysisCosts>
       hlo_cost_analysis_costs_;

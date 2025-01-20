@@ -25,9 +25,9 @@ limitations under the License.
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/lib/random/philox_random.h"
 #include "xla/tsl/lib/random/philox_random_test_utils.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/random.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace random {

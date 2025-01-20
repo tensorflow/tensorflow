@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -101,7 +100,7 @@ struct type_caster<xla::OpMetadata> {
   NB_TYPE_CASTER_FROM_PYTHON_ONLY(xla::OpMetadata,
                                   const_name("xla::OpMetadata"));
 
-  bool from_python(handle h, uint8_t, cleanup_list*) {
+  bool from_python(handle h, uint8_t, cleanup_list*) noexcept {
     handle op_type = getattr(h, "op_type");
     if (!op_type.is_none()) {
       value.set_op_type(cast<std::string>(op_type));
@@ -374,6 +373,20 @@ absl::Status PyRegisterCustomCallTarget(const std::string& fn_name,
       "API version %d is not supported by RegisterCustomCallTarget. "
       "Supported versions are 0 and 1.",
       api_version));
+}
+
+absl::Status PyRegisterCustomTypeId(absl::string_view type_name,
+                                    nb::object type_id) {
+  nb::capsule capsule;
+  if (!nb::try_cast<nb::capsule>(type_id, capsule)) {
+    return absl::InvalidArgumentError(
+        "The type_id argument to register_custom_call_type_id must be a "
+        "PyCapsule object holding a pointer to a XLA_FFI_TypeId.");
+  }
+  XLA_FFI_TypeId* type_id_ptr =
+      reinterpret_cast<XLA_FFI_TypeId*>(static_cast<void*>(capsule.data()));
+  return ffi::TakeStatus(ffi::Ffi::RegisterTypeId(xla::ffi::GetXlaFfiApi(),
+                                                  type_name, type_id_ptr));
 }
 
 template <typename T, typename Container>
@@ -729,7 +742,8 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                                  nb::cast(obj));
           },
           nb::arg("dtype").none() = nb::none(),
-          nb::arg("copy").none() = nb::none());
+          nb::arg("copy").none() = nb::none())
+      .def("shape", &Literal::shape);
 
   nb::class_<XlaComputation>(m, "XlaComputation")
       .def("__init__",
@@ -1141,7 +1155,8 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
 
         for (const auto& [name, registration] : *ffi_handlers) {
           nb::dict bundle;
-          auto export_handler = [&](std::string_view name, XLA_FFI_Handler* h) {
+          auto export_handler = [&](absl::string_view name,
+                                    XLA_FFI_Handler* h) {
             if (h != nullptr) {
               bundle[nb::str(name.data(), name.size())] =
                   nb::capsule(reinterpret_cast<void*>(h));
@@ -1160,6 +1175,13 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .value("UNSPECIFIED", DebugOptions::AUTOTUNE_CACHE_MODE_UNSPECIFIED)
       .value("UPDATE", DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE)
       .value("READ", DebugOptions::AUTOTUNE_CACHE_MODE_READ);
+
+  m.def(
+      "register_custom_type_id",
+      [](absl::string_view type_name, nb::object type_id) {
+        xla::ThrowIfError(PyRegisterCustomTypeId(type_name, type_id));
+      },
+      nb::arg("type_name"), nb::arg("type_id"));
 
   nb::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
@@ -1503,31 +1525,45 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def("is_tiled", &xla::HloSharding::IsTiled)
       .def("tile", [](const xla::HloSharding& self,
                       xla::Shape shape) { return self.TileShape(shape); })
-      .def("tuple_elements",
-           [](const xla::HloSharding& self) { return self.tuple_elements(); })
-      .def("num_devices",
-           [](const xla::HloSharding& self) {
-             return self.tile_assignment().num_elements();
-           })
-      .def("num_dimensions",
-           [](const xla::HloSharding& self) {
-             return self.tile_assignment().num_dimensions();
-           })
-      .def("tile_assignment_dimensions",
-           [](const xla::HloSharding& self) {
-             absl::Span<int64_t const> span =
-                 self.tile_assignment().dimensions();
-             CHECK(span.data());
-             return span;
-           })
-      .def("tile_assignment_devices",
-           [](const xla::HloSharding& self) {
-             auto span =
-                 absl::MakeConstSpan(self.tile_assignment().array().data(),
-                                     self.tile_assignment().num_elements());
-             CHECK(span.data());
-             return span;
-           })
+      // tile_assignment.array() is computed using an internal cache,
+      // which is why nb::lock_self() is required. It may be preferable to move
+      // this locking into the TileAssignment class if we find it to race with
+      // non-Python users of that class.
+      .def(
+          "tuple_elements",
+          [](const xla::HloSharding& self) { return self.tuple_elements(); },
+          nb::lock_self())
+      .def(
+          "num_devices",
+          [](const xla::HloSharding& self) {
+            return self.tile_assignment().num_elements();
+          },
+          nb::lock_self())
+      .def(
+          "num_dimensions",
+          [](const xla::HloSharding& self) {
+            return self.tile_assignment().num_dimensions();
+          },
+          nb::lock_self())
+      .def(
+          "tile_assignment_dimensions",
+          [](const xla::HloSharding& self) {
+            absl::Span<int64_t const> span =
+                self.tile_assignment().dimensions();
+            CHECK(span.data());
+            return span;
+          },
+          nb::lock_self())
+      .def(
+          "tile_assignment_devices",
+          [](const xla::HloSharding& self) {
+            auto span =
+                absl::MakeConstSpan(self.tile_assignment().array().data(),
+                                    self.tile_assignment().num_elements());
+            CHECK(span.data());
+            return span;
+          },
+          nb::lock_self())
       .def("replicate_on_last_tile_dim",
            &xla::HloSharding::ReplicateOnLastTileDim)
       .def("subgroup_types", &xla::HloSharding::subgroup_types)

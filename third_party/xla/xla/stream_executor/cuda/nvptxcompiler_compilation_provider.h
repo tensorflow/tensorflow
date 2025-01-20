@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -42,11 +41,11 @@ class NvptxcompilerCompilationProvider : public CompilationProvider {
   }
 
   absl::StatusOr<Assembly> Compile(
-      const CudaComputeCapability& cc, std::string_view ptx,
+      const CudaComputeCapability& cc, absl::string_view ptx,
       const CompilationOptions& options) const override;
 
   absl::StatusOr<RelocatableModule> CompileToRelocatableModule(
-      const CudaComputeCapability& cc, std::string_view ptx,
+      const CudaComputeCapability& cc, absl::string_view ptx,
       const CompilationOptions& options) const override;
 
   absl::StatusOr<Assembly> CompileAndLink(
@@ -56,7 +55,7 @@ class NvptxcompilerCompilationProvider : public CompilationProvider {
 
  private:
   absl::StatusOr<std::vector<uint8_t>> CompileHelper(
-      const CudaComputeCapability& cc, std::string_view ptx,
+      const CudaComputeCapability& cc, absl::string_view ptx,
       const CompilationOptions& options,
       bool compile_to_relocatable_module) const;
 };

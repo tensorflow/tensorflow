@@ -68,7 +68,7 @@ class TestFileSystem : public NullFileSystem {
       const string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     float val = 0;
-    StringPiece scheme, host, path;
+    absl::string_view scheme, host, path;
     io::ParseURI(fname, &scheme, &host, &path);
     // For the tests create in-memory regions with float values equal to the
     // region name.
@@ -153,8 +153,8 @@ absl::Status CreateTempFileFloat(Env* env, float value, uint64 size,
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(*filename, &file));
   for (uint64 i = 0; i < size; ++i) {
-    StringPiece sp(static_cast<char*>(static_cast<void*>(&value)),
-                   sizeof(value));
+    absl::string_view sp(static_cast<char*>(static_cast<void*>(&value)),
+                         sizeof(value));
     TF_RETURN_IF_ERROR(file->Append(sp));
   }
   TF_RETURN_IF_ERROR(file->Close());

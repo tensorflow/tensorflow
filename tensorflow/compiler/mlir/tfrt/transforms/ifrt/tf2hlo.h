@@ -19,22 +19,19 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_compilation.pb.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/compile_only_client.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 
@@ -43,12 +40,16 @@ namespace ifrt_serving {
 
 struct Tf2HloArg {
   mlir::ModuleOp module;
-  absl::Span<const DtypeAndShape> input_dtypes_and_shapes;
+  // `input_dtypes_and_shapes` can be mutable during Tf2HLO compilation.
+  std::vector<DtypeAndShape> input_dtypes_and_shapes;
+  absl::Span<const int> variable_arg_indices;
   absl::string_view entry_function_name;
+  // `compile_metadata` can be mutable during Tf2HLO compilation.
   tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn;
   std::shared_ptr<xla::ifrt::Topology> topology;
   absl::string_view platform_name;
+  bool enable_r1_optimization = true;
 
   absl::StatusOr<uint64_t> Fingerprint() const;
 };
@@ -76,7 +77,7 @@ class TfToHloCompiler {
   // CompileTfToHlo.
   virtual absl::StatusOr<std::string> Key(const Tf2HloArg& arg);
 
-  virtual absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg);
+  virtual absl::StatusOr<Tf2HloResult> CompileTfToHlo(Tf2HloArg& arg);
 };
 
 }  // namespace ifrt_serving

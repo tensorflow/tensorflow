@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_NCCL_GROUP_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_NCCL_GROUP_THUNK_H_
 
-#include <cstdint>
 #include <memory>
-#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 
 namespace xla {
@@ -34,14 +35,20 @@ namespace gpu {
 class NcclGroupThunk : public Thunk {
  public:
   NcclGroupThunk(const HloInstruction* instruction, Thunk::Kind kind,
-                 std::vector<std::unique_ptr<Thunk>> thunks);
+                 std::vector<std::unique_ptr<Thunk>> thunks,
+                 AsyncStreamKind stream_kind);
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequests& resource_requests) override;
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
+  std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events() const {
+    return async_events_;
+  }
 
  private:
   ThunkSequence thunks_;
+  AsyncStreamKind stream_kind_;
+  std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events_;
 };
 
 }  // namespace gpu

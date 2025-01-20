@@ -13,32 +13,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 // Tests replicated infeed/outfeed operations.
 
 namespace xla {
+namespace {
 
-class ReplicatedIOFeedTest : public HloTestBase {};
+class ReplicatedIOFeedTest : public HloPjRtTestBase {};
 
-static DeviceAssignment MakeDeviceAssn(size_t num_devices) {
-  DeviceAssignment assn(/*replica_count=*/num_devices,
-                        /*computation_count=*/1);
-  for (int64_t i = 0; i < num_devices; ++i) {
-    assn(i, 0) = i;
-  }
-  return assn;
-}
-
-XLA_TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
-  std::string hlo_text = R"(
+TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
+  static constexpr int kNumReplicas = 4;
+  static constexpr absl::string_view kHloText = R"(
   HloModule infeed
   ENTRY main {
     // Read from infeed, add replica_id, and send to outfeed.
@@ -50,22 +55,14 @@ XLA_TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
     result = u32[] add(infeed.data, replica_id)
     outfeed = token[] outfeed(result, infeed.token), outfeed_shape=u32[]
   })";
-
-  const int kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
-
-  auto config = GetModuleConfigForTest();
-  config.set_replica_count(kNumReplicas);
-  std::unique_ptr<HloModule> module =
-      ParseAndReturnVerifiedModule(hlo_text, config).value();
-  auto executable =
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/true).value();
-
-  auto device_assn = MakeDeviceAssn(kNumReplicas);
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
 
   std::vector<Literal> outfeed_literals;
 
-  HloRunner::ReplicatedExecuteOptions opts;
+  HloRunnerInterface::ReplicatedExecuteOptions opts;
   opts.num_replicas = kNumReplicas;
 
   // Initialize infeed literal = replica_id * 10
@@ -79,9 +76,15 @@ XLA_TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   opts.outfeed_values = &outfeed_literals;
   opts.use_threads = true;
 
-  TF_ASSERT_OK(
-      ExecuteReplicatedWithHloRunner(executable.get(), opts, &device_assn)
-          .status());
+  DeviceAssignment device_assn(/*replica_count=*/kNumReplicas,
+                               /*computation_count=*/1);
+  device_assn.FillIota(0);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(
+                              kHloText, GetModuleConfigForTest(kNumReplicas)));
+  TF_ASSERT_OK(test_runner()
+                   .ExecuteReplicated(std::move(module), opts, &device_assn)
+                   .status());
 
   // Verify that each infeed and outfeed is routed correctly. Each replica
   // should produce 10*replica (indeed) + replica (from HLO)
@@ -89,4 +92,6 @@ XLA_TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
     LiteralTestUtil::ExpectR0Equal<uint32_t>(10 * i + i, outfeed_literals[i]);
   }
 }
+
+}  // namespace
 }  // namespace xla

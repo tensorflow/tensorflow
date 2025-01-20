@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/memory/memory.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/snappy.h"
 
 namespace tsl {

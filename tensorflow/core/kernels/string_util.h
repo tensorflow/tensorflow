@@ -48,7 +48,7 @@ int32 UTF8StrLen(const string& str);
 // the end of the string is reached before the requested characters, then the
 // position will point to the end of string and this function will return false.
 template <typename T>
-bool ForwardNUTF8CharPositions(const StringPiece in,
+bool ForwardNUTF8CharPositions(const absl::string_view in,
                                const T num_utf8_chars_to_shift, T* pos) {
   const size_t size = in.size();
   T utf8_chars_counted = 0;
@@ -69,7 +69,7 @@ bool ForwardNUTF8CharPositions(const StringPiece in,
 // the string is reached before the requested character, then the position will
 // point to the beginning of the string and this function will return false.
 template <typename T>
-bool BackNUTF8CharPositions(const StringPiece in,
+bool BackNUTF8CharPositions(const absl::string_view in,
                             const T num_utf8_chars_to_shift, T* pos) {
   const size_t start = 0;
   T utf8_chars_counted = 0;

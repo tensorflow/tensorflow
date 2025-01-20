@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/core/collectives/clique_key.h"
 
+#include <cstddef>
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -26,10 +26,12 @@ limitations under the License.
 
 namespace xla {
 
-CliqueKey::CliqueKey(std::vector<GlobalDeviceId> devices)
-    : devices_(std::move(devices)) {}
+CliqueKey::CliqueKey(absl::Span<const GlobalDeviceId> devices)
+    : devices_(devices.begin(), devices.end()) {}
 
 absl::Span<const GlobalDeviceId> CliqueKey::devices() const { return devices_; }
+
+size_t CliqueKey::num_devices() const { return devices_.size(); }
 
 std::optional<RankId> CliqueKey::rank(GlobalDeviceId id) const {
   if (auto it = absl::c_find(devices_, id); it != devices_.end()) {

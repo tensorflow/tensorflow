@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/profiler/utils/timespan.h"
 
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace profiler {
@@ -78,6 +78,26 @@ TEST(TimespanTests, InstantSpanInstantSpanOverlappedDuration) {
 TEST(TimespanTests, InstantSpanNonInstantSpanOverlappedDuration) {
   EXPECT_EQ(0, Timespan(12, 0).OverlappedDurationPs(Timespan(8, 3)));
   EXPECT_EQ(0, Timespan(12, 0).OverlappedDurationPs(Timespan(8, 16)));
+}
+
+TEST(TimespanTests, Operators) {
+  EXPECT_LT(Timespan(11, 0), Timespan(12, 0));
+  EXPECT_LT(Timespan(12, 1), Timespan(12, 0));
+
+  EXPECT_FALSE(Timespan(12, 0) < Timespan(12, 1));
+  EXPECT_FALSE(Timespan(12, 0) < Timespan(11, 0));
+  EXPECT_FALSE(Timespan(12, 0) < Timespan(12, 0));
+
+  EXPECT_FALSE(Timespan(12, 0) == Timespan(12, 1));
+  EXPECT_FALSE(Timespan(12, 0) == Timespan(11, 0));
+
+  EXPECT_EQ(Timespan(12, 0), Timespan(12, 0));
+
+  EXPECT_LE(Timespan(12, 0), Timespan(12, 0));
+  EXPECT_LE(Timespan(12, 0), Timespan(13, 0));
+  EXPECT_LE(Timespan(11, 0), Timespan(12, 0));
+
+  EXPECT_FALSE(Timespan(12, 0) <= Timespan(11, 0));
 }
 
 }  // namespace profiler

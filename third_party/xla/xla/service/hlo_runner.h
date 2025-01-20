@@ -195,6 +195,8 @@ class HloRunner : public HloRunnerInterface {
     return backend().compiler()->ShapeSizeBytesFunction();
   }
 
+  int device_count() const override { return backend().device_count(); }
+
  private:
   absl::StatusOr<ExecutionOutput> ExecuteWithExecutionInputs(
       Executable* executable, std::vector<ExecutionInput> arguments,

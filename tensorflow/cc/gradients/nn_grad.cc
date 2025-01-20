@@ -397,7 +397,7 @@ REGISTER_GRADIENT_OP("FractionalMaxPool", FractionalMaxPoolGradHelper);
 
 // Templated constructor for FusedBatchNormGrad[..]::Attrs.
 template <typename T>
-T FusedBatchNormGradAttrs(float epsilon, StringPiece data_format,
+T FusedBatchNormGradAttrs(float epsilon, absl::string_view data_format,
                           bool is_training) {
   T result;
   result.epsilon_ = epsilon;
@@ -409,7 +409,7 @@ T FusedBatchNormGradAttrs(float epsilon, StringPiece data_format,
 using BatchNormGradFn = std::function<absl::Status(
     const Scope&, Output x, Output grad_y, Output scale,
     const std::vector<Output>& reserve_spaces, float epsilon,
-    StringPiece data_format, bool is_training,
+    absl::string_view data_format, bool is_training,
     std::vector<Output>* grad_outputs)>;
 
 absl::Status BaseFusedBatchNormGrad(const Scope& scope, const Operation& op,
@@ -465,7 +465,7 @@ absl::Status BaseFusedBatchNormGrad(const Scope& scope, const Operation& op,
       grad_y = Transpose(scope, grad_y, {0, 2, 3, 4, 1});
     }
 
-    StringPiece target_data_format;
+    absl::string_view target_data_format;
     if (data_format == "NCHW" || data_format == "NHWC") {
       target_data_format = "NHWC";
     } else {
@@ -491,7 +491,7 @@ absl::Status FusedBatchNormV3Grad(const Scope& scope, const Operation& op,
       scope, op, grad_inputs,
       [](const Scope& scope, Output x, Output grad_y, Output scale,
          const std::vector<Output>& reserve_spaces, float epsilon,
-         StringPiece data_format, bool is_training,
+         absl::string_view data_format, bool is_training,
          std::vector<Output>* grad_outputs) {
         FusedBatchNormGradV3 grad(
             scope, grad_y, x, scale, reserve_spaces[0], reserve_spaces[1],

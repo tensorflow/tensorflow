@@ -40,8 +40,19 @@ class HloParserOptions {
 
   bool fill_missing_layouts() const { return fill_missing_layouts_; }
 
+  // Fill short form constants (dots) with deterministic random values.
+  HloParserOptions& set_fill_shortform_constants_with_random_values(
+      bool value) {
+    fill_shortform_constants_with_random_values_ = value;
+    return *this;
+  }
+  bool fill_shortform_constants_with_random_values() const {
+    return fill_shortform_constants_with_random_values_;
+  }
+
  private:
   bool fill_missing_layouts_ = true;
+  bool fill_shortform_constants_with_random_values_ = true;
 };
 
 // Given a string in the HloModule::ToString() format, parses the string and

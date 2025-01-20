@@ -17,10 +17,10 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_MOCK_COMPILATION_PROVIDER_H_
 
 #include <string>
-#include <string_view>
 
 #include <gmock/gmock.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
@@ -34,11 +34,11 @@ class MockCompilationProvider : public CompilationProvider {
   MOCK_METHOD(bool, SupportsCompileAndLink, (), (const, override));
   MOCK_METHOD(std::string, name, (), (const, override));
   MOCK_METHOD(absl::StatusOr<Assembly>, Compile,
-              (const CudaComputeCapability& cc, std::string_view ptx,
+              (const CudaComputeCapability& cc, absl::string_view ptx,
                const CompilationOptions& options),
               (const, override));
   MOCK_METHOD(absl::StatusOr<RelocatableModule>, CompileToRelocatableModule,
-              (const CudaComputeCapability& cc, std::string_view ptx,
+              (const CudaComputeCapability& cc, absl::string_view ptx,
                const CompilationOptions& options),
               (const, override));
   MOCK_METHOD(absl::StatusOr<Assembly>, CompileAndLink,

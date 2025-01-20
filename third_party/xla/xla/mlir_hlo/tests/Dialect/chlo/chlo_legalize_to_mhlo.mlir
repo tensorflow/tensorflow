@@ -3642,3 +3642,57 @@ func.func @erf_inv_wide(%arg0 : tensor<16x16xf64>) {
   %0 = chlo.erf_inv %arg0 : tensor<16x16xf64> -> tensor<16x16xf64>
   return
 }
+
+// -----
+
+func.func @ragged_dot_non_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<3x2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<2x11x7xf32> {
+  // CHECK-HIGH-LEVEL: mhlo.ragged_dot
+  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #chlo.ragged_dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [2],
+      lhs_ragged_dimensions = [1],
+      rhs_group_dimensions = [0]
+    >,
+    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
+  } : (tensor<2x11x5xf32>, tensor<3x2x5x7xf32>, tensor<3xi64>) -> tensor<2x11x7xf32>
+  func.return %0 : tensor<2x11x7xf32>
+}
+
+// -----
+
+func.func @ragged_dot_contracting(%lhs : tensor<2x11x5xf32>, %rhs : tensor<2x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<3x2x11x7xf32> {
+  // CHECK-HIGH-LEVEL: mhlo.ragged_dot
+  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #chlo.ragged_dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1],
+      lhs_ragged_dimensions = [2],
+      rhs_group_dimensions = []
+    >,
+    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
+  } : (tensor<2x11x5xf32>, tensor<2x5x7xf32>, tensor<3xi64>) -> tensor<3x2x11x7xf32>
+  func.return %0 : tensor<3x2x11x7xf32>
+}
+
+// -----
+
+func.func @ragged_dot_batch(%lhs : tensor<3x11x5xf32>, %rhs : tensor<3x5x7xf32>, %group_sizes : tensor<3xi64>) -> tensor<3x11x7xf32> {
+  // CHECK-HIGH-LEVEL: mhlo.ragged_dot
+  %0 = "chlo.ragged_dot"(%lhs, %rhs, %group_sizes) {
+    ragged_dot_dimension_numbers = #chlo.ragged_dot<
+      lhs_batching_dimensions = [0],
+      rhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [1],
+      lhs_ragged_dimensions = [0],
+      rhs_group_dimensions = []
+    >,
+    precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>]
+  } : (tensor<3x11x5xf32>, tensor<3x5x7xf32>, tensor<3xi64>) -> tensor<3x11x7xf32>
+  func.return %0 : tensor<3x11x7xf32>
+}

@@ -13,30 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string_view>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
+#include "absl/types/span.h"
 #include "xla/service/custom_call_status.h"
-#include "tsl/platform/errors.h"
 #if TENSORFLOW_USE_ROCM
 #include "rocm/include/hip/hip_runtime.h"
 #else
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 #endif
 #include "nanobind/nanobind.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/transpose.h"
 #include "xla/primitive_util.h"
 #include "xla/python/callback.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/platform_util.h"
-
 #if TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
 #define gpuStreamHandle hipStream_t
@@ -109,7 +114,7 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
       callback->Call(host_input_arrays);
   LeaveHostCallback();
   if (!maybe_result_tuple.ok()) {
-    std::string_view msg = maybe_result_tuple.status().message();
+    absl::string_view msg = maybe_result_tuple.status().message();
     XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
     return;
   }

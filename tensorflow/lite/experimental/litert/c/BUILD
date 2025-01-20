@@ -14,12 +14,33 @@
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+    default_visibility = [
+        # copybara:uncomment "//third_party/mediapipe/calculators/tensor:__subpackages__",
+        # copybara:uncomment "//third_party/odml/infra:__subpackages__",
+        "//tensorflow/lite/experimental/litert:__subpackages__",
+    ],
 )
 
 cc_library(
     name = "litert_common",
     hdrs = ["litert_common.h"],
+)
+
+cc_library(
+    name = "litert_any",
+    hdrs = ["litert_any.h"],
+)
+
+cc_library(
+    name = "litert_environment",
+    srcs = ["litert_environment.cc"],
+    hdrs = ["litert_environment.h"],
+    deps = [
+        ":litert_any",
+        ":litert_common",
+        "//tensorflow/lite/experimental/litert/core:environment",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_library(
@@ -71,10 +92,8 @@ cc_library(
         ":litert_op_code",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
-        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/core/model:model_load",
-        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
@@ -87,10 +106,9 @@ cc_test(
         ":litert_model",
         ":litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
-        "//tensorflow/lite/experimental/litert/cc:litert_layout",
         "//tensorflow/lite/experimental/litert/core/model",
-        "//tensorflow/lite/experimental/litert/test:common",
-        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
+        "//tensorflow/lite/experimental/litert/test:test_macros",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -126,28 +144,37 @@ cc_test(
     ],
     tags = ["no_oss"],
     deps = [
-        ":litert_model",
         ":litert_options",
-        "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:test_macros",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "litert_event",
+    srcs = ["litert_event.cc"],
+    hdrs = ["litert_event.h"],
+    deps = [
+        ":litert_common",
+        ":litert_logging",
+        "//tensorflow/lite/experimental/litert/runtime:event",
     ],
 )
 
 cc_library(
     name = "litert_tensor_buffer",
     srcs = [
-        "litert_event.cc",
         "litert_tensor_buffer.cc",
         "litert_tensor_buffer_requirements.cc",
     ],
     hdrs = [
-        "litert_event.h",
         "litert_tensor_buffer.h",
         "litert_tensor_buffer_requirements.h",
     ],
     deps = [
         ":litert_common",
+        ":litert_event",
         ":litert_logging",
         ":litert_model",
         "//tensorflow/lite/experimental/litert/runtime:tensor_buffer",
@@ -211,6 +238,9 @@ cc_library(
     hdrs = [
         "litert_compiled_model_options.h",
     ],
+    deps = [
+        ":litert_common",
+    ],
 )
 
 cc_library(
@@ -245,7 +275,11 @@ cc_test(
         ":litert_compiled_model_options",
         ":litert_model",
         ":litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:simple_model",
+        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -269,8 +303,13 @@ cc_test(
     copts = ["--std=c11"],
     linkopts = ["-ldl"],
     deps = [
+        ":litert_any",
         ":litert_common",
         ":litert_compiled_model",
+        ":litert_compiled_model_options",
+        ":litert_dispatch_delegate",
+        ":litert_event",
+        ":litert_layout",
         ":litert_logging",
         ":litert_model",
         ":litert_op_code",

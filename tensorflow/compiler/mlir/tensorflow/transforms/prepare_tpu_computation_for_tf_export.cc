@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -166,7 +171,7 @@ LogicalResult RewriteCommunicationOps(ModuleOp module) {
   MLIRContext* ctx = module.getContext();
   mlir::RewritePatternSet patterns(ctx);
   patterns.add<RewriteXlaHostComputeMlir>(ctx);
-  if (failed(mlir::applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+  if (failed(mlir::applyPatternsGreedily(module, std::move(patterns)))) {
     return module.emitError("failed to apply tf export preparation patterns");
   }
 

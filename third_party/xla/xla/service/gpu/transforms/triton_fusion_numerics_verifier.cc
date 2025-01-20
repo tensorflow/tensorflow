@@ -64,7 +64,7 @@ using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 // Triton fusion. Otherwise, returns nullptr.
 absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
     const HloInstruction* hlo) {
-  if (hlo->opcode() != HloOpcode::kFusion) {
+  if (HloPredicateIsNotOp<HloOpcode::kFusion>(hlo)) {
     return nullptr;
   }
   const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(hlo);
@@ -90,7 +90,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleWithoutTritonFromFusion(
   new_module->mutable_config().set_debug_options(debug_opts);
   new_module->mutable_config()
       .mutable_debug_options()
-      .clear_xla_gpu_experimental_enable_triton_softmax_priority_fusion();
+      .add_xla_disable_hlo_passes("triton-softmax-rewriter");
 
   TreeReductionRewriter tree_reduction_rewriter(gpu_device_info);
   TF_RETURN_IF_ERROR(tree_reduction_rewriter.Run(new_module.get()).status());
@@ -138,15 +138,12 @@ absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
                                            fusion, config, debug_opts,
                                            RedzoneBuffers::kAllInputs));
   TF_ASSIGN_OR_RETURN(auto stream, config.GetStream());
-  TF_ASSIGN_OR_RETURN(std::optional<ProfilingOutput> profiling_output,
+  TF_ASSIGN_OR_RETURN(ProfilingOutput profiling_output,
                       util.ProfileExecutable(executable.get(), stream,
                                              rz_buffers.input_buffers(),
                                              rz_buffers.input_shapes()));
-  if (!profiling_output.has_value()) {
-    return Internal("No output after a successful verification run.");
-  }
 
-  return std::move(profiling_output->output);
+  return std::move(profiling_output).output;
 }
 
 absl::Status CompareBuffers(const ScopedShapedBuffer& current,
@@ -246,9 +243,8 @@ absl::StatusOr<bool> TritonFusionNumericsVerifier::Run(
   debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
       false);
 
-  TF_ASSIGN_OR_RETURN(std::optional<AutotunerCompileUtil> opt_compile_util,
+  TF_ASSIGN_OR_RETURN(AutotunerCompileUtil compile_util,
                       AutotunerCompileUtil::Create(config_, debug_options));
-  TF_RET_CHECK(opt_compile_util.has_value());
 
   TF_RETURN_IF_ERROR(triton_fusion_numerics_pass_internal::ForAllTritonFusions(
       *module, execution_threads, [&](const HloFusionInstruction& fusion) {
@@ -258,8 +254,8 @@ absl::StatusOr<bool> TritonFusionNumericsVerifier::Run(
           ++cache_hits_;
           return it->second;
         }
-        auto result = VerifyTritonFusion(*opt_compile_util, fusion, config_,
-                                         debug_options);
+        auto result =
+            VerifyTritonFusion(compile_util, fusion, config_, debug_options);
         fusion_result_cache_[key] = result;
         return result;
       }));

@@ -56,7 +56,7 @@ class DeviceMgr {
 
   // Assigns *device with pointer to Device of the given name.
   // Accepts either a full device name, or just the replica-local suffix.
-  virtual absl::Status LookupDevice(StringPiece name,
+  virtual absl::Status LookupDevice(absl::string_view name,
                                     Device** device) const = 0;
 
   // Check if the current device manager contains device with the given
@@ -101,7 +101,8 @@ class DynamicDeviceMgr : public DeviceMgr {
   std::vector<Device*> ListDevices() const override;
   string DebugString() const override;
   string DeviceMappingString() const override;
-  absl::Status LookupDevice(StringPiece name, Device** device) const override;
+  absl::Status LookupDevice(absl::string_view name,
+                            Device** device) const override;
   bool ContainsDevice(int64_t device_incarnation) const override;
   void ClearContainers(absl::Span<const string> containers) const override;
   int NumDeviceType(const string& type) const override;

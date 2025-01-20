@@ -15,10 +15,19 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/qr_expander.h"
 
-#include <memory>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <numeric>
+#include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/loops.h"
@@ -33,6 +42,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {

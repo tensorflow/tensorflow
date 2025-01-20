@@ -40,7 +40,7 @@ typedef FunctionDefHelper FDH;
 constexpr const char* const kLowerUsingSwitchMergeAttr =
     LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr;
 
-static void AssertHasSubstr(StringPiece s, StringPiece expected) {
+static void AssertHasSubstr(absl::string_view s, absl::string_view expected) {
   ASSERT_TRUE(absl::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }

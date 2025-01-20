@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_SHARDING_METADATA_H_
 #define XLA_HLO_IR_HLO_SHARDING_METADATA_H_
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>

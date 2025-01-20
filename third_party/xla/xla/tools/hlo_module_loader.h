@@ -20,7 +20,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
-#include <string_view>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -32,7 +31,7 @@ namespace xla {
 namespace hlo_module_loader_details {
 
 struct Config {
-  Config() {}
+  Config() = default;
   int64_t num_replicas = 1;
   int64_t num_partitions = 1;
 };
@@ -41,7 +40,7 @@ struct Config {
 
 // Given a string composed by multiple lines, strip the log headers, if present
 // at the beginning of each line.
-std::string StripLogHeaders(std::string_view hlo_string);
+std::string StripLogHeaders(absl::string_view hlo_string);
 
 // Loads an HLO module from a string.
 // The data can have the followings formats:
@@ -58,7 +57,7 @@ std::string StripLogHeaders(std::string_view hlo_string);
 // and the hlo module format is proto, it loads buffer assignment from the
 // proto.
 absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
-    const std::string& data, std::string_view format,
+    const std::string& data, absl::string_view format,
     const hlo_module_loader_details::Config& ovr_config =
         hlo_module_loader_details::Config(),
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
@@ -93,7 +92,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
 // 1) A binary proto (format "pb")
 // 2) A text proto (format "pbtxt")
 absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>
-LoadInputFromData(const std::string& data, std::string_view format);
+LoadInputFromData(const std::string& data, absl::string_view format);
 
 // Loads an HLO snapshot from file, only for its inputs
 // The file must be one of the following:

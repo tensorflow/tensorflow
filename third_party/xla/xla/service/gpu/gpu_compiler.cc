@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -36,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "llvm/ADT/DenseMap.h"
@@ -174,6 +174,7 @@ limitations under the License.
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/sol_gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/prepare_hlo_for_ir_emitting_pipeline.h"
 #include "xla/service/gpu/reduce_scatter_combiner.h"
 #include "xla/service/gpu/reduction_utils.h"
@@ -264,7 +265,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
@@ -340,7 +340,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
   FromModule(const HloModule* hlo_module,
              const BufferAssignment* buffer_assignment,
-             std::string_view asm_text, absl::Span<const uint8_t> binary,
+             absl::string_view asm_text, absl::Span<const uint8_t> binary,
              const BinaryMap& dnn_compiled_graphs) {
     CompilationResultProto proto;
     *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();
@@ -1044,19 +1044,6 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
                          .Run(hlo_module)
                          .status());
 
-  if (hlo_module->config().debug_options().xla_gpu_collect_cost_model_stats()) {
-    GpuHloCostAnalysis::Options cost_analysis_options{
-        shape_size_fn,
-        /*per_second_rates=*/{},
-        /*min_latencies_seconds=*/{},
-        /*count_multiple_input_accesses=*/true};
-
-    HloPassPipeline post_fusion_analysis("post_fusion_analysis");
-    post_fusion_analysis.AddPass<GpuCostModelStatsCollection>(
-        gpu_device_info, cost_analysis_options);
-    TF_RETURN_IF_ERROR(post_fusion_analysis.Run(hlo_module).status());
-  }
-
   TF_RETURN_IF_ERROR(
       HorizontalFusionPipeline(gpu_device_info).Run(hlo_module).status());
 
@@ -1157,12 +1144,13 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
   // that actually need to run asynchronously with a GPU specific backend
   // config.
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_gather = HloPredicateTrue;
   config.convert_all_reduce = HloPredicateTrue;
+  config.convert_all_to_all = HloPredicateTrue;
   config.convert_collective_broadcast = HloPredicateTrue;
   config.convert_collective_permute = HloPredicateTrue;
-  config.convert_all_gather = HloPredicateTrue;
+  config.convert_ragged_all_to_all = HloPredicateTrue;
   config.convert_reduce_scatter = HloPredicateTrue;
-  config.convert_all_to_all = HloPredicateTrue;
   pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
 
   absl::flat_hash_set<DebugOptions::CollectiveOpType> disabled_async_ops;
@@ -1190,6 +1178,8 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
             return !disabled_async_ops.contains(DebugOptions::REDUCESCATTER);
           case HloOpcode::kAllToAll:
             return !disabled_async_ops.contains(DebugOptions::ALLTOALL);
+          case HloOpcode::kRaggedAllToAll:
+            return !disabled_async_ops.contains(DebugOptions::RAGGEDALLTOALL);
           default:
             return false;
         }
@@ -1592,14 +1582,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // in the softmax codegen pipeline. However we should run before
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
-    if (debug_options
-            .xla_gpu_experimental_enable_triton_softmax_priority_fusion() &&
-        ((cuda_cc != nullptr &&
-          cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
-         rocm_cc != nullptr)) {
-      // Triton compilation needs normalized operations on bf16 (i.e. converted
-      // to f32).
-      add_float_normalization(pipeline);
+    if ((cuda_cc != nullptr &&
+         cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
+        rocm_cc != nullptr) {
       pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options,
                                                            gpu_version);
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
@@ -1652,14 +1637,19 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
+  // Recover host-offloader invariants (such as the single-use broadcast buffer
+  // initialization before loops) by re-running the offload legalizer.
+  pipeline.AddPass<HostOffloadLegalize>(
+      static_cast<int64_t>(stream_executor::MemoryType::kHost),
+      /* after_layout= */ true);
+
   pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
 
   // Layout normalization will create scatters that are not simplified and
   // also have unsorted update_window_dims.
   pipeline.AddPass<ScatterSimplifier>();
 
-  pipeline.AddPass<HostOffloader>(
-      static_cast<int64_t>(stream_executor::MemoryType::kHost));
+  pipeline.AddPass<HostOffloader>();
 
   TF_RETURN_IF_ERROR(
       AddConvAndGemmAutotuningPasses(&pipeline, gpu_version, options,
@@ -1683,6 +1673,22 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // simplifier by rearranging ops (i.e. by pushing broadcasts towards the
     // root).
     pipeline.AddPass<SimplifyFPConversions>();
+  }
+
+  {
+    // Because of an issue with JAX remat and `SimplifyFPConversions` (see PR:
+    // https://github.com/jax-ml/jax/pull/22244), we can only eliminate the
+    // no-op reduce-precision operations after the last call to
+    // `SimplifyFPConversions`. We are creating a sub-pipeline here because that
+    // allows us to test this order in a unit test.
+    HloPassPipeline& remove_no_op_reduce_precision_pipeline =
+        pipeline.AddPass<HloPassPipeline>(
+            "remove-no-op-reduce-precision-algebraic-simplifier");
+    AlgebraicSimplifierOptions simplifier_options_{simplifier_options};
+    simplifier_options_.set_enable_remove_no_op_reduce_precision(true);
+    remove_no_op_reduce_precision_pipeline
+        .AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options_,
+                                                     gpu_version);
   }
 
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
@@ -2145,7 +2151,7 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
   };
   std::vector<NamedCompileResult> compile_results(llvm_modules.size());
   if (thread_pool.get() != nullptr) {
-    tsl::BlockingCounter counter(llvm_modules.size());
+    absl::BlockingCounter counter(llvm_modules.size());
     for (int i = 0; i < llvm_modules.size(); ++i) {
       thread_pool.get_mutable()->Schedule(
           [&compile_results, i, &llvm_modules, &counter, this, &module_config,
@@ -2561,6 +2567,19 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
     const se::DeviceDescription& gpu_device_info) {
   HloPassPipeline pipeline("pre-scheduling-passes");
   pipeline.AddPass<FusionWrapper>(gpu_device_info);
+  if (module->config().debug_options().xla_gpu_collect_cost_model_stats()) {
+    GpuHloCostAnalysis::Options cost_analysis_options{
+        ShapeSizeBytesFunction(),
+        /*per_second_rates=*/{},
+        /*min_latencies_seconds=*/{},
+        /*count_multiple_input_accesses=*/true};
+    // Cost model analysis for compute.
+    pipeline.AddPass<GpuCostModelStatsCollection>(gpu_device_info,
+                                                  cost_analysis_options);
+    // Cost model analysis for collectives.
+    pipeline.AddPass<SolGpuCostModelStatsCollection>(gpu_device_info,
+                                                     ShapeSizeBytesFunction());
+  }
   return pipeline.Run(module).status();
 }
 

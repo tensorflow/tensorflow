@@ -84,6 +84,14 @@ auto* mlir_function_pass_graph_conversion_count = monitoring::Counter<1>::New(
     "optimization pass",
     /* metric field */ "status");
 
+auto* mlir_v1_compat_graph_conversion_count = monitoring::Counter<1>::New(
+    /* metric name */
+    "/tensorflow/core/mlir_v1_compat_graph_conversion_count",
+    /* metric description */
+    "Track success/failure of Graph to MLIR conversions in MLIR V1 compat "
+    "optimization pass",
+    /* metric field */ "status");
+
 // The status metric field is used to record success/failure of mlir
 // function/graph optimization passes.
 constexpr char kSuccess[] = "kSuccess";
@@ -155,7 +163,7 @@ static void RegisterDialects(mlir::DialectRegistry& registry) {
   // clang-format on
 }
 
-Status MlirFunctionOptimizationPass::Run(
+absl::Status MlirFunctionOptimizationPass::Run(
     const std::string& function_name, const DeviceSet& device_set,
     const ConfigProto& config_proto,
     const FunctionOptimizationPass::FunctionOptions& function_options,
@@ -239,7 +247,9 @@ Status MlirFunctionOptimizationPass::Run(
       {kTfMlirCategory, "convert_graph_to_mlir"});
 
   auto module_ref_status = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
-      **graph, debug_info, *flib_def, import_config, &context);
+      **graph, debug_info, *flib_def, import_config, &context,
+      /*tf_name_to_mlir_name*/ nullptr, config_proto,
+      tensorflow::TF2XLABridgeVersion::kNominal);
   mlir_function_pass_graph_conversion_count
       ->GetCell(absl::StatusCodeToString(module_ref_status.status().code()))
       ->IncrementBy(1);
@@ -277,7 +287,7 @@ Status MlirFunctionOptimizationPass::Run(
           *module_ref, llvm::StringRef(), nullptr);
     }
 
-    Status pass_status = absl::OkStatus();
+    absl::Status pass_status = absl::OkStatus();
     auto pass_state = per_pass_state[per_pass_state_index++];
     if (pass_state == MlirOptimizationPassState::Enabled) {
       VLOG(2) << "Run MLIR graph optimization pass: " << StringRefToView(name);
@@ -361,7 +371,7 @@ Status MlirFunctionOptimizationPass::Run(
   timings.Reset({kTfMlirCategory, "convert_mlir_to_graph"});
   // Some or all passes are enabled. Convert MLIR module and return back
   // resulted graph.
-  Status status = tensorflow::tf2xla::v2::ConvertTfExecutorToGraph(
+  absl::Status status = tensorflow::tf2xla::v2::ConvertTfExecutorToGraph(
       *module_ref, export_config, graph, flib_def, &control_ret_nodes);
   if (!status.ok()) {
     errors::AppendToMessage(&status,
@@ -387,7 +397,7 @@ MlirV1CompatOptimizationPassRegistry::Global() {
   return *global;
 }
 
-Status MlirV1CompatGraphOptimizationPass::Run(
+absl::Status MlirV1CompatGraphOptimizationPass::Run(
     const GraphOptimizationPassOptions& options) {
   // Skip MLIR V1 optimization pass if it is not enabled in compiling
   // SavedModel.
@@ -429,7 +439,12 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   import_config.restrict_functionalization_to_compiled_nodes = true;
 
   auto module_ref_status = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
-      **options.graph, debug_info, *options.flib_def, import_config, &context);
+      **options.graph, debug_info, *options.flib_def, import_config, &context,
+      /*tf_name_to_mlir_name*/ nullptr, options.session_options->config,
+      tensorflow::TF2XLABridgeVersion::kV1Compat);
+  mlir_v1_compat_graph_conversion_count
+      ->GetCell(absl::StatusCodeToString(module_ref_status.status().code()))
+      ->IncrementBy(1);
   if (!module_ref_status.ok()) {
     if (pass_state == MlirOptimizationPassState::Enabled) {
       return module_ref_status.status();
@@ -452,7 +467,7 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   if (VLOG_IS_ON(1)) {
     DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
   }
-  Status pass_status = pass->Run(options, *module_ref);
+  absl::Status pass_status = pass->Run(options, *module_ref);
 
   bool is_module_updated = !mlir::OperationEquivalence::isEquivalentTo(
       module_ref_clone, *module_ref,

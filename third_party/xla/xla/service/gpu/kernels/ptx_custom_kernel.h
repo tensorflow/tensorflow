@@ -18,16 +18,16 @@ limitations under the License.
 
 #include <cstddef>
 #include <string>
-#include <string_view>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu::kernel {
 
 absl::StatusOr<CustomKernel> GetPtxCustomKernel(std::string kernel_name,
-                                                std::string_view ptx,
+                                                absl::string_view ptx,
                                                 int num_args,
                                                 se::BlockDim block_dim,
                                                 se::ThreadDim thread_dim,

@@ -126,6 +126,8 @@ class InterpreterBuilder;  // Class for friend declarations.
 
 class Interpreter {
  public:
+  using Ptr = std::unique_ptr<Interpreter>;
+
   // Instantiate an interpreter. All errors associated with reading and
   // processing this model will be forwarded to the error_reporter object.
   //

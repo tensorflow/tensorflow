@@ -335,13 +335,12 @@ absl::Status CudaStream::DoHostCallbackWithStatus(
 }
 
 namespace {
-absl::Status LaunchKernel(StreamExecutor* executor,
-                          absl::string_view kernel_name, CUfunction function,
-                          unsigned int grid_dim_x, unsigned int grid_dim_y,
-                          unsigned int grid_dim_z, unsigned int block_dim_x,
-                          unsigned int block_dim_y, unsigned int block_dim_z,
-                          unsigned int shared_mem_bytes, CUstream stream,
-                          void** kernel_params, void** extra) {
+absl::Status LaunchCudaKernel(
+    StreamExecutor* executor, absl::string_view kernel_name,
+    CUfunction function, unsigned int grid_dim_x, unsigned int grid_dim_y,
+    unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes, CUstream stream,
+    void** kernel_params, void** extra) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   VLOG(2) << "launching kernel: " << kernel_name << "; gdx: " << grid_dim_x
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
@@ -371,16 +370,14 @@ absl::Status LaunchKernel(StreamExecutor* executor,
                    "; shared memory size: ", shared_mem_bytes));
 }
 
-absl::Status LaunchKernel(StreamExecutor* executor,
-                          absl::string_view kernel_name, CUfunction function,
-                          unsigned int cluster_dim_x,
-                          unsigned int cluster_dim_y,
-                          unsigned int cluster_dim_z, unsigned int grid_dim_x,
-                          unsigned int grid_dim_y, unsigned int grid_dim_z,
-                          unsigned int block_dim_x, unsigned int block_dim_y,
-                          unsigned int block_dim_z,
-                          unsigned int shared_mem_bytes, CUstream stream,
-                          void** kernel_params, void** extra) {
+absl::Status LaunchCudaKernel(
+    StreamExecutor* executor, absl::string_view kernel_name,
+    CUfunction function, unsigned int cluster_dim_x, unsigned int cluster_dim_y,
+    unsigned int cluster_dim_z, unsigned int grid_dim_x,
+    unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
+    unsigned int block_dim_y, unsigned int block_dim_z,
+    unsigned int shared_mem_bytes, CUstream stream, void** kernel_params,
+    void** extra) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   VLOG(2) << "launching kernel: " << kernel_name << "; cdx: " << cluster_dim_x
           << " cdy: " << cluster_dim_y << " cdz: " << cluster_dim_z
@@ -433,62 +430,24 @@ absl::Status LaunchKernel(StreamExecutor* executor,
 
 }  // namespace
 
-absl::Status CudaStream::Launch(const ThreadDim& thread_dims,
-                                const BlockDim& block_dims,
-                                const std::optional<ClusterDim>& cluster_dims,
-                                const Kernel& kernel, const KernelArgs& args) {
-  const CudaKernel* gpu_kernel = static_cast<const CudaKernel*>(&kernel);
-  CUfunction function = gpu_kernel->gpu_function();
-
-  // Launch kernels with packed arguments.
-  auto launch = [this, &kernel, &cluster_dims, &thread_dims, &block_dims,
-                 &function](const KernelArgsPackedArrayBase& packed) {
-    int32_t expected_number_of_arguments =
-        kernel.Arity() + (packed.number_of_shared_bytes() > 0);
-
-    CHECK_EQ(expected_number_of_arguments, packed.number_of_arguments())
-        << "Kernel " << kernel.name() << " has " << packed.number_of_arguments()
-        << " arguments, but expected " << expected_number_of_arguments
-        << "; arity=" << kernel.Arity()
-        << "; number_of_shared_bytes=" << packed.number_of_shared_bytes();
-
-    void** params = const_cast<void**>(packed.argument_addresses().data());
-
-    if (cluster_dims.has_value()) {
-      return LaunchKernel(
-          executor_, kernel.name(), function, cluster_dims->x, cluster_dims->y,
-          cluster_dims->z, block_dims.x, block_dims.y, block_dims.z,
-          thread_dims.x, thread_dims.y, thread_dims.z,
-          packed.number_of_shared_bytes(), stream_handle_, params,
-          /*extra=*/nullptr);
-    } else {
-      return LaunchKernel(
-          executor_, kernel.name(), function, block_dims.x, block_dims.y,
-          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-          packed.number_of_shared_bytes(), stream_handle_, params,
-          /*extra=*/nullptr);
-    }
-  };
-
-  // If arguments are already packed we can just launch the kernel.
-  if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
-    return launch(*packed);
+absl::Status CudaStream::LaunchKernel(
+    const ThreadDim& thread_dims, const BlockDim& block_dims,
+    const std::optional<ClusterDim>& cluster_dims, void* function,
+    absl::string_view name, void** args, int64_t shmem_bytes) {
+  if (cluster_dims.has_value()) {
+    return LaunchCudaKernel(executor_, name, static_cast<CUfunction>(function),
+                            cluster_dims->x, cluster_dims->y, cluster_dims->z,
+                            block_dims.x, block_dims.y, block_dims.z,
+                            thread_dims.x, thread_dims.y, thread_dims.z,
+                            shmem_bytes, stream_handle_, args,
+                            /*extra=*/nullptr);
+  } else {
+    return LaunchCudaKernel(executor_, name, static_cast<CUfunction>(function),
+                            block_dims.x, block_dims.y, block_dims.z,
+                            thread_dims.x, thread_dims.y, thread_dims.z,
+                            shmem_bytes, stream_handle_, args,
+                            /*extra=*/nullptr);
   }
-
-  // For device memory array we rely on a custom kernel arguments packing.
-  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
-    auto& pack = kernel.args_packing();
-    if (!pack) {
-      return absl::InternalError(
-          "Kernel is missing a custom arguments packing function for device "
-          "memory arguments array");
-    }
-
-    TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
-    return launch(*packed);
-  }
-
-  return absl::InternalError("Unsupported kernel arguments type");
 }
 
 void CudaStream::SetName(std::string name) {

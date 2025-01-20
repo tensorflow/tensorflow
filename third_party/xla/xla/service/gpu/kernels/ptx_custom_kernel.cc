@@ -18,9 +18,9 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
-#include <string_view>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -42,7 +42,7 @@ KernelArgsPacking(const se::Kernel &kernel, const se::KernelArgs &args) {
 // otherwise you will get a "CUDA_ERROR_NOT_FOUND: named symbol not found.".
 // E.g. `.visible .entry AddI32(...)` would have a kernel name of "AddI32".
 absl::StatusOr<CustomKernel> GetPtxCustomKernel(std::string kernel_name,
-                                                std::string_view ptx,
+                                                absl::string_view ptx,
                                                 int num_args,
                                                 se::BlockDim block_dim,
                                                 se::ThreadDim thread_dim,

@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/matrix.h"
 
+#include <cstdint>
 #include <limits>
 #include <map>
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"

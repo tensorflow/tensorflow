@@ -342,8 +342,6 @@ Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
       return Future<Response>(HandleCheckValueReadyRequest(std::move(request)));
     case IfrtRequest::RequestCase::kCopyArraysRequest:
       return Future<Response>(HandleCopyArraysRequest(std::move(request)));
-    case IfrtRequest::RequestCase::kReshardRequest:
-      return Future<Response>(HandleReshardRequest(std::move(request)));
     case IfrtRequest::RequestCase::kFullyReplicatedShardRequest:
       return Future<Response>(
           HandleFullyReplicatedShardRequest(std::move(request)));
@@ -1029,44 +1027,6 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
   return ifrt_resp;
 }
 
-absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleReshardRequest(
-    std::unique_ptr<IfrtRequest> request) {
-  const auto& reshard_request = request->reshard_request();
-  TF_ASSIGN_OR_RETURN(auto array, GetArray(reshard_request.array_handle()));
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<const Sharding> sharding,
-      Sharding::FromProto(
-          absl::bind_front(&Client::LookupDevice, client_.get()),
-          reshard_request.sharding()));
-  TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
-                                          reshard_request.copy_semantics()));
-
-  // Emulate the old `Array::Reshard` behavior using `Client::CopyArrays`. No
-  // existing IFRT implementations before `Array::Reshard` was deleted actually
-  // supported resharding, so this should be safe.
-  if (!array->sharding().HasSamePartitioning(*sharding)) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "IFRT Proxy does not support resharding, but got ",
-        array->sharding().DebugString(), " as the original sharding and ",
-        sharding->DebugString(), " as the target sharding"));
-  }
-  TF_ASSIGN_OR_RETURN(
-      auto copied_arrays,
-      client_->CopyArrays(absl::MakeSpan(&array, 1), sharding->devices(),
-                          sharding->memory_kind(), semantics));
-
-  uint64_t resharded_array_handle = handle_generator_.GenerateAtServer();
-  {
-    absl::MutexLock lock(&arrays_mutex_);
-    arrays_.insert({resharded_array_handle, std::move(copied_arrays[0])});
-  }
-
-  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
-  ifrt_resp->mutable_reshard_response()->set_array_handle(
-      resharded_array_handle);
-  return ifrt_resp;
-}
-
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleFullyReplicatedShardRequest(
     std::unique_ptr<IfrtRequest> request) {
@@ -1327,15 +1287,10 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
         parameter_layouts.ok()) {
       auto* const layouts =
           metadata_resp->mutable_parameter_layouts_list()->mutable_layouts();
-      for (const std::unique_ptr<xla::PjRtLayout>& parameter_layout :
+      for (const std::shared_ptr<const xla::PjRtLayout>& parameter_layout :
            *parameter_layouts) {
         // TODO(b/329165105): use PjRtLayout::Serialize instead
-        const xla::PjRtXlaLayout* layout =
-            dynamic_cast<const xla::PjRtXlaLayout*>(parameter_layout.get());
-        TF_RET_CHECK(layout != nullptr)
-            << "IFRT proxy only supports PjRtXlaLayout, got a different "
-               "subclass";
-        layouts->Add(layout->xla_layout().ToProto());
+        layouts->Add(parameter_layout->xla_layout().ToProto());
       }
     } else {
       *metadata_resp->mutable_parameter_layouts_error() =
@@ -1345,15 +1300,10 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
         output_layouts.ok()) {
       auto* const layouts =
           metadata_resp->mutable_output_layouts_list()->mutable_layouts();
-      for (const std::unique_ptr<xla::PjRtLayout>& output_layout :
+      for (const std::shared_ptr<const xla::PjRtLayout>& output_layout :
            *output_layouts) {
         // TODO(b/329165105): use PjRtLayout::Serialize instead
-        const xla::PjRtXlaLayout* layout =
-            dynamic_cast<const xla::PjRtXlaLayout*>(output_layout.get());
-        TF_RET_CHECK(layout != nullptr)
-            << "IFRT proxy only supports PjRtXlaLayout, got a different "
-               "subclass";
-        layouts->Add(layout->xla_layout().ToProto());
+        layouts->Add(output_layout->xla_layout().ToProto());
       }
     } else {
       *metadata_resp->mutable_output_layouts_error() =

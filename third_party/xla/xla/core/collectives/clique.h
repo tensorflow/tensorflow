@@ -49,6 +49,9 @@ class Clique {
   // Returns a communicator for a given rank if it's in a clique.
   std::optional<Communicator*> comm(RankId rank) const;
 
+  // Adds a communicator to the clique.
+  absl::Status AddComm(RankId rank, std::unique_ptr<Communicator> communicator);
+
   // Calls `fn` for each communicator in the clique.
   void ForEachComm(absl::FunctionRef<void(RankId, Communicator*)> fn) const;
 
@@ -61,8 +64,8 @@ class Clique {
   size_t num_communicators() const { return communicators_.size(); }
 
  private:
-  // We keep communicators in a sorted order by rank to guarantee deterministic
-  // traversal order in `ForEachComm`.
+  // We keep communicators in a sorted order by rank to guarantee
+  // deterministic traversal order in `ForEachComm`.
   absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators_;
 };
 

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 
+#include <functional>
+
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

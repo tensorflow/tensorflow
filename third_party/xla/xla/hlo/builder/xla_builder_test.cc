@@ -2164,7 +2164,7 @@ struct BinaryOpTestCase {
   absl::Span<const int64_t> broadcast_dimensions;
   std::string expected;
   std::function<XlaOp(XlaOp, XlaOp, absl::Span<const int64_t>)> binary_op;
-  std::optional<std::string_view> error_message;
+  std::optional<absl::string_view> error_message;
 };
 
 constexpr absl::string_view kBroadcastDimensionMismatch =

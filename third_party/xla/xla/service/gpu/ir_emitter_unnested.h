@@ -89,8 +89,9 @@ class IrEmitterUnnested : public IrEmitter {
       IrEmitterContext* ir_emitter_context);
 
   // Transfers the ownship of thunk_sequence_ out.
-  std::unique_ptr<SequentialThunk> ConsumeThunkSequence() {
-    return std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
+  std::unique_ptr<SequentialThunk> ConsumeThunkSequence(
+      Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo{}) {
+    return std::make_unique<SequentialThunk>(thunk_info,
                                              std::move(thunk_sequence_));
   }
 
@@ -166,8 +167,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitHloInstruction(const HloInstruction* instr);
 
-  absl::Status EmitNcclGroupThunk(const HloInstruction* instr,
-                                  Thunk::Kind kind);
+  absl::Status EmitNcclGroupStartThunk(const HloInstruction* instr);
 
   absl::Status EmitTargetElementLoop(
       const HloInstruction& hlo,

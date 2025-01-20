@@ -62,11 +62,11 @@ cc_library(
     ]),
     deps = [
         ":profiler_interface",
-        "//tsl/platform:errors",
-        "//tsl/platform:logging",
-        "//tsl/platform:status",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -114,13 +114,13 @@ tsl_cc_test(
         ":profiler_factory",
         ":profiler_factory_impl",
         ":profiler_interface",
-        "//tsl/platform:macros",
-        "//tsl/platform:test",
-        "//tsl/platform:test_main",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -134,8 +134,8 @@ cc_library(
         "@local_xla//xla/tsl/profiler:xla_profiler_backends",
     ]),
     deps = [
-        "//tsl/platform:status",
         "//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -149,11 +149,11 @@ cc_library(
         "@local_xla//xla/tsl/profiler:xla_internal",
     ]),
     deps = [
-        "//tsl/platform:errors",
-        "//tsl/platform:macros",
-        "//tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:statusor",
         "@local_xla//xla/tsl/util:env_var",
     ],
 )
@@ -163,9 +163,9 @@ tsl_cc_test(
     srcs = ["profiler_lock_test.cc"],
     deps = [
         ":profiler_lock",
-        "//tsl/platform:test",
-        "//tsl/platform:test_main",
         "@com_google_absl//absl/status:statusor",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -175,14 +175,14 @@ cc_library(
     visibility = internal_visibility(["@local_xla//xla/tsl:internal"]),
     deps = [
         "//tsl/platform",
-        "//tsl/platform:errors",
         "//tsl/platform:mutex",
-        "//tsl/platform:status",
         "//tsl/platform:thread_annotations",
-        "//tsl/platform:types",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:types",
     ] + if_not_android([
         ":profiler_interface",
         ":profiler_lock",
@@ -203,15 +203,15 @@ cc_library(
         "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
-        "//tsl/platform:errors",
-        "//tsl/platform:logging",
         "//tsl/platform:mutex",
         "//tsl/platform:thread_annotations",
-        "//tsl/platform:types",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:types",
     ] + if_not_android([
         ":profiler_collection",
         ":profiler_factory",
@@ -219,7 +219,7 @@ cc_library(
         ":profiler_lock",
         "//tsl/platform",
         "//tsl/platform:platform_port",
-        "//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/profiler/convert:post_process_single_host_xplane",
         "@local_xla//xla/tsl/profiler/utils:time_utils",
     ]),
@@ -231,10 +231,10 @@ cc_library(
     hdrs = ["traceme_encode.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tsl/platform:logging",
-        "//tsl/platform:macros",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:macros",
     ],
 )
 
@@ -244,11 +244,11 @@ tsl_cc_test(
     deps = [
         ":traceme_encode",
         "//tsl/platform",
-        "//tsl/platform:test",
-        "//tsl/platform:test_benchmark",
-        "//tsl/platform:test_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_benchmark",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -265,10 +265,10 @@ cc_library(
     deps = [
         ":traceme_encode",
         "//tsl/platform",
-        "//tsl/platform:logging",
-        "//tsl/platform:macros",
-        "//tsl/platform:types",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:types",
         "@local_xla//xla/tsl/profiler/utils:no_init",
     ] + if_not_android([
         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder",
@@ -321,9 +321,9 @@ cc_library(
     deps = [
         ":nvtx_utils",
         "//tsl/platform",
-        "//tsl/platform:macros",
-        "//tsl/platform:types",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:types",
     ] + if_not_android([
         "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack",
     ]),
@@ -335,10 +335,10 @@ tsl_cc_test(
     srcs = ["scoped_annotation_test.cc"],
     deps = [
         ":scoped_annotation",
-        "//tsl/platform:test",
-        "//tsl/platform:test_benchmark",
-        "//tsl/platform:test_main",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_benchmark",
+        "@local_xla//xla/tsl/platform:test_main",
         "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
     ],
@@ -352,9 +352,9 @@ cc_library(
         ":context_types_hdrs",
         ":traceme",
         ":traceme_encode",
-        "//tsl/platform:types",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -369,9 +369,9 @@ cc_library(
     ]),
     deps = [
         ":profiler_interface",
-        "//tsl/platform:status",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 

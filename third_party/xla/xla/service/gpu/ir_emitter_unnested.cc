@@ -142,6 +142,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/nccl_group_thunk.h"
 #include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
+#include "xla/service/gpu/runtime/nccl_ragged_all_to_all_thunk.h"
 #include "xla/service/gpu/runtime/nccl_recv_thunk.h"
 #include "xla/service/gpu/runtime/nccl_send_thunk.h"
 #include "xla/service/gpu/runtime/norm_thunk.h"
@@ -231,7 +232,12 @@ absl::Status IrEmitterUnnested::EmitConditional(const HloInstruction* instr) {
   for (auto comp : instr->branch_computations()) {
     auto ir_emitter = IrEmitterUnnested::Create(ir_emitter_context_);
     TF_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(comp));
-    branch_thunks.push_back(ir_emitter->ConsumeThunkSequence());
+    Thunk::ThunkInfo branch_thunk_info =
+        Thunk::ThunkInfo::WithProfileAnnotation(instr);
+    branch_thunk_info.profile_annotation +=
+        absl::StrCat("_branch_", comp->name());
+    branch_thunks.push_back(
+        ir_emitter->ConsumeThunkSequence(branch_thunk_info));
   }
 
   ConditionalThunkConfig config =
@@ -1420,7 +1426,7 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
                             ir_emitter_context_->gpu_device_info(),
                             block_level_parameters, triton_module.get(),
                             ir_emitter_context_->llvm_module(), mlir_context,
-                            emit_kernels));
+                            /*is_xla_fusion=*/false, emit_kernels));
 
     TF_ASSIGN_OR_RETURN(
         auto kernel_arguments,
@@ -1871,7 +1877,15 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   // A given collective op can be degenerate if across all groups formed
   // by it are singleton. In such a case, we don't need to do any communication
   // and we can just copy the input to the output.
-  bool is_degenerate = GetNcclCollectiveConfig(inst, use_global_device_ids)
+  //
+  // The only exception is RaggedAllToAll, which is not degenerate even if
+  // all groups are singleton. In a singleton group case, RaggedAllToAll becomes
+  // a generic equivalent of DynamicUpdateSlice, except update size is not
+  // statically known. This operation can not be expressed in term of standard
+  // HLO instructions, so the best solution we have is to use NCCL thunk even
+  // for degenerate cases.
+  bool is_degenerate = kind != Thunk::Kind::kNcclRaggedAllToAll &&
+                       GetNcclCollectiveConfig(inst, use_global_device_ids)
                            .IsDegenerate(replica_count, partition_count);
   absl::Status implementable_status =
       NcclThunkType::CheckImplementable(inst, replica_count, partition_count);
@@ -1911,7 +1925,34 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
                  src_shape.layout().memory_space(), dst,
                  dst_shape.layout().memory_space());
     }
+  } else if (kind == Thunk::Kind::kNcclRaggedAllToAll) {
+    // RaggedAllToAll operation has 6 operands: input, output, input_offset,
+    // send_size, output_offset, recv_size.
+    const Shape& input_shape = inst->operand(0)->shape();
+    const Shape& result_shape = inst->shape();
+    TF_ASSIGN_OR_RETURN(auto input_buffer,
+                        GetAllocationSliceForHlo(inst->operand(0)));
+    TF_ASSIGN_OR_RETURN(auto result_buffer, GetAllocationSliceForHlo(inst));
+    add_buffer(ShapeUtil::ElementsIn(input_shape), input_buffer,
+               input_shape.layout().memory_space(), result_buffer,
+               result_shape.layout().memory_space());
 
+    const Shape& output_shape = inst->operand(1)->shape();
+    TF_ASSIGN_OR_RETURN(auto output_buffer,
+                        GetAllocationSliceForHlo(inst->operand(1)));
+
+    add_buffer(ShapeUtil::ElementsIn(result_shape), output_buffer,
+               output_shape.layout().memory_space(), output_buffer,
+               output_shape.layout().memory_space());
+
+    for (int64_t i = 2; i < operand_count; i++) {
+      const Shape& shape = inst->operand(i)->shape();
+      TF_ASSIGN_OR_RETURN(auto slice,
+                          GetAllocationSliceForHlo(inst->operand(i)));
+      add_buffer(ShapeUtil::ElementsIn(shape), slice,
+                 shape.layout().memory_space(), slice,
+                 shape.layout().memory_space());
+    }
   } else {
     // For other operations simply zip operands with results.
     for (int64_t i = 0; i < operand_count; i++) {
@@ -2070,34 +2111,28 @@ static const HloInstruction* FindCanonicalSendRecvStartOp(
   return canonical_start_op;
 }
 
-absl::Status IrEmitterUnnested::EmitNcclGroupThunk(const HloInstruction* instr,
-                                                   Thunk::Kind kind) {
+absl::Status IrEmitterUnnested::EmitNcclGroupStartThunk(
+    const HloInstruction* instr) {
   emit_group_thunks_ = true;
-  for (const HloInstruction* instr :
+  std::optional<AsyncStreamKind> stream_kind;
+  for (const HloInstruction* nested_instruction :
        instr->async_wrapped_computation()->instructions()) {
-    if (kind == Thunk::Kind::kNcclGroupStart) {
-      TF_RETURN_IF_ERROR(EmitHloInstruction(instr));
-    } else {
-      // For kNcclGroupDone, we only need to emit the corresponding async done
-      // instructions. For now, only send/recv is supported.
-      switch (instr->opcode()) {
-        case HloOpcode::kSend:
-          TF_RETURN_IF_ERROR(
-              EmitNcclAsyncDone(Thunk::Kind::kNcclSendDone, instr));
-          break;
-        case HloOpcode::kRecv:
-          TF_RETURN_IF_ERROR(
-              EmitNcclAsyncDone(Thunk::Kind::kNcclRecvDone, instr));
-          break;
-        default:
-          break;
-      }
+    TF_RETURN_IF_ERROR(EmitHloInstruction(nested_instruction));
+    if ((nested_instruction->opcode() == HloOpcode::kSend ||
+         nested_instruction->opcode() == HloOpcode::kRecv) &&
+        !stream_kind.has_value()) {
+      // We only need to modify the stream kind once, since all send/recv
+      // instructions in a group should have the same stream kind.
+      stream_kind = GetStreamKindForSendRecv(
+          Cast<HloSendRecvInstruction>(nested_instruction));
     }
   }
   auto thunk = std::make_unique<NcclGroupThunk>(
-      instr, kind, std::move(scoped_thunk_sequence_));
-  // TODO (rosiezou): use absl cleanup to automatically reset this boolean.
+      instr, Thunk::Kind::kNcclGroupStart, std::move(scoped_thunk_sequence_),
+      stream_kind.value_or(AsyncStreamKind::kCollective));
   emit_group_thunks_ = false;
+
+  GetCollectivesAsyncEvents().insert({instr, thunk->async_events()});
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
@@ -2233,9 +2268,17 @@ absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
   TF_ASSIGN_OR_RETURN(
       auto pred, GetAllocationSliceForHlo(condition->root_instruction(), {}));
 
+  Thunk::ThunkInfo cond_thunk_info =
+      Thunk::ThunkInfo::WithProfileAnnotation(instr);
+  cond_thunk_info.profile_annotation += "_condition";
+  Thunk::ThunkInfo body_thunk_info =
+      Thunk::ThunkInfo::WithProfileAnnotation(instr);
+  body_thunk_info.profile_annotation += "_body";
+
   return std::unique_ptr<Thunk>(new WhileThunk(
-      thunk_info, pred, ir_emitter_condition->ConsumeThunkSequence(),
-      ir_emitter_body->ConsumeThunkSequence(), trip_count));
+      thunk_info, pred,
+      ir_emitter_condition->ConsumeThunkSequence(cond_thunk_info),
+      ir_emitter_body->ConsumeThunkSequence(body_thunk_info), trip_count));
 }
 
 absl::Status IrEmitterUnnested::EmitTargetElementLoop(
@@ -2375,8 +2418,6 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
       } else {
         collectives_async_events.try_emplace(instr, thunk->async_events());
       }
-    } else {
-      collectives_async_events.try_emplace(instr, thunk->async_events());
     }
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
@@ -2450,8 +2491,6 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
       } else {
         collectives_async_events.try_emplace(instr, thunk->async_events());
       }
-    } else {
-      collectives_async_events.try_emplace(instr, thunk->async_events());
     }
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
@@ -2511,7 +2550,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     case HloOpcode::kAsyncDone: {
       if (!instr->async_wrapped_computation()
                ->CanExpandIntoSingleInstruction()) {
-        return EmitNcclGroupThunk(instr, Thunk::kNcclGroupDone);
+        return EmitNcclAsyncDone(Thunk::kNcclGroupDone, instr);
       }
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
@@ -2519,6 +2558,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           return EmitNcclAsyncDone(Thunk::kNcclReduceScatterDone, instr);
         case HloOpcode::kAllToAll:
           return EmitNcclAsyncDone(Thunk::kNcclAllToAllDone, instr);
+        case HloOpcode::kRaggedAllToAll:
+          return EmitNcclAsyncDone(Thunk::kNcclRaggedAllToAllDone, instr);
         case HloOpcode::kCollectiveBroadcast:
           return EmitNcclAsyncDone(Thunk::kNcclCollectiveBroadcastDone, instr);
         case HloOpcode::kFusion:
@@ -2544,7 +2585,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       // Multi-op async start will emit a NCCL group thunk.
       if (!instr->async_wrapped_computation()
                ->CanExpandIntoSingleInstruction()) {
-        return EmitNcclGroupThunk(instr, Thunk::kNcclGroupStart);
+        return EmitNcclGroupStartThunk(instr);
       }
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
@@ -2559,6 +2600,13 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           auto* all_to_all = Cast<HloAllToAllInstruction>(wrapped);
           return EmitNcclThunk<NcclAllToAllStartThunk, HloAllToAllInstruction>(
               Thunk::kNcclAllToAll, instr, all_to_all, std::nullopt);
+        }
+        case HloOpcode::kRaggedAllToAll: {
+          auto* ragged_all_to_all = Cast<HloRaggedAllToAllInstruction>(wrapped);
+          return EmitNcclThunk<NcclRaggedAllToAllStartThunk,
+                               HloRaggedAllToAllInstruction>(
+              Thunk::kNcclRaggedAllToAll, instr, ragged_all_to_all,
+              std::nullopt);
         }
         case HloOpcode::kCollectiveBroadcast: {
           auto* collective_broadcast =

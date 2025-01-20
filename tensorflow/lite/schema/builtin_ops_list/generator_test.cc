@@ -16,8 +16,6 @@ limitations under the License.
 
 #include "tensorflow/lite/schema/builtin_ops_list/generator.h"
 
-#include <fstream>
-
 #include <gtest/gtest.h>
 
 namespace {

@@ -32,7 +32,8 @@ limitations under the License.
 namespace tensorflow {
 namespace port {
 
-void AssignRefCounted(StringPiece src, core::RefCounted* obj, string* out) {
+void AssignRefCounted(absl::string_view src, core::RefCounted* obj,
+                      string* out) {
   out->assign(src.data(), src.size());
 }
 
@@ -55,7 +56,7 @@ void EncodeStringList(const tstring* strings, int64_t n, string* out) {
 
 bool DecodeStringList(const string& src, tstring* strings, int64_t n) {
   std::vector<uint32> sizes(n);
-  StringPiece reader(src);
+  absl::string_view reader(src);
   int64_t tot = 0;
   for (auto& v : sizes) {
     if (!core::GetVarint32(&reader, &v)) return false;
@@ -130,7 +131,7 @@ class StringListDecoderImpl : public StringListDecoder {
   }
 
  private:
-  StringPiece reader_;
+  absl::string_view reader_;
 };
 
 std::unique_ptr<StringListEncoder> NewStringListEncoder(string* out) {
@@ -142,7 +143,8 @@ std::unique_ptr<StringListDecoder> NewStringListDecoder(const string& in) {
 }
 
 #if defined(TENSORFLOW_PROTOBUF_USES_CORD)
-void AssignRefCounted(StringPiece src, core::RefCounted* obj, absl::Cord* out) {
+void AssignRefCounted(absl::string_view src, core::RefCounted* obj,
+                      absl::Cord* out) {
   obj->Ref();
   *out = absl::MakeCordFromExternal(src, [obj] { obj->Unref(); });
 }

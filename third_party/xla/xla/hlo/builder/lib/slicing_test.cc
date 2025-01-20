@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/slicing.h"
 
+#include <cstdint>
+
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/error_spec.h"

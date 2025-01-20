@@ -18,14 +18,14 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <string_view>
 
 #include "absl/crc/crc32c.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 
 namespace xla {
 
-CliqueId::CliqueId(std::string_view data) : data_(data.begin(), data.end()) {}
+CliqueId::CliqueId(absl::string_view data) : data_(data.begin(), data.end()) {}
 
 absl::Span<const char> CliqueId::data() const { return data_; }
 
@@ -34,7 +34,7 @@ std::string CliqueId::ToString() const {
 }
 
 uint32_t CliqueId::fingerprint() const {
-  std::string_view data_view(data_.data(), data_.size());
+  absl::string_view data_view(data_.data(), data_.size());
   return static_cast<uint32_t>(absl::ComputeCrc32c(data_view));
 }
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -26,16 +27,20 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OperationSupport.h"
@@ -85,6 +90,69 @@ using mlir::ValueRange;
 namespace arith = mlir::arith;
 
 }  // namespace
+
+std::optional<Interval> GetRange(mlir::Value value) {
+  auto attr_to_range = [](mlir::Attribute attr) -> std::optional<Interval> {
+    if (!attr) {
+      return std::nullopt;
+    }
+    auto values = llvm::to_vector(
+        mlir::cast<mlir::ArrayAttr>(attr).getAsValueRange<mlir::IntegerAttr>());
+    return {{values[0].getSExtValue(), values[1].getSExtValue()}};
+  };
+
+  if (auto apply = value.getDefiningOp<ApplyIndexingOp>()) {
+    return apply.getIndexingMap().GetRangeEvaluator().ComputeExpressionRange(
+        apply.getIndexingMap().GetAffineMap().getResult(
+            mlir::cast<mlir::OpResult>(value).getResultNumber()));
+  } else if (auto cst = value.getDefiningOp<mlir::arith::ConstantIndexOp>()) {
+    return {{cst.value(), cst.value()}};
+  } else if (value.getDefiningOp()) {
+    return attr_to_range(value.getDefiningOp()->getAttr("xla.range"));
+  }
+
+  auto bbarg = mlir::dyn_cast<mlir::BlockArgument>(value);
+  if (!bbarg) {
+    return std::nullopt;
+  }
+
+  auto parent = bbarg.getParentBlock()->getParentOp();
+  if (auto func_op = mlir::dyn_cast<mlir::func::FuncOp>(parent)) {
+    return attr_to_range(func_op.getArgAttr(bbarg.getArgNumber(), "xla.range"));
+  }
+  return GetIVRange(value);
+}
+
+std::optional<Interval> GetIVRange(mlir::Value iv) {
+  auto bbarg = mlir::dyn_cast<mlir::BlockArgument>(iv);
+  if (!bbarg) {
+    return std::nullopt;
+  }
+  auto parent = bbarg.getParentBlock()->getParentOp();
+  if (auto for_op = mlir::dyn_cast<mlir::scf::ForOp>(parent)) {
+    llvm::APInt lb, ub;
+    if (mlir::matchPattern(for_op.getLowerBound(), mlir::m_ConstantInt(&lb)) &&
+        mlir::matchPattern(for_op.getUpperBound(), mlir::m_ConstantInt(&ub))) {
+      return {{lb.getSExtValue(), ub.getSExtValue() - 1}};
+    }
+  }
+  if (auto loop_op = mlir::dyn_cast<xla::LoopOp>(parent)) {
+    const auto& indexing_map = loop_op.getIndexingMap();
+    if (bbarg.getArgNumber() >= loop_op.getNumInductionVars() &&
+        bbarg.getArgNumber() <
+            loop_op.getNumInductionVars() + indexing_map.GetNumResults()) {
+      RangeEvaluator range_evaluator = indexing_map.GetRangeEvaluator();
+      return range_evaluator.ComputeExpressionRange(
+          indexing_map.GetAffineMap().getResult(bbarg.getArgNumber() -
+                                                loop_op.getNumInductionVars()));
+    }
+  }
+  return std::nullopt;
+}
+
+//===----------------------------------------------------------------------===//
+// PureCallOp
+//===----------------------------------------------------------------------===//
 
 LogicalResult PureCallOp::verifySymbolUses(
     mlir::SymbolTableCollection& symbolTable) {
@@ -256,7 +324,7 @@ absl::StatusOr<IndexingMapWithAdditions> GetNewIndexingMapAfterFoldingSequence(
         replacement_expr =
             getAffineDimExpr(num_dims + added_dim_args.size(), ctx);
         added_dim_args.push_back(producer_operand.get());
-        new_dim_vars.push_back(producer_map.GetDimVars(dim_num));
+        new_dim_vars.push_back(producer_map.GetDimVar(dim_num));
       }
       producer_dim_replacements.push_back(replacement_expr);
     }
@@ -462,7 +530,7 @@ struct FoldApplyIndexingOperands
       } else {
         new_operands.push_back(operand.get());
         dim_replacements.push_back(getAffineDimExpr(new_num_dims++, ctx));
-        new_dim_vars.push_back(indexing_map.GetDimVars(operand_id));
+        new_dim_vars.push_back(indexing_map.GetDimVar(operand_id));
       }
     }
     rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
@@ -934,6 +1002,72 @@ struct SimplifyLoopOfApplyIndexing : public mlir::OpRewritePattern<LoopOp> {
   }
 };
 
+// Folds dimensions that are constants.
+// Only works on dimensions assuming as MoveSymbolsToDims has converted symbols
+// and runtime variables already.
+struct FoldConstantDimensions : public mlir::OpRewritePattern<LoopOp> {
+  using OpRewritePattern<LoopOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LoopOp loop_op,
+                                PatternRewriter& rewriter) const override {
+    auto loop_indexing_map = loop_op.getIndexingMap();
+    auto ctx = loop_op.getContext();
+    int num_dims = loop_indexing_map.GetDimVarsCount();
+
+    SmallVector<Value, 4> used_operands;
+    used_operands.reserve(num_dims);
+    std::vector<IndexingMap::Variable> used_dim_vars;
+    used_dim_vars.reserve(num_dims);
+    SmallVector<AffineExpr, 4> dim_replacements;
+    dim_replacements.reserve(num_dims);
+
+    for (auto [operand, dim_var] :
+         llvm::zip(loop_op->getOpOperands().take_front(num_dims),
+                   loop_indexing_map.GetDimVars())) {
+      auto range = GetRange(operand.get());
+      // Note that if range is constant we have to check that it is within the
+      // bounds of the dimension and can be safely replaced.
+      if (range && range->IsPoint() && dim_var.bounds.Contains(range->lower)) {
+        dim_replacements.push_back(getAffineConstantExpr(range->lower, ctx));
+      } else {
+        dim_replacements.push_back(getAffineDimExpr(used_dim_vars.size(), ctx));
+        used_operands.push_back(operand.get());
+        used_dim_vars.push_back(dim_var);
+      }
+    }
+
+    if (used_dim_vars.size() == num_dims) {
+      return rewriter.notifyMatchFailure(loop_op,
+                                         "No constant dimensions found");
+    }
+
+    auto new_affine_map =
+        loop_indexing_map.GetAffineMap().replaceDimsAndSymbols(
+            dim_replacements, {}, used_dim_vars.size(),
+            loop_indexing_map.GetSymbolCount());
+
+    llvm::DenseMap<mlir::AffineExpr, Interval> new_constraints;
+    for (auto [expr, interval] : loop_indexing_map.GetConstraints()) {
+      new_constraints[expr.replaceDims(dim_replacements)] = interval;
+    }
+
+    IndexingMap new_indexing_map(new_affine_map, std::move(used_dim_vars),
+                                 loop_indexing_map.GetRangeVars(),
+                                 loop_indexing_map.GetRTVars(),
+                                 new_constraints);
+
+    auto new_loop_op = rewriter.create<LoopOp>(
+        loop_op.getLoc(), new_indexing_map, used_operands, loop_op.getInits());
+
+    Block* original_block = &loop_op.getRegion().front();
+    Block* new_block = &new_loop_op.getRegion().front();
+    rewriter.mergeBlocks(original_block, new_block, new_block->getArguments());
+    rewriter.replaceOp(loop_op, new_loop_op.getResults());
+
+    return success();
+  }
+};
+
 }  // namespace
 
 VariableConstraints GetConstraintsForVariables(const IndexingMap& map) {
@@ -973,7 +1107,7 @@ std::optional<IndexingMap> parseChainOfStringsAsIndexingMap(
 
 void LoopOp::getCanonicalizationPatterns(mlir::RewritePatternSet& results,
                                          MLIRContext* context) {
-  results.add<SimplifyLoopOfApplyIndexing>(context);
+  results.add<FoldConstantDimensions, SimplifyLoopOfApplyIndexing>(context);
 }
 
 }  // namespace xla

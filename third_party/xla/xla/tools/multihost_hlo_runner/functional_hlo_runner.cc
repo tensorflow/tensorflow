@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -543,7 +542,7 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
 absl::Status FunctionalHloRunner::LoadAndCompile(
     PjRtClient& client, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
-    const RawCompileOptions& raw_compile_options, std::string_view hlo_file,
+    const RawCompileOptions& raw_compile_options, absl::string_view hlo_file,
     InputFormat input_format, int task_id, int num_nodes,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store,
     bool use_gpu_count_workaround) {
@@ -1308,16 +1307,15 @@ FunctionalHloRunner::CopyArgumentsToDevice(
     TF_RET_CHECK(!shape.IsTuple()) << "Param tuple without flattened_arguments";
     return non_tuple_memory_space(shape);
   };
-  TF_ASSIGN_OR_RETURN(const std::vector<std::unique_ptr<PjRtLayout>>&
+  TF_ASSIGN_OR_RETURN(const std::vector<std::shared_ptr<const PjRtLayout>>&
                           executable_parameter_pjrt_layouts,
                       executable->GetParameterLayouts());
   std::vector<Layout> executable_parameter_layouts;
   executable_parameter_layouts.reserve(
       executable_parameter_pjrt_layouts.size());
-  for (const std::unique_ptr<PjRtLayout>& pjrt_layout :
+  for (const std::shared_ptr<const PjRtLayout>& pjrt_layout :
        executable_parameter_pjrt_layouts) {
-    executable_parameter_layouts.push_back(
-        xla::GetXlaLayoutUnsafe(pjrt_layout));
+    executable_parameter_layouts.push_back(pjrt_layout->xla_layout());
   }
   auto buffer_from_host_literal =
       [&client, &argument_memory_space, &executable_parameter_layouts](

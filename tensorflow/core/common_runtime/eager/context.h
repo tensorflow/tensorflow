@@ -562,7 +562,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   absl::Status FindDeviceFromName(const char* device_name,
                                   Device** device) const;
 
-  absl::Status FindCompositeDeviceFromName(StringPiece device_name,
+  absl::Status FindCompositeDeviceFromName(absl::string_view device_name,
                                            CompositeDevice** device) const;
 
   bool IsCustomDevice(const string& device_name) override;

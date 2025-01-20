@@ -137,7 +137,7 @@ std::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
   }
 
   // Sort the replica groups by the first id for stable behavior. Otherwise,
-  // groups are formed according to the order in the contributer_set_id map,
+  // groups are formed according to the order in the contributor_set_id map,
   // which is not stable.
   absl::c_sort(new_replica_groups,
                [](const ReplicaGroup &a, const ReplicaGroup &b) {

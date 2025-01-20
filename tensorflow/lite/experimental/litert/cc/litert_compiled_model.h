@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"
@@ -68,10 +69,10 @@ class CompiledModel
   // returned object.
   static Expected<CompiledModel> Create(
       litert::Model& model,
-      LiteRtComplicationOptions complication_options = kHwAccelDefault) {
+      LiteRtCompilationOptions compilation_options = kLiteRtHwAccelatorCpu) {
     LiteRtCompiledModel compiled_model;
     if (auto status = LiteRtCreateCompiledModel(
-            model.Get(), complication_options, &compiled_model);
+            model.Get(), compilation_options, &compiled_model);
         status != kLiteRtStatusOk) {
       return Unexpected(status, "Failed to create compiled model");
     }
@@ -118,11 +119,18 @@ class CompiledModel
   Expected<std::vector<TensorBuffer>> CreateOutputBuffers(
       size_t signature_index);
 
-  // Runs the model of the given signature with the provided input/output
+  // Runs the model of the given signature index with the provided input/output
   // TensorBuffers.
   Expected<void> Run(size_t signature_index,
                      const std::vector<TensorBuffer>& input_buffers,
                      const std::vector<TensorBuffer>& output_buffers);
+
+  // Runs the model of the given signature key with the provided input/output
+  // TensorBuffer map.
+  Expected<void> Run(
+      absl::string_view signature_key,
+      const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
+      const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map);
 
  private:
   Model* model_;

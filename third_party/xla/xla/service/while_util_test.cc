@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/while_util.h"
 
 #include <memory>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -224,7 +223,7 @@ ENTRY main {
 }
 
 TEST_F(WhileUtilTest, TryIncrementNonCounterTripCount) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 body {
@@ -260,7 +259,7 @@ ENTRY main {
 }
 
 TEST_F(WhileUtilTest, TryIncrementNonConstantTripCount) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 body {
@@ -297,7 +296,7 @@ ENTRY main {
 }
 
 TEST_F(WhileUtilTest, TryIncrementSideEffecting) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 body {
@@ -334,7 +333,7 @@ ENTRY main {
 }
 
 TEST_F(WhileUtilTest, IncrementTripCountLt) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 body {
@@ -372,7 +371,7 @@ ENTRY main {
 }
 
 TEST_F(WhileUtilTest, IncrementTripCountGt) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 body {

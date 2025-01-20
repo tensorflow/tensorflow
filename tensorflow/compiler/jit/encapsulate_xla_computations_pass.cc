@@ -146,8 +146,8 @@ absl::Status RewriteSubgraph(
     bool a_is_resource = (a->output_type(0) == DT_RESOURCE);
     bool b_is_resource = (b->output_type(0) == DT_RESOURCE);
     // Uses the name as a tiebreaker so the output is deterministic.
-    StringPiece a_name(a->name());
-    StringPiece b_name(b->name());
+    absl::string_view a_name(a->name());
+    absl::string_view b_name(b->name());
     return std::tie(a_is_resource, a_name) < std::tie(b_is_resource, b_name);
   });
 

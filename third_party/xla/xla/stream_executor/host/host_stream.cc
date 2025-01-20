@@ -196,27 +196,5 @@ absl::Status HostStream::BlockUntilDone() {
   return status;
 }
 
-absl::Status HostStream::Launch(const ThreadDim& thread_dims,
-                                const BlockDim& block_dims,
-                                const std::optional<ClusterDim>& cluster_dims,
-                                const Kernel& kernel, const KernelArgs& args) {
-  if (cluster_dims.has_value()) {
-    if (cluster_dims->x != 1 || cluster_dims->y != 1 || cluster_dims->z != 1) {
-      return absl::UnimplementedError("Not implemented for Host");
-    }
-  }
-  const HostKernel* host_kernel = AsHostKernel(&kernel);
-
-  const KernelArgsDeviceMemoryArray* device_mem =
-      DynCast<KernelArgsDeviceMemoryArray>(&args);
-
-  if (device_mem != nullptr) {
-    return host_kernel->Launch(thread_dims, device_mem->device_memory_args());
-  }
-  return absl::UnimplementedError(
-      "Host kernel implements Launch method only for DeviceMemoryArray "
-      "arguments.");
-}
-
 }  // namespace host
 }  // namespace stream_executor

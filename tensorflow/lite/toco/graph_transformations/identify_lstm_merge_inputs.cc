@@ -28,9 +28,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status MergeLstmCellInputs::Run(Model* model,
-                                              std::size_t op_index,
-                                              bool* modified) {
+absl::Status MergeLstmCellInputs::Run(Model* model, std::size_t op_index,
+                                      bool* modified) {
   *modified = false;
   // Find lstm cell.
   auto op_it = model->operators.begin() + op_index;

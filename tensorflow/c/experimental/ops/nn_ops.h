@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_NN_OPS_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_NN_OPS_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/core/platform/status.h"

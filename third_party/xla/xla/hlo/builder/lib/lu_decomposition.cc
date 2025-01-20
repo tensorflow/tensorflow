@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/lu_decomposition.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 #include "absl/status/statusor.h"

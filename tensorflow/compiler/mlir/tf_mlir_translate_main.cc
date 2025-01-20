@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_split.h"
+#include "absl/types/span.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"

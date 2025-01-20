@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/base/internal/sysinfo.h"
 #include "absl/base/log_severity.h"
 #include "absl/strings/string_view.h"
-#include "tsl/platform/env_time.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/env_time.h"
+#include "xla/tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
 
 #if defined(PLATFORM_POSIX_ANDROID)

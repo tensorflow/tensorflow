@@ -793,7 +793,7 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
   lhs = lhs.Reshard(target_operand_sharding);
 
   // Replicate the RHS.
-  rhs = rhs.Reshard(HloSharding::Replicate());
+  rhs = rhs.Replicate();
 
   // Convolution window config does not include batch and feature dimensions,
   // whereas ReshardAsWindowedInput() expects the same number of window

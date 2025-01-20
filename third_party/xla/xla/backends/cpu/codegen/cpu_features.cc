@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -36,7 +35,7 @@ namespace xla::cpu {
 using tsl::port::CPUFeature;
 
 // Returns the earliest CPU generation that supports the instruction set.
-std::string_view CpuTargetFromMaxFeature(CPUFeature max_feature) {
+absl::string_view CpuTargetFromMaxFeature(CPUFeature max_feature) {
   switch (max_feature) {
     case CPUFeature::SSE4_2:
       return "nehalem";
@@ -60,7 +59,7 @@ std::string_view CpuTargetFromMaxFeature(CPUFeature max_feature) {
   }
 }
 
-std::optional<CPUFeature> CpuFeatureFromString(std::string_view cpu_feature) {
+std::optional<CPUFeature> CpuFeatureFromString(absl::string_view cpu_feature) {
   if (cpu_feature.empty()) return std::nullopt;
 
   // Non-exhaustive list of CPU features. (Only the ones we care about.)
@@ -90,7 +89,7 @@ std::optional<CPUFeature> CpuFeatureFromString(std::string_view cpu_feature) {
 // switch statement is the most readable way to express the logic.
 //
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-bool ShouldEnableCpuFeature(std::string_view feature, CPUFeature max_feature) {
+bool ShouldEnableCpuFeature(absl::string_view feature, CPUFeature max_feature) {
   // x86 CPUs have backward compatibility so newer CPUs have all features of
   // older CPUs. We go through switch cases from oldest features to newest.
   //   - Each case looks for features that are introduced in the next

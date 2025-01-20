@@ -25,7 +25,7 @@ limitations under the License.
 namespace {
 
 void FuzzTest(std::string data) {
-  tensorflow::StringPiece sp(data);
+  absl::string_view sp(data);
   tensorflow::uint64 val;
 
   const bool leading_digits =

@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_CONCATENATION_TESTER_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_CONCATENATION_TESTER_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <vector>
 
 #include <gtest/gtest.h>

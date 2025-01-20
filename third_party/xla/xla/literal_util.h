@@ -252,6 +252,7 @@ class LiteralUtil {
   static Literal ConvertF64ToBF16(const LiteralSlice& f64_literal);
   static Literal ConvertF64ToF32(const LiteralSlice& f64_literal);
   static Literal ConvertS32ToF32(const LiteralSlice& s32_literal);
+  static Literal ConvertS32ToS1(const LiteralSlice& s32_literal);
 
   // Creates a scalar literal whose value is the maximum value of a given
   // literal slice.
@@ -282,6 +283,12 @@ class LiteralUtil {
   static absl::StatusOr<Literal> CreateRandomLiteral(const Shape& shape,
                                                      E* engine, T mean,
                                                      T stddev);
+  // Same as the above, but takes mean and stddev as doubles.
+  template <PrimitiveType type, typename E,
+            typename T = primitive_util::NativeTypeOf<type>>
+  static absl::StatusOr<Literal> CreateRandomLiteral(const Shape& shape,
+                                                     E* engine, double mean,
+                                                     double stddev);
 
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
@@ -595,6 +602,13 @@ template <PrimitiveType type, typename T>
 template <PrimitiveType type, typename E, typename T>
 /* static */ absl::StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
     const Shape& shape, E* engine, T mean, T stddev) {
+  return CreateRandomLiteral<type>(shape, engine, static_cast<double>(mean),
+                                   static_cast<double>(stddev));
+}
+
+template <PrimitiveType type, typename E, typename T>
+/* static */ absl::StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
+    const Shape& shape, E* engine, double mean, double stddev) {
   using NativeT = primitive_util::NativeTypeOf<type>;
   std::normal_distribution<double> generator(mean, stddev);
   return CreateLiteralWithGenerator<type, NativeT>(

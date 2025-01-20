@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/builder/lib/constants.h"

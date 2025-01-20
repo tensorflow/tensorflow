@@ -244,12 +244,16 @@ cc_library(
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
     ],
 )
@@ -821,15 +825,6 @@ cc_library(
 )
 
 cc_library(
-    name = "rocm_rpath",
-    linkopts = select({
-        "//conditions:default": [
-            "-Wl,-rpath,../local_config_rocm/rocm/rocm/lib",
-        ],
-    }),
-)
-
-cc_library(
     name = "stream_executor_rocm",
     tags = [
         "gpu",
@@ -837,12 +832,12 @@ cc_library(
     ],
     deps = [
         ":rocm_platform_id",
-        ":rocm_rpath",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/host:host_platform_id",
+        "@local_config_rocm//rocm:rocm_rpath",
     ] + if_static(
         [":all_runtime"],
     ),
@@ -1022,6 +1017,7 @@ cc_test(
     deps = [
         ":rocm_status",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:status_matchers",

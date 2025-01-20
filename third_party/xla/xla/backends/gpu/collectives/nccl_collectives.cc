@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_communicator.h"
@@ -40,11 +40,11 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -69,7 +69,7 @@ absl::StatusOr<CliqueId> NcclCollectives::CreateUniqueCliqueId() const {
   VLOG(3) << "Create NCCL unique clique id";
   ncclUniqueId id;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
-  return CliqueId(std::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
+  return CliqueId(absl::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
 }
 
 bool NcclCollectives::IsGlobalConfig() const {
@@ -115,8 +115,7 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-NcclCollectives::CreateCommunicators(int32_t nranks,
-                                     const CliqueKey& clique_key,
+NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
                                      const std::optional<CliqueId>& clique_id,
                                      absl::Span<const DeviceRank> ranks,
                                      const Collectives::Config& config) {
@@ -140,15 +139,15 @@ NcclCollectives::CreateCommunicators(int32_t nranks,
   TF_RETURN_IF_ERROR(GroupStart());
   for (size_t i = 0; i < ranks.size(); ++i) {
     VLOG(1) << "Initialize NCCL communicator for rank #" << ranks[i].rank
-            << " of " << nranks
+            << " of " << clique_key.num_devices()
             << "; fingerprint(id)=" << clique_id->fingerprint();
     TF_ASSIGN_OR_RETURN(auto* device, TryCast(ranks[i].device));
     auto activate_context = device->stream_executor()->Activate();
 
     TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(*clique_id));
-    XLA_NCCL_RETURN_IF_ERROR(
-        ncclCommInitRankConfig(&comm_handles[i], nranks, nccl_unique_id,
-                               ranks[i].rank.value(), &comm_config));
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
+        &comm_handles[i], clique_key.num_devices(), nccl_unique_id,
+        ranks[i].rank.value(), &comm_config));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
 

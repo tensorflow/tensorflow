@@ -609,6 +609,12 @@ class XlaBuilder {
       const PrecisionConfig* precision_config = nullptr,
       std::optional<PrimitiveType> preferred_element_type = std::nullopt);
 
+  XlaOp RaggedAllToAll(
+      XlaOp input, XlaOp input_offsets, XlaOp send_sizes, XlaOp output,
+      XlaOp output_offsets, XlaOp recv_sizes,
+      absl::Span<const ReplicaGroup> replica_groups = {},
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
+
   XlaOp RaggedDot(
       XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
       const RaggedDotDimensionNumbers& dimension_numbers,
@@ -1314,6 +1320,11 @@ class XlaBuilder {
                          const DotDimensionNumbers& dimension_number,
                          const PrecisionConfig* precision_config,
                          std::optional<PrimitiveType> preferred_element_type);
+  friend XlaOp RaggedAllToAll(XlaOp input, XlaOp input_offsets,
+                              XlaOp send_sizes, XlaOp output,
+                              XlaOp output_offsets, XlaOp recv_sizes,
+                              absl::Span<const ReplicaGroup> replica_groups,
+                              const std::optional<ChannelHandle>& channel_id);
   friend XlaOp RaggedDot(XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
                          const RaggedDotDimensionNumbers& dimension_numbers,
                          const PrecisionConfig* precision_config,
@@ -2189,6 +2200,13 @@ XlaOp SparseDot(
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig* precision_config = nullptr,
     std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+
+// Enqueues a ragged all to all instruction onto the computation.
+XlaOp RaggedAllToAll(
+    XlaOp input, XlaOp input_offsets, XlaOp send_sizes, XlaOp output,
+    XlaOp output_offsets, XlaOp recv_sizes,
+    absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 // Enqueues a ragged dot instruction onto the computation.
 XlaOp RaggedDot(

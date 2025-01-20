@@ -87,7 +87,7 @@ Expected<RankedTensorType> ConvertTensorType(
   }
 
   size_t rank = TfLiteOpaqueTensorNumDims(tfl_opaque_tensor);
-  SmallVec<int32_t> dimensions(rank);
+  Dimensions dimensions(rank);
   for (size_t i = 0; i < rank; ++i) {
     dimensions[i] = TfLiteOpaqueTensorDim(tfl_opaque_tensor, i);
   }

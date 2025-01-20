@@ -56,6 +56,7 @@ TAGS_FILTER="${TAGS_FILTER},${UNSUPPORTED_GPU_TAGS// /,}"
 
 bazel \
     test \
+    --define xnn_enable_avxvnniint8=false --define xnn_enable_avx512fp16=false \
     --config=rocm \
     --build_tag_filters=${TAGS_FILTER} \
     --test_tag_filters=${TAGS_FILTER} \

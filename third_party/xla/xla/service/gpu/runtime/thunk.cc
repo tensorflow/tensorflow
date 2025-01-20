@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_clique_locking.h"
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -53,8 +53,10 @@ namespace gpu {
 // Thunk::CollectiveCliques
 //===----------------------------------------------------------------------===//
 
-Thunk::CollectiveCliques::CollectiveCliques(AcquiredCliquesMap cliques_map)
-    : cliques_map_(std::move(cliques_map)) {}
+Thunk::CollectiveCliques::CollectiveCliques(AcquiredCliquesMap cliques_map,
+                                            int32_t num_transient_cliques)
+    : cliques_map_(std::move(cliques_map)),
+      num_transient_cliques_(num_transient_cliques) {}
 
 absl::StatusOr<Communicator*> Thunk::CollectiveCliques::GetComm(
     const GpuCliqueKey& clique_key, RankId rank) const {
@@ -281,6 +283,9 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNcclAllToAllDone);
     CASE(kNcclSend);
     CASE(kNcclSendDone);
+    CASE(kNcclRaggedAllToAll);
+    CASE(kNcclRaggedAllToAllStart);
+    CASE(kNcclRaggedAllToAllDone);
     CASE(kNcclRecv);
     CASE(kNcclRecvDone);
     CASE(kFft);

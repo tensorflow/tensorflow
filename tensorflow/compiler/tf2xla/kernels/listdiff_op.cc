@@ -17,7 +17,7 @@ limitations under the License.
 // input.
 
 #include <array>
-#include <unordered_set>
+#include <cstdint>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"

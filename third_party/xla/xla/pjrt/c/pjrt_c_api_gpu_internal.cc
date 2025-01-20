@@ -154,9 +154,9 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.num_nodes = num_nodes;
   options.allowed_devices = visible_devices;
   options.platform_name = platform_name;
-  options.kv_store =
-      pjrt::ToCppKeyValueStore(args->kv_get_callback, args->kv_get_user_arg,
-                               args->kv_put_callback, args->kv_put_user_arg);
+  options.kv_store = pjrt::ToCppKeyValueStore(
+      args->kv_get_callback, args->kv_get_user_arg, args->kv_try_get_callback,
+      args->kv_try_get_user_arg, args->kv_put_callback, args->kv_put_user_arg);
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
@@ -399,12 +399,16 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_FFI_Extension ffi_extension = pjrt::CreateFfiExtension(
       reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension));
 
+  static PJRT_MemoryDescriptions_Extension memory_descriptions_extension =
+      pjrt::CreateMemoryDescriptionsExtension(
+          reinterpret_cast<PJRT_Extension_Base*>(&ffi_extension));
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::gpu_plugin::PJRT_Client_Create,
       pjrt::gpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
       pjrt::PJRT_Plugin_Initialize_NoOp,
-      reinterpret_cast<PJRT_Extension_Base*>(&ffi_extension),
+      reinterpret_cast<PJRT_Extension_Base*>(&memory_descriptions_extension),
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

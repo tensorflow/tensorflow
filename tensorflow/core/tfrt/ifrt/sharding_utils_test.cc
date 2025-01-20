@@ -143,7 +143,7 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
                           device_list, thread_pool)
           .Await());
 
-  EXPECT_THAT(GetParam().expected_out_tensor, TensorEq(output_tensor));
+  EXPECT_THAT(output_tensor, TensorEq(GetParam().expected_out_tensor));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -322,6 +322,59 @@ INSTANTIATE_TEST_SUITE_P(
                     TensorShape({4, 1, 4})),
                 .device_indices = {3, 2, 1, 0},
                 .sharding = Tile({2, 1, 2}),
+            },
+            // 2-d sharding with last tile replicated.
+            {
+                .split_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2, 5, 6},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({1, 2, 5, 6},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({9, 10, 13, 14},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({9, 10, 13, 14},
+                                                TensorShape({2, 2})),
+                    },
+                .expected_out_tensor = test::AsTensor<int32_t>(
+                    {1, 2, 5, 6, 9, 10, 13, 14}, TensorShape({4, 2})),
+                .device_indices = {0, 1, 2, 3},
+                .sharding = PartialTile({2, 1, 2}),
+            },
+            {
+                .split_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2, 5, 6},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({1, 2, 5, 6},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({1, 2, 5, 6},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({1, 2, 5, 6},
+                                                TensorShape({2, 2})),
+                    },
+                .expected_out_tensor =
+                    test::AsTensor<int32_t>({1, 2, 5, 6}, TensorShape({2, 2})),
+                .device_indices = {0, 1, 2, 3},
+                .sharding = PartialTile({1, 1, 4}),
+            },
+            {
+                .split_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2, 5, 6},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({3, 4, 7, 8},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({9, 10, 13, 14},
+                                                TensorShape({2, 2})),
+                        test::AsTensor<int32_t>({11, 12, 15, 16},
+                                                TensorShape({2, 2})),
+                    },
+                .expected_out_tensor = test::AsTensor<int32_t>(
+                    {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+                    TensorShape({4, 4})),
+                .device_indices = {0, 1, 2, 3},
+                .sharding = PartialTile({2, 2, 1}),
             },
         }));
 
@@ -528,6 +581,29 @@ INSTANTIATE_TEST_SUITE_P(
                     },
                 .device_ids = {0, 1, 2, 3},
                 .sharding = Tile({2, 1, 2}),
+            },
+            {
+                .in_tensor = test::AsTensor<int32_t>(
+                    {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                     13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24},
+                    TensorShape({4, 1, 6})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2, 7, 8},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({3, 4, 9, 10},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({5, 6, 11, 12},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({13, 14, 19, 20},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({15, 16, 21, 22},
+                                                TensorShape({2, 1, 2})),
+                        test::AsTensor<int32_t>({17, 18, 23, 24},
+                                                TensorShape({2, 1, 2})),
+                    },
+                .device_ids = {0, 1, 2, 3, 4, 5},
+                .sharding = Tile({2, 1, 3}),
             },
             // Partial replication
             {

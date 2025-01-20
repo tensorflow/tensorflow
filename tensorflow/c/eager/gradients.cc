@@ -324,7 +324,7 @@ absl::Status AddInputList(AbstractOperation* op_,
 absl::Status SetAttrString(AbstractOperation* op_, const char* attr_name,
                            const char* data, size_t length,
                            ForwardOperation* forward_op_) {
-  forward_op_->attrs.Set(attr_name, StringPiece(data, length));
+  forward_op_->attrs.Set(attr_name, absl::string_view(data, length));
   return op_->SetAttrString(attr_name, data, length);
 }
 absl::Status SetAttrInt(AbstractOperation* op_, const char* attr_name,
@@ -390,9 +390,9 @@ absl::Status SetAttrTensor(AbstractOperation* op_, const char* attr_name,
 absl::Status SetAttrStringList(AbstractOperation* op_, const char* attr_name,
                                const void* const* values, const size_t* lengths,
                                int num_values, ForwardOperation* forward_op_) {
-  std::vector<StringPiece> v(num_values);
+  std::vector<absl::string_view> v(num_values);
   for (int i = 0; i < num_values; ++i) {
-    v[i] = StringPiece(static_cast<const char*>(values[i]), lengths[i]);
+    v[i] = absl::string_view(static_cast<const char*>(values[i]), lengths[i]);
   }
   forward_op_->attrs.Set(attr_name, v);
   return op_->SetAttrStringList(attr_name, values, lengths, num_values);

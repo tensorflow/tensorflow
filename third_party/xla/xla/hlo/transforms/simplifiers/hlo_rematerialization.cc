@@ -25,7 +25,6 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -2898,7 +2897,7 @@ absl::StatusOr<bool> HloRematerialization::Run(
     // at the same time, as that will cause the asynchronous callee usage to be
     // added to the main thread callers usage. The callee's memory is
     // preallocated, so the caller doesn't pay for it.
-    absl::flat_hash_set<std::string_view> async_threads;
+    absl::flat_hash_set<absl::string_view> async_threads;
     for (const auto& [computation, _] :
          options_.async_computation_parallelism) {
       async_threads.insert(computation->execution_thread());

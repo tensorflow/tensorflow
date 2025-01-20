@@ -198,9 +198,9 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer, TraceCommandBufferFactory::Create(
                                                executor,
                                                [&](Stream* stream) {
-                                                 return stream->Launch(
+                                                 return add->Launch(
                                                      ThreadDim(), BlockDim(4),
-                                                     *add, args);
+                                                     stream, args);
                                                },
                                                primary));
 
@@ -1663,7 +1663,7 @@ static void BM_TraceCommandBuffer(benchmark::State& state) {
   for (auto s : state) {
     auto launch_kernels = [&](Stream* stream) {
       for (int i = 1; i < state.range(0); ++i) {
-        CHECK_OK(stream->ThenLaunch(ThreadDim(), BlockDim(4), add, b, b, b));
+        CHECK_OK(add.Launch(ThreadDim(), BlockDim(4), stream, b, b, b));
       }
       return absl::OkStatus();
     };

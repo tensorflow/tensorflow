@@ -19,7 +19,7 @@
 #include "absl/log/check.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/security/server_credentials.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace tsl {
 

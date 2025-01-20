@@ -18,8 +18,8 @@ limitations under the License.
 #include <string>
 
 #include "xla/tsl/c/tsl_status_internal.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 
 using ::tsl::Status;
 using ::tsl::error::Code;

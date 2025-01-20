@@ -43,6 +43,74 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "sol_latency_estimator",
+    srcs = ["sol_latency_estimator.cc"],
+    hdrs = ["sol_latency_estimator.h"],
+    deps = [
+        ":gpu_hlo_cost_analysis",
+        ":gpu_performance_model",
+        ":gpu_performance_model_base",
+        ":sol_gpu_cost_model",
+        "//xla:util",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service:latency_hiding_scheduler",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+xla_cc_test(
+    name = "sol_latency_estimator_test",
+    srcs = ["sol_latency_estimator_test.cc"],
+    deps = [
+        ":sol_gpu_cost_model",
+        ":sol_latency_estimator",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "sol_gpu_cost_model",
+    srcs = ["sol_gpu_cost_model.cc"],
+    hdrs = ["sol_gpu_cost_model.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+xla_cc_test(
+    name = "sol_gpu_cost_model_test",
+    srcs = ["sol_gpu_cost_model_test.cc"],
+    deps = [
+        ":sol_gpu_cost_model",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 xla_test(
     name = "analytical_latency_estimator_test",
     srcs = ["analytical_latency_estimator_test.cc"],
@@ -128,11 +196,11 @@ xla_cc_test(
         ":gpu_hlo_cost_analysis",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:hlo_cost_analysis",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
@@ -175,16 +243,14 @@ xla_cc_test(
     deps = [
         ":gpu_hlo_cost_analysis",
         ":hlo_op_profiles",
-        "//xla:shape_util",
-        "//xla:test_helpers",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_cost_analysis",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -501,9 +567,9 @@ xla_cc_test(
         ":symbolic_tiled_hlo_instruction",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:verified_hlo_module",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
@@ -617,7 +683,6 @@ xla_cc_test(
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:instruction_fusion",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:verified_hlo_module",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -667,7 +732,6 @@ xla_cc_test(
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:verified_hlo_module",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
@@ -686,6 +750,7 @@ cc_library(
         ":tiled_hlo_instruction_or_computation",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
@@ -711,6 +776,7 @@ xla_cc_test(
         ":symbolic_tile_analysis",
         ":tiled_hlo_instruction_or_computation",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:hlo_module_config",
@@ -875,5 +941,43 @@ xla_test(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "sol_gpu_cost_model_stats_collection",
+    srcs = ["sol_gpu_cost_model_stats_collection.cc"],
+    hdrs = ["sol_gpu_cost_model_stats_collection.h"],
+    deps = [
+        ":sol_gpu_cost_model",
+        ":sol_latency_estimator",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:hlo_verifier",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:status",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+xla_cc_test(
+    name = "sol_gpu_cost_model_stats_collection_test",
+    srcs = ["sol_gpu_cost_model_stats_collection_test.cc"],
+    deps = [
+        ":sol_gpu_cost_model_stats_collection",
+        "//xla:shape_util",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )

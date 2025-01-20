@@ -16,10 +16,12 @@
 
 #include <cstdint>
 #include <initializer_list>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
@@ -184,6 +186,13 @@ TEST(ExpectedWithNoValue, WithError) {
   EXPECT_FALSE(expected.HasValue());
   EXPECT_EQ(expected.Error().Status(), kErrorStatus);
   EXPECT_EQ(expected.Error().Message(), "MESSAGE");
+}
+
+TEST(ExpectedWithNoValue, OStreamOutput) {
+  Expected<void> expected(Unexpected(kErrorStatus, "MESSAGE"));
+  std::ostringstream oss;
+  oss << expected.Error();
+  EXPECT_THAT(oss.str(), testing::HasSubstr("MESSAGE"));
 }
 
 }  // namespace

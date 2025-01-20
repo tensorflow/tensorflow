@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_CLOUD_NOW_SECONDS_ENV_H_
 #define XLA_TSL_PLATFORM_CLOUD_NOW_SECONDS_ENV_H_
 
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 

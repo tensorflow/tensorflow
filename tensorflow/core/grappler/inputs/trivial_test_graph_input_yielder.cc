@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"

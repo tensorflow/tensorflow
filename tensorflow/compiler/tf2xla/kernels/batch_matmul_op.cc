@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {

@@ -14,7 +14,6 @@
 # =============================================================================
 """Tests for python.compiler.mlir."""
 
-import os
 from tensorflow.python.compiler.mlir import mlir
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
@@ -23,9 +22,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
-from tensorflow.python.pywrap_mlir import experimental_tflite_to_tosa_bytecode
 from tensorflow.python.pywrap_mlir import import_graphdef
 
 
@@ -159,20 +156,6 @@ class MLIRConcreteFunctionImportTest(test.TestCase):
     mlir_module = mlir.convert_function(concrete_function, pass_pipeline='')
     self.assertRegex(mlir_module, r'tf\.PrintV2')
     self.assertRegex(mlir_module, r'tf_executor.fetch.*: !tf_executor.control')
-
-
-class MLIRFlatbufferImportTest(test.TestCase):
-
-  def testImport(self):
-    """Tests the basic flow of `experimental_tflite_to_tosa_bytecode`."""
-    filename = os.path.join(self.get_temp_dir(), "multi_add_tosa.mlirbc")
-    experimental_tflite_to_tosa_bytecode(
-        resource_loader.get_path_to_datafile("multi_add.tflite"), filename
-    )
-    with open(filename, mode="rb") as f:
-      chunk = f.read(4)
-    # Just verify output is bytecode.
-    self.assertEqual(b"ML\xefR", chunk)
 
 
 if __name__ == '__main__':

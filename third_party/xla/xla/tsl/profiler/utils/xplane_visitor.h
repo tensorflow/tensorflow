@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/timespan.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -207,6 +207,14 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   bool operator<(const XEventVisitor& other) const {
     return GetTimespan() < other.GetTimespan();
+  }
+
+  bool operator==(const XEventVisitor& other) const {
+    return GetTimespan() == other.GetTimespan();
+  }
+
+  bool operator<=(const XEventVisitor& other) const {
+    return GetTimespan() <= other.GetTimespan();
   }
 
   const XEventMetadata* metadata() const { return metadata_; }

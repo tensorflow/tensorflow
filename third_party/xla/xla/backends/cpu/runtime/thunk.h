@@ -22,28 +22,26 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
-#include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -89,6 +87,7 @@ class Thunk {
     kSort,
     kTopK,
     kWhile,
+    kXnnFusion,
   };
 
   struct Info {
@@ -133,7 +132,7 @@ class Thunk {
   Kind kind() const { return kind_; }
   const Info& info() const { return info_; }
 
-  static std::string_view KindToString(Kind kind);
+  static absl::string_view KindToString(Kind kind);
 
   // Returns the list of buffers used by a thunk. Thunk executor relies on this
   // information to execute thunks concurrently and to avoid data races.
@@ -164,13 +163,13 @@ class Thunk {
     GlobalDeviceId global_device_id;
 
     const DeviceAssignment* device_assignment = nullptr;
-    CollectivesInterface* collectives = nullptr;
+    CpuCollectives* collectives = nullptr;
 
    private:
     CollectiveExecuteParams(RunId run_id, int64_t local_device_ordinal,
                             GlobalDeviceId global_device_id,
                             const DeviceAssignment* device_assignment,
-                            CollectivesInterface* collectives);
+                            CpuCollectives* collectives);
   };
 
   //===--------------------------------------------------------------------===//

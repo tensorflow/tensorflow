@@ -28,7 +28,6 @@ limitations under the License.
 #include <vector>
 
 #include "Eigen/Core"  // from @eigen_archive
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -45,17 +44,18 @@ limitations under the License.
 #include "tensorflow/core/util/matmul_autotune.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/matmul_util.h"
 #include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "xla/stream_executor/host_or_device_scalar.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -602,9 +602,9 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     static const bool use_autotune = MatmulAutotuneEnable();
     bool bCublasLtSupport = true;
 
-    const auto& cc = stream->parent()->GetDeviceDescription().
-                    gpu_compute_capability();
-    if(auto *procm = std::get_if< se::RocmComputeCapability >(&cc)) {
+    const auto& cc =
+        stream->parent()->GetDeviceDescription().gpu_compute_capability();
+    if (auto* procm = std::get_if<se::RocmComputeCapability>(&cc)) {
       bCublasLtSupport = procm->gfx9_mi200_or_later();
     }
 
@@ -660,10 +660,10 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             // scratch space is deallocated between runs.
             BlasScratchAllocator scratch_allocator(context, max_scratch_size);
             Status cublas_launch_status =
-                BlasLtMatmulPlanCache::ExecuteOnStream(stream, 
-                    *plan_and_algorithms,
-                    *a_ptrs[0], *b_ptrs[0], *c_ptrs[0], i, scratch_allocator,
-                               se::DeviceMemoryBase{}, &profile_result);
+                BlasLtMatmulPlanCache::ExecuteOnStream(
+                    stream, *plan_and_algorithms, *a_ptrs[0], *b_ptrs[0],
+                    *c_ptrs[0], i, scratch_allocator, se::DeviceMemoryBase{},
+                    &profile_result);
 
             VLOG(4) << "  Autotune algorithm " << i
                     << " result: " << profile_result.elapsed_time_in_ms()
@@ -701,12 +701,10 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                 << "trans_x = " << trans_x << "trans_y = " << trans_y
                 << "adj_x = " << adj_x << "adj_y = " << adj_y;
 
-        OP_REQUIRES_OK(
-            context,
-            BlasLtMatmulPlanCache::ExecuteOnStream(stream, 
-            *plan_and_algorithms,
-            *a_ptrs[0], *b_ptrs[0], *c_ptrs[0], 
-            algorithm_idx, scratch_allocator, se::DeviceMemoryBase{}));
+        OP_REQUIRES_OK(context, BlasLtMatmulPlanCache::ExecuteOnStream(
+                                    stream, *plan_and_algorithms, *a_ptrs[0],
+                                    *b_ptrs[0], *c_ptrs[0], algorithm_idx,
+                                    scratch_allocator, se::DeviceMemoryBase{}));
       } else {  // requires mixed broadcasting
         const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
         const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();

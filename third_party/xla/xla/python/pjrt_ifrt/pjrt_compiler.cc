@@ -120,8 +120,7 @@ absl::StatusOr<std::unique_ptr<Executable>> PjRtCompiler::Compile(
       auto executable,
       PjRtCompile(xla_compile_options->compile_options,
                   xla_program->mlir_module, *pjrt_topology->description()));
-  return PjRtExecutable::Create(std::move(executable),
-                                std::move(xla_compile_options));
+  return PjRtExecutable::Create(std::move(executable));
 }
 
 absl::StatusOr<std::unique_ptr<LoadedExecutable>>

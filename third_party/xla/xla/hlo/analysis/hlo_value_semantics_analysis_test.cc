@@ -722,7 +722,7 @@ TEST_F(EinsumHeightAnalysisTest, MnistTrainingLoop) {
 
 TEST_F(HloValueSemanticsAnalysisTest,
        HandleIncompleteForeignThreadComputation) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule Module
 
 ENTRY entry {

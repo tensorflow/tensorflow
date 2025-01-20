@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tsl/platform/stacktrace.h"
 
 namespace tensorflow {
 
@@ -197,6 +198,8 @@ WorkerSession::WorkerSession(
 }
 
 WorkerSession::~WorkerSession() {
+  VLOG(1) << "WorkerSession::~WorkerSession @@stacktrace\n "
+          << tsl::CurrentStackTrace();
   if (graph_mgr_) {
     absl::Status s = graph_mgr_->DeregisterAll();
     if (!s.ok()) {

@@ -14,19 +14,19 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
 
+#include <deque>
 #include <optional>
 #include <string>
-#include <deque>
 #include <utility>
 
-#include "xla/status_macros.h"
-#include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/matmul_autotune.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 
@@ -93,10 +93,11 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
 
 }  // namespace
 
-/* static */ BlasLtMatmulPlanCache& BlasLtMatmulPlanCache::i(se::Stream *stream) {
+/* static */ BlasLtMatmulPlanCache& BlasLtMatmulPlanCache::i(
+    se::Stream* stream) {
   static absl::Mutex m(absl::kConstInit);
   // Each GPU gets different cache instance
-  static std::deque< BlasLtMatmulPlanCache > meta(8);
+  static std::deque<BlasLtMatmulPlanCache> meta(8);
   absl::MutexLock lock(&m);
   size_t dev_id = stream->parent()->device_ordinal();
   if (dev_id >= meta.size()) meta.resize(dev_id + 1);
@@ -105,17 +106,16 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
 
 /* static */ auto BlasLtMatmulPlanCache::GetOrCreate(
     se::Stream* stream, const BlasLtMatmulPlanParams& params,
-    absl::Mutex** ppmu, std::optional<int> max_algorithm_count) -> StatusOr<const Entry *>{
+    absl::Mutex** ppmu, std::optional<int> max_algorithm_count)
+    -> StatusOr<const Entry*> {
   static const int64_t max_scratch_size =
       GetWorkspaceLimit(1LL << 32);  // 4GB by default
   static const int64_t max_autotune_algorithm_count =
       MatmulMaxAutotuneAlgorithmCount();
 
   if (!max_algorithm_count) max_algorithm_count = max_autotune_algorithm_count;
-
   auto& self = BlasLtMatmulPlanCache::i(stream);
 
-  absl::MutexLock lock(self.mutex_.get());
   auto [ptr, inserted] = self.map_.emplace(params, Entry{});
   auto& entry = ptr->second;
   if (inserted) {
@@ -167,7 +167,7 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
     };
 
     TF_ASSIGN_OR_RETURN(entry.plan, se::gpu::BlasLt::GetMatmulPlan(
-                                       stream, cfg, params.epilogue));
+                                        stream, cfg, params.epilogue));
 
     TF_ASSIGN_OR_RETURN(
         entry.algorithms,
@@ -177,31 +177,23 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
   return &entry;
 }
 
-/*static */ Status BlasLtMatmulPlanCache::ExecuteOnStream(se::Stream* stream, 
-                      const Entry& entry,
-                      const se::DeviceMemoryBase& a,
-                      const se::DeviceMemoryBase& b, 
-                      se::DeviceMemoryBase& c,
-                      size_t algorithm_idx, 
-                      se::ScratchAllocator& scratch_allocator,
-                      const se::DeviceMemoryBase& bias,
-                      se::blas::ProfileResult* profile_result) {
+/*static */ Status BlasLtMatmulPlanCache::ExecuteOnStream(
+    se::Stream* stream, const Entry& entry, const se::DeviceMemoryBase& a,
+    const se::DeviceMemoryBase& b, se::DeviceMemoryBase& c,
+    size_t algorithm_idx, se::ScratchAllocator& scratch_allocator,
+    const se::DeviceMemoryBase& bias, se::blas::ProfileResult* profile_result) {
+  return entry.plan->ExecuteOnStream(stream, a, b, c, c,
+                                     bias,                    // bias_buffer
+                                     se::DeviceMemoryBase{},  // aux_buffer
+                                     se::DeviceMemoryBase{},  // a_scale_buffer
+                                     se::DeviceMemoryBase{},  // b_scale_buffer
+                                     se::DeviceMemoryBase{},  // c_scale_buffer
+                                     se::DeviceMemoryBase{},  // d_scale_buffer
+                                     se::DeviceMemoryBase{},  // d_amax_buffer
 
-  return entry.plan->ExecuteOnStream(
-        stream, a, b, c, c,
-        bias,                  // bias_buffer
-        se::DeviceMemoryBase{}, // aux_buffer
-        se::DeviceMemoryBase{}, // a_scale_buffer
-        se::DeviceMemoryBase{}, // b_scale_buffer
-        se::DeviceMemoryBase{}, // c_scale_buffer
-        se::DeviceMemoryBase{}, // d_scale_buffer
-        se::DeviceMemoryBase{}, // d_amax_buffer
-        entry.algorithms[algorithm_idx],
-        scratch_allocator, 
-        profile_result);
+                                     entry.algorithms[algorithm_idx],
+                                     scratch_allocator, profile_result);
 }
-
-
 }  // namespace tensorflow
 
 #endif

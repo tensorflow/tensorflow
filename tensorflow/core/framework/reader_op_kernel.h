@@ -68,7 +68,7 @@ class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
   virtual bool IsCancellable() const { return false; }
   virtual void Cancel() {}
 
-  Status CreateResource(ReaderInterface** reader)
+  absl::Status CreateResource(ReaderInterface** reader)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) override {
     *reader = factory_();
     if (*reader == nullptr) {

@@ -23,12 +23,9 @@ limitations under the License.
 // 3. insert tosa.RESCALE int8 -> uint8 if original returned tensor is uint8
 // typed.
 
-#include <climits>
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <memory>
-#include <numeric>
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -333,7 +330,7 @@ void ConvertUint8ToInt8::runOnOperation() {
 
   // Convert uint8 const tensor. const needs to be handled specifically.
   patterns.add<ConvertUint8QConstOp>(&ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 
   // Replace uint8 tensor in the graph and insert rescale as needed.
   (void)convert_graph_uint8_tensor(ctx, func);

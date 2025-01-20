@@ -19,7 +19,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "xla/tsl/lib/random/philox_random.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/random.h"
 
 namespace tsl {

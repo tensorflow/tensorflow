@@ -96,6 +96,40 @@ class LoadTest(test.TestCase):
     return path
 
   @test_util.run_in_graph_and_eager_modes
+  def test_pretty_printed_signature(self):
+    imported = load.load(
+        self._v1_single_metagraph_saved_model(use_resource=True)
+    )
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(variables.local_variables_initializer())
+    concrete_fn = imported.signatures["serving_default"]
+
+    summary = (
+        "(*, start: TensorSpec(shape=<unknown>, dtype=tf.float32,"
+        " name='start')) -> Dict[['output', TensorSpec(shape=<unknown>,"
+        " dtype=tf.float32, name=None)]]"
+    )
+    details = (
+        r"Input Parameters:\n"
+        r"  start \(KEYWORD_ONLY\): TensorSpec\(shape=<unknown>,"
+        r" dtype=tf\.float32, name='start'\)\n"
+        r"Output Type:\n"
+        r"  Dict\[\['output', TensorSpec\(shape=<unknown>,"
+        r" dtype=tf\.float32, name=None\)\]\]\n"
+        r"Captures:\n"
+        r"  \d+: TensorSpec\(shape=\(\), dtype=tf\.resource, name=None\)\n"
+        r"  \d+: TensorSpec\(shape=\(\), dtype=tf\.resource, name=None\)"
+    )
+    self.assertEqual(
+        concrete_fn.pretty_printed_signature(verbose=False), summary
+    )
+    self.assertRegex(
+        concrete_fn.pretty_printed_signature(verbose=True), details
+    )
+    self.assertRegex(repr(concrete_fn), r"<ConcreteFunction .* at .*")
+    self.assertRegex(str(concrete_fn), r"ConcreteFunction " + details)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_resource_variable_import(self):
     imported = load.load(
         self._v1_single_metagraph_saved_model(use_resource=True)
@@ -129,10 +163,6 @@ class LoadTest(test.TestCase):
     saved = self._v1_single_metagraph_saved_model(use_resource=False)
     imported = load.load(saved)
     fn = imported.signatures["serving_default"]
-    self.assertIn("start", fn.function_type.parameters)
-    # TODO(wangpeng): More properly test pretty-printing, similar to
-    #   polymorphic_function_test.py/testPrettyPrintedSignature.
-    self.assertIn("start", str(fn))
     self.evaluate(lookup_ops.tables_initializer())
     self.evaluate(ops.get_collection("saved_model_initializers"))
     self.assertEqual(

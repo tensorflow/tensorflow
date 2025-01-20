@@ -80,7 +80,7 @@ TEST(DispatchDelegate, MediaTekCpuBuffer) {
 
   // Get the list of signatures and check it.
   auto signature_defs = interpreter.signature_keys();
-  ASSERT_EQ(signature_defs.size(), 0);
+  ASSERT_EQ(signature_defs.size(), 1);
 
   tflite::impl::SignatureRunner* runner =
       interpreter.GetSignatureRunner(/*signature_key=*/nullptr);
@@ -186,7 +186,7 @@ TEST(DispatchDelegate, MediaTekHwBuffer) {
 
   // Get the list of signatures and check it.
   auto signature_defs = interpreter.signature_keys();
-  ASSERT_EQ(signature_defs.size(), 0);
+  ASSERT_EQ(signature_defs.size(), 1);
 
   tflite::impl::SignatureRunner* runner =
       interpreter.GetSignatureRunner(/*signature_key=*/nullptr);
@@ -234,7 +234,7 @@ TEST(DispatchDelegate, CompiledModel) {
                   "MediaTek NPU";
 #endif
 
-  auto res_compiled_model = CompiledModel::Create(*model, kHwAccelNpu);
+  auto res_compiled_model = CompiledModel::Create(*model);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = *res_compiled_model;
 

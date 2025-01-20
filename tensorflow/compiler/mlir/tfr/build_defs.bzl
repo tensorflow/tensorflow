@@ -49,7 +49,6 @@ def gen_op_libraries(
         srcs = [],
         outs = [name + ".inc.cc"],
         cmd =
-            "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
             "$(location %s) --output=$@ --gen_register_op=true" % gen_op_lib_exec,
         tools = [":" + gen_op_lib_exec],
         tags = tags,
@@ -114,7 +113,6 @@ def gen_op_libraries(
         srcs = [],
         outs = [name + ".mlir"],
         cmd =
-            "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
             "$(location %s) --output=$@ --gen_register_op=false" % gen_tfr_lib_exec,
         tools = [":" + gen_tfr_lib_exec],
         tags = tags,

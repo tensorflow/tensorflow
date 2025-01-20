@@ -33,11 +33,8 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/xla.pb.h"
@@ -203,12 +200,6 @@ class AutotuneConfig {
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;
 
 struct AutotunerUtil {
-  // Create a buffer for a given operation using redzone checker, initialize
-  // based on a given rng state.
-  static absl::StatusOr<se::DeviceMemoryBase> CreateBuffer(
-      se::RedzoneAllocator& allocator, const Shape& shape,
-      const AutotuneConfig& config, int64_t& rng_state);
-
   static absl::StatusOr<AutotuneResult> Autotune(
       const HloInstruction* instr, const AutotuneConfig& config,
       const AutotuneNoCacheFn& autotune_fn);
@@ -233,10 +224,6 @@ struct AutotunerUtil {
   static absl::StatusOr<bool> AddResult(const AutotuneCacheKey& key,
                                         AutotuneResult result,
                                         const AutotuneConfig& config);
-
-  // Creates a RedzoneAllocator from a given config.
-  static absl::StatusOr<se::RedzoneAllocator> CreateRedzoneAllocator(
-      const AutotuneConfig& config, const DebugOptions& opts);
 
   // Functions to save/load XLA's autotuning results.
   //

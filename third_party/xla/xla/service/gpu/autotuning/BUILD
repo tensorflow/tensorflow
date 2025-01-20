@@ -7,6 +7,7 @@ load(
 )
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -126,7 +127,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms:float_normalization",
+        "//xla/hlo/transforms/simplifiers:float_normalization",
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/pjrt/distributed:key_value_store_interface",
@@ -159,9 +160,12 @@ cc_library(
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor/cuda:ptx_compiler_helpers",
         "//xla/stream_executor/gpu:redzone_allocator",
+        "//xla/stream_executor/integrations:tf_allocator_adapter",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/lib/core:bits",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/util/proto:proto_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -176,7 +180,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
@@ -228,10 +231,8 @@ xla_test(
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_utils",
-        "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/lib/core:status_test_util",
@@ -297,6 +298,7 @@ cc_library(
     name = "autotuner_status_key",
     srcs = ["autotuner_status_key.cc"],
     hdrs = ["autotuner_status_key.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = ["@com_google_absl//absl/strings"],
 )
 
@@ -304,7 +306,7 @@ cc_library(
     name = "autotuner_util",
     srcs = ["autotuner_util.cc"],
     hdrs = ["autotuner_util.h"],
-    tags = ["gpu"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":autotuner_status_key",
         "//xla:autotune_results_proto_cc",
@@ -322,7 +324,6 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
-        "//xla/stream_executor/gpu:redzone_allocator",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -516,7 +517,7 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/service:platform_util",

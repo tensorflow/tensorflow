@@ -50,20 +50,6 @@ config_setting(
     },
 )
 
-config_setting(
-    name = "mips",
-    values = {
-        "cpu": "mips",
-    },
-)
-
-config_setting(
-    name = "mips64",
-    values = {
-        "cpu": "mips64",
-    },
-)
-
 # Without "cpu":"k8", when building with --copt=-DTF_LITE_STATIC_MEMORY, we get
 # the following error:
 # Multiple matches are not allowed unless one is unambiguously more specialized.
@@ -313,6 +299,8 @@ cc_test(
         ":simple_planner",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
     ],
 )

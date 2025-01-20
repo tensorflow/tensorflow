@@ -120,6 +120,14 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
       "python_x86_64",
       "python_aarch64",
       "llvm-project/llvm/",
+      "external/cpuinfo",
+      "external/FXdiv",
+      "external/net_zstd",
+      "external/org_brotli/c",
+      "external/org_brotli/_virtual_includes",
+      "external/pthreadpool",
+      "external/riegeli/riegeli",
+      "external/XNNPACK/src/",
   ]
 
   path_to_replace = {

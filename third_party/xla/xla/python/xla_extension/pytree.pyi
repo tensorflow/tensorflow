@@ -48,6 +48,9 @@ class PyTreeRegistry:
   def flatten_one_level(
       self, tree: Any
   ) -> Optional[Tuple[Iterable[Any], Any]]: ...
+  def flatten_one_level_with_keys(
+      self, tree: Any
+  ) -> Optional[Tuple[Iterable[_KeyLeafPair], Any]]: ...
   def flatten_with_path(
       self,
       tree: Any,

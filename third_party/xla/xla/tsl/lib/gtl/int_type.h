@@ -159,8 +159,8 @@ limitations under the License.
 #include <ostream>  // NOLINT
 #include <unordered_map>
 
-#include "tsl/platform/macros.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace gtl {

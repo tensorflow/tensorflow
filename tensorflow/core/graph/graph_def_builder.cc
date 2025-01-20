@@ -27,11 +27,11 @@ GraphDefBuilder::Options::Options(Graph* graph, absl::Status* status)
 GraphDefBuilder::Options::~Options() {}
 
 GraphDefBuilder::Options GraphDefBuilder::Options::WithName(
-    StringPiece name) const {
+    absl::string_view name) const {
   return Options(*this).WithNameImpl(name);
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithDevice(
-    StringPiece device) const {
+    absl::string_view device) const {
   return Options(*this).WithDeviceImpl(device);
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInput(
@@ -43,12 +43,12 @@ GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputs(
   return Options(*this).WithControlInputsImpl(control_inputs);
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithNameImpl(
-    StringPiece name) {
+    absl::string_view name) {
   name_ = string(name);
   return *this;
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithDeviceImpl(
-    StringPiece device) {
+    absl::string_view device) {
   device_ = string(device);
   return *this;
 }
@@ -72,7 +72,7 @@ absl::Status GraphDefBuilder::ToGraphDef(GraphDef* graph_def) const {
   return status_;
 }
 
-string GraphDefBuilder::Options::GetNameForOp(StringPiece op) const {
+string GraphDefBuilder::Options::GetNameForOp(absl::string_view op) const {
   if (name_.empty()) return graph_->NewName(op);
   return name_;
 }

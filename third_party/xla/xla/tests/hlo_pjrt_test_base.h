@@ -22,14 +22,17 @@ limitations under the License.
 
 namespace xla {
 
+struct HloPjRtTestBaseOptions {
+  bool verifier_layout_sensitive = false;
+  bool allow_mixed_precision_in_hlo_verifier = true;
+  HloPredicate instruction_can_change_layout_func;
+};
+
 class HloPjRtTestBase : public HloRunnerAgnosticTestBase {
  protected:
   // This uses the SE interpreter backend for the reference backend and
   // automatically finds a PjRt backend for the test backend.
-  explicit HloPjRtTestBase(
-      bool verifier_layout_sensitive = false,
-      bool allow_mixed_precision_in_hlo_verifier = true,
-      HloPredicate instruction_can_change_layout_func = {});
+  explicit HloPjRtTestBase(HloPjRtTestBaseOptions options = {});
 };
 
 }  // namespace xla

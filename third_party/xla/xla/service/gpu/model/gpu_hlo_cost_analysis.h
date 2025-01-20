@@ -72,6 +72,11 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   absl::Status HandleConcatenate(const HloInstruction* hlo) override;
   absl::Status HandleAllReduce(const HloInstruction* allreduce) override;
   absl::Status HandleReduce(const HloInstruction* hlo) override;
+  absl::Status HandleAllReduceStart(const HloInstruction* hlo) override;
+  absl::Status HandleAllGather(const HloInstruction* hlo) override;
+  absl::Status HandleAllGatherStart(const HloInstruction* hlo) override;
+  absl::Status HandleAsyncStart(const HloInstruction* hlo) override;
+  absl::Status HandleReduceScatter(const HloInstruction* hlo) override;
 
   // Estimate the total size of IR accounting for both duplication
   // of producer code by consumer and the total number of basic blocks.

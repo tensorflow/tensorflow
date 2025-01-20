@@ -20,12 +20,12 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
@@ -36,7 +36,6 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Target/TargetMachine.h"
@@ -63,8 +62,8 @@ static absl::StatusOr<std::unique_ptr<FunctionLibrary>> Compile(
 
 // Parses the LLVM IR into a ThreadSafeModule.
 static absl::StatusOr<llvm::orc::ThreadSafeModule> ParseModule(
-    llvm::orc::ThreadSafeContext& context, std::string_view ir,
-    std::string_view name) {
+    llvm::orc::ThreadSafeContext& context, absl::string_view ir,
+    absl::string_view name) {
   llvm::SMDiagnostic diagnostic;
   llvm::MemoryBufferRef ir_buffer(ir, name);
 
@@ -97,7 +96,7 @@ TEST(JitCompilerTest, Compile) {
       JitCompiler::Create(llvm::TargetOptions(), std::move(options),
                           std::move(task_runner)));
 
-  constexpr std::string_view add_in_place_ir = R"(
+  constexpr absl::string_view add_in_place_ir = R"(
     define void @AddInplace(ptr %arg) {
       %v0 = load float, ptr %arg
       %v1 = fadd float %v0, %v0
@@ -105,7 +104,7 @@ TEST(JitCompilerTest, Compile) {
       ret void
     })";
 
-  constexpr std::string_view mul_in_place_ir = R"(
+  constexpr absl::string_view mul_in_place_ir = R"(
     define void @MulInplace(ptr %arg) {
       %v0 = load float, ptr %arg
       %v1 = fmul float %v0, %v0
@@ -113,7 +112,7 @@ TEST(JitCompilerTest, Compile) {
       ret void
     })";
 
-  auto add_module = [&](std::string_view ir, std::string_view name,
+  auto add_module = [&](absl::string_view ir, absl::string_view name,
                         size_t dylib_index) -> absl::Status {
     TF_ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
                         ParseModule(tsc, ir, name));
@@ -189,7 +188,7 @@ TEST(JitCompilerTest, ExternalDefinitionGenerator) {
       JitCompiler::Create(llvm::TargetOptions(), std::move(options),
                           /*task_runner=*/nullptr));
 
-  constexpr std::string_view call_external_fn_ir = R"(
+  constexpr absl::string_view call_external_fn_ir = R"(
     declare void @__external_fn(ptr %arg)
 
     define void @CallExternalFn(ptr %arg) {

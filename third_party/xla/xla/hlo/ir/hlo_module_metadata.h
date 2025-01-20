@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_MODULE_METADATA_H_
 #define XLA_HLO_IR_HLO_MODULE_METADATA_H_
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>

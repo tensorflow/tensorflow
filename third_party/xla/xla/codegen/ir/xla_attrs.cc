@@ -16,7 +16,6 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <sstream>
-#include <string>
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"

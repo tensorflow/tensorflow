@@ -48,9 +48,9 @@ static ArrayAttr createLiftedValueAttr(OpBuilder &builder, OpResult value) {
   return builder.getArrayAttr(attrs);
 }
 
-tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
-                               ArrayRef<Value> fetches,
-                               ArrayRef<Value> control_rets) {
+absl::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
+                         ArrayRef<Value> fetches,
+                         ArrayRef<Value> control_rets) {
   OpBuilder builder(graph);
   ControlType control_ty = ControlType::get(graph.getContext());
   llvm::SmallVector<Type> arg_types;

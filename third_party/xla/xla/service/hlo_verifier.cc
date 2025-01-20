@@ -2483,6 +2483,27 @@ absl::Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
   return absl::OkStatus();
 }
 
+// Verifies that leaf nodes in an original value contain values.
+absl::Status VerifyOriginalValue(const HloModule& module) {
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (auto original_value = instruction->original_value()) {
+        // An original value is expected to have intermediate nodes that are
+        // always nullopt and leaves with actual values.
+        for (const auto& leaf : original_value->leaves()) {
+          if (!leaf.second.has_value()) {
+            return Internal(
+                "Leaf nodes in an original value is expected to contain values."
+                " Instruction: %s.",
+                instruction->ToString());
+          }
+        }
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
 // Checks various invariants of channel instructions (send/recv and
 // collectives).
 absl::Status VerifyChannels(const HloModule& module,
@@ -3117,6 +3138,7 @@ absl::StatusOr<bool> HloVerifier::Run(
 
     TF_RETURN_IF_ERROR(module->buffer_donor_config().Verify(*module));
     TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));
+    TF_RETURN_IF_ERROR(VerifyOriginalValue(*module));
     return false;
   }();
   if (status_or_changed.ok()) {

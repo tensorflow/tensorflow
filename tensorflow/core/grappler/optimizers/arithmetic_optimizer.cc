@@ -484,12 +484,12 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
     return signature;
   }
 
-  void MarkWithTag(const StringPiece tag, NodeDef* node) {
+  void MarkWithTag(const absl::string_view tag, NodeDef* node) {
     AddNodeAttr(tag, true, node);
   }
 
   void MarkAllMembersWithTag(const OptimizedNodesGroup& group,
-                             const StringPiece tag) const {
+                             const absl::string_view tag) const {
     AddNodeAttr(tag, true, group.root_node);
     for (NodeDef* optimized_node : group.optimized_nodes) {
       AddNodeAttr(tag, true, optimized_node);
@@ -506,12 +506,12 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
            ctx().nodes_to_preserve->end();
   }
 
-  bool IsMarkedWithTag(const NodeDef& node, const StringPiece tag) const {
+  bool IsMarkedWithTag(const NodeDef& node, const absl::string_view tag) const {
     return HasNodeAttr(node, tag);
   }
 
-  bool IsMarkedWithAnyTag(const NodeDef& node, const StringPiece tag1,
-                          const StringPiece tag2) const {
+  bool IsMarkedWithAnyTag(const NodeDef& node, const absl::string_view tag1,
+                          const absl::string_view tag2) const {
     return IsMarkedWithTag(node, tag1) || IsMarkedWithTag(node, tag2);
   }
 };

@@ -15,9 +15,12 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/export.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <initializer_list>
+#include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

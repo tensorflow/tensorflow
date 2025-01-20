@@ -58,10 +58,37 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
-        "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "environment",
+    srcs = ["environment.cc"],
+    hdrs = [
+        "environment.h",
+        "//tensorflow/lite/experimental/litert/c:litert_environment.h",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_any",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/cc:litert_any",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "environment_test",
+    srcs = ["environment_test.cc"],
+    deps = [
+        ":environment",
+        "//tensorflow/lite/experimental/litert/c:litert_any",
+        "//tensorflow/lite/experimental/litert/cc:litert_any",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -104,11 +131,10 @@ cc_test(
 #         ":dynamic_loading",
 #         ":filesystem",
 #         "@com_google_googletest//:gtest_main",
-#         "//testing/base/public:unique-test-directory",
-#         "@com_google_absl//absl/strings:str_format",
 #         "@com_google_absl//absl/strings:string_view",
 #         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
 #         "//tensorflow/lite/experimental/litert/test:common",
+#         "//tensorflow/lite/experimental/litert/test:test_macros",
 #     ],
 # )
 # copybara:uncomment_end

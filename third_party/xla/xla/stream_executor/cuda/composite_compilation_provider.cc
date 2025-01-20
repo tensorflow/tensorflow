@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -78,14 +77,14 @@ CompositeCompilationProvider::Create(
 }
 
 absl::StatusOr<Assembly> CompositeCompilationProvider::Compile(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   return providers_.front()->Compile(cc, ptx, options);
 }
 
 absl::StatusOr<RelocatableModule>
 CompositeCompilationProvider::CompileToRelocatableModule(
-    const CudaComputeCapability& cc, std::string_view ptx,
+    const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   if (!relocatable_compilation_provider_) {
     return absl::UnavailableError(

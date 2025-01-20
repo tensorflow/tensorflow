@@ -69,7 +69,7 @@ absl::Status SingleDebugEventFileWriter::Init() {
 }
 
 void SingleDebugEventFileWriter::WriteSerializedDebugEvent(
-    StringPiece debug_event_str) {
+    absl::string_view debug_event_str) {
   if (record_writer_ == nullptr) {
     if (!Init().ok()) {
       LOG(ERROR) << "Write failed because file could not be opened.";

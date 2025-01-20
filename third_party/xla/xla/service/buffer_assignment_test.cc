@@ -2836,7 +2836,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 
   LOG(INFO) << buffers->ToString();
 
-  auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
+  auto get_slice = [&](absl::string_view hlo_name, const ShapeIndex& index) {
     return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
         .value();
   };
@@ -2929,7 +2929,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 
   LOG(INFO) << buffers->ToString();
 
-  auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
+  auto get_slice = [&](absl::string_view hlo_name, const ShapeIndex& index) {
     return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
         .value();
   };
@@ -3040,7 +3040,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 
   LOG(INFO) << buffers->ToString();
 
-  auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
+  auto get_slice = [&](absl::string_view hlo_name, const ShapeIndex& index) {
     return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
         .value();
   };
@@ -3104,7 +3104,7 @@ TEST_F(BufferAssignmentTest, AsyncCallImplicitSharding) {
 
   LOG(INFO) << buffers->ToString();
 
-  auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
+  auto get_slice = [&](absl::string_view hlo_name, const ShapeIndex& index) {
     return buffers
         ->GetUniqueSlice(FindInstruction(module.get(), hlo_name), index)
         .value();

@@ -483,7 +483,8 @@ std::string DeterminismPolicy::String() const {
   }
 }
 
-bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match) {
+bool MatchesAnyVersion(absl::string_view op_prefix,
+                       absl::string_view op_to_match) {
   if (!absl::StartsWith(op_to_match, op_prefix)) {
     return false;
   }

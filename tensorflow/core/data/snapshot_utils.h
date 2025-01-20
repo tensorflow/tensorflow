@@ -154,7 +154,7 @@ class CustomWriter : public Writer {
   absl::Status Initialize(tensorflow::Env* env) override;
 
  private:
-  absl::Status WriteRecord(const StringPiece& data);
+  absl::Status WriteRecord(const absl::string_view& data);
 
 #if defined(TF_CORD_SUPPORT)
   absl::Status WriteRecord(const absl::Cord& data);

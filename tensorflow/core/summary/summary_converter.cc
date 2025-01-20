@@ -14,6 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/summary_converter.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <functional>
+#include <limits>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"

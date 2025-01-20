@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -157,32 +156,7 @@ class JitCompiler {
     TaskRunner task_runner_;
 
     absl::Mutex mu_;
-    absl::CondVar cv_;
     size_t num_dispatched_tasks_ ABSL_GUARDED_BY(mu_) = 0;
-  };
-
-  // Function library constructed from the set of jit-compiled symbols.
-  class CompiledFunctionLibrary : public FunctionLibrary {
-   public:
-    struct ResolvedSymbol {
-      TypeId type_id;
-      void* ptr;
-    };
-
-    CompiledFunctionLibrary(
-        std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
-        std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer> object_layer,
-        absl::flat_hash_map<std::string, ResolvedSymbol> symbols_map);
-
-    ~CompiledFunctionLibrary() final;
-
-    absl::StatusOr<void*> ResolveFunction(TypeId type_id,
-                                          std::string_view name) final;
-
-   private:
-    std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;
-    std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer> object_layer_;
-    absl::flat_hash_map<std::string, ResolvedSymbol> symbols_map_;
   };
 
   JitCompiler(IrCompiler::TargetMachineBuilder target_machine_builder,

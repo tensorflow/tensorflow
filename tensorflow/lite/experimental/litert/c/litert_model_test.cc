@@ -17,7 +17,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
-#include <memory>
+#include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -26,30 +27,15 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
-#include "tensorflow/lite/experimental/litert/test/common.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
+#include "tensorflow/lite/experimental/litert/test/test_macros.h"
 
 namespace {
 
 using ::litert::BufferRef;
+using ::litert::internal::MakeTflBuffer;
 using ::testing::ElementsAreArray;
-
-template <typename T>
-LiteRtWeightsT MakeWeights(std::initializer_list<T> data, size_t offset = 0) {
-  LiteRtWeightsT weights;
-  weights.fb_buffer = std::make_unique<tflite::BufferT>();
-  weights.fb_buffer->data.resize(data.size() * sizeof(T));
-  auto data_it = data.begin();
-  for (int i = 0; i < data.size(); ++i) {
-    *(reinterpret_cast<T*>(weights.fb_buffer->data.data()) + i) = *data_it;
-    ++data_it;
-  }
-  weights.fb_buffer->size = weights.fb_buffer->data.size();
-  weights.fb_buffer->offset = offset;
-  return weights;
-}
 
 TEST(LiteRtWeightsTest, GetNullWeights) {
   LiteRtWeightsT weights = {};
@@ -63,7 +49,8 @@ TEST(LiteRtWeightsTest, GetNullWeights) {
 }
 
 TEST(LiteRtWeightsTest, GetWeights) {
-  auto weights = MakeWeights<int32_t>({1, 2, 3});
+  LiteRtWeightsT weights;
+  detail::SetTflBuffer(weights, MakeTflBuffer({1, 2, 3}));
 
   const void* addr;
   size_t size;
@@ -77,34 +64,39 @@ TEST(LiteRtWeightsTest, GetWeights) {
 }
 
 TEST(LiteRtTensorTest, GetUnrankedType) {
+  static constexpr auto kElementType = kLiteRtElementTypeFloat32;
+  static constexpr auto kId = kLiteRtUnrankedTensorType;
+
+  TensorType type;
+  type.first = kId;
+  type.second.unranked_tensor_type.element_type = kElementType;
+
   LiteRtTensorT tensor;
-  tensor.type_id = kLiteRtUnrankedTensorType;
-  tensor.type_detail.unranked_tensor_type.element_type =
-      kLiteRtElementTypeFloat32;
+  tensor.SetType(std::move(type));
 
   LiteRtTensorTypeId id;
   LITERT_ASSERT_STATUS_OK(LiteRtGetTensorTypeId(&tensor, &id));
-  ASSERT_EQ(id, kLiteRtUnrankedTensorType);
+  ASSERT_EQ(id, kId);
 
   LiteRtUnrankedTensorType unranked;
   LITERT_ASSERT_STATUS_OK(LiteRtGetUnrankedTensorType(&tensor, &unranked));
-  EXPECT_EQ(unranked.element_type, kLiteRtElementTypeFloat32);
+  EXPECT_EQ(unranked.element_type, kElementType);
 }
 
 TEST(LiteRtTensorTest, GetRankedTensorType) {
+  static constexpr auto kElementType = kLiteRtElementTypeFloat32;
+  static constexpr auto kId = kLiteRtRankedTensorType;
+
   LiteRtTensorT tensor;
-  tensor.type_id = kLiteRtRankedTensorType;
-  tensor.type_detail.ranked_tensor_type.element_type =
-      kLiteRtElementTypeFloat32;
-  tensor.type_detail.ranked_tensor_type.layout = ::litert::BuildLayout({3, 3});
+  tensor.SetType(MakeRankedTensorType(kElementType, {3, 3}));
 
   LiteRtTensorTypeId id;
   LITERT_ASSERT_STATUS_OK(LiteRtGetTensorTypeId(&tensor, &id));
-  ASSERT_EQ(id, kLiteRtRankedTensorType);
+  ASSERT_EQ(id, kId);
 
   LiteRtRankedTensorType ranked;
   LITERT_ASSERT_STATUS_OK(LiteRtGetRankedTensorType(&tensor, &ranked));
-  EXPECT_EQ(ranked.element_type, kLiteRtElementTypeFloat32);
+  EXPECT_EQ(ranked.element_type, kElementType);
   ASSERT_EQ(ranked.layout.rank, 2);
   EXPECT_THAT(absl::MakeConstSpan(ranked.layout.dimensions, 2),
               ElementsAreArray({3, 3}));
@@ -114,31 +106,35 @@ TEST(LiteRtTensorTest, GetUses) {
   LiteRtTensorT tensor;
 
   LiteRtOpT user;
-  tensor.users.push_back(&user);
-  tensor.user_arg_inds.push_back(0);
+  tensor.Users().push_back(&user);
+  tensor.UserArgInds().push_back(0);
 
   LiteRtOpT other_user;
-  tensor.users.push_back(&other_user);
-  tensor.user_arg_inds.push_back(1);
+  tensor.Users().push_back(&other_user);
+  tensor.UserArgInds().push_back(1);
 
   LiteRtParamIndex num_uses;
-  LiteRtOpArray actual_users;
-  LiteRtParamIndex* user_arg_inds;
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetTensorUses(&tensor, &num_uses, &actual_users, &user_arg_inds));
-
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumTensorUses(&tensor, &num_uses));
   ASSERT_EQ(num_uses, 2);
-  EXPECT_THAT(absl::MakeConstSpan(actual_users, 2),
-              ElementsAreArray({&user, &other_user}));
-  EXPECT_THAT(absl::MakeConstSpan(user_arg_inds, 2), ElementsAreArray({0, 1}));
+
+  LiteRtOp actual_user;
+  LiteRtParamIndex actual_user_arg_index;
+  LITERT_ASSERT_STATUS_OK(LiteRtGetTensorUse(
+      &tensor, /*use_index=*/0, &actual_user, &actual_user_arg_index));
+  ASSERT_EQ(actual_user, &user);
+  ASSERT_EQ(actual_user_arg_index, 0);
+
+  LITERT_ASSERT_STATUS_OK(LiteRtGetTensorUse(
+      &tensor, /*use_index=*/1, &actual_user, &actual_user_arg_index));
+  ASSERT_EQ(actual_user, &other_user);
+  ASSERT_EQ(actual_user_arg_index, 1);
 }
 
 TEST(LiteRtTensorTest, GetDefiningOp) {
   LiteRtTensorT tensor;
 
   LiteRtOpT def_op;
-  tensor.defining_op = &def_op;
-  tensor.defining_op_out_ind = 0;
+  tensor.SetDefiningOp(def_op, 0);
 
   LiteRtTensorDefiningOp actual_def_op;
   bool has_defining_op;
@@ -160,18 +156,18 @@ TEST(LiteRtTensorTest, NoDefiningOp) {
 }
 
 TEST(LiteRtTensorTest, Name) {
-  static constexpr absl::string_view kName = "foo";
+  static constexpr const char kName[] = "foo";
+
   LiteRtTensorT tensor;
-  tensor.name = kName;
+  tensor.SetName(std::string(kName));
 
   const char* name;
   LITERT_ASSERT_STATUS_OK(LiteRtGetTensorName(&tensor, &name));
-  EXPECT_STREQ(name, kName.data());
+  EXPECT_STREQ(name, kName);
 }
 
 TEST(LiteRtTensorTest, QuantizationNone) {
   LiteRtTensorT tensor;
-  tensor.q_type_id = kLiteRtQuantizationNone;
 
   LiteRtQuantizationTypeId q_type_id;
   LITERT_ASSERT_STATUS_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
@@ -187,8 +183,7 @@ TEST(LiteRtTensorTest, QuantizationPerTensor) {
   static constexpr auto kZeroPoint = 1;
 
   LiteRtTensorT tensor;
-  tensor.q_type_id = kLiteRtQuantizationPerTensor;
-  tensor.q_type_detail.per_tensor = {kScale, kZeroPoint};
+  tensor.SetQarams(MakePerTensorQuantization(kScale, kZeroPoint));
 
   LiteRtQuantizationTypeId q_type_id;
   LITERT_ASSERT_STATUS_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
@@ -202,13 +197,47 @@ TEST(LiteRtTensorTest, QuantizationPerTensor) {
   EXPECT_EQ(per_tensor_quantization.zero_point, kZeroPoint);
 }
 
+TEST(LiteRtTensorTest, QuantizationPerChannel) {
+  static constexpr size_t kNumChannels = 2;
+  static constexpr size_t kQuantizedDimension = 0;
+  static constexpr float kScales[kNumChannels] = {1.0, 2.0};
+  static constexpr int64_t kZps[kNumChannels] = {2, 3};
+
+  LiteRtTensorT tensor;
+
+  {
+    auto per_channel =
+        MakePerChannelQuantization(kScales, kZps, kQuantizedDimension, tensor);
+    tensor.SetQarams(per_channel);
+  }
+
+  LiteRtQuantizationTypeId q_type_id;
+  LITERT_ASSERT_STATUS_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
+  ASSERT_EQ(q_type_id, kLiteRtQuantizationPerChannel);
+
+  LiteRtQuantizationPerChannel per_channel_quantization;
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetPerChannelQuantization(&tensor, &per_channel_quantization));
+
+  EXPECT_THAT(
+      absl::MakeConstSpan(per_channel_quantization.scales, kNumChannels),
+      testing::ElementsAreArray(kScales));
+  EXPECT_THAT(
+      absl::MakeConstSpan(per_channel_quantization.zero_points, kNumChannels),
+      testing::ElementsAreArray(kZps));
+  ASSERT_EQ(per_channel_quantization.num_channels, kNumChannels);
+  ASSERT_EQ(per_channel_quantization.quantized_dimension, kQuantizedDimension);
+}
+
 TEST(LiteRtOpTest, GetOpCode) {
+  static constexpr auto kCode = kLiteRtOpCodeTflCustom;
+
   LiteRtOpT op;
-  op.op_code = kLiteRtOpCodeTflCustom;
+  op.SetOpCode(kCode);
 
   LiteRtOpCode code;
   LITERT_ASSERT_STATUS_OK(LiteRtGetOpCode(&op, &code));
-  EXPECT_EQ(code, kLiteRtOpCodeTflCustom);
+  EXPECT_EQ(code, kCode);
 }
 
 TEST(LiteRtOpTest, GetInputs) {
@@ -216,15 +245,21 @@ TEST(LiteRtOpTest, GetInputs) {
   LiteRtTensorT input2;
 
   LiteRtOpT op;
-  op.inputs.push_back(&input1);
-  op.inputs.push_back(&input2);
+  op.Inputs().push_back(&input1);
+  op.Inputs().push_back(&input2);
 
-  LiteRtTensorArray inputs;
   LiteRtParamIndex num_inputs;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetOpInputs(&op, &num_inputs, &inputs));
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumOpInputs(&op, &num_inputs));
   ASSERT_EQ(num_inputs, 2);
-  EXPECT_THAT(absl::MakeConstSpan(inputs, num_inputs),
-              ElementsAreArray({&input1, &input2}));
+
+  LiteRtTensor actual_input;
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetOpInput(&op, /*input_index=*/0, &actual_input));
+  EXPECT_EQ(actual_input, &input1);
+
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetOpInput(&op, /*input_index=*/1, &actual_input));
+  EXPECT_EQ(actual_input, &input2);
 }
 
 TEST(LiteRtOpTest, GetOutputs) {
@@ -232,15 +267,21 @@ TEST(LiteRtOpTest, GetOutputs) {
   LiteRtTensorT output2;
 
   LiteRtOpT op;
-  op.outputs.push_back(&output1);
-  op.outputs.push_back(&output2);
+  op.Outputs().push_back(&output1);
+  op.Outputs().push_back(&output2);
 
-  LiteRtTensorArray outputs;
   LiteRtParamIndex num_outputs;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetOpOutputs(&op, &num_outputs, &outputs));
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumOpOutputs(&op, &num_outputs));
   ASSERT_EQ(num_outputs, 2);
-  EXPECT_THAT(absl::MakeConstSpan(outputs, num_outputs),
-              ElementsAreArray({&output1, &output2}));
+
+  LiteRtTensor actual_output;
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetOpOutput(&op, /*output_index=*/0, &actual_output));
+  EXPECT_EQ(actual_output, &output1);
+
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetOpOutput(&op, /*output_index=*/1, &actual_output));
+  EXPECT_EQ(actual_output, &output2);
 }
 
 TEST(LiteRtSubgraphTest, GetInputs) {
@@ -248,16 +289,20 @@ TEST(LiteRtSubgraphTest, GetInputs) {
   LiteRtTensorT input2;
 
   LiteRtSubgraphT subgraph;
-  subgraph.inputs.push_back(&input1);
-  subgraph.inputs.push_back(&input2);
+  subgraph.Inputs().push_back(&input1);
+  subgraph.Inputs().push_back(&input2);
 
-  LiteRtTensorArray inputs;
   LiteRtParamIndex num_inputs;
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumSubgraphInputs(&subgraph, &num_inputs));
+
+  LiteRtTensor actual_input;
   LITERT_ASSERT_STATUS_OK(
-      LiteRtGetSubgraphInputs(&subgraph, &num_inputs, &inputs));
-  ASSERT_EQ(num_inputs, 2);
-  EXPECT_THAT(absl::MakeConstSpan(inputs, num_inputs),
-              ElementsAreArray({&input1, &input2}));
+      LiteRtGetSubgraphInput(&subgraph, /*input_index=*/0, &actual_input));
+  EXPECT_EQ(actual_input, &input1);
+
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetSubgraphInput(&subgraph, /*input_index=*/1, &actual_input));
+  EXPECT_EQ(actual_input, &input2);
 }
 
 TEST(LiteRtSubgraphTest, GetOutputs) {
@@ -265,51 +310,58 @@ TEST(LiteRtSubgraphTest, GetOutputs) {
   LiteRtTensorT output2;
 
   LiteRtSubgraphT subgraph;
-  subgraph.outputs.push_back(&output1);
-  subgraph.outputs.push_back(&output2);
+  subgraph.Outputs().push_back(&output1);
+  subgraph.Outputs().push_back(&output2);
 
-  LiteRtTensorArray outputs;
   LiteRtParamIndex num_outputs;
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumSubgraphOutputs(&subgraph, &num_outputs));
+
+  LiteRtTensor actual_output;
   LITERT_ASSERT_STATUS_OK(
-      LiteRtGetSubgraphOutputs(&subgraph, &num_outputs, &outputs));
-  ASSERT_EQ(num_outputs, 2);
-  EXPECT_THAT(absl::MakeConstSpan(outputs, num_outputs),
-              ElementsAreArray({&output1, &output2}));
+      LiteRtGetSubgraphOutput(&subgraph, /*output_index=*/0, &actual_output));
+  EXPECT_EQ(actual_output, &output1);
+
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetSubgraphOutput(&subgraph, /*output_index=*/1, &actual_output));
+  EXPECT_EQ(actual_output, &output2);
 }
 
 TEST(LiteRtSubgraphTest, GetOps) {
-  LiteRtOpT op1;
-  LiteRtOpT op2;
-
   LiteRtSubgraphT subgraph;
-  subgraph.ops.push_back(&op1);
-  subgraph.ops.push_back(&op2);
+  auto& op1 = subgraph.EmplaceOp();
+  auto& op2 = subgraph.EmplaceOp();
 
-  LiteRtOpArray ops;
   LiteRtParamIndex num_ops;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetSubgraphOps(&subgraph, &num_ops, &ops));
+  LITERT_ASSERT_STATUS_OK(LiteRtGetNumSubgraphOps(&subgraph, &num_ops));
   ASSERT_EQ(num_ops, 2);
-  EXPECT_THAT(absl::MakeConstSpan(ops, num_ops),
-              ElementsAreArray({&op1, &op2}));
+
+  LiteRtOp actual_op;
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetSubgraphOp(&subgraph, /*op_index=*/0, &actual_op));
+  ASSERT_EQ(actual_op, &op1);
+
+  LITERT_ASSERT_STATUS_OK(
+      LiteRtGetSubgraphOp(&subgraph, /*op_index=*/1, &actual_op));
+  ASSERT_EQ(actual_op, &op2);
 }
 
 TEST(LiteRtModelTest, GetMetadata) {
+  static constexpr absl::string_view kKey = "KEY";
+  static constexpr absl::string_view kData = "DATA";
+
   LiteRtModelT model;
-  model.flatbuffer_model = std::make_unique<tflite::ModelT>();
-  litert::OwningBufferRef<uint8_t> buf("Bar");
-  model.PushMetadata("Foo", buf);
+  model.PushMetadata(kKey, kData);
 
   const void* metadata;
   size_t metadata_size;
   LITERT_ASSERT_STATUS_OK(
-      LiteRtGetModelMetadata(&model, "Foo", &metadata, &metadata_size));
-  ASSERT_EQ(metadata_size, 3);
-  EXPECT_EQ(BufferRef(metadata, metadata_size).StrView(), "Bar");
+      LiteRtGetModelMetadata(&model, kKey.data(), &metadata, &metadata_size));
+  EXPECT_EQ(BufferRef(metadata, metadata_size).StrView(), kData);
 }
 
 TEST(LiteRtModelTest, GetSubgraph) {
   LiteRtModelT model;
-  auto& subgraph = model.subgraphs.emplace_back();
+  auto& subgraph = model.EmplaceSubgraph();
 
   LiteRtSubgraph actual_subgraph;
   LITERT_ASSERT_STATUS_OK(LiteRtGetModelSubgraph(&model, 0, &actual_subgraph));

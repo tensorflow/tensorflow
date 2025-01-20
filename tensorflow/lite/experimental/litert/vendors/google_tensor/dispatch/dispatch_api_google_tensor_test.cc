@@ -61,9 +61,10 @@ TEST(DispatchApi, GoogleTensor) {
             kLiteRtStatusOk);
   ABSL_LOG(INFO) << "device_context: " << device_context;
 
-  auto model_file_name = kGoogleTensorModelFileName;
+  auto model_file_name =
+      litert::testing::GetTestFilePath(kGoogleTensorModelFileName);
   auto model = litert::internal::LoadBinaryFile(model_file_name);
-  EXPECT_TRUE(model);
+  EXPECT_TRUE(model) << model.Error();
   ABSL_LOG(INFO) << "Loaded model " << model_file_name << ", " << model->Size()
                  << " bytes";
 

@@ -39,7 +39,6 @@ limitations under the License.
 #include <vector>
 
 #include "Eigen/Core"  // from @eigen_archive
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -51,14 +50,13 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/matmul_autotune.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/matmul_op_impl.h"
@@ -71,6 +69,8 @@ limitations under the License.
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/core/util/use_cudnn.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
@@ -202,7 +202,7 @@ namespace {
 /*
   hipBLASLt support Epilogue:
   https://rocm.docs.amd.com/projects/hipBLASLt/en/latest/datatypes.html#hipblasltepilogue-t
-*/ 
+*/
 StatusOr<se::gpu::BlasLt::Epilogue> GetBlasLtEpilogOp(
     FusedComputationType fusion) {
   if (fusion == FusedComputationType::kBiasAdd) {
@@ -484,12 +484,6 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
 #if !(GOOGLE_CUDA || TF_HIPBLASLT)
     use_cudnn = true;
 #endif
-    const auto& cc = stream->parent()->GetDeviceDescription().
-                      gpu_compute_capability();
-    if (auto *procm = std::get_if< se::RocmComputeCapability >(&cc)) {
-      use_cudnn = !procm->gfx9_mi200_or_later();
-    }
- 
     // use_cudnn is for hipblaslt doesn't support yet
     switch (fusion) {
       case FusedComputationType::kBiasAddWithGeluExact:
@@ -525,7 +519,15 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
       default:
         use_cudnn = false;
     }
+#if !(GOOGLE_CUDA || TF_HIPBLASLT)
+    use_cudnn = true;
+#endif
 
+    const auto& cc =
+        stream->parent()->GetDeviceDescription().gpu_compute_capability();
+    if (auto* procm = std::get_if<se::RocmComputeCapability>(&cc)) {
+      use_cudnn = !procm->gfx9_mi200_or_later();
+    }
     BlasScratchAllocator scratch_allocator(context);
 
     // The Gelu exact fusion is supported by the cuDNN.
@@ -605,9 +607,9 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     auto launch_func = [&](BlasScratchAllocator& scratch_allocator,
                            size_t alg_idx,
                            se::blas::ProfileResult* profile_result) {
-        return BlasLtMatmulPlanCache::ExecuteOnStream(
-          stream, entry, a_ptr, b_ptr, c_ptr, alg_idx,
-          scratch_allocator, bias_ptr, profile_result);
+      return BlasLtMatmulPlanCache::ExecuteOnStream(
+          stream, entry, a_ptr, b_ptr, c_ptr, alg_idx, scratch_allocator,
+          bias_ptr, profile_result);
     };
 
     size_t alg_idx = 0;
@@ -619,7 +621,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     }
 
     OP_REQUIRES_OK(context, launch_func(scratch_allocator, alg_idx, nullptr));
-#endif // GOOGLE_CUDA || TF_HIPBLASLT
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
   }
 };
 

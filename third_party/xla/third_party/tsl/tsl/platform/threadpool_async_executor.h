@@ -16,35 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_THREADPOOL_ASYNC_EXECUTOR_H_
 #define TENSORFLOW_TSL_PLATFORM_THREADPOOL_ASYNC_EXECUTOR_H_
 
-#include <utility>
-
-#include "xla/tsl/concurrency/async_value.h"
-#include "tsl/platform/threadpool.h"
-
-namespace tsl::thread {
-
-// An adaptor for a ThreadPool that converts it into the AsyncValue:Executor.
-//
-// AsncValue::Executor task is a move-only absl::AnyInvocable, and ThreadPool
-// expects a copyable std::function. This class adapts the two and makes sure
-// that the task is deleted when it's done executing.
-class ThreadPoolAsyncExecutor : public AsyncValue::Executor {
- public:
-  explicit ThreadPoolAsyncExecutor(ThreadPool* thread_pool)
-      : thread_pool_(thread_pool) {}
-
-  void Execute(Task task) final {
-    auto* task_ptr = new Task(std::move(task));
-    thread_pool_->Schedule([task_ptr] {
-      (*task_ptr)();
-      delete task_ptr;
-    });
-  }
-
- private:
-  ThreadPool* thread_pool_;
-};
-
-}  // namespace tsl::thread
+#include "xla/tsl/platform/threadpool_async_executor.h"
 
 #endif  // TENSORFLOW_TSL_PLATFORM_THREADPOOL_ASYNC_EXECUTOR_H_

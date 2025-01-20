@@ -12688,5 +12688,36 @@ TEST_F(AlgebraicSimplifierTest, TestNew123) {
   EXPECT_FALSE(simplifier.Run(module.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       ReducePrecisionWithSamePrecisionAsOperandIsRemovedIfRemoveNoOpIsSet) {
+  const char* hlo = R"(
+  HloModule test
+  ENTRY main {
+    p0 = bf16[64]{0} parameter(0)
+    ROOT reduce-precision = bf16[64] reduce-precision(p0), exponent_bits=8, mantissa_bits=7
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  default_options_.set_enable_remove_no_op_reduce_precision(true);
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter()));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       ReducePrecisionWithDifferentPrecisionFromOperandIsNotModifiedByDefault) {
+  const char* hlo = R"(
+  HloModule test
+  ENTRY main {
+    p0 = bf16[64]{0} parameter(0)
+    ROOT reduce-precision = bf16[64] reduce-precision(p0), exponent_bits=7, mantissa_bits=8
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  default_options_.set_enable_remove_no_op_reduce_precision(true);
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
 }  // namespace
 }  // namespace xla

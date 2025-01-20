@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 300
+_version = 303
 
 # Version number for MLIR:Python components.
 mlir_api_version = 57
@@ -70,15 +70,18 @@ def make_cpu_client(
     distributed_client=None,
     node_id=0,
     num_nodes=1,
-    collectives=None
+    collectives=None,
+    num_devices=None,
 ) -> ...:
   register_custom_call_handler('cpu', _xla.register_custom_call_target)
+  register_custom_type_id_handler('cpu', _xla.register_custom_type_id)
   return _xla.get_tfrt_cpu_client(
       asynchronous=asynchronous,
       distributed_client=distributed_client,
       node_id=node_id,
       num_nodes=num_nodes,
       collectives=collectives,
+      num_devices=num_devices,
   )
 
 
@@ -111,6 +114,8 @@ def make_gpu_client(
     config.collective_memory_size = options['collective_memory_size']
   register_custom_call_handler('CUDA', _xla.register_custom_call_target)
   register_custom_call_handler('ROCM', _xla.register_custom_call_target)
+  register_custom_type_id_handler('CUDA', _xla.register_custom_type_id)
+  register_custom_type_id_handler('ROCM', _xla.register_custom_type_id)
 
   return _xla.get_gpu_client(
       asynchronous=True,
@@ -625,6 +630,7 @@ def register_custom_call_handler(
 
   If a custom call handler for the platform already exist, calling this method
   is a no-op and it will not register a new handler.
+
   Args:
     platform: the target platform.
     handler: the function to register a custom call.
@@ -643,6 +649,67 @@ def register_custom_call_handler(
       for name, fn, api_version, traits in _custom_callback[xla_platform_name]:
         handler(name, fn, xla_platform_name, api_version, traits)
       del _custom_callback[xla_platform_name]
+
+
+class CustomTypeIdHandler(Protocol):
+
+  def __call__(self, name: str, capsule: Any) -> None:
+    ...
+
+
+_custom_type_id_handler: dict[str, CustomTypeIdHandler] = {}
+_custom_type_id: dict[str, Any] = {}
+_custom_type_id_lock = threading.Lock()
+
+
+def register_custom_type_id(
+    type_name: str,
+    type_id: Any,
+    platform: str = 'cpu',
+) -> None:
+  """Register a custom type id for use with the FFI.
+
+  Args:
+    type_name: a unique name for the type.
+    type_id: a PyCapsule object containing a pointer to the ``ffi::TypeId``.
+    platform: the target platform.
+  """
+  xla_platform_name = xla_platform_names.get(platform, platform)
+  with _custom_type_id_lock:
+    if xla_platform_name in _custom_type_id_handler:
+      _custom_type_id_handler[xla_platform_name](type_name, type_id)
+    else:
+      _custom_type_id.setdefault(xla_platform_name, []).append(
+          (type_name, type_id)
+      )
+
+
+def register_custom_type_id_handler(
+    platform: str, handler: CustomTypeIdHandler
+) -> None:
+  """Register a custom type id handler and use it to register existing type ids.
+
+  If a custom type id handler for the platform already exist, calling this
+  method is a no-op and it will not register a new handler.
+
+  Args:
+    platform: the target platform.
+    handler: the function to register a custom type id.
+  """
+  xla_platform_name = xla_platform_names.get(platform, platform)
+  with _custom_callback_lock:
+    if xla_platform_name in _custom_type_id_handler:
+      logger.debug(
+          'Custom type id handler for %s is already register. Will not '
+          'register a new one',
+          xla_platform_name,
+      )
+      return
+    _custom_type_id_handler[xla_platform_name] = handler
+    if xla_platform_name in _custom_type_id:
+      for name, capsule in _custom_type_id[xla_platform_name]:
+        handler(name, capsule)
+      del _custom_type_id[xla_platform_name]
 
 
 register_custom_call_partitioner = _xla.register_custom_call_partitioner

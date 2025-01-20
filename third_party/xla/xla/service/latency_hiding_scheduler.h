@@ -43,12 +43,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/map_util.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla.pb.h"
 
@@ -359,8 +361,8 @@ class AnnotationTracker {
   }
   std::optional<int64_t> GetAnnotation(const HloInstruction* instr) const {
     const auto& attrs = instr->frontend_attributes().map();
-    if (attrs.contains("_scheduling_group_id")) {
-      return std::stoi(attrs.at("_scheduling_group_id"));
+    if (attrs.contains(kXlaSchedulingGroupIdAttr)) {
+      return std::stoi(attrs.at(kXlaSchedulingGroupIdAttr));
     }
     return std::nullopt;
   }
@@ -376,10 +378,13 @@ class AnnotationTracker {
         annotations_[annotation].begin(), annotations_[annotation].end());
     for (const HloInstruction* instr : annotations_.at(annotation)) {
       bool has_annotated_user = false;
-      for (HloInstruction* user : instr->users()) {
-        if (seen_instructions.contains(user)) {
-          has_annotated_user = true;
-          break;
+      for (const PtrVec<HloInstruction*>& users :
+           {instr->users(), instr->control_successors()}) {
+        for (HloInstruction* user : users) {
+          if (seen_instructions.contains(user)) {
+            has_annotated_user = true;
+            break;
+          }
         }
       }
       if (!has_annotated_user) {
@@ -1050,6 +1055,8 @@ class DefaultSchedulerCore : public SchedulerCore {
     this->config_.memory_limit = new_limit;
   }
   int64_t GetRerunTimes() override { return config_.rerun; }
+  bool SchedulingAnnotationCrossesOverlapLimit(
+      const SchedulingState& sched_state, int64_t annotation);
 
  protected:
   virtual void LogInstruction(const HloInstruction* instr) const;

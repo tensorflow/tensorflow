@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/mock_compilation_provider.h"
@@ -67,8 +67,8 @@ TEST(DeferRelocatableCompilationCompilationProviderTest,
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-constexpr std::string_view kSomePtxString = "some ptx string";
-constexpr std::string_view kSomeOtherPtxString = "some other ptx string";
+constexpr absl::string_view kSomePtxString = "some ptx string";
+constexpr absl::string_view kSomeOtherPtxString = "some other ptx string";
 constexpr CudaComputeCapability kDefaultComputeCapability{10, 0};
 constexpr CompilationOptions kDefaultCompilationOptions{};
 

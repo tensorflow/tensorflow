@@ -29,7 +29,7 @@ bool GradOpRegistry::Register(const string& op, GradFunc func) {
   return true;
 }
 
-Status GradOpRegistry::Lookup(const string& op, GradFunc* func) const {
+absl::Status GradOpRegistry::Lookup(const string& op, GradFunc* func) const {
   auto iter = registry_.find(op);
   if (iter == registry_.end()) {
     const string error_msg =

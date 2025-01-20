@@ -69,7 +69,7 @@ std::unique_ptr<SubAllocator> CreateGPUMemAllocator(size_t) {
   PlatformDeviceId gpu_id(0);
   return absl::WrapUnique(new DeviceMemAllocator(
       GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value(), gpu_id,
-      stream_executor::MemoryType::kDevice, {}, {}));
+      stream_executor::MemoryType::kDevice, {}));
 }
 
 std::unique_ptr<SubAllocator> CreateSubAllocator(

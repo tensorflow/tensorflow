@@ -18,11 +18,12 @@ limitations under the License.
 #include <cstdint>
 #include <numeric>
 #include <string>
-#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/loops.h"
@@ -124,7 +125,7 @@ struct TridiagonalMatMulShapeParams {
 };
 
 absl::Status ValidateTridiagonalMatMulDiagonal(
-    const Shape& diagonal_shape, const std::string_view diagonal_name,
+    const Shape& diagonal_shape, const absl::string_view diagonal_name,
     const Shape& rhs_shape) {
   const int64_t diagonal_rank = diagonal_shape.rank();
   const int64_t rhs_rank = rhs_shape.rank();

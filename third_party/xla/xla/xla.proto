@@ -101,6 +101,9 @@ message DebugOptions {
   // When true, XLA:CPU uses the thunk runtime to execute compiled program.
   bool xla_cpu_use_thunk_runtime = 298;
 
+  // When true, XLA:CPU uses XNNPACK to execute supported operations.
+  bool xla_cpu_use_xnnpack = 359;
+
   // Enabling this will enable optimizations that ignore the possibility of NaN.
   bool xla_enable_fast_math = 335;
 
@@ -128,6 +131,13 @@ message DebugOptions {
   // Specifies the behavior of per kernel autotuning cache.
   AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
+  // Do not lock collective cliques for each XLA:GPU execution, and instead
+  // use per-process cliques that are never unlocked. This disables deadlock
+  // prevention mechanism in XLA:GPU and should be used at you own risk. If
+  // collective operations from concurrent executions are not correcctly ordered
+  // it may lead to deadlocks, crashes or will produce garbage.
+  bool xla_gpu_collectives_use_persistent_cliques = 354;
+
   // Experimentally disables binary libraries in GPU compiler passes.
   bool xla_gpu_experimental_disable_binary_libraries = 329;
 
@@ -153,9 +163,18 @@ message DebugOptions {
   // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
   bool xla_gpu_experimental_enable_triton_heroless_priority_fusion = 340;
 
-  // Gates the experimental feature coupling the Triton Softmax pattern matcher
-  // with priority fusion.
-  bool xla_gpu_experimental_enable_triton_softmax_priority_fusion = 325;
+  // When enabled, the Triton emitter for dot will use int4 as native type and
+  // later the Triton IR will be rewritten by Triton IR rewriting pass to use
+  // int4 packed into int8.
+  bool xla_gpu_experimental_enable_triton_i4_rewrites = 361;
+
+  // When possible, XLA will use Triton's experimental TMA feature.
+  bool xla_gpu_experimental_enable_triton_tma = 355;
+
+  // If true, XLA will annotate instructions in the dumps with emitter code
+  // location (source:line) annotations. This helps to identify the source of
+  // the code that emits a particular instruction.
+  bool xla_gpu_unsupported_annotate_with_emitter_loc = 358;
 
   // Internal testing flag to switch RaggedAllToAllDecomposer on or off.
   bool xla_gpu_unsupported_enable_ragged_all_to_all_decomposer = 350;
@@ -502,6 +521,7 @@ message DebugOptions {
     COLLECTIVEBROADCAST = 4;
     ALLTOALL = 5;
     COLLECTIVEPERMUTE = 6;
+    RAGGEDALLTOALL = 7;
   }
 
   repeated CollectiveOpType xla_gpu_disable_async_collectives = 289;
@@ -515,6 +535,15 @@ message DebugOptions {
   // xla_gpu_enable_async_collectives
   reserved 152, 278, 183, 199, 200, 201, 238;
 
+  // Enables NCCL Speed-of-Light (SoL) analytical cost model
+  bool xla_gpu_enable_analytical_sol_latency_estimator = 356;
+  // Extra platform-specific options to improve analytical latency
+  // estimator precision; comma-separated list of 'key=val' strings (=val may be
+  // omitted); no whitespace around commas. Available options:
+  // --xla_gpu_analytical_latency_estimator_options=
+  //'nccl_op_launch_ms=55,nic_speed_gbps=40,
+  // chunk_prep_ms=1,rtt_ms=2,gpus_per_node=4,chunk_size_bytes=1024'
+  map<string, string> xla_gpu_analytical_latency_estimator_options = 357;
   // Size threshold (in bytes) for the GPU collective combiners.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
   int64 xla_gpu_all_gather_combine_threshold_bytes = 212;
@@ -684,7 +713,7 @@ message DebugOptions {
   bool xla_gpu_enable_highest_priority_async_stream = 216;
   bool xla_gpu_enable_analytical_latency_estimator = 255;
 
-  bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
+  reserved 204;  // Was xla_gpu_lhs_enable_gpu_async_tracker.
   string xla_gpu_pgle_profile_file_or_directory_path = 210;
   int32 xla_gpu_memory_limit_slop_factor = 260;
 
@@ -875,9 +904,8 @@ message DebugOptions {
   // Let GEMM fusion autotuning probe cuDNN as a backend.
   // Current levels:
   // 0: Disabled.
-  // 1: Fusions of GEMM, elementwise, transpose/reshape operations.
-  // 2: + Broadcasts, slicing.
-  // 3: + Nontrivial noncontracting dimension reshapes/transposes.
+  // 1: Enabled on Blackwell+ GPUs.
+  // 2: Enabled on all supported GPUs (Ampere+).
   int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
   // This instructs the runtime whether to use
@@ -1028,7 +1056,7 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
-  // Timeouts for RendezvousSingle stuck warning and termination.
+  // Timeouts for Rendezvous stuck warning and termination.
   int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327;
   int32 xla_gpu_executable_terminate_timeout_seconds = 328;
 
@@ -1077,7 +1105,12 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 354
+  // Enable windowed einsum(collective matmul) rewrite for all-to-all + gemm
+  // This feature is still experimental and effective only
+  // xla_gpu_multi_streamed_windowed_einsum is set to true.
+  bool xla_gpu_experimental_enable_alltoall_windowed_einsum = 360;
+
+  // Next id: 362
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1095,10 +1128,11 @@ message DebugOptions {
   // xla_gpu_enable_persistent_temp_buffers
   // xla_gpu_enable_triton_gemm_int4
   // xla_gpu_enable_priority_fusion
+  // xla_gpu_experimental_enable_triton_softmax_priority_fusion
   // xla_gpu_pgle_accuracy_checker
   // xla_gpu_enable_heuristic_pass_configuration
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      326, 332;
+      325, 326, 332;
 }
 
 // Contains flags which affects the GPU compilation result.

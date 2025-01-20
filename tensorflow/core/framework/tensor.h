@@ -635,7 +635,7 @@ class Tensor {
   /// not get destroyed while the `StringPiece` is still used.
   ///
   /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
-  StringPiece tensor_data() const;
+  absl::string_view tensor_data() const;
   void* data() const;
 
   /// Copy the other tensor into this tensor, reshape it and reinterpret the

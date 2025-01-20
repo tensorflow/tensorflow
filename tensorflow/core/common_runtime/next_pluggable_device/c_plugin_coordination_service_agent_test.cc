@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -144,6 +146,11 @@ class TestCoordinationClient : public CoordinationClient {
                           tsl::CancelBarrierResponse* response,
                           StatusCallback done) override {
     done(absl::UnimplementedError("CancelBarrierAsync"));
+  }
+  void GetAliveTasksAsync(const tsl::GetAliveTasksRequest* request,
+                          tsl::GetAliveTasksResponse* response,
+                          StatusCallback done) override {
+    done(absl::UnimplementedError("GetAliveTasksAsync"));
   }
   void RegisterTaskAsync(tsl::CallOptions*,
                          const tsl::RegisterTaskRequest* request,

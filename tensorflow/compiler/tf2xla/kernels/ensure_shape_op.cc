@@ -15,8 +15,7 @@ limitations under the License.
 
 // XLA-specific ensure_shape Op.
 
-#include <vector>
-
+#include "absl/log/log.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"

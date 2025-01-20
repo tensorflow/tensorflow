@@ -98,11 +98,11 @@ class SdyRoundTripShardMapExportPass
 
       auto callOp =
           rewriter.create<CallOp>(loc, localResultTypes, funcName, operands);
-      addFrontendAttribute(callOp, kInShardings,
+      setFrontendAttribute(callOp, kInShardings,
                            manualComputation.getInShardings());
-      addFrontendAttribute(callOp, kOutShardings,
+      setFrontendAttribute(callOp, kOutShardings,
                            manualComputation.getOutShardings());
-      addFrontendAttribute(callOp, kManualAxes,
+      setFrontendAttribute(callOp, kManualAxes,
                            manualComputation.getManualAxesAttr());
 
       mlir::ResultRange results = manualComputation->getResults();

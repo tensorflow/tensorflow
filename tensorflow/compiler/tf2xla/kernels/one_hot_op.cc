@@ -15,6 +15,8 @@ limitations under the License.
 
 // XLA implementation of OneHot operator.
 
+#include <cstdint>
+
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"

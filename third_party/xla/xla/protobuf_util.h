@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PROTOBUF_UTIL_H_
 #define XLA_PROTOBUF_UTIL_H_
 
+#include <cstddef>
 #include <functional>
 #include <string>
 

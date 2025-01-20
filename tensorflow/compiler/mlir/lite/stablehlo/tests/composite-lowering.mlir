@@ -258,6 +258,24 @@ func.func private @XlaCallModule_odml.upsample_bilinear2d.impl_21_0(%arg0: tenso
 // CHECK:           return %[[VAL_6]] : tensor<1x64x32x32xf32>
 // CHECK:         }
 
+func.func private @XlaCallModule_tfl.gelu.impl_0(%arg0: tensor<1x4x4x1xf32>) -> (tensor<1x4x4x1xf32>)
+func.func @jax_gelu_approx(%arg0: tensor<1x4x4x1xf32>) -> (tensor<1x4x4x1xf32>) {
+  %2 = mhlo.composite "tfl.gelu" %arg0 {composite_attributes = {approximate = true}, decomposition = @XlaCallModule_tfl.gelu.impl_0} : (tensor<1x4x4x1xf32>) -> tensor<1x4x4x1xf32>
+  return %2 : tensor<1x4x4x1xf32>
+}
+
+// CHECK-LABEL: jax_gelu_approx
+// CHECK: %0 = "tfl.gelu"(%arg0) <{approximate = true}> : (tensor<1x4x4x1xf32>) -> tensor<1x4x4x1xf32>
+
+func.func private @XlaCallModule_tfl.gelu.impl_1(%arg0: tensor<1x4x4x1xf32>) -> (tensor<1x4x4x1xf32>)
+func.func @jax_gelu(%arg0: tensor<1x4x4x1xf32>) -> (tensor<1x4x4x1xf32>) {
+  %2 = mhlo.composite "tfl.gelu" %arg0 {composite_attributes = {approximate = false}, decomposition = @XlaCallModule_tfl.gelu.impl_1} : (tensor<1x4x4x1xf32>) -> tensor<1x4x4x1xf32>
+  return %2 : tensor<1x4x4x1xf32>
+}
+
+// CHECK-LABEL: jax_gelu
+// CHECK: %0 = "tfl.gelu"(%arg0) <{approximate = false}> : (tensor<1x4x4x1xf32>) -> tensor<1x4x4x1xf32>
+
 func.func private @gelu_decomp_1(%arg0: tensor<5x10xf32>) -> tensor<5x10xf32>
 func.func @gelu_aten(%arg0: tensor<5x10xf32>) -> (tensor<*xf32>) {
   %0 = mhlo.composite "aten.gelu.default" %arg0 {composite_attributes = {approximate = "none"}, decomposition = @gelu_decomp_1} : (tensor<5x10xf32>) -> tensor<5x10xf32>
@@ -409,3 +427,28 @@ func.func private @XlaCallModule_odml.embedding_lookup.impl_0(%arg0: tensor<1xi3
 // CHECK:           return %[[VAL_1]] : tensor<1x2048xf32>
 // CHECK:         }
 
+
+func.func @random_uniform(%arg0: tensor<3xi32>) -> tensor<1x2x3xf32> {
+  %0 = mhlo.composite "odml.random_uniform" %arg0 {composite_attributes = {seed = 0 : i64, seed2 = 1: i64}, decomposition = @XlaCallModule_odml.random_uniform.impl_0} : (tensor<3xi32>) -> tensor<1x2x3xf32>
+  return %0 : tensor<1x2x3xf32>
+}
+func.func private @XlaCallModule_odml.random_uniform.impl_0(%arg0: tensor<3xi32>) -> tensor<1x2x3xf32> {
+  %0 = mhlo.constant dense<1.000000e+00> : tensor<1x2x3xf32>
+  return %0 : tensor<1x2x3xf32>
+}
+// CHECK-LABEL  func.func @random_uniform
+// CHECK:  %0 = "tfl.random_uniform"(%arg0) <{seed = 0 : i64, seed2 = 1 : i64}> : (tensor<3xi32>) -> tensor<1x2x3xf32> 
+// CHECK:  return %0 : tensor<1x2x3xf32>
+
+
+func.func @random_standard_normal(%arg0: tensor<3xi32>) -> tensor<1x2x3xf32> {
+  %0 = mhlo.composite "odml.random_standard_normal" %arg0 {composite_attributes = {seed = 0 : i64, seed2 = 1: i64}, decomposition = @XlaCallModule_odml.random_standard_normal.impl_0} : (tensor<3xi32>) -> tensor<1x2x3xf32>
+  return %0 : tensor<1x2x3xf32>
+}
+func.func private @XlaCallModule_odml.random_standard_normal.impl_0(%arg0: tensor<3xi32>) -> tensor<1x2x3xf32> {
+  %0 = mhlo.constant dense<1.000000e+00> : tensor<1x2x3xf32>
+  return %0 : tensor<1x2x3xf32>
+}
+// CHECK-LABEL  func.func @random_standard_normal
+// CHECK:  %0 = "tfl.random_standard_normal"(%arg0) <{seed = 0 : i64, seed2 = 1 : i64}> : (tensor<3xi32>) -> tensor<1x2x3xf32> 
+// CHECK:  return %0 : tensor<1x2x3xf32>

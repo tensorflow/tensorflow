@@ -91,7 +91,6 @@ class ServiceExecutableRunOptions {
  private:
   ExecutableRunOptions run_options_;
   StreamBorrower stream_borrower_;
-  int64_t local_device_count_;
 };
 
 }  // namespace xla

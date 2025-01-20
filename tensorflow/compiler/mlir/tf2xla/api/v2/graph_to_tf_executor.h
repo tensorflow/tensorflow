@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/graph_to_tf_executor_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
@@ -39,7 +40,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToTfExecutor(
     const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
     mlir::MLIRContext* context,
     std::unordered_map<std::string, std::string>* tf_name_to_mlir_name =
-        nullptr);
+        nullptr,
+    const ConfigProto& config_proto = {},
+    tensorflow::TF2XLABridgeVersion bridge_version =
+        tensorflow::TF2XLABridgeVersion::kNotBridgeUseCase);
 
 }  // namespace v2
 }  // namespace tf2xla

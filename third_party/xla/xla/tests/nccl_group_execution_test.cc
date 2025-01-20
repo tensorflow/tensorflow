@@ -18,8 +18,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
-#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -27,7 +25,9 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -89,7 +89,10 @@ XLA_TEST_F(NcclGroupExecutionTest, NcclGroupSendRecvNoWhileLoop) {
     recv-done2 = (f32[], token[]) tuple(recv-done-data2, recv-done-token2),
       control-predecessors={async-comp-start}
     data-out2 = f32[] get-tuple-element(recv-done2), index=0
-    ROOT out = (f32[], f32[]) tuple(data-out1, data-out2)
+    c100 = f32[] constant(100)
+    res1 = f32[] dot(data-out1, c100)
+    res2 = f32[] dot(data-out2, c100)
+    ROOT out = (f32[], f32[]) tuple(res1, res2)
     unpack-send-done1 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=0
     send-done1 = token[] get-tuple-element(unpack-send-done1), index=2
     unpack-send-done2 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=1
@@ -98,7 +101,10 @@ XLA_TEST_F(NcclGroupExecutionTest, NcclGroupSendRecvNoWhileLoop) {
 
   )";
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -114,9 +120,9 @@ XLA_TEST_F(NcclGroupExecutionTest, NcclGroupSendRecvNoWhileLoop) {
   // TODO (rosiezou): remove the string comparison once a tuple comparison
   // function is available in LiteralTestUtil.
   EXPECT_EQ(results[0].ToStringWithoutShapeOneline(), "( 0, 0 )");
-  EXPECT_EQ(results[1].ToStringWithoutShapeOneline(), "( 10, 0 )");
-  EXPECT_EQ(results[2].ToStringWithoutShapeOneline(), "( 10, 0 )");
-  EXPECT_EQ(results[3].ToStringWithoutShapeOneline(), "( 0, 20 )");
+  EXPECT_EQ(results[1].ToStringWithoutShapeOneline(), "( 1000, 0 )");
+  EXPECT_EQ(results[2].ToStringWithoutShapeOneline(), "( 1000, 0 )");
+  EXPECT_EQ(results[3].ToStringWithoutShapeOneline(), "( 0, 2000 )");
 }
 
 }  // namespace

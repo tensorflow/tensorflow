@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/core/profiler/utils/hlo_module_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
 
@@ -55,7 +56,9 @@ HloInstructionWrapper::HloInstructionWrapper(
     : instr_(instr),
       op_full_name_(
           tsl::profiler::TraceMeOp(Metadata().op_name(), Metadata().op_type())),
-      category_(instr_->ToCategory()) {
+      category_(instr_->ToCategory()),
+      expression_(tensorflow::profiler::UncachedExpression(
+          instr_, false, tensorflow::profiler::kMaxHlolNameSize)) {
   ProcessXlaCostAnalysis(cost_analysis);
 }
 
