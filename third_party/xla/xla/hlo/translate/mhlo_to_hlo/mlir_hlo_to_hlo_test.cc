@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/BuiltinOps.h"
