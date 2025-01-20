@@ -1,3 +1,15 @@
+diff --ruN a/stablehlo/examples/c++/ExampleAdd.cpp b/stablehlo/examples/c++/ExampleAdd.cpp
+--- stablehlo/examples/c++/ExampleAdd.cpp
++++ stablehlo/examples/c++/ExampleAdd.cpp
+@@ -49,7 +49,7 @@
+   /** create function **/
+   // create function argument and result types.
+   auto tensorType =
+-      mlir::RankedTensorType::get({3, 4}, mlir::FloatType::getF32(&context));
++      mlir::RankedTensorType::get({3, 4}, mlir::Float32Type::get(&context));
+   auto func_type =
+       mlir::FunctionType::get(&context, {tensorType, tensorType}, {tensorType});
+ 
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
 --- stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
 +++ stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir

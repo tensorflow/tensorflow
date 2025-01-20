@@ -595,19 +595,19 @@ TensorFlowType TensorFlowRefType::get(Type type) {
 
 Type TensorFlowRefType::RemoveRef() {
   MLIRContext* ctx = getContext();
-  if (mlir::isa<HalfRefType>(*this)) return FloatType::getF16(ctx);
-  if (mlir::isa<FloatRefType>(*this)) return FloatType::getF32(ctx);
-  if (mlir::isa<DoubleRefType>(*this)) return FloatType::getF64(ctx);
-  if (mlir::isa<Bfloat16RefType>(*this)) return FloatType::getBF16(ctx);
+  if (mlir::isa<HalfRefType>(*this)) return Float16Type::get(ctx);
+  if (mlir::isa<FloatRefType>(*this)) return Float32Type::get(ctx);
+  if (mlir::isa<DoubleRefType>(*this)) return Float64Type::get(ctx);
+  if (mlir::isa<Bfloat16RefType>(*this)) return BFloat16Type::get(ctx);
   if (mlir::isa<Float8E4M3FNType>(*this))
-    return FloatType::getFloat8E4M3FN(ctx);
-  if (mlir::isa<Float8E5M2Type>(*this)) return FloatType::getFloat8E5M2(ctx);
+    return Float8E4M3FNType::get(ctx);
+  if (mlir::isa<Float8E5M2Type>(*this)) return Float8E5M2Type::get(ctx);
   if (mlir::isa<Float8E4M3FNUZType>(*this))
-    return FloatType::getFloat8E4M3FNUZ(ctx);
+    return Float8E4M3FNUZType::get(ctx);
   if (mlir::isa<Float8E4M3B11FNUZType>(*this))
-    return FloatType::getFloat8E4M3B11FNUZ(ctx);
+    return Float8E4M3B11FNUZType::get(ctx);
   if (mlir::isa<Float8E5M2FNUZType>(*this))
-    return FloatType::getFloat8E5M2FNUZ(ctx);
+    return Float8E5M2FNUZType::get(ctx);
   if (mlir::isa<BoolRefType>(*this)) return IntegerType::get(ctx, 1);
   if (mlir::isa<Int4RefType>(*this))
     return IntegerType::get(ctx, 4, IntegerType::Signed);
@@ -626,9 +626,9 @@ Type TensorFlowRefType::RemoveRef() {
   if (mlir::isa<Uint64RefType>(*this))
     return IntegerType::get(ctx, 64, IntegerType::Unsigned);
   if (mlir::isa<Complex64RefType>(*this))
-    return ComplexType::get(FloatType::getF32(ctx));
+    return ComplexType::get(Float32Type::get(ctx));
   if (mlir::isa<Complex128RefType>(*this))
-    return ComplexType::get(FloatType::getF64(ctx));
+    return ComplexType::get(Float64Type::get(ctx));
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   if (isa<tftype##RefType>()) return tftype##Type::get(ctx);
 
