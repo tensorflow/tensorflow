@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_CC_SLICE_UTIL_H_
 #define TENSORFLOW_DTENSOR_CC_SLICE_UTIL_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"

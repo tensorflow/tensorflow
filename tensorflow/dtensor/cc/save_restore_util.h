@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_CC_SAVE_RESTORE_UTIL_H_
 #define TENSORFLOW_DTENSOR_CC_SAVE_RESTORE_UTIL_H_
 
+#include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/span.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/dstatus.h"
