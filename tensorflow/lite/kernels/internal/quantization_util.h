@@ -260,22 +260,20 @@ int CalculateInputRadius(int input_integer_bits, int input_left_shift,
 // Gymnastics with nudged zero point is to ensure that real zero maps to
 // an integer, which is required for e.g. zero-padding in convolutional layers.
 // Outputs nudged_min, nudged_max, nudged_scale.
-void NudgeQuantizationRange(const float min, const float max,
-                            const int quant_min, const int quant_max,
+void NudgeQuantizationRange(float min, float max, int quant_min, int quant_max,
                             float* nudged_min, float* nudged_max,
                             float* nudged_scale);
 
 // Fake quantizes (quantizes and dequantizes) input_data using the scale,
 // nudged_min, and nudged_max from NudgeQuantizationRange. This matches the code
 // in TensorFlow's FakeQuantizeWithMinMaxVarsFunctor.
-void FakeQuantizeArray(const float nudged_scale, const float nudged_min,
-                       const float nudged_max, const float* input_data,
-                       float* output_data, const float size);
+void FakeQuantizeArray(float nudged_scale, float nudged_min, float nudged_max,
+                       const float* input_data, float* output_data, float size);
 
 // If x is approximately a power of two (with any positive or negative
 // exponent), stores that exponent (i.e. log2(x)) in *log2_result, otherwise
 // returns false.
-bool CheckedLog2(const float x, int* log2_result);
+bool CheckedLog2(float x, int* log2_result);
 
 // Decomposes an array of double multipliers into a Q0.31 int32 representation
 // of its significand, and shift representation of its exponent.
