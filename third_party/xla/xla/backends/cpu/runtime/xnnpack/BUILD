@@ -48,6 +48,7 @@ cc_library(
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:fixed_array",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -61,11 +62,11 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
     ],
 )
