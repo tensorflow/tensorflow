@@ -1,246 +1,247 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 2331b44..3d2a252 100644
+index 3d2a252..509398d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,22 +1,207 @@
+@@ -1,207 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Vector/Transforms/VectorEmulateNarrowType.cpp b/mlir/lib/Dialect/Vector/Transforms/VectorEmulateNarrowType.cpp
----- a/mlir/lib/Dialect/Vector/Transforms/VectorEmulateNarrowType.cpp
--+++ b/mlir/lib/Dialect/Vector/Transforms/VectorEmulateNarrowType.cpp
--@@ -1291,7 +1291,7 @@
-- /// bitwise ops to avoid leaving LLVM to scramble with peephole optimizations.
-- static Value rewriteI4ToI8Ext(PatternRewriter &rewriter, Location loc,
--                               Value srcValue, const ExtractNBitsFn &extFn) {
---  auto srcVecType = cast<VectorType>(srcValue.getType());
--+  [[maybe_unused]] auto srcVecType = cast<VectorType>(srcValue.getType());
--   assert(srcVecType.getElementType().isSignlessInteger(4) &&
--          "Expected i4 type");
-+diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/TypeRange.h b/mlir/include/mlir/IR/TypeRange.h
-+--- a/mlir/include/mlir/IR/TypeRange.h
-++++ b/mlir/include/mlir/IR/TypeRange.h
-+@@ -29,12 +29,11 @@
-+ /// a SmallVector/std::vector. This class should be used in places that are not
-+ /// suitable for a more derived type (e.g. ArrayRef) or a template range
-+ /// parameter.
-+-class TypeRange
-+-    : public llvm::detail::indexed_accessor_range_base<
-+-          TypeRange,
-+-          llvm::PointerUnion<const Value *, const Type *, OpOperand *,
-+-                             detail::OpResultImpl *, Type>,
-+-          Type, Type, Type> {
-++class TypeRange : public llvm::detail::indexed_accessor_range_base<
-++                      TypeRange,
-++                      llvm::PointerUnion<const Value *, const Type *,
-++                                         OpOperand *, detail::OpResultImpl *>,
-++                      Type, Type, Type> {
-+ public:
-+   using RangeBaseT::RangeBaseT;
-+   TypeRange(ArrayRef<Type> types = std::nullopt);
-+@@ -45,11 +44,8 @@
-+   TypeRange(ValueTypeRange<ValueRangeT> values)
-+       : TypeRange(ValueRange(ValueRangeT(values.begin().getCurrent(),
-+                                          values.end().getCurrent()))) {}
-+-
-+-  TypeRange(Type type) : TypeRange(type, /*count=*/1) {}
-+-  template <typename Arg, typename = std::enable_if_t<
-+-                              std::is_constructible_v<ArrayRef<Type>, Arg> &&
-+-                              !std::is_constructible_v<Type, Arg>>>
-++  template <typename Arg, typename = std::enable_if_t<std::is_constructible<
-++                              ArrayRef<Type>, Arg>::value>>
-+   TypeRange(Arg &&arg) : TypeRange(ArrayRef<Type>(std::forward<Arg>(arg))) {}
-+   TypeRange(std::initializer_list<Type> types)
-+       : TypeRange(ArrayRef<Type>(types)) {}
-+@@ -60,9 +56,8 @@
-+   /// * A pointer to the first element of an array of types.
-+   /// * A pointer to the first element of an array of operands.
-+   /// * A pointer to the first element of an array of results.
-+-  /// * A single 'Type' instance.
-+   using OwnerT = llvm::PointerUnion<const Value *, const Type *, OpOperand *,
-+-                                    detail::OpResultImpl *, Type>;
-++                                    detail::OpResultImpl *>;
-  
--@@ -1311,7 +1311,7 @@
-- /// bitwise ops to avoid leaving LLVM to scramble with peephole optimizations.
-- static Value rewriteI2ToI8Ext(PatternRewriter &rewriter, Location loc,
--                               Value srcValue, const ExtractNBitsFn &extFn) {
---  VectorType srcVecType = cast<VectorType>(srcValue.getType());
--+  [[maybe_unused]] VectorType srcVecType = cast<VectorType>(srcValue.getType());
--   assert(srcVecType.getElementType().isSignlessInteger(2) &&
--          "Expected i2 type");
-+   /// See `llvm::detail::indexed_accessor_range_base` for details.
-+   static OwnerT offset_base(OwnerT object, ptrdiff_t index);
-+diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/ValueRange.h b/mlir/include/mlir/IR/ValueRange.h
-+--- a/mlir/include/mlir/IR/ValueRange.h
-++++ b/mlir/include/mlir/IR/ValueRange.h
-+@@ -374,16 +374,16 @@
-+ /// SmallVector/std::vector. This class should be used in places that are not
-+ /// suitable for a more derived type (e.g. ArrayRef) or a template range
-+ /// parameter.
-+-class ValueRange final : public llvm::detail::indexed_accessor_range_base<
-+-                             ValueRange,
-+-                             PointerUnion<const Value *, OpOperand *,
-+-                                          detail::OpResultImpl *, Value>,
-+-                             Value, Value, Value> {
-++class ValueRange final
-++    : public llvm::detail::indexed_accessor_range_base<
-++          ValueRange,
-++          PointerUnion<const Value *, OpOperand *, detail::OpResultImpl *>,
-++          Value, Value, Value> {
-+ public:
-+   /// The type representing the owner of a ValueRange. This is either a list of
-+-  /// values, operands, or results or a single value.
-++  /// values, operands, or results.
-+   using OwnerT =
-+-      PointerUnion<const Value *, OpOperand *, detail::OpResultImpl *, Value>;
-++      PointerUnion<const Value *, OpOperand *, detail::OpResultImpl *>;
-  
-+   using RangeBaseT::RangeBaseT;
-+ 
-+@@ -392,7 +392,7 @@
-+                 std::is_constructible<ArrayRef<Value>, Arg>::value &&
-+                 !std::is_convertible<Arg, Value>::value>>
-+   ValueRange(Arg &&arg) : ValueRange(ArrayRef<Value>(std::forward<Arg>(arg))) {}
-+-  ValueRange(Value value) : ValueRange(value, /*count=*/1) {}
-++  ValueRange(const Value &value) : ValueRange(&value, /*count=*/1) {}
-+   ValueRange(const std::initializer_list<Value> &values)
-+       : ValueRange(ArrayRef<Value>(values)) {}
-+   ValueRange(iterator_range<OperandRange::iterator> values)
-+diff -ruN --strip-trailing-cr a/mlir/lib/IR/OperationSupport.cpp b/mlir/lib/IR/OperationSupport.cpp
-+--- a/mlir/lib/IR/OperationSupport.cpp
-++++ b/mlir/lib/IR/OperationSupport.cpp
-+@@ -653,15 +653,6 @@
-+ /// See `llvm::detail::indexed_accessor_range_base` for details.
-+ ValueRange::OwnerT ValueRange::offset_base(const OwnerT &owner,
-+                                            ptrdiff_t index) {
-+-  if (llvm::isa_and_nonnull<Value>(owner)) {
-+-    // Prevent out-of-bounds indexing for single values.
-+-    // Note that we do allow an index of 1 as is required by 'slice'ing that
-+-    // returns an empty range. This also matches the usual rules of C++ of being
-+-    // allowed to index past the last element of an array.
-+-    assert(index <= 1 && "out-of-bound offset into single-value 'ValueRange'");
-+-    // Return nullptr to quickly cause segmentation faults on misuse.
-+-    return index == 0 ? owner : nullptr;
-+-  }
-+   if (const auto *value = llvm::dyn_cast_if_present<const Value *>(owner))
-+     return {value + index};
-+   if (auto *operand = llvm::dyn_cast_if_present<OpOperand *>(owner))
-+@@ -670,10 +661,6 @@
-+ }
-+ /// See `llvm::detail::indexed_accessor_range_base` for details.
-+ Value ValueRange::dereference_iterator(const OwnerT &owner, ptrdiff_t index) {
-+-  if (auto value = llvm::dyn_cast_if_present<Value>(owner)) {
-+-    assert(index == 0 && "cannot offset into single-value 'ValueRange'");
-+-    return value;
-+-  }
-+   if (const auto *value = llvm::dyn_cast_if_present<const Value *>(owner))
-+     return value[index];
-+   if (auto *operand = llvm::dyn_cast_if_present<OpOperand *>(owner))
-+diff -ruN --strip-trailing-cr a/mlir/lib/IR/TypeRange.cpp b/mlir/lib/IR/TypeRange.cpp
-+--- a/mlir/lib/IR/TypeRange.cpp
-++++ b/mlir/lib/IR/TypeRange.cpp
-+@@ -31,23 +31,12 @@
-+     this->base = result;
-+   else if (auto *operand = llvm::dyn_cast_if_present<OpOperand *>(owner))
-+     this->base = operand;
-+-  else if (auto value = llvm::dyn_cast_if_present<Value>(owner))
-+-    this->base = value.getType();
-+   else
-+     this->base = cast<const Value *>(owner);
-+ }
-+ 
-+ /// See `llvm::detail::indexed_accessor_range_base` for details.
-+ TypeRange::OwnerT TypeRange::offset_base(OwnerT object, ptrdiff_t index) {
-+-  if (llvm::isa_and_nonnull<Type>(object)) {
-+-    // Prevent out-of-bounds indexing for single values.
-+-    // Note that we do allow an index of 1 as is required by 'slice'ing that
-+-    // returns an empty range. This also matches the usual rules of C++ of being
-+-    // allowed to index past the last element of an array.
-+-    assert(index <= 1 && "out-of-bound offset into single-value 'ValueRange'");
-+-    // Return nullptr to quickly cause segmentation faults on misuse.
-+-    return index == 0 ? object : nullptr;
-+-  }
-+   if (const auto *value = llvm::dyn_cast_if_present<const Value *>(object))
-+     return {value + index};
-+   if (auto *operand = llvm::dyn_cast_if_present<OpOperand *>(object))
-+@@ -59,10 +48,6 @@
-+ 
-+ /// See `llvm::detail::indexed_accessor_range_base` for details.
-+ Type TypeRange::dereference_iterator(OwnerT object, ptrdiff_t index) {
-+-  if (auto type = llvm::dyn_cast_if_present<Type>(object)) {
-+-    assert(index == 0 && "cannot offset into single-value 'TypeRange'");
-+-    return type;
-+-  }
-+   if (const auto *value = llvm::dyn_cast_if_present<const Value *>(object))
-+     return (value + index)->getType();
-+   if (auto *operand = llvm::dyn_cast_if_present<OpOperand *>(object))
-+diff -ruN --strip-trailing-cr a/mlir/unittests/IR/OperationSupportTest.cpp b/mlir/unittests/IR/OperationSupportTest.cpp
-+--- a/mlir/unittests/IR/OperationSupportTest.cpp
-++++ b/mlir/unittests/IR/OperationSupportTest.cpp
-+@@ -313,21 +313,4 @@
-+   op2->destroy();
-+ }
-+ 
-+-TEST(ValueRangeTest, ValueConstructable) {
-+-  MLIRContext context;
-+-  Builder builder(&context);
-+-
-+-  Operation *useOp =
-+-      createOp(&context, /*operands=*/std::nullopt, builder.getIntegerType(16));
-+-  // Valid construction despite a temporary 'OpResult'.
-+-  ValueRange operands = useOp->getResult(0);
-+-
-+-  useOp->setOperands(operands);
-+-  EXPECT_EQ(useOp->getNumOperands(), 1u);
-+-  EXPECT_EQ(useOp->getOperand(0), useOp->getResult(0));
-+-
-+-  useOp->dropAllUses();
-+-  useOp->destroy();
-+-}
-+-
-+ } // namespace
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-+@@ -43,10 +43,7 @@
-+ 
-+ gentbl(
-+     name = "diagnostic_defs_gen",
-+-    tbl_outs = [(
-+-        "-gen-clang-diags-defs -clang-component=%s" % c,
-+-        "include/clang/Basic/Diagnostic%sKinds.inc" % c,
-+-    ) for c in [
-++    tbl_outs = [out for c in [
-+         "AST",
-+         "Analysis",
-+         "Comment",
-+@@ -60,6 +57,15 @@
-+         "Refactoring",
-+         "Sema",
-+         "Serialization",
-++    ] for out in [
-++        (
-++            "-gen-clang-diags-defs -clang-component=%s" % c,
-++            "include/clang/Basic/Diagnostic%sKinds.inc" % c,
-++        ),
-++        (
-++            "-gen-clang-diags-enums -clang-component=%s" % c,
-++            "include/clang/Basic/Diagnostic%sEnums.inc" % c,
-++        ),
-+     ]] + [
-+         (
-+             "-gen-clang-diag-groups",
+-diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/TypeRange.h b/mlir/include/mlir/IR/TypeRange.h
+---- a/mlir/include/mlir/IR/TypeRange.h
+-+++ b/mlir/include/mlir/IR/TypeRange.h
+-@@ -29,12 +29,11 @@
+- /// a SmallVector/std::vector. This class should be used in places that are not
+- /// suitable for a more derived type (e.g. ArrayRef) or a template range
+- /// parameter.
+--class TypeRange
+--    : public llvm::detail::indexed_accessor_range_base<
+--          TypeRange,
+--          llvm::PointerUnion<const Value *, const Type *, OpOperand *,
+--                             detail::OpResultImpl *, Type>,
+--          Type, Type, Type> {
+-+class TypeRange : public llvm::detail::indexed_accessor_range_base<
+-+                      TypeRange,
+-+                      llvm::PointerUnion<const Value *, const Type *,
+-+                                         OpOperand *, detail::OpResultImpl *>,
+-+                      Type, Type, Type> {
+- public:
+-   using RangeBaseT::RangeBaseT;
+-   TypeRange(ArrayRef<Type> types = std::nullopt);
+-@@ -45,11 +44,8 @@
+-   TypeRange(ValueTypeRange<ValueRangeT> values)
+-       : TypeRange(ValueRange(ValueRangeT(values.begin().getCurrent(),
+-                                          values.end().getCurrent()))) {}
+--
+--  TypeRange(Type type) : TypeRange(type, /*count=*/1) {}
+--  template <typename Arg, typename = std::enable_if_t<
+--                              std::is_constructible_v<ArrayRef<Type>, Arg> &&
+--                              !std::is_constructible_v<Type, Arg>>>
+-+  template <typename Arg, typename = std::enable_if_t<std::is_constructible<
+-+                              ArrayRef<Type>, Arg>::value>>
+-   TypeRange(Arg &&arg) : TypeRange(ArrayRef<Type>(std::forward<Arg>(arg))) {}
+-   TypeRange(std::initializer_list<Type> types)
+-       : TypeRange(ArrayRef<Type>(types)) {}
+-@@ -60,9 +56,8 @@
+-   /// * A pointer to the first element of an array of types.
+-   /// * A pointer to the first element of an array of operands.
+-   /// * A pointer to the first element of an array of results.
+--  /// * A single 'Type' instance.
+-   using OwnerT = llvm::PointerUnion<const Value *, const Type *, OpOperand *,
+--                                    detail::OpResultImpl *, Type>;
+-+                                    detail::OpResultImpl *>;
+- 
+-   /// See `llvm::detail::indexed_accessor_range_base` for details.
+-   static OwnerT offset_base(OwnerT object, ptrdiff_t index);
+-diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/ValueRange.h b/mlir/include/mlir/IR/ValueRange.h
+---- a/mlir/include/mlir/IR/ValueRange.h
+-+++ b/mlir/include/mlir/IR/ValueRange.h
+-@@ -374,16 +374,16 @@
+- /// SmallVector/std::vector. This class should be used in places that are not
+- /// suitable for a more derived type (e.g. ArrayRef) or a template range
+- /// parameter.
+--class ValueRange final : public llvm::detail::indexed_accessor_range_base<
+--                             ValueRange,
+--                             PointerUnion<const Value *, OpOperand *,
+--                                          detail::OpResultImpl *, Value>,
+--                             Value, Value, Value> {
+-+class ValueRange final
+-+    : public llvm::detail::indexed_accessor_range_base<
+-+          ValueRange,
+-+          PointerUnion<const Value *, OpOperand *, detail::OpResultImpl *>,
+-+          Value, Value, Value> {
+- public:
+-   /// The type representing the owner of a ValueRange. This is either a list of
+--  /// values, operands, or results or a single value.
+-+  /// values, operands, or results.
+-   using OwnerT =
+--      PointerUnion<const Value *, OpOperand *, detail::OpResultImpl *, Value>;
+-+      PointerUnion<const Value *, OpOperand *, detail::OpResultImpl *>;
+- 
+-   using RangeBaseT::RangeBaseT;
+- 
+-@@ -392,7 +392,7 @@
+-                 std::is_constructible<ArrayRef<Value>, Arg>::value &&
+-                 !std::is_convertible<Arg, Value>::value>>
+-   ValueRange(Arg &&arg) : ValueRange(ArrayRef<Value>(std::forward<Arg>(arg))) {}
+--  ValueRange(Value value) : ValueRange(value, /*count=*/1) {}
+-+  ValueRange(const Value &value) : ValueRange(&value, /*count=*/1) {}
+-   ValueRange(const std::initializer_list<Value> &values)
+-       : ValueRange(ArrayRef<Value>(values)) {}
+-   ValueRange(iterator_range<OperandRange::iterator> values)
+-diff -ruN --strip-trailing-cr a/mlir/lib/IR/OperationSupport.cpp b/mlir/lib/IR/OperationSupport.cpp
+---- a/mlir/lib/IR/OperationSupport.cpp
+-+++ b/mlir/lib/IR/OperationSupport.cpp
+-@@ -653,15 +653,6 @@
+- /// See `llvm::detail::indexed_accessor_range_base` for details.
+- ValueRange::OwnerT ValueRange::offset_base(const OwnerT &owner,
+-                                            ptrdiff_t index) {
+--  if (llvm::isa_and_nonnull<Value>(owner)) {
+--    // Prevent out-of-bounds indexing for single values.
+--    // Note that we do allow an index of 1 as is required by 'slice'ing that
+--    // returns an empty range. This also matches the usual rules of C++ of being
+--    // allowed to index past the last element of an array.
+--    assert(index <= 1 && "out-of-bound offset into single-value 'ValueRange'");
+--    // Return nullptr to quickly cause segmentation faults on misuse.
+--    return index == 0 ? owner : nullptr;
+--  }
+-   if (const auto *value = llvm::dyn_cast_if_present<const Value *>(owner))
+-     return {value + index};
+-   if (auto *operand = llvm::dyn_cast_if_present<OpOperand *>(owner))
+-@@ -670,10 +661,6 @@
+- }
+- /// See `llvm::detail::indexed_accessor_range_base` for details.
+- Value ValueRange::dereference_iterator(const OwnerT &owner, ptrdiff_t index) {
+--  if (auto value = llvm::dyn_cast_if_present<Value>(owner)) {
+--    assert(index == 0 && "cannot offset into single-value 'ValueRange'");
+--    return value;
+--  }
+-   if (const auto *value = llvm::dyn_cast_if_present<const Value *>(owner))
+-     return value[index];
+-   if (auto *operand = llvm::dyn_cast_if_present<OpOperand *>(owner))
+-diff -ruN --strip-trailing-cr a/mlir/lib/IR/TypeRange.cpp b/mlir/lib/IR/TypeRange.cpp
+---- a/mlir/lib/IR/TypeRange.cpp
+-+++ b/mlir/lib/IR/TypeRange.cpp
+-@@ -31,23 +31,12 @@
+-     this->base = result;
+-   else if (auto *operand = llvm::dyn_cast_if_present<OpOperand *>(owner))
+-     this->base = operand;
+--  else if (auto value = llvm::dyn_cast_if_present<Value>(owner))
+--    this->base = value.getType();
+-   else
+-     this->base = cast<const Value *>(owner);
+- }
+- 
+- /// See `llvm::detail::indexed_accessor_range_base` for details.
+- TypeRange::OwnerT TypeRange::offset_base(OwnerT object, ptrdiff_t index) {
+--  if (llvm::isa_and_nonnull<Type>(object)) {
+--    // Prevent out-of-bounds indexing for single values.
+--    // Note that we do allow an index of 1 as is required by 'slice'ing that
+--    // returns an empty range. This also matches the usual rules of C++ of being
+--    // allowed to index past the last element of an array.
+--    assert(index <= 1 && "out-of-bound offset into single-value 'ValueRange'");
+--    // Return nullptr to quickly cause segmentation faults on misuse.
+--    return index == 0 ? object : nullptr;
+--  }
+-   if (const auto *value = llvm::dyn_cast_if_present<const Value *>(object))
+-     return {value + index};
+-   if (auto *operand = llvm::dyn_cast_if_present<OpOperand *>(object))
+-@@ -59,10 +48,6 @@
+- 
+- /// See `llvm::detail::indexed_accessor_range_base` for details.
+- Type TypeRange::dereference_iterator(OwnerT object, ptrdiff_t index) {
+--  if (auto type = llvm::dyn_cast_if_present<Type>(object)) {
+--    assert(index == 0 && "cannot offset into single-value 'TypeRange'");
+--    return type;
+--  }
+-   if (const auto *value = llvm::dyn_cast_if_present<const Value *>(object))
+-     return (value + index)->getType();
+-   if (auto *operand = llvm::dyn_cast_if_present<OpOperand *>(object))
+-diff -ruN --strip-trailing-cr a/mlir/unittests/IR/OperationSupportTest.cpp b/mlir/unittests/IR/OperationSupportTest.cpp
+---- a/mlir/unittests/IR/OperationSupportTest.cpp
+-+++ b/mlir/unittests/IR/OperationSupportTest.cpp
+-@@ -313,21 +313,4 @@
+-   op2->destroy();
+- }
+- 
+--TEST(ValueRangeTest, ValueConstructable) {
+--  MLIRContext context;
+--  Builder builder(&context);
+--
+--  Operation *useOp =
+--      createOp(&context, /*operands=*/std::nullopt, builder.getIntegerType(16));
+--  // Valid construction despite a temporary 'OpResult'.
+--  ValueRange operands = useOp->getResult(0);
+--
+--  useOp->setOperands(operands);
+--  EXPECT_EQ(useOp->getNumOperands(), 1u);
+--  EXPECT_EQ(useOp->getOperand(0), useOp->getResult(0));
+--
+--  useOp->dropAllUses();
+--  useOp->destroy();
+--}
+--
+- } // namespace
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+-@@ -43,10 +43,7 @@
+- 
+- gentbl(
+-     name = "diagnostic_defs_gen",
+--    tbl_outs = [(
+--        "-gen-clang-diags-defs -clang-component=%s" % c,
+--        "include/clang/Basic/Diagnostic%sKinds.inc" % c,
+--    ) for c in [
+-+    tbl_outs = [out for c in [
+-         "AST",
+-         "Analysis",
+-         "Comment",
+-@@ -60,6 +57,15 @@
+-         "Refactoring",
+-         "Sema",
+-         "Serialization",
+-+    ] for out in [
+-+        (
+-+            "-gen-clang-diags-defs -clang-component=%s" % c,
+-+            "include/clang/Basic/Diagnostic%sKinds.inc" % c,
+-+        ),
+-+        (
+-+            "-gen-clang-diags-enums -clang-component=%s" % c,
+-+            "include/clang/Basic/Diagnostic%sEnums.inc" % c,
+-+        ),
+-     ]] + [
+-         (
+-             "-gen-clang-diag-groups",
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 4602e35..4706c63 100644
+index 4706c63..06371ed 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "c24ce324d56328e4b91c8797ea4935545084303e"
--    LLVM_SHA256 = "ef9f02427de91c37b2315203fc60fa71cac5caa385860fd2a1daa620b4867091"
-+    LLVM_COMMIT = "bf17016a92bc8a23d2cdd2b51355dd4eb5019c68"
-+    LLVM_SHA256 = "ba09f12e5019f5aca531b1733275f0a10b181d6f894deb1a4610e017f76b172a"
+-    LLVM_COMMIT = "bf17016a92bc8a23d2cdd2b51355dd4eb5019c68"
+-    LLVM_SHA256 = "ba09f12e5019f5aca531b1733275f0a10b181d6f894deb1a4610e017f76b172a"
++    LLVM_COMMIT = "e5a28a3b4d09a3ab128439a0f4eb2659e0b1978b"
++    LLVM_SHA256 = "32418a77a62ab772f2f3c8032bd18fb5b1ad2a9352350c09056b4736057bdd71"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index d19d903..2dd4f17 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -1,3 +1,15 @@
++diff --ruN a/stablehlo/examples/c++/ExampleAdd.cpp b/stablehlo/examples/c++/ExampleAdd.cpp
++--- stablehlo/examples/c++/ExampleAdd.cpp
+++++ stablehlo/examples/c++/ExampleAdd.cpp
++@@ -49,7 +49,7 @@
++   /** create function **/
++   // create function argument and result types.
++   auto tensorType =
++-      mlir::RankedTensorType::get({3, 4}, mlir::FloatType::getF32(&context));
+++      mlir::RankedTensorType::get({3, 4}, mlir::Float32Type::get(&context));
++   auto func_type =
++       mlir::FunctionType::get(&context, {tensorType, tensorType}, {tensorType});
++ 
+ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
+ --- stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
+ +++ stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
