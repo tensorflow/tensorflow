@@ -38,6 +38,12 @@ extern "C" {
 #define LITERT_HAS_ION_SUPPORT 1
 #define LITERT_HAS_DMABUF_SUPPORT 1
 #define LITERT_HAS_FASTRPC_SUPPORT 1
+// copybara:comment_begin(google-only)
+#elif defined(GOOGLE_UNSUPPORTED_OS_LOONIX)
+#define LITERT_HAS_ION_SUPPORT 0
+#define LITERT_HAS_DMABUF_SUPPORT 1
+#define LITERT_HAS_FASTRPC_SUPPORT 0
+// copybara:comment_end
 #else
 #define LITERT_HAS_ION_SUPPORT 0
 #define LITERT_HAS_DMABUF_SUPPORT 0
