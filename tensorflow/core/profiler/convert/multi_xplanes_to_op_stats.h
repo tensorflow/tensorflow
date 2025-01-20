@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_MULTI_XPLANES_TO_OP_STATS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_MULTI_XPLANES_TO_OP_STATS_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"

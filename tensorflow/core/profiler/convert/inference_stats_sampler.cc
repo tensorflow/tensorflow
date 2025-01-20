@@ -16,7 +16,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"

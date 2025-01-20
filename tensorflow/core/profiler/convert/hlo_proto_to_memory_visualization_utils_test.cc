@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include <gmock/gmock.h>
 #include "absl/strings/str_format.h"
 #include "xla/service/hlo.pb.h"
 #include "tensorflow/core/platform/test.h"
