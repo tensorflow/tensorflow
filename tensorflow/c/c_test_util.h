@@ -16,9 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_C_C_TEST_UTIL_H_
 #define TENSORFLOW_C_C_TEST_UTIL_H_
 
-#include "tensorflow/c/c_api.h"
-
+#include <cstdint>
+#include <initializer_list>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
+
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
