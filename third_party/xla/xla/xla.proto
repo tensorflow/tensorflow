@@ -42,6 +42,8 @@ message DebugOptions {
   // XLA backend-agnostic options.
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
+  // Crash if HloPassFix can not converge after a fixed number of iterations.
+  bool xla_unsupported_crash_on_hlo_pass_fix_max_iterations = 363;
   // go/keep-sorted end
 
   reserved 346;  // xla_experimental_exec_time_optimization_effort
@@ -1114,7 +1116,7 @@ message DebugOptions {
   // For sub-byte dot operands, layout them along contracting dimensions.
   bool xla_gpu_experimental_pack_dot_operands_along_k_dimension = 362;
 
-  // Next id: 363
+  // Next id: 364
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

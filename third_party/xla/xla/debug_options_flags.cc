@@ -325,6 +325,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_scatter_determinism_expander(true);
   opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(false);
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
+  opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   return opts;
 }
 
@@ -2236,7 +2237,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_experimental_pack_dot_operands_along_k_dimension),
       debug_options->xla_gpu_experimental_pack_dot_operands_along_k_dimension(),
       "For sub-byte dot operands, layout them along contracting dimensions."));
-}  // NOLINT(readability/fn_size)
+  flag_list->push_back(tsl::Flag(
+      "xla_unsupported_crash_on_hlo_pass_fix_max_iterations",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations),
+      debug_options->xla_unsupported_crash_on_hlo_pass_fix_max_iterations(),
+      "Crash if HloPassFix can not converge after a fixed number of "
+      "iterations."));
+}  // NOLINT(readability/fn_size)1
 
 // Allocates flag_values and flag_objects; this function must not be called more
 // than once - its call done via call_once.
