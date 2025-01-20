@@ -75,6 +75,9 @@ using tsl::profiler::kXProfMetadataTransfers;        // NOLINT
 using tsl::profiler::StatType;                       // NOLINT
 using tsl::profiler::TpuPlaneName;                   // NOLINT
 using tsl::profiler::XFlow;                          // NOLINT
+using tsl::profiler::kTaskEnvPlaneName;              // NOLINT
+using tsl::profiler::FindTaskEnvStatType;            // NOLINT
+using tsl::profiler::TaskEnvStatType;                // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow
