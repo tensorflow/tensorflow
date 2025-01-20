@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/MemoryBufferRef.h"
@@ -46,7 +47,12 @@ LlvmIrKernelEmitter::LlvmIrKernelEmitter(absl::string_view llvm_ir,
     : llvm_ir_(llvm_ir),
       kernel_name_(kernel_name),
       thread_dim_(thread_dim),
-      args_(args.begin(), args.end()) {}
+      args_(args.begin(), args.end()) {
+  for (const LlvmIrKernelEmitter::KernelArg& arg : args_) {
+    buffer_allocations_.emplace_back(buffer_allocations_.size(), arg.size_bytes,
+                                     /*color=*/0);
+  }
+}
 
 absl::StatusOr<KernelDefinition> LlvmIrKernelEmitter::EmitKernelDefinition() {
   auto context = std::make_unique<llvm::LLVMContext>();
@@ -61,21 +67,18 @@ absl::StatusOr<KernelDefinition> LlvmIrKernelEmitter::EmitKernelDefinition() {
                     diagnostic.getMessage().str());
   }
 
-  auto source = std::make_unique<LlvmIrKernelSource>(
-      std::move(context), std::move(module), kernel_name_);
+  auto source = std::make_unique<LlvmIrKernelSource>(std::move(context),
+                                                     std::move(module));
 
   // Convert kernel arguments to fake allocations and buffer uses.
   KernelSpec::BufferUses buffer_uses;
-  buffer_allocations_.clear();
 
-  for (const LlvmIrKernelEmitter::KernelArg& arg : args_) {
-    auto& allocation = buffer_allocations_.emplace_back(
-        buffer_allocations_.size(), arg.size_bytes, /*color=*/0);
+  for (const auto& [arg, allocation] : llvm::zip(args_, buffer_allocations_)) {
     BufferAllocation::Slice slice(&allocation, 0, arg.size_bytes);
     buffer_uses.push_back(BufferUse(slice, arg.memory_access));
   }
 
-  KernelSpec kernel_spec(thread_dim_, buffer_uses);
+  KernelSpec kernel_spec(kernel_name_, thread_dim_, buffer_uses);
   return KernelDefinition(std::move(kernel_spec), std::move(source));
 }
 

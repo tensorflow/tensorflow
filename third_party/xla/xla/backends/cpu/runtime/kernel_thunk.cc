@@ -36,7 +36,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
@@ -360,8 +359,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
 }
 
 absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
-    Thunk::Info info, absl::string_view kernel_name,
-    const KernelSpec& kernel_spec, std::optional<uint64_t> min_alignment) {
+    Thunk::Info info, const KernelSpec& kernel_spec,
+    std::optional<uint64_t> min_alignment) {
   std::vector<BufferAllocation::Slice> arguments_buffers;
   std::vector<BufferAllocation::Slice> results_buffers;
 
@@ -374,8 +373,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
   }
 
   return Create(std::move(info), arguments_buffers, results_buffers,
-                std::string(kernel_name), kernel_spec.thread_dim(),
-                std::nullopt, min_alignment);
+                kernel_spec.name(), kernel_spec.thread_dim(), std::nullopt,
+                min_alignment);
 }
 
 }  // namespace xla::cpu

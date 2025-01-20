@@ -64,8 +64,8 @@ cc_library(
     deps = [
         "//xla/runtime:buffer_use",
         "//xla/stream_executor:launch_dim",
-        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

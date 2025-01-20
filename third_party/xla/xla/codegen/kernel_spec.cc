@@ -19,19 +19,23 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla {
 
-KernelSpec::KernelSpec(se::ThreadDim thread_dim, BufferUses buffer_uses,
+KernelSpec::KernelSpec(absl::string_view name, se::ThreadDim thread_dim,
+                       BufferUses buffer_uses,
                        std::optional<size_t> scratch_bytes)
-    : KernelSpec(se::ClusterDim(), se::BlockDim(), thread_dim,
+    : KernelSpec(name, se::ClusterDim(), se::BlockDim(), thread_dim,
                  std::move(buffer_uses), std::move(scratch_bytes)) {}
 
-KernelSpec::KernelSpec(se::ClusterDim cluster_dim, se::BlockDim block_dim,
-                       se::ThreadDim thread_dim, BufferUses buffer_uses,
+KernelSpec::KernelSpec(absl::string_view name, se::ClusterDim cluster_dim,
+                       se::BlockDim block_dim, se::ThreadDim thread_dim,
+                       BufferUses buffer_uses,
                        std::optional<size_t> scratch_bytes)
-    : cluster_dim_(cluster_dim),
+    : name_(name),
+      cluster_dim_(cluster_dim),
       block_dim_(block_dim),
       thread_dim_(thread_dim),
       buffer_uses_(std::move(buffer_uses)),

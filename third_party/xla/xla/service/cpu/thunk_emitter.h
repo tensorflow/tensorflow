@@ -221,8 +221,7 @@ class ThunkEmitter {
       std::optional<uint64_t> min_alignment = std::nullopt);
 
   static absl::StatusOr<ThunkSequence> MakeKernelThunkSequence(
-      const HloInstruction* instruction, absl::string_view kernel_name,
-      const KernelSpec& kernel_spec,
+      const HloInstruction* instruction, const KernelSpec& kernel_spec,
       std::optional<uint64_t> min_alignment = std::nullopt);
 
   IrEmitter2& ir_emitter_;

@@ -277,11 +277,11 @@ ElementalKernelEmitter::EmitKernelDefinition() {
                       EmitElementalLoops(ir_builder, instr_, kernel_prototype,
                                          element_generator));
 
-  auto source = std::make_unique<LlvmIrKernelSource>(
-      context_, std::move(module),
-      std::string(kernel_prototype.function->getName()));
+  auto source =
+      std::make_unique<LlvmIrKernelSource>(context_, std::move(module));
 
-  KernelSpec spec(thread_dims, std::move(kernel_prototype.buffer_uses));
+  KernelSpec spec(kernel_prototype.function->getName(), thread_dims,
+                  std::move(kernel_prototype.buffer_uses));
 
   return KernelDefinition(std::move(spec), std::move(source));
 }

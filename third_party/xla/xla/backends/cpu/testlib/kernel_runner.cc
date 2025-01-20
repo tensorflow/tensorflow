@@ -57,13 +57,10 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
 absl::StatusOr<KernelRunner> KernelRunner::Create(
     const KernelSpec& kernel_spec, LlvmIrKernelSource llvm_ir_kernel_source,
     JitCompiler compiler) {
-  // Intentional copy as we need to use the kernel name after consuming
-  // (std::move) the kernel source.
-  std::string kernel_name = llvm_ir_kernel_source.kernel_name();
-
   TF_RETURN_IF_ERROR(compiler.AddModule(
       std::move(llvm_ir_kernel_source).thread_safe_module()));
 
+  const std::string& kernel_name = kernel_spec.name();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> library,
                       std::move(compiler).Compile(
                           {FunctionLibrary::Sym<XLA_CPU_Kernel>(kernel_name)}));

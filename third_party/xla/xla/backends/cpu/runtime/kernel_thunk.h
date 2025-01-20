@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
@@ -174,8 +173,8 @@ class KernelThunk final : public internal::KernelThunk<> {
       std::optional<uint64_t> min_alignment = std::nullopt);
 
   static absl::StatusOr<std::unique_ptr<Thunk>> Create(
-      Thunk::Info info, absl::string_view kernel_name,
-      const KernelSpec& kernel_spec, std::optional<uint64_t> min_alignment);
+      Thunk::Info info, const KernelSpec& kernel_spec,
+      std::optional<uint64_t> min_alignment);
 
   tsl::AsyncValueRef<Thunk::ExecuteEvent> Execute(
       const Thunk::ExecuteParams& params) final;

@@ -15,8 +15,14 @@ limitations under the License.
 
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 
+#include <utility>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Module.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
@@ -26,6 +32,9 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 
 namespace xla::cpu {
+
+using ::testing::ElementsAre;
+using ::testing::Property;
 
 TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   static constexpr absl::string_view kLlvmIr = R"(
@@ -40,7 +49,10 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
 
-  const KernelSpec& kernel_spec = kernel_definition.spec();
+  // Check that LLVM IR was parsed and loaded as a LLVM IR kernel source.
+  auto [kernel_spec, kernel_source] = std::move(kernel_definition).release();
+
+  EXPECT_EQ(kernel_spec.name(), "noop");
 
   // Check that kernel arguments were converted to buffer allocations.
   ASSERT_EQ(kernel_spec.buffer_uses().size(), 1);
@@ -51,10 +63,13 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   EXPECT_EQ(buffer_use.slice().offset(), 0);
   EXPECT_EQ(buffer_use.slice().size(), 1024);
 
-  // Check that LLVM IR was parsed and loaded as a LLVM IR kernel source.
-  auto& src =
-      tsl::down_cast<const LlvmIrKernelSource&>(kernel_definition.source());
-  EXPECT_EQ(src.kernel_function()->getName(), "noop");
+  auto& src = tsl::down_cast<LlvmIrKernelSource&>(*kernel_source);
+  llvm::orc::ThreadSafeModule thread_safe_module =
+      std::move(src).thread_safe_module();
+  const llvm::Module::FunctionListType& functions =
+      thread_safe_module.getModuleUnlocked()->getFunctionList();
+  EXPECT_THAT(functions,
+              ElementsAre(Property(&llvm::Function::getName, "noop")));
 }
 
 }  // namespace xla::cpu

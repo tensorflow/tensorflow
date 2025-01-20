@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <optional>
+#include <string>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -33,12 +35,18 @@ class KernelSpec {
  public:
   using BufferUses = absl::InlinedVector<BufferUse, 8>;
 
-  KernelSpec(se::ThreadDim thread_dim, BufferUses buffer_uses,
+  KernelSpec(absl::string_view name, se::ThreadDim thread_dim,
+             BufferUses buffer_uses,
              std::optional<size_t> scratch_bytes = std::nullopt);
 
-  KernelSpec(se::ClusterDim cluster_dim, se::BlockDim block_dim,
-             se::ThreadDim thread_dim, BufferUses buffer_uses,
+  KernelSpec(absl::string_view name, se::ClusterDim cluster_dim,
+             se::BlockDim block_dim, se::ThreadDim thread_dim,
+             BufferUses buffer_uses,
              std::optional<size_t> scratch_bytes = std::nullopt);
+
+  // Get the backend specific name of the kernel.
+  // Thus may be used to identify the kernel in the backend specific runtime.
+  const std::string& name() const { return name_; }
 
   // Kernel launch dimensions define how the kernel execution must be
   // parallelized. The meaning of these dimensions is backend specific, i.e.
@@ -63,6 +71,7 @@ class KernelSpec {
   const BufferUses& buffer_uses() const { return buffer_uses_; }
 
  private:
+  std::string name_;
   se::ClusterDim cluster_dim_;
   se::BlockDim block_dim_;
   se::ThreadDim thread_dim_;
