@@ -163,11 +163,6 @@ message DebugOptions {
   // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
   bool xla_gpu_experimental_enable_triton_heroless_priority_fusion = 340;
 
-  // When enabled, the Triton emitter for dot will use int4 as native type and
-  // later the Triton IR will be rewritten by Triton IR rewriting pass to use
-  // int4 packed into int8.
-  bool xla_gpu_experimental_enable_triton_i4_rewrites = 361;
-
   // When possible, XLA will use Triton's experimental TMA feature.
   bool xla_gpu_experimental_enable_triton_tma = 355;
 
@@ -1136,12 +1131,13 @@ message DebugOptions {
   // xla_gpu_single_wave_autotuning
   // xla_gpu_enable_persistent_temp_buffers
   // xla_gpu_enable_triton_gemm_int4
+  // xla_gpu_experimental_enable_triton_i4_rewrites
   // xla_gpu_enable_priority_fusion
   // xla_gpu_experimental_enable_triton_softmax_priority_fusion
   // xla_gpu_pgle_accuracy_checker
   // xla_gpu_enable_heuristic_pass_configuration
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332;
+      325, 326, 332, 361;
 }
 
 // Contains flags which affects the GPU compilation result.

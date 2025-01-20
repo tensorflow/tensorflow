@@ -234,7 +234,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
   opts.set_xla_gpu_experimental_enable_triton_heroless_priority_fusion(false);
-  opts.set_xla_gpu_experimental_enable_triton_i4_rewrites(true);
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
@@ -2125,14 +2124,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   flag_list->push_back(tsl::Flag("xla_gpu_enable_triton_gemm_int4",
                                  noop_flag_setter<bool>, true,
                                  "[Deprecated, do not use]"));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_triton_i4_rewrites",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_experimental_enable_triton_i4_rewrites),
-      debug_options->xla_gpu_experimental_enable_triton_i4_rewrites(),
-      "When enabled, the Triton emitter for dot will use int4 as native type "
-      "and later the Triton IR will be rewritten by Triton IR rewriting pass "
-      "to use int4 packed into int8."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_async_dot",
                 bool_setter_for(&DebugOptions::set_xla_gpu_async_dot),
