@@ -97,8 +97,8 @@ class PlainInt4ToPackedInt4RewritePassTest : public TritonTest {
 
 TEST_F(PlainInt4ToPackedInt4RewritePassTest,
        DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales) {
-  GTEST_SKIP()
-      << "TODO: Weekly-sync 25-01-13: Skip ivestigate int4 issue with triton.";
+  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
+                  "issue with triton.";
   constexpr absl::string_view kHloText = R"(
     HloModule DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales
 
@@ -169,8 +169,8 @@ class ParametrizedPlainInt4ToPackedInt4RewritePassTest
       public WithParamInterface<I4TestParams> {};
 
 TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest, Int4WeightsOnTheLhs) {
-  GTEST_SKIP()
-      << "TODO: Weekly-sync 25-01-13: Skip ivestigate int4 issue with triton.";
+  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
+                  "issue with triton.";
   if (GetParam().HasBatchDim()) {
     GTEST_SKIP() << "2d test ignores batch dim case.";
   }
@@ -208,8 +208,8 @@ TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest, Int4WeightsOnTheLhs) {
 
 TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest,
        Int4WeightsOnTheLhsWithBatchDim) {
-  GTEST_SKIP()
-      << "TODO: Weekly-sync 25-01-13: Skip ivestigate int4 issue with triton.";
+  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
+                  "issue with triton.";
   if (!GetParam().HasBatchDim()) {
     GTEST_SKIP() << "3d test ignores 2d case.";
   }
@@ -314,8 +314,8 @@ INSTANTIATE_TEST_SUITE_P(PlainInt4ToPackedInt4RewritePassTests,
                          I4TestParams::ToString);
 
 TEST_F(TritonTest, NonstandardLayoutInt4) {
-  GTEST_SKIP()
-      << "TODO: Weekly-sync 25-01-13: Skip ivestigate int4 issue with triton.";
+  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
+                  "issue with triton.";
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayout
 
@@ -340,8 +340,8 @@ TEST_F(TritonTest, NonstandardLayoutInt4) {
 }
 
 TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
-  GTEST_SKIP()
-      << "TODO: Weekly-sync 25-01-13: Skip ivestigate int4 issue with triton.";
+  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
+                  "issue with triton.";
   // We cannot do triton_gemm and we use cuBLAS instead.
   constexpr absl::string_view kHloText = R"(
     HloModule t
@@ -361,8 +361,8 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
 }
 
 TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
-  GTEST_SKIP()
-      << "TODO: Weekly-sync 25-01-13: Skip ivestigate int4 issue with triton.";
+  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
+                  "issue with triton.";
   // We cannot do triton_gemm and we use cuBLAS instead.
   constexpr absl::string_view kHloText = R"(
     HloModule t
