@@ -1411,21 +1411,12 @@ FunctionalHloRunner::CopyArgumentsToDevice(
     // the host-side literal, as the former is the authoritative layout the
     // executable expects.
     const Layout* layout = &executable_parameter_layouts[arg_i];
-    if (client.memory_spaces().empty()) {
-      auto device_buffers =
-          client.BufferFromHostLiteral(literal, device, layout);
-      // Not all platforms support custom input device layouts. In such cases,
-      // we use the only choice i.e. the default layout.
-      if (absl::IsUnimplemented(device_buffers.status())) {
-        return client.BufferFromHostLiteral(literal, device,
-                                            /*device_layout=*/nullptr);
-      }
-      return device_buffers;
-    }
     TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
                         argument_memory_space(module, device, arg_i));
     auto device_buffers =
         client.BufferFromHostLiteral(literal, memory_space, layout);
+    // Not all platforms support custom input device layouts. In such cases,
+    // we use the only choice i.e. the default layout.
     if (absl::IsUnimplemented(device_buffers.status())) {
       return client.BufferFromHostLiteral(literal, memory_space,
                                           /*device_layout=*/nullptr);
