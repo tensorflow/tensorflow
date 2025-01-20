@@ -38,6 +38,13 @@ absl::StatusOr<bool> IsXnnDotSupported(
   TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                       GetDotCanonicalDims(dot_dimensions, dot_shape));
 
+  // TODO(b/385370486): XNNPACK does not tile by `K` and can be a lot slower
+  // than the default Eigen implementation.
+  if (dot_canonical_dims.k / dot_canonical_dims.m > 5 ||
+      dot_canonical_dims.k / dot_canonical_dims.n > 5) {
+    return false;
+  }
+
   // XNNPACK does not support transposing LHS or col-major layouts.
   return dot_canonical_dims.lhs_canonical &&
          !dot_canonical_dims.lhs_column_major &&
