@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
