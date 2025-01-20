@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/codegen/elemental_kernel_emitter.h"
-#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
@@ -60,6 +59,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
 #include "xla/backends/cpu/xnn_emitter.h"
 #include "xla/backends/cpu/xnn_fusion.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/comparison_util.h"
@@ -630,18 +630,19 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
     const HloInstruction* instruction) {
   ElementalKernelEmitter emitter(instruction, &buffer_assignment_,
                                  &target_machine_features_);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<KernelSpec> kernel_spec,
-                      emitter.EmitKernelSpec());
-  auto llvm_ir_kernel_spec = absl::WrapUnique<LlvmIrKernelSpec>(
-      tsl::down_cast<LlvmIrKernelSpec*>(kernel_spec.release()));
+  TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
+                      emitter.EmitKernelDefinition());
 
-  LlvmIrKernelSource& kernel_source = llvm_ir_kernel_spec->kernel_source();
-  std::string kernel_name = kernel_source.kernel_name();
+  auto [kernel_spec, kernel_source] = std::move(kernel_definition).release();
+  auto llvm_ir_kernel_source = absl::WrapUnique<LlvmIrKernelSource>(
+      tsl::down_cast<LlvmIrKernelSource*>(kernel_source.release()));
+
+  std::string kernel_name = llvm_ir_kernel_source->kernel_name();
   kernels_.push_back(
-      {std::move(kernel_name), std::move(kernel_source).thread_safe_module()});
+      {kernel_name, std::move(*llvm_ir_kernel_source).thread_safe_module()});
 
   return MakeKernelThunkSequence(
-      instruction, std::move(llvm_ir_kernel_spec),
+      instruction, kernel_name, std::move(kernel_spec),
       /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
@@ -1245,11 +1246,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(
-    const HloInstruction* instruction,
-    std::unique_ptr<LlvmIrKernelSpec> kernel_spec,
-    std::optional<uint64_t> min_alignment) {
-  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
-                                        std::move(kernel_spec), min_alignment);
+    const HloInstruction* instruction, absl::string_view kernel_name,
+    const KernelSpec& kernel_spec, std::optional<uint64_t> min_alignment) {
+  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction), kernel_name,
+                                        kernel_spec, min_alignment);
 }
 
 }  // namespace xla::cpu

@@ -17,14 +17,16 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <random>
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
-#include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
@@ -33,8 +35,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -76,11 +77,14 @@ TEST(KernelRunnerTest, Add) {
                               se::ThreadDim(kNumElements),
                               {read_arg, read_arg, write_arg});
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelSpec> kernel_spec,
-                          emitter.EmitKernelSpec());
+  TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
+                          emitter.EmitKernelDefinition());
+  TF_ASSERT_OK_AND_ASSIGN(JitCompiler compiler,
+                          KernelRunner::CreateJitCompiler());
 
-  TF_ASSERT_OK_AND_ASSIGN(KernelRunner runner,
-                          KernelRunner::Create(std::move(kernel_spec)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      KernelRunner runner,
+      KernelRunner::Create(std::move(kernel_definition), std::move(compiler)));
 
   std::minstd_rand0 engine;
   Shape shape = ShapeUtil::MakeShape(S32, {kNumElements});

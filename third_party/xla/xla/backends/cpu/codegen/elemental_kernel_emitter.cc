@@ -37,8 +37,8 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
-#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -59,8 +59,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -225,8 +225,8 @@ ElementalKernelEmitter::ElementalKernelEmitter(
           *context_.getContext(),
           KernelApiIrBuilderOptionsFromHloModuleConfig(instr_->GetModule())) {}
 
-absl::StatusOr<std::unique_ptr<KernelSpec>>
-ElementalKernelEmitter::EmitKernelSpec() {
+absl::StatusOr<KernelDefinition>
+ElementalKernelEmitter::EmitKernelDefinition() {
   VLOG(2) << "Emit elemental host kernel: " << instr_->name();
 
   llvm::LLVMContext& ctx = *context_.getContext();
@@ -281,13 +281,9 @@ ElementalKernelEmitter::EmitKernelSpec() {
       context_, std::move(module),
       std::string(kernel_prototype.function->getName()));
 
-  // TODO(willfroom): what do we do with buffer allocations?
-  // The same data should be in buffer_uses?
-  std::vector<BufferAllocation> buffer_allocations;
+  KernelSpec spec(thread_dims, std::move(kernel_prototype.buffer_uses));
 
-  return std::make_unique<LlvmIrKernelSpec>(
-      thread_dims, std::move(buffer_allocations),
-      std::move(kernel_prototype.buffer_uses), std::move(source));
+  return KernelDefinition(std::move(spec), std::move(source));
 }
 
 absl::StatusOr<se::ThreadDim> ElementalKernelEmitter::EmitElementalLoops(

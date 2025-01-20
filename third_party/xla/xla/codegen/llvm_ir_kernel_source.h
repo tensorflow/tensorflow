@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/kernel_source.h"
 
 namespace xla {
 

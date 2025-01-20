@@ -18,24 +18,12 @@ limitations under the License.
 
 #include <cstddef>
 #include <optional>
-#include <string>
 
 #include "absl/container/inlined_vector.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla {
-
-// KernelSource is a base class for generated kernel source. Concrete types of
-// kernel source are backends specific, i.e. on GPU backend it can be PTX (if
-// already compiled) or an LLVM IR (if XLA itself will compile it to PTX).
-class KernelSource {
- public:
-  virtual ~KernelSource() = default;
-
-  // Get a human readable string representation of the kernel source.
-  virtual std::string ToString() const = 0;
-};
 
 // KernelSpec is a specification of an XLA kernel produced by the XLA codegen.
 // At XLA compilation time, backends instantiates kernel specification into run
@@ -45,11 +33,12 @@ class KernelSpec {
  public:
   using BufferUses = absl::InlinedVector<BufferUse, 8>;
 
-  KernelSpec(se::ClusterDim cluster_dim, se::BlockDim block_dim,
-             se::ThreadDim thread_dim, std::optional<size_t> scratch_bytes,
-             BufferUses buffer_uses);
+  KernelSpec(se::ThreadDim thread_dim, BufferUses buffer_uses,
+             std::optional<size_t> scratch_bytes = std::nullopt);
 
-  virtual ~KernelSpec() = default;
+  KernelSpec(se::ClusterDim cluster_dim, se::BlockDim block_dim,
+             se::ThreadDim thread_dim, BufferUses buffer_uses,
+             std::optional<size_t> scratch_bytes = std::nullopt);
 
   // Kernel launch dimensions define how the kernel execution must be
   // parallelized. The meaning of these dimensions is backend specific, i.e.
@@ -73,15 +62,12 @@ class KernelSpec {
   // Buffers (buffer allocation slices) used by the kernel.
   const BufferUses& buffer_uses() const { return buffer_uses_; }
 
-  // Compiled kernel source (backend specific).
-  virtual KernelSource& kernel_source() = 0;
-
  private:
   se::ClusterDim cluster_dim_;
   se::BlockDim block_dim_;
   se::ThreadDim thread_dim_;
-  std::optional<size_t> scratch_bytes_;
   BufferUses buffer_uses_;
+  std::optional<size_t> scratch_bytes_;
 };
 
 }  // namespace xla

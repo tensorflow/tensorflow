@@ -52,7 +52,7 @@ cc_library(
     name = "kernel_emitter",
     hdrs = ["kernel_emitter.h"],
     deps = [
-        ":kernel_spec",
+        ":kernel_definition",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -64,6 +64,7 @@ cc_library(
     deps = [
         "//xla/runtime:buffer_use",
         "//xla/stream_executor:launch_dim",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:inlined_vector",
     ],
 )
@@ -73,9 +74,24 @@ cc_library(
     srcs = ["llvm_ir_kernel_source.cc"],
     hdrs = ["llvm_ir_kernel_source.h"],
     deps = [
-        ":kernel_spec",
+        ":kernel_source",
         "//xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:JITLink",
+    ],
+)
+
+cc_library(
+    name = "kernel_source",
+    hdrs = ["kernel_source.h"],
+)
+
+cc_library(
+    name = "kernel_definition",
+    hdrs = ["kernel_definition.h"],
+    deps = [
+        ":kernel_source",
+        ":kernel_spec",
+        "//xla/tsl/platform:logging",
     ],
 )

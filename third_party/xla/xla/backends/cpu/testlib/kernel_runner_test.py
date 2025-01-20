@@ -53,9 +53,11 @@ class LLvmKernelRunnerTest(absltest.TestCase):
     """
     llvm_emitter = cpu_testlib.LlvmIrKernelEmitter(ir, "LlvmAddI32", (4, 1, 1))
 
-    llvm_spec = llvm_emitter.emit_kernel_spec()
+    kernel_definition = llvm_emitter.emit_kernel_definition()
 
-    runner = cpu_testlib.KernelRunner.create(llvm_spec)
+    runner = cpu_testlib.KernelRunner.create(
+        kernel_definition, cpu_testlib.JitCompiler()
+    )
     a = create_literal(np.array([1, 2, 3, 4], dtype=np.int32))
     b = create_literal(np.array([5, 6, 7, 8], dtype=np.int32))
     c = create_literal(np.array([0, 0, 0, 0], dtype=np.int32))

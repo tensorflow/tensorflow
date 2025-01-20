@@ -19,12 +19,11 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
-#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -35,8 +34,6 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -45,15 +42,12 @@ class ElementalKernelEmitterTest : public HloTestBase {
   ElementalKernelEmitterTest()
       : target_machine_features_([](int64_t size) { return 1; }) {}
 
-  absl::StatusOr<std::unique_ptr<LlvmIrKernelSpec>> EmitKernelSpec(
+  absl::StatusOr<KernelDefinition> EmitKernelDefinition(
       const HloInstruction* instr, const BufferAssignment* buffer_assignment) {
     ElementalKernelEmitter emitter(instr, buffer_assignment,
                                    &target_machine_features_);
 
-    TF_ASSIGN_OR_RETURN(auto kernel_spec, emitter.EmitKernelSpec());
-
-    return absl::WrapUnique<LlvmIrKernelSpec>(
-        tsl::down_cast<LlvmIrKernelSpec*>(kernel_spec.release()));
+    return emitter.EmitKernelDefinition();
   }
 
   absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
@@ -81,10 +75,11 @@ TEST_F(ElementalKernelEmitterTest, EmitElementalKernel) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignement, RunBufferAssignment(*hlo));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto spec, EmitKernelSpec(hlo->entry_computation()->root_instruction(),
-                                buffer_assignement.get()));
+      KernelDefinition kernel_definition,
+      EmitKernelDefinition(hlo->entry_computation()->root_instruction(),
+                           buffer_assignement.get()));
 
-  ASSERT_TRUE(*RunFileCheck(spec->kernel_source().ToString(), R"(
+  ASSERT_TRUE(*RunFileCheck(kernel_definition.source().ToString(), R"(
     CHECK: define ptr @convert_kernel(ptr %0) #0 {
     CHECK:   fptosi float {{.*}} to i32
     CHECK: }
@@ -106,10 +101,11 @@ TEST_F(ElementalKernelEmitterTest, EmitParallelKernel) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignement, RunBufferAssignment(*hlo));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto spec, EmitKernelSpec(hlo->entry_computation()->root_instruction(),
-                                buffer_assignement.get()));
+      KernelDefinition kernel_definition,
+      EmitKernelDefinition(hlo->entry_computation()->root_instruction(),
+                           buffer_assignement.get()));
 
-  ASSERT_TRUE(*RunFileCheck(spec->kernel_source().ToString(), R"(
+  ASSERT_TRUE(*RunFileCheck(kernel_definition.source().ToString(), R"(
     CHECK: @convert_parallel_bounds = private constant [8 x [4 x [2 x i64]]]
 
     CHECK: define ptr @convert_kernel(ptr %0) #0 {

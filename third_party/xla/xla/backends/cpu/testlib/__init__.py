@@ -22,6 +22,5 @@ HloCompiler = _extension.HloCompiler
 JitCompiler = _extension.JitCompiler
 KernelRunner = _extension.KernelRunner
 LlvmIrKernelEmitter = _extension.LlvmIrKernelEmitter
-LlvmIrKernelSpec = _extension.LlvmIrKernelSpec
 TargetMachineFeatures = _extension.TargetMachineFeatures
 # go/keep-sorted end
