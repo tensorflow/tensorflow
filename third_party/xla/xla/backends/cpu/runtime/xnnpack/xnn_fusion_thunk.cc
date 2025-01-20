@@ -233,9 +233,14 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
   TF_ASSIGN_OR_RETURN(
       auto runtime, xnn_runtime_pool_.GetOrCreate(params.intra_op_threadpool));
 
-  return runtime->Invoke(params.intra_op_threadpool,
-                         absl::MakeSpan(arguments_buffers),
-                         absl::MakeSpan(results_buffers));
+  tsl::AsyncValueRef<ExecuteEvent> executed = runtime->Invoke(
+      params.intra_op_threadpool, absl::MakeSpan(arguments_buffers),
+      absl::MakeSpan(results_buffers));
+
+  // Do not return runtime to the pool until the execution is done.
+  executed.AndThen([runtime = std::move(runtime)] {});
+
+  return executed;
 }
 
 }  // namespace xla::cpu
