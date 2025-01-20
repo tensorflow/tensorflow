@@ -81,22 +81,7 @@ class TritonTest : public GpuCodegenTest {
   }
 };
 
-// The test class for the Triton MLIR pass that converts MLIR code that works
-// with the plain int4 tensors to the packed int4 tensors. The goal is to prove
-// that the pass generates the correct MLIR and it produces the same
-// results. Eventually the pass will be enabled by default and the support for
-// the int4 tensors will be removed from the Legacy Triton emitter.
-class PlainInt4ToPackedInt4RewritePassTest : public TritonTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_triton_i4_rewrites(true);
-    return debug_options;
-  }
-};
-
-TEST_F(PlainInt4ToPackedInt4RewritePassTest,
-       DotWithI4WeightsOnLhsWithBitcastTo3dTensor) {
+TEST_F(TritonTest, DotWithI4WeightsOnLhsWithBitcastTo3dTensor) {
   constexpr absl::string_view kHloText = R"(
     HloModule DotWithI4WeightsOnLhsWithBitcastTo3dTensor
 
@@ -129,7 +114,7 @@ TEST_F(PlainInt4ToPackedInt4RewritePassTest,
       kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
-TEST_F(PlainInt4ToPackedInt4RewritePassTest,
+TEST_F(TritonTest,
        DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue) {
   constexpr absl::string_view kHloText = R"(
     HloModule DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue
@@ -170,8 +155,7 @@ TEST_F(PlainInt4ToPackedInt4RewritePassTest,
       kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
-TEST_F(PlainInt4ToPackedInt4RewritePassTest,
-       DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
+TEST_F(TritonTest, DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
   constexpr absl::string_view kHloText = R"(
     HloModule DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales
 
@@ -208,7 +192,7 @@ TEST_F(PlainInt4ToPackedInt4RewritePassTest,
       kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
-TEST_F(PlainInt4ToPackedInt4RewritePassTest, NonstandardLayoutInt4) {
+TEST_F(TritonTest, NonstandardLayoutInt4) {
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutInt4
 
@@ -254,11 +238,10 @@ struct I4TestParams {
   std::string out;          // The output shape like "16,256".
 };
 
-class ParametrizedPlainInt4ToPackedInt4RewritePassTest
-    : public PlainInt4ToPackedInt4RewritePassTest,
-      public WithParamInterface<I4TestParams> {};
+class ParametrizedTritonTest : public TritonTest,
+                               public WithParamInterface<I4TestParams> {};
 
-TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest, Int4WeightsOnTheLhs) {
+TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhs) {
   if (GetParam().HasBatchDim()) {
     GTEST_SKIP() << "2d test ignores batch dim case.";
   }
@@ -294,8 +277,7 @@ TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest, Int4WeightsOnTheLhs) {
       << "Failed for HLO: " << hlo_text;
 }
 
-TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest,
-       Int4WeightsOnTheLhsWithBatchDim) {
+TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhsWithBatchDim) {
   if (!GetParam().HasBatchDim()) {
     GTEST_SKIP() << "3d test ignores 2d case.";
   }
@@ -333,7 +315,7 @@ TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest,
       << "Failed for HLO: " << hlo_text;
 }
 
-TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest, Int4WeightsOnTheRhs) {
+TEST_P(ParametrizedTritonTest, Int4WeightsOnTheRhs) {
   if (GetParam().HasBatchDim()) {
     GTEST_SKIP() << "2d test ignores batch dim case.";
   }
@@ -392,27 +374,9 @@ std::vector<I4TestParams> Int4TestCases() {
   };
 }
 
-INSTANTIATE_TEST_SUITE_P(PlainInt4ToPackedInt4RewritePassTests,
-                         ParametrizedPlainInt4ToPackedInt4RewritePassTest,
+INSTANTIATE_TEST_SUITE_P(ParametrizedTritonTest, ParametrizedTritonTest,
                          ::testing::ValuesIn(Int4TestCases()),
                          I4TestParams::ToString);
-
-TEST_F(TritonTest, NonstandardLayoutInt4) {
-  constexpr absl::string_view kHloText = R"(
-    HloModule NonstandardLayout
-
-    ENTRY main {
-      p0 = s4[64,128]{0,1} parameter(0)
-      p1 = bf16[256,64]{1,0} parameter(1)
-      ROOT %dot = bf16[128,256]{1,0} dot(s4[64,128]{0,1} p0, bf16[256,64]{1,0} p1),
-        lhs_contracting_dims={0},
-        rhs_contracting_dims={1}
-    }
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
 
 TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
   // We cannot do triton_gemm and we use cuBLAS instead.

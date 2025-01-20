@@ -113,13 +113,6 @@ using ::mlir::ValueRange;
 
 namespace {
 
-bool IsTritonInt4RewritesEnabled(const HloInstruction& hlo) {
-  return hlo.GetModule()
-      ->config()
-      .debug_options()
-      .xla_gpu_experimental_enable_triton_i4_rewrites();
-}
-
 absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
   switch (t) {
     case F64:
@@ -140,9 +133,7 @@ absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
       return b.getI1Type();
     case S8:
       return b.getI8Type();
-    case S4:  // The unpacking to i8 is supported by the emitter.
-      // We pass the s4 tensor as i8 tensor with the minor dimension having 2x
-      // less elements and unpack in the inner loop of the triton kernel.
+    case S4:
       return b.getI4Type();
     case F8E5M2:
       return b.getFloat8E5M2Type();
@@ -510,31 +501,6 @@ absl::StatusOr<Value> EmitConstant(EmitterLocOpBuilder b,
   return CreateConst(b, ty, converted.GetFirstElement<double>());
 }
 
-// Emit sequence of operations for unpacking 2xi4 -> i8.
-absl::StatusOr<Value> EmitUnpackInt4(EmitterLocOpBuilder& b,
-                                     const HloInstruction* hlo,
-                                     int64_t unpack_dim_idx, Value& value) {
-  VLOG(6) << "EmitUnpackInt4: " << hlo->ToString();
-  auto input_type = mlir::cast<mlir::RankedTensorType>(value.getType());
-  if (input_type.getShape().size() != 2) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("UnpackInt4 works only for 2d inputs: ", hlo->ToString()));
-  }
-  // We use shifts instead the mask because we need to keep the sign bit.
-  Value shift4 =
-      Splat(b, CreateConst(b, b.getI8Type(), 4), input_type.getShape());
-  Value lo = b.create<ma::ShRSIOp>(b.create<ma::ShLIOp>(value, shift4), shift4);
-  Value hi = b.create<ma::ShRSIOp>(value, shift4);
-  Value result = b.create<mt::JoinOp>(hi, lo);
-  if (unpack_dim_idx == 0) {
-    result = b.create<mt::TransOp>(result, b.getDenseI32ArrayAttr({0, 2, 1}));
-  }
-  SmallVector<int64_t> result_shape(input_type.getShape());
-  result_shape[unpack_dim_idx] *= 2;
-  auto type = mlir::RankedTensorType::get(result_shape, b.getI8Type());
-  return b.create<mt::ReshapeOp>(type, result, /*allow_reorder=*/false);
-}
-
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 
 Value Broadcast(EmitterLocOpBuilder b, TensorValue value,
@@ -618,7 +584,6 @@ struct Side {
   TritonFusionAnalysis::Scope scope;
   std::vector<DimProperties> tiled_dims;
   std::optional<int64_t> batch_dim_idx;
-  int64_t unpack_dim_idx = 0;
 };
 
 absl::StatusOr<Value> EmitBroadcast(EmitterLocOpBuilder b,
@@ -678,13 +643,7 @@ absl::StatusOr<Value> EmitScope(
     if (hlo->opcode() == HloOpcode::kConvert &&
         hlo->operand(0)->shape().element_type() == S4) {
       Value unpacked;
-      if (IsTritonInt4RewritesEnabled(*hlo)) {
-        unpacked = Cast(b, values[hlo->operand(0)], b.getI8Type());
-      } else {
-        TF_ASSIGN_OR_RETURN(unpacked,
-                            EmitUnpackInt4(b, hlo, side.unpack_dim_idx,
-                                           values[hlo->operand(0)]));
-      }
+      unpacked = Cast(b, values[hlo->operand(0)], b.getI8Type());
       std::vector<Value> operands({unpacked});
       TF_ASSIGN_OR_RETURN(result, EmitElementwise(b, libdevice_path,
                                                   device_info, *hlo, operands));
@@ -1400,21 +1359,6 @@ class MatMulEmitterHelper {
         if (dim_bound % (properties.block_size * properties.split_value) != 0) {
           boundary_checks.push_back(bounds.size() - 1);
         }
-        if (hlo->shape().element_type() == PrimitiveType::S4 &&
-            !IsTritonInt4RewritesEnabled(*hlo)) {
-          // For s4 type we need to divide the minor dim bound by 2 because it
-          // is the packing dimension. But if the minor dim has length == 1 then
-          // the major dim stride is also 1 and it is the packing dimension.
-          if (strides_sizes.back() == 1) {
-            // For the odd bounds we need to add 1 in advance.
-            // Otherwise we will loose the last element.
-            bounds[bounds.size() - 1] = Cst64((dim_bound + 1) / 2);
-          } else {
-            int last_stride_index = strides.size() - 1;
-            strides[last_stride_index] =
-                b_.create<ma::DivSIOp>(strides[last_stride_index], Cst64(2));
-          }
-        }
       }
       block_dims.push_back(properties.block_size);
       dim_order.emplace(dim_order.begin(), dim_order.size());
@@ -1455,10 +1399,6 @@ class MatMulEmitterHelper {
           b_.create<ma::AddIOp>(Cst(offset_batch), ConvertScalar(pid_batch)),
           batch_stride);
 
-      if (hlo->shape().element_type() == PrimitiveType::S4 &&
-          !IsTritonInt4RewritesEnabled(*hlo)) {
-        pid_offset_batch = b_.create<ma::DivSIOp>(pid_offset_batch, Cst(2));
-      }
       base = AddPtr(b_, base, pid_offset_batch);
     }
 
@@ -1834,31 +1774,6 @@ class Scopes {
 
     int lhs_non_contracting_block_size = config.block_m;
     int lhs_contracting_block_size = config.block_k;
-    int lhs_unpack_bound_idx = 0;
-    if (!IsTritonInt4RewritesEnabled(*dot_instr) &&
-        is_int4_param(analysis, TritonFusionAnalysis::Scope::LHS)) {
-      auto minor_dim = std::max(dims.lhs_contracting_dim_idx,
-                                dims.lhs_noncontracting_dim_idx);
-      auto minor_bound = analysis
-                             .IterSpec(TritonFusionAnalysis::Scope::LHS,
-                                       dot_instr->operand(0), minor_dim)
-                             ->at(0)
-                             .count;
-      if (minor_bound ==
-          1) {  // Assuming that the contracting dimension is major.
-        lhs_contracting_block_size /= 2;
-        lhs_unpack_bound_idx = 1;
-      } else if (dims.lhs_contracting_dim_idx >
-                 dims.lhs_noncontracting_dim_idx) {
-        // lhs is int4 and the contracting dimension is minor.
-        lhs_contracting_block_size /= 2;
-        lhs_unpack_bound_idx = 1;
-      } else {
-        // lhs is int4 and the contracting dimension is major.
-        lhs_non_contracting_block_size /= 2;
-        lhs_unpack_bound_idx = 0;
-      }
-    }
     if (is_sparse) {
       lhs_contracting_block_size /= 2;
     }
@@ -1869,33 +1784,9 @@ class Scopes {
         DimProperties(dims.lhs_contracting_dim_idx, pid_k_,
                       lhs_contracting_block_size, config.split_k)};
     lhs_.batch_dim_idx = dims.lhs_batch_dim_idx;
-    lhs_.unpack_dim_idx = lhs_unpack_bound_idx;
 
     int rhs_contracting_block_size = config.block_k;
     int rhs_non_contracting_block_size = config.block_n;
-    int rhs_unpack_bound_idx = 0;
-    if (!IsTritonInt4RewritesEnabled(*dot_instr) &&
-        is_int4_param(analysis, TritonFusionAnalysis::Scope::RHS)) {
-      auto minor_dim = std::max(dims.rhs_contracting_dim_idx,
-                                dims.rhs_noncontracting_dim_idx);
-      auto minor_bound = analysis
-                             .IterSpec(TritonFusionAnalysis::Scope::RHS,
-                                       dot_instr->operand(1), minor_dim)
-                             ->at(0)
-                             .count;
-
-      if (minor_bound == 1) {  // rhs is int4 and the _minor_ bound is 1.
-        rhs_contracting_block_size /= 2;
-      } else if (dims.rhs_contracting_dim_idx >
-                 dims.rhs_noncontracting_dim_idx) {
-        // rhs is int4 and the contracting dimension is minor.
-        rhs_contracting_block_size /= 2;
-      } else {
-        // rhs is int4 and the contracting dimension is major.
-        rhs_non_contracting_block_size /= 2;
-        rhs_unpack_bound_idx = 1;
-      }
-    }
     rhs_.tiled_dims = {
         DimProperties(dims.rhs_contracting_dim_idx, pid_k_,
                       rhs_contracting_block_size, config.split_k),
@@ -1903,7 +1794,6 @@ class Scopes {
                       rhs_non_contracting_block_size,
                       /*split_value=*/1)};
     rhs_.batch_dim_idx = dims.rhs_batch_dim_idx;
-    rhs_.unpack_dim_idx = rhs_unpack_bound_idx;
 
     out_.tiled_dims = {DimProperties(dims.out_lhs_noncontracting_dim_idx,
                                      pid_m_, config.block_m,
@@ -1938,13 +1828,6 @@ class Scopes {
   const Value& pid_m() const { return pid_m_; }
   const Value& pid_k() const { return pid_k_; }
   const Value& pid_n() const { return pid_n_; }
-
-  static bool is_int4_param(const TritonFusionAnalysis& analysis,
-                            TritonFusionAnalysis::Scope scope) {
-    const ConstHloInstructionSet& params = analysis.ScopeParameters(scope);
-    return params.size() == 1 &&
-           (*params.cbegin())->shape().element_type() == S4;
-  }
 
  private:
   Side lhs_;
