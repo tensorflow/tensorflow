@@ -1282,6 +1282,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   // Lower xla_gpu.apply_indexing into arithmetic ops.
   pm.addPass(CreateSimplifyAffinePass());
+  pm.addPass(CreateConvertIndexTypePass());
 
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
   if (!CreateTritonPipeline(&pm, arch_name, block_level_parameters.num_warps,
