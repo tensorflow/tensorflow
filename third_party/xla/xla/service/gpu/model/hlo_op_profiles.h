@@ -50,22 +50,21 @@ class HloOpProfiles {
 
   // Loads profiles from the given text proto data.
   static std::unique_ptr<HloOpProfiles> Load(
-      absl::string_view profiles_text_proto,
-      absl::string_view default_profile_name);
+      absl::string_view profiles_text_proto);
 
   const HloOpProfile& GetProfile(
       const se::DeviceDescription& device_info) const;
 
-  const HloOpProfile& GetDefaultProfile() const { return default_profile_; }
+  const HloOpProfile& GetLatestProfile() const { return latest_profile_; }
 
  private:
-  HloOpProfiles(ProfilesNestedMap profiles,
-                absl::string_view default_profile_name)
-      : profiles_(std::move(profiles)),
-        default_profile_(profiles_.at(default_profile_name)) {}
+  explicit HloOpProfiles(ProfilesNestedMap profiles)
+      : profiles_(std::move(profiles)), latest_profile_(FindLatestProfile()) {}
+
+  const HloOpProfile& FindLatestProfile() const;
 
   ProfilesNestedMap profiles_;
-  const HloOpProfile& default_profile_;
+  const HloOpProfile& latest_profile_;
 };
 
 }  // namespace gpu
