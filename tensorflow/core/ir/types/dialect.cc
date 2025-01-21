@@ -542,15 +542,15 @@ TensorFlowType TensorFlowRefType::get(Type type) {
     return DoubleRefType::get(ctx);
   } else if (type.isBF16()) {
     return Bfloat16RefType::get(ctx);
-  } else if (type.isFloat8E4M3FN()) {
+  } else if (llvm::isa<mlir::Float8E4M3FNType>(type)) {
     return Float8E4M3FNRefType::get(ctx);
-  } else if (type.isFloat8E5M2()) {
+  } else if (llvm::isa<mlir::Float8E5M2Type>(type)) {
     return Float8E5M2RefType::get(ctx);
-  } else if (type.isFloat8E4M3FNUZ()) {
+  } else if (llvm::isa<mlir::Float8E4M3FNUZType>(type)) {
     return Float8E4M3FNUZRefType::get(ctx);
-  } else if (type.isFloat8E4M3B11FNUZ()) {
+  } else if (llvm::isa<mlir::Float8E4M3B11FNUZType>(type)) {
     return Float8E4M3B11FNUZRefType::get(ctx);
-  } else if (type.isFloat8E5M2FNUZ()) {
+  } else if (llvm::isa<mlir::Float8E5M2FNUZType>(type)) {
     return Float8E5M2FNUZRefType::get(ctx);
   } else if (auto complex_type = mlir::dyn_cast<ComplexType>(type)) {
     Type etype = complex_type.getElementType();
