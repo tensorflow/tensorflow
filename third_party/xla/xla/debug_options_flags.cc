@@ -161,7 +161,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
   opts.set_xla_gpu_enable_nccl_per_stream_comms(false);
-  opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(128);
+  opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(0);
 
   opts.set_xla_gpu_temp_buffer_use_separate_color(false);
   opts.set_xla_gpu_require_exclusive_lock(false);
