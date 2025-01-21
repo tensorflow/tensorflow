@@ -278,6 +278,36 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
   }
 }
 
+TEST_F(AlgorithmTest, Algorithm_BF16_BF16_F32_on_BF16_input_for_multiply) {
+  if (!SupportsBF16(GpuComputeComp())) {
+    GTEST_SKIP() << "BF16 not supported.";
+  }
+  constexpr absl::string_view kHloText = R"(
+    HloModule Algorithm_BF16_BF16_F32_with_BF16_input
+
+    ENTRY main {
+      lhs = bf16[256,8512] parameter(0)
+      rhs = bf16[256,8512] parameter(1)
+      ROOT dot = f32[256] dot(lhs, rhs),
+          algorithm=dot_bf16_bf16_f32,
+          lhs_batch_dims={0},
+          rhs_batch_dims={0},
+          lhs_contracting_dims={1},
+          rhs_contracting_dims={1}
+    }
+  )";
+  // Multiply on a100 operates with f32, h100 operates with bf16.
+  const std::string pattern = R"(
+    CHECK:    %[[multiply:.*]] = [[type:.*]][256,8512]{1,0} multiply([[type]]
+    CHECK:    %[[reduce:.*]] = f32[256]{0} reduce(
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
+  ASSERT_TRUE(ok);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-7, /*arel=*/1e-7}));
+}
+
 TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
