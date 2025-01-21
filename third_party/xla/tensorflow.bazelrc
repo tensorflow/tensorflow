@@ -617,7 +617,6 @@ build:elinux_armhf --copt -mfp16-format=ieee
 
 # Load rc file written by ./configure.
 try-import %workspace%/.tf_configure.bazelrc
-try-import %workspace%/xla_configure.bazelrc
 
 # Load rc file with user-specific options.
 try-import %workspace%/.bazelrc.user
@@ -917,6 +916,3 @@ build:rbe_cross_compile_macos_x86 --jobs=100
 test:rbe_cross_compile_macos_x86 --jobs=100
 # END MACOS CROSS-COMPILE CONFIGS
 # END CROSS-COMPILE CONFIGS
-
-# Try to load the XLA warnings config if available
-try-import %workspace%/warnings.bazelrc
