@@ -600,6 +600,47 @@ TEST_F(HloTraversalTest, MakeInstructionsPostOrder_TwoMultiOutputFusions) {
                                  InstructionAdaptorName("reduce.2")));
 }
 
+TEST_F(HloTraversalTest, GetRootsForProducerConsumerFusion) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+      HloModule producer_consumer
+      producer_f {
+        param_0 = f32[10]{0} parameter(0)
+        ROOT neg = f32[10]{0} negate(param_0)
+      }
+
+      consumer_f {
+        param.0 = f32[10]{0} parameter(0)
+        ROOT add = f32[10]{0} add(param.0, param.0)
+      }
+
+      ENTRY main {
+        p0 = f32[10]{0} parameter(0)
+        producer = f32[10]{0} fusion(p0), kind=kLoop, calls=producer_f
+        consumer = f32[10]{0} fusion(producer), kind=kLoop, calls=consumer_f
+        ROOT out = (f32[10]{0}, f32[10]{0}) tuple(producer, consumer)
+      }
+  )")
+                    .value();
+  auto producer_instr =
+      module->entry_computation()->GetInstructionWithName("producer");
+  auto consumer_instr =
+      module->entry_computation()->GetInstructionWithName("consumer");
+  auto fusion_adaptor =
+      HloFusionAdaptor::ForProducerConsumer(producer_instr, consumer_instr);
+  auto producer_computation = module->GetComputationWithName("producer_f");
+  auto producer = HloFusionAdaptor::ForComputation(producer_computation);
+  auto consumer_computation = module->GetComputationWithName("consumer_f");
+  auto consumer = HloFusionAdaptor::ForComputation(consumer_computation);
+  auto add = HloInstructionAdaptor{
+      *consumer_computation->GetInstructionWithName("add"), consumer.get()};
+  EXPECT_THAT(fusion_adaptor->GetRoots(), ElementsAre(add));
+  fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(
+      producer_instr, consumer_instr, /*with_extra_outputs=*/true);
+  auto neg = HloInstructionAdaptor{
+      *producer_computation->GetInstructionWithName("neg"), producer.get()};
+  EXPECT_THAT(fusion_adaptor->GetRoots(), ElementsAre(add, neg));
+}
+
 const char kTwoMultiOutputFusions[] = R"(
     HloModule mof
     mof_producer {
@@ -661,7 +702,8 @@ TEST_F(HloTraversalTest, GetRootsMultiOutputFusion) {
   auto producer_fusion_instr =
       module->entry_computation()->GetInstructionWithName("producer");
   auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(
-      producer_fusion_instr, consumer_fusion_instr);
+      producer_fusion_instr, consumer_fusion_instr,
+      /*with_extra_outputs=*/true);
   auto producer_computation = module->GetComputationWithName("mof_producer");
   auto producer = HloFusionAdaptor::ForComputation(producer_computation);
   auto consumer_computation = module->GetComputationWithName("mof_consumer");
