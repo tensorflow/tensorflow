@@ -31,6 +31,32 @@ message ResourceProto {
   Kind kind = 1;
 }
 
+enum SortDirectionProto {
+  UNKNOWN = 0;
+  ASCENDING = 1;
+  DESCENDING = 2;
+}
+
+message BoolOptional {
+  bool value = 1;
+  bool contains_value = 2;
+}
+
+message ResourceOptional {
+  ResourceProto value = 1;
+  bool contains_value = 2;
+}
+
+message Int64Optional {
+  int64 value = 1;
+  bool contains_value = 2;
+}
+
+message SortDirectionOptional {
+  SortDirectionProto value = 1;
+  bool contains_value = 2;
+}
+
 message BufferAllocationSliceProto {
   int64 offset = 1;
   int64 size = 2;
@@ -45,7 +71,7 @@ message ShapeBufferAllocationSliceProto {
 message OpParamsProto {
   int64 op_id = 1;
   bool has_channel_id = 2;
-  bool use_global_device_ids = 3;  // TODO(basioli) optional
+  BoolOptional use_global_device_ids = 3;
   repeated ReplicaGroup replica_group = 4;
 }
 
@@ -55,7 +81,7 @@ message OpBuffersProto {
 }
 
 message OpResourcesProto {
-  ResourceProto communicator_resource = 1;  // TODO(basioli) optional
+  ResourceOptional communicator_resource = 1;
 }
 
 message AllGatherThunkProto {}  // NOTE(basioli) empty for now
@@ -116,14 +142,9 @@ message ConvolutionThunkProto {
 }
 
 message SortThunkProto {
-  enum SortDirection {
-    UNKNOWN = 0;
-    ASCENDING = 1;
-    DESCENDING = 2;
-  }
   int64 dimension = 1;
   bool is_stable = 2;
-  SortDirection direction = 3;  // TODO(basioli) optional
+  SortDirectionOptional direction = 3;
   string comparator_name = 4;
   repeated ShapeBufferAllocationSliceProto inputs_shapes = 5;
 }
@@ -165,7 +186,7 @@ message TopKThunkProto {
 message WhileThunkProto {
   ThunkSequenceProto cond_sequence = 1;
   ThunkSequenceProto body_sequence = 2;
-  int64 trip_count = 3;  // TODO(basioli) optional
+  Int64Optional trip_count = 3;
   BufferAllocationSliceProto cond_buffer = 4;
 }
 
@@ -177,10 +198,8 @@ message KernelThunkProto {
   }
   string kernel_name = 1;
   ThreadDim thread_dim = 2;
-  // TODO(basioli) maybe optional? NOTE this is a set in C++
   repeated int64 invariant_arguments = 3;
-  // TODO(basioli) maybe optional?
-  int64 min_alignment = 4;
+  Int64Optional min_alignment = 4;
   repeated BufferAllocationSliceProto arguments_buffers = 5;
   repeated BufferAllocationSliceProto results_buffers = 6;
 }
@@ -200,9 +219,8 @@ message FftThunkProto {
 
 message InfeedThunkProto {
   message InfeedResource {
-    // TODO(basioli) these are pointers in C++, maybe optional?
-    ResourceProto consume_token = 1;
-    ResourceProto produce_token = 2;
+    ResourceOptional consume_token = 1;
+    ResourceOptional produce_token = 2;
   }
 
   InfeedResource infeed_resources = 1;
@@ -211,9 +229,8 @@ message InfeedThunkProto {
 
 message OutfeedThunkProto {
   message OutfeedResource {
-    // TODO(basioli) these are pointers in C++, maybe optional?
-    ResourceProto consume_token = 1;
-    ResourceProto produce_token = 2;
+    ResourceOptional consume_token = 1;
+    ResourceOptional produce_token = 2;
   }
 
   OutfeedResource outfeed_resources = 1;
