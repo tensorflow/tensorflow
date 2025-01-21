@@ -38,7 +38,7 @@ The code consists of the following big building blocks:
 
 ## Partitioning
 
-See [computation_partitioner.h](https://github.com/openxla/xla/blob/852d2d2e4abfc7459f50cc958edb68c82e5f9ffe/xla/service/gpu/fusions/mlir/computation_partitioner.h).
+See [computation_partitioner.h](https://github.com/openxla/xla/blob/ca62f3e1bc9ea1d808c3a4de0a78bae7453389eb/xla/codegen/emitters/computation_partitioner.h).
 
 Non-elementwise HLO instructions cannot always be emitted together. Consider the
 following HLO graph:
@@ -79,7 +79,7 @@ The same is applicable to the following example with `slice` and `pad` of `add`.
 
 ## Elemental emission
 
-See [elemental_hlo_to_mlir.h](https://github.com/openxla/xla/blob/852d2d2e4abfc7459f50cc958edb68c82e5f9ffe/xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h).
+See [elemental_hlo_to_mlir.h](https://github.com/openxla/xla/blob/ca62f3e1bc9ea1d808c3a4de0a78bae7453389eb/xla/codegen/emitters/elemental_hlo_to_mlir.h).
 
 Elemental emission creates loops and math/arith ops for `HloInstructions`. For
 the most part, this is straightforward, but there are some interesting things
@@ -163,7 +163,7 @@ No other uses of the output tensors are allowed.
 
 ### Loop emitter
 
-See [loop_mlir.h](https://github.com/openxla/xla/blob/852d2d2e4abfc7459f50cc958edb68c82e5f9ffe/xla/service/gpu/fusions/loop_mlir.h#L4).
+See [loop.h](https://github.com/openxla/xla/blob/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/emitters/loop.h#L4).
 
 Let's study the most important passes of the MLIR compilation pipeline using the
 HLO for the GELU function.
@@ -234,7 +234,7 @@ func.func private @gelu(%arg0: tensor<6x512x4096xbf16>, %i: index, %j: index, %k
 After `@gelu` is inlined, we get a single `@main` function. It can happen that
 the same function is called twice or more. In this case we don't inline. More
 details on the inlining rules can be found in
-[xla_gpu_dialect.cc](https://github.com/openxla/xla/blob/852d2d2e4abfc7459f50cc958edb68c82e5f9ffe/xla/service/gpu/fusions/ir/xla_gpu_dialect.cc).
+[xla_gpu_dialect.cc](https://github.com/openxla/xla/blob/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/ir/xla_gpu_dialect.cc).
 
 ```
 func.func @main(%arg0: tensor<6x512x4096xbf16>, %arg1: tensor<6x512x4096xbf16>) -> tensor<6x512x4096xbf16> {
@@ -263,7 +263,7 @@ func.func @main(%arg0: tensor<6x512x4096xbf16>, %arg1: tensor<6x512x4096xbf16>) 
 
 #### `xla_gpu` to `scf` conversion
 
-See [lower_xla_gpu_to_scf.cc](https://github.com/openxla/xla/blob/852d2d2e4abfc7459f50cc958edb68c82e5f9ffe/xla/service/gpu/fusions/transforms/lower_xla_gpu_to_scf.cc).
+See [lower_xla_gpu_to_scf.cc](https://github.com/openxla/xla/blob/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/transforms/lower_xla_gpu_to_scf.cc).
 
 `xla_gpu.loop` represents a loop nest with a boundary check inside. If the loop
 inductions variables are out of bounds of the indexing map domain, then this
@@ -297,7 +297,7 @@ iteration is skipped. It means, that the loop is converted to 1 or more nested
 
 #### Flatten tensors
 
-See [flatten_tensors.cc](https://github.com/openxla/xla/blob/852d2d2e4abfc7459f50cc958edb68c82e5f9ffe/xla/service/gpu/fusions/transforms/flatten_tensors.cc).
+See [flatten_tensors.cc](https://github.com/openxla/xla/blob/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/transforms/flatten_tensors.cc).
 
 The N-d tensors are projected onto 1D. This will simplify the vectorization and
 the lowering to LLVM because every tensor access now corresponds to how the data
@@ -329,7 +329,7 @@ func.func @main(%input: tensor<12582912xbf16>, %output: tensor<12582912xbf16>) -
 
 #### Vectorization
 
-See [vectorize_loads_stores.cc](https://github.com/openxla/xla/blob/852d2d2e4abfc7459f50cc958edb68c82e5f9ffe/xla/service/gpu/fusions/transforms/vectorize_loads_stores.cc).
+See [vectorize_loads_stores.cc](https://github.com/openxla/xla/blob/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/transforms/vectorize_loads_stores.cc).
 
 The pass analyses the indices in the `tensor.extract` and `tensor.insert` ops
 and if they are produced by `xla_gpu.apply_indexing` that accesses the elements
@@ -370,7 +370,7 @@ func.func @main(%input: tensor<12582912xbf16>, %output: tensor<12582912xbf16>) -
 
 #### Loop unrolling
 
-See [optimize_loops.cc](https://github.com/openxla/xla/blob/852d2d2e4abfc7459f50cc958edb68c82e5f9ffe/xla/service/gpu/fusions/transforms/optimize_loops.cc).
+See [optimize_loops.cc](https://github.com/openxla/xla/blob/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/transforms/optimize_loops.cc).
 
 The loop unrolling finds `scf.for` loops that can be unrolled. In this case, the
 loop over the elements of the vector disappears.
@@ -405,9 +405,9 @@ We cannot use the `memref` lowerings for tensors, since we don't bufferize the
 IR and our ABI is not compatible with the `memref` ABI. Instead, we have a
 custom lowering directly from tensors to `LLVM`.
 
-- The lowering of tensors is done in [lower_tensors.cc](https://github.com/openxla/xla/blob/852d2d2e4abfc7459f50cc958edb68c82e5f9ffe/xla/service/gpu/fusions/transforms/lower_tensors.cc). `tensor.extract` is
+- The lowering of tensors is done in [lower_tensors.cc](https://github.com/openxla/xla/blob/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/transforms/lower_tensors.cc). `tensor.extract` is
   lowered to `llvm.load`, `tensor.insert` to `llvm.store`, in the obvious way.
-- [propagate_slice_indices](https://github.com/openxla/xla/blob/852d2d2e4abfc7459f50cc958edb68c82e5f9ffe/xla/service/gpu/fusions/transforms/propagate_slice_indices.cc) and [merge_pointers_to_same_slice](https://github.com/openxla/xla/blob/852d2d2e4abfc7459f50cc958edb68c82e5f9ffe/xla/service/gpu/fusions/transforms/merge_pointers_to_same_slice.cc) together
+- [propagate_slice_indices](https://github.com/openxla/xla/blob/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/transforms/propagate_slice_indices.cc) and [merge_pointers_to_same_slice](https://github.com/openxla/xla/blob/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/transforms/merge_pointers_to_same_slice.cc) together
   implement a detail of buffer assignment and XLA's ABI: if two tensors share
   the same buffer slice, they are only passed once. These passes deduplicate the
   function arguments.
@@ -490,6 +490,7 @@ coalesced writes to the output.
 ### Reproducer
 
 In order to see the IR after every pass of the compilation pipeline, one can launch `run_hlo_module` with the `--v=5` flag.
+
 ```
 run_hlo_module --platform=CUDA --xla_disable_all_hlo_passes --reference_platform="" --v=5 /tmp/gelu.hlo
 ```
@@ -529,9 +530,9 @@ ENTRY main {
 
 ## Links to code
 
-* Compilation pipeline: [mlir_fusion_emitter.h](https://github.com/openxla/xla/blob/61d921cb22abe672d4cf9fdf80b6a63a76ab7042/xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h)
-* Optimization and conversion passes: [gpu/fusions/transforms](https://github.com/openxla/xla/tree/61d921cb22abe672d4cf9fdf80b6a63a76ab7042/xla/service/gpu/fusions/transforms)
-* Partition logic: [computation_partitioner.h](https://github.com/openxla/xla/blob/852d2d2e4abfc7459f50cc958edb68c82e5f9ffe/xla/service/gpu/fusions/mlir/computation_partitioner.h)
-* Hero-based emitters: [gpu/fusions](https://github.com/openxla/xla/tree/61d921cb22abe672d4cf9fdf80b6a63a76ab7042/xla/service/gpu/fusions)
-* XLA:GPU ops: [xla_gpu_ops.td](https://github.com/openxla/xla/blob/61d921cb22abe672d4cf9fdf80b6a63a76ab7042/xla/service/gpu/fusions/ir/xla_gpu_ops.td)
-* Correctness and lit tests: [gpu/fusions/tests](https://github.com/openxla/xla/tree/925722533aa2ca55219f5c88c1ec333f4e1cbd7c/xla/service/gpu/fusions/tests)
+* Compilation pipeline: [emitter_base.h](https://github.com/openxla/xla/blob/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/emitters/emitter_base.h)
+* Optimization and conversion passes: [backends/gpu/codegen/transforms](https://github.com/openxla/xla/tree/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/transforms)
+* Partition logic: [computation_partitioner.h](https://github.com/openxla/xla/blob/ca62f3e1bc9ea1d808c3a4de0a78bae7453389eb/xla/codegen/emitters/computation_partitioner.h)
+* Hero-based emitters: [backends/gpu/codegen/emitters](https://github.com/openxla/xla/tree/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/emitters)
+* XLA:GPU ops: [xla_gpu_ops.td](https://github.com/openxla/xla/blob/cfd16b7f21feff17635c782f4489c0f478178eb9/xla/backends/gpu/codegen/ir/xla_gpu_types.td)
+* Correctness and lit tests: [backends/gpu/codegen/emitters/tests](https://github.com/openxla/xla/tree/30229c9836cafa6b05c6d42f0d918e5f8dc0b2dd/xla/backends/gpu/codegen/emitters/tests)

@@ -118,9 +118,9 @@ tsl_cc_test(
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:macros",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -164,8 +164,8 @@ tsl_cc_test(
     deps = [
         ":profiler_lock",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -246,9 +246,9 @@ tsl_cc_test(
         "//tsl/platform",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
         "@local_xla//xla/tsl/platform:test_benchmark",
-        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -336,9 +336,9 @@ tsl_cc_test(
     deps = [
         ":scoped_annotation",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
         "@local_xla//xla/tsl/platform:test_benchmark",
-        "@local_xla//xla/tsl/platform:test_main",
         "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
     ],

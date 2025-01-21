@@ -25,8 +25,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
@@ -96,6 +96,25 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleAllGather) {
   ASSERT_THAT(done->operands(), SizeIs(1));
   const HloInstruction* start = done->operand(0);
   EXPECT_EQ(start->opcode(), HloOpcode::kAllGatherStart);
+}
+
+TEST_F(AsyncCollectiveCreatorTest, CombinedCollectivePermute) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test, entry_computation_layout={(f32[128]{0}, f32[128]{0})->f32[128]{0}}
+  ENTRY %entry (param0: f32[128], param1: f32[128]) -> f32[128] {
+    %param0 = f32[128]{0} parameter(0), sharding={maximal device=0}
+    %param1 = f32[128]{0} parameter(1), sharding={maximal device=1}
+    %collective-permute = (f32[128]{0}, f32[128]{0}) collective-permute(f32[128]{0} %param0, f32[128]{0} %param1), channel_id=1, source_target_pairs={{0,1}, {1,0}}
+    %get-tuple-element = f32[128]{0} get-tuple-element((f32[128]{0}, f32[128]{0}) %collective-permute), index=0, sharding={maximal device=1}
+    %get-tuple-element.1 = f32[128]{0} get-tuple-element((f32[128]{0}, f32[128]{0}) %collective-permute), index=1, sharding={maximal device=1}
+    ROOT %add.1 = f32[128]{0} add(f32[128]{0} %get-tuple-element, f32[128]{0} %get-tuple-element.1), sharding={maximal device=1}
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 }
 
 TEST_F(AsyncCollectiveCreatorTest, SplitsSingleCollectivePermute) {

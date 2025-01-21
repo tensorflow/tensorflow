@@ -53,9 +53,9 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:resource_loader",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
+        "@local_xla//xla/tsl/platform:resource_loader",
     ],
 )
 

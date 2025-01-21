@@ -287,15 +287,5 @@ absl::Status EmitFusedDynamicUpdateSliceInPlace(
       /*launch_dimensions=*/nullptr, b);
 }
 
-absl::Status EmitParallelFusedDynamicUpdateSliceInPlace(
-    const HloComputation* fusion,
-    const std::vector<std::pair<const HloInstruction*, const IrArray>>&
-        dus_and_output_array,
-    FusedIrEmitter* fused_emitter,
-    const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* b) {
-  return EmitFusedDynamicUpdateSliceInPlaceImpl(
-      fusion, dus_and_output_array, fused_emitter, &launch_dimensions, b);
-}
-
 }  // namespace llvm_ir
 }  // namespace xla

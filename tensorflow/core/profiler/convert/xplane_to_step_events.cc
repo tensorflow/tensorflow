@@ -304,8 +304,8 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
             ConvertTpuDeviceTraceXLineToStepEvents(plane.Id(), line);
         IntersectCombineStepEvents(stream_step_events, &device_step_events);
       } else if (sc_core_id.has_value()) {
-        stream_step_events =
-            ConvertTpuDeviceTraceXLineToStepEvents(plane.Id(), line);
+        stream_step_events = ConvertTpuDeviceTraceXLineToStepEvents(
+            kSparseCoreIndexStart + plane.Id(), line);
         IntersectCombineStepEvents(stream_step_events, &device_step_events);
       } else {
         stream_step_events =

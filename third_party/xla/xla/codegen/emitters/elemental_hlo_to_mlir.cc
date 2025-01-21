@@ -62,8 +62,8 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/type_util.h"
-#include "xla/codegen/ir/xla_ops.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -633,7 +633,7 @@ SmallVector<Value, 3> ApplyIndexing(IndexingMap map, ValueRange dims,
                                     ImplicitLocOpBuilder& b) {
   map.ClearConstraints();
   SmallVector<Value, 3> results;
-  for (unsigned int i = 0; i < map.GetAffineMap().getNumResults(); ++i) {
+  for (unsigned int i = 0; i < map.GetNumResults(); ++i) {
     SmallVector<Value, 1> result;
     b.createOrFold<ApplyIndexingOp>(result, dims, symbols, map.GetSubMap(i));
     results.append(result);

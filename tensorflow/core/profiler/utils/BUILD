@@ -164,10 +164,7 @@ cc_library(
     hdrs = ["xplane_schema.h"],
     copts = tf_profiler_copts(),
     visibility = [":friends"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/profiler/utils:xplane_schema",
-    ],
+    deps = ["@local_xla//xla/tsl/profiler/utils:xplane_schema"],
 )
 
 cc_library(
@@ -538,9 +535,9 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla:test_helpers",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/testlib:test_helpers",
         "@local_xla//xla/service:hlo_cost_analysis",
         "@local_xla//xla/service/gpu/model:hlo_op_profiles",
         "@local_xla//xla/tests:hlo_test_base",

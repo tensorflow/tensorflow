@@ -29,6 +29,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/async_handle.h"
@@ -39,8 +41,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/interpreter/interpreter_testutil.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/register_span.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test_benchmark.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace mlrt {

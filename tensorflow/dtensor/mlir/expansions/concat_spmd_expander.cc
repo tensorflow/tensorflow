@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/concat_spmd_expander.h"
 
+#include <cstdint>
 #include <optional>
 
 #include "absl/status/status.h"

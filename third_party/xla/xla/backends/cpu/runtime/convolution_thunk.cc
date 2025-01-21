@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "xla/backends/cpu/runtime/convolution_thunk.h"
-
 #define EIGEN_USE_THREADS
 
 #include <cstdint>
@@ -39,9 +38,9 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
@@ -213,7 +212,7 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
       output_shape, input_batch, input_dims, input_channels, kernel_dims,
       kernel_channels, kernel_filters, output_dims, strides, padding_before,
       padding_after, base_dilation, window_dilation, feature_group_count,
-      options));
+      options, dnums, window));
 }
 
 ConvolutionThunk::ConvolutionThunk(
@@ -229,7 +228,8 @@ ConvolutionThunk::ConvolutionThunk(
     const absl::InlinedVector<int64_t, 2>& padding_after,
     const absl::InlinedVector<int64_t, 2>& base_dilation,
     const absl::InlinedVector<int64_t, 2>& window_dilation,
-    int64_t feature_group_count, Options options)
+    int64_t feature_group_count, Options options,
+    const ConvolutionDimensionNumbers& dnums, const Window& window)
     : Thunk(Kind::kConvolution, std::move(info)),
       input_buffer_(input_buffer),
       input_shape_(input_shape),
@@ -251,7 +251,9 @@ ConvolutionThunk::ConvolutionThunk(
       window_dilation_(window_dilation),
       feature_group_count_(feature_group_count),
       convolution_rank_(input_dims.size()),
-      options_(options) {}
+      options_(options),
+      dnums_(dnums),
+      window_(window) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
     const ExecuteParams& params) {

@@ -2118,7 +2118,7 @@ def MHLO_BroadcastInDimOp : MHLO_Op<"broadcast_in_dim",
     MHLO_BroadcastDimAttr:$broadcast_dimensions
   );
 
-  let results = (outs MHLO_StaticShapeTensor);
+  let results = (outs MHLO_AnyTensor);
 
   let hasFolder = 1;
   let hasCanonicalizer = 1;

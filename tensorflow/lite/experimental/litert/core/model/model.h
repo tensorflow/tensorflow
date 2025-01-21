@@ -35,7 +35,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -647,6 +646,10 @@ class LiteRtModelT {
  private:
   using MetadataMap =
       absl::flat_hash_map<std::string, litert::OwningBufferRef<uint8_t>>;
+  using ExternalBufferReference = std::pair<LiteRtOp, std::string>;
+  using ExternalBufferMap =
+      absl::flat_hash_map<ExternalBufferReference,
+                          std::shared_ptr<litert::OwningBufferRef<uint8_t>>>;
 
  public:
   using Ref = std::reference_wrapper<LiteRtModelT>;
@@ -753,6 +756,16 @@ class LiteRtModelT {
     return signatures_.EmplaceBack(std::forward<Args>(args)...);
   }
 
+  // Attaches an external (non-tensor) buffer to the given op. Upon
+  // serialization, the ops custom options will contain the offset and size of
+  // the buffer relative to the start of the model file. External buffers are
+  // added to the back of the model and not managed through flatbuffer api.
+  void AttachExternalBufferToOp(
+      LiteRtOp op, std::string name,
+      std::shared_ptr<litert::OwningBufferRef<uint8_t>> buf) {
+    appended_buffers_[std::make_pair(op, name)] = std::move(buf);
+  }
+
   // IR is generally, default constructible and movable but not copyable.
   LiteRtModelT() = default;
   LiteRtModelT(const LiteRtModelT&) = delete;
@@ -780,6 +793,7 @@ class LiteRtModelT {
   LiteRtSignatureT::Alloc signatures_;
 
   MetadataMap metadata_;
+  ExternalBufferMap appended_buffers_;
 
   // TFLITE
   TflOpCodes tfl_operator_codes_;

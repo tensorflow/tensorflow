@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"

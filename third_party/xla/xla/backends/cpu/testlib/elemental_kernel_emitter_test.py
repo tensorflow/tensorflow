@@ -151,14 +151,16 @@ class ElementalKernelRunnerTest(absltest.TestCase):
     )
 
     emitter = testlib_cpu.ElementalKernelEmitter(hlo_op)
-    kernel_spec = emitter.emit_kernel_spec()
-    self.assertIsNotNone(kernel_spec)
+    kernel_definition = emitter.emit_kernel_definition()
+    self.assertIsNotNone(kernel_definition)
 
-    # kernel_spec is consumed by the runner, so we need to save the IR string
-    # before passing it to the runner.
-    ir_string = str(kernel_spec.kernel_source())
+    # kernel_definition is consumed by the runner, so we need to save the IR
+    # string before passing it to the runner.
+    ir_string = str(kernel_definition.source())
 
-    runner = testlib_cpu.KernelRunner.create(kernel_spec)
+    runner = testlib_cpu.KernelRunner.create(
+        kernel_definition, testlib_cpu.JitCompiler()
+    )
 
     runner.call(list(itertools.chain(input_literals, [output_literal])))
     np.testing.assert_array_almost_equal(
@@ -217,7 +219,9 @@ class ElementalComparisonKernelRunnerTest(absltest.TestCase):
 
     emitter = testlib_cpu.ElementalKernelEmitter(hlo_op)
 
-    runner = testlib_cpu.KernelRunner.create(emitter.emit_kernel_spec())
+    runner = testlib_cpu.KernelRunner.create(
+        emitter.emit_kernel_definition(), testlib_cpu.JitCompiler()
+    )
 
     runner.call([lhs_literal, rhs_literal, output_literal])
     np.testing.assert_equal(
@@ -288,7 +292,7 @@ class HloModuleKernelRunnerTest(absltest.TestCase):
     output_literal = xla_extension.Literal(shape)
 
     runner = testlib_cpu.KernelRunner.create(
-        emitter.emit_kernel_spec(), jit_compiler
+        emitter.emit_kernel_definition(), jit_compiler
     )
 
     runner.call([input_literal, output_literal])
@@ -365,7 +369,7 @@ class HloModuleKernelRunnerTest(absltest.TestCase):
       output_literal = xla_extension.Literal(output_shape)
 
       runner = testlib_cpu.KernelRunner.create(
-          emitter.emit_kernel_spec(), jit_compiler
+          emitter.emit_kernel_definition(), jit_compiler
       )
 
       runner.call([input_literal, initial_value_literal, output_literal])

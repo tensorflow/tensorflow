@@ -319,6 +319,18 @@ TEST(CcSubgraphTest, SimpleModel) {
   ASSERT_EQ(subgraph->Inputs().size(), 2);
   ASSERT_EQ(subgraph->Outputs().size(), 1);
   ASSERT_EQ(subgraph->Ops().size(), 1);
+
+  auto input0_tensor = subgraph->Input("arg0");
+  ASSERT_TRUE(input0_tensor.HasValue());
+  auto input1_tensor = subgraph->Input("arg1");
+  ASSERT_TRUE(input1_tensor.HasValue());
+
+  auto output_tensor = subgraph->Output("tfl.mul");
+  ASSERT_TRUE(output_tensor.HasValue());
+  ASSERT_EQ(output_tensor->TypeId(), kLiteRtRankedTensorType);
+  auto output_ranked_tensor_type = output_tensor->RankedTensorType();
+  EXPECT_TRUE(output_ranked_tensor_type);
+  ASSERT_EQ(output_ranked_tensor_type->ElementType(), ElementType::Float32);
 }
 
 //===----------------------------------------------------------------------===//

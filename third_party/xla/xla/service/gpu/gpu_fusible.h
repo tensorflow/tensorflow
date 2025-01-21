@@ -102,7 +102,7 @@ bool TransposesMinorDimension(const HloInstruction* instr);
 // Note that reduction ops are lowered in different ways. Reduce input fusions
 // are lowered by IrEmitterUnnested::EmitReductionToVector and must be rooted at
 // reduction-to-vector ops. Other reduction ops are lowered by
-// GpuElementalIrEmitter and fused like elementwise ops.
+// compiler/xla/backends/gpu/codegen/emitters.
 
 // Whether `instr` is an input fusion rooted at a reduction-to-vector op or a
 // multi-output input fusion with at least one reduction-to-vector op root.

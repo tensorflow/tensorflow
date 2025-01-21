@@ -88,7 +88,7 @@ int GetNumGpus(const HloInstruction& instr) {
     return absl::ZeroDuration();
   }
   SolGPUCostModel sol_model(sol_flags);
-  const int64_t msg_size = analysis.output_bytes_accessed(instr);
+  const int64_t msg_size = analysis.BytesTransferred(instr);
 
   switch (instr.opcode()) {
     case HloOpcode::kAllGather:

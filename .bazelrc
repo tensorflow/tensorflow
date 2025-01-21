@@ -132,6 +132,10 @@ build --incompatible_enforce_config_setting_visibility
 # TODO: also enable this flag after fixing the visibility violations
 # build --incompatible_config_setting_private_default_visibility
 
+# Print a stacktrace when a test is killed
+test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
+
+
 # Default options should come above this line.
 
 # Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
@@ -292,6 +296,7 @@ build:tpu --define=framework_shared_object=true
 build:tpu --copt=-DLIBTPU_ON_GCE
 build:tpu --define=enable_mlir_bridge=true
 
+<<<<<<< HEAD
 build:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm_base --define=using_rocm_hipcc=true
 build:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
@@ -315,6 +320,14 @@ build:rocm --copt=-Wno-gnu-offsetof-extensions
 # TODO(rocm): Temporary due to https://github.com/openxla/xla/blob/49ad52b580ad2b81f24cc888f5cc571eb649f373/xla/stream_executor/rocm/rocm_blas.cc#L154
 # to make it work with build_rocm_python3
 build:rocm --copt="-Wno-unused-result"
+=======
+build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
+build:rocm --define=using_rocm_hipcc=true
+build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
+build:rocm --define=xnn_enable_avxvnniint8=false
+build:rocm --define=xnn_enable_avx512fp16=false
+build:rocm --repo_env TF_NEED_ROCM=1
+>>>>>>> upstream/master
 
 build:rocm_clang_official --config=rocm
 build:rocm_clang_official --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"

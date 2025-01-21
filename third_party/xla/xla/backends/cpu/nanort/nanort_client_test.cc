@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -33,17 +34,29 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla::cpu {
 namespace {
 
 using Arguments = absl::InlinedVector<NanoRtExecutable::Argument, 8>;
 using Results = absl::InlinedVector<NanoRtExecutable::Result, 8>;
+
+TEST(NanoRtClientTest, ManagedTempAlignment) {
+  NanoRtExecutable::ManagedTemp<3> temp0(1);
+  NanoRtExecutable::ManagedTemp<3> temp1(2);
+  NanoRtExecutable::ManagedTemp<3> temp2(3);
+  NanoRtExecutable::ManagedTemp<3> temp3(1024);
+
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp0.data()[0]) % Align(), 0);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp1.data()[0]) % Align(), 0);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp2.data()[0]) % Align(), 0);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp3.data()[0]) % Align(), 0);
+}
 
 TEST(NanoRtClientTest, CompileAndRunScalarComputation) {
   constexpr absl::string_view hlo = R"(

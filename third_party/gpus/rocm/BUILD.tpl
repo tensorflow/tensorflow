@@ -118,10 +118,10 @@ cc_library(
     name = "rocm_rpath",
     linkopts = select({
         ":build_hermetic": [
-            "-Wl,-rpath=%{rocm_toolkit_path}/lib",
+            "-Wl,-rpath,%{rocm_toolkit_path}/lib",
         ],
         "//conditions:default": [
-            "-Wl,-rpath=/opt/rocm/lib",
+            "-Wl,-rpath,/opt/rocm/lib",
         ],
     }),
     visibility = ["//visibility:public"],
@@ -168,7 +168,7 @@ cc_library(
     ],
     # workaround to  bring tensile files to the same fs layout as expected in the lib
     # rocblas assumes that tensile files are located in ../roblas/libraries directory
-    linkopts = ["-Wl,-rpath=local_config_rocm/rocm/rocm_dis/lib"],
+    linkopts = ["-Wl,-rpath,local_config_rocm/rocm/rocm_dis/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [":rocm_config"],
@@ -225,7 +225,7 @@ cc_library(
     ],
     # workaround to  bring miopen db files to the same fs layout as expected in the lib
     # rocblas assumes that miopen db files are located in ../share/miopen/db directory
-    linkopts = ["-Wl,-rpath=local_config_rocm/rocm/rocm_dis/lib"],
+    linkopts = ["-Wl,-rpath,local_config_rocm/rocm/rocm_dis/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [":rocm_config"],
@@ -367,7 +367,7 @@ cc_library(
     ],
     # workaround to  bring tensile files to the same fs layout as expected in the lib
     # hibplatslt assumes that tensile files are located in ../hipblaslt/libraries directory
-    linkopts = ["-Wl,-rpath=local_config_rocm/rocm/rocm_dis/lib"],
+    linkopts = ["-Wl,-rpath,local_config_rocm/rocm/rocm_dis/lib"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [":rocm_config"],

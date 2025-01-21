@@ -76,6 +76,17 @@ std::vector<std::string> CandidateCudaRoots() {
     // Also add the path to the copy of libdevice.10.bc that we include within
     // the Python wheel.
     roots.emplace_back(io::JoinPath(dir, "cuda"));
+
+    // In case cuda was installed with nvidia's official conda packages, we also
+    // include the root prefix of the environment in the candidate roots dir,
+    // we assume that the lib binaries are either in the python package's root
+    // dir or in a 'python' subdirectory, as done by the previous for. python
+    // packages on non-Windows platforms are installed in
+    // $CONDA_PREFIX/lib/python3.12/site-packages/pkg_name, so if we want
+    // to add $CONDA_PREFIX to the candidate roots dirs we need to add
+    // ../../../..
+    for (auto path : {"../../../..", "../../../../.."})
+      roots.emplace_back(io::JoinPath(dir, path));
   }
 #endif  // defined(PLATFORM_POSIX) && !defined(__APPLE__)
 

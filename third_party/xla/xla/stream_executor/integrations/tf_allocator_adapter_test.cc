@@ -153,7 +153,8 @@ TEST(MultiDeviceAdapter, DeallocationWithDifferentAllocator) {
 }
 
 TEST(MemoryAllocationError, IsMemoryAllocationError) {
-  EXPECT_TRUE(IsMemoryAllocationError(MemoryAllocationError(100)));
+  EXPECT_TRUE(IsMemoryAllocationError(
+      MemoryAllocationError(100, /*is_host_mem=*/false)));
   EXPECT_FALSE(IsMemoryAllocationError(absl::OkStatus()));
   EXPECT_FALSE(IsMemoryAllocationError(absl::InternalError("")));
 }

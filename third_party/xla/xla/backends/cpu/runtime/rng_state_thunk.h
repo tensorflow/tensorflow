@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
 
 namespace xla::cpu {
 
@@ -42,6 +41,10 @@ class RngGetAndUpdateStateThunk final : public Thunk {
   BufferUses buffer_uses() const final {
     return {{state_buffer_, BufferUse::kWrite}};
   }
+
+  int64_t delta() const { return delta_; }
+
+  const BufferAllocation::Slice& state_buffer() const { return state_buffer_; }
 
  private:
   RngGetAndUpdateStateThunk(Info info, BufferAllocation::Slice state_buffer,

@@ -55,6 +55,7 @@ load(
     _tf_version_info_genrule = "tf_version_info_genrule",
     _tfcompile_dfsan_abilists = "tfcompile_dfsan_abilists",
     _tfcompile_dfsan_enabled = "tfcompile_dfsan_enabled",
+    _tfcompile_friends = "tfcompile_friends",
     _tfcompile_target_cpu = "tfcompile_target_cpu",
 )
 
@@ -84,6 +85,7 @@ tf_pybind_cc_library_wrapper = _tf_pybind_cc_library_wrapper
 tf_monitoring_framework_deps = _tf_monitoring_framework_deps
 tf_monitoring_python_deps = _tf_monitoring_python_deps
 tf_selective_registration_deps = _tf_selective_registration_deps
+tfcompile_friends = _tfcompile_friends
 tfcompile_target_cpu = _tfcompile_target_cpu
 tfcompile_dfsan_enabled = _tfcompile_dfsan_enabled
 tfcompile_dfsan_abilists = _tfcompile_dfsan_abilists

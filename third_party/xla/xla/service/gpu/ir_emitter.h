@@ -75,7 +75,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleParameter(HloInstruction* parameter) override;
   absl::Status HandleTuple(HloInstruction* tuple) override;
   absl::Status HandleScatter(HloInstruction* scatter) override;
-  absl::Status HandleFusion(HloInstruction* fusion) override;
   absl::Status HandleCall(HloInstruction* call) override;
   absl::Status HandleCustomCall(HloInstruction* custom_call) override;
   absl::Status HandleBatchNormInference(HloInstruction* batch_norm) override;

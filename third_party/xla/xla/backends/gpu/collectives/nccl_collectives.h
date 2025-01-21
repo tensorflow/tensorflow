@@ -50,7 +50,7 @@ class NcclCollectives : public GpuCollectives {
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
   CreateCommunicators(const CliqueKey& clique_key,
-                      const std::optional<CliqueId>& clique_id,
+                      const std::optional<CliqueIds>& clique_ids,
                       absl::Span<const DeviceRank> ranks,
                       const Collectives::Config& config) final;
 

@@ -519,8 +519,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
 std::vector<HloComputation*> InstructionFusion::GetNonFusionComputations(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  // Use sorted computations because fusion configuration is order-sensitive.
-  return module->MakeNonfusionComputationsSorted(execution_threads);
+  return module->MakeNonfusionComputations(execution_threads);
 }
 
 std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(

@@ -60,8 +60,8 @@ tsl_cc_test(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
+        "@com_google_googletest//:gtest_main",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -111,9 +111,9 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:rpc_options_proto_cc_impl",
         "//xla/tsl/util:device_name_utils",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:strcat",
     ],
 )

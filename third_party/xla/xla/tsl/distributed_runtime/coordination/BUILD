@@ -31,10 +31,10 @@ tsl_cc_test(
         ":coordination_service_error_util",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -122,7 +122,6 @@ tsl_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
@@ -133,6 +132,7 @@ tsl_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:random",
     ],
 )
@@ -181,7 +181,6 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
         "//xla/tsl/protobuf:coordination_service_proto_cc_impl",
         "@com_google_absl//absl/log",
@@ -189,6 +188,7 @@ tsl_cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -231,7 +231,6 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
         "//xla/tsl/protobuf:coordination_service_proto_cc_impl",
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
@@ -241,6 +240,7 @@ tsl_cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -263,7 +263,6 @@ tsl_cc_test(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
         "//xla/tsl/protobuf:coordination_service_proto_cc_impl",
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
@@ -273,6 +272,7 @@ tsl_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
     ] + tsl_grpc_cc_dependencies(),
 )
 

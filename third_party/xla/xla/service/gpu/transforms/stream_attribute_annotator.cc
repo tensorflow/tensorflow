@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -199,7 +199,8 @@ absl::StatusOr<bool> StreamAttributeAnnotator::Run(
                             AnnotateStreamAttributesForInstruction(
                                 instr, instr_gpu_config.value()));
         changed |= comp_result;
-      } else if (instr->opcode() == HloOpcode::kCopyStart) {
+      } else if (instr->opcode() == HloOpcode::kCopyStart &&
+                 module->has_schedule()) {
         TF_ASSIGN_OR_RETURN(bool comp_result,
                             AnnotateStreamAttributesForCopyStart(
                                 instr, channel_id, instr_gpu_config.value()));
@@ -207,7 +208,8 @@ absl::StatusOr<bool> StreamAttributeAnnotator::Run(
         continue;
       } else if (comp->IsAsyncComputation() &&
                  (instr->opcode() == HloOpcode::kDynamicSlice ||
-                  instr->opcode() == HloOpcode::kDynamicUpdateSlice)) {
+                  instr->opcode() == HloOpcode::kDynamicUpdateSlice) &&
+                 module->has_schedule()) {
         TF_ASSIGN_OR_RETURN(bool comp_result,
                             WrapIntoFusionAndAnnotateStreamAttributes(
                                 instr, channel_id, instr_gpu_config.value(),

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
@@ -39,9 +41,10 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 
@@ -139,7 +142,12 @@ absl::Status DecomposeCollectivePermuteCycle(
     HloCollectivePermuteInstruction* cp, HloComputation* computation,
     HloModule* module, int64_t next_channel_id, CycleType cycle_type) {
   const SourceTargetPairs& pairs = cp->source_target_pairs();
+  const OpMetadata& metadata = cp->metadata();
+  absl::string_view cp_name = cp->name();
   int64_t num_pairs = pairs.size();
+  Shape shape = cp->shape();
+  HloInstruction* data = cp->mutable_operand(0);
+
   // A forward cycle has its backedge at the end as in
   // {{0,1},{1,2},{2,3},{3,0}} while a backward cycle has its backedge at the
   // beginning as in {{0,3},{1,0},{2,1},{3,2}}.
@@ -151,7 +159,7 @@ absl::Status DecomposeCollectivePermuteCycle(
   SourceTargetPairs backedge(backedge_start, backedge_start + 1);
   SourceTargetPairs other_edges(other_edges_start,
                                 other_edges_start + num_pairs - 1);
-  const OpMetadata& metadata = cp->metadata();
+
   xla::FrontendAttributes cp1_attr, cp2_attr;
   TF_RETURN_IF_ERROR(GetFrontendAttributes(cp, cycle_type, cp1_attr, cp2_attr));
 
@@ -159,24 +167,22 @@ absl::Status DecomposeCollectivePermuteCycle(
       CollectiveOpGroupMode mode,
       GetCollectiveOpGroupMode(cp->channel_id().has_value(), std::nullopt));
 
-  // Create the CollectivePermute instruction for the communication represented
-  // by the backedge.
-  HloInstruction* cp1 = computation->AddInstruction(
-      HloInstruction::CreateCollectivePermute(
-          cp->shape(), cp->mutable_operand(0), backedge, cp->channel_id()),
-      "cp.backward");
+  // Backward edge.
+  HloInstruction* cp1 =
+      computation->AddInstruction(HloInstruction::CreateCollectivePermute(
+                                      shape, data, backedge, cp->channel_id()),
+                                  absl::StrCat(cp_name, "-bwd"));
   cp1->set_metadata(metadata);
   cp1->set_frontend_attributes(cp1_attr);
   int64_t bwd_recv_id = backedge.back().second;
 
-  // Create the CollectivePermute instruction for the communication represented
-  // byt other edges.
+  // Forward edge.
   bool is_cross_partition = (mode == CollectiveOpGroupMode::kCrossPartition);
   HloInstruction* cp2 = computation->AddInstruction(
       HloInstruction::CreateCollectivePermute(
           cp->shape(), cp->mutable_operand(0), other_edges,
           is_cross_partition ? std::optional(next_channel_id) : std::nullopt),
-      "cp.forward");
+      absl::StrCat(cp_name, "-fwd"));
 
   cp2->set_metadata(metadata);
   cp2->set_frontend_attributes(cp2_attr);
@@ -191,12 +197,13 @@ absl::Status DecomposeCollectivePermuteCycle(
   HloInstruction* partition_or_replica = nullptr;
   switch (mode) {
     case CollectiveOpGroupMode::kCrossReplica:
-      partition_or_replica =
-          computation->AddInstruction(HloInstruction::CreateReplicaId());
+      partition_or_replica = computation->AddInstruction(
+          HloInstruction::CreateReplicaId(), absl::StrCat(cp_name, "-rep-id"));
       break;
     case CollectiveOpGroupMode::kCrossPartition:
       partition_or_replica =
-          computation->AddInstruction(HloInstruction::CreatePartitionId());
+          computation->AddInstruction(HloInstruction::CreatePartitionId(),
+                                      absl::StrCat(cp_name, "-part-id"));
       break;
     case CollectiveOpGroupMode::kCrossReplicaAndPartition:
     case CollectiveOpGroupMode::kFlattenedID:
@@ -204,14 +211,17 @@ absl::Status DecomposeCollectivePermuteCycle(
           "Unexpected collective group mode for %s", cp->name()));
   };
   HloInstruction* constant = computation->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(U32, bwd_recv_id)));
-  HloInstruction* compare =
-      computation->AddInstruction(HloInstruction::CreateCompare(
-          ShapeUtil::MakeShape(PRED, {}), partition_or_replica, constant,
-          Comparison::Direction::kEq));
-  HloInstruction* recv_data =
-      computation->AddInstruction(HloInstruction::CreateTernary(
-          cp1->shape(), HloOpcode::kSelect, compare, cp1, cp2));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(U32, bwd_recv_id)),
+      absl::StrCat(cp_name, "-bwd-recv-id"));
+  HloInstruction* compare = computation->AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}),
+                                    partition_or_replica, constant,
+                                    Comparison::Direction::kEq),
+      absl::StrCat(cp_name, "-cmp"));
+  HloInstruction* recv_data = computation->AddInstruction(
+      HloInstruction::CreateTernary(cp1->shape(), HloOpcode::kSelect, compare,
+                                    cp1, cp2),
+      absl::StrCat(cp_name, "-sel"));
 
   TF_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));
   TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(cp));

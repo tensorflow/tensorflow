@@ -39,6 +39,8 @@ class AllToAllDecomposer : public OpExpanderPass {
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
   absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
+  absl::StatusOr<HloInstruction*> ExpandRaggedAllToAll(
+      HloInstruction* instruction);
   bool decompose_to_tuple_;
   int64_t min_array_rank_;
 };

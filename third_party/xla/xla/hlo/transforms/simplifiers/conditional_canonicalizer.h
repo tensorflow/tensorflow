@@ -25,9 +25,9 @@ limitations under the License.
 
 namespace xla {
 
-// Canonicalize output of conditionals, make non-tuple outputs into tuple with
-// single element output. After this pass, all conditional instructions have
-// tuple outputs.
+// Canonicalize input and output of conditionals, make non-tuple inputs/outputs
+// into tuple with single element input/output. After this pass, all conditional
+// instructions have tuple inputs/outputs.
 class ConditionalCanonicalizer : public HloModulePass {
  public:
   absl::string_view name() const override {

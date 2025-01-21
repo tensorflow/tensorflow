@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/xnnpack/parallel_loop_runner.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
@@ -34,11 +39,105 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-TEST(ParallelLoopRunnerTest, Parallelize1D) {
+TEST(ParallelLoopRunnerWorkerTest, WorkQueueSimple) {
+  ParallelLoopRunner::WorkQueue queue(20, 10);
+
+  EXPECT_EQ(queue.Pop(0), std::make_optional(0));
+  EXPECT_EQ(queue.Pop(0), std::make_optional(1));
+  EXPECT_EQ(queue.Pop(0), std::nullopt);
+
+  EXPECT_EQ(queue.Pop(1), std::make_optional(2));
+}
+
+TEST(ParallelLoopRunnerWorkerTest, WorkQueueEmptyPartitions) {
+  ParallelLoopRunner::WorkQueue queue(1, 10);
+
+  EXPECT_EQ(queue.Pop(0), std::make_optional(0));
+  EXPECT_EQ(queue.Pop(0), std::nullopt);
+
+  for (size_t i = 1; i < 10; ++i) {
+    EXPECT_EQ(queue.Pop(i), std::nullopt);
+  }
+}
+
+TEST(ParallelLoopRunnerWorkerTest, WorkQueue) {
+  for (size_t size : {1, 2, 4, 8, 16, 32, 64}) {
+    for (size_t num_partitions : {1, 2, 3, 4, 5, 6, 7, 8}) {
+      ParallelLoopRunner::WorkQueue queue(size, num_partitions);
+
+      std::vector<size_t> expected_tasks(size);
+      absl::c_iota(expected_tasks, 0);
+
+      std::vector<size_t> tasks;
+      for (size_t i = 0; i < num_partitions; ++i) {
+        while (std::optional<size_t> task = queue.Pop(i)) {
+          tasks.push_back(*task);
+        }
+      }
+
+      EXPECT_EQ(tasks, expected_tasks);
+    }
+  }
+}
+
+TEST(ParallelLoopRunnerWorkerTest, Worker) {
+  for (size_t size : {1, 2, 4, 8, 16, 32, 64}) {
+    for (size_t num_partitions : {1, 2, 3, 4, 5, 6, 7, 8}) {
+      // We check that no matter what is the initial partition, the worker
+      // processes all tasks in the queue.
+      for (size_t i = 0; i < num_partitions; ++i) {
+        ParallelLoopRunner::WorkQueue queue(size, num_partitions);
+        ParallelLoopRunner::Worker worker(i, &queue);
+
+        std::vector<size_t> expected_tasks(size);
+        absl::c_iota(expected_tasks, 0);
+
+        std::vector<size_t> tasks;
+        while (std::optional<size_t> task = worker.Pop()) {
+          tasks.push_back(*task);
+        }
+
+        absl::c_sort(tasks);  // we pop tasks out of order
+        EXPECT_EQ(tasks, expected_tasks);
+      }
+    }
+  }
+}
+
+TEST(ParallelLoopRunnerWorkerTest, WorkerConcurrency) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+
+  size_t size = 1024;
+  size_t num_partitions = 128;
+
+  ParallelLoopRunner::WorkQueue queue(size, num_partitions);
+
+  // Check that we pop exactly `size` tasks.
+  std::atomic<size_t> num_tasks(0);
+
+  absl::BlockingCounter counter(num_partitions);
+  for (size_t i = 0; i < num_partitions; ++i) {
+    threads.Schedule([&, i] {
+      ParallelLoopRunner::Worker worker(i, &queue);
+      while (std::optional<size_t> task = worker.Pop()) {
+        ++num_tasks;
+      }
+      counter.DecrementCount();
+    });
+  }
+
+  counter.Wait();
+  EXPECT_EQ(num_tasks.load(), size);
+}
+
+class ParallelLoopRunnerTest
+    : public testing::TestWithParam<std::optional<absl::Duration>> {};
+
+TEST_P(ParallelLoopRunnerTest, Parallelize1D) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
-  ParallelLoopRunner runner(&device);
+  ParallelLoopRunner runner(&device, GetParam());
 
   constexpr int32_t d0 = 128;
 
@@ -58,11 +157,11 @@ TEST(ParallelLoopRunnerTest, Parallelize1D) {
                              [](int32_t value) { return value == 5; }));
 }
 
-TEST(ParallelLoopRunnerTest, Parallelize1DTile1D) {
+TEST_P(ParallelLoopRunnerTest, Parallelize1DTile1D) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
-  ParallelLoopRunner runner(&device);
+  ParallelLoopRunner runner(&device, GetParam());
 
   constexpr int32_t d0 = 128;
 
@@ -86,11 +185,11 @@ TEST(ParallelLoopRunnerTest, Parallelize1DTile1D) {
                              [](int32_t value) { return value == 5; }));
 }
 
-TEST(ParallelLoopRunnerTest, Parallelize2DTile1D) {
+TEST_P(ParallelLoopRunnerTest, Parallelize2DTile1D) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
-  ParallelLoopRunner runner(&device);
+  ParallelLoopRunner runner(&device, GetParam());
 
   constexpr int32_t d0 = 4;
   constexpr int32_t d1 = 39;
@@ -115,11 +214,11 @@ TEST(ParallelLoopRunnerTest, Parallelize2DTile1D) {
                              [](int32_t value) { return value == 5; }));
 }
 
-TEST(ParallelLoopRunnerTest, Parallelize3DTile2D) {
+TEST_P(ParallelLoopRunnerTest, Parallelize3DTile2D) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
-  ParallelLoopRunner runner(&device);
+  ParallelLoopRunner runner(&device, GetParam());
 
   constexpr int32_t d0 = 4;
   constexpr int32_t d1 = 39;
@@ -148,6 +247,13 @@ TEST(ParallelLoopRunnerTest, Parallelize3DTile2D) {
                              [](int32_t value) { return value == 5; }));
 }
 
+INSTANTIATE_TEST_SUITE_P(ParallelLoopRunner, ParallelLoopRunnerTest,
+                         testing::Values(std::nullopt, absl::Nanoseconds(100),
+                                         absl::Nanoseconds(500),
+                                         absl::Microseconds(1),
+                                         absl::Microseconds(10),
+                                         absl::Milliseconds(1)));
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks.
 //===----------------------------------------------------------------------===//
@@ -170,7 +276,11 @@ static void BM_Parallelize2DTile1D(benchmark::State& state) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
-  ParallelLoopRunner runner(&device);
+
+  size_t timeslice = state.range(0);
+  ParallelLoopRunner runner(
+      &device, timeslice ? std::make_optional(absl::Nanoseconds(timeslice))
+                         : std::nullopt);
 
   size_t range = 4;
   size_t tile = 1;
@@ -181,13 +291,17 @@ static void BM_Parallelize2DTile1D(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_Parallelize2DTile1D);
+BENCHMARK(BM_Parallelize2DTile1D)->Arg(0)->Arg(100)->Arg(10000);
 
 static void BM_Parallelize3DTile2D(benchmark::State& state) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
-  ParallelLoopRunner runner(&device);
+
+  size_t timeslice = state.range(0);
+  ParallelLoopRunner runner(
+      &device, timeslice ? std::make_optional(absl::Nanoseconds(timeslice))
+                         : std::nullopt);
 
   size_t range = 4;
   size_t tile = 1;
@@ -199,7 +313,7 @@ static void BM_Parallelize3DTile2D(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_Parallelize3DTile2D);
+BENCHMARK(BM_Parallelize3DTile2D)->Arg(0)->Arg(100)->Arg(10000);
 
 }  // namespace
 }  // namespace xla::cpu

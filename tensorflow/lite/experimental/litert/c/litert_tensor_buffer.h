@@ -18,6 +18,7 @@
 #include <memory.h>
 #include <stddef.h>
 
+#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -50,6 +51,7 @@ typedef enum {
   kLiteRtTensorBufferTypeIon = 3,
   kLiteRtTensorBufferTypeDmaBuf = 4,
   kLiteRtTensorBufferTypeFastRpc = 5,
+  kLiteRtTensorBufferTypeOpenCl = 6,
 } LiteRtTensorBufferType;
 
 typedef void (*LiteRtHostMemoryDeallocator)(void* addr);
@@ -57,6 +59,7 @@ typedef void (*LiteRtAhwbDeallocator)(AHardwareBuffer* ahwb);
 typedef void (*LiteRtIonDeallocator)(void* ion_buffer_addr);
 typedef void (*LiteRtDmaBufDeallocator)(void* dmabuf_buffer_addr);
 typedef void (*LiteRtFastRpcDeallocator)(void* fastrpc_buffer_addr);
+typedef void (*LiteRtOpenClDeallocator)(void* opencl_buffer_addr);
 
 // /////////////////////////////////////////////////////////////////////////////
 // TensorBuffers.
@@ -146,6 +149,22 @@ LiteRtStatus LiteRtGetTensorBufferFastRpcBuffer(
     LiteRtTensorBuffer tensor_buffer, void** fastrpc_buffer_addr,
     int* fastrpc_buffer_fd);
 #endif  // LITERT_HAS_FASTRPC_SUPPORT
+
+// Create a tensor buffer from an existing OpenCL buffer of a given size, with
+// optional opencl memory buffer deallocator (it can be NULL). An non-zero
+// `opencl_buffer_offset` can be used to specify multiple tensor buffers sharing
+// the same underlying OpenCL buffer, in which case parameter
+// `opencl_buffer_size` must be the entire size of the underlying OpenCL
+// memory buffer, including the allocation needed for all tensor buffers
+// sharing it.
+LiteRtStatus LiteRtCreateTensorBufferFromOpenCLBuffer(
+    const LiteRtRankedTensorType* tensor_type, cl_mem cl_mem_addr,
+    size_t opencl_buffer_size, LiteRtOpenClDeallocator deallocator,
+    LiteRtTensorBuffer* buffer);
+
+// Return an error if the backing buffer is not a OpenCL buffer.
+LiteRtStatus LiteRtGetTensorBufferOpenCLBuffer(LiteRtTensorBuffer tensor_buffer,
+                                               void** cl_mem_addr);
 
 // Create a buffer backed by managed memory for a given size.
 LiteRtStatus LiteRtCreateManagedTensorBuffer(

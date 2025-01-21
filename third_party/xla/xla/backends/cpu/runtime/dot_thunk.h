@@ -50,6 +50,9 @@ class DotThunk final : public Thunk {
 
   BufferUses buffer_uses() const final { return DotBufferUses(dot_slices_); }
 
+  DotDimensionNumbers dot_dimensions() const { return dot_dimensions_; }
+  DotSlices dot_slices() const { return dot_slices_; }
+
  private:
   DotThunk(Info info, DotDimensionNumbers dot_dimensions, DotSlices dot_slices,
            DotShape dot_shape, DotCanonicalDims dot_canonical_dims);
@@ -107,7 +110,12 @@ void DotThunk::MatMul(const Eigen::ThreadPoolDevice* device, T* out, T* lhs,
   int rhs_contract_dim = transpose_rhs ? 1 : 0;
   std::array<DimPair, 1> dims({DimPair(lhs_contract_dim, rhs_contract_dim)});
 
-  c.device(*device, std::move(done)) = a.contract(b, dims);
+  if (device != nullptr) {
+    c.device(*device, std::move(done)) = a.contract(b, dims);
+  } else {
+    c = a.contract(b, dims);
+    done();
+  }
 }
 
 template <typename T>

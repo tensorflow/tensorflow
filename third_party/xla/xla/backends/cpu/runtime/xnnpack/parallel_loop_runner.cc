@@ -16,16 +16,22 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/parallel_loop_runner.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
+#include "absl/time/time.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/math/math_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 
 #define EIGEN_USE_THREADS
@@ -48,8 +54,12 @@ static tsl::AsyncValueRef<tsl::Chain> OkDoneEventSingleton() {
   return singleton->AsRef();
 }
 
-ParallelLoopRunner::ParallelLoopRunner(const Eigen::ThreadPoolDevice* device)
-    : done_event_(OkDoneEventSingleton()), device_(device) {}
+ParallelLoopRunner::ParallelLoopRunner(
+    const Eigen::ThreadPoolDevice* device,
+    std::optional<absl::Duration> worker_timeslice)
+    : done_event_(OkDoneEventSingleton()),
+      device_(device),
+      worker_timeslice_(worker_timeslice) {}
 
 tsl::AsyncValueRef<tsl::Chain> ParallelLoopRunner::ResetDoneEvent() {
   auto done_event = std::move(done_event_);
@@ -66,78 +76,152 @@ tsl::AsyncValueRef<tsl::Chain> ParallelLoopRunner::TakeDoneEvent(
   return std::move(runner.done_event_);
 }
 
-ParallelLoopRunner::ParallelTaskConfig
-ParallelLoopRunner::ComputeParallelTaskConfig(size_t num_tasks) const {
-  // We limit the number of parallel tasks per thread to avoid excessive task
-  // scheduling overheads at run time.
-  static constexpr size_t kMaxTasksPerThread = 4;
-
-  size_t parallel_task_size =
-      tsl::MathUtil::CeilOfRatio(num_tasks, kMaxTasksPerThread * num_threads());
-  size_t num_parallel_tasks =
-      tsl::MathUtil::CeilOfRatio(num_tasks, parallel_task_size);
-
-  return {num_tasks, parallel_task_size, num_parallel_tasks};
+void ParallelLoopRunner::WorkQueue::Partition::Initialize(size_t begin,
+                                                          size_t end) {
+  index.store(begin, std::memory_order_relaxed);
+  this->begin = begin;
+  this->end = end;
 }
 
-template <typename Index, typename ParallelizeContext>
-static void Parallelize(ParallelizeContext* ctx, Index start_index,
-                        Index end_index) {
-  CHECK_LT(start_index, end_index) << "Invalid task index range";  // Crash OK
+ParallelLoopRunner::WorkQueue::WorkQueue(size_t num_tasks,
+                                         size_t num_partitions)
+    : partitions_(num_partitions), empty_(num_tasks == 0) {
+  size_t partition_size = tsl::MathUtil::CeilOfRatio(num_tasks, num_partitions);
+  for (size_t i = 0, begin = 0, end = partition_size; i < num_partitions;
+       ++i, begin = end, end = std::min(num_tasks, end + partition_size)) {
+    partitions_[i].Initialize(begin, end);
+  }
+}
 
-  // Recursively split the task into two halves and schedule the right half into
-  // the thread pool.
+std::optional<size_t> ParallelLoopRunner::WorkQueue::Pop(
+    size_t partition_index) {
+  DCHECK(partition_index < partitions_.size()) << "Invalid partition index";
+  Partition& partition = partitions_.data()[partition_index];
+
+  // Check if partition is already empty.
+  if (size_t index = partition.index.load(std::memory_order_relaxed);
+      index >= partition.end) {
+    return std::nullopt;
+  }
+
+  // Try to acquire the next task in the partition.
+  size_t index = partition.index.fetch_add(1, std::memory_order_relaxed);
+  return index >= partition.end ? std::nullopt : std::make_optional(index);
+}
+
+ParallelLoopRunner::Worker::Worker(size_t worker_index, WorkQueue* queue)
+    : worker_index_(worker_index),
+      partition_index_(worker_index),
+      queue_(queue) {}
+
+std::optional<size_t> ParallelLoopRunner::Worker::Pop() {
+  std::optional<size_t> task = queue_->Pop(partition_index_);
+  if (task) return task;
+
+  // If work queue is empty, we are not going to find any more tasks.
+  if (queue_->empty()) return std::nullopt;
+
+  while (!task.has_value()) {
+    // Wrap around to the first partition.
+    if (ABSL_PREDICT_FALSE(++partition_index_ >= queue_->num_partitions())) {
+      partition_index_ = 0;
+    }
+
+    // We checked all partitions and got back to the partition we started from.
+    if (ABSL_PREDICT_FALSE(partition_index_ == worker_index_)) {
+      queue_->empty_.store(true, std::memory_order_relaxed);
+      break;
+    }
+
+    task = queue_->Pop(partition_index_);
+  }
+
+  return task;
+}
+
+template <typename ParallelizeContext>
+static void Parallelize(ParallelizeContext* ctx, uint16_t start_index,
+                        uint16_t end_index) {
+  CHECK_LT(start_index, end_index) << "Invalid worker index range";
+
+  auto count_down = [&](size_t count) {
+    // If count down is completed, delete the context.
+    if (ctx->count_down.CountDown(count)) delete ctx;
+  };
+
+  // Recursively split assigned workers into two halves and schedule the
+  // right half into the thread pool.
   while (end_index - start_index > 1) {
-    Index mid_index = (start_index + end_index) / 2;
-    ctx->device->enqueueNoNotification([ctx, mid_index, end_index] {
-      Parallelize(ctx, mid_index, end_index);
+    // If work queue is empty, we don't need to keep enqueuing more workers and
+    // can simply count down for the remaining workers.
+    if (ABSL_PREDICT_FALSE(ctx->work_queue.empty())) {
+      count_down(end_index - start_index);
+      return;
+    }
+
+    uint16_t mid_partition = (start_index + end_index) / 2;
+    ctx->device->enqueueNoNotification([ctx, mid_partition, end_index] {
+      Parallelize(ctx, mid_partition, end_index);
     });
-    end_index = mid_index;
+    end_index = mid_partition;
   }
 
-  // Execute the `start_index` task in the caller thread.
-  ctx->parallel_task(start_index);
-
-  // If count down is completed, delete the context.
-  if (ctx->count_down.CountDown()) {
-    delete ctx;
+  // Execute the `start_index` worker in the caller thread.
+  ParallelLoopRunner::Worker worker(start_index, &ctx->work_queue);
+  while (std::optional<size_t> task = worker.Pop()) {
+    ctx->parallel_task(*task);
   }
+
+  // Count down for the one executed worker.
+  count_down(1);
 }
 
 template <typename ParallelTask>
-void ParallelLoopRunner::Parallelize(
-    tsl::CountDownAsyncValueRef<tsl::Chain> count_down, size_t start_index,
-    size_t end_index, ParallelTask&& parallel_task) {
-  CHECK_LT(start_index, end_index) << "Invalid task index range";  // Crash OK
+ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::Parallelize(
+    tsl::CountDownAsyncValueRef<tsl::Chain> count_down, size_t num_workers,
+    size_t num_tasks, ParallelTask&& parallel_task) {
+  DCHECK_EQ(count_down.count(), num_workers)
+      << "Number of workers must match the count down counter";
+
+  // Short-circuit single-threaded execution.
+  if (ABSL_PREDICT_FALSE(num_workers == 1)) {
+    for (size_t i = 0; i < num_tasks; ++i) {
+      parallel_task(i);
+    }
+    count_down.CountDown();
+    return;
+  }
 
   struct ParallelizeContext {
-    ParallelizeContext(tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
-                       const Eigen::ThreadPoolDevice* device,
+    ParallelizeContext(const Eigen::ThreadPoolDevice* device,
+                       tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
+                       size_t num_workers, size_t num_tasks,
                        ParallelTask&& parallel_task)
-        : count_down(std::move(count_down)),
-          device(device),
+        : device(device),
+          num_workers(num_workers),
+          work_queue(num_tasks, /*num_partitions=*/num_workers),
+          count_down(std::move(count_down)),
           parallel_task(std::forward<ParallelTask>(parallel_task)) {}
 
-    tsl::CountDownAsyncValueRef<tsl::Chain> count_down;
     const Eigen::ThreadPoolDevice* device;
+
+    size_t num_workers;
+    WorkQueue work_queue;
+
+    tsl::CountDownAsyncValueRef<tsl::Chain> count_down;
     ParallelTask parallel_task;
   };
 
   auto ctx = std::make_unique<ParallelizeContext>(
-      std::move(count_down), device_,
+      device_, std::move(count_down), num_workers, num_tasks,
       std::forward<ParallelTask>(parallel_task));
 
-  // We try to use uint16_t for index type because it enables small buffer
-  // optimization in the constructed `std::function` tasks.
-  if (ABSL_PREDICT_TRUE(end_index <= std::numeric_limits<uint16_t>::max())) {
-    xla::cpu::Parallelize<uint16_t>(ctx.release(), start_index, end_index);
-  } else {
-    xla::cpu::Parallelize<size_t>(ctx.release(), start_index, end_index);
-  }
+  DCHECK_LE(num_workers, std::numeric_limits<uint16_t>::max());
+  xla::cpu::Parallelize(ctx.release(), 0, num_workers);
 }
 
 template <typename Task>
-void ParallelLoopRunner::ScheduleOne(Task&& task) {
+ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::ScheduleOne(Task&& task) {
   auto event = tsl::MakeConstructedAsyncValueRef<tsl::Chain>();
   done_event_.AndThen([event, task = std::forward<Task>(task)] {
     task();
@@ -146,17 +230,103 @@ void ParallelLoopRunner::ScheduleOne(Task&& task) {
   done_event_ = std::move(event);
 }
 
+// Compute the number of workers that should be used for parallel operation, by
+// executing the first task, measuring the compute time and estimating how many
+// workers are needed, so that each worker will handle `worker_timeslice` amount
+// of compute.
 template <typename ParallelTask>
-void ParallelLoopRunner::ScheduleAll(size_t num_tasks,
-                                     ParallelTask&& parallel_task) {
-  tsl::CountDownAsyncValueRef<tsl::Chain> count_down(num_tasks);
+ABSL_ATTRIBUTE_ALWAYS_INLINE size_t
+ComputeOptimalNumWorkers(absl::Duration worker_timeslice, size_t num_threads,
+                         size_t num_tasks, ParallelTask& parallel_task) {
+  // Run first task in the caller thread, to estimate the number of parallel
+  // workers that should be used for parallel operation.
+  uint64_t start_ns = tsl::Env::Default()->NowNanos();
+  parallel_task(0);
+  uint64_t end_ns = tsl::Env::Default()->NowNanos();
+
+  // We assume that all tasks take roughly the same amount of compute and we
+  // can estimate the total workload duration by multiplying the number of
+  // remaining tasks by the duration of a single task.
+  size_t workload_ns = (num_tasks - 1) * (end_ns - start_ns);
+  size_t timeslice_ns = absl::ToInt64Nanoseconds(worker_timeslice);
+
+  // Get the number of workers, so that each worker will take roughly
+  // `worker_timeslice` amount of compute. Don't create more workers than
+  // the number of threads in the thread pool or the number of tasks.
+  size_t num_workers =
+      std::min(std::min(num_tasks - 1, num_threads),
+               tsl::MathUtil::CeilOfRatio(workload_ns, timeslice_ns));
+  return std::min(num_workers, size_t{std::numeric_limits<uint16_t>::max()});
+}
+
+template <typename ParallelTask>
+ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::ScheduleAll(
+    size_t num_tasks, ParallelTask&& parallel_task) {
+  DCHECK_GT(num_tasks, 1) << "Expected at least two task";
+
+  // If done event is already available and we have a worker timeslice, we can
+  // compute the optimal number of workers for the parallel operation and
+  // potentially avoid allocating count down counter altogether.
+  if (ABSL_PREDICT_TRUE(done_event_.IsConcrete() && worker_timeslice_)) {
+    size_t optimal_num_workers = ComputeOptimalNumWorkers(
+        *worker_timeslice_, num_threads(), num_tasks, parallel_task);
+
+    // Execute remaining tasks in the caller thread if we have a single worker.
+    if (ABSL_PREDICT_TRUE(optimal_num_workers == 1)) {
+      for (size_t i = 1; i < num_tasks; ++i) {
+        parallel_task(i);
+      }
+      return;
+    }
+
+    tsl::CountDownAsyncValueRef<tsl::Chain> count_down(optimal_num_workers);
+    done_event_ = count_down.AsRef();
+
+    // Parallelize the remaining tasks (skip the first task that was executed
+    // when we were computing the number of workers).
+    Parallelize(std::move(count_down), optimal_num_workers, num_tasks - 1,
+                [parallel_task = std::forward<ParallelTask>(parallel_task)](
+                    size_t task_index) { parallel_task(task_index + 1); });
+    return;
+  }
+
+  // If `done_event_` is not available, we start with at most `num_threads()`
+  // workers as we can't run more parallel workers than the number of threads in
+  // the thread pool. Later we might adjust the number of workers when it's safe
+  // to execute the first task to measure the execution time.
+  size_t num_workers = std::min(std::min(num_tasks, num_threads()),
+                                size_t{std::numeric_limits<uint16_t>::max()});
+
+  tsl::CountDownAsyncValueRef<tsl::Chain> count_down(num_workers);
   auto count_down_done = count_down.AsRef();
 
-  done_event_.AndThen([this, num_tasks, count_down = std::move(count_down),
-                       parallel_task =
-                           std::forward<ParallelTask>(parallel_task)] {
-    Parallelize(std::move(count_down), 0, num_tasks, std::move(parallel_task));
-  });
+  auto schedule_all =
+      [this, num_workers, num_tasks, count_down = std::move(count_down),
+       parallel_task = std::forward<ParallelTask>(parallel_task)]() mutable {
+        // If we don't have a worker timeslice, we can parallelize the task
+        // immediately using pre-computed number of workers.
+        if (ABSL_PREDICT_FALSE(!worker_timeslice_)) {
+          Parallelize(std::move(count_down), num_workers, num_tasks,
+                      std::move(parallel_task));
+          return;
+        }
+
+        // Compute the optimal number of workers by executing the first task.
+        size_t optimal_num_workers = ComputeOptimalNumWorkers(
+            *worker_timeslice_, num_threads(), num_tasks, parallel_task);
+        DCHECK_LE(optimal_num_workers, num_workers);
+
+        // Count down for the workers that we don't need.
+        count_down.CountDown(num_workers - optimal_num_workers);
+
+        // Parallelize the remaining tasks (skip the first task that was
+        // executed when we were computing the number of workers).
+        Parallelize(std::move(count_down), optimal_num_workers, num_tasks - 1,
+                    [parallel_task = std::move(parallel_task)](
+                        size_t task_index) { parallel_task(task_index + 1); });
+      };
+
+  done_event_.AndThen(std::move(schedule_all));
   done_event_ = std::move(count_down_done);
 }
 
@@ -186,13 +356,6 @@ struct Task3DTile2DIndex {
 };
 
 }  // namespace
-
-auto ParallelLoopRunner::ParallelTaskConfig::ParallelTaskRange(
-    size_t parallel_task_index) const -> TaskRange {
-  size_t begin = parallel_task_index * parallel_task_size;
-  size_t end = std::min(num_tasks, begin + parallel_task_size);
-  return {begin, end};
-}
 
 static Task1DTile1DIndex Delinearize(size_t task_index, size_t range,
                                      size_t tile) {
@@ -289,16 +452,7 @@ void ParallelLoopRunner::Parallelize(size_t range, Task1D task) {
     return;
   }
 
-  // Schedule `parallel_config.num_parallel_tasks` into the underlying thread
-  // pool when done event becomes available.
-  auto parallel_config = ComputeParallelTaskConfig(range);
-  auto parallel_task = [parallel_config,
-                        task = std::move(task)](size_t parallel_task_index) {
-    auto [begin, end] = parallel_config.ParallelTaskRange(parallel_task_index);
-    for (size_t i = begin; i < end; ++i) task(i);
-  };
-
-  ScheduleAll(parallel_config.num_parallel_tasks, std::move(parallel_task));
+  ScheduleAll(range, std::move(task));
 }
 
 void ParallelLoopRunner::Parallelize(size_t range, size_t tile,
@@ -310,8 +464,6 @@ void ParallelLoopRunner::Parallelize(size_t range, size_t tile,
 
   // Fast path for the degenerate parallel loop with single task.
   if (ABSL_PREDICT_TRUE(num_tasks == 1)) {
-    DCHECK_EQ(range, tile) << "Expected range to be equal to tile";
-
     // Execute task in the caller thread if done event is already available.
     if (ABSL_PREDICT_TRUE(done_event_.IsConcrete())) {
       task(0, range);
@@ -323,19 +475,13 @@ void ParallelLoopRunner::Parallelize(size_t range, size_t tile,
     return;
   }
 
-  // Schedule `parallel_config.num_parallel_tasks` into the underlying thread
-  // pool when done event becomes available.
-  auto parallel_config = ComputeParallelTaskConfig(num_tasks);
-  auto parallel_task = [range, tile, parallel_config,
-                        task = std::move(task)](size_t parallel_task_index) {
-    auto [begin, end] = parallel_config.ParallelTaskRange(parallel_task_index);
-    for (size_t i = begin; i < end; ++i) {
-      auto x = Delinearize(i, range, tile);
-      task(x.offset, x.extent);
-    }
+  auto parallel_task = [range, tile,
+                        task = std::move(task)](size_t task_index) {
+    auto x = Delinearize(task_index, range, tile);
+    task(x.offset, x.extent);
   };
 
-  ScheduleAll(parallel_config.num_parallel_tasks, std::move(parallel_task));
+  ScheduleAll(num_tasks, std::move(parallel_task));
 }
 
 void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
@@ -345,8 +491,6 @@ void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
 
   // Fast path for the degenerate parallel loop with single task.
   if (ABSL_PREDICT_TRUE(num_tasks == 1)) {
-    DCHECK_EQ(range_j, tile_j) << "Expected range to be equal to tile";
-
     // Execute task in the caller thread if done event is already available.
     if (ABSL_PREDICT_TRUE(done_event_.IsConcrete())) {
       task(0, 0, range_j);
@@ -358,19 +502,13 @@ void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
     return;
   }
 
-  // Schedule `parallel_config.num_parallel_tasks` into the underlying thread
-  // pool when done event becomes available.
-  auto parallel_config = ComputeParallelTaskConfig(num_tasks);
-  auto parallel_task = [range_i, range_j, tile_j, parallel_config,
-                        task = std::move(task)](size_t parallel_task_index) {
-    auto [begin, end] = parallel_config.ParallelTaskRange(parallel_task_index);
-    for (size_t i = begin; i < end; ++i) {
-      auto x = Delinearize(i, range_i, range_j, tile_j);
-      task(x.i, x.offset_j, x.extent_j);
-    }
+  auto parallel_task = [range_i, range_j, tile_j,
+                        task = std::move(task)](size_t task_index) {
+    auto x = Delinearize(task_index, range_i, range_j, tile_j);
+    task(x.i, x.offset_j, x.extent_j);
   };
 
-  ScheduleAll(parallel_config.num_parallel_tasks, std::move(parallel_task));
+  ScheduleAll(num_tasks, std::move(parallel_task));
 }
 
 void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
@@ -381,9 +519,6 @@ void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
 
   // Fast path for the degenerate parallel loop with single task.
   if (ABSL_PREDICT_TRUE(num_tasks == 1)) {
-    DCHECK_EQ(range_j, tile_j) << "Expected range to be equal to tile";
-    DCHECK_EQ(range_k, tile_k) << "Expected range to be equal to tile";
-
     // Execute task in the caller thread if done event is already available.
     if (ABSL_PREDICT_TRUE(done_event_.IsConcrete())) {
       task(0, 0, 0, range_j, range_k);
@@ -397,20 +532,13 @@ void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
     return;
   }
 
-  // Schedule `parallel_config.num_parallel_tasks` into the underlying thread
-  // pool when done event becomes available.
-  auto parallel_config = ComputeParallelTaskConfig(num_tasks);
   auto parallel_task = [range_i, range_j, range_k, tile_j, tile_k,
-                        parallel_config,
-                        task = std::move(task)](size_t parallel_task_index) {
-    auto [begin, end] = parallel_config.ParallelTaskRange(parallel_task_index);
-    for (size_t i = begin; i < end; ++i) {
-      auto x = Delinearize(i, range_i, range_j, range_k, tile_j, tile_k);
-      task(x.i, x.offset_j, x.offset_k, x.extent_j, x.extent_k);
-    }
+                        task = std::move(task)](size_t task_index) {
+    auto x = Delinearize(task_index, range_i, range_j, range_k, tile_j, tile_k);
+    task(x.i, x.offset_j, x.offset_k, x.extent_j, x.extent_k);
   };
 
-  ScheduleAll(parallel_config.num_parallel_tasks, std::move(parallel_task));
+  ScheduleAll(num_tasks, std::move(parallel_task));
 }
 
 }  // namespace xla::cpu

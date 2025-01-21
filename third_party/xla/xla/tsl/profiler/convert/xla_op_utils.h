@@ -129,6 +129,20 @@ inline bool MayHaveInnerOps(absl::string_view category) {
          category == kHloWhile || category == kHloMegacoreFusion;
 }
 
+inline bool IsOffDutyOp(absl::string_view category) {
+  return (category == tsl::profiler::kHloInfeed ||
+          category == tsl::profiler::kHloOutfeed ||
+          category == tsl::profiler::kHloHostSend ||
+          category == tsl::profiler::kHloHostSendDone ||
+          category == tsl::profiler::kHloHostRecv ||
+          category == tsl::profiler::kHloHostRecvDone ||
+          category ==
+              tsl::profiler::kHloMegacoreFusion  // Only self-time in megacore
+                                                 // fusion is off-duty. The op
+                                                 // time of children is on-duty.
+  );
+}
+
 // File and line that the framework op corresponding to an HLO op is associated
 // to in a user's program; e.g. it could be the file and line of user code that
 // generated the op.

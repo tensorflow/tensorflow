@@ -49,14 +49,16 @@ xla_cc_test(
         ":in_memory_key_value_store",
         ":protocol_proto_cc",
         ":topology_util",
+        "//xla:test_helpers",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -102,8 +104,8 @@ cc_library(
     deps = [
         ":client",
         ":service",
+        "//xla/tsl/platform:grpc_credentials",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:grpc_credentials",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -115,6 +117,7 @@ cc_library(
         ":key_value_store_interface",
         ":protocol_proto_cc",
         "//xla:util",
+        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:utils",
         "//xla/pjrt/gpu:gpu_topology_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -151,11 +154,11 @@ xla_cc_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ] + tsl_grpc_cc_dependencies(),
 )
 

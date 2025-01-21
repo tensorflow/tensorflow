@@ -323,6 +323,8 @@ class MemorySpaceAssignment {
       const HloAliasAnalysis& alias_analysis,
       std::vector<int64_t>* alt_mem_bytes_occupied = nullptr);
 
+  static constexpr absl::string_view kName = "memory-space-assignment";
+
  protected:
   // Main driver of the memory space assignment pass.
   virtual absl::StatusOr<std::unique_ptr<PresetAssignments>>

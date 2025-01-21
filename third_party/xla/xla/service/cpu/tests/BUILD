@@ -34,7 +34,7 @@ cc_library(
     deps = [
         "//xla/service:cpu_plugin",
         "//xla/tests:llvm_irgen_test_base",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -57,10 +57,10 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -75,7 +75,6 @@ xla_cc_test(
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -94,8 +93,8 @@ xla_cc_test(
         "//xla/service/cpu:cpu_instruction_fusion",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -106,9 +105,9 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ir_headers",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -144,11 +143,11 @@ xla_cc_test(
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -169,7 +168,6 @@ xla_cc_test(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -188,7 +186,6 @@ xla_cc_test(
         "//xla/tests:test_utils",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -205,7 +202,6 @@ xla_cc_test(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -215,8 +211,8 @@ xla_cc_test(
     deps = [
         ":cpu_codegen_test",
         "//xla/service/cpu:cpu_compiler",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -228,19 +224,19 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:test_helpers",
         "//xla:xla_data_proto_cc",
         "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:arithmetic",
+        "//xla/hlo/testlib:test_helpers",
         "//xla/service",
         "//xla/service:cpu_plugin",
         "//xla/tests:client_library_test_base",
         "//xla/tests:literal_test_util",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -254,7 +250,6 @@ xla_cc_test(
         "//xla/service/cpu:test_header_helper",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -267,7 +262,6 @@ xla_cc_test(
         "//xla/service/cpu:test_header_helper",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -280,7 +274,6 @@ xla_cc_test(
         "//xla/service/cpu:test_header_helper",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -296,8 +289,8 @@ xla_cc_test(
         "//xla/service/cpu:test_header_helper",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -317,7 +310,6 @@ xla_cc_test(
         "//xla/service/cpu:test_header_helper",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -341,7 +333,6 @@ xla_cc_test(
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -356,7 +347,6 @@ xla_cc_test(
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -372,9 +362,9 @@ xla_cc_test(
     deps = [
         "//xla:literal",
         "//xla:shape_util",
-        "//xla:test",
-        "//xla:test_helpers",
         "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:cpu_plugin",
         "//xla/service/cpu:onednn_contraction_rewriter",
@@ -393,9 +383,9 @@ xla_cc_test(
     deps = [
         "//xla:literal",
         "//xla:shape_util",
-        "//xla:test",
-        "//xla:test_helpers",
         "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:cpu_plugin",
         "//xla/service/cpu:onednn_contraction_rewriter",
@@ -413,7 +403,7 @@ xla_cc_test(
     srcs = ["onednn_layer_norm_test.cc"],
     copts = tsl_copts(),
     deps = [
-        "//xla:test",
+        "//xla/hlo/testlib:test",
         "//xla/service:cpu_plugin",
         "//xla/service/cpu:onednn_util",
         "//xla/tests:hlo_test_base",
@@ -429,11 +419,11 @@ xla_cc_test(
     deps = [
         "//xla:literal",
         "//xla:shape_util",
-        "//xla:test",
-        "//xla:test_helpers",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:test_helpers",
         "//xla/service:cpu_plugin",
         "//xla/service:pattern_matcher",
-        "//xla/service:pattern_matcher_gmock",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/cpu:onednn_config_proto_cc",
         "//xla/service/cpu:onednn_ops_rewriter",
@@ -442,5 +432,18 @@ xla_cc_test(
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "xnn_fusion_test",
+    srcs = ["xnn_fusion_test.cc"],
+    deps = [
+        "//xla:error_spec",
+        "//xla/service:cpu_plugin",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )

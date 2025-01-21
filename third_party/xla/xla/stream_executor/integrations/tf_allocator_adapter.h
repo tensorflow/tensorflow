@@ -201,7 +201,7 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
 
 // Creates a status with a payload indicating an error while allocating `size`
 // bytes of memory.
-absl::Status MemoryAllocationError(uint64_t size);
+absl::Status MemoryAllocationError(uint64_t size, bool is_host_mem);
 
 // Checks whether the status is a memory allocation error.
 bool IsMemoryAllocationError(absl::Status status);

@@ -328,7 +328,7 @@ void PrepareLiftingPass::runOnOperation() {
     patterns.add<TF::ConvertTFEinsumOp>(ctx);
   }
 
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-prepare-lifting failed.";
     signalPassFailure();
   }

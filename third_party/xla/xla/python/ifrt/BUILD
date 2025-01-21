@@ -1,28 +1,14 @@
+# copybara:uncomment load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/python/ifrt:ifrt.bzl", "ifrt_package_groups")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 
-package_group(
-    name = "friends",
-    includes = [
-        "//xla/python:friends",
-    ],
-    packages = [
-        "//xla/python/...",
-    ],
-)
-
-package_group(
-    name = "internal",
-    packages = [
-        "//xla/python/ifrt/...",
-    ],
-)
-
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
+        ":users",
         ":friends",
         ":internal",
     ]),
@@ -31,6 +17,8 @@ package(
 exports_files([
     "BUILD",
 ])
+
+ifrt_package_groups()
 
 cc_library(
     name = "ifrt",
@@ -760,3 +748,19 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
     ],
 )
+
+# copybara:uncomment_begin
+# bzl_library(
+#     name = "ifrt_bzl",
+#     srcs = ["ifrt.bzl"],
+#     parse_tests = False,
+#     visibility = ["//visibility:private"],
+# )
+#
+# bzl_library(
+#     name = "ifrt_google_bzl",
+#     srcs = ["ifrt.google.bzl"],
+#     parse_tests = False,
+#     visibility = ["//visibility:private"],
+# )
+# copybara:uncomment_end

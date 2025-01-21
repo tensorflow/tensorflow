@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/array4d.h"
-#include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
 #include "xla/literal.h"
 #include "xla/tests/client_library_test_base.h"

@@ -19,8 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "fuzztest/fuzztest.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow::fuzzing {
 namespace {

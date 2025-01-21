@@ -1,5 +1,14 @@
 # PJRT C API changelog
 
+## 0.64
+* Added ``context`` field of type ``PJRT_ExecuteContext *`` in ``PJRT_ExecuteOptions``.
+
+## 0.63
+*   Added types F4E2M1FN and F8E8M0FNU.
+
+## 0.62
+* Added more member functions for ``PJRT_AsyncHostToDeviceTransferManager``.
+
 ## 0.61
 * Added ``PJRT_KeyValueTryGet`` to the KV store interface,
   which is non-blocking and immediately returns an error if the

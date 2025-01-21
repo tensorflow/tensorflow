@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
@@ -1682,7 +1682,8 @@ XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
     custom-call.21.0 = (
         f8e4m3fn[4,4,16,16]{3,1,2,0},
         f32[1,1,1,1]{3,2,1,0},
-        f32[1,1,1,1]{3,2,1,0}
+        f32[1,1,1,1]{3,2,1,0},
+        u8[0]{0}
     ) custom-call(
         convert.18,
         convert.30,
@@ -1860,7 +1861,8 @@ XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
     custom-call.21.0 = (
         f8e4m3fn[4,16,4,16]{3,2,1,0},
         f32[1,1,1,1]{3,2,1,0},
-        f32[1,1,1,1]{3,2,1,0}
+        f32[1,1,1,1]{3,2,1,0},
+        u8[0]{0}
     ) custom-call(
         convert.18,
         convert.30,

@@ -418,7 +418,7 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:notification",
     ],
 )
@@ -468,9 +468,9 @@ tsl_cc_test(
         ":device_id_utils",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status_matchers",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/util:device_name_utils",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -480,6 +480,6 @@ tsl_cc_test(
     deps = [
         ":real_time_in_memory_metric",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -499,8 +499,8 @@ class HloModule {
   bool has_schedule() const { return schedule_.has_value(); }
 
   // Returns the schedule of the module. CHECK fails if no schedule is set.
-  const HloSchedule& schedule() const { return *schedule_; }
-  HloSchedule& schedule() { return *schedule_; }
+  const HloSchedule& schedule() const { return schedule_.value(); }
+  HloSchedule& schedule() { return schedule_.value(); }
 
   HloComputation* AddComputation(std::unique_ptr<HloComputation> computation,
                                  bool is_entry) {

@@ -955,7 +955,8 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     LOG(INFO) << "Total Departures: " << evaluation.total_departures;
     LOG(INFO) << "Total Makespan: " << evaluation.total_makespan;
     LOG(INFO) << "Total Violations: " << evaluation.violation_codes.size();
-    LOG(INFO) << "Maximum Total Memory: " << evaluation.max_total_memory;
+    LOG(INFO) << "Total Maximum Memory: " << evaluation.total.max_memory
+              << " (lower bound: " << evaluation.lower_bound.max_memory << ")";
   }
   const absl::Time end_time = absl::Now();
   const auto duration = end_time - start_time;
@@ -1144,7 +1145,7 @@ bool CostComponents::operator==(const CostComponents& other) const {
          computation_cost == other.computation_cost &&
          resharding_cost == other.resharding_cost &&
          overbudget_cost == other.overbudget_cost &&
-         makespan_cost == other.makespan_cost;
+         makespan_cost == other.makespan_cost && max_memory == other.max_memory;
 }
 
 double CostComponents::cost() const {
@@ -1312,8 +1313,11 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
     double lower_bound_overbudget = 0.0;
     for (LivenessIdx time_idx = 0; time_idx < total_memory_costs.size();
          ++time_idx) {
-      evaluation.max_total_memory =
-          std::max(evaluation.max_total_memory, total_memory_costs[time_idx]);
+      evaluation.total.max_memory =
+          std::max(evaluation.total.max_memory, total_memory_costs[time_idx]);
+      evaluation.lower_bound.max_memory =
+          std::max(evaluation.lower_bound.max_memory,
+                   lower_bound_memory_costs[time_idx]);
       if (request.has_overbudget_coeff()) {
         total_overbudget =
             std::max(total_overbudget,

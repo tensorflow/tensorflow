@@ -1598,7 +1598,7 @@ void ComposeUniformQuantizedTypePass::runOnOperation() {
                ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations>(
       &ctx);
 
-  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module_op, std::move(patterns)))) {
     module_op.emitError()
         << "Failed to compose stablehlo uniform quantized types.";
     signalPassFailure();

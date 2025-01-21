@@ -161,7 +161,7 @@ cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["@local_tsl//tsl/platform:byte_order"],
+    deps = ["@local_xla//xla/tsl/platform:byte_order"],
 )
 
 cc_library(
@@ -199,7 +199,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
-        "@local_tsl//tsl/platform:crash_analysis",
+        "@local_xla//xla/tsl/platform:crash_analysis",
     ],
 )
 
@@ -255,7 +255,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
-        "@local_tsl//tsl/platform:dynamic_annotations",
+        "@local_xla//xla/tsl/platform:dynamic_annotations",
     ],
 )
 
@@ -586,7 +586,7 @@ cc_library(
 cc_library(
     name = "prefetch",
     hdrs = ["prefetch.h"],
-    deps = ["@local_tsl//tsl/platform:prefetch"],
+    deps = ["@local_xla//xla/tsl/platform:prefetch"],
 )
 
 cc_library(
@@ -642,7 +642,7 @@ cc_library(
 cc_library(
     name = "intrusive_ptr",
     hdrs = ["intrusive_ptr.h"],
-    deps = ["@local_tsl//tsl/platform:intrusive_ptr"],
+    deps = ["@local_xla//xla/tsl/platform:intrusive_ptr"],
 )
 
 cc_library(
@@ -658,7 +658,7 @@ cc_library(
     textual_hdrs = ["resource.h"],
     deps = [
         ":stringpiece",
-        "@local_tsl//tsl/platform:resource",
+        "@local_xla//xla/tsl/platform:resource",
     ],
 )
 
@@ -667,7 +667,7 @@ cc_library(
     testonly = 1,
     textual_hdrs = ["resource_loader.h"],
     deps = [
-        "@local_tsl//tsl/platform:resource_loader",
+        "@local_xla//xla/tsl/platform:resource_loader",
     ],
 )
 
@@ -675,7 +675,7 @@ cc_library(
     name = "rocm_rocdl_path",
     textual_hdrs = ["rocm_rocdl_path.h"],
     deps = [
-        "@local_tsl//tsl/platform:rocm_rocdl_path",
+        "@local_xla//xla/tsl/platform:rocm_rocdl_path",
     ],
 )
 
@@ -735,7 +735,7 @@ cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["@local_tsl//tsl/platform:stack_frame"],
+    deps = ["@local_xla//xla/tsl/platform:stack_frame"],
 )
 
 cc_library(
@@ -1124,7 +1124,7 @@ cc_library(
     name = "test_main",
     testonly = 1,
     deps = [
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1255,7 +1255,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@local_tsl//tsl/platform:resource_loader",
+        "@local_xla//xla/tsl/platform:resource_loader",
     ],
 )
 

@@ -111,6 +111,8 @@ class ThunkExecutor {
   // If any of the thunks failed, the event will be in error state.
   tsl::AsyncValueRef<ExecuteEvent> Execute(const Thunk::ExecuteParams& params);
 
+  const ThunkSequence& thunk_sequence() const { return thunk_sequence_; }
+
   absl::Span<const NodeDef> nodes_defs() const { return nodes_defs_; }
   const NodeDef& node_def(NodeId id) const { return nodes_defs_[id]; }
 

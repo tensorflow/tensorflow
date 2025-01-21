@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -25,10 +26,12 @@ limitations under the License.
 #include "absl/container/fixed_array.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/service/executable.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/mem.h"
 
 namespace xla::cpu {
 
@@ -82,7 +85,20 @@ class NanoRtExecutable {
 
   // An owning writable byte buffer that can be used as a temporary buffer.
   template <size_t n>
-  using ManagedTemp = absl::FixedArray<std::byte, n>;
+  class ManagedTemp {
+   public:
+    explicit ManagedTemp(size_t size) : data_(size) {}
+
+    ManagedTemp(const ManagedTemp&) = delete;
+    ManagedTemp& operator=(const ManagedTemp&) = delete;
+
+    PreallocatedTemp data() { return absl::MakeSpan(data_); }
+
+   private:
+    friend class NanoRtExecutable;
+    using Allocator = tsl::port::AlignedAllocator<std::byte, Align()>;
+    alignas(Align()) absl::FixedArray<std::byte, n, Allocator> data_;
+  };
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(absl::Span<const Argument> arguments,
                                            absl::Span<const Result> results,
@@ -92,7 +108,7 @@ class NanoRtExecutable {
   tsl::AsyncValueRef<ExecuteEvent> Execute(absl::Span<const Argument> arguments,
                                            absl::Span<const Result> results,
                                            ManagedTemp<n>& temp) {
-    return Execute(arguments, results, absl::MakeSpan(temp));
+    return Execute(arguments, results, temp.data());
   }
 
   // Returns the size of the temp buffer required to run the executable.

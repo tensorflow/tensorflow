@@ -411,8 +411,8 @@ tf_cc_test(
     deps = [
         ":scale_and_translate_op",
         "@com_google_benchmark//:benchmark",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
     ] + IMAGE_TEST_DEPS,
 )
 

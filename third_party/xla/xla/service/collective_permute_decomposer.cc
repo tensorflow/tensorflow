@@ -34,19 +34,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/collective_permute_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
-
-using SourceTargetPair = std::pair<int64_t, int64_t>;
-using SourceTargetPairs = std::vector<SourceTargetPair>;
 
 // Returns true if the CollectivePermute instruction should be transformed
 // to Send/Recv. We currently limit the transformation to CollectivePermute
@@ -65,7 +61,8 @@ bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
   if (ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes) {
     return false;
   }
-  return !cp_utils::HasCycles(collective_permute.source_target_pairs());
+  return !SourceTargetPairs(collective_permute.source_target_pairs())
+              .HasCycles();
 }
 
 // Returns true for a pipelineable collective-permute. As a simple heuristic,
@@ -82,7 +79,7 @@ bool MayPipeline(const HloCollectivePermuteInstruction& collective_permute) {
 struct DecomposedCp {
   HloInstruction* send;
   HloInstruction* recv;
-  SourceTargetPairs source_target_pairs;
+  std::vector<std::pair<int64_t, int64_t>> source_target_pairs;
 };
 
 xla::FrontendAttributes ExtractFrontendAttributes(
@@ -92,7 +89,7 @@ xla::FrontendAttributes ExtractFrontendAttributes(
   attributes.mutable_map()->insert(old_attributes.map().begin(),
                                    old_attributes.map().end());
   (*attributes.mutable_map())[kSendRecvSourceTargetPairsAttr] =
-      cp_utils::SourceTargetPairsString(cp);
+      SourceTargetPairs(cp.source_target_pairs()).ToString();
   return attributes;
 }
 
@@ -170,21 +167,17 @@ std::optional<std::pair<HloCollectivePermuteInstruction*,
                         HloCollectivePermuteInstruction*>>
 CheckCyclePatterns(HloCollectivePermuteInstruction* cp0,
                    HloCollectivePermuteInstruction* cp1) {
-  const SourceTargetPairs& cp0_pairs = cp0->source_target_pairs();
-  const SourceTargetPairs& cp1_pairs = cp1->source_target_pairs();
-  if (cp0_pairs.size() == 1) {
-    if (cp_utils::IsForwardCycle(cp0_pairs.front(), cp1_pairs) ||
-        cp_utils::IsBackwardCycle(cp0_pairs.front(), cp1_pairs)) {
-      // cp0 represents the backedge for the cycle.
-      return std::make_pair(cp0, cp1);
-    }
+  const SourceTargetPairs cp0_pairs(cp0->source_target_pairs());
+  const SourceTargetPairs cp1_pairs(cp1->source_target_pairs());
+  if (SourceTargetPairs::IsForwardCycle(cp0_pairs, cp1_pairs) ||
+      SourceTargetPairs::IsBackwardCycle(cp0_pairs, cp1_pairs)) {
+    // cp0 represents the backedge for the cycle.
+    return std::make_pair(cp0, cp1);
   }
-  if (cp1_pairs.size() == 1) {
-    if (cp_utils::IsForwardCycle(cp1_pairs.front(), cp0_pairs) ||
-        cp_utils::IsBackwardCycle(cp1_pairs.front(), cp0_pairs)) {
-      // cp1 represents the forward edge for the cycle.
-      return std::make_pair(cp1, cp0);
-    }
+  if (SourceTargetPairs::IsForwardCycle(cp1_pairs, cp0_pairs) ||
+      SourceTargetPairs::IsBackwardCycle(cp1_pairs, cp0_pairs)) {
+    // cp1 represents the forward edge for the cycle.
+    return std::make_pair(cp1, cp0);
   }
   return std::nullopt;
 }
