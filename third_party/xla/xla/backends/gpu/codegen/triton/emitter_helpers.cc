@@ -100,9 +100,9 @@ absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
     case S8:
       return b.getI8Type();
     case F8E5M2:
-      return b.getFloat8E5M2Type();
+      return b.getType<mlir::Float8E5M2Type>();
     case F8E4M3FN:
-      return b.getFloat8E4M3FNType();
+      return b.getType<mlir::Float8E4M3FNType>();
     default:
       return absl::UnimplementedError(
           absl::StrCat("This type is not supported yet: ",
@@ -118,8 +118,9 @@ Type StorageType(EmitterLocOpBuilder& b, Type t) {
 }
 
 bool IsFp8Type(Type t) {
-  return t.isFloat8E5M2() || t.isFloat8E4M3FN() || t.isFloat8E5M2FNUZ() ||
-         t.isFloat8E4M3FNUZ() || t.isFloat8E4M3B11FNUZ();
+  return llvm::isa<mlir::Float8E5M2Type, mlir::Float8E4M3FNType,
+                   mlir::Float8E5M2FNUZType, mlir::Float8E4M3FNUZType,
+                   mlir::Float8E4M3B11FNUZType>(t);
 }
 
 Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
