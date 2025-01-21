@@ -15,7 +15,6 @@ cc_library(
     ],
     deps = [
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
-        "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:quantize_params_wrapper",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
     ],
