@@ -15,6 +15,8 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMMON_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMMON_H_
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
@@ -99,6 +101,12 @@ typedef enum : int {
   kLiteRtHwAccelatorGpu = 1 << 1,
   kLiteRtHwAccelatorNpu = 1 << 2,
 } LiteRtHwAccelerators;
+
+// A bit field of `LiteRtHwAccelerators` values.
+typedef int LiteRtHwAcceleratorSet;
+
+// For indexing into LiteRT collections or counting LiteRT things.
+typedef size_t LiteRtParamIndex;
 
 #ifdef __cplusplus
 }
