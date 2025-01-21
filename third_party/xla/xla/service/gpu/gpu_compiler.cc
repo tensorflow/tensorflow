@@ -537,9 +537,7 @@ AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
       opts_from_compiler;
   layout_insensitive_algsimp_opts.set_conv_is_lowerable_callback(
       ConvRewriter::ConvIsLowerable);
-  layout_insensitive_algsimp_opts.set_enable_dot_strength_reduction(
-      hlo_module_config.debug_options()
-          .xla_gpu_enable_dot_strength_reduction());
+  layout_insensitive_algsimp_opts.set_enable_dot_strength_reduction(true);
 
   // GPU only supports canonical convolutions.
   layout_insensitive_algsimp_opts.set_supports_non_canonical_dots(false);
@@ -1407,8 +1405,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
 AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
     const HloModuleConfig& config) {
   AlgebraicSimplifierOptions opts;
-  opts.set_enable_dot_strength_reduction(
-      config.debug_options().xla_gpu_enable_dot_strength_reduction());
+  opts.set_enable_dot_strength_reduction(true);
   return opts;
 }
 

@@ -382,9 +382,6 @@ message DebugOptions {
   // if `xla_gpu_enable_custom_fusion` set to true.
   string xla_gpu_enable_custom_fusions_re = 264;
 
-  // TODO(bchetioui): this flag can be deprecated.
-  bool xla_gpu_enable_dot_strength_reduction = 270;
-
   // Enables address computation fusion to optimize dynamic-slice and
   // dynamic-update-slice operations around library calls.
   bool xla_gpu_enable_dynamic_slice_fusion = 105;
@@ -1155,8 +1152,9 @@ message DebugOptions {
   // xla_gpu_experimental_enable_triton_softmax_priority_fusion
   // xla_gpu_pgle_accuracy_checker
   // xla_gpu_enable_heuristic_pass_configuration
+  // xla_gpu_enable_dot_strength_reduction
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332, 361;
+      325, 326, 332, 361, 270;
 }
 
 // Contains flags which affects the GPU compilation result.

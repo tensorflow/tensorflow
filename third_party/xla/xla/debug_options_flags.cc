@@ -269,8 +269,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       stream_executor::IsLibNvPtxCompilerSupported());
   opts.set_xla_gpu_libnvjitlink_mode(DebugOptions::LIB_NV_JIT_LINK_MODE_AUTO);
 
-  opts.set_xla_gpu_enable_dot_strength_reduction(true);
-
   opts.set_xla_gpu_enable_bf16_6way_gemm(false);
   opts.set_xla_gpu_enable_bf16_3way_gemm(false);
   opts.set_xla_gpu_nccl_collective_max_nchannels(0);
@@ -1995,11 +1993,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       stream_executor::IsLibNvJitLinkSupported(),
       "Use libnvjitlink for PTX-to-GPU-assembly compilation instead of "
       "calling ptxas."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_dot_strength_reduction",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_dot_strength_reduction),
-      debug_options->xla_gpu_enable_dot_strength_reduction(),
-      "Enable rewriting matmuls with a vector into reductions."));
+  flag_list->push_back(tsl::Flag("xla_gpu_enable_dot_strength_reduction",
+                                 noop_flag_setter<bool>, true,
+                                 "[Deprecated, do not use]"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_bf16_6way_gemm",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_bf16_6way_gemm),
