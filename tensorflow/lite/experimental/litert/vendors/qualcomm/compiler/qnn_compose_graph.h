@@ -18,9 +18,24 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/tensor_pool.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
 namespace litert::qnn {
+
+LiteRtStatus ConvertDataType(const litert::ElementType litert_type,
+                             const bool is_quantized, Qnn_DataType_t& qnn_type);
+
+LiteRtStatus ConvertTensor(const litert::Tensor& litert_tensor,
+                           ::qnn::TensorPool& tensor_pool,
+                           ::qnn::TensorWrapper*& tensor_wrapper);
+
+LiteRtStatus ConvertOp(
+    const litert::Op& litert_op, ::qnn::TensorPool& tensor_pool,
+    const std::vector<::qnn::TensorWrapperRef>& input_tensors,
+    const std::vector<::qnn::TensorWrapperRef>& output_tensors,
+    std::vector<::qnn::OpWrapper>& op_wrappers);
 
 // Composes a new QNN Graph from given LiteRt Graph. Qnn Graph is written to
 // context behind "qnn". Uses given graph_name to name entry point.

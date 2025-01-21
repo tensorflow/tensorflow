@@ -23,18 +23,18 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/qairt/latest/include/QNN/QnnCommon.h"
-#include "third_party/qairt/latest/include/QNN/QnnInterface.h"
-#include "third_party/qairt/latest/include/QNN/QnnLog.h"
-#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
-#include "third_party/qairt/latest/include/QNN/System/QnnSystemCommon.h"
-#include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_log.h"
+#include "third_party/qairt/latest/include/QNN/QnnCommon.h"
+#include "third_party/qairt/latest/include/QNN/QnnInterface.h"
+#include "third_party/qairt/latest/include/QNN/QnnLog.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "third_party/qairt/latest/include/QNN/System/QnnSystemCommon.h"
+#include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
 
 namespace litert::qnn {
 
@@ -239,6 +239,18 @@ LiteRtStatus QnnManager::GenerateContextBinary(
 
   LITERT_LOG(LITERT_INFO, "Serialized a context bin of size (bytes): %lu\n",
              written_bin_size);
+
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus QnnManager::ValidateOp(const Qnn_OpConfig_t& op_config) {
+  if (Qnn_ErrorHandle_t error =
+          Api()->backendValidateOpConfig(BackendHandle(), op_config);
+      QNN_SUCCESS != error) {
+    LITERT_LOG(LITERT_ERROR, "Failed to validate op %s\n, error: %lld",
+               op_config.v1.name, static_cast<long long>(error));
+    return kLiteRtStatusErrorInvalidLegalization;
+  }
 
   return kLiteRtStatusOk;
 }
