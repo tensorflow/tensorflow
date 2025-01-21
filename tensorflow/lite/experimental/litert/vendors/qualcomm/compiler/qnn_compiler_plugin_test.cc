@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+
 #include <cstddef>
 #include <string>
 
-#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -33,6 +33,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_op.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_tensor.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/quantize_op_legalization.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
 namespace litert {
 namespace {
@@ -242,6 +243,27 @@ TEST(TestLegalization, QuantizeOpLegalizedToQuantizeOp) {
   absl::string_view qnn_op_name(legalized_qnn_op.v1.typeName);
   EXPECT_EQ(qnn_op_name, kQnnOpName);
 }
+
+class QnnPluginOpValidationTest : public ::testing::TestWithParam<std::string> {
+};
+
+TEST_P(QnnPluginOpValidationTest, SupportedOpsTest) {
+  LITERT_LOG(LITERT_INFO, "Validating TFLite model: %s", GetParam().c_str());
+  auto plugin = CreatePlugin();
+  auto model = testing::LoadTestFileModel(GetParam());
+
+  const auto subgraph = model.MainSubgraph();
+  LiteRtSubgraph litert_subgraph = subgraph->Get();
+
+  LiteRtOpListT selected_ops;
+  LITERT_ASSERT_OK(LiteRtCompilerPluginPartition(plugin.get(), litert_subgraph,
+                                                 &selected_ops));
+
+  EXPECT_EQ(selected_ops.Vec().size(), litert_subgraph->Ops().size());
+}
+
+INSTANTIATE_TEST_SUITE_P(SupportedOpsTest, QnnPluginOpValidationTest,
+                         kSupportedOps);
 
 class QnnPluginOpCompatibilityTest
     : public ::testing::TestWithParam<std::string> {};
