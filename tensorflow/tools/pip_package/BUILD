@@ -24,6 +24,24 @@ load("//tensorflow/tools/pip_package/utils:data_deps.bzl", "collect_data_files")
 load("//tensorflow/tools/pip_package/utils:py_deps.bzl", "transitive_py_deps")
 load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel", "tf_wheel_dep")
 
+load("//tensorflow/tools/pip_package:build_pip_package.bzl", "build_pip_package")
+
+build_pip_package(
+    name = "pip_package",
+    srcs = [
+        "build_pip_package.py",
+        "setup.py",
+        "MANIFEST.in",
+        ":cc_deps",
+        ":py_deps",
+        "//tensorflow:tf_python_api_gen_v2",
+    ],
+    deps = [
+        "@pypi_setuptools//:pkg",
+        "@pypi_wheel//:pkg",
+    ],
+)
+
 package(default_visibility = ["//visibility:public"])
 
 # This returns a list of headers of all public header libraries (e.g.,
