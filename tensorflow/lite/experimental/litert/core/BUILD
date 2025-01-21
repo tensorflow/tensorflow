@@ -71,6 +71,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_environment.h",
     ],
     deps = [
+        ":accelerator",
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
@@ -89,6 +90,16 @@ cc_test(
         "//tensorflow/lite/experimental/litert/cc:litert_any",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "accelerator",
+    srcs = ["accelerator.cc"],
+    hdrs = ["accelerator.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
     ],
 )
 

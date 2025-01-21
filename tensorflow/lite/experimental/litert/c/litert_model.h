@@ -53,9 +53,6 @@ LITERT_DEFINE_HANDLE(LiteRtModel);
 // Append only list of ops.
 LITERT_DEFINE_HANDLE(LiteRtOpList);
 
-// For indexing into litert collections or counting litert things.
-typedef size_t LiteRtParamIndex;
-
 //
 // LiteRtTensor + Types
 //

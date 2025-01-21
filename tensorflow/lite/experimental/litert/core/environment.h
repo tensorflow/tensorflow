@@ -15,14 +15,14 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_ENVIRONMENT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_ENVIRONMENT_H_
 
-#include <any>
 #include <map>
 #include <optional>
 
 #include "absl/types/span.h"
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/core/accelerator.h"
 
 namespace litert::internal {
 
@@ -35,8 +35,8 @@ class Environment {
   static Expected<void> CreateWithOptions(
       absl::Span<const LiteRtEnvOption> options);
 
-  // Return the envirnment instance and, if not yet created, creates one with no
-  // options.
+  // Return the environment instance and, if not yet created, creates one with
+  // no options.
   static Expected<Environment*> Instance();
 
   // Destroy the environment instance.
@@ -51,8 +51,11 @@ class Environment {
     }
   }
 
+  AcceleratorRegistry& GetAcceleratorRegistry() { return accelerators_; }
+
  private:
   std::map<LiteRtEnvOptionTag, LiteRtAny> options_;
+  AcceleratorRegistry accelerators_;
 
   static Environment* the_instance_;
 };
