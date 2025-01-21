@@ -25,7 +25,16 @@ class RocprofVisualizer:
         """
         self.df = df
 
-    def histogram(self, x_column, color_column=None, nbins=50, title=None, output_file=None):
+    def histogram(
+        self, 
+        x_column, 
+        color_column=None, 
+        nbins=50, 
+        title=None, 
+        xaxis_label="Latency [ms]", 
+        yaxis_label="Count [-]", 
+        output_file=None
+    ):
         """Creates and saves a histogram.
 
         Args:
@@ -33,11 +42,13 @@ class RocprofVisualizer:
             color_column (str): Column to differentiate by color (optional).
             nbins (int): Number of histogram bins.
             title (str): Plot title.
+            xaxis_label (str): Custom label for the X-axis.
+            yaxis_label (str): Custom label for the Y-axis.
             output_file (str): If provided, saves the figure to file at ~400 DPI.
         """
         if x_column not in self.df.columns:
             raise ValueError(f"DataFrame must contain '{x_column}' column.")
-        
+
         fig = px.histogram(
             self.df,
             x=x_column,
@@ -45,12 +56,15 @@ class RocprofVisualizer:
             color=color_column,
             title=title or f"Histogram of {x_column}",
         )
-        fig.update_layout(template="plotly_white")
+        fig.update_layout(
+            template="plotly_white",
+            xaxis_title=xaxis_label,
+            yaxis_title=yaxis_label
+        )
 
         # If saving to a static image, we can specify scale for higher DPI
         if output_file:
-            # scale=4 is roughly 400 DPI if the default is ~100 DPI
-            fig.write_image(output_file, scale=4)
+            fig.write_image(output_file, scale=4)  # ~400 DPI
         else:
             fig.show()
 
