@@ -599,7 +599,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
   if (saved_model_version == 2) {
     auto module_or = SavedModelObjectGraphToMlirImport(
         input_filename, tags, exported_names, context,
-        /*unconditionally_use_set_output_shapes=*/true);
+        /*unconditionally_use_set_output_shapes=*/true,
+        /*import_variables_as_dense_resources=*/true);
     if (!module_or.status().ok()) return module_or.status();
     return std::move(module_or).value();
   } else if (saved_model_version == 1) {
@@ -607,6 +608,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     options.upgrade_legacy = specs.upgrade_legacy;
     options.unconditionally_use_set_output_shapes = true;
     options.lift_variables = enable_variable_lifting;
+    options.import_variables_as_dense_resources = true;
     auto module_or = SavedModelSignatureDefsToMlirImport(
         input_filename, tags, exported_names, context, options,
         saved_model_bundle);

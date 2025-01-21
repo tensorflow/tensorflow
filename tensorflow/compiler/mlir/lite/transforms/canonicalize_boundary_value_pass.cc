@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
 
+#include <cmath>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -71,15 +72,16 @@ struct ClampInfToMinMaxFloat : public OpRewritePattern<OpTy> {
     auto float_type = dyn_cast<FloatType>(tensor_type.getElementType());
     if (!float_type) return failure();
 
-    auto vals_orig = tensor_attr.getValues<APFloat>();
+    auto vals_orig = GetValues<float>(tensor_attr);
     // If all values are finite, no need to rewrite.
-    if (llvm::all_of(vals_orig, [&](APFloat val) { return !val.isInfinity(); }))
+    if (llvm::all_of(vals_orig, [&](float val) { return !std::isinf(val); }))
       return failure();
 
-    SmallVector<APFloat> vals_new(llvm::map_range(vals_orig, [&](APFloat val) {
-      return val.isInfinity()
+    SmallVector<APFloat> vals_new(llvm::map_range(vals_orig, [&](float val) {
+      return std::isinf(val)
                  ? APFloat::getLargest(float_type.getFloatSemantics(),
-                                       val.isNegative())
+                                       std::signbit(val))
+                       .convertToFloat()
                  : val;
     }));
     rewriter.replaceOpWithNewOp<OpTy>(

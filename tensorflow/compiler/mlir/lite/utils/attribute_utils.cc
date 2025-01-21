@@ -13,10 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <climits>
+#include <cstddef>
+#include <cstdint>
+
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
@@ -44,6 +52,40 @@ IntegerAttr ExtractSingleElementAsInteger(ElementsAttr attr) {
     return {};
   }
   return attr.getSplatValue<IntegerAttr>();
+}
+
+size_t GetDenseElementBitWidth(Type elt_type) {
+  // Align the width for complex to 8 to make storage and interpretation easier.
+  if (ComplexType comp = llvm::dyn_cast<ComplexType>(elt_type))
+    return llvm::alignTo<8>(GetDenseElementBitWidth(comp.getElementType())) * 2;
+  if (elt_type.isIndex()) return IndexType::kInternalStorageBitWidth;
+  return elt_type.getIntOrFloatBitWidth();
+}
+
+bool IsValidIntOrFloat(Type type, int64_t data_element_size, bool is_int,
+                       bool is_signed) {
+  // Make sure that the data element size is the same as the type element width.
+  auto dense_elt_bit_width = GetDenseElementBitWidth(type);
+  auto data_size = static_cast<size_t>(data_element_size * CHAR_BIT);
+  if (dense_elt_bit_width != data_size) {
+    return false;
+  }
+
+  // Check that the element type is either float or integer or index.
+  if (!is_int) {
+    return llvm::isa<FloatType>(type);
+  }
+  if (type.isIndex()) return true;
+
+  auto int_type = llvm::dyn_cast<IntegerType>(type);
+  if (!int_type) {
+    return false;
+  }
+
+  // Make sure signedness semantics is consistent.
+  if (int_type.isSignless()) return true;
+
+  return int_type.isSigned() == is_signed;
 }
 
 }  // namespace TFL
