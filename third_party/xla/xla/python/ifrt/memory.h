@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_MEMORY_H_
 #define XLA_PYTHON_IFRT_MEMORY_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 

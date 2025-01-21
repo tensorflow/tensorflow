@@ -1,5 +1,7 @@
 #include <optional>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/tsl/lib/core/status_test_util.h"
