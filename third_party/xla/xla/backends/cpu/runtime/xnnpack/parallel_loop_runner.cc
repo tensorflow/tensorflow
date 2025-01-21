@@ -77,87 +77,6 @@ tsl::AsyncValueRef<tsl::Chain> ParallelLoopRunner::TakeDoneEvent(
   return std::move(runner.done_event_);
 }
 
-template <typename ParallelizeContext>
-static void Parallelize(ParallelizeContext* ctx, uint16_t start_index,
-                        uint16_t end_index) {
-  CHECK_LT(start_index, end_index) << "Invalid worker index range";
-
-  auto count_down = [&](size_t count) {
-    // If count down is completed, delete the context.
-    if (ctx->count_down.CountDown(count)) delete ctx;
-  };
-
-  // Recursively split assigned workers into two halves and schedule the
-  // right half into the thread pool.
-  while (end_index - start_index > 1) {
-    // If work queue is empty, we don't need to keep enqueuing more workers and
-    // can simply count down for the remaining workers.
-    if (ABSL_PREDICT_FALSE(ctx->work_queue.empty())) {
-      count_down(end_index - start_index);
-      return;
-    }
-
-    uint16_t mid_partition = (start_index + end_index) / 2;
-    ctx->device->enqueueNoNotification([ctx, mid_partition, end_index] {
-      Parallelize(ctx, mid_partition, end_index);
-    });
-    end_index = mid_partition;
-  }
-
-  // Execute the `start_index` worker in the caller thread.
-  Worker worker(start_index, &ctx->work_queue);
-  while (std::optional<size_t> task = worker.Pop()) {
-    ctx->parallel_task(*task);
-  }
-
-  // Count down for the one executed worker.
-  count_down(1);
-}
-
-template <typename ParallelTask>
-ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::Parallelize(
-    tsl::CountDownAsyncValueRef<tsl::Chain> count_down, size_t num_workers,
-    size_t num_tasks, ParallelTask&& parallel_task) {
-  DCHECK_EQ(count_down.count(), num_workers)
-      << "Number of workers must match the count down counter";
-
-  // Short-circuit single-threaded execution.
-  if (ABSL_PREDICT_FALSE(num_workers == 1)) {
-    for (size_t i = 0; i < num_tasks; ++i) {
-      parallel_task(i);
-    }
-    count_down.CountDown();
-    return;
-  }
-
-  struct ParallelizeContext {
-    ParallelizeContext(const Eigen::ThreadPoolDevice* device,
-                       tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
-                       size_t num_workers, size_t num_tasks,
-                       ParallelTask&& parallel_task)
-        : device(device),
-          num_workers(num_workers),
-          work_queue(num_tasks, /*num_partitions=*/num_workers),
-          count_down(std::move(count_down)),
-          parallel_task(std::forward<ParallelTask>(parallel_task)) {}
-
-    const Eigen::ThreadPoolDevice* device;
-
-    size_t num_workers;
-    WorkQueue work_queue;
-
-    tsl::CountDownAsyncValueRef<tsl::Chain> count_down;
-    ParallelTask parallel_task;
-  };
-
-  auto ctx = std::make_unique<ParallelizeContext>(
-      device_, std::move(count_down), num_workers, num_tasks,
-      std::forward<ParallelTask>(parallel_task));
-
-  DCHECK_LE(num_workers, std::numeric_limits<uint16_t>::max());
-  xla::cpu::Parallelize(ctx.release(), 0, num_workers);
-}
-
 template <typename Task>
 ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::ScheduleOne(Task&& task) {
   auto event = tsl::MakeConstructedAsyncValueRef<tsl::Chain>();
@@ -222,9 +141,10 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::ScheduleAll(
 
     // Parallelize the remaining tasks (skip the first task that was executed
     // when we were computing the number of workers).
-    Parallelize(std::move(count_down), optimal_num_workers, num_tasks - 1,
-                [parallel_task = std::forward<ParallelTask>(parallel_task)](
-                    size_t task_index) { parallel_task(task_index + 1); });
+    Worker::Parallelize(
+        device_, std::move(count_down), num_tasks - 1,
+        [parallel_task = std::forward<ParallelTask>(parallel_task)](
+            size_t task_index) { parallel_task(task_index + 1); });
     return;
   }
 
@@ -244,8 +164,8 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::ScheduleAll(
         // If we don't have a worker timeslice, we can parallelize the task
         // immediately using pre-computed number of workers.
         if (ABSL_PREDICT_FALSE(!worker_timeslice_)) {
-          Parallelize(std::move(count_down), num_workers, num_tasks,
-                      std::move(parallel_task));
+          Worker::Parallelize(device_, std::move(count_down), num_tasks,
+                              std::move(parallel_task));
           return;
         }
 
@@ -259,9 +179,11 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::ScheduleAll(
 
         // Parallelize the remaining tasks (skip the first task that was
         // executed when we were computing the number of workers).
-        Parallelize(std::move(count_down), optimal_num_workers, num_tasks - 1,
-                    [parallel_task = std::move(parallel_task)](
-                        size_t task_index) { parallel_task(task_index + 1); });
+        Worker::Parallelize(
+            device_, std::move(count_down), num_tasks - 1,
+            [parallel_task = std::move(parallel_task)](size_t task_index) {
+              parallel_task(task_index + 1);
+            });
       };
 
   done_event_.AndThen(std::move(schedule_all));

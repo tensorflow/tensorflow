@@ -121,13 +121,6 @@ class ParallelLoopRunner {
   size_t num_threads() const;
 
  private:
-  // Schedules `num_workers` persistent workers into the Eigen thread pool
-  // that process `num_tasks` parallel tasks.
-  template <typename ParallelTask>
-  void Parallelize(tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
-                   size_t num_workers, size_t num_tasks,
-                   ParallelTask&& parallel_task);
-
   // Schedules `task` as the AndThen callback of the `done_event_`. Updates
   // `done_event_` to the new completion event.
   template <typename Task>
