@@ -275,6 +275,59 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "litert_accelerator",
+    srcs = ["litert_accelerator.cc"],
+    hdrs = ["litert_accelerator.h"],
+    deps = [
+        ":litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
+        "//tensorflow/lite/experimental/litert/core:environment",
+    ],
+)
+
+cc_test(
+    name = "litert_accelerator_test",
+    srcs = ["litert_accelerator_test.cc"],
+    deps = [
+        ":litert_accelerator",
+        ":litert_accelerator_registration",
+        ":litert_common",
+        ":litert_environment",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "litert_accelerator_registration",
+    srcs = ["litert_accelerator_registration.cc"],
+    hdrs = ["litert_accelerator_registration.h"],
+    deps = [
+        ":litert_accelerator",
+        ":litert_common",
+        ":litert_compiled_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
+        "//tensorflow/lite/experimental/litert/core:environment",
+    ],
+)
+
+cc_test(
+    name = "litert_accelerator_registration_test",
+    srcs = ["litert_accelerator_registration_test.cc"],
+    deps = [
+        ":litert_accelerator",
+        ":litert_accelerator_registration",
+        ":litert_common",
+        ":litert_compiled_model",
+        ":litert_environment",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 filegroup(
     name = "litert_model_srcs",
     srcs = ["litert_model.cc"],
@@ -294,6 +347,8 @@ cc_test(
     copts = ["--std=c11"],
     linkopts = ["-ldl"],
     deps = [
+        ":litert_accelerator",
+        ":litert_accelerator_registration",
         ":litert_any",
         ":litert_common",
         ":litert_compiled_model",
