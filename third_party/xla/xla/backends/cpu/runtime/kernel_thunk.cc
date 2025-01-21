@@ -238,10 +238,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
   // by scheduling tasks into it. HostKernel launch completion will
   // automatically signal KernelThunk execute completion.
   if (ABSL_PREDICT_TRUE(params.intra_op_threadpool)) {
-    return kernel->Launch(
-        thread_dim_, kernel_args, [&params](Kernel::Task task) {
-          params.intra_op_threadpool->getPool()->Schedule(std::move(task));
-        });
+    return kernel->Launch(thread_dim_, kernel_args, params.intra_op_threadpool);
   }
 
   TF_RETURN_IF_ERROR(kernel->Launch(thread_dim_, kernel_args));

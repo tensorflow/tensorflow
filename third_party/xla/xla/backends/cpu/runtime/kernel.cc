@@ -29,8 +29,10 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/logging.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 
@@ -61,8 +63,8 @@ namespace {
 // it alive until the last task is done.
 class KernelExecuteState {
  public:
-  KernelExecuteState(Kernel::TaskRunner task_runner, XLA_CPU_Kernel* kernel,
-                     Kernel::ThreadDim thread_dims,
+  KernelExecuteState(const Eigen::ThreadPoolDevice* device,
+                     XLA_CPU_Kernel* kernel, Kernel::ThreadDim thread_dims,
                      absl::Span<const XLA_CPU_KernelArg> args);
   ~KernelExecuteState();
 
@@ -80,7 +82,7 @@ class KernelExecuteState {
   // assume that `x` is the fastest iterating dimension.
   XLA_CPU_KernelThread Delinearize(uint64_t task_index);
 
-  Kernel::TaskRunner task_runner_;
+  const Eigen::ThreadPoolDevice* device_;
   size_t num_tasks_;
 
   XLA_CPU_Kernel* kernel_;
@@ -131,14 +133,13 @@ absl::Status Kernel::Launch(const ThreadDim& thread_dims,
 
 tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
     const ThreadDim& thread_dims, absl::Span<const DeviceMemoryBase> buffers,
-    TaskRunner task_runner) const {
-  return Launch(thread_dims, ConvertBuffersToKernelArgs(buffers),
-                std::move(task_runner));
+    const Eigen::ThreadPoolDevice* device) const {
+  return Launch(thread_dims, ConvertBuffersToKernelArgs(buffers), device);
 }
 
 tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
     const ThreadDim& thread_dims, absl::Span<const XLA_CPU_KernelArg> args,
-    TaskRunner task_runner) const {
+    const Eigen::ThreadPoolDevice* device) const {
   size_t num_tasks = thread_dims.x * thread_dims.y * thread_dims.z;
   CHECK_GT(num_tasks, 0) << "Number of tasks must be positive";  // Crash Ok
 
@@ -151,8 +152,8 @@ tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
   }
 
   // Create host kernel execute state on heap and kick-off execution.
-  auto state = std::make_unique<KernelExecuteState>(std::move(task_runner),
-                                                    kernel_, thread_dims, args);
+  auto state =
+      std::make_unique<KernelExecuteState>(device, kernel_, thread_dims, args);
   state->CallAsync(/*start_index=*/0, /*end_index=*/num_tasks);
 
   // Move execute state to the execute event callback to ensure that it is kept
@@ -163,11 +164,11 @@ tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
   return execute_event;
 }
 
-KernelExecuteState::KernelExecuteState(Kernel::TaskRunner task_runner,
+KernelExecuteState::KernelExecuteState(const Eigen::ThreadPoolDevice* device,
                                        XLA_CPU_Kernel kernel,
                                        Kernel::ThreadDim thread_dims,
                                        absl::Span<const XLA_CPU_KernelArg> args)
-    : task_runner_(std::move(task_runner)),
+    : device_(device),
       num_tasks_(thread_dims.x * thread_dims.y * thread_dims.z),
       kernel_(kernel),
       thread_dims_({thread_dims.x, thread_dims.y, thread_dims.z}),
@@ -211,8 +212,10 @@ void KernelExecuteState::CallAsync(uint64_t start_index, uint64_t end_index) {
     using Index = decltype(index_type);
     while (end_index - start_index > 1) {
       uint64_t mid_index = (start_index + end_index) / 2;
-      task_runner_([self = this, mid = Index(mid_index),
-                    end = Index(end_index)] { self->CallAsync(mid, end); });
+      device_->enqueueNoNotification(
+          [self = this, mid = Index(mid_index), end = Index(end_index)] {
+            self->CallAsync(mid, end);
+          });
       end_index = mid_index;
     }
   };

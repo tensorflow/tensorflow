@@ -89,6 +89,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:launch_dim",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
@@ -96,8 +97,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -109,13 +109,14 @@ xla_cc_test(
         ":kernel_c_api",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:env",
+        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
     ],
 )
 
