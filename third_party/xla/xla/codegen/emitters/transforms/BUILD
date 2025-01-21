@@ -59,6 +59,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/codegen:device_spec",
         "//xla/hlo/analysis:indexing_analysis",
