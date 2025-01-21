@@ -51,9 +51,10 @@ def _get_wheel_platform_name(platform_name, platform_tag):
 
 def _get_full_wheel_name(platform_name, platform_tag):
     python_version = HERMETIC_PYTHON_VERSION.replace(".", "")
+    wheel_version = WHEEL_VERSION.replace("-dev", ".dev").replace("-", "")
     return "{wheel_name}-{wheel_version}-cp{python_version}-cp{python_version}-{wheel_platform_tag}.whl".format(
         wheel_name = WHEEL_NAME,
-        wheel_version = WHEEL_VERSION.replace("-", "."),
+        wheel_version = wheel_version,
         python_version = python_version,
         wheel_platform_tag = _get_wheel_platform_name(platform_name, platform_tag),
     )
