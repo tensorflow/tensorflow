@@ -85,12 +85,6 @@ TEST_F(TritonTest, DotWithI4WeightsOnLhsWithBitcastTo3dTensor) {
   constexpr absl::string_view kHloText = R"(
     HloModule DotWithI4WeightsOnLhsWithBitcastTo3dTensor
 
-<<<<<<< HEAD:third_party/xla/xla/service/gpu/fusions/triton/triton_fusion_emitter_int4_device_test.cc
-TEST_F(PlainInt4ToPackedInt4RewritePassTest,
-       DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales) {
-  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
-                  "issue with triton.";
-=======
     fusion {
       p_0 = s4[256,16]{1,0:E(4)} parameter(0)
       p_0.2 = bf16[256,16]{1,0} convert(p_0)
@@ -162,7 +156,8 @@ TEST_F(TritonTest,
 }
 
 TEST_F(TritonTest, DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
->>>>>>> upstream/master:third_party/xla/xla/backends/gpu/codegen/triton/fusion_emitter_int4_device_test.cc
+  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
+                  "issue with triton.";
   constexpr absl::string_view kHloText = R"(
     HloModule DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales
 
@@ -200,6 +195,8 @@ TEST_F(TritonTest, DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
 }
 
 TEST_F(TritonTest, NonstandardLayoutInt4) {
+  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
+                  "issue with triton.";
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutInt4
 
@@ -248,13 +245,9 @@ struct I4TestParams {
 class ParametrizedTritonTest : public TritonTest,
                                public WithParamInterface<I4TestParams> {};
 
-<<<<<<< HEAD:third_party/xla/xla/service/gpu/fusions/triton/triton_fusion_emitter_int4_device_test.cc
-TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest, Int4WeightsOnTheLhs) {
+TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhs) {
   GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
                   "issue with triton.";
-=======
-TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhs) {
->>>>>>> upstream/master:third_party/xla/xla/backends/gpu/codegen/triton/fusion_emitter_int4_device_test.cc
   if (GetParam().HasBatchDim()) {
     GTEST_SKIP() << "2d test ignores batch dim case.";
   }
@@ -290,14 +283,9 @@ TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhs) {
       << "Failed for HLO: " << hlo_text;
 }
 
-<<<<<<< HEAD:third_party/xla/xla/service/gpu/fusions/triton/triton_fusion_emitter_int4_device_test.cc
-TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest,
-       Int4WeightsOnTheLhsWithBatchDim) {
+TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhsWithBatchDim) {
   GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
                   "issue with triton.";
-=======
-TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhsWithBatchDim) {
->>>>>>> upstream/master:third_party/xla/xla/backends/gpu/codegen/triton/fusion_emitter_int4_device_test.cc
   if (!GetParam().HasBatchDim()) {
     GTEST_SKIP() << "3d test ignores 2d case.";
   }
@@ -335,13 +323,9 @@ TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhsWithBatchDim) {
       << "Failed for HLO: " << hlo_text;
 }
 
-<<<<<<< HEAD:third_party/xla/xla/service/gpu/fusions/triton/triton_fusion_emitter_int4_device_test.cc
-TEST_P(ParametrizedPlainInt4ToPackedInt4RewritePassTest, Int4WeightsOnTheRhs) {
+TEST_P(ParametrizedTritonTest, Int4WeightsOnTheRhs) {
   GTEST_SKIP()
       << "TODO: Weekly-sync 25-01-13: Skip ivestigate int4 issue with triton.";
-=======
-TEST_P(ParametrizedTritonTest, Int4WeightsOnTheRhs) {
->>>>>>> upstream/master:third_party/xla/xla/backends/gpu/codegen/triton/fusion_emitter_int4_device_test.cc
   if (GetParam().HasBatchDim()) {
     GTEST_SKIP() << "2d test ignores batch dim case.";
   }
@@ -404,35 +388,6 @@ INSTANTIATE_TEST_SUITE_P(ParametrizedTritonTest, ParametrizedTritonTest,
                          ::testing::ValuesIn(Int4TestCases()),
                          I4TestParams::ToString);
 
-<<<<<<< HEAD:third_party/xla/xla/service/gpu/fusions/triton/triton_fusion_emitter_int4_device_test.cc
-TEST_F(TritonTest, NonstandardLayoutInt4) {
-  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
-                  "issue with triton.";
-  constexpr absl::string_view kHloText = R"(
-    HloModule NonstandardLayout
-
-    ENTRY main {
-      p0 = s4[64,128]{0,1} parameter(0)
-      p1 = bf16[256,64]{1,0} parameter(1)
-      ROOT %dot = bf16[128,256]{1,0} dot(s4[64,128]{0,1} p0, bf16[256,64]{1,0} p1),
-        lhs_contracting_dims={0},
-        rhs_contracting_dims={1}
-    }
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-           CHECK:  %[[param_0:.*]] = s4[64,128]{0,1:E(4)} parameter(0)
-           CHECK:  %[[bitcast:.*]] = s4[128,64]{1,0:E(4)} bitcast(s4[64,128]{0,1:E(4)} %[[param_0]])
-           CHECK:  %[[convert:.*]] = bf16[128,64]{1,0} convert(s4[128,64]{1,0:E(4)} %[[bitcast]])
-           CHECK:  %[[param_1:.*]] = bf16[256,64]{1,0} parameter(1)
-           CHECK:  ROOT %dot.1 = bf16[128,256]{1,0} dot(bf16[128,64]{1,0} %[[convert]], bf16[256,64]{1,0} %[[param_1]]), lhs_contracting_dims={1}, rhs_contracting_dims={1}
-  )"));
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
-=======
->>>>>>> upstream/master:third_party/xla/xla/backends/gpu/codegen/triton/fusion_emitter_int4_device_test.cc
 TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
   GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
                   "issue with triton.";

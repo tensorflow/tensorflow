@@ -25,11 +25,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
-<<<<<<< HEAD:third_party/xla/xla/service/gpu/runtime/gpublas_lt_matmul_thunk.cc
-#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
-=======
->>>>>>> upstream/master:third_party/xla/xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.cc
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"

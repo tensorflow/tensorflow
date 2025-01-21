@@ -1598,16 +1598,12 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes, Regular2DDot) {
   DumpResults(csv, "backend_support_matrix");
 }
 
-<<<<<<< HEAD:third_party/xla/xla/service/gpu/fusions/triton/dot_algorithms_test.cc
-TEST_P(AlgorithmsSupportTest, IsDotAlgorithmSupportedByTriton) {
+TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
+       IsDotAlgorithmSupportedByTriton) {
   // TODO: Weekly-sync 24-12-10
   GTEST_SKIP()
       << "TODO: Weekly-sync 24-12-10: Skip IsDotAlgorithmSupportedByTriton .";
 
-=======
-TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
-       IsDotAlgorithmSupportedByTriton) {
->>>>>>> upstream/master:third_party/xla/xla/backends/gpu/codegen/triton/dot_algorithms_test.cc
   // Here we test which dot algorithm is supported by triton.
   // In case of a change you need to update the expected results.
   constexpr absl::string_view kHloText = R"(

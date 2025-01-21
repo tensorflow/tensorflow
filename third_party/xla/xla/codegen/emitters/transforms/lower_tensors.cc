@@ -736,11 +736,7 @@ Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, mlir::Operation* op,
   // direct bitcast from a struct to an int is possible.
   Type llvm_input_ty = converter.convertType(value.getType());
   Type llvm_result_ty = converter.convertType(ty);
-<<<<<<< HEAD:third_party/xla/xla/backends/gpu/codegen/transforms/lower_tensors.cc
-  Type ptr_ty = mlir::LLVM::LLVMPointerType::get(b.getContext());
-=======
   Type ptr_ty = ml::LLVMPointerType::get(b.getContext());
->>>>>>> upstream/master:third_party/xla/xla/codegen/emitters/transforms/lower_tensors.cc
   auto func = op->getParentOfType<mlir::func::FuncOp>();
   // AMDGPU backend needs allocas to be out of loops.
   // Move them to the entry block to be on the safe side.

@@ -924,25 +924,6 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "grpc_credentials",
-    compatible_with = get_compatible_with_portable(),
-    textual_hdrs = ["grpc_credentials.h"],
-    deps = tsl_grpc_credentials_deps(),
-)
-
-cc_library(
-    name = "prefetch",
-    hdrs = ["prefetch.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":platform",
-    ],
-)
-
-cc_library(
-=======
->>>>>>> upstream/master
     name = "hash",
     srcs = ["hash.cc"],
     hdrs = ["hash.h"],
