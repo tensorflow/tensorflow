@@ -16,21 +16,18 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
 #include <algorithm>
-#include <cassert>
-#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <optional>
 
-#include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -47,6 +44,29 @@ limitations under the License.
 
 namespace mlir {
 namespace tosa {
+
+mlir::TypeAttr getConvAccTypeAttr(PatternRewriter& rewriter,
+                                  mlir::Type input_etype,
+                                  mlir::Type output_etype) {
+  // in case of quantized types: get base element types
+  if (auto qtype =
+          llvm::dyn_cast<mlir::quant::UniformQuantizedType>(input_etype))
+    input_etype = qtype.getStorageType();
+
+  if (auto qtype =
+          llvm::dyn_cast<mlir::quant::UniformQuantizedType>(output_etype))
+    output_etype = qtype.getStorageType();
+
+  // special cases: input_etype and output_etype are both f16 or bf16: use
+  // acc_type=f32
+  if ((input_etype.isF16() && output_etype.isF16()) ||
+      (input_etype.isBF16() && output_etype.isBF16())) {
+    return mlir::TypeAttr::get(rewriter.getF32Type());
+  }
+
+  // otherwise, use output_etype as acc_type
+  return mlir::TypeAttr::get(output_etype);
+}
 
 LogicalResult getDynamicDims(PatternRewriter& rewriter, Operation* op,
                              Value value, llvm::SmallVector<Value>& dims) {
@@ -546,6 +566,15 @@ Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
   return const_op.getResult();
 }
 
+Value getTosaConstShape(PatternRewriter& rewriter, Operation* op,
+                        llvm::ArrayRef<int64_t> values) {
+  auto attr = rewriter.getIndexTensorAttr(values);
+  auto type =
+      tosa::shapeType::get(rewriter.getContext(), /* rank = */ values.size());
+  return CreateOpAndInfer<tosa::ConstShapeOp>(rewriter, op->getLoc(), type,
+                                              attr);
+}
+
 // Create a vector from a 32-bit value tensor.  Returns the size of
 // the new vector or -1 on error.
 LogicalResult getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec) {
@@ -784,6 +813,76 @@ template std::optional<Value> getConstTensor<int32_t>(PatternRewriter&,
                                                       Operation*,
                                                       ArrayRef<int32_t> vec,
                                                       ArrayRef<int64_t> shape);
+
+llvm::SmallVector<int64_t> getOutputSpatialSizeRemainder(
+    tensorflow::TensorFormat data_format_tf, ShapedType input_type,
+    DenseI64ArrayAttr kernel_size, DenseI64ArrayAttr pads,
+    DenseI64ArrayAttr strides, DenseI64ArrayAttr dilations) {
+  llvm::SmallVector<int64_t> output_size_remainder;
+
+  const int nb_spatial_dims =
+      GetTensorSpatialDims(input_type.getRank(), data_format_tf);
+  for (int spatial_dim = 0; spatial_dim < nb_spatial_dims; spatial_dim++) {
+    const int64_t in_size = input_type.getDimSize(GetTensorSpatialDimIndex(
+        input_type.getRank(), data_format_tf, spatial_dim));
+    const int64_t full_pad =
+        pads[2 * spatial_dim + 0] + pads[2 * spatial_dim + 1];
+
+    const int64_t full_size =
+        in_size - 1 + full_pad -
+        (kernel_size[spatial_dim] - 1) * dilations[spatial_dim];
+    output_size_remainder.push_back(full_size % strides[spatial_dim]);
+  }
+
+  return output_size_remainder;
+}
+
+Value getInputSlicedToItsUsedSize(PatternRewriter& rewriter, Operation* op,
+                                  tensorflow::TensorFormat data_format_tf,
+                                  ShapedType input_type, Value input_val,
+                                  DenseI64ArrayAttr kernel_size,
+                                  DenseI64ArrayAttr pads,
+                                  DenseI64ArrayAttr strides,
+                                  DenseI64ArrayAttr dilations) {
+  const int nb_spatial_dims =
+      GetTensorSpatialDims(input_type.getRank(), data_format_tf);
+  // Don't slice the input if any spatial dimension is dynamic
+  for (int spatial_dim = 0; spatial_dim < nb_spatial_dims; spatial_dim++) {
+    if (input_type.isDynamicDim(GetTensorSpatialDimIndex(
+            input_type.getRank(), data_format_tf, spatial_dim))) {
+      return input_val;
+    }
+  }
+
+  const llvm::SmallVector<int64_t> output_size_remainder =
+      getOutputSpatialSizeRemainder(data_format_tf, input_type, kernel_size,
+                                    pads, strides, dilations);
+
+  const bool need_slicing =
+      llvm::any_of(output_size_remainder, [](int64_t v) { return v > 0; });
+  const bool zero_pads =
+      llvm::all_of(pads.asArrayRef(), [](int64_t v) { return v == 0; });
+  if (need_slicing && zero_pads) {
+    llvm::SmallVector<int64_t> start(input_type.getRank(), 0);
+    llvm::SmallVector<int64_t> size =
+        tensorflow::ConvertMlirShapeToTF(input_type.getShape());
+    for (int spatial_dim = 0; spatial_dim < nb_spatial_dims; spatial_dim++) {
+      const int index = GetTensorSpatialDimIndex(input_type.getRank(),
+                                                 data_format_tf, spatial_dim);
+      size[index] -= output_size_remainder[spatial_dim];
+    }
+
+    auto slice_op = CreateOpAndInfer<tosa::SliceOp>(
+        rewriter, op->getLoc(),
+        UnrankedTensorType::get(input_type.getElementType()), input_val,
+        rewriter.getDenseI64ArrayAttr(start),
+        rewriter.getDenseI64ArrayAttr(size));
+
+    return slice_op.getResult();
+  }
+
+  return input_val;
+}
 
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
