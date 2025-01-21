@@ -537,7 +537,8 @@ nanobind::tuple FlattenedIndexKey::MatchArgs(nanobind::handle unused) {
 template <typename T>
 void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
                             const std::optional<nb::callable>& leaf_predicate,
-                            std::optional<std::vector<nb::object>>& keypath) {
+                            std::optional<std::vector<nb::object>>& keypath,
+                            bool sort_dict_keys) {
   Node node;
   const int start_num_nodes = traversal_.size();
   const int start_num_leaves = leaves.size();
@@ -574,12 +575,13 @@ void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
     node.kind = registry_->KindOfObject(handle, &node.custom);
     auto recurse = [this, &leaf_predicate, &leaves](
                        nb::handle child,
-                       std::optional<std::vector<nb::object>>& keypath) {
+                       std::optional<std::vector<nb::object>>& keypath,
+                       bool sort_dict_keys) {
       if (Py_EnterRecursiveCall(
               " in flatten; PyTree may have cyclical node references.")) {
         return;
       }
-      FlattenImpl(child, leaves, leaf_predicate, keypath);
+      FlattenImpl(child, leaves, leaf_predicate, keypath, sort_dict_keys);
       Py_LeaveRecursiveCall();
     };
     switch (node.kind) {
@@ -592,7 +594,7 @@ void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
           if (keypath.has_value()) {
             keypath->push_back(make_nb_class<SequenceKey>(i));
           }
-          recurse(PyTuple_GET_ITEM(handle.ptr(), i), keypath);
+          recurse(PyTuple_GET_ITEM(handle.ptr(), i), keypath, sort_dict_keys);
           if (keypath.has_value()) {
             keypath->pop_back();
           }
@@ -605,7 +607,7 @@ void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
           if (keypath.has_value()) {
             keypath->push_back(make_nb_class<SequenceKey>(i));
           }
-          recurse(PyList_GET_ITEM(handle.ptr(), i), keypath);
+          recurse(PyList_GET_ITEM(handle.ptr(), i), keypath, sort_dict_keys);
           if (keypath.has_value()) {
             keypath->pop_back();
           }
@@ -614,13 +616,24 @@ void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
       }
       case PyTreeKind::kDict: {
         nb::dict dict = nb::borrow<nb::dict>(handle);
+        PyObject* py_dict = dict.ptr();
+        std::vector<nb::object> keys;
 
-        std::vector<nb::object> keys = GetSortedPyDictKeys(dict.ptr());
+        if (sort_dict_keys) {
+          keys = GetSortedPyDictKeys(py_dict);
+        } else {
+          keys.reserve(PyDict_Size(py_dict));
+          PyObject* key;
+          Py_ssize_t pos = 0;
+          while (PyDict_Next(py_dict, &pos, &key, /*value=*/nullptr)) {
+            keys.push_back(nb::borrow<nb::object>(key));
+          }
+        }
         for (nb::object& key : keys) {
           if (keypath.has_value()) {
             keypath->push_back(make_nb_class<DictKey>(key));
           }
-          recurse(dict[key], keypath);
+          recurse(dict[key], keypath, sort_dict_keys);
           if (keypath.has_value()) {
             keypath->pop_back();
           }
@@ -637,7 +650,7 @@ void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
           for (auto& [key, leaf] : leaves) {
             keypath->push_back(key);
             ++node.arity;
-            recurse(leaf, keypath);
+            recurse(leaf, keypath, sort_dict_keys);
             keypath->pop_back();
           }
         } else {
@@ -646,7 +659,7 @@ void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
           node.arity = 0;
           for (nb::handle entry : leaves) {
             ++node.arity;
-            recurse(entry, keypath);
+            recurse(entry, keypath, sort_dict_keys);
           }
         }
         break;
@@ -669,7 +682,8 @@ void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
             keypath->push_back(
                 make_nb_class<GetAttrKey>(node.custom->data_fields[leaf]));
           }
-          recurse(nb::getattr(handle, node.custom->data_fields[leaf]), keypath);
+          recurse(nb::getattr(handle, node.custom->data_fields[leaf]), keypath,
+                  sort_dict_keys);
           if (keypath.has_value()) {
             keypath->pop_back();
           }
@@ -693,12 +707,12 @@ void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
           for (nb::handle entry : tuple) {
             keypath->push_back(make_nb_class<GetAttrKey>(nb::str(*field_iter)));
             field_iter++;
-            recurse(entry, keypath);
+            recurse(entry, keypath, sort_dict_keys);
             keypath->pop_back();
           }
         } else {
           for (nb::handle entry : tuple) {
-            recurse(entry, keypath);
+            recurse(entry, keypath, sort_dict_keys);
           }
         }
         break;
@@ -729,36 +743,40 @@ void PyTreeDef::FlattenImpl(nb::handle handle, T& leaves,
 
 void PyTreeDef::Flatten(nb::handle handle,
                         absl::InlinedVector<nb::object, 2>& leaves,
-                        std::optional<nb::callable> leaf_predicate) {
+                        std::optional<nb::callable> leaf_predicate,
+                        bool sort_dict_keys) {
   std::optional<std::vector<nb::object>> keypath = std::nullopt;
-  FlattenImpl(handle, leaves, leaf_predicate, keypath);
+  FlattenImpl(handle, leaves, leaf_predicate, keypath, sort_dict_keys);
 }
 
 void PyTreeDef::Flatten(nb::handle handle, std::vector<nb::object>& leaves,
-                        std::optional<nb::callable> leaf_predicate) {
+                        std::optional<nb::callable> leaf_predicate,
+                        bool sort_dict_keys) {
   std::optional<std::vector<nb::object>> keypath = std::nullopt;
-  FlattenImpl(handle, leaves, leaf_predicate, keypath);
+  FlattenImpl(handle, leaves, leaf_predicate, keypath, sort_dict_keys);
 }
 
 void PyTreeDef::Flatten(nb::handle handle, nb::list& leaves,
-                        std::optional<nb::callable> leaf_predicate) {
+                        std::optional<nb::callable> leaf_predicate,
+                        bool sort_dict_keys) {
   std::optional<std::vector<nb::object>> keypath = std::nullopt;
-  FlattenImpl(handle, leaves, leaf_predicate, keypath);
+  FlattenImpl(handle, leaves, leaf_predicate, keypath, sort_dict_keys);
 }
 
 /*static*/ std::pair<std::vector<nb::object>, nb_class_ptr<PyTreeDef>>
 PyTreeDef::Flatten(nb::handle x, nb_class_ptr<PyTreeRegistry> registry,
-                   std::optional<nb::callable> leaf_predicate) {
+                   std::optional<nb::callable> leaf_predicate,
+                   bool sort_dict_keys) {
   auto def = make_nb_class<PyTreeDef>(registry);
   std::vector<nb::object> leaves;
-  def->Flatten(x, leaves, leaf_predicate);
+  def->Flatten(x, leaves, leaf_predicate, sort_dict_keys);
   return std::make_pair(std::move(leaves), std::move(def));
 }
 
 void PyTreeDef::FlattenWithPath(nb::handle handle, nanobind::list& leaves,
                                 std::optional<nb::callable> leaf_predicate) {
   std::optional<std::vector<nb::object>> keypath = std::vector<nb::object>();
-  FlattenImpl(handle, leaves, leaf_predicate, keypath);
+  FlattenImpl(handle, leaves, leaf_predicate, keypath, true);
 }
 
 /*static*/ bool PyTreeDef::AllLeaves(PyTreeRegistry* registry,
@@ -1635,14 +1653,15 @@ void BuildPytreeSubmodule(nb::module_& m) {
   registry.def(
       "flatten",
       [](nb_class_ptr<PyTreeRegistry> registry, nb::object x,
-         std::optional<nb::callable> leaf_predicate) {
+         std::optional<nb::callable> leaf_predicate, bool sort_dict_keys) {
         nb::list leaves;
         nb_class_ptr<PyTreeDef> def =
             make_nb_class<PyTreeDef>(std::move(registry));
-        def->Flatten(x, leaves, leaf_predicate);
+        def->Flatten(x, leaves, leaf_predicate, sort_dict_keys);
         return nb::make_tuple(std::move(leaves), std::move(def));
       },
-      nb::arg("tree").none(), nb::arg("leaf_predicate").none() = std::nullopt);
+      nb::arg("tree").none(), nb::arg("leaf_predicate").none() = std::nullopt,
+      nb::kw_only(), nb::arg("sort_dict_keys") = true);
   registry.def("flatten_one_level", &PyTreeRegistry::FlattenOneLevel,
                nb::arg("tree").none());
   registry.def("flatten_one_level_with_keys",

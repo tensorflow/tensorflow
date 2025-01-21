@@ -44,6 +44,7 @@ class PyTreeRegistry:
       self,
       tree: Any,
       leaf_predicate: Optional[Callable[[Any], bool]] = ...,
+      sort_dict_keys: bool = ...,
   ) -> Tuple[List[Any], PyTreeDef]: ...
   def flatten_one_level(
       self, tree: Any
