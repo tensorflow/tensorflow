@@ -3884,55 +3884,27 @@ std::optional<Value> convertTFConv2DCommon(
     }
   }
 
-  return CreateOpAndInfer<tosa::Conv2DOp>(
-             rewriter, op->getLoc(), output_type, input,
-             a1_filter_transpose_op.getResult(), bias, pad, stride, dilation)
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ output_type.getElementType());
+  return CreateOpAndInfer<tosa::Conv2DOp>(rewriter, op->getLoc(), output_type,
+                                          input,
+                                          a1_filter_transpose_op.getResult(),
+                                          bias, pad, stride, dilation, acc_type)
       .getResult();
 }
 
-std::optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
-                                         Operation* op, ShapedType output_type,
-                                         Value input, Value filter, Value bias,
-                                         ArrayRef<int64_t> strides,
-                                         ArrayRef<int64_t> dilations,
-                                         StringRef padding_ref,
-                                         StringRef data_format_ref) {
+std::optional<Value> convertConv3DCommon(
+    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
+    Value input, Value filter, Value bias, DenseI64ArrayAttr pads,
+    DenseI64ArrayAttr strides, DenseI64ArrayAttr dilations, TypeAttr acc_type,
+    StringRef data_format_ref) {
   if (data_format_ref.str() != "NDHWC") {
     (void)rewriter.notifyMatchFailure(op, "currently only supports NDHWC");
     return std::nullopt;
   }
-
-  tensorflow::Padding tf_pad;
-  if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) {
-    (void)rewriter.notifyMatchFailure(
-        op, "could not get padding data from padding string term");
-    return std::nullopt;
-  }
-
-  // Since NDHWC/NCDHW aren't presented in TensorFormat, here these are
-  // represented by mapping NDHWC to NHWC, and NCDHW to NCHW, with the knowledge
-  // of rank of input tensor.
-  tensorflow::TensorFormat data_format_tf;
-  if (!FormatFromString("NHWC", &data_format_tf)) return std::nullopt;
-
-  if (tf_pad == tensorflow::Padding::EXPLICIT) {
-    (void)rewriter.notifyMatchFailure(op, "doesn't support explicit padding");
-    return std::nullopt;
-  }
-
-  DenseI64ArrayAttr strides_attr = rewriter.getDenseI64ArrayAttr(strides);
-  DenseI64ArrayAttr dilations_attr = rewriter.getDenseI64ArrayAttr(dilations);
-  RankedTensorType input_type = mlir::cast<RankedTensorType>(input.getType());
-  RankedTensorType filter_type = mlir::cast<RankedTensorType>(filter.getType());
-
-  DenseI64ArrayAttr pads_attr;
-  if (!getPaddingValuesFromPadType(tf_pad, data_format_tf, 0, input_type,
-                                   filter_type, strides_attr, dilations_attr,
-                                   rewriter, pads_attr)) {
-    (void)rewriter.notifyMatchFailure(op, "can't get padding values from type");
-    return std::nullopt;
-  }
-
+  RankedTensorType filter_type = filter.getType().cast<RankedTensorType>();
   // Note that the kernel shape of tfl.conv_3d isn't [O, D, H, W, I] but
   // [D, H, W, I, O] which is the same as in TF.
   // Transpose filter shape from [D, H, W, I, O] to [O, D, H, W, C]
@@ -3945,18 +3917,15 @@ std::optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
   a1_transpose_dims.push_back(filter_shape[3]);
   std::optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
       rewriter, op, /*vec=*/{4, 0, 1, 2, 3}, /*shape=*/{5});
-
   if (!a1_filter_transpose_perm) return std::nullopt;
-
   auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
       rewriter, op->getLoc(),
       RankedTensorType::get(a1_transpose_dims, filter_type.getElementType()),
       filter, a1_filter_transpose_perm.value());
-
   return CreateOpAndInfer<tosa::Conv3DOp>(
              rewriter, op->getLoc(), output_type, input,
-             a1_filter_transpose_op.getResult(), bias, pads_attr, strides_attr,
-             dilations_attr)
+             a1_filter_transpose_op.getResult(), bias, pads, strides, dilations,
+             acc_type)
       .getResult();
 }
 
@@ -3965,30 +3934,66 @@ std::optional<Value> convertTFConv3DCommon(
     Value input, Value filter, Value bias, ArrayAttr strides_attr,
     ArrayAttr dilations_attr, StringRef padding_ref,
     StringRef data_format_ref) {
-  SmallVector<int64_t, 3> strides;
+  DenseI64ArrayAttr strides;
   if (!strides_attr) {
     // Defaults to [1, 1, 1].
-    strides = {1, 1, 1};
+    strides = rewriter.getDenseI64ArrayAttr({1, 1, 1});
   } else {
-    int64_t stride_d = mlir::cast<IntegerAttr>(strides_attr[1]).getInt();
-    int64_t stride_h = mlir::cast<IntegerAttr>(strides_attr[2]).getInt();
-    int64_t stride_w = mlir::cast<IntegerAttr>(strides_attr[3]).getInt();
-    strides = {stride_d, stride_h, stride_w};
+    int64_t stride_d = strides_attr[1].cast<IntegerAttr>().getInt();
+    int64_t stride_h = strides_attr[2].cast<IntegerAttr>().getInt();
+    int64_t stride_w = strides_attr[3].cast<IntegerAttr>().getInt();
+    strides = rewriter.getDenseI64ArrayAttr({stride_d, stride_h, stride_w});
   }
 
-  SmallVector<int64_t, 3> dilations;
+  DenseI64ArrayAttr dilations;
   if (!dilations_attr) {
     // Defaults to [1, 1, 1].
-    dilations = {1, 1, 1};
+    dilations = rewriter.getDenseI64ArrayAttr({1, 1, 1});
   } else {
-    int64_t dilation_d = mlir::cast<IntegerAttr>(dilations_attr[1]).getInt();
-    int64_t dilation_h = mlir::cast<IntegerAttr>(dilations_attr[2]).getInt();
-    int64_t dilation_w = mlir::cast<IntegerAttr>(dilations_attr[3]).getInt();
-    dilations = {dilation_d, dilation_h, dilation_w};
+    int64_t dilation_d = dilations_attr[1].cast<IntegerAttr>().getInt();
+    int64_t dilation_h = dilations_attr[2].cast<IntegerAttr>().getInt();
+    int64_t dilation_w = dilations_attr[3].cast<IntegerAttr>().getInt();
+    dilations =
+        rewriter.getDenseI64ArrayAttr({dilation_d, dilation_h, dilation_w});
   }
 
+  RankedTensorType input_type = input.getType().cast<RankedTensorType>();
+  DenseI64ArrayAttr pads;
+  {
+    RankedTensorType filter_type = filter.getType().cast<RankedTensorType>();
+
+    tensorflow::TensorFormat data_format_tf;
+    if (!FormatFromString(data_format_ref, &data_format_tf)) {
+      return std::nullopt;
+    }
+
+    tensorflow::Padding tf_pad;
+    if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) {
+      (void)rewriter.notifyMatchFailure(
+          op, "could not get padding data from padding string term");
+      return std::nullopt;
+    }
+
+    if (tf_pad == tensorflow::Padding::EXPLICIT) {
+      (void)rewriter.notifyMatchFailure(op, "don't have explicit padding");
+      return std::nullopt;
+    }
+
+    if (!getPaddingValuesFromPadType(tf_pad, data_format_tf, 0, input_type,
+                                     filter_type, strides, dilations, rewriter,
+                                     pads)) {
+      return std::nullopt;
+    }
+  }
+
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ output_type.getElementType());
+
   return convertConv3DCommon(rewriter, op, output_type, input, filter, bias,
-                             strides, dilations, padding_ref, data_format_ref);
+                             pads, strides, dilations, acc_type,
+                             data_format_ref);
 }
 
 // Lowers Gather operators to a sequence of TOSA ops.
@@ -4524,7 +4529,7 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
       tensorflow::GetTypeFromTFTensorShape({N, W, C},
                                            on_value_type.getElementType()),
       op1_reshape_on_value.getResult(),
-      rewriter.getDenseI64ArrayAttr({N, W, C}));
+      getTosaConstShape(rewriter, op, {N, W, C}));
 
   // Reshape off_value to [1, 1, 1]
   auto op3_reshape_off_value = CreateOpAndInfer<tosa::ReshapeOp>(
@@ -4539,7 +4544,7 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
       tensorflow::GetTypeFromTFTensorShape({N, K, C},
                                            on_value_type.getElementType()),
       op3_reshape_off_value.getResult(),
-      rewriter.getDenseI64ArrayAttr({N, K, C}));
+      getTosaConstShape(rewriter, op, {N, K, C}));
 
   // Reshape indices to [N, W]
   auto op5_reshape_indices = CreateOpAndInfer<tosa::ReshapeOp>(

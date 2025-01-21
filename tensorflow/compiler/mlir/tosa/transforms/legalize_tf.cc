@@ -1026,9 +1026,14 @@ LogicalResult ConvertTFDepthwiseConv2dNativeOp::matchAndRewrite(
   auto bias = CreateOpAndInfer<tosa::ConstOp>(
       rewriter, op->getLoc(), bias_type, mlir::cast<ElementsAttr>(bias_attr));
 
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ output_type.getElementType());
+
   CreateReplaceOpAndInfer<tosa::DepthwiseConv2DOp>(
       rewriter, op, output_type, tf_dwconv2d_op.getInput(),
-      tf_dwconv2d_op.getFilter(), bias, pad, stride, dilation);
+      tf_dwconv2d_op.getFilter(), bias, pad, stride, dilation, acc_type);
   return success();
 }
 
@@ -1132,10 +1137,15 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
 
   if (!zero_bias) return failure();
 
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ output_type.getElementType());
+
   CreateReplaceOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op, output_type, tf_conv_op.getOutBackprop(),
       a1_filter_transpose_op.getResult(), zero_bias.value(), outpad, stride,
-      output_shape);
+      output_shape, acc_type);
 
   return success();
 }
@@ -1574,11 +1584,10 @@ LogicalResult ConvertTFTileOp::matchAndRewrite(
     multiples_vals.push_back(
         multiples_elems.getValues<IntegerAttr>()[i].getInt());
 
-  DenseI64ArrayAttr multiples_attr =
-      rewriter.getDenseI64ArrayAttr(multiples_vals);
+  auto multiples = getTosaConstShape(rewriter, op, multiples_vals);
 
   CreateReplaceOpAndInfer<tosa::TileOp>(rewriter, op, output_type,
-                                        tf_tile_op.getInput(), multiples_attr);
+                                        tf_tile_op.getInput(), multiples);
 
   return success();
 }

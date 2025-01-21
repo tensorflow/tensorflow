@@ -1471,9 +1471,16 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
     return success();
   }
 
+  DenseI64ArrayAttr kernel_size;
   DenseI64ArrayAttr pad;
   DenseI64ArrayAttr stride;
   DenseI64ArrayAttr dilation;
+  {
+    // TFLite filter format is tensorflow::FORMAT_OHWI
+    int64_t kernel_h = filter_type.getDimSize(1);
+    int64_t kernel_w = filter_type.getDimSize(2);
+    kernel_size = rewriter.getDenseI64ArrayAttr({kernel_h, kernel_w});
+  }
   {
     int64_t stride_h = tfl_conv2d_op.getStrideH();
     int64_t stride_w = tfl_conv2d_op.getStrideW();
@@ -1512,10 +1519,20 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
     }
   }
 
+  // TFLite only supports NHWC format
+  Value conv2d_input = getInputSlicedToItsUsedSize(
+      rewriter, op, tensorflow::FORMAT_NHWC, input_type,
+      tfl_conv2d_op.getInput(), kernel_size, pad, stride, dilation);
+
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ bias_ety);
+
   auto a1_conv2d_op = CreateOpAndInfer<tosa::Conv2DOp>(
-      rewriter, op->getLoc(), output_type.clone(bias_ety),
-      tfl_conv2d_op.getInput(), tfl_conv2d_op.getFilter(), unquantized_bias,
-      pad, stride, dilation);
+      rewriter, op->getLoc(), output_type.clone(bias_ety), conv2d_input,
+      tfl_conv2d_op.getFilter(), unquantized_bias, pad, stride, dilation,
+      acc_type);
 
   Value conv2d_output;
   if (input_is_qtype) {
@@ -1559,17 +1576,60 @@ LogicalResult ConvertTFLConv3DOp::matchAndRewrite(
   }
 
   bool input_is_qtype =
-      mlir::isa<mlir::quant::QuantizedType>(input_type.getElementType());
+      input_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool filter_is_qtype =
-      mlir::isa<mlir::quant::QuantizedType>(filter_type.getElementType());
+      filter_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool output_is_qtype =
-      mlir::isa<mlir::quant::QuantizedType>(output_type.getElementType());
+      output_type.getElementType().isa<mlir::quant::QuantizedType>();
 
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
-    return rewriter.notifyMatchFailure(op,
-                                       "input/filter/output tensor should be "
-                                       "all quantized or all floating-point");
+    return rewriter.notifyMatchFailure(
+        op,
+        "ConvertTFLConv3DOp: input/filter/output tensor should "
+        "be all quantized or all floating-point.");
+  }
+
+  DenseI64ArrayAttr kernel_size;
+  DenseI64ArrayAttr pad;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr dilation;
+  {
+    // TFLite filter format is DHWIO
+    int64_t kernel_d = filter_type.getDimSize(0);
+    int64_t kernel_h = filter_type.getDimSize(1);
+    int64_t kernel_w = filter_type.getDimSize(2);
+    kernel_size = rewriter.getDenseI64ArrayAttr({kernel_d, kernel_h, kernel_w});
+  }
+  {
+    int64_t stride_d = tfl_conv3d_op.getStrideD();
+    int64_t stride_h = tfl_conv3d_op.getStrideH();
+    int64_t stride_w = tfl_conv3d_op.getStrideW();
+    stride = rewriter.getDenseI64ArrayAttr({stride_d, stride_h, stride_w});
+  }
+  {
+    int64_t dilation_d = tfl_conv3d_op.getDilationDFactor();
+    int64_t dilation_h = tfl_conv3d_op.getDilationHFactor();
+    int64_t dilation_w = tfl_conv3d_op.getDilationWFactor();
+    dilation =
+        rewriter.getDenseI64ArrayAttr({dilation_d, dilation_h, dilation_w});
+  }
+  {
+    tensorflow::Padding tf_pad;
+    if (!GetPaddingFromString(tfl_conv3d_op.getPadding().str(), &tf_pad).ok()) {
+      return failure();
+    }
+
+    // TFLite doesn't support explicit padding
+    if (!getPaddingValuesFromPadType(
+            tf_pad,
+            tensorflow::FORMAT_NHWC,  // TFLite only supports NDHWC format,
+                                      // tensorflow::FORMAT_NHWC is used for
+                                      // both rank 4 and rank 5 tensors
+            0,                        // TFLite filter is DHWIO
+            input_type, filter_type, stride, dilation, rewriter, pad)) {
+      return failure();
+    }
   }
 
   Value unquantized_bias = tfl_conv3d_op.getBias();
@@ -1582,21 +1642,27 @@ LogicalResult ConvertTFLConv3DOp::matchAndRewrite(
         RankedTensorType::get({bias_dim}, filter_type.getElementType());
     auto bias_attr = rewriter.getZeroAttr(bias_type);
     unquantized_bias = CreateOpAndInfer<tosa::ConstOp>(
-        rewriter, op->getLoc(), bias_type, mlir::cast<ElementsAttr>(bias_attr));
+        rewriter, op->getLoc(), bias_type, bias_attr.cast<ElementsAttr>());
   }
 
-  SmallVector<int64_t, 3> strides({tfl_conv3d_op.getStrideD(),
-                                   tfl_conv3d_op.getStrideH(),
-                                   tfl_conv3d_op.getStrideW()});
-  SmallVector<int64_t, 3> dilations({tfl_conv3d_op.getDilationDFactor(),
-                                     tfl_conv3d_op.getDilationHFactor(),
-                                     tfl_conv3d_op.getDilationWFactor()});
+  // TFLite only supports NDHWC format, tensorflow::FORMAT_NHWC is used for both
+  // rank 4 and rank 5 tensors
+  Value conv3d_input = getInputSlicedToItsUsedSize(
+      rewriter, op, tensorflow::FORMAT_NHWC, input_type,
+      tfl_conv3d_op.getInput(), kernel_size, pad, stride, dilation);
+
   Type bias_ety =
-      mlir::cast<ShapedType>(unquantized_bias.getType()).getElementType();
+      unquantized_bias.getType().cast<ShapedType>().getElementType();
+
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ bias_ety);
+
   std::optional<Value> a1_conv3d_op = convertConv3DCommon(
-      rewriter, op, output_type.clone(bias_ety), tfl_conv3d_op.getInput(),
-      tfl_conv3d_op.getFilter(), unquantized_bias, strides, dilations,
-      tfl_conv3d_op.getPadding().str(), StringRef("NDHWC"));
+      rewriter, op, output_type.clone(bias_ety), conv3d_input,
+      tfl_conv3d_op.getFilter(), unquantized_bias, pad, stride, dilation,
+      acc_type, StringRef("NDHWC"));
 
   if (!a1_conv3d_op) return failure();
 
@@ -1727,10 +1793,15 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
   if (!zero_bias) return failure();
   Type bias_ety = mlir::cast<ShapedType>(zero_bias->getType()).getElementType();
 
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ bias_ety);
+
   auto a1_conv2d_op = CreateOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety),
       tfl_conv_op.getInput(), tfl_conv_op.getWeights(), zero_bias.value(),
-      outpad, stride, output_shape);
+      outpad, stride, output_shape, acc_type);
 
   Value conv2d_output;
   if (input_is_qtype) {
@@ -1774,11 +1845,11 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   if (!filter_type) return failure();
 
   bool input_is_qtype =
-      mlir::isa<mlir::quant::QuantizedType>(input_type.getElementType());
+      input_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool filter_is_qtype =
-      mlir::isa<mlir::quant::QuantizedType>(filter_type.getElementType());
+      filter_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool output_is_qtype =
-      mlir::isa<mlir::quant::QuantizedType>(output_type.getElementType());
+      output_type.getElementType().isa<mlir::quant::QuantizedType>();
 
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
@@ -1803,11 +1874,18 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   // a3_transpose_conv2d = tosa.transpose_conv2d(input, a2_reshape, padding,
   // stride, dilation)
 
+  DenseI64ArrayAttr kernel_size;
   DenseI64ArrayAttr pad;
   DenseI64ArrayAttr stride;
   DenseI64ArrayAttr dilation;
   auto depth_multiplier = tfl_conv2d_op.getDepthMultiplierAttr();
 
+  {
+    // DepthwiseConv2D TFLite filter format is tensorflow::FORMAT_IHWO
+    int64_t kernel_h = filter_type.getDimSize(1);
+    int64_t kernel_w = filter_type.getDimSize(2);
+    kernel_size = rewriter.getDenseI64ArrayAttr({kernel_h, kernel_w});
+  }
   {
     int64_t stride_h = tfl_conv2d_op.getStrideH();
     int64_t stride_w = tfl_conv2d_op.getStrideW();
@@ -1867,7 +1945,7 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   Value unquantized_bias = tfl_conv2d_op.getBias();
   if (unquantized_bias) {
     Type new_bias_ety = getElementTypeOrSelf(unquantized_bias.getType());
-    if (auto qtype = mlir::dyn_cast<mlir::quant::QuantizedType>(new_bias_ety)) {
+    if (auto qtype = new_bias_ety.dyn_cast<mlir::quant::QuantizedType>()) {
       new_bias_ety = qtype.getStorageType();
     }
     if (new_bias_ety.getIntOrFloatBitWidth() >
@@ -1876,10 +1954,20 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
     }
   }
 
+  // TFLite only supports NHWC format
+  Value conv2d_input = getInputSlicedToItsUsedSize(
+      rewriter, op, tensorflow::FORMAT_NHWC, input_type,
+      tfl_conv2d_op.getInput(), kernel_size, pad, stride, dilation);
+
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ bias_ety);
+
   auto a3_depthwise_conv2d_op = CreateOpAndInfer<tosa::DepthwiseConv2DOp>(
-      rewriter, op->getLoc(), output_type.clone(bias_ety),
-      tfl_conv2d_op.getInput(), a2_filter_reshape_op.getResult(),
-      unquantized_bias, pad, stride, dilation);
+      rewriter, op->getLoc(), output_type.clone(bias_ety), conv2d_input,
+      a2_filter_reshape_op.getResult(), unquantized_bias, pad, stride, dilation,
+      acc_type);
 
   Value conv2d_output;
   if (input_is_qtype) {
@@ -2169,12 +2257,17 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
 
   Type bias_ety = mlir::cast<ShapedType>(bias_val.getType()).getElementType();
 
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ bias_ety);
+
   auto fc_op = CreateOpAndInfer<tosa::Conv2DOp>(
       rewriter, op->getLoc(), UnrankedTensorType::get(bias_ety), input_val,
       filter_val, bias_val,
       /* pad = */ rewriter.getDenseI64ArrayAttr({0, 0, 0, 0}),
       /* stride = */ rewriter.getDenseI64ArrayAttr({1, 1}),
-      /* dilation = */ rewriter.getDenseI64ArrayAttr({1, 1}));
+      /* dilation = */ rewriter.getDenseI64ArrayAttr({1, 1}), acc_type);
 
   Value fc_output;
   if (input_is_qtype) {
@@ -2789,10 +2882,10 @@ LogicalResult ConvertTFLTileOp::matchAndRewrite(
     multiples_vals.push_back(
         multiples_elems.getValues<APInt>()[i].getSExtValue());
 
-  DenseI64ArrayAttr multiples_attr =
-      rewriter.getDenseI64ArrayAttr(multiples_vals);
+  auto multiples = getTosaConstShape(rewriter, op, multiples_vals);
+
   CreateReplaceOpAndInfer<tosa::TileOp>(rewriter, op, output_type,
-                                        tfl_tile_op.getInput(), multiples_attr);
+                                        tfl_tile_op.getInput(), multiples);
 
   return success();
 }

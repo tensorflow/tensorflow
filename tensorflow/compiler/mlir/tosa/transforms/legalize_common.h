@@ -267,13 +267,11 @@ std::optional<Value> convertTFConv2DCommon(
 
 // Lowers TensorFlow and TensorFlow Lite Conv3D to a sequence of TOSA
 // quantization ops.
-std::optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
-                                         Operation* op, ShapedType output_type,
-                                         Value input, Value filter, Value bias,
-                                         ArrayRef<int64_t> strides,
-                                         ArrayRef<int64_t> dilations,
-                                         StringRef padding_ref,
-                                         StringRef data_format_ref);
+std::optional<Value> convertConv3DCommon(
+    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
+    Value input, Value filter, Value bias, DenseI64ArrayAttr pads,
+    DenseI64ArrayAttr strides, DenseI64ArrayAttr dilations, TypeAttr acc_type,
+    StringRef data_format_ref);
 
 // Preprocess TensorFlow Conv3D attributes prior to calling
 // `convertConv3DCommon`
