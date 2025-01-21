@@ -131,8 +131,12 @@ bool IsSupportedTransfer(Op op) {
          op.getPermutationMap().isMinorIdentity();
 }
 
-struct RewriteFunctionSignatures : OpRewritePattern<mlir::func::FuncOp> {
-  using OpRewritePattern::OpRewritePattern;
+class RewriteFunctionSignatures : public OpRewritePattern<mlir::func::FuncOp> {
+ public:
+  RewriteFunctionSignatures(mlir::MLIRContext* context,
+                            const DeviceSpec& device_spec)
+      : OpRewritePattern<mlir::func::FuncOp>(context),
+        device_spec_(device_spec) {}
 
   LogicalResult matchAndRewrite(
       mlir::func::FuncOp op, mlir::PatternRewriter& rewriter) const override {
@@ -146,11 +150,14 @@ struct RewriteFunctionSignatures : OpRewritePattern<mlir::func::FuncOp> {
 
     bool some_tensor_result =
         llvm::any_of(op.getFunctionType().getResults(), is_tensor);
-    bool all_tensor_results =
-        llvm::all_of(op.getFunctionType().getResults(), is_tensor);
-    if (some_tensor_result && !all_tensor_results) {
-      op->emitOpError("function has a mix of tensor and non-tensor results");
-      return failure();
+
+    if (!device_spec_.IsCpu()) {
+      bool all_tensor_results =
+          llvm::all_of(op.getFunctionType().getResults(), is_tensor);
+      if (some_tensor_result && !all_tensor_results) {
+        op->emitOpError("function has a mix of tensor and non-tensor results");
+        return failure();
+      }
     }
 
     TypeRange new_results = op.getFunctionType().getResults();
@@ -180,6 +187,9 @@ struct RewriteFunctionSignatures : OpRewritePattern<mlir::func::FuncOp> {
 
     return success();
   }
+
+ private:
+  const DeviceSpec& device_spec_;
 };
 
 Value GetPtr(Value value) {
@@ -555,15 +565,32 @@ struct RewriteCall : OpRewritePattern<mlir::func::CallOp> {
       return rewriter.notifyMatchFailure(op, "the call has no input tensors");
     }
 
+    auto ptr_ty = mlir::LLVM::LLVMPointerType::get(op.getContext());
+    llvm::SmallVector<Value, 4> new_operands;
+    new_operands.reserve(op.getNumOperands());
+    llvm::SmallVector<Type, 4> new_result_types;
     for (const auto&& [index, arg] : llvm::enumerate(op.getOperands())) {
       if (mlir::isa<mlir::RankedTensorType>(arg.getType())) {
-        op.setOperand(
-            index,
-            rewriter
-                .create<UnrealizedConversionCastOp>(
-                    op.getLoc(), ml::LLVMPointerType::get(op.getContext()), arg)
-                .getResult(0));
+        new_operands.push_back(rewriter
+                                   .create<mlir::UnrealizedConversionCastOp>(
+                                       op.getLoc(), ptr_ty, arg)
+                                   .getResult(0));
+      } else {
+        new_operands.push_back(arg);
       }
+    }
+    for (const auto result_type : op.getResultTypes()) {
+      if (!mlir::isa<mlir::RankedTensorType>(result_type)) {
+        new_result_types.push_back(result_type);
+      }
+    }
+    auto new_call = rewriter.create<mlir::func::CallOp>(
+        op.getLoc(), op.getCallee(), new_result_types, new_operands);
+
+    if (new_call.getNumResults() == 0) {
+      rewriter.eraseOp(op);
+    } else {
+      rewriter.replaceOp(op, new_call.getResults());
     }
     return success();
   }
@@ -1183,9 +1210,11 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
     }
 
     mlir::RewritePatternSet function_patterns(mlir_context);
-    function_patterns.add<RewriteFunctionSignatures, RewriteCall,
-                          RemoveUnusedIndexSwitchResults, RewriteFor>(
-        mlir_context);
+    function_patterns.add<RewriteFunctionSignatures>(mlir_context,
+                                                     device_spec_);
+    function_patterns
+        .add<RewriteCall, RemoveUnusedIndexSwitchResults, RewriteFor>(
+            mlir_context);
     scf::ForOp::getCanonicalizationPatterns(function_patterns, mlir_context);
     scf::IfOp::getCanonicalizationPatterns(function_patterns, mlir_context);
     if (mlir::failed(mlir::applyPatternsGreedily(
@@ -1218,10 +1247,15 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
           return;
         }
       }
-      load.emitOpError("load op address is not (a GEP of) a function argument");
-      signalPassFailure();
+      if (!device_spec_.IsCpu()) {
+        load.emitOpError(
+            "load op address is not (a GEP of) a function argument");
+        signalPassFailure();
+      }
     });
   }
+
+ private:
   DeviceSpec device_spec_;
 };
 
