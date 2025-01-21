@@ -23,6 +23,7 @@ namespace profiler {
 
 using tsl::profiler::FindHostEventType;             // NOLINT
 using tsl::profiler::FindStatType;                  // NOLINT
+using tsl::profiler::FindTaskEnvStatType;           // NOLINT
 using tsl::profiler::FindTfOpEventType;             // NOLINT
 using tsl::profiler::GetHostEventTypeStr;           // NOLINT
 using tsl::profiler::GetStatTypeStr;                // NOLINT
@@ -59,6 +60,7 @@ using tsl::profiler::kSparseCoreOpLineName;          // NOLINT
 using tsl::profiler::kSparseCorePlaneRegex;          // NOLINT
 using tsl::profiler::kSparseCoreStepLineName;        // NOLINT
 using tsl::profiler::kStepLineName;                  // NOLINT
+using tsl::profiler::kTaskEnvPlaneName;              // NOLINT
 using tsl::profiler::kTensorFlowNameScopeLineName;   // NOLINT
 using tsl::profiler::kTensorFlowOpLineName;          // NOLINT
 using tsl::profiler::kTFStreamzPlaneName;            // NOLINT
@@ -73,6 +75,7 @@ using tsl::profiler::kXProfMetadataFlow;             // NOLINT
 using tsl::profiler::kXProfMetadataKey;              // NOLINT
 using tsl::profiler::kXProfMetadataTransfers;        // NOLINT
 using tsl::profiler::StatType;                       // NOLINT
+using tsl::profiler::TaskEnvStatType;                // NOLINT
 using tsl::profiler::TpuPlaneName;                   // NOLINT
 using tsl::profiler::XFlow;                          // NOLINT
 
