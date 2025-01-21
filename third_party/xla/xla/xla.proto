@@ -1116,6 +1116,8 @@ message DebugOptions {
   // For sub-byte dot operands, layout them along contracting dimensions.
   bool xla_gpu_experimental_pack_dot_operands_along_k_dimension = 362;
 
+  // Note: when adding a new flag, please add it to one of the hardware-specific
+  // or hardware-agnostic sections at the top of this proto message.
   // Next id: 364
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
