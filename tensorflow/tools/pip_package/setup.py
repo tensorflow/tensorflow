@@ -38,7 +38,7 @@ import sys
 
 from setuptools import Command
 from setuptools import find_namespace_packages
-from setuptools import setup
+from setuptools import setup, find_packages
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
