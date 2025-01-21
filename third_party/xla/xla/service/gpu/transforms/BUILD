@@ -1948,13 +1948,13 @@ xla_test(
         "//xla/service:pattern_matcher",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
