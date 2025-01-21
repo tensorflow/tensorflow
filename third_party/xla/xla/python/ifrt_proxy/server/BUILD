@@ -179,6 +179,7 @@ ifrt_proxy_cc_test(
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:mock",
+        "//xla/python/ifrt:program_serdes",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:sharding_serdes",
         "//xla/python/ifrt_proxy/common:array_util",
