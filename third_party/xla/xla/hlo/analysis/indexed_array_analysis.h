@@ -16,7 +16,12 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_INDEXED_ARRAY_ANALYSIS_H_
 #define XLA_HLO_ANALYSIS_INDEXED_ARRAY_ANALYSIS_H_
 
+#include <cstdint>
+#include <memory>
+#include <string>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"

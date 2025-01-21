@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_WHILE_LOOP_ANALYSIS_H_
 #define XLA_HLO_ANALYSIS_WHILE_LOOP_ANALYSIS_H_
 
+#include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/value_range.h"
