@@ -55,6 +55,8 @@ def LowerTensorsPass : Pass<"xla-lower-tensors", "mlir::ModuleOp"> {
   let options = [
     Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
            "Serialized stream_executor::GPUDeviceInfo proto.">,
+    Option<"target_type_", "target_type", "std::string", /*default=*/"\"gpu\"",
+           "Whether the pass targets a 'cpu' or 'gpu'. If 'cpu', gpu_device_info_ must be empty.">,
   ];
   let constructor = "CreateLowerTensorsPass()";
 }
@@ -94,6 +96,8 @@ def LowerToLLVMPass :
   let options = [
     Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
            "Serialized stream_executor::GPUDeviceInfo proto.">,
+    Option<"target_type_", "target_type", "std::string", /*default=*/"\"gpu\"",
+           "Whether the pass targets a 'cpu' or 'gpu'. If 'cpu', gpu_device_info_ must be empty.">,
   ];
   let constructor = "CreateLowerToLLVMPass()";
 }

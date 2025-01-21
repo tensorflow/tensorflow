@@ -16,6 +16,15 @@ package_group(
 )
 
 cc_library(
+    name = "device_spec",
+    hdrs = ["device_spec.h"],
+    deps = [
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:logging",
+    ],
+)
+
+cc_library(
     name = "emitter_loc_op_builder",
     srcs = ["emitter_loc_op_builder.cc"],
     hdrs = ["emitter_loc_op_builder.h"],
