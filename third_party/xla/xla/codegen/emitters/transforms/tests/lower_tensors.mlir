@@ -779,7 +779,7 @@ func.func @vector_atomic_rmw(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   return %atomic_rmw : tensor<4xf32>
 }
 
-// CHECK-HOPPER-LABEL:  @direct_atomic_rmw_fadd_f64
+// CHECK-HOPPER-LABEL:  @vector_atomic_rmw
 // CHECK-HOPPER-SAME:     %[[ADDR:.*]]: !llvm.ptr
 // CHECK-HOPPER:          llvm.inline_asm
 // CHECK-HOPPER-SAME:     atom.global.v4.f32.add {$0, $1, $2, $3}, [$4], {$5, $6, $7, $8}
