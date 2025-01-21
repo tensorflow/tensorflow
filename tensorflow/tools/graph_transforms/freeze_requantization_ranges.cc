@@ -87,7 +87,7 @@ absl::Status ExtractMinMaxRecords(const string& log_file_name,
     if (!strings::safe_strtof(max_number_string.c_str(), &max)) {
       continue;
     }
-    StringPiece name_string = line_parts[min_max_index - 1];
+    absl::string_view name_string = line_parts[min_max_index - 1];
     if (!absl::EndsWith(name_string, print_suffix)) {
       continue;
     }

@@ -89,7 +89,7 @@ void NodeNamePartsFromInput(const string& input_name, string* prefix,
   } else {
     *suffix = ":" + input_parts[1];
   }
-  StringPiece node_name_piece(input_parts[0]);
+  absl::string_view node_name_piece(input_parts[0]);
   if (absl::ConsumePrefix(&node_name_piece, "^")) {
     *prefix = "^";
   } else {
