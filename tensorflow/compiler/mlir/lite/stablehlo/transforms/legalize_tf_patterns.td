@@ -571,7 +571,6 @@ foreach Mapping = [
                    [TF_CeilOp, MHLO_CeilOp],
                    [TF_ComplexAbsOp, MHLO_AbsOp],
                    [TF_CosOp, MHLO_CosineOp],
-                   [TF_ExpOp, MHLO_ExpOp],
                    [TF_Expm1Op, MHLO_Expm1Op],
                    [TF_ErfOp, MHLO_ErfOp],
                    [TF_FloorOp, MHLO_FloorOp],
@@ -592,6 +591,14 @@ foreach Mapping = [
                   ] in {
  def : Pat<(Mapping[0] MHLO_Tensor:$input),
            (Mapping[1] $input)>;
+}
+
+def ConstDefaultResultAccuracyAttr :
+  ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
+
+foreach Mapping = [[TF_ExpOp, MHLO_ExpOp]] in {
+ def : Pat<(Mapping[0] MHLO_Tensor:$input),
+           (Mapping[1] $input, ConstDefaultResultAccuracyAttr)>;
 }
 
 foreach Mapping = [
@@ -694,7 +701,7 @@ def EpsilonValue : NativeCodeCall<"GetEpsilonValue($0.getType())">;
 
 def : Pattern<(TF_SoftplusOp AnyTensor:$features),
               [
-                (MHLO_ExpOp:$features_exp $features),
+                (MHLO_ExpOp:$features_exp $features, ConstDefaultResultAccuracyAttr),
                 (CHLO_BroadcastAddOp:$threshold
                  (MHLO_LogOp (MHLO_ConstantOp (EpsilonValue $features))),
                  (MHLO_ConstantOp (GetScalarOfType<2> $features)),

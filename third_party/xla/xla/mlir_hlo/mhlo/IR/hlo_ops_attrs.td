@@ -332,4 +332,36 @@ def MHLO_BoolElementsAttr :
   let convertFromStorage = "$_self";
 }
 
+//==----------------------------------------------------------------------===//
+// Result Accuracy attributes
+//===----------------------------------------------------------------------===//
+
+def MHLO_APFloatV1 : APFloatParameter<""> {
+  let parser = [{
+    [&]() -> FailureOr<llvm::APFloat> {
+      double value;
+      if (failed($_parser.parseFloat(value))) {
+        return failure();
+      }
+      return APFloat(value);
+    }()
+  }];
+  let printer = "$_printer.printFloat($_self);";
+}
+
+def MHLO_ResultAccuracyAttr : AttrDef<MHLO_Dialect, "ResultAccuracy"> {
+  let mnemonic = "result_accuracy";
+  let summary = "The requested accuracy for unary ops.";
+  let parameters = (ins
+      "APFloat":$atol,
+      "APFloat":$rtol,
+      "int64_t":$ulps,
+      MHLO_ResultAccuracyModeAttr:$mode
+
+  );
+  let hasCustomAssemblyFormat = 1;
+  let genVerifyDecl = 1;
+  let constBuilderCall = "mlir::mhlo::ResultAccuracyAttr::get($_builder.getContext(), llvm::APFloat(0.0), llvm::APFloat(0.0), 0, mlir::mhlo::ResultAccuracyModeAttr::get($_builder.getContext(), $0))";
+}
+
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ATTRS
