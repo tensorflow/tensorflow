@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/time/time.h"
+#include "xla/backends/cpu/runtime/xnnpack/work_queue.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/math/math_util.h"
@@ -76,69 +77,6 @@ tsl::AsyncValueRef<tsl::Chain> ParallelLoopRunner::TakeDoneEvent(
   return std::move(runner.done_event_);
 }
 
-void ParallelLoopRunner::WorkQueue::Partition::Initialize(size_t begin,
-                                                          size_t end) {
-  index.store(begin, std::memory_order_relaxed);
-  this->begin = begin;
-  this->end = end;
-}
-
-ParallelLoopRunner::WorkQueue::WorkQueue(size_t num_tasks,
-                                         size_t num_partitions)
-    : partitions_(num_partitions), empty_(num_tasks == 0) {
-  size_t partition_size = tsl::MathUtil::CeilOfRatio(num_tasks, num_partitions);
-  for (size_t i = 0, begin = 0, end = partition_size; i < num_partitions;
-       ++i, begin = end, end = std::min(num_tasks, end + partition_size)) {
-    partitions_[i].Initialize(begin, end);
-  }
-}
-
-std::optional<size_t> ParallelLoopRunner::WorkQueue::Pop(
-    size_t partition_index) {
-  DCHECK(partition_index < partitions_.size()) << "Invalid partition index";
-  Partition& partition = partitions_.data()[partition_index];
-
-  // Check if partition is already empty.
-  if (size_t index = partition.index.load(std::memory_order_relaxed);
-      index >= partition.end) {
-    return std::nullopt;
-  }
-
-  // Try to acquire the next task in the partition.
-  size_t index = partition.index.fetch_add(1, std::memory_order_relaxed);
-  return index >= partition.end ? std::nullopt : std::make_optional(index);
-}
-
-ParallelLoopRunner::Worker::Worker(size_t worker_index, WorkQueue* queue)
-    : worker_index_(worker_index),
-      partition_index_(worker_index),
-      queue_(queue) {}
-
-std::optional<size_t> ParallelLoopRunner::Worker::Pop() {
-  std::optional<size_t> task = queue_->Pop(partition_index_);
-  if (task) return task;
-
-  // If work queue is empty, we are not going to find any more tasks.
-  if (queue_->empty()) return std::nullopt;
-
-  while (!task.has_value()) {
-    // Wrap around to the first partition.
-    if (ABSL_PREDICT_FALSE(++partition_index_ >= queue_->num_partitions())) {
-      partition_index_ = 0;
-    }
-
-    // We checked all partitions and got back to the partition we started from.
-    if (ABSL_PREDICT_FALSE(partition_index_ == worker_index_)) {
-      queue_->empty_.store(true, std::memory_order_relaxed);
-      break;
-    }
-
-    task = queue_->Pop(partition_index_);
-  }
-
-  return task;
-}
-
 template <typename ParallelizeContext>
 static void Parallelize(ParallelizeContext* ctx, uint16_t start_index,
                         uint16_t end_index) {
@@ -167,7 +105,7 @@ static void Parallelize(ParallelizeContext* ctx, uint16_t start_index,
   }
 
   // Execute the `start_index` worker in the caller thread.
-  ParallelLoopRunner::Worker worker(start_index, &ctx->work_queue);
+  Worker worker(start_index, &ctx->work_queue);
   while (std::optional<size_t> task = worker.Pop()) {
     ctx->parallel_task(*task);
   }
