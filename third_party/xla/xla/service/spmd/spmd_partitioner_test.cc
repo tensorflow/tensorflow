@@ -3935,8 +3935,9 @@ ENTRY %reshape {
       auto module, PartitionComputation(hlo_string, /*num_devices=*/128));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
+  auto copy_param = op::Copy(op::Parameter(0));
   auto reshape = AllOf(op::Reshape(op::AllReduce(op::DynamicUpdateSlice(
-                           _, op::Parameter(0), _, _, _, _, _, _, _))),
+                           _, copy_param, _, _, _, _, _, _, _))),
                        op::Shape("bf16[320,4,8]"));
   EXPECT_THAT(root, AllOf(op::DynamicSlice(reshape, _, _, _),
                           op::Shape("bf16[40,4,8]")));
