@@ -1,5 +1,7 @@
 include LICENSE
 include README
+include setup.py
+include MANIFEST.in
 recursive-include * *.py
 recursive-include * *.pyd
 recursive-include * *.pyi
