@@ -15,44 +15,42 @@
 namespace qnn {
 
 std::size_t GetDataTypeSize(const Qnn_DataType_t data_type) {
-  std::size_t size = 0;
+  std::size_t bytes = 0;
   switch (data_type) {
-    case QNN_DATATYPE_SFIXED_POINT_4:
-    case QNN_DATATYPE_UFIXED_POINT_4:
-      size = 4;
-      break;
     case QNN_DATATYPE_INT_8:
     case QNN_DATATYPE_UINT_8:
     case QNN_DATATYPE_SFIXED_POINT_8:
     case QNN_DATATYPE_UFIXED_POINT_8:
     case QNN_DATATYPE_BOOL_8:
-      size = 8;
+      bytes = 1;
       break;
     case QNN_DATATYPE_INT_16:
     case QNN_DATATYPE_UINT_16:
     case QNN_DATATYPE_FLOAT_16:
     case QNN_DATATYPE_SFIXED_POINT_16:
     case QNN_DATATYPE_UFIXED_POINT_16:
-      size = 16;
+      bytes = 2;
       break;
     case QNN_DATATYPE_INT_32:
     case QNN_DATATYPE_UINT_32:
     case QNN_DATATYPE_FLOAT_32:
     case QNN_DATATYPE_SFIXED_POINT_32:
     case QNN_DATATYPE_UFIXED_POINT_32:
-      size = 32;
+      bytes = 4;
       break;
     case QNN_DATATYPE_INT_64:
     case QNN_DATATYPE_UINT_64:
     case QNN_DATATYPE_FLOAT_64:
-      size = 64;
+      bytes = 8;
       break;
     case QNN_DATATYPE_UNDEFINED:
+    case QNN_DATATYPE_SFIXED_POINT_4:
+    case QNN_DATATYPE_UFIXED_POINT_4:
     default:
-      size = 0;
+      bytes = 0;
       break;
   }
-  return size;
+  return bytes;
 }
 
 TensorWrapper::TensorWrapper() = default;
@@ -164,7 +162,7 @@ void TensorWrapper::SetTensorData(std::uint32_t bytes, const void* data) {
   }
 
   owned_data_.resize(bytes);
-  std::memcpy(owned_data_.data(), static_cast<const char*>(data), bytes);
+  std::memcpy(owned_data_.data(), reinterpret_cast<const char*>(data), bytes);
 
   qnn_tensor_.v2.clientBuf.dataSize = owned_data_.size();
   qnn_tensor_.v2.clientBuf.data = owned_data_.data();
