@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/func_to_graph/func_to_graph.h"
 
+#include <cstdint>
+
 #include "absl/status/status.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
