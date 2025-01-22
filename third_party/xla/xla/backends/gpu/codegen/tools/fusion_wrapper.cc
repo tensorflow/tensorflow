@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,23 +17,16 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "llvm/Support/raw_ostream.h"
-#include "xla/service/gpu/fusions/tools/test_lib.h"
+#include "xla/backends/gpu/codegen/tools/test_lib.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 absl::Status Run(const std::string& filename) {
   TF_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
-  TF_ASSIGN_OR_RETURN(auto emitter_data, GetEmitter(*module));
-
-  auto context = GetMlirContextForTest();
-  TF_ASSIGN_OR_RETURN(auto mlir_module,
-                      emitter_data->emitter->CreateMLIRModule(
-                          context, *emitter_data->fusion, "main",
-                          /*buffer_assignment=*/nullptr));
-  llvm::outs() << *mlir_module;
+  llvm::outs() << module->ToString();
   return absl::OkStatus();
 }
 
