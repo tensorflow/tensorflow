@@ -56,6 +56,109 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeTo
      return success();
    }
  };
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -780,5 +780,18 @@
+           numScales == rankedType.getDimSize(quantDim));
+ }
+ 
++bool hasSingleBoundedDimension(Type type) {
++  RankedTensorType rankedType = dyn_cast<RankedTensorType>(type);
++  auto boundedAttr =
++      dyn_cast_or_null<BoundedAttrInterface>(rankedType.getEncoding());
++  if (!boundedAttr) return false;
++
++  // count if bounded attr size is not kDynamic
++  int64_t numBoundedDims = llvm::count_if(
++      boundedAttr.getBounds(),
++      [](int64_t bound) { return !ShapedType::isDynamic(bound); });
++  return numBoundedDims == 1;
++}
++
+ }  // namespace hlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -101,6 +101,9 @@
+ // mentioned in the StableHLO specification.
+ bool isValidQuantizedDimension(Type type);
+ 
++// Returns true if the given type has a single bounded dimension.
++bool hasSingleBoundedDimension(Type type);
++
+ // TODO(zhouxin) Move type inference related methods to TypeInference.cpp
+ 
+ std::pair<int64_t, int64_t> inferConcatenatedDimAndBound(int64_t leftSize,
+diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
+--- stablehlo/stablehlo/dialect/Base.td
++++ stablehlo/stablehlo/dialect/Base.td
+@@ -29,6 +29,20 @@
+ def I32RankedTensor : RankedTensorOf<[I32]>;
+ 
+ def UI32RankedTensor : RankedTensorOf<[UI32]>;
++
++//===----------------------------------------------------------------------===//
++// HLO type constraints.
++//===----------------------------------------------------------------------===//
++
++// Note: Bounded dynamisms is largely unspecced and this feature needs more
++// thoguht as it is adopted to modern frameworks. The current support is
++// designed to allow existing TF programs to be representable in StableHLO and
++// is subject to change as a formal design for boudned dynamism is developed.
++def HLO_HasSingleBoundedDimensionPred
++  : CPred<"mlir::hlo::hasSingleBoundedDimension($_self)">;
++
++def HLO_HasStaticOrBoundedShapePred
++  : Or<[HasStaticShapePred, HLO_HasSingleBoundedDimensionPred]>;
+ 
+ //===----------------------------------------------------------------------===//
+ // HLO type definitions.
+@@ -267,6 +281,9 @@
+ def HLO_StaticShapeTensorOrPerAxisQuantizedTensor : RankedTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt],
+     [IsValidQuantizedDimension, HasStaticShapePred], "statically shaped tensor">;
+ 
++def HLO_StaticShapeTensorPerAxisQuantizedTensorOrBoundedTensor : RankedTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt],
++    [IsValidQuantizedDimension, HLO_HasStaticOrBoundedShapePred], "statically shaped or single bounded dimension tensor">;
++
+ def HLO_StaticShapeTensorOrPerAxisQuantizedTensorOrToken : AnyTypeOf<[HLO_StaticShapeTensor, HLO_StaticShapeTensorOrPerAxisQuantizedTensor, HLO_Token]>;
+ 
+ def HLO_StaticShapeIntOrFpTensor : StaticShapeTensorOf<[HLO_Int, HLO_Float]>;
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -1963,7 +1963,7 @@
+     DenseI64ArrayAttr:$broadcast_dimensions /*broadcast_in_dim_i2*/
+   );
+ 
+-  let results = (outs HLO_StaticShapeTensorOrPerAxisQuantizedTensor);
++  let results = (outs HLO_StaticShapeTensorPerAxisQuantizedTensorOrBoundedTensor);
+ 
+   let hasVerifier = 1;
+ 
+@@ -2715,7 +2715,7 @@
+ 
+   let arguments = (ins HLO_TensorOrPerAxisQuantizedTensor:$operand);
+ 
+-  let results = (outs HLO_StaticShapeTensorOrPerAxisQuantizedTensor);
++  let results = (outs HLO_StaticShapeTensorPerAxisQuantizedTensorOrBoundedTensor);
+   let hasVerifier = 1;
+ 
+   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -3726,6 +3726,9 @@
+                                      Value result) {
+   auto operandType = cast<RankedTensorType>(operand.getType());
+ 
++  // No additional verification on shapes with single bounded dimension.
++  if (!operandType.hasStaticShape()) return success();
++
+   // broadcast_in_dim_c1
+   if (failed(verifyQPerTensorScaleAndZeroPointConstraints(location, operandType,
+                                                           result.getType())))
 diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
 --- stablehlo/stablehlo/dialect/Version.cpp
 +++ stablehlo/stablehlo/dialect/Version.cpp
