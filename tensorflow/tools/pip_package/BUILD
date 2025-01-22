@@ -1,6 +1,7 @@
 # Description:
 #  Tools for building the TensorFlow pip package.
 
+load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load(
@@ -273,6 +274,31 @@ collect_data_files(
 transitive_py_deps(
     name = "py_deps",
     deps = COMMON_PIP_DEPS,
+)
+
+string_flag(
+    name = "wheel_type",
+    build_setting_default = "snapshot",
+    values = [
+        "snapshot",
+        "nightly",
+        "release",
+    ],
+)
+
+string_flag(
+    name = "build_date",
+    build_setting_default = "",
+)
+
+string_flag(
+    name = "git_hash",
+    build_setting_default = "",
+)
+
+string_flag(
+    name = "custom_version_suffix",
+    build_setting_default = "",
 )
 
 tf_wheel(
