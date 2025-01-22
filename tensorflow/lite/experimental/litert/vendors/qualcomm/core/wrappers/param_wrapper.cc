@@ -1,10 +1,6 @@
-//==============================================================================
-//
-//  Copyright (c) Qualcomm Technologies, Inc.
+//  Copyright (c) Qualcomm Innovation Center, Inc.
 //  All Rights Reserved.
-//  Confidential and Proprietary - Qualcomm Technologies, Inc.
-//
-//==============================================================================
+
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/param_wrapper.h"
 
 namespace qnn {
