@@ -64,6 +64,23 @@ cc_library(
 )
 
 cc_library(
+    name = "insert_order_map",
+    hdrs = ["insert_order_map.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_test(
+    name = "insert_order_map_test",
+    srcs = ["insert_order_map_test.cc"],
+    deps = [
+        ":insert_order_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "environment",
     srcs = ["environment.cc"],
     hdrs = [

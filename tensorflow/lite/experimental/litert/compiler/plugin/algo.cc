@@ -20,9 +20,9 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
-#include "llvm/ADT/MapVector.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/litert/core/insert_order_map.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_graph.h"
 
@@ -50,22 +50,20 @@ class DisjointSets {
   void Insert(LiteRtOp op, LiteRtOp parent);
   std::vector<std::vector<LiteRtOp>> GetBuckets();
   LiteRtOp GetBucket(LiteRtOp op);
-  // NOLINTBEGIN
-  llvm::MapVector<LiteRtOp, LiteRtOp> map_;
-  // NOLINTEND
+  InsertOrderMap<LiteRtOp, LiteRtOp> map_;
 };
 
 std::vector<std::vector<LiteRtOp>> DisjointSets::GetPartitionsFromFlatList(
     const std::vector<LiteRtOp>& flat_op_list) {
   DisjointSets disjoint_sets;
   for (auto* op : flat_op_list) {
-    disjoint_sets.map_[op] = op;
+    disjoint_sets.map_.InsertOrAssign(op, op);
   }
 
   for (auto* op : flat_op_list) {
     for (auto* output : op->Outputs()) {
       for (auto* user : output->Users()) {
-        if (disjoint_sets.map_.count(user) == 0) {
+        if (!disjoint_sets.map_.Contains(user)) {
           continue;
         }
         disjoint_sets.Insert(op, user);
@@ -82,7 +80,7 @@ void DisjointSets::Insert(LiteRtOp op, LiteRtOp parent) {
   if (op_bucket == parent_bucket) {
     return;
   }
-  map_[op_bucket] = parent_bucket;
+  map_.InsertOrAssign(op_bucket, parent_bucket);
 }
 
 // Get all disjoint sets.
@@ -90,14 +88,14 @@ std::vector<std::vector<LiteRtOp>> DisjointSets::GetBuckets() {
   // NOLINTBEGIN
   std::unordered_map<LiteRtOp, std::vector<LiteRtOp>> invert_map;
   // NOLINTEND
-  for (const auto& entry : map_) {
-    auto* bucket = GetBucket(entry.first);
+  for (auto it = map_.Begin(); it != map_.End(); ++it) {
+    auto* bucket = GetBucket(it->first);
 
     if (invert_map.find(bucket) == invert_map.end()) {
       invert_map.insert_or_assign(bucket, std::vector<LiteRtOp>{});
     }
 
-    invert_map[bucket].push_back(entry.first);
+    invert_map[bucket].push_back(it->first);
   }
 
   std::vector<std::vector<LiteRtOp>> res;
@@ -113,10 +111,11 @@ std::vector<std::vector<LiteRtOp>> DisjointSets::GetBuckets() {
 // Gets the pointer which serves as the key for given ops bucket. Collapses
 // paths to amortize.
 LiteRtOp DisjointSets::GetBucket(LiteRtOp op) {
-  auto* parent = map_[op];
+  auto it = map_.Find(op);
+  auto* parent = it->get().second;
   if (op != parent) {
     parent = GetBucket(parent);
-    map_[op] = parent;
+    map_.InsertOrAssign(op, parent);
   }
   return parent;
 }
@@ -143,9 +142,7 @@ class GraphSlicer {
 
   LiteRtSubgraph slice_;
   // Maps tensor in old subgraph to tensor in new subgraph.
-  // NOLINTBEGIN
-  llvm::MapVector<LiteRtTensor, LiteRtTensor> tensor_map_;
-  // NOLINTEND
+  InsertOrderMap<LiteRtTensor, LiteRtTensor> tensor_map_;
   LiteRtOp dispatch_op_ = nullptr;
 };
 
@@ -168,7 +165,7 @@ LiteRtOp GraphSlicer::SlicePartitionFromGraph(
     if (used_tensors.contains(old_input)) {
       auto* new_input = &MakeClone(*slicer.slice_, *old_input);
       slicer.slice_->Inputs().push_back(new_input);
-      slicer.tensor_map_.insert({old_input, new_input});
+      slicer.tensor_map_.InsertOrAssign(old_input, new_input);
     }
   }
 
@@ -193,7 +190,10 @@ LiteRtOp GraphSlicer::SlicePartitionFromGraph(
 }
 
 void GraphSlicer::RerouteTensorsThroughCustomOp(const LiteRtSubgraphT& root) {
-  for (auto& [old_tensor, new_tensor] : tensor_map_) {
+  for (auto it = tensor_map_.Begin(); it != tensor_map_.End(); ++it) {
+    auto* old_tensor = it->first;
+    auto* new_tensor = it->second;
+
     // Reroute tensors which need to be passed into the scope of the new
     // subgraph to inputs of the custom op.
     if (new_tensor->DefiningOp() == nullptr && !IsConstant(*new_tensor)) {
@@ -217,10 +217,11 @@ void GraphSlicer::CloneInto(const LiteRtOpT& old_op) {
   for (auto i = 0; i < old_op.NumInputs(); ++i) {
     auto* old_input = old_op.Inputs().at(i);
     LiteRtTensor new_input;
-    if (tensor_map_.contains(old_input)) {
+    if (tensor_map_.Contains(old_input)) {
       // If old_input is already in the map then map[input] is its cloned
       // counterpart in the new graph.
-      new_input = tensor_map_[old_input];
+      auto it = tensor_map_.Find(old_input);
+      new_input = it->get().second;
     } else {
       // Otherwise, it must be a new subgraph input (or constant).
       new_input = &MakeClone(*slice_, *old_input);
@@ -228,7 +229,7 @@ void GraphSlicer::CloneInto(const LiteRtOpT& old_op) {
         slice_->Inputs().push_back(new_input);
       }
 
-      tensor_map_.insert({old_input, new_input});
+      tensor_map_.InsertOrAssign(old_input, new_input);
     }
 
     AttachInput(new_input, new_op);
@@ -240,7 +241,7 @@ void GraphSlicer::CloneInto(const LiteRtOpT& old_op) {
     AttachOutput(new_output, new_op);
 
     // Update the values defined in scope of the new subgraph.
-    tensor_map_.insert({old_output, new_output});
+    tensor_map_.InsertOrAssign(old_output, new_output);
   }
 }
 

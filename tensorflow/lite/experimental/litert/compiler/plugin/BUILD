@@ -84,11 +84,11 @@ cc_library(
     hdrs = ["algo.h"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/core:insert_order_map",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/core/model:model_graph",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_check",
-        "@llvm-project//llvm:Support",
     ],
 )
 
