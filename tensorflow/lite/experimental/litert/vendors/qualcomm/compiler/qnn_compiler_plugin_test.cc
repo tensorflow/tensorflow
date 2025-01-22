@@ -28,6 +28,8 @@
 #include "tensorflow/lite/experimental/litert/test/test_models.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/cc/litert_compiler_plugin.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
 namespace litert {
 namespace {
@@ -144,6 +146,89 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
   ASSERT_EQ("qnn_partition_0", op_data_string);
 
   LiteRtDestroyCompiledResult(compiled);
+}
+
+TEST(TestLargeQint16, CompileTest) {
+  float dummy_scale = 1;
+  int dummy_offset = 0;
+  std::vector<uint32_t> in_0_dims = {512, 2304};
+  std::vector<uint32_t> in_1_dims = {1};
+  std::vector<uint32_t> out_0_dims = in_0_dims;
+
+  LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, 2, QNN_TENSOR_INIT);
+  Qnn_QuantizeParams_t q_param = QNN_QUANTIZE_PARAMS_INIT;
+  q_param.encodingDefinition = QNN_DEFINITION_DEFINED;
+  q_param.quantizationEncoding = QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
+  q_param.scaleOffsetEncoding.scale = dummy_scale;
+  q_param.scaleOffsetEncoding.offset = dummy_offset;
+
+  qnn_op_ins[0].v2.name = "0";
+  qnn_op_ins[0].v2.type = QNN_TENSOR_TYPE_APP_WRITE;
+  qnn_op_ins[0].v2.dataType = QNN_DATATYPE_SFIXED_POINT_16;
+  qnn_op_ins[0].v2.rank = in_0_dims.size();
+  qnn_op_ins[0].v2.dimensions = in_0_dims.data();
+  qnn_op_ins[0].v2.quantizeParams = q_param;
+
+  qnn_op_ins[1].v2.name = "1";
+  qnn_op_ins[1].v2.type = QNN_TENSOR_TYPE_APP_WRITE;
+  qnn_op_ins[1].v2.dataType = QNN_DATATYPE_SFIXED_POINT_16;
+  qnn_op_ins[1].v2.rank = in_1_dims.size();
+  qnn_op_ins[1].v2.dimensions = in_1_dims.data();
+  qnn_op_ins[1].v2.quantizeParams = q_param;
+
+  LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs, 1, QNN_TENSOR_INIT);
+
+  qnn_op_outs[0].v2.name = "2";
+  qnn_op_outs[0].v2.type = QNN_TENSOR_TYPE_APP_READ;
+  qnn_op_outs[0].v2.dataType = QNN_DATATYPE_SFIXED_POINT_16;
+  qnn_op_outs[0].v2.rank = out_0_dims.size();
+  qnn_op_outs[0].v2.dimensions = out_0_dims.data();
+  qnn_op_outs[0].v2.quantizeParams = q_param;
+
+  Qnn_OpConfig_t op = QNN_OPCONFIG_INIT;
+  op.v1.name = "mul";
+  op.v1.packageName = "qti.aisw";
+  op.v1.typeName = "ElementWiseMultiply";
+  op.v1.numOfInputs = 2;
+  op.v1.inputTensors = qnn_op_ins;
+  op.v1.numOfOutputs = 1;
+  op.v1.outputTensors = qnn_op_outs;
+
+  LITERT_LOG(LITERT_INFO, "%s", "Creating QNN manager");
+  auto backend_configs = qnn::QnnManager::DefaultBackendConfigs();
+  auto qnn_manager = qnn::QnnManager::Create(
+      backend_configs, /*shared_library_dir=*/std::nullopt,
+      QNN_HTP_DEVICE_ARCH_V75);
+  ASSERT_TRUE(qnn_manager);
+
+  // Initialize context.
+
+  LITERT_LOG(LITERT_INFO, "%s", "Creating context handle");
+  auto context_configs = qnn::QnnManager::DefaultContextConfigs();
+  auto context_handle = (*qnn_manager)->CreateContextHandle(context_configs);
+  ASSERT_TRUE(context_handle);
+
+  auto plugin = CreatePlugin();
+  auto model = testing::LoadTestFileModel("one_mul.tflite");
+
+  const auto subgraph = model.MainSubgraph();
+  LiteRtSubgraph dummy_subgraph = subgraph->Get();
+  qnn::GraphMapper graph_mapper(dummy_subgraph, (**qnn_manager),
+                                context_handle->get());
+  LITERT_ASSERT_STATUS_OK(graph_mapper.InitQnnGraph("test"));
+
+  (*qnn_manager)
+      ->Api()
+      ->tensorCreateGraphTensor(graph_mapper.QnnGraph(), &qnn_op_ins[0]);
+  (*qnn_manager)
+      ->Api()
+      ->tensorCreateGraphTensor(graph_mapper.QnnGraph(), &qnn_op_ins[1]);
+  (*qnn_manager)
+      ->Api()
+      ->tensorCreateGraphTensor(graph_mapper.QnnGraph(), &qnn_op_outs[0]);
+  (*qnn_manager)->Api()->graphAddNode(graph_mapper.QnnGraph(), op);
+
+  LITERT_ASSERT_STATUS_OK(graph_mapper.Finalize());
 }
 
 class QnnPluginOpCompatibilityTest

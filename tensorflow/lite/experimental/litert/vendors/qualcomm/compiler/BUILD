@@ -90,6 +90,7 @@ litert_test(
         "//tensorflow/lite/experimental/litert/test:test_models",
         "//tensorflow/lite/experimental/litert/vendors/cc:litert_compiler_plugin",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler:graph_mapper",
     ],
 )
 
