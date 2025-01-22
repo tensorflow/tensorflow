@@ -1,10 +1,6 @@
-//==============================================================================
-//
-//  Copyright (c) Qualcomm Technologies, Inc.
+//  Copyright (c) Qualcomm Innovation Center, Inc.
 //  All Rights Reserved.
-//  Confidential and Proprietary - Qualcomm Technologies, Inc.
-//
-//==============================================================================
+
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/tensor_pool.h"
 
 namespace qnn {

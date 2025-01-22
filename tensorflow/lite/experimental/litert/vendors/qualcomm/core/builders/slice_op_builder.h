@@ -1,10 +1,6 @@
-//==============================================================================
-//
-//  Copyright (c) Qualcomm Technologies, Inc.
+//  Copyright (c) Qualcomm Innovation Center, Inc.
 //  All Rights Reserved.
-//  Confidential and Proprietary - Qualcomm Technologies, Inc.
-//
-//==============================================================================
+
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_BUILDERS_SLICE_OP_BUILDER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_BUILDERS_SLICE_OP_BUILDER_H_
 
@@ -15,9 +11,9 @@
 
 namespace qnn {
 
-std::vector<OpWrapper> BuildSliceOp(TensorPool& tensor_pool,
-                                    const std::vector<TensorWrapperRef>& inputs,
-                                    const std::vector<TensorWrapperRef>& outputs);
+std::vector<OpWrapper> BuildSliceOp(
+    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& outputs);
 }  // namespace qnn
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_CORE_BUILDERS_SLICE_OP_BUILDER_H_

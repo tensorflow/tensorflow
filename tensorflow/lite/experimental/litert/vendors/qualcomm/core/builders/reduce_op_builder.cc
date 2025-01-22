@@ -1,18 +1,13 @@
-//==============================================================================
-//
-//  Copyright (c) Qualcomm Technologies, Inc.
+//  Copyright (c) Qualcomm Innovation Center, Inc.
 //  All Rights Reserved.
-//  Confidential and Proprietary - Qualcomm Technologies, Inc.
-//
-//==============================================================================
+
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reduce_op_builder.h"
 
 namespace qnn {
 
-std::vector<OpWrapper> BuildReduceSumOp(TensorPool& tensor_pool,
-                                        const std::vector<TensorWrapperRef>& inputs,
-                                        const std::vector<TensorWrapperRef>& outputs,
-                                        const bool keep_dims) {
+std::vector<OpWrapper> BuildReduceSumOp(
+    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& outputs, const bool keep_dims) {
   std::vector<OpWrapper> res;
 
   TensorWrapper& axis_tensor = inputs[1];

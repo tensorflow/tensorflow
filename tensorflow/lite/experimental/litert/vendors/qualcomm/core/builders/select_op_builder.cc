@@ -1,17 +1,13 @@
-//==============================================================================
-//
-//  Copyright (c) Qualcomm Technologies, Inc.
+//  Copyright (c) Qualcomm Innovation Center, Inc.
 //  All Rights Reserved.
-//  Confidential and Proprietary - Qualcomm Technologies, Inc.
-//
-//==============================================================================
+
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/select_op_builder.h"
 
 namespace qnn {
 
-std::vector<OpWrapper> BuildSelectOp(TensorPool& tensor_pool,
-                                     const std::vector<TensorWrapperRef>& inputs,
-                                     const std::vector<TensorWrapperRef>& outputs) {
+std::vector<OpWrapper> BuildSelectOp(
+    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& outputs) {
   std::vector<OpWrapper> res;
 
   auto& select_op = CreateOpWrapper(res, QNN_OP_ELEMENT_WISE_SELECT);

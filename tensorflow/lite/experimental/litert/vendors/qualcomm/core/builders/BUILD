@@ -1,4 +1,5 @@
-# TODO: license
+#  Copyright (c) Qualcomm Innovation Center, Inc.
+#  All Rights Reserved.
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
