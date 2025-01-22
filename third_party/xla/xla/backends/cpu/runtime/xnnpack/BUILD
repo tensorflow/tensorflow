@@ -44,10 +44,9 @@ cc_library(
     srcs = ["parallel_loop_runner.cc"],
     hdrs = ["parallel_loop_runner.h"],
     deps = [
-        ":work_queue",
+        "//xla/backends/cpu/runtime:work_queue",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/math:math_util",
-        "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
@@ -71,36 +70,6 @@ xla_cc_test(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:span",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-cc_library(
-    name = "work_queue",
-    hdrs = ["work_queue.h"],
-    deps = [
-        "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/lib/math:math_util",
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/log:check",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-xla_cc_test(
-    name = "work_queue_test",
-    srcs = ["work_queue_test.cc"],
-    deps = [
-        ":work_queue",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],

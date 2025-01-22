@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/runtime/xnnpack/work_queue.h"
+#include "xla/backends/cpu/runtime/work_queue.h"
 
 #include <atomic>
 #include <cstddef>
@@ -21,8 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/time/time.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -122,6 +126,37 @@ TEST(WorkQueueTest, WorkerConcurrency) {
 
   counter.Wait();
   EXPECT_EQ(num_tasks.load(), size);
+}
+
+TEST(WorkQueueTest, WorkerParallelize) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(), 8);
+
+  std::vector<size_t> data(1024, 0);
+
+  auto event = Worker::Parallelize(
+      &device, 128, 1024, [&](size_t task_index) { ++data[task_index]; });
+  tsl::BlockUntilReady(event);
+
+  std::vector<size_t> expected(1024, 1);
+  EXPECT_EQ(data, expected);
+}
+
+TEST(WorkQueueTest, ComputeOptimalNumWorkers) {
+  {  // Parallel task with void return type.
+    auto noop = [](size_t task_index) {};
+    size_t num_workers =
+        Worker::ComputeOptimalNumWorkers(absl::Nanoseconds(10), 8, 1024, noop);
+    EXPECT_LE(num_workers, 8);
+  }
+
+  {  // Parallel task with absl:Status return type.
+    auto noop = [](size_t task_index) { return absl::OkStatus(); };
+    TF_ASSERT_OK_AND_ASSIGN(
+        size_t num_workers,
+        Worker::ComputeOptimalNumWorkers(absl::Nanoseconds(10), 8, 1024, noop));
+    EXPECT_LE(num_workers, 8);
+  }
 }
 
 //===----------------------------------------------------------------------===//
