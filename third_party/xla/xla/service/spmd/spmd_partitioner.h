@@ -515,8 +515,6 @@ class PartitionedHlo {
 
   const PartitioningState& state() const { return state_; }
 
-  void AddReshardCache(const HloSharding& sharding, const PartitionedHlo& phlo);
-
   // Helper function to replicate the data on all devices. Could only modify
   // the reshard cache.
   PartitionedHlo Replicate() const;
