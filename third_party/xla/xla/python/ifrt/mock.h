@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {

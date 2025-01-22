@@ -263,6 +263,7 @@ cc_library(
     hdrs = ["test_util.h"],
     deps = [
         ":ifrt",
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/base:core_headers",
@@ -372,8 +373,10 @@ cc_library(
     deps = [
         ":ifrt",
         ":test_util",
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -398,6 +401,7 @@ cc_library(
     deps = [
         ":attribute_map",
         ":ifrt",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
         "//xla/pjrt:pjrt_executable",
@@ -581,6 +585,7 @@ xla_cc_test(
     deps = [
         ":device_test_util",
         ":ifrt",
+        ":remap_plan_proto_cc",
         ":sharding_serdes",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_layout",
@@ -603,6 +608,7 @@ cc_library(
     deps = [
         ":ifrt",
         ":test_util",
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla:status_macros",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
