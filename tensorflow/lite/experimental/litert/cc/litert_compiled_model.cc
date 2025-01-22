@@ -23,117 +23,194 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"
+#include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
 
 namespace litert {
 
-Expected<std::vector<TensorBuffer>> CompiledModel::CreateInputBuffers(
-    size_t signature_index) {
-  auto signature = model_->GetSignature(signature_index);
+Expected<size_t> CompiledModel::FindInputIndex(size_t signature_index,
+                                               absl::string_view& input_name) {
+  auto signature = model_.GetSignature(signature_index);
   if (!signature) {
     return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find signature");
   }
-  auto subgraph = model_->Subgraph(signature->Key());
+  for (int i = 0; i < signature->InputNames().size(); ++i) {
+    if (signature->InputNames()[i] == input_name) {
+      return i;
+      break;
+    }
+  }
+  return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find input");
+}
+
+Expected<size_t> CompiledModel::FindOutputIndex(
+    size_t signature_index, absl::string_view& output_name) {
+  auto signature = model_.GetSignature(signature_index);
+  if (!signature) {
+    return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find signature");
+  }
+  for (int i = 0; i < signature->OutputNames().size(); ++i) {
+    if (signature->OutputNames()[i] == output_name) {
+      return i;
+      break;
+    }
+  }
+  return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find output");
+}
+
+Expected<TensorBuffer> CompiledModel::CreateBufferImpl(
+    TensorBufferRequirements& buffer_requirements,
+    RankedTensorType& tensor_type) {
+  auto supported_types = buffer_requirements.SupportedTypes();
+  if (!supported_types) {
+    return supported_types.Error();
+  }
+  if (supported_types->empty()) {
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      "Input doesn't support any tensor buffer types");
+  }
+  // For simplicity we just pick the first supported tensor buffer type.
+  LiteRtTensorBufferType tensor_buffer_type = (*supported_types)[0];
+
+  auto buffer =
+      TensorBuffer::CreateManaged(tensor_buffer_type, tensor_type,
+                                  buffer_requirements.BufferSize().Value());
+  if (!buffer) {
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                      buffer.Error().Message());
+  }
+
+  return std::move(*buffer);
+}
+
+Expected<TensorBuffer> CompiledModel::CreateInputOutputBuffer(
+    absl::string_view signature_name, absl::string_view tensor_name,
+    bool is_input) {
+  auto signature_index = model_.GetSignatureIndex(signature_name);
+  if (!signature_index) {
+    return signature_index.Error();
+  }
+  auto signature = model_.GetSignature(*signature_index);
+  if (!signature) {
+    return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find signature");
+  }
+  if (!signature) {
+    return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find signature");
+  }
+  auto subgraph = model_.Subgraph(signature->Key());
   if (!subgraph) {
     return Unexpected(kLiteRtStatusErrorNotFound, "Failed to get subgraph");
   }
-  std::vector<TensorBuffer> input_buffers;
-  auto input_tensors = subgraph->Inputs();
-  input_buffers.reserve(input_tensors.size());
 
-  for (int i = 0; i < input_tensors.size(); ++i) {
+  LiteRtTensor target_litert_tensor;
+  LiteRtTensorBufferRequirements litert_buffer_requirements;
+  if (is_input) {
+    auto input_tensor = subgraph->Input(tensor_name);
+    if (!input_tensor) {
+      return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find input");
+    }
+    target_litert_tensor = input_tensor->Get();
     auto input_buffer_requirements =
-        GetInputBufferRequirements(signature_index, i);
+        GetInputBufferRequirements(*signature_index, tensor_name);
     if (!input_buffer_requirements) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                         input_buffer_requirements.Error().Message());
     }
-
-    auto supported_types = input_buffer_requirements->SupportedTypes();
-    if (!supported_types) {
-      return supported_types.Error();
+    litert_buffer_requirements = input_buffer_requirements->Get();
+  } else {
+    auto output_tensor = subgraph->Output(tensor_name);
+    if (!output_tensor) {
+      return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find output");
     }
-    if (supported_types->empty()) {
-      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                        "Input doesn't support any tensor buffer types");
-    }
-    // For simplicity we just pick the first supported tensor buffer type.
-    LiteRtTensorBufferType tensor_buffer_type = (*supported_types)[0];
-
-    auto tensor_type = input_tensors[i].RankedTensorType();
-    if (!tensor_type) {
-      return tensor_type.Error();
-    }
-
-    auto input_buffer = TensorBuffer::CreateManaged(
-        tensor_buffer_type, *tensor_type,
-        (*input_buffer_requirements).BufferSize().Value());
-    if (!input_buffer) {
-      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                        input_buffer.Error().Message());
-    }
-
-    input_buffers.push_back(std::move(*input_buffer));
-  }
-
-  return input_buffers;
-}
-
-Expected<std::vector<TensorBuffer>> CompiledModel::CreateOutputBuffers(
-    size_t signature_index) {
-  auto signature = model_->GetSignature(signature_index);
-  if (!signature) {
-    return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find signature");
-  }
-  auto subgraph = model_->Subgraph(signature->Key());
-  if (!subgraph) {
-    return Unexpected(kLiteRtStatusErrorNotFound, "Failed to get subgraph");
-  }
-
-  auto output_tensors = subgraph->Outputs();
-
-  std::vector<TensorBuffer> output_buffers;
-  output_buffers.reserve(output_tensors.size());
-
-  for (int i = 0; i < output_tensors.size(); ++i) {
+    target_litert_tensor = output_tensor->Get();
     auto output_buffer_requirements =
-        GetOutputBufferRequirements(signature_index, i);
-    if (!output_buffer_requirements.HasValue()) {
+        GetOutputBufferRequirements(*signature_index, tensor_name);
+    if (!output_buffer_requirements) {
       return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                         output_buffer_requirements.Error().Message());
     }
+    litert_buffer_requirements = output_buffer_requirements->Get();
+  }
 
-    auto supported_types = output_buffer_requirements->SupportedTypes();
-    if (!supported_types) {
-      return supported_types.Error();
+  auto buffer_requirements =
+      TensorBufferRequirements(litert_buffer_requirements, /*owned=*/false);
+  auto target_tensor = Tensor(target_litert_tensor);
+  auto tensor_type = target_tensor.RankedTensorType();
+  if (!tensor_type) {
+    return tensor_type.Error();
+  }
+  return CreateBufferImpl(buffer_requirements, *tensor_type);
+}
+
+Expected<std::vector<TensorBuffer>> CompiledModel::CreateInputOutputBuffers(
+    size_t signature_index, bool is_input) {
+  auto signature = model_.GetSignature(signature_index);
+  if (!signature) {
+    return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find signature");
+  }
+  auto subgraph = model_.Subgraph(signature->Key());
+  if (!subgraph) {
+    return Unexpected(kLiteRtStatusErrorNotFound, "Failed to get subgraph");
+  }
+  std::vector<TensorBuffer> tensor_buffers;
+  std::vector<absl::string_view> tensor_names;
+  if (is_input) {
+    tensor_names = signature->InputNames();
+  } else {
+    tensor_names = signature->OutputNames();
+  }
+  tensor_buffers.reserve(tensor_names.size());
+
+  for (int i = 0; i < tensor_names.size(); ++i) {
+    LiteRtTensor target_litert_tensor;
+    LiteRtTensorBufferRequirements litert_buffer_requirements;
+    if (is_input) {
+      auto input_buffer_requirements =
+          GetInputBufferRequirements(signature_index, i);
+      if (!input_buffer_requirements) {
+        return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                          input_buffer_requirements.Error().Message());
+      }
+      litert_buffer_requirements = input_buffer_requirements->Get();
+      auto input_tensor = subgraph->Input(tensor_names[i]);
+      if (!input_tensor) {
+        return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find input");
+      }
+      target_litert_tensor = input_tensor->Get();
+    } else {
+      auto output_buffer_requirements =
+          GetOutputBufferRequirements(signature_index, i);
+      if (!output_buffer_requirements) {
+        return Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                          output_buffer_requirements.Error().Message());
+      }
+      litert_buffer_requirements = output_buffer_requirements->Get();
+      auto output_tensor = subgraph->Output(tensor_names[i]);
+      if (!output_tensor) {
+        return Unexpected(kLiteRtStatusErrorNotFound, "Failed to find output");
+      }
+      target_litert_tensor = output_tensor->Get();
     }
-    if (supported_types->empty()) {
-      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                        "Output doesn't support any tensor buffer types");
-    }
 
-    // For simplicity we just pick the first supported tensor buffer type.
-    LiteRtTensorBufferType tensor_buffer_type = (*supported_types)[0];
-
-    auto tensor_type = output_tensors[i].RankedTensorType();
+    auto buffer_requirements =
+        TensorBufferRequirements(litert_buffer_requirements, /*owned=*/false);
+    auto target_tensor = Tensor(target_litert_tensor);
+    auto tensor_type = target_tensor.RankedTensorType();
     if (!tensor_type) {
       return tensor_type.Error();
     }
-
-    auto output_buffer = TensorBuffer::CreateManaged(
-        tensor_buffer_type, *tensor_type,
-        (*output_buffer_requirements).BufferSize().Value());
-    if (!output_buffer.HasValue()) {
-      return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                        output_buffer.Error().Message());
+    auto tensor_buffer = CreateBufferImpl(buffer_requirements, *tensor_type);
+    if (!tensor_buffer) {
+      return tensor_buffer.Error();
     }
-    output_buffers.push_back(std::move(*output_buffer));
+    tensor_buffers.push_back(std::move(*tensor_buffer));
   }
 
-  return output_buffers;
+  return tensor_buffers;
 }
 
 Expected<void> CompiledModel::Run(
@@ -162,12 +239,12 @@ Expected<void> CompiledModel::Run(
     absl::string_view signature_key,
     const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
     const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map) {
-  auto signature_index = model_->GetSignatureIndex(signature_key);
+  auto signature_index = model_.GetSignatureIndex(signature_key);
   if (!signature_index) {
     return Unexpected(kLiteRtStatusErrorNotFound,
                       "Failed to get signature_index");
   }
-  auto subgraph = model_->Subgraph(signature_key);
+  auto subgraph = model_.Subgraph(signature_key);
   if (!subgraph) {
     return Unexpected(kLiteRtStatusErrorNotFound, "Failed to get subgraph");
   }
