@@ -16,7 +16,6 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "tensorflow/compiler/jit/flags.h"
