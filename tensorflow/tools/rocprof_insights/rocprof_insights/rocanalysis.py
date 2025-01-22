@@ -1,17 +1,18 @@
 """Perform analysis on ROCm profiler data.
 
 Classes:
-    KernelAnalyzer: Analyzes kernel dispatches (latencies, top kernels, etc.).
-    ApiAnalyzer: Analyzes HIP or HSA API calls.
-    MemcpyAnalyzer: Analyzes Memcpy events (H2D, D2H, D2D).
+    RocAnalyzer: 
+    - Analyzes kernel dispatches (latencies, top kernels, etc.).
+    - Analyzes HIP or HSA API calls.
+    - Analyzes Memcpy events (H2D, D2H, D2D).
 """
 
 import pandas as pd
 
-class KernelAnalyzer:
-    """Analyzes kernel-related profiling data."""
+class RocAnalyzer:
+    """Analyzes roc profiling data."""
 
-    def __init__(self, df):
+    def __init__(self, df, required_cols=None):
         """Initializes KernelAnalyzer.
 
         Args:
@@ -19,7 +20,8 @@ class KernelAnalyzer:
                               Must have columns 'kernel_name' and 'duration_ms'.
         """
         self.df = df.copy()
-        required_cols = {'kernel_name', 'duration_ms'}
+        if required_cols is None:
+            required_cols = {'kernel_name', 'duration_us'}
         missing = required_cols - set(self.df.columns)
         if missing:
             raise ValueError(f"DataFrame is missing required columns: {missing}")
@@ -29,8 +31,8 @@ class KernelAnalyzer:
         self,
         df = None,
         group_col = 'kernel_name',
-        start_col = 'start_ns',
-        end_col = 'end_ns'
+        start_col = 'start_ts',
+        end_col = 'end_ts'
     ):
         """Computes advanced statistics for a specified group column.
 
@@ -63,6 +65,8 @@ class KernelAnalyzer:
         Raises:
             ValueError: If required columns are missing from the DataFrame.
         """
+        if df is None:
+            df = self.df 
         # Check if the required columns exist
         required_cols = {group_col, start_col, end_col}
         missing = required_cols - set(df.columns)
@@ -110,9 +114,9 @@ class KernelAnalyzer:
             'med': 'med [us]',
             'min': 'min [us]',
             'max': 'max [us]',
-            'stddev': 'stddev [us]',
-            'q1': 'q1',
-            'q3': 'q3'
+            'stddev': 'stddev [ns]',
+            'q1': 'q1 [ns]',
+            'q3': 'q3 [ns]'
         }
 
         # apply the renaming
@@ -128,77 +132,134 @@ class KernelAnalyzer:
             'med [us]',
             'min [us]', 
             'max [us]', 
-            'stddev [us]', 
-            'q1', 
-            'q3'
+            'stddev [ns]', 
+            'q1 [ns]', 
+            'q3 [ns]',
         ]
         return grouped[ordered_cols]
+    
+    
+class MemoryCopyAnalyzer:
+    """Analyzes memory copy operations (H2D, D2H, D2D) from a CSV trace.
 
-class ApiAnalyzer:
-    """Analyzes HIP/HSA API call data."""
+    This class provides methods to:
+      - Load trace data into a pandas DataFrame.
+      - Filter data by copy direction.
+      - Calculate copy durations.
+      - Plot histograms for HOST_TO_DEVICE and DEVICE_TO_HOST durations.
+      - Plot a pie chart showing total duration distribution by copy direction.
+    """
 
-    def __init__(self, df, api_column='api_name'):
-        """Initializes ApiAnalyzer.
-
-        Args:
-            df (pd.DataFrame): DataFrame containing API-level data.
-            api_column (str): Column name that contains the API name (e.g. 'api_name').
-        """
-        self.df = df.copy()
-        self.api_column = api_column
-        required_cols = {self.api_column, 'duration_ms'}
-        missing = required_cols - set(self.df.columns)
-        if missing:
-            raise ValueError(f"DataFrame is missing required columns: {missing}")
-        self.agg_df = None
-
-    def compute_statistics(self):
-        """Computes aggregated statistics (total, average, count) for each API.
-
-        Returns:
-            pd.DataFrame: Aggregated DataFrame with columns:
-                          [api_column, 'total_duration_ms', 'avg_duration_ms', 'count'].
-        """
-        self.agg_df = self.df.groupby(self.api_column, as_index=False).agg(
-            total_duration_ms=('duration_ms', 'sum'),
-            avg_duration_ms=('duration_ms', 'mean'),
-            count=('duration_ms', 'count')
-        )
-        self.agg_df.sort_values('total_duration_ms', ascending=False, inplace=True)
-        return self.agg_df
-
-
-class MemcpyAnalyzer:
-    """Analyzes Memcpy events such as H2D, D2H, D2D."""
-
-    def __init__(self, df, memcpy_column='memcpy_type'):
-        """Initializes MemcpyAnalyzer.
+    def __init__(self, file_path: str):
+        """Initializes the MemoryCopyAnalyzer with a path to the CSV trace file.
 
         Args:
-            df (pd.DataFrame): DataFrame with Memcpy events data.
-            memcpy_column (str): Column name that indicates the memcpy type (e.g. 'memcpy_type').
+            file_path: The file path to the CSV trace data.
         """
-        self.df = df.copy()
-        self.memcpy_column = memcpy_column
-        required_cols = {self.memcpy_column, 'duration_ms'}
-        missing = required_cols - set(self.df.columns)
-        if missing:
-            raise ValueError(f"DataFrame is missing required columns: {missing}")
-        # We assume possible values are 'H2D', 'D2H', 'D2D', but it could vary.
-        # The user can filter or group by these.
-        self.agg_df = None
+        self.file_path = file_path
+        self.data = None
+        self.host_to_device = None
+        self.device_to_host = None
 
-    def compute_statistics(self):
-        """Computes aggregated statistics (total, average, count) by memcpy_type.
+    def load_data(self) -> None:
+        """Loads the CSV data into a pandas DataFrame.
 
-        Returns:
-            pd.DataFrame: Aggregated DataFrame with columns:
-                          [memcpy_column, 'total_duration_ms', 'avg_duration_ms', 'count'].
+        Raises:
+            FileNotFoundError: If the specified file_path cannot be found.
+            pd.errors.EmptyDataError: If the CSV file is empty.
         """
-        self.agg_df = self.df.groupby(self.memcpy_column, as_index=False).agg(
-            total_duration_ms=('duration_ms', 'sum'),
-            avg_duration_ms=('duration_ms', 'mean'),
-            count=('duration_ms', 'count')
+        self.data = pd.read_csv(self.file_path)
+
+    def filter_data(self) -> None:
+        """Filters the DataFrame into separate subsets for H2D and D2H.
+
+        Assumes the `Direction` column contains values:
+          - 'MEMORY_COPY_HOST_TO_DEVICE'
+          - 'MEMORY_COPY_DEVICE_TO_HOST'
+          - (Optional) 'MEMORY_COPY_DEVICE_TO_DEVICE' if present.
+        """
+        self.host_to_device = self.data[self.data['Direction'] == 'MEMORY_COPY_HOST_TO_DEVICE']
+        self.device_to_host = self.data[self.data['Direction'] == 'MEMORY_COPY_DEVICE_TO_HOST']
+        self.device_to_device = self.data[self.data['Direction'] == 'MEMORY_COPY_DEVICE_TO_DEVICE']
+
+    def calculate_duration(self) -> None:
+        """Calculates the duration of each memory copy operation in-place.
+
+        Duration is computed as:
+            duration = End_Timestamp - Start_Timestamp (in nanoseconds).
+
+        Raises:
+            KeyError: If 'End_Timestamp' or 'Start_Timestamp' columns are missing.
+        """
+        # Calculate for HOST_TO_DEVICE
+        self.host_to_device['Duration'] = (
+            self.host_to_device['End_Timestamp'] - self.host_to_device['Start_Timestamp']
         )
-        self.agg_df.sort_values('total_duration_ms', ascending=False, inplace=True)
-        return self.agg_df
+        # Calculate for DEVICE_TO_HOST
+        self.device_to_host['Duration'] = (
+            self.device_to_host['End_Timestamp'] - self.device_to_host['Start_Timestamp']
+        )
+
+    def plot_distribution(self, nbins: int = 50) -> None:
+        """Plots histograms of memory copy durations for H2D and D2H.
+
+        Args:
+            nbins: Number of bins to use in each histogram.
+        """
+        # Histogram for HOST_TO_DEVICE
+        fig_h2d = px.histogram(
+            self.host_to_device,
+            x='Duration',
+            title='Distribution of MEMORY_COPY_HOST_TO_DEVICE Durations',
+            labels={'Duration': 'Duration (ns)'},
+            nbins=nbins
+        )
+        fig_h2d.show()
+
+        # Histogram for DEVICE_TO_HOST
+        fig_d2h = px.histogram(
+            self.device_to_host,
+            x='Duration',
+            title='Distribution of MEMORY_COPY_DEVICE_TO_HOST Durations',
+            labels={'Duration': 'Duration (ns)'},
+            nbins=nbins
+        )
+        fig_d2h.show()
+
+    def plot_direction_pie(self) -> None:
+        """Plots a pie chart showing total duration distribution by copy direction.
+
+        This aggregates the DataFrame over 'Direction' by summing Duration.
+        Assumes each row's duration has been calculated (via `calculate_duration()`).
+        """
+        # Merge both subsets back, or just use the entire data if you computed duration for all
+        # For demonstration, let's temporarily combine the two DataFrames:
+        combined = pd.concat([self.host_to_device, self.device_to_host], ignore_index=True)
+        # If you have a self.device_to_device, you can include it here as well.
+
+        # Sum duration by direction
+        direction_agg = combined.groupby('Direction', as_index=False)['Duration'].sum()
+
+        fig = px.pie(
+            direction_agg,
+            names='Direction',
+            values='Duration',
+            title='Total Memory Copy Duration by Direction'
+        )
+        fig.show()
+
+    def analyze(self) -> None:
+        """Runs the full analysis pipeline: Load, filter, compute durations, plot.
+
+        This function:
+          1. Loads data from CSV.
+          2. Separates H2D and D2H memory copies.
+          3. Calculates durations for each.
+          4. Plots their histograms.
+          5. Plots a pie chart of directions (H2D, D2H, optionally D2D).
+        """
+        self.load_data()
+        self.filter_data()
+        self.calculate_duration()
+        self.plot_distribution()
+        self.plot_direction_pie()

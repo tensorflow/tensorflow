@@ -27,11 +27,11 @@ class RocprofLoader:
         },
         'v3': {
             'Kernel_Name': 'kernel_name',
-            'Start_Timestamp': 'start_ns',
-            'End_Timestamp': 'end_ns',
-            'Private_Segment_Size': 'local_memory',
-            'Group_Segment_Size': 'lds',
-            'DurationNs': 'duration_ns'
+            'Start_Timestamp': 'start_ts',
+            'End_Timestamp': 'end_ts',
+            'Private_Segment_Size': 'Private_Segment_Size',
+            'Group_Segment_Size': 'Group_Segment_Size',
+            'DurationNs': 'duration_us'
         },
         # If you have more versions, add them here
     }
@@ -66,12 +66,12 @@ class RocprofLoader:
 
         # Ensure duration_ns is present; if not, try to compute it
         if 'duration_ns' not in self.df.columns:
-            if 'start_ns' in self.df.columns and 'end_ns' in self.df.columns:
-                self.df['duration_ns'] = self.df['end_ns'] - self.df['start_ns']
+            if 'start_ts' in self.df.columns and 'end_ts' in self.df.columns:
+                self.df['duration_ns'] = self.df['end_ts'] - self.df['start_ts']
             else:
                 raise ValueError("Cannot compute duration_ns (missing start_ns or end_ns).")
 
         # Convert to ms for convenience
-        self.df['duration_ms'] = self.df['duration_ns'] / 1000.0
+        self.df['duration_us'] = self.df['duration_ns'] / 1000.0
 
         return self.df
