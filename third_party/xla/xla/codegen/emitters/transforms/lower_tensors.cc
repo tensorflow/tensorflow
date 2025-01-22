@@ -909,8 +909,10 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       return failure();
     }
 
-    // TODO(389862360): Currently vectorized AtomicRMWOp lowers incorrectly to
-    // PTX due to a bug in NVPTX. We use inline asm to work around this.
+    // TODO(https://github.com/llvm/llvm-project/issues/122760): Switch to
+    // AtomicRMWOp once the bug is fixed. Currently vectorized AtomicRMWOp
+    // lowers incorrectly to PTX due to a bug in NVPTX.  We use inline asm to
+    // work around this.
     auto asmDialectAttr =
         ml::AsmDialectAttr::get(b.getContext(), ml::AsmDialect::AD_ATT);
     std::string asm_string;
