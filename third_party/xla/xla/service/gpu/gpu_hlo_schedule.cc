@@ -50,12 +50,14 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
 #include "xla/service/gpu/model/sol_latency_estimator.h"
 #include "xla/service/gpu/transforms/pgle_accuracy_checker.h"
 #include "xla/service/gpu/transforms/schedule_postprocessing.h"
 #include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
 #include "xla/service/latency_hiding_scheduler.h"
+#include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/service/p2p_schedule_preparation.h"
 #include "xla/service/profile_guided_latency_estimator.h"
 #include "xla/shape.h"
@@ -515,6 +517,26 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
 absl::Status RunLatencyHidingSchedulerPasses(
     HloModule* module, int pointer_size, absl::string_view fingerprint,
     int64_t memory_limit, const se::DeviceDescription& gpu_device_info) {
+  HloPassPipeline pipeline("latency-hiding-scheduler");
+
+  // For now, only allow cublas gemm custom calls and triton gemm fusions to be
+  // overlapped as the compute ops in the annotated scheduling groups.
+  LegalizeSchedulingAnnotations::Config annotation_config;
+  annotation_config.keep_sync_annotation = [](const HloInstruction* hlo) {
+    if (hlo->IsCustomCall("__cublas$gemm")) {
+      return true;
+    }
+    if (hlo->opcode() == HloOpcode::kFusion && hlo->has_backend_config() &&
+        hlo->backend_config<GpuBackendConfig>().ok()) {
+      GpuBackendConfig gpu_config =
+          hlo->backend_config<GpuBackendConfig>().value();
+      return gpu_config.has_fusion_backend_config() &&
+             gpu_config.fusion_backend_config().kind() == kTritonGemmFusionKind;
+    }
+    return false;
+  };
+  pipeline.AddPass<LegalizeSchedulingAnnotations>(annotation_config);
+
   SchedulerConfig config = GetSchedulerConfig(
       memory_limit,
       module->config()
@@ -527,7 +549,6 @@ absl::Status RunLatencyHidingSchedulerPasses(
 
   auto async_tracker = std::make_unique<GpuAsyncTracker>(config);
 
-  HloPassPipeline pipeline("latency-hiding-scheduler");
   std::unique_ptr<LatencyEstimator> latency_estimator = GetLatencyEstimator(
       *module, pointer_size, gpu_device_info, fingerprint, config, pipeline);
 
