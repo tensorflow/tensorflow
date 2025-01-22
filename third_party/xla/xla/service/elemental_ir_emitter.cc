@@ -4123,7 +4123,11 @@ llvm::Value* ElementalIrEmitter::EmitMulAdd(llvm::Value* lhs, llvm::Value* rhs,
     return InsertValue(next_accumulator,
                        FAdd(EmitExtractImag(accumulator), product_imag), {1});
   } else if (primitive_util::IsFloatingPointType(primitive_type)) {
-    return FAdd(accumulator, FPCast(FMul(lhs, rhs), accumulator->getType()));
+    llvm::FastMathFlags reassoc_flag = b_->getFastMathFlags();
+    reassoc_flag.setAllowReassoc(true);
+
+    llvm::Value* cast_mul = FPCast(FMul(lhs, rhs), accumulator->getType());
+    return b_->CreateFAddFMF(accumulator, cast_mul, reassoc_flag);
   } else if (primitive_type == PRED) {
     return Or(accumulator, And(lhs, rhs));
   }
