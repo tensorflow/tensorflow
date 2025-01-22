@@ -16,6 +16,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -99,6 +100,38 @@ TEST(ModelTest, SignatureDNE) {
   LiteRtModelT model;
   auto found_signature = model.FindSignature(kSignatureName);
   EXPECT_FALSE(found_signature);
+}
+
+TEST(ModelTest, AttachExternalBufferToOp) {
+  static constexpr absl::string_view kBufferData = "BUFFER_DATA";
+  static constexpr absl::string_view kOpName = "OP1";
+  static constexpr absl::string_view kOp2Name = "OP2";
+
+  LiteRtModelT model;
+  auto& subgraph = model.EmplaceSubgraph();
+  auto& op = subgraph.EmplaceOp();
+  auto& op2 = subgraph.EmplaceOp();
+
+  auto shared_buf = std::make_shared<OwningBufferRef<uint8_t>>(kBufferData);
+
+  model.AttachExternalBufferToOp(&op, {shared_buf, std::string(kOpName)});
+  model.AttachExternalBufferToOp(&op2, {shared_buf, std::string(kOp2Name)});
+
+  auto op_1_res = model.FindExternalBuffer(&op);
+  ASSERT_TRUE(op_1_res);
+  EXPECT_EQ(op_1_res->second, kOpName);
+  EXPECT_EQ(op_1_res->first.StrView(), kBufferData);
+
+  auto op_2_res = model.FindExternalBuffer(&op2);
+  ASSERT_TRUE(op_2_res);
+  EXPECT_EQ(op_2_res->second, kOp2Name);
+  EXPECT_EQ(op_2_res->first.StrView(), kBufferData);
+}
+
+TEST(ModelTest, ExternalBufferNotFound) {
+  LiteRtModelT model;
+  LiteRtOpT op;
+  ASSERT_FALSE(model.FindExternalBuffer(&op));
 }
 
 //

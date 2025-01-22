@@ -643,18 +643,18 @@ LiteRtSignatureT MakeDefaultSignature(LiteRtSubgraph subgraph);
 // Root-level graph object for litert programs. Manages the storage
 // of all litert graph objects within.
 class LiteRtModelT {
- private:
-  using MetadataMap =
-      absl::flat_hash_map<std::string, litert::OwningBufferRef<uint8_t>>;
-  using ExternalBufferReference = std::pair<LiteRtOp, std::string>;
-  using ExternalBufferMap =
-      absl::flat_hash_map<ExternalBufferReference,
-                          std::shared_ptr<litert::OwningBufferRef<uint8_t>>>;
-
  public:
   using Ref = std::reference_wrapper<LiteRtModelT>;
   using Ptr = std::unique_ptr<LiteRtModelT>;
   using TflOpCodes = std::vector<litert::internal::TflOpCodePtr>;
+  using MetadataMap =
+      absl::flat_hash_map<std::string, litert::OwningBufferRef<uint8_t>>;
+  using ExternalBuffer = std::shared_ptr<litert::OwningBufferRef<uint8_t>>;
+  using ExternalBufferReference = std::pair<ExternalBuffer, std::string>;
+  using ExternalBufferRefView =
+      std::pair<litert::BufferRef<uint8_t>, absl::string_view>;
+  using ExternalBufferMap =
+      absl::flat_hash_map<LiteRtOp, ExternalBufferReference>;
 
   // TODO replace this with the index of the default signature.
   static constexpr const size_t kMainSubgraphIndex = 0;
@@ -760,10 +760,17 @@ class LiteRtModelT {
   // serialization, the ops custom options will contain the offset and size of
   // the buffer relative to the start of the model file. External buffers are
   // added to the back of the model and not managed through flatbuffer api.
-  void AttachExternalBufferToOp(
-      LiteRtOp op, std::string name,
-      std::shared_ptr<litert::OwningBufferRef<uint8_t>> buf) {
-    appended_buffers_[std::make_pair(op, name)] = std::move(buf);
+  void AttachExternalBufferToOp(LiteRtOp op, ExternalBufferReference buf_ref) {
+    appended_buffers_[op] = std::move(buf_ref);
+  }
+
+  // Returns an immutable view of the external buffer and the name of the edge
+  // if the given op has one attached.
+  litert::Expected<ExternalBufferRefView> FindExternalBuffer(LiteRtOp op) {
+    if (auto it = appended_buffers_.find(op); it != appended_buffers_.end()) {
+      return ExternalBufferRefView(*it->second.first, it->second.second);
+    }
+    return ::litert::Error(kLiteRtStatusErrorNotFound);
   }
 
   // IR is generally, default constructible and movable but not copyable.
