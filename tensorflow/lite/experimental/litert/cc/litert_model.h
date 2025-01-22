@@ -438,7 +438,7 @@ class Model : public internal::Handle<LiteRtModel, LiteRtDestroyModel> {
     return litert::Subgraph(subgraph);
   }
 
-  Expected<class Subgraph> Subgraph(absl::string_view signature_key) {
+  Expected<class Subgraph> Subgraph(absl::string_view signature_key) const {
     auto signature = FindSignature(signature_key);
     if (!signature) {
       return Unexpected(kLiteRtStatusErrorNotFound, "Signature not found");
