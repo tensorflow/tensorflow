@@ -25,7 +25,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -43,8 +42,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/semantic_version.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
@@ -1744,12 +1742,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
-  auto device_description =
-      backend().default_stream_executor()->GetDeviceDescription();
-  bool is_rocm = std::holds_alternative<stream_executor::RocmComputeCapability>(
-      device_description.gpu_compute_capability());
-  if (is_rocm && device_description.runtime_version() ==
-                     stream_executor::SemanticVersion(5, 7, 0)) {
+  if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm5_7_0)) {
     GTEST_SKIP()
         << "This test fails on rocm-5.7.0 platform due to a compiler bug";
   }
