@@ -15,6 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_TEST_UTIL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_TEST_UTIL_H_
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"

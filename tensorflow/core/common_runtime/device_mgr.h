@@ -16,14 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_
 
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/lib/core/arena.h"
 #include "tensorflow/core/lib/core/status.h"
