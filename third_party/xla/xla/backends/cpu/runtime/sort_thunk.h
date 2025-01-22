@@ -62,7 +62,7 @@ class SortThunk final : public Thunk {
 
   BufferUses buffer_uses() const final;
 
-  std::optional<SortDirection> direction() const { return direction_; }
+  SortDirection direction() const { return direction_.value(); }
   int64_t dimension() const { return dimension_; }
   bool is_stable() const { return is_stable_; }
   const std::vector<Input>& inputs() const { return inputs_; }
