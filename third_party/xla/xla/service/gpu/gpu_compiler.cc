@@ -647,7 +647,7 @@ absl::Status RunOptimizationPasses(
     const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
         &gpu_target_config.device_description.gpu_compute_capability());
     if (cuda_cc != nullptr &&
-        !cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+        !cuda_cc->IsAtLeast(se::CudaComputeCapability::kVolta)) {
       return true;
     }
     return !gpu::IsMatrixMultiplication(*instr);
@@ -1505,13 +1505,13 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<DotNormalizer>();
     if (debug_options.xla_gpu_enable_triton_gemm() &&
         ((cuda_cc != nullptr &&
-          cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
+          cuda_cc->IsAtLeast(se::CudaComputeCapability::kAmpere)) ||
          rocm_cc != nullptr)) {
       pipeline.AddPass<GemvRewriter>();
       pipeline.AddPass<GemmFusion>(gpu_version);
       pipeline.AddPass<GemmFusionSwapOperands>();
     } else if (cuda_cc != nullptr &&
-               cuda_cc->major == se::CudaComputeCapability::VOLTA) {
+               cuda_cc->major == se::CudaComputeCapability::kVolta) {
       // Greedy pattern matching for custom kernel fusions.
       pipeline.AddPass<SimplifyFPConversions>();
       pipeline.AddPass<CustomKernelFusionRewriter>(
@@ -1545,7 +1545,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
     if ((cuda_cc != nullptr &&
-         cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
+         cuda_cc->IsAtLeast(se::CudaComputeCapability::kAmpere)) ||
         rocm_cc != nullptr) {
       pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(simplifier_options,
                                                            gpu_version);

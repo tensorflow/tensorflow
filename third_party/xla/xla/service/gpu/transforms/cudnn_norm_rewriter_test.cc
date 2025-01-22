@@ -52,9 +52,9 @@ class CudnnNormRewriterTest : public GpuCodegenTest {
     GTEST_SKIP() << "Layer norm kernels require CUDA 12 and cuDNN 8.9.5.";
 #endif
     if (!(GetCudaComputeCapability().major ==
-          se::CudaComputeCapability::AMPERE) &&
+          se::CudaComputeCapability::kAmpere) &&
         !(GetCudaComputeCapability().major ==
-          se::CudaComputeCapability::HOPPER)) {
+          se::CudaComputeCapability::kHopper)) {
       GTEST_SKIP()
           << "Layer norm kernels require Ampere or Hopper architectures.";
     }

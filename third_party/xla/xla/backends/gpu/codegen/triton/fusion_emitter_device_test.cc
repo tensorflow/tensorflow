@@ -782,7 +782,7 @@ ENTRY entry {
 
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_fusion,
-                    se::CudaComputeCapability{se::CudaComputeCapability::VOLTA,
+                    se::CudaComputeCapability{se::CudaComputeCapability::kVolta,
                                               /*minor=*/0},
                     dev_info, BlockLevelParameters(), &llvm_module,
                     mlir_context),
@@ -826,8 +826,8 @@ ENTRY entry_computation {
   const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
 
-  auto compute_capability =
-      se::CudaComputeCapability{se::CudaComputeCapability::HOPPER, /*minor=*/0};
+  auto compute_capability = se::CudaComputeCapability{
+      se::CudaComputeCapability::kHopper, /*minor=*/0};
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo(compute_capability);
   llvm::LLVMContext llvm_ctx;
