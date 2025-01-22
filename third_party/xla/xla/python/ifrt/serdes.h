@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/serdes.pb.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {

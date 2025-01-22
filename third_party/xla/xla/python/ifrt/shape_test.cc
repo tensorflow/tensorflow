@@ -26,8 +26,8 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
 #include "xla/python/ifrt/shape.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {

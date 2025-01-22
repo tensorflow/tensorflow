@@ -31,9 +31,9 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
