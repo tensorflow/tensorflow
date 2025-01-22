@@ -1039,52 +1039,35 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
   }
   DimOrdersAndReqs dim_orders_and_requirements =
       std::move(std::get<DimOrdersAndReqs>(result_or_error));
-  int fusion_level =
-      hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
   // TODO(ROCm): Check fusion level for ROCm.
   if (transform_direction == TransformDirection::kOutputToInput) {
-    if (fusion_level < 2) {
-      if (hlo.opcode() == HloOpcode::kConvert) {
-        if (FusionDecision decision = IsConversionWorthFusing(hlo, gpu_version);
-            !decision) {
-          return decision;
-        }
-      } else if (hlo.IsElementwise() && hlo.opcode() != HloOpcode::kCopy) {
-        return FusionDecision::Forbid("Ignored elementwise operation");
-      }
-    } else {
-      // Exception for binary elementwise operations: in most cases these are
-      // not trivial to fuse because they increase DRAM traffic but if one
-      // of the inputs is for example a broadcast that can be fused too it
-      // becomes worth fusing. Look ahead and analyze operands here.
-      bool accepted = false;
-      if (hlo.IsElementwise() && hlo.operand_count() == 2) {
-        for (const HloInstruction* operand : hlo.operands()) {
-          if (operand->opcode() == HloOpcode::kBroadcast &&
-              (operand->operand(0)->opcode() == HloOpcode::kParameter ||
-               operand->operand(0)->opcode() == HloOpcode::kConstant) &&
-              std::holds_alternative<DimOrdersAndReqs>(
-                  GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
-                      *operand, TransformDirection::kOutputToInput,
-                      /*src_operand_index=*/std::nullopt,
-                      /*src_dim_order=*/
-                      dim_orders_and_requirements.dim_orders.at(operand),
-                      gpu_version, properties))) {
-            accepted = true;
-            break;
-          }
+    // Exception for binary elementwise operations: in most cases these are
+    // not trivial to fuse because they increase DRAM traffic but if one
+    // of the inputs is for example a broadcast that can be fused too it
+    // becomes worth fusing. Look ahead and analyze operands here.
+    bool accepted = false;
+    if (hlo.IsElementwise() && hlo.operand_count() == 2) {
+      for (const HloInstruction* operand : hlo.operands()) {
+        if (operand->opcode() == HloOpcode::kBroadcast &&
+            (operand->operand(0)->opcode() == HloOpcode::kParameter ||
+             operand->operand(0)->opcode() == HloOpcode::kConstant) &&
+            std::holds_alternative<DimOrdersAndReqs>(
+                GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
+                    *operand, TransformDirection::kOutputToInput,
+                    /*src_operand_index=*/std::nullopt,
+                    /*src_dim_order=*/
+                    dim_orders_and_requirements.dim_orders.at(operand),
+                    gpu_version, properties))) {
+          accepted = true;
+          break;
         }
       }
-      if (!accepted && !IsInputWorthFusing(hlo)) {
-        return FusionDecision::Forbid(
-            "Not obviously profitable to fuse as input.");
-      }
+    }
+    if (!accepted && !IsInputWorthFusing(hlo)) {
+      return FusionDecision::Forbid(
+          "Not obviously profitable to fuse as input.");
     }
   } else {
-    if (fusion_level < 2) {
-      return FusionDecision::Forbid(
-          "Skipping fusing outputs at low fusion levels.");
-    }
     for (int i = 0; i < hlo.operand_count(); ++i) {
       const HloInstruction* operand = hlo.operand(i);
       // Skip source operand.

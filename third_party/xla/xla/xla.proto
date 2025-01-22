@@ -698,8 +698,6 @@ message DebugOptions {
   // Threshold to enable windowed einsum (collective matmul) in MB.
   int64 xla_gpu_threshold_for_windowed_einsum_mib = 265;
 
-  int32 xla_gpu_triton_fusion_level = 229;
-
   // Creates triton fusion for all supported gemms.
   // To make sure only triton gemm is chosen by the autotuner run with
   // `xla_gpu_cublas_fallback` set to false.
@@ -1153,8 +1151,9 @@ message DebugOptions {
   // xla_gpu_pgle_accuracy_checker
   // xla_gpu_enable_heuristic_pass_configuration
   // xla_gpu_enable_dot_strength_reduction
+  // xla_gpu_triton_fusion_level
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332, 361, 270;
+      325, 326, 332, 361, 270, 229;
 }
 
 // Contains flags which affects the GPU compilation result.
