@@ -37,7 +37,6 @@ cc_library(
     srcs = [
         "ahwb_buffer.cc",
         "dmabuf_buffer.cc",
-        "event.cc",
         "fastrpc_buffer.cc",
         "ion_buffer.cc",
         "open_cl_buffer.cc",
