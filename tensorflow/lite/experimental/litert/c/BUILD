@@ -1,3 +1,5 @@
+load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "litert_dynamic_lib")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -340,28 +342,44 @@ filegroup(
     visibility = ["//tensorflow/lite/experimental/litert/core/model:__pkg__"],
 )
 
+# Collection of all C API targets.
+LITERT_C_API_COMMON_DEPS = [
+    ":litert_accelerator",
+    ":litert_accelerator_registration",
+    ":litert_any",
+    ":litert_common",
+    ":litert_compiled_model",
+    ":litert_compiled_model_options",
+    ":litert_dispatch_delegate",
+    ":litert_event",
+    ":litert_layout",
+    ":litert_logging",
+    ":litert_model",
+    ":litert_op_code",
+    ":litert_options",
+    ":litert_tensor_buffer",
+]
+
 # This test verifies that the C API header files can build via C compiler.
 cc_test(
     name = "litert_c_api_common_test",
     srcs = ["litert_c_api_common_test.c"],
     copts = ["--std=c11"],
     linkopts = ["-ldl"],
-    deps = [
-        ":litert_accelerator",
-        ":litert_accelerator_registration",
-        ":litert_any",
-        ":litert_common",
-        ":litert_compiled_model",
-        ":litert_compiled_model_options",
-        ":litert_dispatch_delegate",
-        ":litert_event",
-        ":litert_layout",
-        ":litert_logging",
-        ":litert_model",
-        ":litert_op_code",
-        ":litert_options",
-        ":litert_tensor_buffer",
-    ],
+    deps = LITERT_C_API_COMMON_DEPS,
+)
+
+# Build `litert/c:litert_runtime_c_api_so` for `libLiteRtRuntimeCApi.so`.
+litert_dynamic_lib(
+    name = "litert_runtime_c_api",
+    export_litert_only = True,
+    linkopts = select({
+        "//tensorflow:android": ["-landroid"],
+        "//conditions:default": [],
+    }),
+    shared_lib_name = "litert_runtime_c_api_so",
+    so_name = "libLiteRtRuntimeCApi.so",
+    deps = LITERT_C_API_COMMON_DEPS,
 )
 
 exports_files(srcs = glob(["litert_*.h"]))
