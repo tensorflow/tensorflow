@@ -642,6 +642,7 @@ cc_library(
     name = "plugin_program",
     srcs = ["plugin_program.cc"],
     hdrs = ["plugin_program.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":ifrt",
         "@llvm-project//llvm:Support",
@@ -651,6 +652,7 @@ cc_library(
 cc_library(
     name = "plugin_program_serdes",
     srcs = ["plugin_program_serdes.cc"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":plugin_program",
         ":serdes",
