@@ -16,7 +16,6 @@
 
 #include <array>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -112,20 +111,22 @@ TEST(ModelTest, AttachExternalBufferToOp) {
   auto& op = subgraph.EmplaceOp();
   auto& op2 = subgraph.EmplaceOp();
 
-  auto shared_buf = std::make_shared<OwningBufferRef<uint8_t>>(kBufferData);
+  OwningBufferRef<uint8_t> external_buf(kBufferData);
 
-  model.AttachExternalBufferToOp(&op, {shared_buf, std::string(kOpName)});
-  model.AttachExternalBufferToOp(&op2, {shared_buf, std::string(kOp2Name)});
+  auto buf1_id = model.RegisterExternalBuffer(std::move(external_buf));
+
+  model.AttachExternalBufferToOp(&op, buf1_id, std::string(kOpName));
+  model.AttachExternalBufferToOp(&op2, buf1_id, std::string(kOp2Name));
 
   auto op_1_res = model.FindExternalBuffer(&op);
   ASSERT_TRUE(op_1_res);
   EXPECT_EQ(op_1_res->second, kOpName);
-  EXPECT_EQ(op_1_res->first.StrView(), kBufferData);
+  EXPECT_EQ(op_1_res->first, buf1_id);
 
   auto op_2_res = model.FindExternalBuffer(&op2);
   ASSERT_TRUE(op_2_res);
   EXPECT_EQ(op_2_res->second, kOp2Name);
-  EXPECT_EQ(op_2_res->first.StrView(), kBufferData);
+  EXPECT_EQ(op_2_res->first, buf1_id);
 }
 
 TEST(ModelTest, ExternalBufferNotFound) {

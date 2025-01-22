@@ -649,10 +649,9 @@ class LiteRtModelT {
   using TflOpCodes = std::vector<litert::internal::TflOpCodePtr>;
   using MetadataMap =
       absl::flat_hash_map<std::string, litert::OwningBufferRef<uint8_t>>;
-  using ExternalBuffer = std::shared_ptr<litert::OwningBufferRef<uint8_t>>;
-  using ExternalBufferReference = std::pair<ExternalBuffer, std::string>;
-  using ExternalBufferRefView =
-      std::pair<litert::BufferRef<uint8_t>, absl::string_view>;
+
+  using ExternalBufferId = uint32_t;
+  using ExternalBufferReference = std::pair<ExternalBufferId, std::string>;
   using ExternalBufferMap =
       absl::flat_hash_map<LiteRtOp, ExternalBufferReference>;
 
@@ -756,22 +755,44 @@ class LiteRtModelT {
     return signatures_.EmplaceBack(std::forward<Args>(args)...);
   }
 
-  // Attaches an external (non-tensor) buffer to the given op. Upon
+  // Register a new external buffer and get back an id.
+  ExternalBufferId RegisterExternalBuffer(
+      litert::OwningBufferRef<uint8_t>&& buffer) {
+    auto buffer_id = external_buffers_.size();
+    external_buffers_.push_back(std::move(buffer));
+    return buffer_id;
+  }
+
+  // Get a view of the external buffer at the given id.
+  litert::Expected<litert::BufferRef<uint8_t>> GetExternalBuffer(
+      ExternalBufferId id) {
+    if (id >= external_buffers_.size()) {
+      return ::litert::Error(kLiteRtStatusErrorIndexOOB);
+    }
+    return external_buffers_[id];
+  }
+
+  // Attach an external buffer to the given op. Upon
   // serialization, the ops custom options will contain the offset and size of
   // the buffer relative to the start of the model file. External buffers are
   // added to the back of the model and not managed through flatbuffer api.
-  void AttachExternalBufferToOp(LiteRtOp op, ExternalBufferReference buf_ref) {
-    appended_buffers_[op] = std::move(buf_ref);
+  void AttachExternalBufferToOp(LiteRtOp op, ExternalBufferId buf_id,
+                                std::string name) {
+    external_buffer_map_[op] = {buf_id, std::move(name)};
   }
 
   // Returns an immutable view of the external buffer and the name of the edge
   // if the given op has one attached.
-  litert::Expected<ExternalBufferRefView> FindExternalBuffer(LiteRtOp op) {
-    if (auto it = appended_buffers_.find(op); it != appended_buffers_.end()) {
-      return ExternalBufferRefView(*it->second.first, it->second.second);
+  litert::Expected<ExternalBufferReference> FindExternalBuffer(LiteRtOp op) {
+    if (auto it = external_buffer_map_.find(op);
+        it != external_buffer_map_.end()) {
+      return it->second;
     }
     return ::litert::Error(kLiteRtStatusErrorNotFound);
   }
+
+  // Number of external buffers. Ids will be 0 <-> num - 1.
+  size_t NumExternalBuffers() const { return external_buffers_.size(); }
 
   // IR is generally, default constructible and movable but not copyable.
   LiteRtModelT() = default;
@@ -800,7 +821,8 @@ class LiteRtModelT {
   LiteRtSignatureT::Alloc signatures_;
 
   MetadataMap metadata_;
-  ExternalBufferMap appended_buffers_;
+  std::vector<litert::OwningBufferRef<uint8_t>> external_buffers_;
+  ExternalBufferMap external_buffer_map_;
 
   // TFLITE
   TflOpCodes tfl_operator_codes_;
