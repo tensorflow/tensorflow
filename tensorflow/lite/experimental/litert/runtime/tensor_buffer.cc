@@ -139,7 +139,6 @@ LiteRtTensorBufferT::CreateManagedOnHostMemory(
       absl::MakeSpan(static_cast<uint8_t*>(host_memory_ptr), buffer_size),
       deallocator);
   if (!tensor_buffer) {
-    free(host_memory_ptr);
     return Unexpected(tensor_buffer.Error());
   }
 
