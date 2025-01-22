@@ -1,362 +1,163 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index f218a69..fb96878 100644
+index fb96878..65049c0 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,260 +1,49 @@
+@@ -1,49 +1,97 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.cpp b/clang/lib/CodeGen/CGDebugInfo.cpp
----- a/clang/lib/CodeGen/CGDebugInfo.cpp
--+++ b/clang/lib/CodeGen/CGDebugInfo.cpp
--@@ -2016,15 +2016,13 @@
--   // First element is always return type. For 'void' functions it is NULL.
--   Elts.push_back(Args[0]);
-- 
---  const bool HasExplicitObjectParameter = ThisPtr.isNull();
---
---  // "this" pointer is always first argument. For explicit "this"
---  // parameters, it will already be in Args[1].
---  if (!HasExplicitObjectParameter) {
--+  // "this" pointer is always first argument.
--+  // ThisPtr may be null if the member function has an explicit 'this'
--+  // parameter.
--+  if (!ThisPtr.isNull()) {
--     llvm::DIType *ThisPtrType = getOrCreateType(ThisPtr, Unit);
--     TypeCache[ThisPtr.getAsOpaquePtr()].reset(ThisPtrType);
---    ThisPtrType =
---        DBuilder.createObjectPointerType(ThisPtrType, /*Implicit=*/true);
--+    ThisPtrType = DBuilder.createObjectPointerType(ThisPtrType);
--     Elts.push_back(ThisPtrType);
--   }
-- 
--@@ -2032,13 +2030,6 @@
--   for (unsigned i = 1, e = Args.size(); i != e; ++i)
--     Elts.push_back(Args[i]);
-- 
---  // Attach FlagObjectPointer to the explicit "this" parameter.
---  if (HasExplicitObjectParameter) {
---    assert(Elts.size() >= 2 && Args.size() >= 2 &&
---           "Expected at least return type and object parameter.");
---    Elts[1] = DBuilder.createObjectPointerType(Args[1], /*Implicit=*/false);
---  }
---
--   llvm::DITypeRefArray EltTypeArray = DBuilder.getOrCreateTypeArray(Elts);
-- 
--   return DBuilder.createSubroutineType(EltTypeArray, OriginalFunc->getFlags(),
--@@ -5127,7 +5118,7 @@
--   llvm::DIType *CachedTy = getTypeOrNull(QualTy);
--   if (CachedTy)
--     Ty = CachedTy;
---  return DBuilder.createObjectPointerType(Ty, /*Implicit=*/true);
--+  return DBuilder.createObjectPointerType(Ty);
-- }
-- 
-- void CGDebugInfo::EmitDeclareOfBlockDeclRefVariable(
--diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/debug-info-object-pointer.cpp b/clang/test/CodeGenCXX/debug-info-object-pointer.cpp
----- a/clang/test/CodeGenCXX/debug-info-object-pointer.cpp
--+++ b/clang/test/CodeGenCXX/debug-info-object-pointer.cpp
--@@ -5,11 +5,12 @@
-- // CHECK: !DIDerivedType(tag: DW_TAG_pointer_type
-- // CHECK-SAME:           flags: DIFlagArtificial | DIFlagObjectPointer
-- //
--+// // FIXME: DIFlagObjectPointer not attached to the explicit object
--+// // argument in the subprogram declaration.
-- // CHECK: !DISubprogram(name: "explicit_this",
-- //                      flags: DIFlagPrototyped
---//
---// CHECK: !DIDerivedType(tag: DW_TAG_rvalue_reference_type
---// CHECK-SAME:           flags: DIFlagObjectPointer)
--+// CHECK-NOT: DIFlagObjectPointer
--+// CHECK-NOT: DIFlagArtificial
-- //
-- // CHECK: !DILocalVariable(name: "this", arg: 1
-- // CHECK-SAME:             flags: DIFlagArtificial | DIFlagObjectPointer
--diff -ruN --strip-trailing-cr a/llvm/include/llvm/IR/DIBuilder.h b/llvm/include/llvm/IR/DIBuilder.h
----- a/llvm/include/llvm/IR/DIBuilder.h
--+++ b/llvm/include/llvm/IR/DIBuilder.h
--@@ -662,9 +662,9 @@
--     /// Create a uniqued clone of \p Ty with FlagArtificial set.
--     static DIType *createArtificialType(DIType *Ty);
-- 
---    /// Create a uniqued clone of \p Ty with FlagObjectPointer set.
---    /// If \p Implicit is true, also set FlagArtificial.
---    static DIType *createObjectPointerType(DIType *Ty, bool Implicit);
--+    /// Create a uniqued clone of \p Ty with FlagObjectPointer and
--+    /// FlagArtificial set.
--+    static DIType *createObjectPointerType(DIType *Ty);
-- 
--     /// Create a permanent forward-declared type.
--     DICompositeType *createForwardDecl(unsigned Tag, StringRef Name,
--diff -ruN --strip-trailing-cr a/llvm/include/llvm-c/DebugInfo.h b/llvm/include/llvm-c/DebugInfo.h
----- a/llvm/include/llvm-c/DebugInfo.h
--+++ b/llvm/include/llvm-c/DebugInfo.h
--@@ -870,16 +870,13 @@
--                                 LLVMMetadataRef Ty);
-- 
-- /**
--- * Create a uniqued DIType* clone with FlagObjectPointer. If \c Implicit
--- * is true, then also set FlagArtificial.
--+ * Create a uniqued DIType* clone with FlagObjectPointer and FlagArtificial set.
--  * \param Builder   The DIBuilder.
--  * \param Type      The underlying type to which this pointer points.
--- * \param Implicit  Indicates whether this pointer was implicitly generated
--- *                  (i.e., not spelled out in source).
--  */
---LLVMMetadataRef LLVMDIBuilderCreateObjectPointerType(LLVMDIBuilderRef Builder,
---                                                     LLVMMetadataRef Type,
---                                                     LLVMBool Implicit);
--+LLVMMetadataRef
--+LLVMDIBuilderCreateObjectPointerType(LLVMDIBuilderRef Builder,
--+                                     LLVMMetadataRef Type);
-- 
-- /**
--  * Create debugging information entry for a qualified
--diff -ruN --strip-trailing-cr a/llvm/lib/IR/DebugInfo.cpp b/llvm/lib/IR/DebugInfo.cpp
----- a/llvm/lib/IR/DebugInfo.cpp
--+++ b/llvm/lib/IR/DebugInfo.cpp
--@@ -1432,11 +1432,10 @@
--                   PropertyAttributes, unwrapDI<DIType>(Ty)));
-- }
-- 
---LLVMMetadataRef LLVMDIBuilderCreateObjectPointerType(LLVMDIBuilderRef Builder,
---                                                     LLVMMetadataRef Type,
---                                                     LLVMBool Implicit) {
---  return wrap(unwrap(Builder)->createObjectPointerType(unwrapDI<DIType>(Type),
---                                                       Implicit));
--+LLVMMetadataRef
--+LLVMDIBuilderCreateObjectPointerType(LLVMDIBuilderRef Builder,
--+                                     LLVMMetadataRef Type) {
--+  return wrap(unwrap(Builder)->createObjectPointerType(unwrapDI<DIType>(Type)));
-- }
-- 
-- LLVMMetadataRef
--diff -ruN --strip-trailing-cr a/llvm/lib/IR/DIBuilder.cpp b/llvm/lib/IR/DIBuilder.cpp
----- a/llvm/lib/IR/DIBuilder.cpp
--+++ b/llvm/lib/IR/DIBuilder.cpp
--@@ -644,15 +644,11 @@
--   return createTypeWithFlags(Ty, DINode::FlagArtificial);
-- }
-- 
---DIType *DIBuilder::createObjectPointerType(DIType *Ty, bool Implicit) {
--+DIType *DIBuilder::createObjectPointerType(DIType *Ty) {
--   // FIXME: Restrict this to the nodes where it's valid.
--   if (Ty->isObjectPointer())
--     return Ty;
---  DINode::DIFlags Flags = DINode::FlagObjectPointer;
---
---  if (Implicit)
---    Flags |= DINode::FlagArtificial;
---
--+  DINode::DIFlags Flags = DINode::FlagObjectPointer | DINode::FlagArtificial;
--   return createTypeWithFlags(Ty, Flags);
-- }
-- 
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
----- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
--+++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
--@@ -4972,7 +4972,7 @@
--     // the subvector length.
--     const unsigned VecVF = getNumElements(Vec->getType());
--     SmallVector<int> Mask(VecVF, PoisonMaskElem);
---    std::iota(Mask.begin(), std::next(Mask.begin(), Index), 0);
--+    std::iota(Mask.begin(), Mask.end(), 0);
--     for (unsigned I : seq<unsigned>(SubVecVF))
--       Mask[I + Index] = I + VecVF;
--     if (Generator) {
--@@ -13976,11 +13976,12 @@
--     Instruction *InsElt;
--     if (auto *VecTy = dyn_cast<FixedVectorType>(Scalar->getType())) {
--       assert(SLPReVec && "FixedVectorType is not expected.");
---      Vec = InsElt = cast<Instruction>(createInsertVector(
---          Builder, Vec, Scalar, Pos * getNumElements(VecTy)));
---      auto *II = dyn_cast<IntrinsicInst>(InsElt);
--+      Vec =
--+          createInsertVector(Builder, Vec, Scalar, Pos * getNumElements(VecTy));
--+      auto *II = dyn_cast<IntrinsicInst>(Vec);
--       if (!II || II->getIntrinsicID() != Intrinsic::vector_insert)
--         return Vec;
--+      InsElt = II;
--     } else {
--       Vec = Builder.CreateInsertElement(Vec, Scalar, Builder.getInt32(Pos));
--       InsElt = dyn_cast<InsertElementInst>(Vec);
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/insert-subvector.ll b/llvm/test/Transforms/SLPVectorizer/X86/insert-subvector.ll
----- a/llvm/test/Transforms/SLPVectorizer/X86/insert-subvector.ll
--+++ b/llvm/test/Transforms/SLPVectorizer/X86/insert-subvector.ll
--@@ -0,0 +1,81 @@
--+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 3
--+; RUN: opt < %s -passes=slp-vectorizer -S -mtriple=x86_64-unknown-linux-gnu | FileCheck %s
--+
--+define <16 x double> @test(ptr %x, double %v, double %a) {
--+; CHECK-LABEL: define <16 x double> @test(
--+; CHECK-SAME: ptr [[X:%.*]], double [[V:%.*]], double [[A:%.*]]) {
--+; CHECK-NEXT:    [[GEP6:%.*]] = getelementptr inbounds double, ptr [[X]], i64 8
--+; CHECK-NEXT:    [[GEP8:%.*]] = getelementptr inbounds double, ptr [[X]], i64 9
--+; CHECK-NEXT:    [[TMP1:%.*]] = load <6 x double>, ptr [[X]], align 4
--+; CHECK-NEXT:    [[TMP6:%.*]] = load <2 x double>, ptr [[GEP6]], align 4
--+; CHECK-NEXT:    [[TMP7:%.*]] = load <2 x double>, ptr [[GEP8]], align 4
--+; CHECK-NEXT:    [[TMP4:%.*]] = insertelement <16 x double> poison, double [[A]], i32 0
--+; CHECK-NEXT:    [[TMP5:%.*]] = shufflevector <16 x double> [[TMP4]], <16 x double> poison, <16 x i32> zeroinitializer
--+; CHECK-NEXT:    [[TMP2:%.*]] = insertelement <4 x double> poison, double [[V]], i32 0
--+; CHECK-NEXT:    [[TMP3:%.*]] = shufflevector <4 x double> [[TMP2]], <4 x double> poison, <4 x i32> zeroinitializer
--+; CHECK-NEXT:    [[TMP8:%.*]] = insertelement <2 x double> poison, double [[V]], i32 0
--+; CHECK-NEXT:    [[TMP9:%.*]] = shufflevector <2 x double> [[TMP8]], <2 x double> poison, <2 x i32> zeroinitializer
--+; CHECK-NEXT:    [[TMP10:%.*]] = call <16 x double> @llvm.vector.insert.v16f64.v6f64(<16 x double> poison, <6 x double> [[TMP1]], i64 0)
--+; CHECK-NEXT:    [[TMP11:%.*]] = shufflevector <4 x double> [[TMP3]], <4 x double> poison, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
--+; CHECK-NEXT:    [[TMP12:%.*]] = shufflevector <16 x double> [[TMP10]], <16 x double> [[TMP11]], <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 16, i32 17, i32 18, i32 19, i32 14, i32 15>
--+; CHECK-NEXT:    [[TMP13:%.*]] = call <16 x double> @llvm.vector.insert.v16f64.v2f64(<16 x double> [[TMP12]], <2 x double> [[TMP6]], i64 6)
--+; CHECK-NEXT:    [[TMP14:%.*]] = call <16 x double> @llvm.vector.insert.v16f64.v2f64(<16 x double> [[TMP13]], <2 x double> [[TMP7]], i64 8)
--+; CHECK-NEXT:    [[TMP15:%.*]] = call <16 x double> @llvm.vector.insert.v16f64.v2f64(<16 x double> [[TMP14]], <2 x double> [[TMP9]], i64 10)
--+; CHECK-NEXT:    [[TMP16:%.*]] = call <16 x double> @llvm.vector.insert.v16f64.v2f64(<16 x double> [[TMP15]], <2 x double> [[TMP9]], i64 12)
--+; CHECK-NEXT:    [[TMP17:%.*]] = call <16 x double> @llvm.vector.insert.v16f64.v2f64(<16 x double> [[TMP16]], <2 x double> [[TMP9]], i64 14)
--+; CHECK-NEXT:    [[TMP18:%.*]] = fadd <16 x double> [[TMP5]], [[TMP17]]
--+; CHECK-NEXT:    ret <16 x double> [[TMP18]]
--+;
--+  %gep1 = getelementptr inbounds double, ptr %x, i64 1
--+  %gep2 = getelementptr inbounds double, ptr %x, i64 2
--+  %gep3 = getelementptr inbounds double, ptr %x, i64 3
--+  %gep4 = getelementptr inbounds double, ptr %x, i64 4
--+  %gep5 = getelementptr inbounds double, ptr %x, i64 5
--+  %gep6 = getelementptr inbounds double, ptr %x, i64 8
--+  %gep7 = getelementptr inbounds double, ptr %x, i64 9
--+  %gep8 = getelementptr inbounds double, ptr %x, i64 9
--+  %gep9 = getelementptr inbounds double, ptr %x, i64 10
--+  %x0 = load double, ptr %x, align 4
--+  %x1 = load double, ptr %gep1, align 4
--+  %x2 = load double, ptr %gep2, align 4
--+  %x3 = load double, ptr %gep3, align 4
--+  %x4 = load double, ptr %gep4, align 4
--+  %x5 = load double, ptr %gep5, align 4
--+  %x6 = load double, ptr %gep6, align 4
--+  %x7 = load double, ptr %gep7, align 4
--+  %x8 = load double, ptr %gep8, align 4
--+  %x9 = load double, ptr %gep9, align 4
--+  %add1 = fadd double %a, %x0
--+  %add2 = fadd double %a, %x1
--+  %add3 = fadd double %a, %x2
--+  %add4 = fadd double %a, %x3
--+  %add5 = fadd double %a, %x4
--+  %add6 = fadd double %a, %x5
--+  %add7 = fadd double %a, %x6
--+  %add8 = fadd double %a, %x7
--+  %add9 = fadd double %a, %x8
--+  %add10 = fadd double %a, %x9
--+  %add11 = fadd double %a, %v
--+  %add12 = fadd double %a, %v
--+  %add13 = fadd double %a, %v
--+  %add14 = fadd double %a, %v
--+  %add15 = fadd double %a, %v
--+  %add16 = fadd double %a, %v
--+  %i0 = insertelement <16 x double> poison, double %add1, i32 0
--+  %i1 = insertelement <16 x double> %i0, double %add2, i32 1
--+  %i2 = insertelement <16 x double> %i1, double %add3, i32 2
--+  %i3 = insertelement <16 x double> %i2, double %add4, i32 3
--+  %i4 = insertelement <16 x double> %i3, double %add5, i32 4
--+  %i5 = insertelement <16 x double> %i4, double %add6, i32 5
--+  %i6 = insertelement <16 x double> %i5, double %add7, i32 6
--+  %i7 = insertelement <16 x double> %i6, double %add8, i32 7
--+  %i8 = insertelement <16 x double> %i7, double %add9, i32 8
--+  %i9 = insertelement <16 x double> %i8, double %add10, i32 9
--+  %i10 = insertelement <16 x double> %i9, double %add11, i32 10
--+  %i11 = insertelement <16 x double> %i10, double %add12, i32 11
--+  %i12 = insertelement <16 x double> %i11, double %add13, i32 12
--+  %i13 = insertelement <16 x double> %i12, double %add14, i32 13
--+  %i14 = insertelement <16 x double> %i13, double %add15, i32 14
--+  %i15 = insertelement <16 x double> %i14, double %add16, i32 15
--+  ret <16 x double> %i15
--+}
-+diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/CommonTypeConstraints.td b/mlir/include/mlir/IR/CommonTypeConstraints.td
-+--- a/mlir/include/mlir/IR/CommonTypeConstraints.td
-++++ b/mlir/include/mlir/IR/CommonTypeConstraints.td
-+@@ -329,31 +329,31 @@
-+ def F80 : F<80>;
-+ def F128 : F<128>;
+-diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/CommonTypeConstraints.td b/mlir/include/mlir/IR/CommonTypeConstraints.td
+---- a/mlir/include/mlir/IR/CommonTypeConstraints.td
+-+++ b/mlir/include/mlir/IR/CommonTypeConstraints.td
+-@@ -329,31 +329,31 @@
+- def F80 : F<80>;
+- def F128 : F<128>;
++diff -ruN --strip-trailing-cr a/libcxx/include/__vector/vector_bool.h b/libcxx/include/__vector/vector_bool.h
++--- a/libcxx/include/__vector/vector_bool.h
+++++ b/libcxx/include/__vector/vector_bool.h
++@@ -859,11 +859,13 @@
+  
+--def BF16 : Type<CPred<"::llvm::isa<BFloat16Type>($_self)">, "bfloat16 type">,
+-+def BF16 : Type<CPred<"::llvm::isa<::mlir::BFloat16Type>($_self)">, "bfloat16 type">,
+-            BuildableType<"$_builder.getType<BFloat16Type>()">;
+--def TF32 : Type<CPred<"::llvm::isa<FloatTF32Type>($_self)">, "tf32 type">,
+-+def TF32 : Type<CPred<"::llvm::isa<::mlir::FloatTF32Type>($_self)">, "tf32 type">,
+-            BuildableType<"$_builder.getType<FloatTF32Type>()">;
+--def F8E4M3FN : Type<CPred<"::llvm::isa<Float8E4M3FNType>($_self)">, "f8E4M3FN type">,
+-+def F8E4M3FN : Type<CPred<"::llvm::isa<::mlir::Float8E4M3FNType>($_self)">, "f8E4M3FN type">,
+-                BuildableType<"$_builder.getType<Float8E4M3FNType>()">;
+--def F8E5M2 : Type<CPred<"::llvm::isa<Float8E5M2Type>($_self)">, "f8E5M2 type">,
+-+def F8E5M2 : Type<CPred<"::llvm::isa<::mlir::Float8E5M2Type>($_self)">, "f8E5M2 type">,
+-              BuildableType<"$_builder.getType<Float8E5M2Type>()">;
+--def F8E4M3 : Type<CPred<"::llvm::isa<Float8E4M3Type>($_self)">, "f8E4M3 type">,
+-+def F8E4M3 : Type<CPred<"::llvm::isa<::mlir::Float8E4M3Type>($_self)">, "f8E4M3 type">,
+-              BuildableType<"$_builder.getType<Float8E4M3Type>()">;
+--def F8E4M3FNUZ : Type<CPred<"::llvm::isa<Float8E4M3FNUZType>($_self)">, "f8E4M3FNUZ type">,
+-+def F8E4M3FNUZ : Type<CPred<"::llvm::isa<::mlir::Float8E4M3FNUZType>($_self)">, "f8E4M3FNUZ type">,
+-                  BuildableType<"$_builder.getType<Float8E4M3FNUZType>()">;
+--def F8E4M3B11FNUZ : Type<CPred<"::llvm::isa<Float8E4M3B11FNUZType>($_self)">, "f8E4M3B11FNUZ type">,
+-+def F8E4M3B11FNUZ : Type<CPred<"::llvm::isa<::mlir::Float8E4M3B11FNUZType>($_self)">, "f8E4M3B11FNUZ type">,
+-                  BuildableType<"$_builder.getType<Float8E4M3B11FNUZType>()">;
+--def F8E5M2FNUZ : Type<CPred<"::llvm::isa<Float8E5M2FNUZType>($_self)">, "f8E5M2FNUZ type">,
+-+def F8E5M2FNUZ : Type<CPred<"::llvm::isa<::mlir::Float8E5M2FNUZType>($_self)">, "f8E5M2FNUZ type">,
+-                  BuildableType<"$_builder.getType<Float8E5M2FNUZType>()">;
+--def F8E3M4 : Type<CPred<"::llvm::isa<Float8E3M4Type>($_self)">, "f8E3M4 type">,
+-+def F8E3M4 : Type<CPred<"::llvm::isa<::mlir::Float8E3M4Type>($_self)">, "f8E3M4 type">,
+-              BuildableType<"$_builder.getType<Float8E3M4Type>()">;
+--def F4E2M1FN : Type<CPred<"::llvm::isa<Float4E2M1FNType>($_self)">, "f4E2M1FN type">,
+-+def F4E2M1FN : Type<CPred<"::llvm::isa<::mlir::Float4E2M1FNType>($_self)">, "f4E2M1FN type">,
+-                BuildableType<"$_builder.getType<Float4E2M1FNType>()">;
+--def F6E2M3FN : Type<CPred<"::llvm::isa<Float6E2M3FNType>($_self)">, "f6E2M3FN type">,
+-+def F6E2M3FN : Type<CPred<"::llvm::isa<::mlir::Float6E2M3FNType>($_self)">, "f6E2M3FN type">,
+-                BuildableType<"$_builder.getType<Float6E2M3FNType>()">;
+--def F6E3M2FN : Type<CPred<"::llvm::isa<Float6E3M2FNType($_self)">, "f6E3M2FN type">,
+-+def F6E3M2FN : Type<CPred<"::llvm::isa<::mlir::Float6E3M2FNType>($_self)">, "f6E3M2FN type">,
+-                BuildableType<"$_builder.getType<Float6E3M2FNType>()">;
+--def F8E8M0FNU : Type<CPred<"::llvm::isa<Float8E8M0FNUType>($_self)">, "f8E8M0FNU type">,
+-+def F8E8M0FNU : Type<CPred<"::llvm::isa<::mlir::Float8E8M0FNUType>($_self)">, "f8E8M0FNU type">,
+-                 BuildableType<"$_builder.getType<Float8E8M0FNUType>()">;
++ template <class _Allocator>
++ _LIBCPP_CONSTEXPR_SINCE_CXX20 void vector<bool, _Allocator>::shrink_to_fit() _NOEXCEPT {
++-  if (__external_cap_to_internal(size()) > __cap_) {
+++  if (__external_cap_to_internal(size()) < __cap_) {
++ #if _LIBCPP_HAS_EXCEPTIONS
++     try {
++ #endif // _LIBCPP_HAS_EXCEPTIONS
++-      vector(*this, allocator_type(__alloc_)).swap(*this);
+++      vector __v(*this, allocator_type(__alloc_));
+++      if (__v.__cap_ < __cap_)
+++        __v.swap(*this);
++ #if _LIBCPP_HAS_EXCEPTIONS
++     } catch (...) {
++     }
++diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/sequences/vector.bool/shrink_to_fit.pass.cpp b/libcxx/test/std/containers/sequences/vector.bool/shrink_to_fit.pass.cpp
++--- a/libcxx/test/std/containers/sequences/vector.bool/shrink_to_fit.pass.cpp
+++++ b/libcxx/test/std/containers/sequences/vector.bool/shrink_to_fit.pass.cpp
++@@ -11,7 +11,10 @@
 + 
-+-def BF16 : Type<CPred<"::llvm::isa<BFloat16Type>($_self)">, "bfloat16 type">,
-++def BF16 : Type<CPred<"::llvm::isa<::mlir::BFloat16Type>($_self)">, "bfloat16 type">,
-+            BuildableType<"$_builder.getType<BFloat16Type>()">;
-+-def TF32 : Type<CPred<"::llvm::isa<FloatTF32Type>($_self)">, "tf32 type">,
-++def TF32 : Type<CPred<"::llvm::isa<::mlir::FloatTF32Type>($_self)">, "tf32 type">,
-+            BuildableType<"$_builder.getType<FloatTF32Type>()">;
-+-def F8E4M3FN : Type<CPred<"::llvm::isa<Float8E4M3FNType>($_self)">, "f8E4M3FN type">,
-++def F8E4M3FN : Type<CPred<"::llvm::isa<::mlir::Float8E4M3FNType>($_self)">, "f8E4M3FN type">,
-+                BuildableType<"$_builder.getType<Float8E4M3FNType>()">;
-+-def F8E5M2 : Type<CPred<"::llvm::isa<Float8E5M2Type>($_self)">, "f8E5M2 type">,
-++def F8E5M2 : Type<CPred<"::llvm::isa<::mlir::Float8E5M2Type>($_self)">, "f8E5M2 type">,
-+              BuildableType<"$_builder.getType<Float8E5M2Type>()">;
-+-def F8E4M3 : Type<CPred<"::llvm::isa<Float8E4M3Type>($_self)">, "f8E4M3 type">,
-++def F8E4M3 : Type<CPred<"::llvm::isa<::mlir::Float8E4M3Type>($_self)">, "f8E4M3 type">,
-+              BuildableType<"$_builder.getType<Float8E4M3Type>()">;
-+-def F8E4M3FNUZ : Type<CPred<"::llvm::isa<Float8E4M3FNUZType>($_self)">, "f8E4M3FNUZ type">,
-++def F8E4M3FNUZ : Type<CPred<"::llvm::isa<::mlir::Float8E4M3FNUZType>($_self)">, "f8E4M3FNUZ type">,
-+                  BuildableType<"$_builder.getType<Float8E4M3FNUZType>()">;
-+-def F8E4M3B11FNUZ : Type<CPred<"::llvm::isa<Float8E4M3B11FNUZType>($_self)">, "f8E4M3B11FNUZ type">,
-++def F8E4M3B11FNUZ : Type<CPred<"::llvm::isa<::mlir::Float8E4M3B11FNUZType>($_self)">, "f8E4M3B11FNUZ type">,
-+                  BuildableType<"$_builder.getType<Float8E4M3B11FNUZType>()">;
-+-def F8E5M2FNUZ : Type<CPred<"::llvm::isa<Float8E5M2FNUZType>($_self)">, "f8E5M2FNUZ type">,
-++def F8E5M2FNUZ : Type<CPred<"::llvm::isa<::mlir::Float8E5M2FNUZType>($_self)">, "f8E5M2FNUZ type">,
-+                  BuildableType<"$_builder.getType<Float8E5M2FNUZType>()">;
-+-def F8E3M4 : Type<CPred<"::llvm::isa<Float8E3M4Type>($_self)">, "f8E3M4 type">,
-++def F8E3M4 : Type<CPred<"::llvm::isa<::mlir::Float8E3M4Type>($_self)">, "f8E3M4 type">,
-+              BuildableType<"$_builder.getType<Float8E3M4Type>()">;
-+-def F4E2M1FN : Type<CPred<"::llvm::isa<Float4E2M1FNType>($_self)">, "f4E2M1FN type">,
-++def F4E2M1FN : Type<CPred<"::llvm::isa<::mlir::Float4E2M1FNType>($_self)">, "f4E2M1FN type">,
-+                BuildableType<"$_builder.getType<Float4E2M1FNType>()">;
-+-def F6E2M3FN : Type<CPred<"::llvm::isa<Float6E2M3FNType>($_self)">, "f6E2M3FN type">,
-++def F6E2M3FN : Type<CPred<"::llvm::isa<::mlir::Float6E2M3FNType>($_self)">, "f6E2M3FN type">,
-+                BuildableType<"$_builder.getType<Float6E2M3FNType>()">;
-+-def F6E3M2FN : Type<CPred<"::llvm::isa<Float6E3M2FNType($_self)">, "f6E3M2FN type">,
-++def F6E3M2FN : Type<CPred<"::llvm::isa<::mlir::Float6E3M2FNType>($_self)">, "f6E3M2FN type">,
-+                BuildableType<"$_builder.getType<Float6E3M2FNType>()">;
-+-def F8E8M0FNU : Type<CPred<"::llvm::isa<Float8E8M0FNUType>($_self)">, "f8E8M0FNU type">,
-++def F8E8M0FNU : Type<CPred<"::llvm::isa<::mlir::Float8E8M0FNUType>($_self)">, "f8E8M0FNU type">,
-+                 BuildableType<"$_builder.getType<Float8E8M0FNUType>()">;
++ // void shrink_to_fit();
 + 
-+ def AnyComplex : Type<CPred<"::llvm::isa<::mlir::ComplexType>($_self)">,
+++// XFAIL: FROZEN-CXX03-HEADERS-FIXME
+++
++ #include <cassert>
+++#include <climits>
++ #include <vector>
++ 
++ #include "increasing_allocator.h"
++@@ -20,19 +23,56 @@
++ 
++ TEST_CONSTEXPR_CXX20 bool tests() {
++   {
++-    std::vector<bool> v(100);
+++    using C = std::vector<bool>;
+++    C v(100);
++     v.push_back(1);
+++    C::size_type before_cap = v.capacity();
+++    v.clear();
++     v.shrink_to_fit();
++-    assert(v.capacity() >= 101);
++-    assert(v.size() >= 101);
+++    assert(v.capacity() <= before_cap);
+++    LIBCPP_ASSERT(v.capacity() == 0); // libc++ honors the shrink_to_fit request as a QOI matter
+++    assert(v.size() == 0);
++   }
++-#if TEST_STD_VER >= 11
++   {
++-    std::vector<bool, min_allocator<bool>> v(100);
+++    using C = std::vector<bool, min_allocator<bool> >;
+++    C v(100);
++     v.push_back(1);
+++    C::size_type before_cap = v.capacity();
++     v.shrink_to_fit();
++     assert(v.capacity() >= 101);
++-    assert(v.size() >= 101);
+++    assert(v.capacity() <= before_cap);
+++    assert(v.size() == 101);
+++    v.erase(v.begin() + 1, v.end());
+++    v.shrink_to_fit();
+++    assert(v.capacity() <= before_cap);
+++    LIBCPP_ASSERT(v.capacity() == C(1).capacity()); // libc++ honors the shrink_to_fit request as a QOI matter.
+++    assert(v.size() == 1);
+++  }
+++
+++#if defined(_LIBCPP_VERSION)
+++  {
+++    using C                = std::vector<bool>;
+++    unsigned bits_per_word = static_cast<unsigned>(sizeof(C::__storage_type) * CHAR_BIT);
+++    C v(bits_per_word);
+++    v.push_back(1);
+++    assert(v.capacity() == bits_per_word * 2);
+++    assert(v.size() == bits_per_word + 1);
+++    v.pop_back();
+++    v.shrink_to_fit();
+++    assert(v.capacity() == bits_per_word);
+++    assert(v.size() == bits_per_word);
+++  }
+++  {
+++    using C                = std::vector<bool>;
+++    unsigned bits_per_word = static_cast<unsigned>(sizeof(C::__storage_type) * CHAR_BIT);
+++    C v;
+++    v.reserve(bits_per_word * 2);
+++    v.push_back(1);
+++    assert(v.capacity() == bits_per_word * 2);
+++    assert(v.size() == 1);
+++    v.shrink_to_fit();
+++    assert(v.capacity() == bits_per_word);
+++    assert(v.size() == 1);
++   }
++ #endif
+  
+- def AnyComplex : Type<CPred<"::llvm::isa<::mlir::ComplexType>($_self)">,
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 543803c..57a036a 100644
+index 57a036a..c4ab4ee 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "e2402615a5a76d46a433dfcc1de10b38a1263c9d"
--    LLVM_SHA256 = "9c22349e1d38555b2f223e49951655f60c04c0c3467e0150aaf6c9f50484cc9f"
-+    LLVM_COMMIT = "7084110518f904192c2935327b884b17de00bee0"
-+    LLVM_SHA256 = "de3c8f279e29e48d8dd1b51131e2f05a86a70fb7e95fd4d2eba18668b9c4e93d"
+-    LLVM_COMMIT = "7084110518f904192c2935327b884b17de00bee0"
+-    LLVM_SHA256 = "de3c8f279e29e48d8dd1b51131e2f05a86a70fb7e95fd4d2eba18668b9c4e93d"
++    LLVM_COMMIT = "b7abc510c515c4df521c84c6f664a138f8cf01e0"
++    LLVM_SHA256 = "9626e225cde7e896ea8231b4494772e902b00d009c78b76a9493474cbe3a3123"
  
      tf_http_archive(
          name = name,
-diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index eda100a..e3368b5 100755
---- a/third_party/stablehlo/temporary.patch
-+++ b/third_party/stablehlo/temporary.patch
-@@ -109,6 +109,29 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/diale
-  }
-  
-  // Parse tensor elements using DenseIntOrFPElementsAttr printing.
-+diff --ruN a/stablehlo/stablehlo/reference/Types.cpp b/stablehlo/stablehlo/reference/Types.cpp
-+--- stablehlo/stablehlo/reference/Types.cpp
-++++ stablehlo/stablehlo/reference/Types.cpp
-+@@ -48,13 +48,12 @@
-+ }
-+ 
-+ bool isSupportedFloatType(Type type) {
-+-  return type.isFloat4E2M1FN() || type.isFloat6E2M3FN() ||
-+-         type.isFloat6E3M2FN() || type.isFloat8E3M4() ||
-+-         type.isFloat8E4M3B11FNUZ() || type.isFloat8E4M3() ||
-+-         type.isFloat8E4M3FN() || type.isFloat8E4M3FNUZ() ||
-+-         type.isFloat8E5M2() || type.isFloat8E5M2FNUZ() ||
-+-         type.isFloat8E8M0FNU() || type.isF16() || type.isBF16() ||
-+-         type.isF32() || type.isF64();
-++  return llvm::isa<
-++      mlir::Float4E2M1FNType, mlir::Float6E2M3FNType, mlir::Float6E3M2FNType,
-++      mlir::Float8E3M4Type, mlir::Float8E4M3B11FNUZType, mlir::Float8E4M3Type,
-++      mlir::Float8E4M3FNType, mlir::Float8E4M3FNUZType, mlir::Float8E5M2Type,
-++      mlir::Float8E5M2FNUZType, mlir::Float8E8M0FNUType, mlir::Float16Type,
-++      mlir::BFloat16Type, mlir::Float32Type, mlir::Float64Type>(type);
-+ }
-+ 
-+ bool isSupportedComplexType(Type type) {
- diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
- --- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
- +++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
