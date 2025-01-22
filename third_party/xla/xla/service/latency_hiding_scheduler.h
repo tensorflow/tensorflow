@@ -716,6 +716,14 @@ class HloScheduleGraph {
   // possible_predecessor can be found.
   bool IsPredecessorTransitively(const HloGraphNode* node,
                                  const HloGraphNode* possible_predecessor);
+  // Creates a graph none for each of the instructions in the
+  // original instructions order. Captures while instructions for subsequent
+  // send-done dependency checks.
+  void PopulateNodes(
+      const std::vector<HloInstruction*>& post_order_instructions,
+      const LatencyEstimator* latency_estimator,
+      const AsyncTracker* async_tracker,
+      std::vector<const HloInstruction*>& while_instrs);
 };
 
 // Tracks data about HloBuffers like where the first definition is in the
