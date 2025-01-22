@@ -360,7 +360,8 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
             << "\n  new: " << new_instruction->ToString();
     absl::StatusOr<bool> changed_or =
         old_instruction->parent()->ReplaceInstruction(
-            old_instruction, new_instruction, preserve_sharding);
+            old_instruction, new_instruction, preserve_sharding,
+            /*relay_control_dependency=*/true);
     if (ABSL_PREDICT_TRUE(changed_or.ok())) {
       changed_ |= changed_or.value();
     }
