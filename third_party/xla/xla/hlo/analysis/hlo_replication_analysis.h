@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_HLO_REPLICATION_ANALYSIS_H_
 #define XLA_HLO_ANALYSIS_HLO_REPLICATION_ANALYSIS_H_
 
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/xla_data.pb.h"

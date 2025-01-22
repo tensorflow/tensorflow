@@ -16,10 +16,13 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_ordering.h"
 
 #include <memory>
+#include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"

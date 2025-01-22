@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/service/value_range.h"
 #include "xla/shape_util.h"
 #include "xla/tools/hlo_extractor.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 
 namespace xla {

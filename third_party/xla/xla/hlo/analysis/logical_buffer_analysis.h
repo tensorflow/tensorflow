@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_LOGICAL_BUFFER_ANALYSIS_H_
 #define XLA_HLO_ANALYSIS_LOGICAL_BUFFER_ANALYSIS_H_
 
+#include <cstddef>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
