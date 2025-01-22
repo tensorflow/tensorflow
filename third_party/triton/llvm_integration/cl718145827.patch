@@ -1,0 +1,244 @@
+
+--- a/include/triton/Conversion/MLIRTypes.h	2025-01-20 09:29:47.000000000 -0800
++++ b/include/triton/Conversion/MLIRTypes.h	2025-01-21 18:02:40.000000000 -0800
+@@ -28,15 +28,16 @@
+ 
+ inline bool isFloat(Type type) {
+   return type.isF32() || type.isF64() || type.isF16() || type.isF128() ||
+-         type.isBF16() || type.isFloat8E4M3B11FNUZ() || type.isFloat8E4M3FN() ||
+-         type.isFloat8E4M3FNUZ() || type.isFloat8E5M2() ||
+-         type.isFloat8E5M2FNUZ();
++         type.isBF16() ||
++         llvm::isa<mlir::Float8E4M3B11FNUZType, mlir::Float8E4M3FNType,
++                   mlir::Float8E4M3FNUZType, mlir::Float8E5M2Type,
++                   mlir::Float8E5M2FNUZType>(type);
+ }
+ 
+ inline bool isFloat8(Type type) {
+-  return type.isFloat8E4M3B11FNUZ() || type.isFloat8E4M3FN() ||
+-         type.isFloat8E4M3FNUZ() || type.isFloat8E5M2() ||
+-         type.isFloat8E5M2FNUZ();
++  return llvm::isa<mlir::Float8E4M3B11FNUZType, mlir::Float8E4M3FNType,
++                   mlir::Float8E4M3FNUZType, mlir::Float8E5M2Type,
++                   mlir::Float8E5M2FNUZType>(type);
+ }
+ 
+ inline bool isInt(Type type) { return type.isIntOrFloat() && !isFloat(type); }
+
+--- a/lib/Analysis/Utility.cpp	2025-01-21 05:40:49.000000000 -0800
++++ b/lib/Analysis/Utility.cpp	2025-01-21 18:02:40.000000000 -0800
+@@ -525,14 +525,14 @@
+       return false;
+     if (!(numWarps % 4 == 0 && retShapePerCTA[rank - 2] % 64 == 0 &&
+           retShapePerCTA[rank - 1] % 8 == 0 &&
+-          (aElemTy.isFloat8E5M2() || aElemTy.isFloat8E4M3FN() ||
++          (llvm::isa<mlir::Float8E5M2Type, mlir::Float8E4M3FNType>(aElemTy) ||
+            aElemTy.isInteger(8) || aElemTy.isF16() || aElemTy.isBF16() ||
+            aElemTy.isF32()))) {
+       return false;
+     }
+     // We cannot use MMA_V3 if we need to accumulate in F32 within the MMA op.
+     if (op.getMaxNumImpreciseAcc() < 32 &&
+-        (aElemTy.isFloat8E5M2() || aElemTy.isFloat8E4M3FN()) &&
++        (llvm::isa<mlir::Float8E5M2Type, mlir::Float8E4M3FNType>(aElemTy)) &&
+         cast<RankedTensorType>(op.getType()).getElementType().isF32()) {
+       return false;
+     }
+@@ -553,8 +553,9 @@
+       cast<triton::gpu::TensorOrMemDesc>(value.getType()).getElementType();
+   // FP8 is not natively supported on all mma versions but it can always be
+   // promoted to fp16 therefore we can always support it.
+-  bool isFP8 = elemTy.isFloat8E5M2() || elemTy.isFloat8E4M3FN() ||
+-               elemTy.isFloat8E5M2FNUZ() || elemTy.isFloat8E4M3FNUZ();
++  bool isFP8 =
++      llvm::isa<mlir::Float8E5M2Type, mlir::Float8E4M3FNType,
++                mlir::Float8E5M2FNUZType, mlir::Float8E4M3FNUZType>(elemTy);
+   return isFP8 || elemTy.isF16() || elemTy.isBF16() ||
+          (elemTy.isF32() && version >= 2) ||
+          (elemTy.isInteger(8) && version >= 2);
+
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp	2025-01-21 05:40:49.000000000 -0800
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp	2025-01-21 18:02:41.000000000 -0800
+@@ -370,7 +370,8 @@
+     NvidiaMmaEncodingAttr mmaLayout =
+         dyn_cast<NvidiaMmaEncodingAttr>(D.getType().getEncoding());
+     if (mmaLayout) {
+-      bool isNativeFP8 = AElType.isFloat8E5M2() || AElType.isFloat8E4M3FN();
++      bool isNativeFP8 =
++          llvm::isa<mlir::Float8E5M2Type, mlir::Float8E4M3FNType>(AElType);
+       // promote operands for sm < 89 since fp8 mma is not natively supported
+       // promote operands for sm >= 90 when mma is not v3
+       if (!isNativeFP8 ||
+
+--- a/lib/Dialect/TritonGPU/Transforms/Utility.cpp	2025-01-21 05:40:49.000000000 -0800
++++ b/lib/Dialect/TritonGPU/Transforms/Utility.cpp	2025-01-21 18:02:41.000000000 -0800
+@@ -44,9 +44,9 @@
+     SmallVector<unsigned> validN;
+ 
+     // MMAv3 with larger instruction shape is preferred.
+-    if (eltType.isFloat8E5M2() || eltType.isFloat8E4M3FN() ||
+-        eltType.isFloat8E4M3FNUZ() || eltType.isF16() || eltType.isBF16() ||
+-        eltType.isF32()) {
++    if (llvm::isa<mlir::Float8E5M2Type, mlir::Float8E4M3FNType,
++                  mlir::Float8E4M3FNUZType>(eltType) ||
++        eltType.isF16() || eltType.isBF16() || eltType.isF32()) {
+       validN.assign({256, 248, 240, 232, 224, 216, 208, 200, 192, 184, 176,
+                      168, 160, 152, 144, 136, 128, 120, 112, 104, 96,  88,
+                      80,  72,  64,  56,  48,  40,  32,  24,  16,  8});
+
+--- a/lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp	2025-01-21 05:40:49.000000000 -0800
++++ b/lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp	2025-01-21 18:02:41.000000000 -0800
+@@ -77,8 +77,9 @@
+   const auto &d = getD();
+   auto aTensorTy = cast<triton::gpu::TensorOrMemDesc>(a.getType());
+   auto aElTy = cast<triton::gpu::TensorOrMemDesc>(a.getType()).getElementType();
+-  bool isFP8 = aElTy.isFloat8E5M2() || aElTy.isFloat8E4M3FN() ||
+-               aElTy.isFloat8E5M2FNUZ() || aElTy.isFloat8E4M3FNUZ();
++  bool isFP8 =
++      llvm::isa<mlir::Float8E5M2Type, mlir::Float8E4M3FNType,
++                mlir::Float8E5M2FNUZType, mlir::Float8E4M3FNUZType>(aElTy);
+   bool accFP32 =
+       cast<triton::gpu::TensorOrMemDesc>(d.getType()).getElementType().isF32();
+   uint32_t maxNumImpreciseAcc = getMaxNumImpreciseAcc();
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/ElementwiseOpToLLVM.cpp	2025-01-21 05:40:49.000000000 -0800
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/ElementwiseOpToLLVM.cpp	2025-01-21 18:02:41.000000000 -0800
+@@ -1011,17 +1011,17 @@
+       return outVals;
+     }
+     size_t numElements = 4;
+-    if (srcElementType.isFloat8E4M3FN() || dstElementType.isFloat8E4M3FN() ||
+-        srcElementType.isFloat8E4M3FNUZ() ||
+-        dstElementType.isFloat8E4M3FNUZ() ||
+-        srcElementType.isFloat8E5M2FNUZ() ||
+-        dstElementType.isFloat8E5M2FNUZ()) {
++    if (llvm::isa<mlir::Float8E4M3FNType, mlir::Float8E4M3FNUZType,
++                  mlir::Float8E5M2FNUZType>(srcElementType) ||
++        llvm::isa<mlir::Float8E4M3FNType, mlir::Float8E4M3FNUZType,
++                  mlir::Float8E5M2FNUZType>(dstElementType)) {
+       numElements = 2;
+     }
+     bool useFP16IntermediateSrc =
+-        srcElementType.isF32() && !(isaFamily == AMD::ISAFamily::CDNA3 &&
+-                                    (dstElementType.isFloat8E4M3FNUZ() ||
+-                                     dstElementType.isFloat8E5M2FNUZ()));
++        srcElementType.isF32() &&
++        !(isaFamily == AMD::ISAFamily::CDNA3 &&
++          (llvm::isa<mlir::Float8E4M3FNUZType, mlir::Float8E5M2FNUZType>(
++              dstElementType)));
+     bool isDstFP32 = dstElementType.isF32();
+     Type srcType = useFP16IntermediateSrc ? f16_ty : srcElementType;
+     Type dstType = isDstFP32 ? f16_ty : dstElementType;
+
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/MfmaGroup.cpp	2024-12-05 23:53:31.000000000 -0800
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/MfmaGroup.cpp	2025-01-21 18:02:42.000000000 -0800
+@@ -16,19 +16,24 @@
+   if (dataTypeA.isInteger(8) && dataTypeB.isInteger(8)) {
+     return MfmaTypeId::I8TyId;
+   }
+-  if (dataTypeA.isFloat8E4M3FNUZ() && dataTypeB.isFloat8E4M3FNUZ()) {
++  if (llvm::isa<mlir::Float8E4M3FNUZType>(dataTypeA) &&
++      llvm::isa<mlir::Float8E4M3FNUZType>(dataTypeB)) {
+     return MfmaTypeId::Fp8Fp8TyId;
+   }
+-  if (dataTypeA.isFloat8E4M3FNUZ() && dataTypeB.isFloat8E5M2FNUZ()) {
++  if (llvm::isa<mlir::Float8E4M3FNUZType>(dataTypeA) &&
++      llvm::isa<mlir::Float8E5M2FNUZType>(dataTypeB)) {
+     return MfmaTypeId::Fp8Bf8TyId;
+   }
+-  if (dataTypeA.isFloat8E5M2FNUZ() && dataTypeB.isFloat8E4M3FNUZ()) {
++  if (llvm::isa<mlir::Float8E5M2FNUZType>(dataTypeA) &&
++      llvm::isa<mlir::Float8E4M3FNUZType>(dataTypeB)) {
+     return MfmaTypeId::Bf8Fp8TyId;
+   }
+-  if (dataTypeA.isFloat8E5M2FNUZ() && dataTypeB.isFloat8E5M2FNUZ()) {
++  if (llvm::isa<mlir::Float8E5M2FNUZType>(dataTypeA) &&
++      llvm::isa<mlir::Float8E5M2FNUZType>(dataTypeB)) {
+     return MfmaTypeId::Bf8Bf8TyId;
+   }
+-  if (dataTypeA.isFloat8E5M2() && dataTypeB.isFloat8E5M2()) {
++  if (llvm::isa<mlir::Float8E5M2Type>(dataTypeA) &&
++      llvm::isa<mlir::Float8E5M2Type>(dataTypeB)) {
+     return MfmaTypeId::Fp16TyId;
+   }
+   llvm_unreachable("Unsupported input argument type.");
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp	2024-12-23 04:57:13.000000000 -0800
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp	2025-01-21 18:02:42.000000000 -0800
+@@ -299,17 +299,17 @@
+       return TensorCoreType::FP32_FP16_FP16_FP32;
+     if (aTy.getElementType().isBF16() && bTy.getElementType().isBF16())
+       return TensorCoreType::FP32_BF16_BF16_FP32;
+-    if (aTy.getElementType().isFloat8E5M2() &&
+-        bTy.getElementType().isFloat8E5M2())
++    if (llvm::isa<mlir::Float8E5M2Type>(aTy.getElementType()) &&
++        llvm::isa<mlir::Float8E5M2Type>(bTy.getElementType()))
+       return TensorCoreType::FP32_FP8E5M2_FP8E5M2_FP32;
+-    if (aTy.getElementType().isFloat8E5M2() &&
+-        bTy.getElementType().isFloat8E4M3FN())
++    if (llvm::isa<mlir::Float8E5M2Type>(aTy.getElementType()) &&
++        llvm::isa<mlir::Float8E4M3FNType>(bTy.getElementType()))
+       return TensorCoreType::FP32_FP8E5M2_FP8E4M3FN_FP32;
+-    if (aTy.getElementType().isFloat8E4M3FN() &&
+-        bTy.getElementType().isFloat8E5M2())
++    if (llvm::isa<mlir::Float8E4M3FNType>(aTy.getElementType()) &&
++        llvm::isa<mlir::Float8E5M2Type>(bTy.getElementType()))
+       return TensorCoreType::FP32_FP8E4M3FN_FP8E5M2_FP32;
+-    if (aTy.getElementType().isFloat8E4M3FN() &&
+-        bTy.getElementType().isFloat8E4M3FN())
++    if (llvm::isa<mlir::Float8E4M3FNType>(aTy.getElementType()) &&
++        llvm::isa<mlir::Float8E4M3FNType>(bTy.getElementType()))
+       return TensorCoreType::FP32_FP8E4M3FN_FP8E4M3FN_FP32;
+     if (aTy.getElementType().isF32() && bTy.getElementType().isF32() &&
+         op.getInputPrecision() == InputPrecision::TF32)
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp	2024-12-05 23:53:31.000000000 -0800
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/WGMMA.cpp	2025-01-21 18:02:42.000000000 -0800
+@@ -57,9 +57,9 @@
+     return triton::nvgpu::WGMMAEltType::tf32;
+   } else if (aTy.isInteger(8)) {
+     return triton::nvgpu::WGMMAEltType::s8;
+-  } else if (aTy.isFloat8E5M2()) {
++  } else if (llvm::isa<mlir::Float8E5M2Type>(aTy)) {
+     return triton::nvgpu::WGMMAEltType::e5m2;
+-  } else if (aTy.isFloat8E4M3FN()) {
++  } else if (llvm::isa<mlir::Float8E4M3FNType>(aTy)) {
+     return triton::nvgpu::WGMMAEltType::e4m3;
+   } else {
+     llvm::report_fatal_error("Unsupported mma operand type found");
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp	2025-01-21 05:40:49.000000000 -0800
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp	2025-01-21 18:02:42.000000000 -0800
+@@ -467,8 +467,8 @@
+       llvm::errs() << "\n";
+       llvm::report_fatal_error("Unsupported rounding mode for conversion.");
+     }
+-    if (computeCapability < 89 &&
+-        (srcTy.isFloat8E4M3FN() || dstTy.isFloat8E4M3FN())) {
++    if (computeCapability < 89 && (llvm::isa<mlir::Float8E4M3FNType>(srcTy) ||
++                                   llvm::isa<mlir::Float8E4M3FNType>(dstTy))) {
+       llvm::report_fatal_error(
+           "Conversion from/to f8e4m3nv is only supported on "
+           "compute capability >= 89"
+@@ -490,7 +490,8 @@
+     auto dstElementType = getElementType(op.getResult());
+     auto roundingMode = op.getRounding();
+ 
+-    if (dstElementType.isFloat8E5M2() || dstElementType.isFloat8E4M3FN()) {
++    if (llvm::isa<mlir::Float8E5M2Type, mlir::Float8E4M3FNType>(
++            dstElementType)) {
+       assert(roundingMode.has_value() &&
+              "Rounding mode must be specified for convertsions to fp8");
+ 
+@@ -527,8 +528,9 @@
+ 
+     bool useFP16IntermediateSrc =
+         srcElementType.isF32() &&
+-        (!(computeCapability >= 90 && (dstElementType.isFloat8E4M3FN() ||
+-                                       dstElementType.isFloat8E5M2())) ||
++        (!(computeCapability >= 90 &&
++           (llvm::isa<mlir::Float8E4M3FNType, mlir::Float8E5M2Type>(
++               dstElementType))) ||
+          roundingMode.value() == RoundingMode::RTZ);
+     bool isDstFP32 = dstElementType.isF32();
+     Type srcType = useFP16IntermediateSrc ? f16_ty : srcElementType;

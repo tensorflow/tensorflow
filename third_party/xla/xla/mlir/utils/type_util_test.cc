@@ -101,18 +101,30 @@ INSTANTIATE_TEST_SUITE_P(
     Execute, TypeUtilTest,
     ::testing::ValuesIn(std::vector<TypeUtilTestParam>(
         {{PRED, [](mlir::Builder b) { return b.getI1Type(); }},
-         {F4E2M1FN, [](mlir::Builder b) { return b.getFloat4E2M1FNType(); }},
-         {F8E5M2, [](mlir::Builder b) { return b.getFloat8E5M2Type(); }},
-         {F8E4M3, [](mlir::Builder b) { return b.getFloat8E4M3Type(); }},
-         {F8E4M3FN, [](mlir::Builder b) { return b.getFloat8E4M3FNType(); }},
+         {F4E2M1FN,
+          [](mlir::Builder b) { return b.getType<mlir::Float4E2M1FNType>(); }},
+         {F8E5M2,
+          [](mlir::Builder b) { return b.getType<mlir::Float8E5M2Type>(); }},
+         {F8E4M3,
+          [](mlir::Builder b) { return b.getType<mlir::Float8E4M3Type>(); }},
+         {F8E4M3FN,
+          [](mlir::Builder b) { return b.getType<mlir::Float8E4M3FNType>(); }},
          {F8E4M3B11FNUZ,
-          [](mlir::Builder b) { return b.getFloat8E4M3B11FNUZType(); }},
+          [](mlir::Builder b) {
+            return b.getType<mlir::Float8E4M3B11FNUZType>();
+          }},
          {F8E5M2FNUZ,
-          [](mlir::Builder b) { return b.getFloat8E5M2FNUZType(); }},
+          [](mlir::Builder b) {
+            return b.getType<mlir::Float8E5M2FNUZType>();
+          }},
          {F8E4M3FNUZ,
-          [](mlir::Builder b) { return b.getFloat8E4M3FNUZType(); }},
-         {F8E3M4, [](mlir::Builder b) { return b.getFloat8E3M4Type(); }},
-         {F8E8M0FNU, [](mlir::Builder b) { return b.getFloat8E8M0FNUType(); }},
+          [](mlir::Builder b) {
+            return b.getType<mlir::Float8E4M3FNUZType>();
+          }},
+         {F8E3M4,
+          [](mlir::Builder b) { return b.getType<mlir::Float8E3M4Type>(); }},
+         {F8E8M0FNU,
+          [](mlir::Builder b) { return b.getType<mlir::Float8E8M0FNUType>(); }},
          {F16, [](mlir::Builder b) { return b.getF16Type(); }},
          {BF16, [](mlir::Builder b) { return b.getBF16Type(); }},
          {F32, [](mlir::Builder b) { return b.getF32Type(); }},
