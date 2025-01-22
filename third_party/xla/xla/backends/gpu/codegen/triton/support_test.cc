@@ -1047,13 +1047,30 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
+TEST_P(CollectiveTest,
+       UnsupportedCollectiveBroadcastFailsGracefullyWithTriton) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = $0[128,32] parameter(0)
+  ROOT result = $0[128,32] collective-broadcast(input), replica_groups={}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kCollectiveBroadcast));
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
 constexpr std::array kTestedOpsCollectives = {
-    HloOpcode::kAllGather,         HloOpcode::kAllGatherStart,
-    HloOpcode::kAllGatherDone,     HloOpcode::kAllReduce,
-    HloOpcode::kAllReduceStart,    HloOpcode::kAllReduceDone,
-    HloOpcode::kAsyncDone,         HloOpcode::kAsyncStart,
-    HloOpcode::kAsyncUpdate,       HloOpcode::kAllToAll,
-    HloOpcode::kCollectivePermute, HloOpcode::kReduceScatter};
+    HloOpcode::kAllGather,          HloOpcode::kAllGatherStart,
+    HloOpcode::kAllGatherDone,      HloOpcode::kAllReduce,
+    HloOpcode::kAllReduceStart,     HloOpcode::kAllReduceDone,
+    HloOpcode::kAsyncDone,          HloOpcode::kAsyncStart,
+    HloOpcode::kAsyncUpdate,        HloOpcode::kAllToAll,
+    HloOpcode::kCollectivePermute,  HloOpcode::kReduceScatter,
+    HloOpcode::kCollectiveBroadcast};
 
 INSTANTIATE_TEST_SUITE_P(
     CollectiveTestSuite, CollectiveTest,
@@ -1200,7 +1217,6 @@ constexpr std::array kUnsupportedOps = {HloOpcode::kAddDependency,
                                         HloOpcode::kBitcastConvert,
                                         HloOpcode::kCall,
                                         HloOpcode::kCholesky,
-                                        HloOpcode::kCollectiveBroadcast,
                                         HloOpcode::kCollectivePermuteDone,
                                         HloOpcode::kCollectivePermuteStart,
                                         HloOpcode::kComplex,
