@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 #if defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
