@@ -22,8 +22,13 @@
 #include <optional>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <vector>
+
+#if 1
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
+#endif
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -90,6 +95,86 @@ Expected<OwningBufferRef<uint8_t>> AppendByteCode(
   std::memcpy(it, npu_byte_code.Data(), npu_byte_code.Size());
 
   return res;
+}
+
+Expected<OwningBufferRef<uint8_t>> AppendBuffers(
+    OwningBufferRef<uint8_t> flatbuffer, OwningBufferRef<uint8_t> buffers) {
+  LITERT_LOG(LITERT_INFO, "flatbuffer size: %d", flatbuffer.Size());
+  const auto res_size = flatbuffer.Size() + buffers.Size();
+  OwningBufferRef<uint8_t> res(res_size);
+
+  uint8_t* it = res.Data();
+  std::memcpy(it, flatbuffer.Data(), flatbuffer.Size());
+  it += flatbuffer.Size();
+  std::memcpy(it, buffers.Data(), buffers.Size());
+  return res;
+}
+
+std::pair<OwningBufferRef<uint8_t>,
+          std::unordered_map<uint64_t, std::tuple<int64_t, int64_t, int64_t>>>
+SerializeRemainingBuffer(LiteRtModelT& model) {
+  // Maps old buffer to new buffer use old offset as key. Stores the new offset,
+  // size and new buffer index.
+  std::unordered_map<uint64_t, std::tuple<int64_t, int64_t, int64_t>>
+      new_buffer_map;
+
+  // First pass: calculate the size of all buffers.
+  size_t total_size = 0;
+  size_t new_buffer_idx = 0;
+  for (auto* litert_subgraph : model.Subgraphs()) {
+    for (auto* litert_tensor : litert_subgraph->Tensors()) {
+      auto& weights = litert_tensor->Weights();
+      if (!weights.Valid()) {
+        continue;
+      }
+      if (weights.IsAppended()) {
+        int64_t buffer_hash_key = weights.Offset();
+        if (new_buffer_map.find(buffer_hash_key) == new_buffer_map.end()) {
+          new_buffer_map[buffer_hash_key] =
+              std::make_tuple(total_size, weights.Buf().Size(), new_buffer_idx);
+          total_size += weights.Buf().Size();
+        }
+      }
+    }
+  }
+
+  OwningBufferRef<uint8_t> all_buffers(total_size);
+  BufferRef<uint8_t> init_flatbuffer = detail::GetTflInitFlatbuffer(model);
+
+  for (auto& it : new_buffer_map) {
+    auto old_offset = it.first;
+    auto [new_offset, size, new_idx] = it.second;
+    std::memcpy(all_buffers.Data() + new_offset,
+                init_flatbuffer.Data() + old_offset, size);
+  }
+
+  return {all_buffers, new_buffer_map};
+}
+
+LiteRtStatus UpdateBuffersInSerializedTfliteModel(
+    tflite::Model* mutable_model,
+    std::unordered_map<uint64_t, std::tuple<int64_t, int64_t, int64_t>>
+        new_buffer_map,
+    int64_t flatbuffer_size) {
+  auto buffers = mutable_model->mutable_buffers();
+  int id = 0;
+  bool ret = true;
+  for (auto buffer : *buffers) {
+    if (new_buffer_map.find(buffer->offset()) != new_buffer_map.end()) {
+      auto [new_offset, size, new_idx] = new_buffer_map[buffer->offset()];
+      tflite::Buffer* buffer = buffers->GetMutableObject(id);
+      new_offset += flatbuffer_size;
+      ret &= buffer->mutate_offset(new_offset);
+      ret &= buffer->mutate_size(size);
+    }
+    id++;
+  }
+  if (!ret) {
+    LITERT_LOG(LITERT_ERROR,
+               "Failed to update buffers in serialized tflite model");
+    return kLiteRtStatusErrorInvalidFlatbuffer;
+  }
+  return kLiteRtStatusOk;
 }
 
 // This is expected to be used to serialize the dispatch op custom code.
@@ -298,6 +383,9 @@ Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model) {
   // for post processing after packing to tflite model.
   auto maybe_byte_code = PopByteCodeIfNeedsPostProcess(model);
 
+  // Serialize remaining buffers.
+  auto [all_buffers, new_buffer_map] = SerializeRemainingBuffer(model);
+
   auto tfl_model = PackAsTflite(model);
   if (!tfl_model) {
     return tfl_model.Error();
@@ -305,13 +393,32 @@ Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model) {
 
   auto serialized_tfl = SerializeFlatbuffer(**tfl_model);
   if (!VerifyFlatbuffer(serialized_tfl.Span())) {
+    LITERT_LOG(
+        LITERT_ERROR,
+        "Failed to verify flatbuffer before appending buffers and byte code.");
     return Error(kLiteRtStatusErrorInvalidFlatbuffer);
   }
 
-  if (!maybe_byte_code) {
-    return serialized_tfl;
+  // Append the remaining buffers to the serialized tflite.
+  auto serialized_tfl_with_buffers = AppendBuffers(serialized_tfl, all_buffers);
+  if (!serialized_tfl_with_buffers) {
+    LITERT_LOG(
+        LITERT_ERROR,
+        "Failed to append buffers to flatbuffer when appending buffers.");
+    return serialized_tfl_with_buffers.Error();
   }
-  return AppendByteCode(serialized_tfl, *maybe_byte_code);
+
+  // Update the buffer offset and index in the serialized tflite.
+  tflite::Model* mutable_model =
+      tflite::GetMutableModel(serialized_tfl_with_buffers->Data());
+  UpdateBuffersInSerializedTfliteModel(mutable_model, new_buffer_map,
+                                       serialized_tfl.Size());
+
+  if (!maybe_byte_code) {
+    LITERT_LOG(LITERT_INFO, "No byte code to append.");
+    return serialized_tfl_with_buffers;
+  }
+  return AppendByteCode(*serialized_tfl_with_buffers, *maybe_byte_code);
 }
 
 }  // namespace litert::internal

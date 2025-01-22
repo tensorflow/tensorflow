@@ -41,15 +41,15 @@ LiteRtStatus LegalizeShapeInfo(const litert::Layout& src, Qnn_Tensor_t& dest) {
     dest.v2.dimensions = new uint32_t[1];
     dest.v2.dimensions[0] = 1;
     return kLiteRtStatusOk;
-  }
+  } else {
+    dest.v2.dimensions = new uint32_t[dest.v2.rank];
+    for (int i = 0; i < dest.v2.rank; ++i) {
+      // const auto src_dim = src.Dimensions()[i];
+      // LITERT_ENSURE(src_dim >= 1, kLiteRtStatusErrorInvalidArgument,
+      //               "Cannot pass dim < 1 to QNN Tensor.");
 
-  dest.v2.dimensions = new uint32_t[dest.v2.rank];
-  for (int i = 0; i < dest.v2.rank; ++i) {
-    const auto src_dim = src.Dimensions()[i];
-    LITERT_ENSURE(src_dim >= 1, kLiteRtStatusErrorInvalidArgument,
-                  "Cannot pass dim < 1 to QNN Tensor.");
-
-    dest.v2.dimensions[i] = src.Dimensions()[i];
+      dest.v2.dimensions[i] = src.Dimensions()[i];
+    }
   }
   return kLiteRtStatusOk;
 }

@@ -107,7 +107,8 @@ const ::litert::internal::TflBuffer& GetTflBuffer(
 litert::internal::TflBufferPtr TakeTflBuffer(LiteRtWeightsT& litert_weights);
 
 void SetTflBuffer(LiteRtWeightsT& litert_weights,
-                  litert::internal::TflBufferPtr tfl_buffer);
+                  litert::internal::TflBufferPtr tfl_buffer,
+                  ::litert::BufferRef<uint8_t> flatbuffer);
 
 // MODEL
 
@@ -210,13 +211,39 @@ class LiteRtWeightsT {
  public:
   // Underlying data.
   ::litert::BufferRef<uint8_t> Buf() const {
-    return ::litert::BufferRef<uint8_t>(tfl_buf_->data.data(),
-                                        tfl_buf_->data.size());
+    if (tfl_buf_->offset == 0) {
+      return ::litert::BufferRef<uint8_t>(tfl_buf_->data.data(),
+                                          tfl_buf_->data.size());
+    } else {
+      return ::litert::BufferRef<uint8_t>(flatbuffer_.Data() + tfl_buf_->offset,
+                                          tfl_buf_->size);
+    }
   }
+
+  // Whether weights are present.
+  bool HasWeights() const {
+    return (tfl_buf_->data.size() > 0) || (tfl_buf_->size > 0);
+  }
+
+  bool Valid() const { return tfl_buf_ != nullptr; }
+
+  // Whether weights are appended to a flatbuffer.
+  bool IsAppended() const { return tfl_buf_->offset > 0; }
+
+  // Get the offset of the weights in the flatbuffer.
+  uint64_t Offset() const { return tfl_buf_->offset; }
+
+  // Get the size of the weights in the flatbuffer.
+  uint64_t Size() const { return tfl_buf_->size; }
 
   // Set weights via copied data.
   void SetFromBuf(::litert::BufferRef<uint8_t> buf) {
     tfl_buf_->data.assign(buf.Data(), buf.Data() + buf.Size());
+  }
+  void SetFromWeights(const LiteRtWeightsT& weights) {
+    tfl_buf_->offset = weights.tfl_buf_->offset;
+    tfl_buf_->size = weights.tfl_buf_->size;
+    flatbuffer_ = weights.flatbuffer_;
   }
 
   // Set via copied vec.
@@ -238,11 +265,13 @@ class LiteRtWeightsT {
       LiteRtWeightsT& litert_weights);
 
   friend void detail::SetTflBuffer(LiteRtWeightsT& litert_weights,
-                                   litert::internal::TflBufferPtr tfl_buffer);
+                                   litert::internal::TflBufferPtr tfl_buffer,
+                                   ::litert::BufferRef<uint8_t> flatbuffer);
 
  private:
   // TFLITE
   ::litert::internal::TflBufferPtr tfl_buf_;
+  ::litert::BufferRef<uint8_t> flatbuffer_;
 };
 
 // Fundamental value in a litert program, "edges" in the graph.
@@ -797,7 +826,7 @@ class LiteRtModelT {
 
   // TFLITE
   TflOpCodes tfl_operator_codes_;
-  litert::BufferRef<uint8_t> tfl_init_flatbuffer_;
+  litert::OwningBufferRef<uint8_t> tfl_init_flatbuffer_;
 };
 
 // Lookup subgraph by signature name.

@@ -66,6 +66,9 @@ static constexpr absl::string_view kSimpleMultiSubgraph =
     "multi_subgraph.tflite";
 static constexpr absl::string_view kCstMultiSubgraph =
     "cst_multi_subgraph.tflite";
+static constexpr absl::string_view kAddCstOffset = "add_cst_offset.tflite";
+static constexpr absl::string_view kAddCstOffsetNoAlignment =
+    "add_cst_offset_not_aligned.tflite";
 
 // Load a model, then serialize and re-load. Used to test serialization.
 Expected<Model> LoadModelThroughRoundTrip(absl::string_view filename) {
@@ -188,6 +191,72 @@ TEST(ModelLoadTest, WithSignature) {
   EXPECT_EQ(signature->get().InputNames().size(), 1);
   EXPECT_EQ(signature->get().OutputNames().size(), 1);
   EXPECT_EQ(&signature->get().GetSubgraph(), litert_model.MainSubgraph());
+}
+
+TEST(ModelLoadTest, WithOffset) {
+  auto model = litert::testing::LoadTestFileModel(kAddCstOffset);
+  auto& litert_model = *model.Get();
+  auto& main = *litert_model.MainSubgraph();
+  auto& op = main.Op(0);
+  const auto op_inputs = op.Inputs();
+  auto* cst = op.Inputs().back();
+  auto data = Tensor(cst).WeightsData<float>();
+  ASSERT_TRUE(data);
+  EXPECT_THAT(data->data()[0], FloatEq(1.0));
+  EXPECT_THAT(data->data()[1], FloatEq(2.0));
+  EXPECT_THAT(data->data()[2], FloatEq(3.0));
+  EXPECT_THAT(data->data()[3], FloatEq(4.0));
+}
+
+TEST(ModelSerializeTest, WithOffsetRoundTrip) {
+  auto model = litert::testing::LoadTestFileModel(kAddCstOffset);
+  auto serialized = SerializeModel(std::move(*model.Get()));
+  EXPECT_TRUE(VerifyFlatbuffer(serialized->Span()));
+  auto re_loaded = LoadModelFromBuffer(*serialized);
+  ASSERT_TRUE(re_loaded);
+  auto& re_loaded_model = **re_loaded;
+  auto& main = *re_loaded_model.MainSubgraph();
+  auto& op = main.Op(0);
+  const auto op_inputs = op.Inputs();
+  auto* cst = op.Inputs().back();
+  auto data = Tensor(cst).WeightsData<float>();
+  ASSERT_TRUE(data);
+  EXPECT_THAT(data->data()[0], FloatEq(1.0));
+  EXPECT_THAT(data->data()[1], FloatEq(2.0));
+  EXPECT_THAT(data->data()[2], FloatEq(3.0));
+  EXPECT_THAT(data->data()[3], FloatEq(4.0));
+}
+
+TEST(ModelSerializeTest, WithOffsetRoundTripNoAlignment) {
+  auto model = litert::testing::LoadTestFileModel(kAddCstOffsetNoAlignment);
+  auto serialized = SerializeModel(std::move(*model.Get()));
+  EXPECT_TRUE(VerifyFlatbuffer(serialized->Span()));
+  auto re_loaded = LoadModelFromBuffer(*serialized);
+  ASSERT_TRUE(re_loaded);
+  auto& re_loaded_model = **re_loaded;
+  auto& main = *re_loaded_model.MainSubgraph();
+
+  auto& op_0 = main.Op(0);
+  const auto op_0_inputs = op_0.Inputs();
+  auto* cst_0 = op_0.Inputs().back();
+  auto data_0 = Tensor(cst_0).WeightsData<float>();
+  ASSERT_TRUE(data_0);
+  EXPECT_THAT(data_0->data()[0], FloatEq(1.0));
+  EXPECT_THAT(data_0->data()[1], FloatEq(2.0));
+  EXPECT_THAT(data_0->data()[2], FloatEq(3.0));
+  EXPECT_THAT(data_0->data()[3], FloatEq(4.0));
+  EXPECT_THAT(data_0->data()[4], FloatEq(5.0));
+
+  auto& op_1 = main.Op(1);
+  const auto op_1_inputs = op_1.Inputs();
+  auto* cst_1 = op_1.Inputs().back();
+  auto data_1 = Tensor(cst_1).WeightsData<float>();
+  ASSERT_TRUE(data_1);
+  EXPECT_THAT(data_1->data()[0], FloatEq(5.0));
+  EXPECT_THAT(data_1->data()[1], FloatEq(4.0));
+  EXPECT_THAT(data_1->data()[2], FloatEq(3.0));
+  EXPECT_THAT(data_1->data()[3], FloatEq(2.0));
+  EXPECT_THAT(data_1->data()[4], FloatEq(1.0));
 }
 
 TEST(ModelSerializeTest, WithSignature) {
