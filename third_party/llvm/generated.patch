@@ -1,49 +1,76 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/CommonTypeConstraints.td b/mlir/include/mlir/IR/CommonTypeConstraints.td
---- a/mlir/include/mlir/IR/CommonTypeConstraints.td
-+++ b/mlir/include/mlir/IR/CommonTypeConstraints.td
-@@ -329,31 +329,31 @@
- def F80 : F<80>;
- def F128 : F<128>;
- 
--def BF16 : Type<CPred<"::llvm::isa<BFloat16Type>($_self)">, "bfloat16 type">,
-+def BF16 : Type<CPred<"::llvm::isa<::mlir::BFloat16Type>($_self)">, "bfloat16 type">,
-            BuildableType<"$_builder.getType<BFloat16Type>()">;
--def TF32 : Type<CPred<"::llvm::isa<FloatTF32Type>($_self)">, "tf32 type">,
-+def TF32 : Type<CPred<"::llvm::isa<::mlir::FloatTF32Type>($_self)">, "tf32 type">,
-            BuildableType<"$_builder.getType<FloatTF32Type>()">;
--def F8E4M3FN : Type<CPred<"::llvm::isa<Float8E4M3FNType>($_self)">, "f8E4M3FN type">,
-+def F8E4M3FN : Type<CPred<"::llvm::isa<::mlir::Float8E4M3FNType>($_self)">, "f8E4M3FN type">,
-                BuildableType<"$_builder.getType<Float8E4M3FNType>()">;
--def F8E5M2 : Type<CPred<"::llvm::isa<Float8E5M2Type>($_self)">, "f8E5M2 type">,
-+def F8E5M2 : Type<CPred<"::llvm::isa<::mlir::Float8E5M2Type>($_self)">, "f8E5M2 type">,
-              BuildableType<"$_builder.getType<Float8E5M2Type>()">;
--def F8E4M3 : Type<CPred<"::llvm::isa<Float8E4M3Type>($_self)">, "f8E4M3 type">,
-+def F8E4M3 : Type<CPred<"::llvm::isa<::mlir::Float8E4M3Type>($_self)">, "f8E4M3 type">,
-              BuildableType<"$_builder.getType<Float8E4M3Type>()">;
--def F8E4M3FNUZ : Type<CPred<"::llvm::isa<Float8E4M3FNUZType>($_self)">, "f8E4M3FNUZ type">,
-+def F8E4M3FNUZ : Type<CPred<"::llvm::isa<::mlir::Float8E4M3FNUZType>($_self)">, "f8E4M3FNUZ type">,
-                  BuildableType<"$_builder.getType<Float8E4M3FNUZType>()">;
--def F8E4M3B11FNUZ : Type<CPred<"::llvm::isa<Float8E4M3B11FNUZType>($_self)">, "f8E4M3B11FNUZ type">,
-+def F8E4M3B11FNUZ : Type<CPred<"::llvm::isa<::mlir::Float8E4M3B11FNUZType>($_self)">, "f8E4M3B11FNUZ type">,
-                  BuildableType<"$_builder.getType<Float8E4M3B11FNUZType>()">;
--def F8E5M2FNUZ : Type<CPred<"::llvm::isa<Float8E5M2FNUZType>($_self)">, "f8E5M2FNUZ type">,
-+def F8E5M2FNUZ : Type<CPred<"::llvm::isa<::mlir::Float8E5M2FNUZType>($_self)">, "f8E5M2FNUZ type">,
-                  BuildableType<"$_builder.getType<Float8E5M2FNUZType>()">;
--def F8E3M4 : Type<CPred<"::llvm::isa<Float8E3M4Type>($_self)">, "f8E3M4 type">,
-+def F8E3M4 : Type<CPred<"::llvm::isa<::mlir::Float8E3M4Type>($_self)">, "f8E3M4 type">,
-              BuildableType<"$_builder.getType<Float8E3M4Type>()">;
--def F4E2M1FN : Type<CPred<"::llvm::isa<Float4E2M1FNType>($_self)">, "f4E2M1FN type">,
-+def F4E2M1FN : Type<CPred<"::llvm::isa<::mlir::Float4E2M1FNType>($_self)">, "f4E2M1FN type">,
-                BuildableType<"$_builder.getType<Float4E2M1FNType>()">;
--def F6E2M3FN : Type<CPred<"::llvm::isa<Float6E2M3FNType>($_self)">, "f6E2M3FN type">,
-+def F6E2M3FN : Type<CPred<"::llvm::isa<::mlir::Float6E2M3FNType>($_self)">, "f6E2M3FN type">,
-                BuildableType<"$_builder.getType<Float6E2M3FNType>()">;
--def F6E3M2FN : Type<CPred<"::llvm::isa<Float6E3M2FNType($_self)">, "f6E3M2FN type">,
-+def F6E3M2FN : Type<CPred<"::llvm::isa<::mlir::Float6E3M2FNType>($_self)">, "f6E3M2FN type">,
-                BuildableType<"$_builder.getType<Float6E3M2FNType>()">;
--def F8E8M0FNU : Type<CPred<"::llvm::isa<Float8E8M0FNUType>($_self)">, "f8E8M0FNU type">,
-+def F8E8M0FNU : Type<CPred<"::llvm::isa<::mlir::Float8E8M0FNUType>($_self)">, "f8E8M0FNU type">,
-                 BuildableType<"$_builder.getType<Float8E8M0FNUType>()">;
- 
- def AnyComplex : Type<CPred<"::llvm::isa<::mlir::ComplexType>($_self)">,
+diff -ruN --strip-trailing-cr a/lldb/bindings/interface/SBSaveCoreOptionsDocstrings.i b/lldb/bindings/interface/SBSaveCoreOptionsDocstrings.i
+--- a/lldb/bindings/interface/SBSaveCoreOptionsDocstrings.i
++++ b/lldb/bindings/interface/SBSaveCoreOptionsDocstrings.i
+@@ -1,71 +0,0 @@
+-%feature("docstring",
+-"A container to specify how to save a core file.
+-
+-SBSaveCoreOptions includes API's to specify the memory regions and threads to include
+-when generating a core file. It extends the existing SaveCoreStyle option.
+-
+-* eSaveCoreFull will save off all thread and memory regions, ignoring the memory regions and threads in
+-the options object.
+-
+-* eSaveCoreDirtyOnly pages will capture all threads and all rw- memory regions, in addition to the regions specified
+-in the options object if they are not already captured.
+-
+-* eSaveCoreStackOnly will capture all threads, but no memory regions unless specified.
+-
+-* eSaveCoreCustomOnly Custom defers entirely to the SBSaveCoreOptions object and will only save what is specified. 
+-  Picking custom and specifying nothing will result in an error being returned.
+-
+-Note that currently ELF Core files are not supported.
+-")
+-
+-%feature("docstring", "
+-    Set the plugin name to save a Core file with. Only plugins registered with Plugin manager will be accepted
+-    Examples are Minidump and Mach-O."
+-) lldb::SBSaveCoreOptions::SetPluginName
+-
+-%feature("docstring", "
+-    Get the specified plugin name, or None if the name is not set."
+-) lldb::SBSaveCoreOptions::GetPluginName
+-
+-%feature("docstring", "
+-    Set the lldb.SaveCoreStyle."
+-) lldb::SBSaveCoreOptions::SetStyle
+-
+-%feature("docstring", "
+-    Get the specified lldb.SaveCoreStyle, or eSaveCoreUnspecified if not set."
+-) lldb::SBSaveCoreOptions::GetStyle
+-
+-%feature("docstring", "
+-    Set the file path to save the Core file at."
+-) lldb::SBSaveCoreOptions::SetOutputFile
+-
+-%feature("docstring", "
+-    Get an SBFileSpec corresponding to the specified output path, or none if not set."
+-) lldb::SBSaveCoreOptions::GetOutputFile
+-
+-%feature("docstring", "
+-    Set the process to save, or unset a process by providing a default SBProcess. 
+-    Resetting will result in the reset of all process specific options, such as Threads to save."
+-) lldb::SBSaveCoreOptions::SetProcess
+-
+-%feature("docstring", "
+-    Add an SBThread to be saved, an error will be returned if an SBThread from a different process is specified. 
+-    The process is set either by the first SBThread added to the options container, or explicitly by the SetProcess call."
+-) lldb::SBSaveCoreOptions::AddThread
+-
+-%feature("docstring", "
+-    Remove an SBthread if present in the container, returns true if a matching thread was found and removed."
+-) lldb::SBSaveCoreOptions::RemoveThread
+-
+-%feature("docstring", "
+-    Add a memory region to save, an error will be returned in the region is invalid. 
+-    Ranges that overlap will be unioned into a single region."
+-) lldb::SBSaveCoreOptions::AddMemoryRegionToSave
+-
+-%feature("docstring", "
+-    Get an SBThreadCollection of all threads marked to be saved. This collection is not sorted according to insertion order."
+-) lldb::SBSaveCoreOptions::GetThreadsToSave
+-
+-%feature("docstring", "
+-    Unset all options."
+-) lldb::SBSaveCoreOptions::Clear
