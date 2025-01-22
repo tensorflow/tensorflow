@@ -56,6 +56,18 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeTo
      return success();
    }
  };
+diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
+--- stablehlo/stablehlo/dialect/Version.cpp
++++ stablehlo/stablehlo/dialect/Version.cpp
+@@ -75,7 +75,7 @@
+ Version Version::fromCompatibilityRequirement(
+     CompatibilityRequirement requirement) {
+   // Compatibility requirement versions can be updated as needed, as long as the
+-  // version satisifies the requirement.
++  // version satisfies the requirement.
+   // The time frames used are from the date that the release was tagged on, not
+   // merged. The tag date is when the version has been verified and exported to
+   // XLA. See: https://github.com/openxla/stablehlo/tags
 diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
 --- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
