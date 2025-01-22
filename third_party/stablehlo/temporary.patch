@@ -616,6 +616,13 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
  }
  }  // namespace
  
+@@ -375,4 +394,5 @@
+     Option<"targetVersionOption", "target", "std::string", "",
+            "The target version. Must be a version of the form #.#.# .">,
+   ];
+-}
++  let dependentDialects = ["mlir::vhlo::VhloDialect"];
++}
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp b/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
 --- stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
 +++ stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
