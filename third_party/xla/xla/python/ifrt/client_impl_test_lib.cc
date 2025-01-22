@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/test_util.h"
 #include "tsl/platform/statusor.h"
