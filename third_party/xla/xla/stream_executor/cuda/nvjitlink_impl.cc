@@ -136,11 +136,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
   WarnIfBadPtxasVersion("nvJitLink", cc, {version_major, version_minor, 0});
 
   std::vector<std::string> cli_args;
-  // On Hopper, default to sm_90a so that all instructions can be used. But
-  // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  absl::string_view extension = ShouldUsePtxExtension(cc) ? "a" : "";
-  std::string architecture = absl::StrCat("sm_", cc.major, cc.minor, extension);
+  const std::string architecture = cc.GetPtxAsTargetName();
   cli_args.emplace_back(absl::StrCat("-arch=", architecture));
 
   if (VLOG_IS_ON(2)) {

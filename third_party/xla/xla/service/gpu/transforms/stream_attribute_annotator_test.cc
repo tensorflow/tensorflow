@@ -22,22 +22,25 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-auto MakeDeviceDescription() {
-  stream_executor::DeviceDescription device_description{
-      stream_executor::GpuDeviceInfoProto{}};
+absl::StatusOr<se::DeviceDescription> MakeDeviceDescription() {
+  TF_ASSIGN_OR_RETURN(stream_executor::DeviceDescription device_description,
+                      stream_executor::DeviceDescription::FromProto(
+                          stream_executor::GpuDeviceInfoProto{}));
   device_description.set_threads_per_warp(32);
   return device_description;
 }
@@ -49,7 +52,11 @@ class StreamAttributeAnnotatorTest : public HloHardwareIndependentTestBase {
   }
 
  private:
-  const se::DeviceDescription device_description_{MakeDeviceDescription()};
+  void SetUp() override {
+    TF_ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
+  }
+
+  se::DeviceDescription device_description_;
 };
 
 TEST_F(StreamAttributeAnnotatorTest, AllUsersAreAnnotated) {

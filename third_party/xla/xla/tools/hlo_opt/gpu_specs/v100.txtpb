@@ -30,6 +30,7 @@ gpu_device_info {
   shared_memory_per_block_optin: 98304
   cuda_compute_capability {
     major: 7
+    feature_extension: NONE
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536

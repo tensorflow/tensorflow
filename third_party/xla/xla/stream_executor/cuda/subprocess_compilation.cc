@@ -43,19 +43,19 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/util.h"
 #include "tsl/platform/cuda_root_path.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/regexp.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 static absl::StatusOr<std::string> GetToolVersionString(
@@ -291,16 +291,13 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     tsl::Env::Default()->DeleteFile(cubin_path).IgnoreError();
   };
   tsl::SubProcess ptxas_info_dumper;
-  // On Hopper, default to sm_90a so that all instructions can be used. But
-  // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  std::string extension = ShouldUsePtxExtension(cc) ? "a" : "";
   std::vector<std::string> ptxas_args = {
       std::string{ptxas_path},
       ptx_path,
       "-o",
       cubin_path,
-      absl::StrCat("-arch=sm_", cc.major, cc.minor, extension),
+      absl::StrCat("-arch=", cc.GetPtxAsTargetName(
+                                 CudaComputeCapability::CompileMode::kSass)),
       "--warn-on-spills"};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
@@ -515,8 +512,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
   };
   std::vector<std::string> args;
   args.push_back(std::string{nvlink_path});
-  absl::string_view extension = ShouldUsePtxExtension(cc) ? "a" : "";
-  args.push_back(absl::StrCat("-arch=sm_", cc.major, cc.minor, extension));
+  args.push_back(absl::StrCat("-arch=", cc.GetPtxAsTargetName()));
   for (int i = 0; i < images.size(); i++) {
     args.push_back(temp_files[i]);
   }

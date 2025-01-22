@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
+#include <gtest/gtest.h>
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tsl/platform/test.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 
 namespace xla {
 namespace gpu {
@@ -114,7 +114,8 @@ TEST_F(GpuAtomicTest, TestAddAtomicF64) {
            .default_stream_executor()
            ->GetDeviceDescription()
            .cuda_compute_capability()
-           .IsAtLeast(6)) {
+           .SupportsAllFeaturesOf(
+               stream_executor::CudaComputeCapability::Pascal())) {
     return;
   }
 

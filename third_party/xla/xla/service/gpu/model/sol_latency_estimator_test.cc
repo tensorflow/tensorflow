@@ -431,7 +431,8 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, EnabledBySolEstimatorFlagOnHopper) {
   HloModuleConfig config;
   config.mutable_debug_options()
       .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
-  gpu_device_info_.set_cuda_compute_capability(9, 0);  // Hopper
+  gpu_device_info_.set_cuda_compute_capability(
+      stream_executor::CudaComputeCapability::Hopper());
 
   auto module = CreateTestModule(config);
   EXPECT_TRUE(
@@ -441,7 +442,8 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, EnabledBySolEstimatorFlagOnHopper) {
 TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledIfFlagIsOffOnHopper) {
   HloModuleConfig config;
 
-  gpu_device_info_.set_cuda_compute_capability(9, 0);  // Hopper
+  gpu_device_info_.set_cuda_compute_capability(
+      stream_executor::CudaComputeCapability::Hopper());
 
   auto module = CreateTestModule(config);
 
@@ -455,7 +457,8 @@ TEST_F(IsSolLatencyEstimatorEnabledTest,
   config.mutable_debug_options()
       .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
 
-  gpu_device_info_.set_cuda_compute_capability(9, 0);  // Hopper
+  gpu_device_info_.set_cuda_compute_capability(
+      stream_executor::CudaComputeCapability::Hopper());
 
   auto module = CreateTestModule(config);
   AddCollectivePermute(module.get());  // Unsupported collective
@@ -470,7 +473,8 @@ TEST_F(IsSolLatencyEstimatorEnabledTest,
   config.mutable_debug_options()
       .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
 
-  gpu_device_info_.set_cuda_compute_capability(9, 0);  // Hopper
+  gpu_device_info_.set_cuda_compute_capability(
+      stream_executor::CudaComputeCapability::Hopper());
 
   auto module = CreateTestModule(config);
   AddAllReduce(module.get());          // Supported
@@ -485,7 +489,8 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledIfNotHopper) {
   config.mutable_debug_options()
       .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
 
-  gpu_device_info_.set_cuda_compute_capability(8, 0);  // Not Hopper
+  gpu_device_info_.set_cuda_compute_capability(
+      stream_executor::CudaComputeCapability::Ampere());  // Not Hopper
 
   auto module = CreateTestModule(config);
   AddAllReduce(module.get());  // Supported collective

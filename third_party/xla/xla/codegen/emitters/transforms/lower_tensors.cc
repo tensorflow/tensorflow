@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
@@ -63,10 +63,13 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/device_spec.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -1311,7 +1314,10 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       se::GpuDeviceInfoProto device_info;
       CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
                                                        &device_info));
-      *device_spec_.mutable_type() = se::DeviceDescription(device_info);
+      absl::StatusOr<se::DeviceDescription> device_description =
+          se::DeviceDescription::FromProto(device_info);
+      TF_CHECK_OK(device_description.status());
+      *device_spec_.mutable_type() = *device_description;
     } else if (target_type_ == "cpu") {
       CHECK(gpu_device_info_.empty());
       *device_spec_.mutable_type() = CpuDeviceSpec{};
