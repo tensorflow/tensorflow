@@ -18,6 +18,7 @@
 #include <initializer_list>
 #include <memory>
 #include <ostream>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -49,7 +50,7 @@ class Error {
   constexpr LiteRtStatus Status() const { return status_; }
 
   // Get the error message, empty string if none was attached.
-  constexpr absl::string_view Message() const { return message_; }
+  const std::string& Message() const { return message_; }
 
   friend std::ostream& operator<<(std::ostream& stream, const Error& error) {
     return stream << error.Message();
@@ -57,7 +58,7 @@ class Error {
 
  private:
   LiteRtStatus status_;
-  absl::string_view message_;
+  std::string message_;
 };
 
 class Unexpected {

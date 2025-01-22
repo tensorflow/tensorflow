@@ -265,7 +265,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   auto qnn_manager = QnnManager::Create(
       backend_configs, /*shared_library_dir=*/std::nullopt, opt_soc_model);
   if (!qnn_manager) {
-    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().c_str());
     return qnn_manager.Error().Status();
   }
   LITERT_LOG(LITERT_INFO, "%s", "QNN manager created");
@@ -276,7 +276,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   auto context_configs = QnnManager::DefaultContextConfigs();
   auto context_handle = (*qnn_manager)->CreateContextHandle(context_configs);
   if (!context_handle) {
-    LITERT_LOG(LITERT_ERROR, "%s", context_handle.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", context_handle.Error().Message().c_str());
     return context_handle.Error().Status();
   }
   LITERT_LOG(LITERT_INFO, "%s", "Context handle created");

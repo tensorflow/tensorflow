@@ -235,8 +235,8 @@ cc_test(
     deps = [
         ":litert_buffer_ref",
         ":litert_expected",
-        ":litert_macros",
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

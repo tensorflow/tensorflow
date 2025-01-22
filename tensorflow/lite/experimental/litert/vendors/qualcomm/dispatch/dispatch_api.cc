@@ -65,7 +65,7 @@ LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
   auto configs = QnnManager::DefaultBackendConfigs();
   if (auto qnn_manager = QnnManager::Create(configs, shared_library_dir_opt);
       !qnn_manager) {
-    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().c_str());
     return qnn_manager.Error().Status();
   } else {
     std::swap(TheQnnManager, *qnn_manager);
@@ -118,7 +118,7 @@ LiteRtStatus DeviceContextCreate(LiteRtDispatchDeviceContext* device_context) {
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to create device context: %s",
-               context.Error().Message().data());
+               context.Error().Message().c_str());
     return context.Error().Status();
   }
 }
@@ -139,7 +139,7 @@ LiteRtStatus GetInputRequirements(
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
-               requirements.Error().Message().data());
+               requirements.Error().Message().c_str());
     return requirements.Error().Status();
   }
 }
@@ -155,7 +155,7 @@ LiteRtStatus GetOutputRequirements(
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
-               requirements.Error().Message().data());
+               requirements.Error().Message().c_str());
     return requirements.Error().Status();
   }
 }
@@ -165,7 +165,7 @@ LiteRtStatus RegisterTensorBuffer(
     LiteRtTensorBufferHandle* tensor_buffer_handle) {
   if (auto status = device_context->RegisterTensorBuffer(buffer); !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to register buffer: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   } else {
     *tensor_buffer_handle = *status;
@@ -177,7 +177,7 @@ LiteRtStatus UnregisterTensorBuffer(LiteRtDispatchDeviceContext device_context,
                                     LiteRtTensorBufferHandle handle) {
   if (auto status = device_context->UnregisterTensorBuffer(handle); !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to unregister buffer: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   } else {
     return kLiteRtStatusOk;
@@ -194,7 +194,7 @@ LiteRtStatus InvocationContextCreate(
       function_name);
   if (!context) {
     LITERT_LOG(LITERT_ERROR, "Failed to create context from context binary: %s",
-               context.Error().Message().data());
+               context.Error().Message().c_str());
     return context.Error().Status();
   }
   *invocation_context = context->release();
@@ -215,7 +215,7 @@ LiteRtStatus AttachInput(LiteRtDispatchInvocationContext invocation_context,
                                                     tensor_buffer_handle);
       !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to attach input buffer: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;
@@ -228,7 +228,7 @@ LiteRtStatus AttachOutput(LiteRtDispatchInvocationContext invocation_context,
                                                      tensor_buffer_handle);
       !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to attach output buffer: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;
@@ -251,7 +251,7 @@ LiteRtStatus DetachOutput(LiteRtDispatchInvocationContext invocation_context,
 LiteRtStatus Invoke(LiteRtDispatchInvocationContext invocation_context) {
   if (auto status = invocation_context->Execute(); !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to execute invocation context: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;

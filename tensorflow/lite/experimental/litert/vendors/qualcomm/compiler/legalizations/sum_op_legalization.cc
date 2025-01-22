@@ -83,7 +83,7 @@ LiteRtStatus SumOpLegalization::LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
   auto src_axes_tensor_type = src_axes.RankedTensorType();
   if (!src_axes_tensor_type) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               src_axes_tensor_type.Error().Message().data());
+               src_axes_tensor_type.Error().Message().c_str());
     return src_axes_tensor_type.Error().Status();
   }
 

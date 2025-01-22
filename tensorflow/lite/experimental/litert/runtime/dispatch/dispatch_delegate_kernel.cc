@@ -293,7 +293,7 @@ TfLiteStatus DispatchDelegateKernel::Init(
     }
     auto tensor_type = ConvertTensorType(tfl_opaque_tensor);
     if (!tensor_type) {
-      LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().data());
+      LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().c_str());
       return kTfLiteError;
     }
     auto input_buffer_requirements =
@@ -315,7 +315,7 @@ TfLiteStatus DispatchDelegateKernel::Init(
     }
     auto tensor_type = ConvertTensorType(tfl_opaque_tensor);
     if (!tensor_type) {
-      LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().data());
+      LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().c_str());
       return kTfLiteError;
     }
     auto output_buffer_requirements =
@@ -374,7 +374,7 @@ TfLiteStatus DispatchDelegateKernel::CreateAndSetBuffer(
 
   auto tensor_type = ConvertTensorType(tfl_opaque_tensor);
   if (!tensor_type) {
-    LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().c_str());
     return kTfLiteError;
   }
 
@@ -384,7 +384,7 @@ TfLiteStatus DispatchDelegateKernel::CreateAndSetBuffer(
     if (auto cached_tensor_type = cached_tensor_buffer.TensorType();
         !cached_tensor_type) {
       LITERT_LOG(LITERT_ERROR, "%s",
-                 cached_tensor_type.Error().Message().data());
+                 cached_tensor_type.Error().Message().c_str());
       return kTfLiteError;
     }
 
@@ -400,7 +400,7 @@ TfLiteStatus DispatchDelegateKernel::CreateAndSetBuffer(
       GetBufferRequirements(*tensor_type, buffer_index, is_input);
   if (!tensor_buffer_requirements) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               tensor_buffer_requirements.Error().Message().data());
+               tensor_buffer_requirements.Error().Message().c_str());
     return kTfLiteError;
   }
 
@@ -408,7 +408,7 @@ TfLiteStatus DispatchDelegateKernel::CreateAndSetBuffer(
       tensor_buffer_requirements->SupportedTypes();
   if (!supported_tensor_buffer_types) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               supported_tensor_buffer_types.Error().Message().data());
+               supported_tensor_buffer_types.Error().Message().c_str());
     return kTfLiteError;
   }
 
@@ -424,7 +424,8 @@ TfLiteStatus DispatchDelegateKernel::CreateAndSetBuffer(
 
   auto tensor_buffer_size = tensor_buffer_requirements->BufferSize();
   if (!tensor_buffer_size) {
-    LITERT_LOG(LITERT_ERROR, "%s", tensor_buffer_size.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s",
+               tensor_buffer_size.Error().Message().c_str());
     return kTfLiteError;
   }
 
@@ -514,7 +515,7 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
       // provided TensorBuffer.
       auto buffer_size = tensor_buffer->Size();
       if (!buffer_size) {
-        LITERT_LOG(LITERT_ERROR, "%s", buffer_size.Error().Message().data());
+        LITERT_LOG(LITERT_ERROR, "%s", buffer_size.Error().Message().c_str());
         return kTfLiteError;
       }
       if (auto status = RegisterLiteRtTensorBuffer(std::move(*tensor_buffer),
@@ -547,7 +548,7 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
       // provided TensorBuffer.
       auto buffer_size = tensor_buffer->Size();
       if (!buffer_size) {
-        LITERT_LOG(LITERT_ERROR, "%s", buffer_size.Error().Message().data());
+        LITERT_LOG(LITERT_ERROR, "%s", buffer_size.Error().Message().c_str());
         return kTfLiteError;
       }
       if (auto status = RegisterLiteRtTensorBuffer(std::move(*tensor_buffer),
@@ -597,7 +598,7 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
 
     auto lock_and_addr = TensorBufferScopedLock::Create(tensor_buffer);
     if (!lock_and_addr) {
-      LITERT_LOG(LITERT_ERROR, "%s", lock_and_addr.Error().Message().data());
+      LITERT_LOG(LITERT_ERROR, "%s", lock_and_addr.Error().Message().c_str());
       return kTfLiteError;
     }
 
@@ -627,7 +628,7 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
 
     auto lock_and_addr = TensorBufferScopedLock::Create(tensor_buffer);
     if (!lock_and_addr) {
-      LITERT_LOG(LITERT_ERROR, "%s", lock_and_addr.Error().Message().data());
+      LITERT_LOG(LITERT_ERROR, "%s", lock_and_addr.Error().Message().c_str());
       return kTfLiteError;
     }
 

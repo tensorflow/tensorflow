@@ -307,7 +307,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
     auto bytecode = CompilePartition(**neuron_adapter, partition, graph_name,
                                      opt_soc_model);
     if (!bytecode) {
-      LITERT_LOG(LITERT_INFO, "%s", bytecode.Error().Message().data());
+      LITERT_LOG(LITERT_INFO, "%s", bytecode.Error().Message().c_str());
       return bytecode.Error().Status();
     }
 

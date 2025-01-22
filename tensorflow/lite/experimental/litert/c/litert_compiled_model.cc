@@ -35,7 +35,7 @@ LiteRtStatus LiteRtCreateCompiledModel(
       LiteRtCompiledModelT::Create(model, compilation_options);
   if (!created_compiled_model) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               created_compiled_model.Error().Message().data());
+               created_compiled_model.Error().Message().c_str());
     return created_compiled_model.Error().Status();
   }
   *compiled_model = created_compiled_model->release();
@@ -53,7 +53,7 @@ LiteRtStatus LiteRtGetCompiledModelInputBufferRequirements(
   auto res = compiled_model->GetInputBufferRequirementsCApi(signature_index,
                                                             input_index);
   if (!res) {
-    LITERT_LOG(LITERT_ERROR, "%s", res.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", res.Error().Message().c_str());
     return res.Error().Status();
   }
   *buffer_requirements = res.Value();
@@ -71,7 +71,7 @@ LiteRtStatus LiteRtGetCompiledModelOutputBufferRequirements(
   auto res = compiled_model->GetOutputBufferRequirementsCApi(signature_index,
                                                              output_index);
   if (!res) {
-    LITERT_LOG(LITERT_ERROR, "%s", res.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", res.Error().Message().c_str());
     return res.Error().Status();
   }
   *buffer_requirements = res.Value();
@@ -93,7 +93,7 @@ LiteRtStatus LiteRtRunCompiledModel(LiteRtCompiledModel compiled_model,
       compiled_model->RunCApi(signature_index, num_input_buffers, input_buffers,
                               num_output_buffers, output_buffers);
   if (!res) {
-    LITERT_LOG(LITERT_ERROR, "%s", res.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", res.Error().Message().c_str());
     return res.Error().Status();
   }
   return kLiteRtStatusOk;

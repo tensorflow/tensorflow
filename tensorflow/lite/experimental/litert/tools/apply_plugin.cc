@@ -425,7 +425,7 @@ LiteRtStatus Apply(Context& ctx) {
   if (auto status = litert::internal::ApplyPlugin(
           *plugin, model, ctx.SocModelTarget(), ctx.Serialization());
       !status) {
-    LITERT_LOG(LITERT_ERROR, "%s", status.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", status.Error().Message().c_str());
     return status.Error().Status();
   }
   ctx.Dump().Done();

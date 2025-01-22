@@ -202,7 +202,7 @@ LiteRtStatus LegalizeTensor(const litert::Tensor& src, Qnn_Tensor_t& dest) {
   auto src_ranked_tensor_type = src.RankedTensorType();
   if (!src_ranked_tensor_type) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               src_ranked_tensor_type.Error().Message().data());
+               src_ranked_tensor_type.Error().Message().c_str());
     return src_ranked_tensor_type.Error().Status();
   }
 

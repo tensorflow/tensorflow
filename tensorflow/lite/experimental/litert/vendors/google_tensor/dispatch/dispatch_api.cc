@@ -100,7 +100,7 @@ LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
           litert::google_tensor::Southbound::Create(shared_library_dir_opt);
       !southbound) {
     LITERT_LOG(LITERT_INFO, "Initialization failure: %s",
-               southbound.Error().Message().data());
+               southbound.Error().Message().c_str());
     return southbound.Error().Status();
   } else {
     TheSouthbound = southbound->release();
@@ -157,7 +157,7 @@ LiteRtStatus DeviceContextCreate(LiteRtDispatchDeviceContext* device_context) {
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to create device context: %s",
-               context.Error().Message().data());
+               context.Error().Message().c_str());
     return context.Error().Status();
   }
   return kLiteRtStatusOk;
@@ -179,7 +179,7 @@ LiteRtStatus GetInputRequirements(
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
-               requirements.Error().Message().data());
+               requirements.Error().Message().c_str());
     return requirements.Error().Status();
   }
 }
@@ -195,7 +195,7 @@ LiteRtStatus GetOutputRequirements(
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
-               requirements.Error().Message().data());
+               requirements.Error().Message().c_str());
     return requirements.Error().Status();
   }
 }

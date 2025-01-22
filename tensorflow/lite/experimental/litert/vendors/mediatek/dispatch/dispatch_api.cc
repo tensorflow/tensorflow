@@ -73,7 +73,7 @@ LiteRtStatus LiteRtInitialize(const LiteRtDispatchOption* options,
     TheNeuronAdapter = neuron_adapter->release();
   } else {
     LITERT_LOG(LITERT_INFO, "Initialization failure: %s",
-               neuron_adapter.Error().Message().data());
+               neuron_adapter.Error().Message().c_str());
     return neuron_adapter.Error().Status();
   }
 
@@ -125,7 +125,7 @@ LiteRtStatus LiteRtDeviceContextCreate(
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to create device context: %s",
-               context.Error().Message().data());
+               context.Error().Message().c_str());
     return context.Error().Status();
   }
 }
@@ -147,7 +147,7 @@ LiteRtStatus LiteRtGetInputRequirements(
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
-               requirements.Error().Message().data());
+               requirements.Error().Message().c_str());
     return requirements.Error().Status();
   }
 }
@@ -163,7 +163,7 @@ LiteRtStatus LiteRtGetOutputRequirements(
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
-               requirements.Error().Message().data());
+               requirements.Error().Message().c_str());
     return requirements.Error().Status();
   }
 }
@@ -179,7 +179,7 @@ LiteRtStatus LiteRtRegisterTensorBuffer(
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to register tensor buffer: %s",
-               result.Error().Message().data());
+               result.Error().Message().c_str());
     return result.Error().Status();
   }
 }
@@ -191,7 +191,7 @@ LiteRtStatus LiteRtUnregisterTensorBuffer(
           device_context->UnregisterTensorBuffer(tensor_buffer_handle);
       !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to unregister tensor buffer: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;
@@ -207,7 +207,7 @@ LiteRtStatus LiteRtInvocationContextCreate(
       exec_bytecode_size, function_name, num_inputs, num_outputs);
   if (!context) {
     LITERT_LOG(LITERT_ERROR, "Failed to create context from context binary: %s",
-               context.Error().Message().data());
+               context.Error().Message().c_str());
     return context.Error().Status();
   }
   *invocation_context = context->release();
@@ -227,7 +227,7 @@ LiteRtStatus LiteRtAttachInput(
                                                     tensor_buffer_handle);
       !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to attach input: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;
@@ -240,7 +240,7 @@ LiteRtStatus LiteRtAttachOutput(
                                                      tensor_buffer_handle);
       !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to attach output: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;
@@ -253,7 +253,7 @@ LiteRtStatus LiteRtDetachInput(
                                                     tensor_buffer_handle);
       !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to detach input: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;
@@ -266,7 +266,7 @@ LiteRtStatus LiteRtDetachOutput(
                                                      tensor_buffer_handle);
       !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to detach output: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;
@@ -275,7 +275,7 @@ LiteRtStatus LiteRtDetachOutput(
 LiteRtStatus LiteRtInvoke(LiteRtDispatchInvocationContext invocation_context) {
   if (auto status = invocation_context->Invoke(); !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to invoke context: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;

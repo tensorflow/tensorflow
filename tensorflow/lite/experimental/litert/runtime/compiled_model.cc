@@ -98,7 +98,7 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
             litert::internal::ApplyPlugins(model, compilation_options);
         !result) {
       LITERT_LOG(LITERT_WARNING, "Failed to apply compiler plugins: %s",
-                 result.Error().Message().data());
+                 result.Error().Message().c_str());
     } else {
       if (result->num_applied_plugins > 0) {
         LITERT_LOG(LITERT_INFO, "Successfully applied %d compiler plugins: %s",

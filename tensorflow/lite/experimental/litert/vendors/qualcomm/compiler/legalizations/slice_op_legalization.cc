@@ -80,7 +80,7 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
   auto src_input_tensor_type = src_input_tensor.RankedTensorType();
   if (!src_input_tensor_type) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               src_input_tensor_type.Error().Message().data());
+               src_input_tensor_type.Error().Message().c_str());
     return src_input_tensor_type.Error().Status();
   }
 
