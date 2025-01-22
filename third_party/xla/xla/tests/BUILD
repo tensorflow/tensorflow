@@ -896,8 +896,6 @@ xla_test(
         "//xla:types",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:semantic_version",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base",
