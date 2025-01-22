@@ -50,6 +50,7 @@ using TflElementType = ::tflite::TensorType;
 using TflOptions = ::tflite::BuiltinOptionsUnion;
 using TflSignature = ::tflite::SignatureDefT;
 using TflMetadata = ::tflite::MetadataT;
+using TflPackedModel = ::tflite::Model;
 
 using TflBufferPtr = std::unique_ptr<TflBuffer>;
 using TflModelPtr = std::unique_ptr<TflModel>;

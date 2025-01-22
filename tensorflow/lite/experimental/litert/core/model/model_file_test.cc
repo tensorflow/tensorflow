@@ -35,6 +35,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
+#include "tensorflow/lite/experimental/litert/core/dispatch_op_schema.h"
 #include "tensorflow/lite/experimental/litert/core/model/graph_validation.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_file_test_util.h"
@@ -292,6 +293,137 @@ TEST(ModelSerializeTest, WithAppendByteCode) {
 
   ASSERT_EQ(offset + size, serialized->Size());
   EXPECT_EQ(serialized->StrView().substr(offset, size), kByteCode);
+}
+
+TEST(ModelSerializeTest, WithSingleExternalBuffer) {
+  static constexpr absl::string_view kByteCode = "SOME_BYTE_CODE";
+  static constexpr absl::string_view kName = "foo";
+
+  LiteRtModelT root;
+  auto& sg = root.EmplaceSubgraph();
+  auto& op = sg.EmplaceOp();
+
+  OwningBufferRef<uint8_t> buffer(kByteCode);
+  const auto buf_id = root.RegisterExternalBuffer(std::move(buffer));
+  root.AttachExternalBufferToOp(&op, buf_id, std::string(kName));
+
+  auto serialized = SerializeModel(std::move(root));
+  ASSERT_TRUE(serialized);
+
+  // Verify the op contains an offset and size to the byte code and the correct
+  // name.
+  auto fb = FlatbufferWrapper::CreateFromBuffer(*serialized);
+  ASSERT_TRUE(fb);
+
+  auto tfl = fb->get()->Unpack();
+  const auto& opts = tfl->subgraphs[0]->operators[0]->custom_options;
+  BufferRef<uint8_t> opts_buffer(opts.data(), opts.size());
+
+  auto dispatch_opts = GetDispatchOpOptions(opts_buffer);
+  EXPECT_EQ(dispatch_opts.name, kName);
+  EXPECT_EQ(serialized->StrView().substr(dispatch_opts.bytecode_offset,
+                                         dispatch_opts.bytecode_size),
+            kByteCode);
+}
+
+TEST(ModelSerializeTest, WithMultipleUniqueExternalBuffer) {
+  static constexpr absl::string_view kByteCode = "SOME_BYTE_CODE";
+  static constexpr absl::string_view kName = "foo";
+  static constexpr absl::string_view kByteCode2 = "SOME_BYTE_CODE2";
+  static constexpr absl::string_view kName2 = "bar";
+
+  LiteRtModelT root;
+  auto& sg = root.EmplaceSubgraph();
+  auto& op = sg.EmplaceOp();
+  auto& op2 = sg.EmplaceOp();
+
+  OwningBufferRef<uint8_t> buffer(kByteCode);
+  const auto buf_id = root.RegisterExternalBuffer(std::move(buffer));
+  root.AttachExternalBufferToOp(&op, buf_id, std::string(kName));
+
+  OwningBufferRef<uint8_t> buffer2(kByteCode2);
+  const auto buf_id2 = root.RegisterExternalBuffer(std::move(buffer2));
+  root.AttachExternalBufferToOp(&op2, buf_id2, std::string(kName2));
+
+  auto serialized = SerializeModel(std::move(root));
+  ASSERT_TRUE(serialized);
+
+  // Verify both ops contains an offset and size to the byte code and the
+  // correct name.
+  auto fb = FlatbufferWrapper::CreateFromBuffer(*serialized);
+  ASSERT_TRUE(fb);
+
+  auto tfl = fb->get()->Unpack();
+
+  {
+    const auto& opts = tfl->subgraphs[0]->operators[0]->custom_options;
+    BufferRef<uint8_t> opts_buffer(opts.data(), opts.size());
+
+    auto dispatch_opts = GetDispatchOpOptions(opts_buffer);
+    EXPECT_EQ(dispatch_opts.name, kName);
+    EXPECT_EQ(serialized->StrView().substr(dispatch_opts.bytecode_offset,
+                                           dispatch_opts.bytecode_size),
+              kByteCode);
+  }
+
+  {
+    const auto& opts = tfl->subgraphs[0]->operators[1]->custom_options;
+    BufferRef<uint8_t> opts_buffer(opts.data(), opts.size());
+
+    auto dispatch_opts = GetDispatchOpOptions(opts_buffer);
+    EXPECT_EQ(dispatch_opts.name, kName2);
+    EXPECT_EQ(serialized->StrView().substr(dispatch_opts.bytecode_offset,
+                                           dispatch_opts.bytecode_size),
+              kByteCode2);
+  }
+}
+
+TEST(ModelSerializeTest, WithSharedExternalBuffer) {
+  static constexpr absl::string_view kByteCode = "SOME_BYTE_CODE";
+  static constexpr absl::string_view kName = "foo";
+  static constexpr absl::string_view kName2 = "bar";
+
+  LiteRtModelT root;
+  auto& sg = root.EmplaceSubgraph();
+  auto& op = sg.EmplaceOp();
+  auto& op2 = sg.EmplaceOp();
+
+  OwningBufferRef<uint8_t> buffer(kByteCode);
+  const auto buf_id = root.RegisterExternalBuffer(std::move(buffer));
+
+  root.AttachExternalBufferToOp(&op, buf_id, std::string(kName));
+  root.AttachExternalBufferToOp(&op2, buf_id, std::string(kName2));
+
+  auto serialized = SerializeModel(std::move(root));
+  ASSERT_TRUE(serialized);
+
+  // Verify both ops point to the same appended buffer.
+  auto fb = FlatbufferWrapper::CreateFromBuffer(*serialized);
+  ASSERT_TRUE(fb);
+
+  auto tfl = fb->get()->Unpack();
+
+  {
+    const auto& opts = tfl->subgraphs[0]->operators[0]->custom_options;
+    BufferRef<uint8_t> opts_buffer(opts.data(), opts.size());
+
+    auto dispatch_opts = GetDispatchOpOptions(opts_buffer);
+    EXPECT_EQ(dispatch_opts.name, kName);
+    EXPECT_EQ(serialized->StrView().substr(dispatch_opts.bytecode_offset,
+                                           dispatch_opts.bytecode_size),
+              kByteCode);
+  }
+
+  {
+    const auto& opts = tfl->subgraphs[0]->operators[1]->custom_options;
+    BufferRef<uint8_t> opts_buffer(opts.data(), opts.size());
+
+    auto dispatch_opts = GetDispatchOpOptions(opts_buffer);
+    EXPECT_EQ(dispatch_opts.name, kName2);
+    EXPECT_EQ(serialized->StrView().substr(dispatch_opts.bytecode_offset,
+                                           dispatch_opts.bytecode_size),
+              kByteCode);
+  }
 }
 
 // Tests that explicitly check litert graph structure.

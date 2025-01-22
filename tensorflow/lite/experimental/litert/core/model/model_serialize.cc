@@ -26,15 +26,18 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
+#include "tensorflow/lite/experimental/litert/core/dispatch_op_schema.h"
 #include "tensorflow/lite/experimental/litert/core/model/litert_to_flatbuffer.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace litert::internal {
@@ -101,12 +104,20 @@ TflOpCodePtr MakeCustomOpCode(std::string custom_code_name) {
   return custom_code;
 }
 
-// Utility for accessing flatbuffer state.
-class FlatbufferBuilder {
+// Utility for accessing flatbuffer state and other relevant state.
+class SerializationContext {
  public:
-  explicit FlatbufferBuilder(uint32_t dispatch_op_code_ind)
+  struct TflExternalBufferRef {
+    size_t subgraph_ind;
+    size_t op_ind;
+    LiteRtModelT::ExternalBufferId buf_id;
+  };
+
+  explicit SerializationContext(uint32_t dispatch_op_code_ind,
+                                LiteRtModelT& litert_model)
       : tfl_model_(std::make_unique<TflModel>()),
-        dispatch_op_code_ind_(dispatch_op_code_ind) {
+        dispatch_op_code_ind_(dispatch_op_code_ind),
+        litert_model_(litert_model) {
     // Tfl expects empty buffer 0.
     tfl_model_->buffers.push_back(std::make_unique<TflBuffer>());
   }
@@ -114,6 +125,8 @@ class FlatbufferBuilder {
   TflModel& Model() { return *tfl_model_.get(); }
 
   TflModelPtr Release() && { return std::move(tfl_model_); }
+
+  LiteRtModelT& LitertModel() { return litert_model_; }
 
   // Move given buffer into tfl model and get its index.
   uint32_t SubmitBuffer(TflBufferPtr tfl_buffer) {
@@ -133,6 +146,19 @@ class FlatbufferBuilder {
     tfl_model_->metadata.push_back(std::move(tfl_metadata));
   }
 
+  // Keep track of the given ops index as having a particular external buffer.
+  // These will be used to update the ops with the correct offset and size
+  // after the model is fully packed. Call this in "sorted" op order.
+  void MarkOpWithExternalBuffer(size_t subgraph_ind, size_t op_ind,
+                                LiteRtModelT::ExternalBufferId buf_id) {
+    external_buffer_refs_.push_back(
+        TflExternalBufferRef{subgraph_ind, op_ind, buf_id});
+  }
+
+  const std::vector<TflExternalBufferRef>& ExternalBufferRefs() {
+    return external_buffer_refs_;
+  }
+
   // Get the index in the tfl op codes for the dispatch custom code.
   // This should be the only new custom code added after loading the initial
   // tfl.
@@ -141,6 +167,9 @@ class FlatbufferBuilder {
  private:
   TflModelPtr tfl_model_;
   uint32_t dispatch_op_code_ind_;
+  LiteRtModelT& litert_model_;
+  // Expected to be sorted at all times, with respect to subgraph/op indices.
+  std::vector<TflExternalBufferRef> external_buffer_refs_;
 };
 
 void SetOptions(const LiteRtOpT& litert_op, TflOp& tfl_op) {
@@ -151,28 +180,33 @@ void SetOptions(const LiteRtOpT& litert_op, TflOp& tfl_op) {
   }
 }
 
-LiteRtStatus PackOp(FlatbufferBuilder& builder, LiteRtOpT& litert_op,
+LiteRtStatus PackOp(SerializationContext& builder, LiteRtOpT& litert_op,
                     TflOp& tfl_op, const TensorMap& tensor_map) {
+  // Get index of the op code in the tfl model.
   auto tfl_op_code_ind = detail::GetTflOpCodeInd(litert_op);
-  if (tfl_op_code_ind < 0) {
+  const bool is_dispatch_op = tfl_op_code_ind == detail::kDispatchOpCodeTflInd;
+
+  if (is_dispatch_op) {
     tfl_op_code_ind = builder.DispatchOpCodeInd();
   }
+
   tfl_op.opcode_index = tfl_op_code_ind;
 
+  // Look up the tensor indices in the tfl model.
   for (auto* in : litert_op.Inputs()) {
     tfl_op.inputs.push_back(tensor_map.at(in));
   }
-
   for (auto* out : litert_op.Outputs()) {
     tfl_op.outputs.push_back(tensor_map.at(out));
   }
 
-  SetOptions(litert_op, tfl_op);
+  // Set generic options.
+  tfl_op.builtin_options = detail::GetTflOptions(litert_op);
 
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus PackTensor(FlatbufferBuilder& builder,
+LiteRtStatus PackTensor(SerializationContext& builder,
                         LiteRtTensorT& litert_tensor, TflTensor& tfl_tensor) {
   auto tfl_tensor_type = MapTensorType(litert_tensor.Type());
   if (!tfl_tensor_type) {
@@ -199,9 +233,10 @@ LiteRtStatus PackTensor(FlatbufferBuilder& builder,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus PackSubgraph(FlatbufferBuilder& builder,
+LiteRtStatus PackSubgraph(SerializationContext& builder,
                           LiteRtSubgraphT& litert_subgraph,
-                          TflSubgraph& tfl_subgraph, TensorMap& tensor_map) {
+                          TflSubgraph& tfl_subgraph, TensorMap& tensor_map,
+                          size_t subgraph_ind) {
   for (auto* tensor : litert_subgraph.Tensors()) {
     tfl_subgraph.tensors.push_back(std::make_unique<TflTensor>());
     tensor_map.insert({tensor, tfl_subgraph.tensors.size() - 1});
@@ -209,10 +244,34 @@ LiteRtStatus PackSubgraph(FlatbufferBuilder& builder,
         PackTensor(builder, *tensor, *tfl_subgraph.tensors.back()));
   }
 
-  for (auto* op : litert_subgraph.Ops()) {
+  for (auto i = 0; i < litert_subgraph.Ops().size(); ++i) {
+    auto* op = litert_subgraph.Ops().at(i);
+
     tfl_subgraph.operators.push_back(std::make_unique<TflOp>());
-    LITERT_RETURN_STATUS_IF_NOT_OK(
-        PackOp(builder, *op, *tfl_subgraph.operators.back(), tensor_map));
+    auto& tfl_op = *tfl_subgraph.operators.back();
+    LITERT_RETURN_STATUS_IF_NOT_OK(PackOp(builder, *op, tfl_op, tensor_map));
+
+    // Set custom options.
+    if (auto external_buffer = builder.LitertModel().FindExternalBuffer(op)) {
+      // This mechanism is currently only used for dispatch ops to store
+      // location of bytecode. Here we update the name and placeholder values
+      // for offset and size. These will be updated when the model is fully
+      // packed.
+      auto dispatch_opts = MakeDispatchOpOptions({
+          0,
+          0,
+          std::string(external_buffer->second),
+      });
+      tfl_op.custom_options = dispatch_opts.ToVec();
+
+      // Save the "location" of the external buffer in the model.
+      builder.MarkOpWithExternalBuffer(subgraph_ind, i, external_buffer->first);
+
+    } else if (op->CustomOptions().Size() != 0) {
+      tfl_op.custom_options = op->CustomOptions().ToVec();
+    }
+
+    tfl_op.custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS;
   }
 
   for (auto* in : litert_subgraph.Inputs()) {
@@ -226,23 +285,18 @@ LiteRtStatus PackSubgraph(FlatbufferBuilder& builder,
   return kLiteRtStatusOk;
 }
 
-Expected<TflModelPtr> PackAsTflite(LiteRtModelT& litert_model) {
-  // Pass the op code list through that was saved during loading. Add one more
-  // op code for the dispatch ops.
-  auto tfl_op_codes = detail::TakeTflOpCodes(litert_model);
-  tfl_op_codes.push_back(
-      MakeCustomOpCode(std::string(kLiteRtDispatchOpCustomCode)));
+Expected<TflModelPtr> PackAsTflite(SerializationContext& builder) {
+  auto& litert_model = builder.LitertModel();
 
-  FlatbufferBuilder builder(tfl_op_codes.size() - 1);
-  builder.Model().operator_codes = std::move(tfl_op_codes);
-
-  // Pack litert subgraphs into tfl subgraphs and save the mapping of tensors.
+  // Pack litert subgraphs into tfl subgraphs and save the mapping of
+  // tensors.
   TensorMap tensor_map;
-  for (auto* litert_subgraph : litert_model.Subgraphs()) {
+  for (auto i = 0; i < litert_model.Subgraphs().size(); ++i) {
+    auto& litert_subgraph = litert_model.Subgraph(i);
     auto& tfl_subgraph = *builder.Model().subgraphs.emplace_back(
         std::make_unique<TflSubgraph>());
     LITERT_EXPECT_OK(
-        PackSubgraph(builder, *litert_subgraph, tfl_subgraph, tensor_map));
+        PackSubgraph(builder, litert_subgraph, tfl_subgraph, tensor_map, i));
   }
 
   // Serialize the signatures using saved tensor mapping.
@@ -291,6 +345,95 @@ Expected<TflModelPtr> PackAsTflite(LiteRtModelT& litert_model) {
   return std::move(builder).Release();
 }
 
+// Appends external buffers to the back of the serialized tflite model. Updates
+// the ops that references them with the correct offset and size in-place.
+Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedExternalBuffers(
+    SerializationContext& builder, OwningBufferRef<uint8_t> serialized_tfl,
+    LiteRtModelT& litert_model) {
+  // The final offset/size of the external buffers in the serialized tflite
+  // model.
+  std::vector<std::pair<size_t, size_t>> external_buffer_offsets;
+  size_t cur_offset = serialized_tfl.Size();
+  for (auto i = 0; i < litert_model.NumExternalBuffers(); ++i) {
+    auto external_buf = litert_model.GetExternalBuffer(i);
+    if (!external_buf) {
+      return external_buf.Error();
+    }
+    external_buffer_offsets.push_back({cur_offset, external_buf->Size()});
+    cur_offset += external_buf->Size();
+  }
+
+  // Read serialized tflite in packed form.
+  auto* tfl_model = tflite::GetMutableModel(serialized_tfl.Data());
+
+  // Get "sorted" locations of ops that use external buffers.
+  auto external_buf_it = builder.ExternalBufferRefs().cbegin();
+
+  // Iterate in the same order that ops were packed, upating with the correct
+  // offset and size.
+  for (auto sg_ind = 0; sg_ind < tfl_model->mutable_subgraphs()->size();
+       ++sg_ind) {
+    auto* sg = tfl_model->mutable_subgraphs()->GetMutableObject(sg_ind);
+
+    if (external_buf_it == builder.ExternalBufferRefs().cend()) {
+      break;
+    }
+
+    if (external_buf_it->subgraph_ind != sg_ind) {
+      ++external_buf_it;
+      continue;
+    }
+
+    for (auto op_ind = 0; op_ind < sg->mutable_operators()->size(); ++op_ind) {
+      auto* op = sg->mutable_operators()->GetMutableObject(op_ind);
+
+      if (external_buf_it == builder.ExternalBufferRefs().cend()) {
+        break;
+      }
+
+      if (external_buf_it->op_ind != op_ind) {
+        ++external_buf_it;
+        continue;
+      }
+
+      // If we are here than this op has an external buffer. Update with
+      // the appropriate offset and size.
+      const auto buf_id = external_buf_it->buf_id;
+      const auto [real_offset, real_size] = external_buffer_offsets.at(buf_id);
+
+      MutableBufferRef<uint8_t> old_raw_opts(
+          op->mutable_custom_options()->data(),
+          op->mutable_custom_options()->size());
+      DispatchOpOptions dispach_opts(GetDispatchOpOptions(old_raw_opts));
+      dispach_opts.bytecode_offset = real_offset;
+      dispach_opts.bytecode_size = real_size;
+
+      if (!UpdateDispatchOpOptionsInPlace(dispach_opts, old_raw_opts)) {
+        return Error(kLiteRtStatusErrorInvalidFlatbuffer);
+      }
+
+      ++external_buf_it;
+    }
+  }
+
+  // Allocate buffer enough for original model and appendd buffers and copy.
+  OwningBufferRef<uint8_t> final_model(cur_offset);
+
+  uint8_t* start = final_model.Data();
+  std::memcpy(start, serialized_tfl.Data(), serialized_tfl.Size());
+  start += serialized_tfl.Size();
+  for (auto i = 0; i < litert_model.NumExternalBuffers(); ++i) {
+    auto external_buf = litert_model.GetExternalBuffer(i);
+    if (!external_buf) {
+      return external_buf.Error();
+    }
+    std::memcpy(start, external_buf->Data(), external_buf->Size());
+    start += external_buf->Size();
+  }
+
+  return final_model;
+}
+
 }  // namespace
 
 Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model) {
@@ -298,7 +441,16 @@ Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model) {
   // for post processing after packing to tflite model.
   auto maybe_byte_code = PopByteCodeIfNeedsPostProcess(model);
 
-  auto tfl_model = PackAsTflite(model);
+  // Pass the op code list through that was saved during loading. Add one more
+  // op code for the dispatch ops
+  auto tfl_op_codes = detail::TakeTflOpCodes(model);
+  tfl_op_codes.push_back(
+      MakeCustomOpCode(std::string(kLiteRtDispatchOpCustomCode)));
+
+  SerializationContext builder(tfl_op_codes.size() - 1, model);
+  builder.Model().operator_codes = std::move(tfl_op_codes);
+
+  auto tfl_model = PackAsTflite(builder);
   if (!tfl_model) {
     return tfl_model.Error();
   }
@@ -308,10 +460,14 @@ Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model) {
     return Error(kLiteRtStatusErrorInvalidFlatbuffer);
   }
 
-  if (!maybe_byte_code) {
-    return serialized_tfl;
+  if (model.NumExternalBuffers() != 0) {
+    return SerializeWithAppendedExternalBuffers(
+        builder, std::move(serialized_tfl), model);
   }
-  return AppendByteCode(serialized_tfl, *maybe_byte_code);
+  if (maybe_byte_code) {
+    return AppendByteCode(std::move(serialized_tfl), *maybe_byte_code);
+  }
+  return serialized_tfl;
 }
 
 }  // namespace litert::internal
