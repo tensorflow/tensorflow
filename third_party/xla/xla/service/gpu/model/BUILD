@@ -821,6 +821,8 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
