@@ -1,17 +1,13 @@
-//==============================================================================
-//
-//  Copyright (c) Qualcomm Technologies, Inc.
+//  Copyright (c) Qualcomm Innovation Center, Inc.
 //  All Rights Reserved.
-//  Confidential and Proprietary - Qualcomm Technologies, Inc.
-//
-//==============================================================================
+
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reshape_op_builder.h"
 
 namespace qnn {
 
-std::vector<OpWrapper> BuildReshapeOp(TensorPool& tensor_pool,
-                                      const std::vector<TensorWrapperRef>& inputs,
-                                      const std::vector<TensorWrapperRef>& outputs) {
+std::vector<OpWrapper> BuildReshapeOp(
+    TensorPool& tensor_pool, const std::vector<TensorWrapperRef>& inputs,
+    const std::vector<TensorWrapperRef>& outputs) {
   std::vector<OpWrapper> res;
 
   auto& reshape_op = CreateOpWrapper(res, QNN_OP_RESHAPE);
