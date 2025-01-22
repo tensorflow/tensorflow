@@ -52,7 +52,7 @@ class ReductionVectorizationNoOptTest : public GpuCodegenTest {
 
 TEST_F(ReductionVectorizationNoOptTest, MultiOutputStore) {
   if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::PASCAL_)) {
+          se::CudaComputeCapability::kPascal)) {
     GTEST_SKIP() << "Maxwell GPUs are less vectorized";
   }
   const char* hlo_text = R"(
