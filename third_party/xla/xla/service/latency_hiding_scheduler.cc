@@ -1955,6 +1955,40 @@ bool HloScheduleGraph::IsPredecessorTransitively(
   return false;
 }
 
+void HloScheduleGraph::PopulateNodes(
+    const std::vector<HloInstruction*>& post_order_instructions,
+    const LatencyEstimator* latency_estimator,
+    const AsyncTracker* async_tracker,
+    std::vector<const HloInstruction*>& while_instrs) {
+  int64_t current_pos = 0;
+  for (HloInstruction* instr : post_order_instructions) {
+    auto [new_node_it, inserted] = nodes_.try_emplace(
+        instr, std::make_unique<HloGraphNode>(instr, current_pos));
+    CHECK(inserted) << "Expected the value to not be already in the map";
+    HloGraphNode& new_node = *new_node_it->second;
+    instr_order_map_[instr] = current_pos++;
+    new_node.predecessors_.reserve(instr->operand_count());
+    new_node.successors_.reserve(instr->user_count());
+    new_node.cost_ = latency_estimator->NodeCost(instr);
+    auto resources = async_tracker->GetResourcesFromInstruction(*instr);
+    new_node.resources_ = ResourcesVector(resources.begin(), resources.end());
+    new_node.released_shareable_resources_ =
+        async_tracker->GetReleasedShareableResourcesFromVector(
+            new_node.GetResources());
+    new_node.occupied_shareable_resources_ =
+        async_tracker->GetOccupiedShareableResourcesFromVector(
+            new_node.GetResources());
+    new_node.releases_selective_resource_ =
+        async_tracker->ReleasesSelectiveResource(&new_node);
+    new_node.occupies_selective_resource_ =
+        async_tracker->OccupiesSelectiveResource(&new_node);
+    // Gather while instructions for subsequent send-done dependency checks.
+    if (instr->opcode() == HloOpcode::kWhile) {
+      while_instrs.push_back(instr);
+    }
+  }
+}
+
 HloScheduleGraph::HloScheduleGraph(
     const std::vector<HloInstruction*>* post_order_instructions,
     HloAliasAnalysis* alias_analysis, const LatencyEstimator* latency_estimator,
@@ -1963,36 +1997,10 @@ HloScheduleGraph::HloScheduleGraph(
                       post_order_instructions->end()) {
   HloComputation* comp = (*post_order_instructions)[0]->parent();
   auto reachability = HloReachabilityMap::Build(comp);
-  int64_t current_pos = 0;
   std::vector<const HloInstruction*> while_instrs;
-  // Allocating the graph nodes. One for each of the instructions in the
-  // original instructions order.
-  for (HloInstruction* instr : *post_order_instructions) {
-    auto [new_node_it, inserted] = nodes_.try_emplace(
-        instr, std::make_unique<HloGraphNode>(instr, current_pos));
-    CHECK(inserted) << "Expected the value to not be already in the map";
-    instr_order_map_[instr] = current_pos++;
-    new_node_it->second->predecessors_.reserve(instr->operand_count());
-    new_node_it->second->successors_.reserve(instr->user_count());
-    new_node_it->second->cost_ = latency_estimator->NodeCost(instr);
-    auto resources = async_tracker->GetResourcesFromInstruction(*instr);
-    new_node_it->second->resources_ =
-        ResourcesVector(resources.begin(), resources.end());
-    new_node_it->second->released_shareable_resources_ =
-        async_tracker->GetReleasedShareableResourcesFromVector(
-            new_node_it->second->GetResources());
-    new_node_it->second->occupied_shareable_resources_ =
-        async_tracker->GetOccupiedShareableResourcesFromVector(
-            new_node_it->second->GetResources());
-    new_node_it->second->releases_selective_resource_ =
-        async_tracker->ReleasesSelectiveResource(new_node_it->second.get());
-    new_node_it->second->occupies_selective_resource_ =
-        async_tracker->OccupiesSelectiveResource(new_node_it->second.get());
-    // Gather while instructions for subsequent send-done dependency checks.
-    if (instr->opcode() == HloOpcode::kWhile) {
-      while_instrs.push_back(instr);
-    }
-  }
+  PopulateNodes(*post_order_instructions, latency_estimator, async_tracker,
+                while_instrs);
+
   auto add_dependency_helper = [latency_estimator](HloGraphNode* from,
                                                    HloGraphNode* to) {
     // Get the latency between these two instructions for this edge.
