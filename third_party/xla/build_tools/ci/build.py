@@ -254,7 +254,10 @@ _ML_BUILD_ARM64_IMAGE = "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/m
 
 
 def nvidia_gpu_build_with_compute_capability(
-    *, type_: BuildType, configs: Tuple[str, ...], compute_capability: int
+    *,
+    type_: BuildType,
+    configs: Tuple[str, ...],
+    compute_capability: int,
 ) -> Build:
   extra_gpu_tags = _tag_filters_for_compute_capability(compute_capability)
   return Build(
@@ -273,6 +276,10 @@ def nvidia_gpu_build_with_compute_capability(
           **_DEFAULT_BAZEL_OPTIONS,
       },
       extra_setup_commands=(["nvidia-smi"],),
+      test_env=dict(
+          TF_TESTS_PER_GPU=4,
+          TF_PER_DEVICE_MEMORY_LIMIT_MB=5000,
+      ),
   )
 
 
