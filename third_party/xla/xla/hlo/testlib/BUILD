@@ -67,6 +67,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/pass:hlo_pass",
