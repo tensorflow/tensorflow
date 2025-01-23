@@ -164,6 +164,9 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflGelu:
       out << "TFL_GELU";
       break;
+    case kLiteRtOpCodeTflDynamicUpdateSlice:
+      out << "TFL_DYNAMIC_UPDATE_SLICE";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;

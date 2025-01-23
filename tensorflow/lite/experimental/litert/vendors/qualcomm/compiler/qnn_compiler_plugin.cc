@@ -77,6 +77,7 @@ constexpr LiteRtOpCode kSupportedOps[] = {
   kLiteRtOpCodeTflLess,
   kLiteRtOpCodeTflGreater,
   kLiteRtOpCodeTflGelu,
+  kLiteRtOpCodeTflDynamicUpdateSlice,
 };
 // clang-format on
 

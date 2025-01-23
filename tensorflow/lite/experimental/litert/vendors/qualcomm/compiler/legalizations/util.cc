@@ -14,18 +14,18 @@
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/util.h"
 
+#include <cstdint>
 #include <sstream>
 
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_tensor.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
@@ -80,6 +80,39 @@ LiteRtStatus LegalizeSimpleOp(const Op& src, Qnn_OpConfig_t& dest,
 
   LITERT_RETURN_STATUS_IF_QNN_NOT_OK(
       graph_mapper.Qnn().Api()->graphAddNode(graph_mapper.QnnGraph(), dest));
+
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus BuildAndRegisterQnnNativeTensor(Qnn_DataType_t param_data_type,
+                                             uint32_t rank, uint32_t* dims,
+                                             GraphMapper& graph_mapper,
+                                             Qnn_Tensor_t& tensor) {
+  graph_mapper.AssignTensorName(tensor);
+  tensor.v2.dataType = param_data_type;
+  tensor.v2.type = QNN_TENSOR_TYPE_NATIVE;
+  tensor.v2.rank = rank;
+  tensor.v2.dimensions = dims;
+  LITERT_RETURN_STATUS_IF_QNN_NOT_OK(
+      graph_mapper.Qnn().Api()->tensorCreateGraphTensor(graph_mapper.QnnGraph(),
+                                                        &tensor));
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus BuildAndRegisterQnnOp(uint32_t input_size, Qnn_Tensor_t* op_ins,
+                                   uint32_t output_size, Qnn_Tensor_t* op_outs,
+                                   Qnn_OpConfig_t& op, uint32_t param_size,
+                                   Qnn_Param_t* params,
+                                   GraphMapper& graph_mapper) {
+  op.v1.numOfInputs = input_size;
+  op.v1.inputTensors = op_ins;
+  op.v1.numOfOutputs = output_size;
+  op.v1.outputTensors = op_outs;
+  op.v1.numOfParams = param_size;
+  op.v1.params = params;
+
+  LITERT_RETURN_STATUS_IF_QNN_NOT_OK(
+      graph_mapper.Qnn().Api()->graphAddNode(graph_mapper.QnnGraph(), op));
 
   return kLiteRtStatusOk;
 }
