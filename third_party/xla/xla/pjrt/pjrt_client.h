@@ -816,43 +816,6 @@ class PjRtClient {
         "implemented.");
   }
 
-  // Creates a shapeless buffer on the device that can be partitioned into
-  // multiple PjRtBuffer. This class is an Arena version of
-  // `AsyncHostToDeviceTransferManager`.
-  // As a low-level interface, the user must make sure that invocations of
-  // `Slice` match properly with the writes from `TransferRawDataToSubBuffer`.
-  //
-  // For the intended application to Arena allocation / transfer, the user can
-  // use `GetOnDeviceSizeInBytes` to calculate the offsets for the host buffers
-  // that need to be transferred.
-  class PjRtRawDeviceBuffer {
-   public:
-    virtual ~PjRtRawDeviceBuffer() = default;
-
-    // Transfers data to the device buffer. Data should already be in the
-    // device layout.
-    virtual absl::Status TransferRawDataToSubBuffer(
-        const void* data, int64_t offset, int64_t transfer_size,
-        bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) = 0;
-
-    // The resulting buffer becomes ready when all transfers complete.
-    virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> Slice(
-        int64_t offset, PrimitiveType type, absl::Span<int64_t const> dims,
-        const Layout& layout) = 0;
-  };
-  // Creates a raw device buffer of a given size in bytes.
-  virtual absl::StatusOr<std::unique_ptr<PjRtRawDeviceBuffer>>
-  CreateRawDeviceBuffer(int64_t size, PjRtDevice* device) {
-    return Unimplemented("CreateRawDeviceBuffer is not implemented.");
-  }
-
-  // On-device bytes required for a PjRt buffer with these `Shape` attributes.
-  virtual absl::StatusOr<int64_t> GetOnDeviceSizeInBytes(
-      PrimitiveType type, absl::Span<int64_t const> dims,
-      const Layout& layout) {
-    return Unimplemented("GetOnDeviceSizeInBytes is not implemented.");
-  };
-
   // Describes the semantics the caller to BufferFromHostBuffer expects from the
   // runtime, in a total order from most restrictive to least restrictive.
   enum class HostBufferSemantics {
