@@ -59,14 +59,14 @@ namespace litert::internal {
 Expected<BufferRef<uint8_t>> CompiledResult::ByteCode() const {
   const void* data;
   size_t size;
-  LITERT_EXPECT_OK(parent_.get_compiled_result_byte_code(
+  LITERT_RETURN_IF_ERROR(parent_.get_compiled_result_byte_code(
       compiled_result_handle_, &data, &size));
   return BufferRef(data, size);
 }
 
 Expected<LiteRtParamIndex> CompiledResult::NumCalls() const {
   LiteRtParamIndex call_idx;
-  LITERT_EXPECT_OK(parent_.get_compiled_result_num_calls(
+  LITERT_RETURN_IF_ERROR(parent_.get_compiled_result_num_calls(
       compiled_result_handle_, &call_idx));
   return call_idx;
 }
@@ -75,7 +75,7 @@ Expected<absl::string_view> CompiledResult::CallInfo(
     LiteRtParamIndex call_idx) const {
   const void* data;
   size_t size;
-  LITERT_EXPECT_OK(parent_.get_compiled_result_call_info(
+  LITERT_RETURN_IF_ERROR(parent_.get_compiled_result_call_info(
       compiled_result_handle_, call_idx, &data, &size));
   return absl::string_view(reinterpret_cast<const char*>(data), size);
 }
@@ -153,7 +153,7 @@ Expected<std::vector<std::string>> GetSocModels(
   std::vector<std::string> soc_models;
 
   LiteRtParamIndex num_models;
-  LITERT_EXPECT_OK(
+  LITERT_RETURN_IF_ERROR(
       api.get_num_compiler_plugin_supported_models(plugin_handle, &num_models));
 
   for (LiteRtParamIndex i = 0; i < num_models; ++i) {
@@ -197,13 +197,14 @@ Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
   CompilerPlugin plugin;
   LITERT_LOG(LITERT_INFO, "Loading plugin at: %s", lib_path.data());
 
-  LITERT_EXPECT_OK(OpenLib(lib_path, &plugin.lib_handle_));
+  LITERT_RETURN_IF_ERROR(OpenLib(lib_path, &plugin.lib_handle_));
   LITERT_LOG(LITERT_INFO, "Loaded plugin at: %s", lib_path.data());
 
-  LITERT_EXPECT_OK(ResolvePluginApi(plugin.lib_handle_, plugin.plugin_api_));
+  LITERT_RETURN_IF_ERROR(
+      ResolvePluginApi(plugin.lib_handle_, plugin.plugin_api_));
   LITERT_LOG(LITERT_INFO, "Resolved plugin api at: %s", lib_path.data());
 
-  LITERT_EXPECT_OK(
+  LITERT_RETURN_IF_ERROR(
       plugin.plugin_api_.create_compiler_plugin(&plugin.plugin_handle_));
   LITERT_LOG(LITERT_INFO, "Initialize plugin at: %s", lib_path.data());
 
@@ -240,7 +241,8 @@ Expected<std::vector<CompilerPlugin>> CompilerPlugin::LoadPlugins(
   for (auto search_path : lib_search_paths) {
     // Skip paths that are not valid.
     if (Exists(search_path)) {
-      LITERT_EXPECT_OK(FindLiteRtSharedLibs(search_path, plugin_lib_paths));
+      LITERT_RETURN_IF_ERROR(
+          FindLiteRtSharedLibs(search_path, plugin_lib_paths));
     }
   }
 
@@ -306,13 +308,13 @@ std::string CompilerPlugin::DebugString() const {
 
 Expected<LiteRtApiVersion> CompilerPlugin::ApiVersion() const {
   LiteRtApiVersion api_version;
-  LITERT_EXPECT_OK(plugin_api_.get_compiler_plugin_version(&api_version));
+  LITERT_RETURN_IF_ERROR(plugin_api_.get_compiler_plugin_version(&api_version));
   return api_version;
 }
 
 Expected<LiteRtHwAccelerators> CompilerPlugin::SupportedHardware() const {
   LiteRtHwAccelerators supported_hardware;
-  LITERT_EXPECT_OK(plugin_api_.get_compiler_plugin_supported_hardware(
+  LITERT_RETURN_IF_ERROR(plugin_api_.get_compiler_plugin_supported_hardware(
       plugin_handle_, &supported_hardware));
   return supported_hardware;
 }
@@ -320,8 +322,8 @@ Expected<LiteRtHwAccelerators> CompilerPlugin::SupportedHardware() const {
 Expected<std::vector<LiteRtOp>> CompilerPlugin::Partition(
     const Subgraph& subgraph) {
   LiteRtOpListT ops;
-  LITERT_EXPECT_OK(plugin_api_.compiler_plugin_partition(plugin_handle_,
-                                                         subgraph.Get(), &ops));
+  LITERT_RETURN_IF_ERROR(plugin_api_.compiler_plugin_partition(
+      plugin_handle_, subgraph.Get(), &ops));
   return ops.Vec();
 }
 
@@ -333,7 +335,7 @@ Expected<CompiledResult> CompilerPlugin::Compile(
   // important for on-device compilation, where the backend must determine the
   // SoC model based on the user device.
   const char* soc_model_str = !soc_model.empty() ? soc_model.data() : nullptr;
-  LITERT_EXPECT_OK(plugin_api_.compiler_plugin_compile(
+  LITERT_RETURN_IF_ERROR(plugin_api_.compiler_plugin_compile(
       plugin_handle_, soc_model_str, partitions.data(), partitions.size(),
       &result.compiled_result_handle_));
   return result;
@@ -376,7 +378,8 @@ Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
   // Accumulate partition results for each subgraph in model.
   PartitionResult result;
   for (auto* subgraph : model.Subgraphs()) {
-    LITERT_EXPECT_OK(PartitionSubgraph(compiler_plugin, *subgraph, result));
+    LITERT_RETURN_IF_ERROR(
+        PartitionSubgraph(compiler_plugin, *subgraph, result));
   }
   ABSL_DCHECK_EQ(result.first.size(), result.second.Size());
   return result;

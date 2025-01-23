@@ -59,7 +59,7 @@
     *e = init;                                  \
   }
 
-#define LITERT_EXPECT_OK(status)                       \
+#define LITERT_RETURN_IF_ERROR(status)                 \
   if (auto stat = (status); stat != kLiteRtStatusOk) { \
     return ::litert::Unexpected(stat);                 \
   }

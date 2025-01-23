@@ -81,7 +81,7 @@ std::optional<OwningBufferRef<uint8_t>> PopByteCodeIfNeedsPostProcess(
 Expected<OwningBufferRef<uint8_t>> AppendByteCode(
     OwningBufferRef<uint8_t> flatbuffer,
     OwningBufferRef<uint8_t> npu_byte_code) {
-  LITERT_EXPECT_OK(
+  LITERT_RETURN_IF_ERROR(
       FinishByteCodePlaceholders(flatbuffer, npu_byte_code.Size()));
 
   const auto res_size = flatbuffer.Size() + npu_byte_code.Size();
@@ -295,7 +295,7 @@ Expected<TflModelPtr> PackAsTflite(SerializationContext& builder) {
     auto& litert_subgraph = litert_model.Subgraph(i);
     auto& tfl_subgraph = *builder.Model().subgraphs.emplace_back(
         std::make_unique<TflSubgraph>());
-    LITERT_EXPECT_OK(
+    LITERT_RETURN_IF_ERROR(
         PackSubgraph(builder, litert_subgraph, tfl_subgraph, tensor_map, i));
   }
 

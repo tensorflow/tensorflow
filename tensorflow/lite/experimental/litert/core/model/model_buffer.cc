@@ -33,7 +33,7 @@ namespace internal {
 
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     LiteRtModelT&& model, BufferRef<uint8_t> npu_byte_code) {
-  LITERT_EXPECT_OK(model.PushMetadata(
+  LITERT_RETURN_IF_ERROR(model.PushMetadata(
       kByteCodeMetadataKey, npu_byte_code.Data(), npu_byte_code.Size()));
 
   for (auto* subgraph : model.Subgraphs()) {
@@ -51,7 +51,8 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
   }
 
   auto build_stamp = MakeBuildStamp("", "", Serialization::kAppend);
-  LITERT_EXPECT_OK(model.PushMetadata(kLiteRtBuildStampKey, *build_stamp));
+  LITERT_RETURN_IF_ERROR(
+      model.PushMetadata(kLiteRtBuildStampKey, *build_stamp));
 
   return SerializeModel(std::move(model));
 }
