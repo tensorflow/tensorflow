@@ -41,13 +41,13 @@ LiteRtStatus SelectOpLegalization::LegalizeOp(const Op& src,
     return kLiteRtStatusLegalizeNoMatch;
   }
   std::string op_name = absl::StrFormat(kSelectOpFmt, op_counter_++);
-  LITERT_RETURN_STATUS_IF_NOT_OK(SetOpInfo(op_name.c_str(),
-                                           kDefaultQnnOpPackageName.data(),
-                                           kQnnSelectOpTypeName.data(), dest));
-  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeSimpleOp(src, dest, graph_mapper));
+  LITERT_RETURN_IF_ERROR(SetOpInfo(op_name.c_str(),
+                                   kDefaultQnnOpPackageName.data(),
+                                   kQnnSelectOpTypeName.data(), dest));
+  LITERT_RETURN_IF_ERROR(LegalizeSimpleOp(src, dest, graph_mapper));
 
   return kLiteRtStatusOk;
-  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeSimpleOp(src, dest, graph_mapper));
+  LITERT_RETURN_IF_ERROR(LegalizeSimpleOp(src, dest, graph_mapper));
   LITERT_LOG(LITERT_INFO, "Legalized select op", "");
   return kLiteRtStatusOk;
 }

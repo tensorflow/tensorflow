@@ -84,7 +84,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
   }
 
   for (auto* op : *ops) {
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op));
   }
 
   return kLiteRtStatusOk;
@@ -102,7 +102,7 @@ LiteRtStatus CompileSinglePartition(
 
   ExampleGraphBuilder builder;
 
-  LITERT_RETURN_STATUS_IF_NOT_OK(::litert::ConvertGraph<ExampleTypes>(
+  LITERT_RETURN_IF_ERROR(::litert::ConvertGraph<ExampleTypes>(
       litert_subgraph, name, MakeTensorConverter, tensor_alloc, op_alloc,
       legalizations, builder));
 
@@ -124,7 +124,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
 
   for (auto i = 0; i < num_partitions; ++i) {
     auto name = absl::StrFormat("partition_%lu", i);
-    LITERT_RETURN_STATUS_IF_NOT_OK(
+    LITERT_RETURN_IF_ERROR(
         CompileSinglePartition(compiler_plugin->legalizations, std::move(name),
                                partitions[i], *result));
   }

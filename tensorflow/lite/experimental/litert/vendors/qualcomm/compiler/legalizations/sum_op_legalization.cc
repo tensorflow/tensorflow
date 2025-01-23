@@ -52,22 +52,22 @@ LiteRtStatus SumOpLegalization::LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
   }
   DumpLegalization(*src.Get());
   std::string op_name = absl::StrFormat(kSumOpFmt, op_counter_++);
-  LITERT_RETURN_STATUS_IF_NOT_OK(SetOpInfo(op_name.c_str(),
-                                           kDefaultQnnOpPackageName.data(),
-                                           kQnnSumOpTypeName.data(), dest));
+  LITERT_RETURN_IF_ERROR(SetOpInfo(op_name.c_str(),
+                                   kDefaultQnnOpPackageName.data(),
+                                   kQnnSumOpTypeName.data(), dest));
 
   // QNN reduce sum op expects 1 input tensor.
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, kReduceSumOpInputSize,
                      QNN_TENSOR_INIT);
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.LookupInScope(src.Inputs().front().Get(), qnn_op_ins[0]));
 
   // QNN sum op expects 1 output tensor.
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs, kReduceSumOpOutputSize,
                      QNN_TENSOR_INIT);
-  LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.LegalizeAndRegister(
+  LITERT_RETURN_IF_ERROR(graph_mapper.LegalizeAndRegister(
       src.Outputs().front().Get(), qnn_op_outs[0]));
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.PushToScope(src.Outputs().front().Get(), qnn_op_outs[0]));
 
   // Prepare QNN reduce sum parameters.
@@ -95,8 +95,7 @@ LiteRtStatus SumOpLegalization::LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
 
   // Extract keepdims option from sum op.
   bool keep_dims;
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      LiteRtGetSumKeepDimsOption(src.Get(), &keep_dims));
+  LITERT_RETURN_IF_ERROR(LiteRtGetSumKeepDimsOption(src.Get(), &keep_dims));
 
   // Construct the scalar "keep_dims" param.
   if (keep_dims) {

@@ -53,7 +53,7 @@ LiteRtStatus LegalizeSimpleOp(const Op& src, Qnn_OpConfig_t& dest,
 
   Qnn_Tensor_t* cur_qnn_op_in = qnn_op_ins;
   for (const auto& op_in : op_ins) {
-    LITERT_RETURN_STATUS_IF_NOT_OK(
+    LITERT_RETURN_IF_ERROR(
         graph_mapper.LookupInScope(op_in.Get(), *cur_qnn_op_in));
     ++cur_qnn_op_in;
   }
@@ -66,9 +66,9 @@ LiteRtStatus LegalizeSimpleOp(const Op& src, Qnn_OpConfig_t& dest,
 
   Qnn_Tensor_t* cur_qnn_op_out = qnn_op_outs;
   for (const auto& op_out : op_outs) {
-    LITERT_RETURN_STATUS_IF_NOT_OK(
+    LITERT_RETURN_IF_ERROR(
         graph_mapper.LegalizeAndRegister(op_out.Get(), *cur_qnn_op_out));
-    LITERT_RETURN_STATUS_IF_NOT_OK(
+    LITERT_RETURN_IF_ERROR(
         graph_mapper.PushToScope(op_out.Get(), *cur_qnn_op_out));
     ++cur_qnn_op_out;
   }

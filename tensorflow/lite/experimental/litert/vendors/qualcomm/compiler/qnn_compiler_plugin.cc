@@ -236,7 +236,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
       continue;
     }
 
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op.Get()));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
   }
 
   return kLiteRtStatusOk;
@@ -291,7 +291,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   {
     std::string& entry_point_name = result->graph_names.emplace_back();
     entry_point_name = "qnn_partition_0";
-    LITERT_RETURN_STATUS_IF_NOT_OK(litert::qnn::ComposeGraph(
+    LITERT_RETURN_IF_ERROR(litert::qnn::ComposeGraph(
         **qnn_manager, context_handle->get(), partitions[0], entry_point_name));
   }
   LITERT_LOG(LITERT_INFO, "%s", "Graph composed");
@@ -299,7 +299,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   // Generate context binary.
 
   LITERT_LOG(LITERT_INFO, "%s", "Generating context binary");
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       (*qnn_manager)
           ->GenerateContextBinary(context_handle->get(), result->context_bin));
   LITERT_LOG(LITERT_INFO, "%s", "Context binary generated");

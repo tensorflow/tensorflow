@@ -111,7 +111,7 @@ CompiledResult& CompiledResult::operator=(CompiledResult&& other) {
 namespace {
 
 #define RESOLVE_API_FUNC(name, dest) \
-  LITERT_RETURN_STATUS_IF_NOT_OK(    \
+  LITERT_RETURN_IF_ERROR(            \
       ResolveLibSymbol<decltype(dest)>(lib_handle, name, &dest));
 
 LiteRtStatus ResolvePluginApi(void* lib_handle,

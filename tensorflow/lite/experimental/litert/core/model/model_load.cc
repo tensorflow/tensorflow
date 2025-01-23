@@ -181,16 +181,15 @@ LiteRtStatus UnpackSubgraph(FlatbufferContext& context,
                             LiteRtSubgraphT& litert_subgraph) {
   // Unpack tensors.
   for (auto& tfl_tensor : tfl_subgraph->tensors) {
-    LITERT_RETURN_STATUS_IF_NOT_OK(UnpackTensor(
-        context, std::move(tfl_tensor), litert_subgraph.EmplaceTensor()));
+    LITERT_RETURN_IF_ERROR(UnpackTensor(context, std::move(tfl_tensor),
+                                        litert_subgraph.EmplaceTensor()));
   }
 
   // Unpack ops, pass litert_subgraph so they can look up the new litert
   // tensors.
   for (auto& tfl_op : tfl_subgraph->operators) {
-    LITERT_RETURN_STATUS_IF_NOT_OK(UnpackOp(context, litert_subgraph,
-                                            std::move(tfl_op),
-                                            litert_subgraph.EmplaceOp()));
+    LITERT_RETURN_IF_ERROR(UnpackOp(context, litert_subgraph, std::move(tfl_op),
+                                    litert_subgraph.EmplaceOp()));
   }
 
   // Update subgraph I/O.

@@ -96,11 +96,11 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
                       absl::string_view qnn_graph_name) {
   // Register legalizations.
   std::vector<std::unique_ptr<Legalization>> legalizations;
-  LITERT_RETURN_STATUS_IF_NOT_OK(RegisterAllLegalizations(legalizations));
+  LITERT_RETURN_IF_ERROR(RegisterAllLegalizations(legalizations));
 
   GraphMapper graph_mapper(subgraph, qnn, context_handle);
-  LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.IsLiteRtSubgraphSupported());
-  LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.InitQnnGraph(qnn_graph_name));
+  LITERT_RETURN_IF_ERROR(graph_mapper.IsLiteRtSubgraphSupported());
+  LITERT_RETURN_IF_ERROR(graph_mapper.InitQnnGraph(qnn_graph_name));
 
   //
   // Legalize subgraph inputs and update tensors in scope
@@ -109,10 +109,10 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
   for (const auto& subgraph_input : graph_mapper.Graph().Inputs()) {
     Qnn_Tensor_t qnn_subgraph_input = BuildInputTensor();
 
-    LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.LegalizeAndRegister(
+    LITERT_RETURN_IF_ERROR(graph_mapper.LegalizeAndRegister(
         subgraph_input.Get(), qnn_subgraph_input));
 
-    LITERT_RETURN_STATUS_IF_NOT_OK(
+    LITERT_RETURN_IF_ERROR(
         graph_mapper.PushToScope(subgraph_input.Get(), qnn_subgraph_input));
   }
 
@@ -126,7 +126,7 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
   for (const auto& op : graph_mapper.Graph().Ops()) {
     Qnn_OpConfig_t qnn_op = BuildDefaultOp();
     for (auto it = legalizations.begin(); it != legalizations.end(); ++it) {
-      LITERT_RETURN_STATUS_IF_NOT_OK_OR_NOT_MATCHED(
+      LITERT_RETURN_IF_ERROR_OR_NOT_MATCHED(
           (*it)->LegalizeOp(op, qnn_op, graph_mapper));
     }
   }
@@ -167,7 +167,7 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
 LiteRtStatus ComposeGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
                           LiteRtSubgraph subgraph,
                           absl::string_view qnn_graph_name) {
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       MapGraph(qnn, context_handle, subgraph, qnn_graph_name));
   return kLiteRtStatusOk;
 }
