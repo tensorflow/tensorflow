@@ -66,6 +66,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/core:byte_code_util",
+        "//tensorflow/lite/experimental/litert/core:dispatch_op_schema",
         "//tensorflow/lite/experimental/litert/core:environment",
         "//tensorflow/lite/experimental/litert/runtime:external_litert_buffer_context",
         "//tensorflow/lite/experimental/litert/runtime:tfl_utils",

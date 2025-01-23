@@ -404,27 +404,28 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
     return compiled_result.Error();
   }
 
-  // Attach per-partition call info to the respective op.
-  // This data may be adjusted during serialization. Just passthrough for now.
-  for (auto i = 0; i < dispatch_ops.size(); ++i) {
-    auto call_info = compiled_result->CallInfo(i);
-    if (!call_info) {
-      return call_info.Error();
-    }
-    auto exec_info = MakeExecInfo(*call_info, kByteCodeMetadataKey);
-    if (!exec_info) {
-      return exec_info.Error();
-    }
-    dispatch_ops.at(i)->SetCustomOptions(std::move(*exec_info));
-  }
-
-  // Store the byte code in a metadata buffer. This data may be adjusted during
-  // serialization. Just passthrough for now.
+  // Add the bytecode as an external buffer to the model.
+  // TODO update compiled result interface to support multiple bytecodes and
+  // update here.
   auto byte_code = compiled_result->ByteCode();
   if (!byte_code) {
     return byte_code.Error();
   }
-  model.PushMetadata(kByteCodeMetadataKey, byte_code->StrView());
+
+  OwningBufferRef<uint8_t> owned_byte_code(byte_code->Data(),
+                                           byte_code->Size());
+  const auto buf_id = model.RegisterExternalBuffer(std::move(owned_byte_code));
+
+  // Mark each dispatch op as being a user of the external bytecode buffer.
+  for (auto i = 0; i < dispatch_ops.size(); ++i) {
+    auto* dispatch_op = dispatch_ops.at(i);
+    auto call_info = compiled_result->CallInfo(i);
+    if (!call_info) {
+      return call_info.Error();
+    }
+    model.AttachExternalBufferToOp(dispatch_op, buf_id,
+                                   std::string(*call_info));
+  }
 
   // Tag the model with make/model from the plugin.
   auto build_stamp = MakeBuildStamp(compiler_plugin.SocManufacturer(),
@@ -486,32 +487,11 @@ Expected<ApplyPluginsResult> ApplyPlugins(
     }
 
     if (*plugin_supported_hardware & selected_hw_accelerators) {
-      // FIXME: the following code is quite inefficient and convoluted. We
-      // shouldn't be needing to serialize a model to then read it again from
-      // the serialized buffer when applying a compiler plugin.
       if (auto status = ApplyPlugin(compiler_plugin, *model); !status) {
         error_messages.push_back(
             absl::StrCat(plugin_name, " ", status.Error().Message()));
         continue;
       }
-
-      auto serialized_model =
-          litert::internal::SerializeModel(std::move(*model));
-      if (!serialized_model) {
-        error_messages.push_back(
-            absl::StrCat(plugin_name, " ", serialized_model.Error().Message()));
-        continue;
-      }
-
-      auto new_model = litert::Model::CreateFromBuffer(*serialized_model);
-      if (!new_model) {
-        error_messages.push_back(
-            absl::StrCat(plugin_name, " ", new_model.Error().Message()));
-        continue;
-      }
-
-      new_flatbuffer = std::move(*serialized_model);
-      *model = std::move(*new_model->Get());
 
       success_messages.push_back(absl::StrCat(plugin_name));
       result.num_applied_plugins++;

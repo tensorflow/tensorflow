@@ -209,11 +209,11 @@ TEST(ApplyTest, Simple) {
   auto& subgraph = *model.MainSubgraph();
   ASSERT_EQ(subgraph.Ops().size(), 1);
 
-  EXPECT_EQ(subgraph.Op(0).OpCode(), kLiteRtOpCodeTflCustom);
-  EXPECT_THAT(subgraph.Op(0).CustomOptions().StrView(),
-              HasSubstr(kByteCodeMetadataKey));
+  auto* op = subgraph.Ops().front();
 
-  EXPECT_TRUE(model.FindMetadata(kByteCodeMetadataKey));
+  EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
+  EXPECT_TRUE(model.FindExternalBuffer(op));
+
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
 }
 
@@ -227,19 +227,26 @@ TEST(ApplyTest, MultiSubgraph) {
   ASSERT_TRUE(ApplyPlugin(plugins->front(), model));
   ASSERT_EQ(model.NumSubgraphs(), 2);
 
-  auto& subgraph = model.Subgraph(0);
-  ASSERT_EQ(subgraph.Ops().size(), 1);
-  EXPECT_EQ(subgraph.Op(0).OpCode(), kLiteRtOpCodeTflCustom);
-  EXPECT_THAT(subgraph.Op(0).CustomOptions().StrView(),
-              HasSubstr(kByteCodeMetadataKey));
+  {
+    auto& subgraph = model.Subgraph(0);
+    ASSERT_EQ(subgraph.Ops().size(), 1);
 
-  auto& subgraph2 = model.Subgraph(1);
-  ASSERT_EQ(subgraph2.Ops().size(), 1);
-  EXPECT_EQ(subgraph2.Op(0).OpCode(), kLiteRtOpCodeTflCustom);
-  EXPECT_THAT(subgraph2.Op(0).CustomOptions().StrView(),
-              HasSubstr(kByteCodeMetadataKey));
+    auto* op = subgraph.Ops().front();
 
-  EXPECT_TRUE(model.FindMetadata(kByteCodeMetadataKey));
+    EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
+    EXPECT_TRUE(model.FindExternalBuffer(op));
+  }
+
+  {
+    auto& subgraph = model.Subgraph(1);
+    ASSERT_EQ(subgraph.Ops().size(), 1);
+
+    auto* op = subgraph.Ops().front();
+
+    EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
+    EXPECT_TRUE(model.FindExternalBuffer(op));
+  }
+
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
 }
 
@@ -269,11 +276,11 @@ TEST(ApplyTest, ApplyPlugins) {
   auto& subgraph = *model.MainSubgraph();
   ASSERT_EQ(subgraph.Ops().size(), 1);
 
-  EXPECT_EQ(subgraph.Op(0).OpCode(), kLiteRtOpCodeTflCustom);
-  EXPECT_THAT(subgraph.Op(0).CustomOptions().StrView(),
-              HasSubstr(kByteCodeMetadataKey));
+  auto* op = subgraph.Ops().front();
 
-  EXPECT_TRUE(model.FindMetadata(kByteCodeMetadataKey));
+  EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
+  EXPECT_TRUE(model.FindExternalBuffer(op));
+
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
 
   litert::Environment::Destroy();

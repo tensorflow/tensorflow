@@ -37,6 +37,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
+#include "tensorflow/lite/experimental/litert/core/dispatch_op_schema.h"
 #include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_options.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/runtime/tfl_utils.h"
@@ -44,65 +45,6 @@
 
 namespace litert {
 namespace internal {
-
-namespace {
-
-// Get the bytecode and function name from given custom op options data.
-Expected<std::pair<absl::string_view, BufferRef<uint8_t>>> ResolveExecInfo(
-    BufferRef<uint8_t> custom_opts, TfLiteOpaqueContext* context,
-    const LiteRtDispatchDelegateOptions& options) {
-  auto exec_info = ParseExecInfo(custom_opts);
-  if (!exec_info) {
-    LITERT_LOG(LITERT_ERROR, "Failed to parse custom initial data", "");
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
-  }
-
-  auto [function_name, metadata_key] = *exec_info;
-
-  const char* metadata;
-  size_t bytes;
-  if (auto stat = TfLiteOpaqueContextGetMetadata(context, metadata_key.data(),
-                                                 &metadata, &bytes);
-      stat != kTfLiteOk) {
-    LITERT_LOG(LITERT_ERROR, "Failed to get metadata for dispatch op: %d",
-               stat);
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
-  }
-
-  BufferRef<uint8_t> metadata_buf(metadata, bytes);
-
-  auto bytecode_loc = ParseByteCodePlaceholder(metadata_buf);
-  if (!bytecode_loc) {
-    LITERT_LOG(LITERT_ERROR, "Failed to parse metadata for dispatch op", "");
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
-  }
-
-  auto [bytecode_offset, bytecode_size] = *bytecode_loc;
-
-  LITERT_LOG(
-      LITERT_INFO,
-      "Initializing invocation context for dispatch op\n\tfunction_name: "
-      "%s\n\tbyte_code_offset: %lu \n\tbyte_code_size: %lu",
-      function_name.data(), bytecode_offset, bytecode_size);
-  if (bytecode_size == 0) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                      "Found zero-size bytecode");
-  }
-
-  auto alloc_base = FindAllocBase(options);
-  if (!alloc_base) {
-    LITERT_LOG(LITERT_ERROR,
-               "Could not find requried delegate options \"alloc_base\"", "");
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
-  }
-
-  const void* alloc = std::any_cast<const void*>(*alloc_base);
-  const void* bytecode =
-      reinterpret_cast<const uint8_t*>(alloc) + bytecode_offset;
-  return std::make_pair(function_name,
-                        BufferRef<uint8_t>(bytecode, bytecode_size));
-}
-}  // namespace
 
 DispatchDelegateKernel::~DispatchDelegateKernel() {
   for (size_t i = 0; i < input_tensor_buffer_handles_.size(); ++i) {
@@ -242,12 +184,28 @@ TfLiteStatus DispatchDelegateKernel::Init(
   }
 
   BufferRef<uint8_t> custom_opts(init_data, init_data_size);
-  auto exec_info = ResolveExecInfo(custom_opts, context, options_);
-  if (!exec_info) {
-    LITERT_LOG(LITERT_ERROR, "Failed to parse custom options");
+
+  // Read offset and size (relative to alloc_base) from the custom options (and
+  // name).
+  const auto dispatch_opts = GetDispatchOpOptions(custom_opts);
+  if (dispatch_opts.bytecode_offset == 0) {
+    LITERT_LOG(LITERT_ERROR, "Found dispatch op with missing bytecode offset");
     return kTfLiteError;
   }
-  auto [function_name, bytecode] = *exec_info;
+
+  // Find pointer to the start of the loaded model buffer.
+  const auto alloc_base = FindAllocBase(options_);
+  if (!alloc_base) {
+    LITERT_LOG(LITERT_ERROR,
+               "Could not find requried delegate options \"alloc_base\"", "");
+    return kTfLiteError;
+  }
+
+  // Get location of bytecode in the model buffer relative to alloc_base.
+  const auto bytecode_start = reinterpret_cast<const uint8_t*>(*alloc_base) +
+                              dispatch_opts.bytecode_offset;
+  BufferRef<uint8_t> bytecode(bytecode_start, dispatch_opts.bytecode_size);
+  const auto& function_name = dispatch_opts.name;
 
   const int num_inputs = params->input_tensors->size;
   const int num_outputs = params->output_tensors->size;
