@@ -1523,6 +1523,7 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def("is_manual", &xla::HloSharding::IsManual)
       .def("is_unknown", &xla::HloSharding::IsUnknown)
       .def("is_tiled", &xla::HloSharding::IsTiled)
+      .def("is_maximal", &xla::HloSharding::IsTileMaximal)
       .def("tile", [](const xla::HloSharding& self,
                       xla::Shape shape) { return self.TileShape(shape); })
       // tile_assignment.array() is computed using an internal cache,

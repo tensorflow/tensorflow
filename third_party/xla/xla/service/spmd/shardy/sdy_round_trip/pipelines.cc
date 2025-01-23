@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 
 #include <cassert>
+#include <functional>
 
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -48,8 +49,9 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm) {
   pm.addPass(createExportMhloShardingsPass());
 }
 
-void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm) {
-  addCommonPreImportPasses(pm);
+void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
+                                   bool enableConstantImport) {
+  addCommonPreImportPasses(pm, enableConstantImport);
   pm.addPass(createSdyRoundTripImportCallbackCustomCallsPass());
   pm.addPass(createSdyRoundTripImportShardyAttrsPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
@@ -69,7 +71,7 @@ void registerSdyRoundTripImportPipeline() {
   PassPipelineRegistration<> importPipeline(
       "xla-sdy-round-trip-import-pipeline",
       "Run passes to import an mhlo module into the SDY (Shardy) dialect.",
-      addSdyRoundTripImportPipeline);
+      std::bind(addSdyRoundTripImportPipeline, std::placeholders::_1, false));
 }
 
 }  // namespace sdy

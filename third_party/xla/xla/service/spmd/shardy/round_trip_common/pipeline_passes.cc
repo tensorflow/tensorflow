@@ -30,7 +30,8 @@ namespace sdy {
 
 using ::mlir::func::FuncOp;
 
-void addCommonPreImportPasses(mlir::OpPassManager& pm) {
+void addCommonPreImportPasses(mlir::OpPassManager& pm,
+                              bool enableConstantImport) {
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // TODO(b/333505182): remove when partitioning is done in SDY.
@@ -44,7 +45,9 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm) {
   // Therefore, this pass needs to be applied after any MHLO pass that
   // expects `mhlo.constant`, and before any pass that has a greedy pattern
   // rewriter.
-  pm.addNestedPass<FuncOp>(createImportConstantsPass());
+  if (enableConstantImport) {
+    pm.addNestedPass<FuncOp>(createImportConstantsPass());
+  }
   pm.addNestedPass<FuncOp>(mlir::mhlo::createFlattenTuplePass());
   // We need to canonicalize redundant mhlo::GetTupleElementOp and
   // mhlo::GetTupleOp. We also need to canonicalize mhlo::WhileOp before
