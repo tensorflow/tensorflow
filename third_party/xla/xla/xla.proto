@@ -386,10 +386,6 @@ message DebugOptions {
   // dynamic-update-slice operations around library calls.
   bool xla_gpu_enable_dynamic_slice_fusion = 105;
 
-  // Experimental optimizations for SPMD-based pipeline parallelism on GPU.
-  // TODO(bchetioui): adjust this name to follow the naming convention.
-  bool xla_gpu_enable_experimental_pipeline_parallelism_opt = 351;
-
   // When true we lower the Minimum and Maximum hlos in the GPU backend such
   // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
   // this is true we don't propagate NaNs through Min and Max.
@@ -512,6 +508,9 @@ message DebugOptions {
   //
   // Pre-existing block-level fusions are left unmodified.
   bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
+
+  // Experimental optimizations for SPMD-based pipeline parallelism on GPU.
+  bool xla_gpu_experimental_enable_pipeline_parallelism_opt = 351;
 
   // When enabled, the PriorityFusion pass will try to make Triton fusions first
   // and foremost where it is possible.

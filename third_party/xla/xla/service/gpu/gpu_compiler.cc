@@ -954,7 +954,7 @@ absl::Status RunCollectiveOptimizationPasses(
 
   if (hlo_module->config()
           .debug_options()
-          .xla_gpu_enable_experimental_pipeline_parallelism_opt()) {
+          .xla_gpu_experimental_enable_pipeline_parallelism_opt()) {
     collectives_pipeline.AddPass<CollectiveSelectFolder>();
   }
 
@@ -971,7 +971,7 @@ absl::Status RunCollectiveOptimizationPasses(
         collectives_pipeline,
         hlo_module->config()
             .debug_options()
-            .xla_gpu_enable_experimental_pipeline_parallelism_opt());
+            .xla_gpu_experimental_enable_pipeline_parallelism_opt());
   }
 
   // Run algebraic simplifier to reshape(broadcast) into a broadcast when
@@ -2669,7 +2669,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
 
     if (!module->config()
              .debug_options()
-             .xla_gpu_enable_experimental_pipeline_parallelism_opt() &&
+             .xla_gpu_experimental_enable_pipeline_parallelism_opt() &&
         (module->config()
              .debug_options()
              .xla_gpu_enable_pipelined_collectives() ||
