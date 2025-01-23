@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/service/computation_layout.h"
@@ -656,5 +657,12 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
 }
 
 absl::string_view HloRunnerPjRt::Name() const { return "HloRunnerPjRt"; }
+
+bool HloRunnerPjRt::HasProperty(const HloRunnerPropertyTag::Type tag) const {
+  if (tag == HloRunnerPropertyTag::kUsingGpuRocm) {
+    return pjrt_client_->platform_name() == xla::RocmName();
+  }
+  return false;
+}
 
 }  // namespace xla
