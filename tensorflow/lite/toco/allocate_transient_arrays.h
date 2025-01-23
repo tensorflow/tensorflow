@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_ALLOCATE_TRANSIENT_ARRAYS_H_
 #define TENSORFLOW_LITE_TOCO_ALLOCATE_TRANSIENT_ARRAYS_H_
 
+#include <cstddef>
+
 #include "tensorflow/lite/toco/model.h"
 
 namespace toco {
