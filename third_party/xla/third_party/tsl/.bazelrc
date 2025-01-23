@@ -471,22 +471,19 @@ test:win_clang --linkopt=/FORCE:MULTIPLE
 test:win_clang --host_linkopt=/FORCE:MULTIPLE
 test:win_clang --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
 
-# build:windows_x86_cpu --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
-# build:windows_x86_cpu --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
-# build:windows_x86_cpu --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
-build:windows_x86_cpu --crosstool_top="//tensorflow/tools/toolchains/win2022/20241118:toolchain"
-build:windows_x86_cpu --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
-build:windows_x86_cpu --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
-build:windows_x86_cpu --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
-build:windows_x86_cpu --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
-build:windows_x86_cpu --copt=/clang:-Weverything
-build:windows_x86_cpu --host_copt=/clang:-Weverything
-build:windows_x86_cpu --compiler=clang-cl
-build:windows_x86_cpu --linkopt=/FORCE:MULTIPLE
-build:windows_x86_cpu --host_linkopt=/FORCE:MULTIPLE
-test:windows_x86_cpu --linkopt=/FORCE:MULTIPLE
-test:windows_x86_cpu --host_linkopt=/FORCE:MULTIPLE
-test:windows_x86_cpu --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
+build:windows_x86_cpu_2022 --crosstool_top="//tensorflow/tools/toolchains/win2022/20241118:toolchain"
+build:windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
+build:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
+build:windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
+build:windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
+build:windows_x86_cpu_2022 --copt=/clang:-Weverything
+build:windows_x86_cpu_2022 --host_copt=/clang:-Weverything
+build:windows_x86_cpu_2022 --compiler=clang-cl
+build:windows_x86_cpu_2022 --linkopt=/FORCE:MULTIPLE
+build:windows_x86_cpu_2022 --host_linkopt=/FORCE:MULTIPLE
+test:windows_x86_cpu_2022 --linkopt=/FORCE:MULTIPLE
+test:windows_x86_cpu_2022 --host_linkopt=/FORCE:MULTIPLE
+test:windows_x86_cpu_2022 --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
 
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior
@@ -601,6 +598,7 @@ build:rbe_win_clang --host_linkopt=/FORCE:MULTIPLE
 
 # TODO(belitskiy): Rename `rbe_win_clang` to this, once done switching presubmits.
 build:rbe_windows_x86_cpu --config=rbe_win_clang
+build:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022
 
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
@@ -791,6 +789,8 @@ test:windows_x86_cpu_wheel_test_filters --test_tag_filters=-no_windows,-windows_
 test:windows_x86_cpu_wheel_test_filters --build_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded,-benchmark-test
 test:windows_x86_cpu_wheel_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
 test:windows_x86_cpu_wheel_test --build_tests_only --config=windows_x86_cpu_pycpp_test_filters -- //tensorflow/... -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
+# TODO(belitskiy): Get rid of once 2019 is shut down
+test:windows_x86_cpu_2022_wheel_test --config=windows_x86_cpu_wheel_test
 
 # PYCPP TESTS run a suite of Python and C++ tests to verify general correctness over
 # the whole TF code base. These are usually run continuously or upon presubmit.
@@ -847,6 +847,7 @@ test:windows_x86_cpu_pycpp_test_filters --build_tag_filters=-no_windows,-windows
 test:windows_x86_cpu_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
 test:windows_x86_cpu_pycpp_test_opts --config=windows_x86_cpu_pycpp_test_build_opts --build_tests_only
 test:windows_x86_cpu_pycpp_test --config=windows_x86_cpu_pycpp_test_opts --config=windows_x86_cpu_pycpp_test_filters -- //tensorflow/... -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
+test:windows_x86_cpu_2022_pycpp_test --config=windows_x86_cpu_pycpp_test
 
 # END TF TEST SUITE OPTIONS
 
