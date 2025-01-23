@@ -755,7 +755,7 @@ message ConfigProto {
     bool disable_functional_ops_lowering = 21;
 
     // Provides a hint to XLA auto clustering to prefer forming a single large
-    // cluster that encompases most of the graph.
+    // cluster that encompasses most of the graph.
     bool xla_prefer_single_graph_cluster = 22;
 
     // Distributed coordination service configurations.
@@ -790,7 +790,7 @@ message ConfigProto {
 // Options for a single Run() call.
 message RunOptions {
   // TODO(pbar) Turn this into a TraceOptions proto which allows
-  // tracing to be controlled in a more orthogonal manner?
+  // tracing to be controlled in a more orthogonal manner.
   enum TraceLevel {
     NO_TRACE = 0;
     SOFTWARE_TRACE = 1;
