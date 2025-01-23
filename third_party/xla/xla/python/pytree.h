@@ -225,18 +225,22 @@ class PyTreeDef {
   // objects in the case of custom pytype handlers.
   static std::pair<std::vector<nanobind::object>, nb_class_ptr<PyTreeDef>>
   Flatten(nanobind::handle x, nb_class_ptr<PyTreeRegistry> registry,
-          std::optional<nanobind::callable> leaf_predicate = std::nullopt);
+          std::optional<nanobind::callable> leaf_predicate = std::nullopt,
+          bool sort_dict_keys = true);
 
   // Flattens a Pytree into a list of `leaves` and a PyTreeDef (this).
   // `leaves` owns references to the flattened objects, which might be
   // temporary objects in the case of custom pytype handlers.
   void Flatten(nanobind::handle handle, std::vector<nanobind::object>& leaves,
-               std::optional<nanobind::callable> leaf_predicate = std::nullopt);
+               std::optional<nanobind::callable> leaf_predicate = std::nullopt,
+               bool sort_dict_keys = true);
   void Flatten(nanobind::handle handle,
                absl::InlinedVector<nanobind::object, 2>& leaves,
-               std::optional<nanobind::callable> leaf_predicate = std::nullopt);
+               std::optional<nanobind::callable> leaf_predicate = std::nullopt,
+               bool sort_dict_keys = true);
   void Flatten(nanobind::handle handle, nanobind::list& leaves,
-               std::optional<nanobind::callable> leaf_predicate = std::nullopt);
+               std::optional<nanobind::callable> leaf_predicate = std::nullopt,
+               bool sort_dict_keys = true);
 
   void FlattenWithPath(
       nanobind::handle handle, nanobind::list& leaves,
@@ -369,7 +373,8 @@ class PyTreeDef {
   template <typename T>
   void FlattenImpl(nanobind::handle handle, T& leaves,
                    const std::optional<nanobind::callable>& leaf_predicate,
-                   std::optional<std::vector<nanobind::object>>& keypath);
+                   std::optional<std::vector<nanobind::object>>& keypath,
+                   bool sort_dict_keys);
 
   template <typename T>
   nanobind::object UnflattenImpl(T leaves) const;
