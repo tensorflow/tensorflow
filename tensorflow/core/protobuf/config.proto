@@ -790,7 +790,7 @@ message ConfigProto {
 // Options for a single Run() call.
 message RunOptions {
   // TODO(pbar) Turn this into a TraceOptions proto which allows
-  // tracing to be controlled in a more orthogonal manner.
+  // tracing to be controlled in a more orthogonal manner?
   enum TraceLevel {
     NO_TRACE = 0;
     SOFTWARE_TRACE = 1;
