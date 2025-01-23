@@ -95,7 +95,14 @@ UseIndices FindUseInds(const LiteRtTensorT& tensor, const LiteRtOpT& op) {
 }
 
 bool IsConstant(const LiteRtTensorT& tensor) {
-  const auto is_const = tensor.Weights().Buf().Size() > 0;
+  bool is_zero_sized = false;
+  auto layout = tensor.Type().second.ranked_tensor_type.layout;
+  if (layout.rank == 1) {
+    if (layout.dimensions[0] == 0) {
+      is_zero_sized = true;
+    }
+  }
+  const auto is_const = tensor.Weights().Buf().Size() > 0 || is_zero_sized;
   ABSL_DCHECK(!is_const || tensor.DefiningOp() == nullptr)
       << "Constant tensors should not be defined by an op";
   return is_const;
