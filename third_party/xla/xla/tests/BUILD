@@ -136,6 +136,7 @@ cc_library(
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -149,6 +150,7 @@ cc_library(
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -162,6 +164,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/interpreter:interpreter_client",
     ],
+    alwayslink = True,
 )
 
 cc_library(
