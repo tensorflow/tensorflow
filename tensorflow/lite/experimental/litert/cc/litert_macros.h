@@ -68,7 +68,23 @@
       (__VA_ARGS__, LITERT_RETURN_IF_ERROR_2, LITERT_RETURN_IF_ERROR_1))( \
       __VA_ARGS__)
 
-// Implementation details start here.
+// ASSIGN_OR_RETURN(decl, expr)
+// ASSIGN_OR_RETURN(decl, expr, return_value)
+//
+// Evaluates `expr` that should convert to a `litert::Expected` object.
+//
+// - If the object holds a value, move-assigns the value to `decl`.
+// - If the object holds an error, returns the error, casting it to a
+// `LiteRtStatus` if required.
+//
+// `return_value` may be specified to return a custom value in case of error.
+#define LITERT_ASSIGN_OR_RETURN(DECL, ...)                                     \
+  LITERT_ASSIGN_OR_RETURN_SELECT_OVERLOAD((DECL, __VA_ARGS__,                  \
+                                           LITERT_ASSIGN_OR_RETURN_HELPER_3,   \
+                                           LITERT_ASSIGN_OR_RETURN_HELPER_2))( \
+      _CONCAT_NAME(expected_value_or_error_, __LINE__), DECL, __VA_ARGS__)
+
+//////////// Implementation details start here. ///////////////////////
 
 // Converts implicitly to either `LiteRtStatus` or `litert::Expected` holding an
 // error. This allows returning a status in functions using either of these as a
@@ -122,5 +138,22 @@ class ErrorStatusReturnHelper {
       return RETURN_VALUE;                                                \
     }                                                                     \
   } while (false)
+
+#define LITERT_ASSIGN_OR_RETURN_SELECT_OVERLOAD_HELPER(_1, _2, _3, OVERLOAD, \
+                                                       ...)                  \
+  OVERLOAD
+
+#define LITERT_ASSIGN_OR_RETURN_SELECT_OVERLOAD(args) \
+  LITERT_ASSIGN_OR_RETURN_SELECT_OVERLOAD_HELPER args
+
+#define LITERT_ASSIGN_OR_RETURN_HELPER_2(TMP_VAR, DECL, EXPR) \
+  auto&& TMP_VAR = (EXPR);                                    \
+  LITERT_RETURN_IF_ERROR(TMP_VAR);                            \
+  DECL = std::move(TMP_VAR.Value());
+
+#define LITERT_ASSIGN_OR_RETURN_HELPER_3(TMP_VAR, DECL, EXPR, RETURN_VALUE) \
+  auto&& TMP_VAR = (EXPR);                                                  \
+  LITERT_RETURN_IF_ERROR(TMP_VAR, RETURN_VALUE);                            \
+  DECL = std::move(TMP_VAR.Value());
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_

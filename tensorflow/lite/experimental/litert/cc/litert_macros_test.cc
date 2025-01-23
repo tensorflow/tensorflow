@@ -76,20 +76,62 @@ TEST(LiteRtReturnIfErrorTest, ConvertsResultToExpectedHoldingAnError) {
 }
 
 TEST(LiteRtReturnIfErrorTest, DoesntReturnOnSuccess) {
-  EXPECT_THAT(
-      []() -> Expected<int> {
-        LITERT_RETURN_IF_ERROR(Expected<int>(3));
-        return 4;
-      }(),
-      AllOf(Property(&Expected<int>::HasValue, true),
-            Property(&Expected<int>::Value, 4)));
-  int canary_value = 1;
+  int canary_value = 0;
+  auto ReturnExpectedIfError = [&canary_value]() -> Expected<void> {
+    LITERT_RETURN_IF_ERROR(Expected<void>());
+    canary_value = 1;
+    return {};
+  };
+  EXPECT_THAT(ReturnExpectedIfError(),
+              Property(&Expected<void>::HasValue, true));
+  EXPECT_EQ(canary_value, 1);
+
   [&canary_value]() -> LiteRtStatus {
     LITERT_RETURN_IF_ERROR(kLiteRtStatusOk);
     canary_value = 2;
     return kLiteRtStatusOk;
   }();
   EXPECT_EQ(canary_value, 2);
+}
+
+TEST(LiteRtAssignOrReturnTest, VariableAssignmentWorks) {
+  int canary_value = 0;
+  auto ChangeCanaryValue = [&canary_value]() -> LiteRtStatus {
+    LITERT_ASSIGN_OR_RETURN(canary_value, Expected<int>(1));
+    return kLiteRtStatusOk;
+  };
+  EXPECT_EQ(ChangeCanaryValue(), kLiteRtStatusOk);
+  EXPECT_EQ(canary_value, 1);
+}
+
+TEST(LiteRtAssignOrReturnTest, ReturnsOnFailure) {
+  const Expected<int> InvalidArgumentError =
+      Expected<int>(Unexpected(kLiteRtStatusErrorInvalidArgument));
+
+  int canary_value = 0;
+  auto ErrorWithStatus = [&]() -> LiteRtStatus {
+    LITERT_ASSIGN_OR_RETURN(canary_value, InvalidArgumentError);
+    return kLiteRtStatusOk;
+  };
+  EXPECT_EQ(ErrorWithStatus(), kLiteRtStatusErrorInvalidArgument);
+  EXPECT_EQ(canary_value, 0);
+
+  auto ErrorWithCustomStatus = [&]() -> int {
+    LITERT_ASSIGN_OR_RETURN(canary_value, InvalidArgumentError, 42);
+    return 1;
+  };
+  EXPECT_EQ(ErrorWithCustomStatus(), 42);
+  EXPECT_EQ(canary_value, 0);
+
+  auto ErrorWithExpected = [&]() -> Expected<void> {
+    LITERT_ASSIGN_OR_RETURN(canary_value, InvalidArgumentError);
+    return {};
+  };
+  auto expected_return = ErrorWithExpected();
+  ASSERT_FALSE(expected_return.HasValue());
+  EXPECT_EQ(expected_return.Error().Status(),
+            kLiteRtStatusErrorInvalidArgument);
+  EXPECT_EQ(canary_value, 0);
 }
 
 }  // namespace
