@@ -21,7 +21,6 @@ load(
 )
 load(
     "//xla/stream_executor:build_defs.bzl",
-    "gpu_only_cc_library",
     "stream_executor_gpu_friends",
 )
 load(
@@ -134,7 +133,7 @@ xla_cc_test(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_diagnostics_header",
     hdrs = ["gpu_diagnostics.h"],
     deps = ["@com_google_absl//absl/status:statusor"],
@@ -157,7 +156,7 @@ cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_command_buffer",
     srcs = ["gpu_command_buffer.cc"],
     hdrs = [
@@ -207,7 +206,7 @@ cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_helpers_header",
     hdrs = ["gpu_helpers.h"],
     deps = [
@@ -257,7 +256,7 @@ tsl_gpu_library(
     alwayslink = True,
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_stream_header",
     hdrs = ["gpu_stream.h"],
     deps = [
@@ -272,10 +271,11 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_stream",
     srcs = ["gpu_stream.cc"],
     hdrs = ["gpu_stream.h"],
+    tags = ["gpu"],
     deps = [
         ":gpu_types_header",
         "//xla/stream_executor:stream",
@@ -284,7 +284,7 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_semaphore",
     srcs = ["gpu_semaphore.cc"],
     hdrs = ["gpu_semaphore.h"],
@@ -297,7 +297,7 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_types_header",
     hdrs = ["gpu_types.h"],
     defines = if_rocm_is_configured([
@@ -328,7 +328,7 @@ cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "asm_compiler",
     srcs = ["asm_compiler.cc"],
     hdrs = ["asm_compiler.h"],
@@ -404,7 +404,7 @@ gpu_kernel_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "redzone_allocator",
     srcs = [
         "redzone_allocator.cc",
