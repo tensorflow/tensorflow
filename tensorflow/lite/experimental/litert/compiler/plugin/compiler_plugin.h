@@ -27,7 +27,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
+#include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
@@ -145,12 +145,8 @@ Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
 
 // Applies both the partition and compile steps to the model. Generated
 // byte_code will be internalized within the model for later serialization.
-// The serialization parameter refers to the strategy used to pack the byte code
-// during future serialization.
-Expected<void> ApplyPlugin(
-    CompilerPlugin& compiler_plugin, LiteRtModelT& model,
-    absl::string_view soc_model = "",
-    Serialization serialization = Serialization::kAppend);
+Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+                           absl::string_view soc_model = "");
 
 // Apply all available plugins providing the selected HW accelerators to the
 // given model, modify the model accordingly, and return (1) the number of

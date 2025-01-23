@@ -14,14 +14,12 @@
 
 #include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_kernel.h"
 
-#include <any>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include <utility>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
@@ -36,7 +34,6 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/dispatch_op_schema.h"
 #include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_options.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"

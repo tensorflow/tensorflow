@@ -15,24 +15,16 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TOOLS_APPLY_PLUGIN_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TOOLS_APPLY_PLUGIN_H_
 
-#include <functional>
 #include <iostream>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/tools/outstream.h"
 
 namespace litert::tools {
-
-using ::litert::internal::Serialization;
-
-// TODO remove these usings other than Ptr and outStraemT
 
 struct ApplyPluginRun {
   // NOTE: All StrFlagT are expected to have static storage duration.
@@ -49,7 +41,6 @@ struct ApplyPluginRun {
     // "soc_models": Ignored.
     // "outs": Required, must be size one.
     // "dump_out": Optional.
-    // "serialization": Ignored.
     INFO,
 
     // Does nothing and simply de-serializes and re-serializes the given model.
@@ -62,7 +53,6 @@ struct ApplyPluginRun {
     // "soc_models": Ignored.
     // "outs": Required, must be size one.
     // "dump_out": Optional.
-    // "serialization": Ignored.
     NOOP,
 
     // Runs the entire end to end flow. This is the standard compiler plugin
@@ -79,7 +69,6 @@ struct ApplyPluginRun {
     // "soc_models": Required, at least one.
     // "outs": Required, must be size equal to "soc_models".
     // "dump_out": Optional.
-    // "serialization": Required.
     //
     // TODO: Support multi target compilation.
     APPLY,
@@ -98,7 +87,6 @@ struct ApplyPluginRun {
     // "soc_models": Ignored.
     // "outs": Required, must be size one.
     // "dump_out": Optional.
-    // "serialization": Ignored.
     PARTITION,
 
     // Skip partitioning and run the entire input model through compilation
@@ -114,7 +102,6 @@ struct ApplyPluginRun {
     // "soc_models": Required, at least one.
     // "out": Required, must be size equal to "soc_models".
     // "dump_out": Optional.
-    // "serialization": Ignored.
     //
     // TODO: Support multi target compilation.
     COMPILE,
@@ -151,23 +138,6 @@ struct ApplyPluginRun {
   // "silent" behavior and should only be used when this tool is part of a
   // larger pipeline like an end2end test.
   UserStream dump_out;
-
-  // Dictates how the final model with compiled assets should be serialized.
-  // Only relevant to the "apply" function.
-  //
-  // [METADATA] Write the compiled module into a metadata buffer using the
-  // soc_manufacturer as a key. This is for testing and debugging as it allows
-  // the contents of the byte code to be rendered by exisitng flatbuffer
-  // tooling. Custom op options will contain only a string identifying the
-  // respective entry point.
-  //
-  // [APPEND] Appends the compiled byte code to the end of the ".tflite" file.
-  // Custom options will contain both an entry point name, and an optional
-  // metadata lookup key. This facilitates per-op metadata while allowing
-  // multiple ops to share the same metadata if needed. Any instances of this
-  // metadata are pairs indicating the offset into the file where the byte code
-  // starts as well as the size of the byte code.
-  Serialization serialization = Serialization::kMetadata;
 };
 
 LiteRtStatus ApplyPlugin(ApplyPluginRun::Ptr run);

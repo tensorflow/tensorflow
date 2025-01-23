@@ -18,9 +18,9 @@ package(
 )
 
 cc_library(
-    name = "byte_code_util",
-    srcs = ["byte_code_util.cc"],
-    hdrs = ["byte_code_util.h"],
+    name = "build_stamp",
+    srcs = ["build_stamp.cc"],
+    hdrs = ["build_stamp.h"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
@@ -34,13 +34,13 @@ cc_library(
 )
 
 cc_test(
-    name = "byte_code_util_test",
-    srcs = ["byte_code_util_test.cc"],
+    name = "build_stamp_test",
+    srcs = ["build_stamp_test.cc"],
     data = [
         "//tensorflow/lite/experimental/litert/test:tflite_test_data",
     ],
     deps = [
-        ":byte_code_util",
+        ":build_stamp",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",

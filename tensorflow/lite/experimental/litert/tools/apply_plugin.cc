@@ -35,7 +35,6 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
@@ -47,7 +46,6 @@ using ::litert::BufferRef;
 using ::litert::internal::CompilerPlugin;
 using ::litert::internal::Dump;
 using ::litert::internal::PartitionResult;
-using ::litert::internal::Serialization;
 using ::litert::internal::SerializeModel;
 using ::litert::internal::VerifyFlatbuffer;
 using ::litert::tools::ApplyPluginRun;
@@ -95,8 +93,6 @@ class Context {
     run_->outs.at(0) = out;
     return res;
   }
-
-  Serialization Serialization() const { return run_->serialization; }
 
   const ApplyPluginRun& Run() const { return *run_; }
   ApplyPluginRun& Run() { return *run_; }
@@ -404,8 +400,6 @@ LiteRtStatus ValidateApplyRun(const ApplyPluginRun& run) {
   // TODO: implement multi target compilation.
   LITERT_ENSURE_SUPPORTED(run.soc_models.size() == 1,
                           "Multi target compilation not implemented.");
-  LITERT_ENSURE_SUPPORTED(run.serialization != Serialization::kUnknown,
-                          "No serialization strategy supported.");
   return kLiteRtStatusOk;
 }
 
@@ -422,8 +416,8 @@ LiteRtStatus Apply(Context& ctx) {
   }
 
   ctx.Dump().Start("Applying plugin");
-  if (auto status = litert::internal::ApplyPlugin(
-          *plugin, model, ctx.SocModelTarget(), ctx.Serialization());
+  if (auto status =
+          litert::internal::ApplyPlugin(*plugin, model, ctx.SocModelTarget());
       !status) {
     LITERT_LOG(LITERT_ERROR, "%s", status.Error().Message().c_str());
     return status.Error().Status();

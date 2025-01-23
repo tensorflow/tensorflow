@@ -28,7 +28,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
+#include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/dispatch_op_schema.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
@@ -36,12 +36,8 @@
 namespace litert::tools {
 namespace {
 
-using ::litert::internal::kByteCodeMetadataKey;
 using ::litert::internal::kLiteRtBuildStampKey;
 using ::litert::internal::ParseBuildStamp;
-using ::litert::internal::ParseByteCodePlaceholder;
-using ::litert::internal::ParseExecInfo;
-using ::litert::internal::Serialization;
 using ::testing::HasSubstr;
 
 static constexpr absl::string_view kPluginSearchPath =
@@ -162,10 +158,9 @@ TEST(TestApplyPluginTool, TestApply) {
   {
     auto stamp_buffer = model->Get()->FindMetadata(kLiteRtBuildStampKey);
     auto stamp = ParseBuildStamp(*stamp_buffer);
-    auto [man, soc_model, serial] = *stamp;
+    auto [man, soc_model] = *stamp;
     EXPECT_EQ(man, kSocManufacturer);
     EXPECT_EQ(soc_model, kSocModel);
-    EXPECT_EQ(serial, Serialization::kMetadata);
   }
 
   auto* op = model->Get()->MainSubgraph()->Ops().front();
