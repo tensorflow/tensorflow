@@ -1488,7 +1488,7 @@ cc_library(
     deps = [
         ":sparse_core_layout_proto_cc",
         "//tensorflow/core/platform:stringpiece",
-        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
