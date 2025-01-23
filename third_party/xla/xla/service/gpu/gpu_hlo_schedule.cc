@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
 #include "xla/service/gpu/model/sol_latency_estimator.h"
 #include "xla/service/gpu/transforms/pgle_accuracy_checker.h"
@@ -60,7 +59,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/latency_hiding_scheduler.h"
-#include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/service/p2p_schedule_preparation.h"
 #include "xla/service/profile_guided_latency_estimator.h"
 #include "xla/shape.h"
@@ -534,26 +532,6 @@ bool NeedAccuracyChecker(const DebugOptions& options,
          level == DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR;
 }
 
-// For now, only allow cublas gemm custom calls and triton gemm fusions to
-// be overlapped as the compute ops in the annotated scheduling groups.
-LegalizeSchedulingAnnotations::Config SchedulingAnnotationsConfig() {
-  LegalizeSchedulingAnnotations::Config annotation_config;
-  annotation_config.keep_sync_annotation = [](const HloInstruction* hlo) {
-    if (hlo->IsCustomCall("__cublas$gemm")) {
-      return true;
-    }
-    if (hlo->opcode() == HloOpcode::kFusion && hlo->has_backend_config() &&
-        hlo->backend_config<GpuBackendConfig>().ok()) {
-      GpuBackendConfig gpu_config =
-          hlo->backend_config<GpuBackendConfig>().value();
-      return gpu_config.has_fusion_backend_config() &&
-             gpu_config.fusion_backend_config().kind() == kTritonGemmFusionKind;
-    }
-    return false;
-  };
-  return annotation_config;
-}
-
 // Adds necessary passes to perform latency hiding estimations for the
 // `pipeline`.
 absl::Status RunLatencyHidingSchedulerPasses(
@@ -561,8 +539,6 @@ absl::Status RunLatencyHidingSchedulerPasses(
     int64_t memory_limit, const se::DeviceDescription& gpu_device_info) {
   HloPassPipeline pipeline("latency-hiding-scheduler");
   const DebugOptions& options = module->config().debug_options();
-  pipeline.AddPass<LegalizeSchedulingAnnotations>(
-      SchedulingAnnotationsConfig());
 
   SchedulerConfig config = MakeGPUSchedulerConfig(
       memory_limit,
