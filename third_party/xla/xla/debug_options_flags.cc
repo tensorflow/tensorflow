@@ -1817,9 +1817,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Forces any reductions during matrix multiplications to use the "
       "accumulator type and not the output type. The precision of the dot "
       "operation may not increase that much if there is output fusion."));
-  flag_list->push_back(tsl::Flag("xla_gpu_triton_fusion_level",
-                                 noop_flag_setter<int>, 2,
-                                 "[Deprecated, do not use]"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dump_autotuned_gemm_fusions",
       bool_setter_for(&DebugOptions::set_xla_gpu_dump_autotuned_gemm_fusions),
