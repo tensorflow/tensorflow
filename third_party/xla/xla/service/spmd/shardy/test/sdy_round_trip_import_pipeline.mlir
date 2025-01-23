@@ -71,9 +71,9 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     // CHECK-NEXT:   stablehlo.return %[[ADD_1]], %[[ADD_0]]
     // CHECK-NEXT: }
     // CHECK-NEXT: return %[[WHILE]]#0
-    %0 = mhlo.constant dense<0> : tensor<i32>
-    %1 = mhlo.constant dense<1> : tensor<i32>
-    %2 = mhlo.constant dense<32> : tensor<i32>
+    %0 = stablehlo.constant dense<0> : tensor<i32>
+    %1 = stablehlo.constant dense<1> : tensor<i32>
+    %2 = stablehlo.constant dense<32> : tensor<i32>
     %3:2 = stablehlo.while(%iterArg = %arg0, %iterArg_0 = %0) : tensor<32x96xf32>, tensor<i32>
       cond {
       %4 = stablehlo.compare LT, %iterArg_0, %2 : (tensor<i32>, tensor<i32>) -> tensor<i1>
@@ -101,14 +101,14 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     // CHECK-NEXT:   stablehlo.return %[[ADD_1]], %[[ADD_0]]
     // CHECK-NEXT: }
     // CHECK-NEXT: return %[[WHILE]]#0
-    %0 = mhlo.constant dense<0> : tensor<i32>
+    %0 = stablehlo.constant dense<0> : tensor<i32>
     %1:2 = stablehlo.while(%iterArg = %arg0, %iterArg_0 = %0) : tensor<32x96xf32>, tensor<i32>
       cond {
-      %2 = mhlo.constant dense<32> : tensor<i32>
+      %2 = stablehlo.constant dense<32> : tensor<i32>
       %3 = stablehlo.compare LT, %iterArg_0, %2 : (tensor<i32>, tensor<i32>) -> tensor<i1>
       stablehlo.return %3 : tensor<i1>
     } do {
-      %2 = mhlo.constant dense<1> : tensor<i32>
+      %2 = stablehlo.constant dense<1> : tensor<i32>
       %3 = stablehlo.add %iterArg_0, %2 : tensor<i32>
       %4 = stablehlo.add %iterArg, %iterArg : tensor<32x96xf32>
       stablehlo.return %4, %3 : tensor<32x96xf32>, tensor<i32>

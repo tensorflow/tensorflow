@@ -680,6 +680,89 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
  }
  }  // namespace
  
+diff --ruN a/stablehlo/stablehlo/transforms/Passes.h b/stablehlo/stablehlo/transforms/Passes.h
+--- stablehlo/stablehlo/transforms/Passes.h
++++ stablehlo/stablehlo/transforms/Passes.h
+@@ -25,12 +25,17 @@
+ #include "mlir/Pass/Pass.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
++#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+ #include "stablehlo/dialect/Version.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
+ 
+ #define GEN_PASS_DECL
++
++std::unique_ptr<::mlir::Pass> createStablehloAggressiveSimplificationPass(
++    GreedyRewriteConfig config);
++
+ #define GEN_PASS_REGISTRATION
+ #include "stablehlo/transforms/Passes.h.inc"
+ 
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/StablehloAggressiveSimplification.cpp
+@@ -11,6 +11,7 @@
+ #include <cstddef>
+ #include <cstdint>
+ #include <iterator>
++#include <memory>
+ #include <optional>
+ #include <utility>
+ 
+@@ -21,6 +22,7 @@
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/SmallVectorExtras.h"
+ #include "llvm/Support/ErrorHandling.h"
++#include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Block.h"
+ #include "mlir/IR/Builders.h"
+@@ -38,6 +40,7 @@
+ #include "mlir/IR/TypeUtilities.h"
+ #include "mlir/IR/Value.h"
+ #include "mlir/IR/ValueRange.h"
++#include "mlir/Pass/Pass.h"
+ #include "mlir/Rewrite/FrozenRewritePatternSet.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+@@ -1470,6 +1473,9 @@
+ struct StablehloAggressiveSimplificationPass final
+     : impl::StablehloAggressiveSimplificationPassBase<
+           StablehloAggressiveSimplificationPass> {
++  StablehloAggressiveSimplificationPass() = default;
++  StablehloAggressiveSimplificationPass(GreedyRewriteConfig config)
++      : config(config) {}
+   LogicalResult initialize(MLIRContext *context) override {
+     RewritePatternSet patterns_(context);
+     populateStablehloCanonicalizationPatterns(context, &patterns_);
+@@ -1478,11 +1484,12 @@
+   }
+ 
+   void runOnOperation() override {
+-    if (failed(applyPatternsGreedily(getOperation(), patterns)))
++    if (failed(applyPatternsGreedily(getOperation(), patterns, config)))
+       signalPassFailure();
+   }
+ 
+  private:
++  GreedyRewriteConfig config;
+   FrozenRewritePatternSet patterns;
+ };
+ 
+@@ -1515,5 +1522,10 @@
+             DynamicReshapeOpIsStatic, DynamicIotaIsStatic>(context);
+ }
+ 
++std::unique_ptr<Pass> createStablehloAggressiveSimplificationPass(
++    GreedyRewriteConfig config) {
++  return std::make_unique<StablehloAggressiveSimplificationPass>(config);
++}
++
+ }  // namespace stablehlo
+ }  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp b/stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
 --- stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
 +++ stablehlo/stablehlo/transforms/StablehloRefineArguments.cpp
