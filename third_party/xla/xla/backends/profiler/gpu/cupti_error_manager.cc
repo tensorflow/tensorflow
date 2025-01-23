@@ -18,7 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/debugging/leak_check.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace profiler {

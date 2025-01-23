@@ -21,8 +21,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
-#include "tsl/platform/test.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {

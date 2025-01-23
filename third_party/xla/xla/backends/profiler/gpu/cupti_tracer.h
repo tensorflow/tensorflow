@@ -26,7 +26,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 namespace xla {
 namespace profiler {

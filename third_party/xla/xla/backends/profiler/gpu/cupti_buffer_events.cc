@@ -22,7 +22,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/mem.h"
 
 namespace xla {

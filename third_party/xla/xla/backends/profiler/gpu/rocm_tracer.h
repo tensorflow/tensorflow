@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "xla/backends/profiler/gpu/rocm_collector.h"
 #include "xla/stream_executor/rocm/roctracer_wrapper.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/types.h"
 
 namespace xla {
 namespace profiler {
