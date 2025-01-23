@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -1616,6 +1617,25 @@ TEST(StreamExecutorGpuClientTest, MlirResultHostMemorySpaceIsSetInHlo) {
   auto result_layout =
       modules[0]->entry_computation_layout().result_layout().layout();
   EXPECT_EQ(result_layout.memory_space(), Layout::kHostMemorySpace);
+}
+
+TEST(StreamExecutorGpuClientTest, ProfileExecution) {
+  static constexpr char const* kProgram = R"(
+    HloModule profiled
+      ENTRY main {
+      c0 = f32[] constant(20)
+      c1 = f32[] constant(21)
+      ROOT res = f32[] add(c0, c1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kProgram, *client));
+  ExecutionProfile profile;
+  ExecuteOptions opts;
+  opts.execution_profile = &profile;
+  TF_ASSERT_OK(executable->Execute(/*argument_handles=*/{{}}, opts));
+  EXPECT_GT(profile.compute_time_ns(), 0);
 }
 
 TEST(StreamExecutorGpuClientTest, MlirAutoResultLayoutIsSet) {

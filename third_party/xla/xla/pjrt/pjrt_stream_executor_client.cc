@@ -2854,6 +2854,7 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
   run_options.set_launch_id(options.launch_id);
   run_options.set_send_device_memory_function(&send_device_memory);
   run_options.set_recv_device_memory_function(&recv_device_memory);
+  run_options.set_execution_profile(options.execution_profile);
   if (run_options.launch_id() != 0) {
     VLOG(3) << "launch id for " << name() << ": " << run_options.launch_id();
   }

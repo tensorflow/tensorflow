@@ -259,6 +259,9 @@ struct ExecuteOptions {
   enum class ExecutionMode { kDefault = 0, kSynchronous, kAsynchronous };
   ExecutionMode execution_mode = ExecutionMode::kDefault;
 
+  // If not null, measure the execution profile and store it.
+  ExecutionProfile* execution_profile = nullptr;
+
   // A set of indices denoting the input buffers that should not be donated.
   // An input buffer may be non-donable, for example, if it is referenced more
   // than once. Since such runtime information is not available at compile time,
