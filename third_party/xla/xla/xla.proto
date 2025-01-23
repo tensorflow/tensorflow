@@ -348,12 +348,6 @@ message DebugOptions {
 
   bool xla_gpu_enable_approx_costly_collectives = 305;
 
-  // If enabled, uses bf16_3way gemm to compute F32 gemm.
-  bool xla_gpu_enable_bf16_3way_gemm = 279;
-
-  // If enabled, uses bf16_6way gemm to compute F32 gemm.
-  bool xla_gpu_enable_bf16_6way_gemm = 271;
-
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
 
@@ -1151,8 +1145,10 @@ message DebugOptions {
   // xla_gpu_enable_heuristic_pass_configuration
   // xla_gpu_enable_dot_strength_reduction
   // xla_gpu_triton_fusion_level
+  // xla_gpu_enable_bf16_3way_gemm
+  // xla_gpu_enable_bf16_6way_gemm
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332, 361, 270, 229;
+      325, 326, 332, 361, 270, 229, 271, 279;
 }
 
 // Contains flags which affects the GPU compilation result.

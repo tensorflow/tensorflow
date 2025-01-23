@@ -137,25 +137,6 @@ class Triton6xBF16GemmTest : public AlgorithmTest {
   }
 };
 
-// In these tests, we depend on debug option flags for selecting the 6XBF16
-// algorithm.
-// TODO(b/379905071): Remove this class and the --xla_gpu_enable_bf16_6way_gemm
-// flag after we will support the algorithm values through the entire stack.
-class Triton6xBF16GemmTestWithFlag : public AlgorithmTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
-    // Do not fall back to cuBLAS, we are testing Triton.
-    debug_options.set_xla_gpu_cublas_fallback(false);
-    // Do not autotune split-k by default, since this prevents deterministically
-    // matching the optimized HLO.
-    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
-    // Enable bf16_6way gemm to compute F32 matmul.
-    debug_options.set_xla_gpu_enable_bf16_6way_gemm(true);
-    return debug_options;
-  }
-};
-
 class BlasAlgorithmTest : public AlgorithmTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
@@ -518,47 +499,6 @@ CHECK:          %[[ACC:.*]] = arith.addf %[[DOT_LAST]], %[[C0]] : tensor<32x32xf
                                                            /*arel=*/1e-6}));
 }
 
-TEST_F(Triton6xBF16GemmTestWithFlag, Emit6xBF16GemmWhenBothInputsAreF32) {
-  constexpr absl::string_view kHloText = R"(
-    HloModule Emit6xBF16GemmWhenBothInputsAreF32
-
-    triton_dot {
-      p0 = f32[5,7] parameter(0)
-      p1 = f32[7,33] parameter(1)
-      ROOT dot = f32[5,33] dot(p0, p1),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    }
-
-    ENTRY e {
-      p0 = f32[5,7]{1,0} parameter(0)
-      p1 = f32[7,33]{1,0} parameter(1)
-      ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-        backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-        triton_gemm_config:
-        {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
-    }
-  )";
-  TF_ASSERT_OK(
-      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
-CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
-CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
-CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
-CHECK:          %[[CAST_I32:.*]] = tt.bitcast %{{.*}} : tensor<32x32xf32> -> tensor<32x32xi32>
-CHECK:          %[[EXTRACT_HI:.*]] = arith.andi %[[CAST_I32]], %[[C_MASK]] : tensor<32x32xi32>
-CHECK:          %[[CAST_HI:.*]] = tt.bitcast %[[EXTRACT_HI]] : tensor<32x32xi32> -> tensor<32x32xf32>
-CHECK:          %[[TRUNC_TO_BF16:.*]] = arith.truncf %[[CAST_HI]] : tensor<32x32xf32> to tensor<32x32xbf16>
-CHECK-COUNT-5:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
-CHECK:          %[[ABS:.*]] = math.absf
-CHECK:          %[[CMP:.*]] = arith.cmpf ogt, %[[INFINITY]], %[[ABS]] : tensor<32x32xf32>
-CHECK:          %[[SELECT:.*]] = arith.select %[[CMP]], %{{.*}}, %[[C0]] : tensor<32x32xi1>, tensor<32x32xf32>
-CHECK:          %[[DOT_LAST:.*]] = tt.dot %{{.*}}, %{{.*}}, %[[SELECT]] : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
-CHECK:          %[[ACC:.*]] = arith.addf %[[DOT_LAST]], %[[C0]] : tensor<32x32xf32>
-    )"));
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-6,
-                                                           /*arel=*/1e-6}));
-}
-
 TEST_F(Triton6xBF16GemmTest, Triton6xBF16GemmWorksForLongContractingDimension) {
   constexpr absl::string_view kHloText = R"(
     HloModule Triton6xBF16GemmWorksForLongContractingDimension
@@ -635,34 +575,6 @@ class Triton3xBF16GemmTest : public AlgorithmTest {
   }
 };
 
-// In these tests, we depend on debug option flags for selecting the 3XBF16
-// algorithm.
-// TODO(b/379905071): Remove this class and the --xla_gpu_enable_bf16_3way_gemm
-// flag after we will support the algorithm values through the entire stack.
-class Triton3xBF16GemmTestWithFlag : public AlgorithmTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
-    // Enable triton fusion for all supported GEMMs.
-    debug_options.set_xla_gpu_triton_gemm_any(true);
-    // Do not fall back to cuBLAS, we are testing Triton.
-    debug_options.set_xla_gpu_cublas_fallback(false);
-    // Do not autotune split-k by default, since this prevents deterministically
-    // matching the optimized HLO.
-    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
-    // Enable bf16_3way gemm to compute F32 matmul.
-    debug_options.set_xla_gpu_enable_bf16_3way_gemm(true);
-    return debug_options;
-  }
-
- protected:
-  void SetUp() override {
-    if (!SupportsBF16(GpuComputeComp())) {
-      GTEST_SKIP() << "BF16 not supported.";
-    }
-  }
-};
-
 TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmWhenBothInputsAreF32) {
   constexpr absl::string_view kHloText = R"(
     HloModule Emit3xBF16GemmWhenBothInputsAreF32
@@ -703,75 +615,6 @@ CHECK:          %[[ACC:.*]] = arith.addf %[[DOT_LAST]], %[[C0]] : tensor<32x32xf
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-5,
                                                            /*arel=*/1e-5}));
-}
-
-TEST_F(Triton3xBF16GemmTestWithFlag, Emit3xBF16GemmWhenBothInputsAreF32) {
-  constexpr absl::string_view kHloText = R"(
-    HloModule Emit3xBF16GemmWhenBothInputsAreF32
-
-    triton_dot {
-      p0 = f32[5,7] parameter(0)
-      p1 = f32[7,33] parameter(1)
-      ROOT dot = f32[5,33] dot(p0, p1),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    }
-
-    ENTRY e {
-      p0 = f32[5,7]{1,0} parameter(0)
-      p1 = f32[7,33]{1,0} parameter(1)
-      ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-        backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-        triton_gemm_config:
-        {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
-    }
-  )";
-  TF_ASSERT_OK(
-      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
-CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
-CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
-CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
-CHECK:          %[[CAST_I32:.*]] = tt.bitcast %{{.*}} : tensor<32x32xf32> -> tensor<32x32xi32>
-CHECK:          %[[EXTRACT_HI:.*]] = arith.andi %[[CAST_I32]], %[[C_MASK]] : tensor<32x32xi32>
-CHECK:          %[[CAST_HI:.*]] = tt.bitcast %[[EXTRACT_HI]] : tensor<32x32xi32> -> tensor<32x32xf32>
-CHECK:          %[[TRUNC_TO_BF16:.*]] = arith.truncf %[[CAST_HI]] : tensor<32x32xf32> to tensor<32x32xbf16>
-CHECK-COUNT-2:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
-CHECK:          %[[ABS:.*]] = math.absf
-CHECK:          %[[CMP:.*]] = arith.cmpf ogt, %[[INFINITY]], %[[ABS]] : tensor<32x32xf32>
-CHECK:          %[[SELECT:.*]] = arith.select %[[CMP]], %{{.*}}, %[[C0]] : tensor<32x32xi1>, tensor<32x32xf32>
-CHECK:          %[[DOT_LAST:.*]] = tt.dot %{{.*}}, %{{.*}}, %[[SELECT]] : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
-CHECK:          %[[ACC:.*]] = arith.addf %[[DOT_LAST]], %[[C0]] : tensor<32x32xf32>
-    )"));
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-5,
-                                                           /*arel=*/1e-5}));
-}
-
-TEST_F(Triton3xBF16GemmTestWithFlag, NoEmit3xBF16GemmWhenBothInputsAreNotF32) {
-  constexpr absl::string_view kHloText = R"(
-    HloModule NoEmit3xBF16GemmWhenBothInputsAreNotF32
-
-    triton_dot {
-      p0 = f16[5,7] parameter(0)
-      p1 = f16[7,33] parameter(1)
-      ROOT dot = f16[5,33] dot(p0, p1),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    }
-
-    ENTRY e {
-      p0 = f16[5,7]{1,0} parameter(0)
-      p1 = f16[7,33]{1,0} parameter(1)
-      ROOT _ = f16[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-        backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-        triton_gemm_config:
-        {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}
-    }
-  )";
-  TF_ASSERT_OK(
-      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
-CHECK:      tt.dot
-CHECK-SAME: tensor<32x32xf16> * tensor<32x32xf16> -> tensor<32x32xf32>
-CHECK-NOT:  tt.dot
-    )"));
 }
 
 TEST_F(Triton3xBF16GemmTest, Triton3xBF16GemmWorksForLongContractingDimension) {
