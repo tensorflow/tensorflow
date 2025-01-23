@@ -189,7 +189,9 @@ BENCHMARK(BM_KernelSyncLaunch)
     ->Arg(8)
     ->Arg(16)
     ->Arg(32)
-    ->Arg(64);
+    ->Arg(64)
+    ->Arg(128)
+    ->Arg(256);
 
 BENCHMARK(BM_KernelAsyncLaunch)
     ->MeasureProcessCPUTime()
@@ -198,6 +200,8 @@ BENCHMARK(BM_KernelAsyncLaunch)
     ->Arg(8)
     ->Arg(16)
     ->Arg(32)
-    ->Arg(64);
+    ->Arg(64)
+    ->Arg(128)
+    ->Arg(256);
 
 }  // namespace xla::cpu

@@ -113,6 +113,7 @@ class Kernel {
 
  private:
   // A kernel parallel task that is used to parallelize host kernel execution.
+  template <bool thread_dim_x_only>
   class ParallelTask;
 
   std::unique_ptr<KernelFunction> function_;
