@@ -52,32 +52,17 @@ class TritonTest : public GpuCodegenTest {
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
   }
+};
 
-  stream_executor::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
-  }
-
-  const stream_executor::GpuComputeCapability& GpuComputeComp() {
-    return device_desc().gpu_compute_capability();
-  }
-  stream_executor::GpuComputeCapability CudaAmpereOrRocm() {
-    if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-            GpuComputeComp())) {
-      return stream_executor::GpuComputeCapability{
-          device_desc().rocm_compute_capability()};
-    } else {
-      return stream_executor::GpuComputeCapability{
-          stream_executor::CudaComputeCapability{
-              stream_executor::CudaComputeCapability::AMPERE, 0}};
-    }
-  }
-
- protected:
-  const stream_executor::DeviceDescription& device_desc() {
-    return backend().default_stream_executor()->GetDeviceDescription();
+class BlasTest : public GpuCodegenTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    // Do not autotune split-k by default, since this prevents deterministically
+    // matching the optimized HLO.
+    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
+    return debug_options;
   }
 };
 
@@ -193,6 +178,23 @@ TEST_F(TritonTest, DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
 }
 
 TEST_F(TritonTest, NonstandardLayoutInt4) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule NonstandardLayoutInt4
+
+    ENTRY main {
+      p0 = s4[64,128]{0,1} parameter(0)
+      p1 = bf16[256,64]{1,0} parameter(1)
+      ROOT %dot = bf16[128,256]{1,0} dot(s4[64,128]{0,1} p0, bf16[256,64]{1,0} p1),
+        lhs_contracting_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(BlasTest, NonstandardLayoutInt4) {
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutInt4
 

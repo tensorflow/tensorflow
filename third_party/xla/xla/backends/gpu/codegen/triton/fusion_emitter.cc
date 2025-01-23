@@ -1098,7 +1098,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     if (type == U16) {
       ir_type = b.getI16Type();
     } else if (type == S4) {
-        ir_type = b.getI4Type();
+      ir_type = b.getI4Type();
     } else {
       TF_ASSIGN_OR_RETURN(ir_type, TritonType(b, type));
     }
@@ -1263,12 +1263,13 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
       } else {
         pm.getContext()->disableMultithreading();
         auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
-        pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
-                            /*shouldPrintAfterPass=*/print_always,
-                            /*printModuleScope=*/true,
-                            /*printAfterOnlyOnChange=*/false,
-                            /*printAfterOnlyOnFailure=*/true, *log_stream,
-                            /*opPrintingFlags=*/{});
+        pm.enableIRPrinting(
+            /*shouldPrintBeforePass=*/print_always,
+            /*shouldPrintAfterPass=*/print_always,
+            /*printModuleScope=*/true,
+            /*printAfterOnlyOnChange=*/false,
+            /*printAfterOnlyOnFailure=*/true, *log_stream,
+            mlir::OpPrintingFlags().enableDebugInfo(true, true));
       }
     } else {
       LOG(ERROR) << "--xla_gpu_dump_llvmir is set, but neither the environment "

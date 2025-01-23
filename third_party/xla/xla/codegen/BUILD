@@ -29,7 +29,8 @@ cc_library(
     srcs = ["emitter_loc_op_builder.cc"],
     hdrs = ["emitter_loc_op_builder.h"],
     visibility = [
-        "//xla/backends/gpu/codegen:__subpackages__",
+        "//xla/backends:__subpackages__",
+        "//xla/codegen/emitters/transforms:__pkg__",
     ],
     deps = [
         "@com_google_absl//absl/strings",
