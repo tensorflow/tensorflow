@@ -311,7 +311,7 @@ message GPUOptions {
 
   // Everything inside experimental is subject to change and is not subject
   // to API stability guarantees in
-  // https://www.tensorflow.org/guide/version_compat.
+  // https://www.tensorflow.org/guide/versions.
   Experimental experimental = 9;
 }
 
@@ -583,7 +583,7 @@ message ConfigProto {
 
   // Everything inside Experimental is subject to change and is not subject
   // to API stability guarantees in
-  // https://www.tensorflow.org/guide/version_compat.
+  // https://www.tensorflow.org/guide/versions.
   message Experimental {
     // Task name for group resolution.
     string collective_group_leader = 1;
