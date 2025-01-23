@@ -755,7 +755,7 @@ message ConfigProto {
     bool disable_functional_ops_lowering = 21;
 
     // Provides a hint to XLA auto clustering to prefer forming a single large
-    // cluster that encompases most of the graph.
+    // cluster that encompasses most of the graph.
     bool xla_prefer_single_graph_cluster = 22;
 
     // Distributed coordination service configurations.
