@@ -22,7 +22,12 @@ fi
 
 # Update the version numbers for Nightly only
 if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
-  tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
+  python_bin=python3
+  # TODO(belitskiy): Add a `python3` alias/symlink to Windows Docker image.
+  if [[ $(uname -s) = MSYS_NT* ]]; then
+    python_bin="python"
+  fi
+  tfrun "$python_bin" tensorflow/tools/ci_build/update_version.py --nightly
 fi
 
 if [[ $(uname -s) != MSYS_NT* ]]; then
