@@ -1,5 +1,8 @@
 # PJRT C API changelog
 
+## 0.65
+* Added ``PJRT_Triton_Extension``.
+
 ## 0.64
 * Added ``context`` field of type ``PJRT_ExecuteContext *`` in ``PJRT_ExecuteOptions``.
 

@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_test.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
+#include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -863,6 +864,44 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallTyped) {
       xla::ffi::FindHandler(function_name, stream_executor::GpuPlatformName())
           .value();
   EXPECT_EQ(reinterpret_cast<void*>(registration.bundle.execute), kNoop);
+}
+
+constexpr absl::string_view kAddOneTTIR = R"(
+module {
+  tt.func public @add_one(%arg0: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg1: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg2: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}, %arg3: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}) {
+    %0 = tt.get_program_id x : i32
+    %1 = tt.load %arg0 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
+    %2 = tt.load %arg1 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
+    %cst = arith.constant 1.000000e+00 : f32
+    %3 = arith.addf %1, %cst : f32
+    %4 = tt.load %arg2 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
+    tt.store %arg2, %3 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
+    %5 = tt.load %arg3 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
+    tt.store %arg3, %2 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
+    tt.return
+  }
+}
+)";
+
+TEST(PjrtCAPIGpuExtensionTest, TritonCompile) {
+  constexpr absl::string_view kArchName = "7.0";
+  PJRT_Triton_Compile_Args args;
+  args.struct_size = PJRT_Triton_Compile_Args_STRUCT_SIZE;
+  args.module = kAddOneTTIR.data();
+  args.module_size = kAddOneTTIR.size();
+  args.arch_name = kArchName.data();
+  args.arch_name_size = kArchName.size();
+  args.num_stages = 1;
+  args.num_ctas = 1;
+  args.num_warps = 1;
+  auto api = GetPjrtApi();
+  const auto* triton_ext = pjrt::FindExtension<PJRT_Triton_Extension>(
+      api, PJRT_Extension_Type::PJRT_Extension_Type_Triton);
+  ASSERT_NE(triton_ext, nullptr);
+
+  PJRT_Error* error = triton_ext->compile(&args);
+  CHECK_EQ(error, nullptr) << error->status.message();
+  delete[] args.out_asm;
 }
 
 }  // namespace
