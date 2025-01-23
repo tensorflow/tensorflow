@@ -156,8 +156,6 @@ TEST_F(TritonTest,
 }
 
 TEST_F(TritonTest, DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
-  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
-                  "issue with triton.";
   constexpr absl::string_view kHloText = R"(
     HloModule DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales
 
@@ -195,8 +193,6 @@ TEST_F(TritonTest, DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
 }
 
 TEST_F(TritonTest, NonstandardLayoutInt4) {
-  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
-                  "issue with triton.";
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutInt4
 
@@ -246,8 +242,6 @@ class ParametrizedTritonTest : public TritonTest,
                                public WithParamInterface<I4TestParams> {};
 
 TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhs) {
-  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
-                  "issue with triton.";
   if (GetParam().HasBatchDim()) {
     GTEST_SKIP() << "2d test ignores batch dim case.";
   }
@@ -284,8 +278,6 @@ TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhs) {
 }
 
 TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhsWithBatchDim) {
-  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
-                  "issue with triton.";
   if (!GetParam().HasBatchDim()) {
     GTEST_SKIP() << "3d test ignores 2d case.";
   }
@@ -324,8 +316,6 @@ TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhsWithBatchDim) {
 }
 
 TEST_P(ParametrizedTritonTest, Int4WeightsOnTheRhs) {
-  GTEST_SKIP()
-      << "TODO: Weekly-sync 25-01-13: Skip ivestigate int4 issue with triton.";
   if (GetParam().HasBatchDim()) {
     GTEST_SKIP() << "2d test ignores batch dim case.";
   }
