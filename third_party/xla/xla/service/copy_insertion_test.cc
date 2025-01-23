@@ -3918,11 +3918,9 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncRecv) {
   // Expect control dependency from recv-done to recv.
   HloComputation* while_body =
       hlo_query::FindComputation(module.get(), "while_body");
-  HloInstruction* recv_done =
-      hlo_query::FindInstruction(while_body, HloOpcode::kRecvDone);
   HloInstruction* recv =
       hlo_query::FindInstruction(while_body, HloOpcode::kRecv);
-  EXPECT_THAT(recv->control_predecessors(), UnorderedElementsAre(recv_done));
+  EXPECT_TRUE(recv->control_predecessors().empty());
 }
 
 TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncRecvMultipleUses) {
@@ -3990,7 +3988,7 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncRecvMultipleUses) {
       hlo_query::FindInstruction(while_body, HloOpcode::kCopy);
   EXPECT_THAT(recv_done_copy, op::Copy(op::GetTupleElement(recv_done)));
   EXPECT_THAT(recv->control_predecessors(),
-              UnorderedElementsAre(recv_done, recv_done_copy));
+              UnorderedElementsAre(recv_done_copy));
 }
 
 TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendMultipleUses) {
@@ -4160,7 +4158,7 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendRecvPipelineParallelism) {
       recv->control_predecessors(), HloPredicateIsOp<HloOpcode::kCopy>);
   EXPECT_THAT(recv_done_copy, op::Copy(op::GetTupleElement(recv_done)));
   EXPECT_THAT(recv->control_predecessors(),
-              UnorderedElementsAre(recv_done, recv_done_copy));
+              UnorderedElementsAre(recv_done_copy));
 }
 
 }  // namespace

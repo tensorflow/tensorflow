@@ -2126,7 +2126,6 @@ absl::Status CopyInsertion::AddCopiesForAsyncSendRecv(
     if (instr != nullptr)
       TF_RETURN_IF_ERROR(instr->AddControlDependencyTo(start_op));
   }
-  TF_RETURN_IF_ERROR(done_op->AddControlDependencyTo(start_op));
   for (HloInstruction* it : done_op_users) {
     TF_RETURN_IF_ERROR(done_op->ReplaceUseWith(it, done_op_copy));
   }
