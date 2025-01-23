@@ -468,6 +468,7 @@ cc_library(
         ":hlo_graph_dumper",
         ":hlo_proto_cc",
         ":hlo_proto_util",
+        "//xla:debug_options_flags",
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",

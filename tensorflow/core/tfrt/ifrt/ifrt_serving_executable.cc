@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/dump.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/serving_device_selector.h"
@@ -441,6 +442,8 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   TF_ASSIGN_OR_RETURN(Tf2HloResult tf2hlo_result,
                       persistent_compilation_cache_->LookupTf2HloResultOrCreate(
                           tf2hlo_arg, tf_to_hlo_compiler_));
+  xla::DumpHloModuleProtoIfEnabled(tf2hlo_result.hlo_module_proto,
+                                   "before_ifrt_serialization");
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module,
       xla::ConvertHloToMlirHlo(*module_copy->getContext(),
