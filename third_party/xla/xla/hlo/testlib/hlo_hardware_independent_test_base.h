@@ -135,12 +135,22 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   static void SetAotFastMathDebugOptions(DebugOptions* options);
 
   // Runs pass `hlo_pass` on input HLO module `hlo` with optional config, and
+  // FileChecks the result against interleaved expected `CHECK` directives.
+  //
+  // If the rewrite has changed the module, also runs `additional_checks` on the
+  // result.
+  void RunAndFilecheckHloRewrite(
+      absl::string_view hlo_with_checks, HloPassInterface&& hlo_pass,
+      std::function<void(HloModule*)> after_pass_checks = nullptr,
+      const HloModuleConfig* config = nullptr) const;
+
+  // Runs pass `hlo_pass` on input HLO module `hlo` with optional config, and
   // FileChecks the result against `expected`.
   //
   // If the rewrite has changed the module, also runs `additional_checks` on the
   // result.
   void RunAndFilecheckHloRewrite(
-      absl::string_view hlo, HloPassInterface&& hlo_pass,
+      absl::string_view hlo_with_filecheck_lines, HloPassInterface&& hlo_pass,
       std::optional<absl::string_view> expected,
       std::function<void(HloModule*)> after_pass_checks = nullptr,
       const HloModuleConfig* config = nullptr) const;
