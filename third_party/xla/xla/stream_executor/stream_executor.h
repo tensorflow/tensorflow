@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -89,6 +90,12 @@ class StreamExecutor {
 
   // Creates and initializes an Event.
   virtual absl::StatusOr<std::unique_ptr<Event>> CreateEvent() = 0;
+
+  // Creates a MemoryAllocator for the given type.
+  virtual absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+  CreateMemoryAllocator(MemoryType type) {
+    return absl::UnimplementedError("Not Implemented");
+  }
 
   // Obtains metadata about the underlying device.
   // The value is cached on first use.

@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -147,6 +148,8 @@ class CudaExecutor : public GpuExecutor {
   // CUtensorMap object to be used as an argument to a kernel.
   absl::StatusOr<DeviceMemoryBase> CreateTensorMap(
       TmaDescriptor tma_desc, void* global_address) override;
+  absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
+      MemoryType type) override;
 
  private:
   // Loads a module in cubin format.
