@@ -30,7 +30,7 @@ bool LoadedNvJitLinkHasKnownIssues() {
   // Note that this needs to be a runtime version test because we load
   // LibNvJitLink as a dynamic library and the version might vary and not be the
   // same that we saw at compile time.
-  return GetNvJitLinkVersion().value_or(NvJitLinkVersion{0, 0}) >=
+  return GetNvJitLinkVersion().value_or(NvJitLinkVersion{0, 0}) <
          kMinVersionWithoutKnownIssues;
 }
 
