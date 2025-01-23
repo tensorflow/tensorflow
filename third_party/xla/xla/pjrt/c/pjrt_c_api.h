@@ -81,7 +81,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 65
+#define PJRT_API_MINOR 66
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -940,7 +940,9 @@ struct PJRT_Client_CreateViewOfDeviceBuffer_Args {
   size_t num_dims;
   PJRT_Buffer_Type element_type;
   PJRT_Buffer_MemoryLayout* layout;
-  // The device that `device_buffer_ptr` is on.
+  // The device that `device_buffer_ptr` is on. The argument is ignored if
+  // `memory` is provided.
+  // DEPRECATED: Use `memory` instead.
   PJRT_Device* device;
   // A callback to be performed when the PJRT_Buffer is done with the on-device
   // buffer. This callback is optional and can be a nullptr.
@@ -956,8 +958,10 @@ struct PJRT_Client_CreateViewOfDeviceBuffer_Args {
   // to be supported on all hardware platforms.
   intptr_t stream;
   PJRT_Buffer* buffer;  // out
+  // The memory space that `device_buffer_ptr` is in.
+  PJRT_Memory* memory;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateViewOfDeviceBuffer_Args, buffer);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateViewOfDeviceBuffer_Args, memory);
 
 // Creates a PJRT buffer that is a non-owned view of an on-device buffer
 // (typically allocated by another library). The buffer may be mutated,

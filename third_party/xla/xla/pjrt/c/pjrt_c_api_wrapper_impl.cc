@@ -969,10 +969,22 @@ PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
     stream = args->stream;
   }
   std::unique_ptr<xla::PjRtBuffer> buffer;
-  PJRT_ASSIGN_OR_RETURN(
-      buffer, args->client->client->CreateViewOfDeviceBuffer(
-                  args->device_buffer_ptr, shape, args->device->device,
-                  on_delete_callback, stream));
+  bool has_memory_space = args->struct_size >=
+                          PJRT_Client_CreateViewOfDeviceBuffer_Args_STRUCT_SIZE;
+  xla::PjRtMemorySpace* memory_space = nullptr;
+  if (has_memory_space && args->memory != nullptr) {
+    memory_space = args->memory->memory_space;
+  } else if (args->device != nullptr) {
+    PJRT_ASSIGN_OR_RETURN(memory_space,
+                          args->device->device->default_memory_space());
+  } else {
+    return new PJRT_Error{
+        absl::InvalidArgumentError("PJRT_Client_CreateViewOfDeviceBuffer "
+                                   "requires either a device or a memory")};
+  }
+  PJRT_ASSIGN_OR_RETURN(buffer, args->client->client->CreateViewOfDeviceBuffer(
+                                    args->device_buffer_ptr, shape,
+                                    memory_space, on_delete_callback, stream));
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
   return nullptr;
 }

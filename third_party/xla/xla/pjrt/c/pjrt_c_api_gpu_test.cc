@@ -128,6 +128,7 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
       c_layout_data, pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
   create_view_args.layout = &(c_layout_data.c_layout);
   create_view_args.device = device_args.device;
+  create_view_args.memory = nullptr;
   std::function<void()> on_delete_callback = []() mutable {};
   create_view_args.on_delete_callback_arg =
       new std::function(on_delete_callback);

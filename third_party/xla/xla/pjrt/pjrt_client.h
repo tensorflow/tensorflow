@@ -984,7 +984,7 @@ class PjRtClient {
   // support dlpack on GPU and is not expected to be supported on all hardware
   // platforms.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
-      void* device_ptr, const Shape& shape, PjRtDevice* device,
+      void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream = std::nullopt) {
     return Unimplemented("CreateViewOfDeviceBuffer is not implemented.");

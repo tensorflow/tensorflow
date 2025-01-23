@@ -998,7 +998,8 @@ absl::StatusOr<nb::object> CudaArrayInterfaceToBuffer(
   TF_ASSIGN_OR_RETURN(
       auto pjrt_buffer,
       device->client()->pjrt_client()->CreateViewOfDeviceBuffer(
-          static_cast<char*>(data_ptr), shape, pjrt_device->pjrt_device(),
+          static_cast<char*>(data_ptr), shape,
+          *pjrt_device->pjrt_device()->default_memory_space(),
           on_delete_callback,
           stream <= 2 ? std::nullopt : std::make_optional(stream)));
   auto* ifrt_client =
