@@ -183,7 +183,7 @@ class RecvThreadState {
 // unpinned_allocator and communicates over all addrs in parallel.
 absl::StatusOr<std::shared_ptr<BulkTransportFactory>>
 CreateSocketBulkTransportFactory(std::vector<SocketAddress> addrs,
-                                 SlabAllocator allocator,
+                                 std::optional<SlabAllocator> allocator,
                                  SlabAllocator unpinned_allocator);
 
 }  // namespace aux

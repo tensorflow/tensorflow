@@ -157,6 +157,7 @@ cc_library(
     deps = [
         ":event_loop",
         ":streaming",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
