@@ -98,7 +98,7 @@ Kernel::ParallelTask<thread_dim_x_only>::ParallelTask(
 
 template <bool thread_dim_x_only>
 absl::Status Kernel::ParallelTask<thread_dim_x_only>::operator()(
-    uint64_t task_index) const {
+    size_t task_index) const {
   DCHECK_LT(task_index, num_tasks_) << "Task index out of range";  // Crash OK
 
   XLA_CPU_KernelThread kernel_thread = Delinearize(task_index);
