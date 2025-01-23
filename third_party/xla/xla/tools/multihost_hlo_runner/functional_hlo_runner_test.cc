@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
@@ -87,6 +88,26 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHlo) {
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
       *client, debug_options, preproc_options, raw_compile_options,
       running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
+TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithExecutionProfile) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+  std::vector<ExecutionProfile> profiles;
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.num_repeats = 2;
+  running_options.execution_profiles = &profiles;
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client,
+      /* debug_options= */ {}, /* preproc_options= */ {},
+      /* raw_compile_options = */ {}, running_options,
+      {GetHloPath("single_device.hlo")}, InputFormat::kText));
+  ASSERT_EQ(profiles.size(), 2);
+  if (client->platform_name() == "cuda") {
+    // CPU backend does not fill the profile at the moment.
+    EXPECT_GT(profiles[0].compute_time_ns(), 0);
+    EXPECT_GT(profiles[1].compute_time_ns(), 0);
+  }
 }
 
 TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {

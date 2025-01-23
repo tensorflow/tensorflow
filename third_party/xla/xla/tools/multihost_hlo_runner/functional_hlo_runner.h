@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -223,6 +224,10 @@ class FunctionalHloRunner {
     // Whether to untuple the result of running HLO module into a vector of
     // arrays. If unprovided, use the default in ExecuteOptions.
     std::optional<bool> untuple_result = std::nullopt;
+    // If not null, profiles will be stored for this run, one per repeat.
+    // Note that the first repeat is a warmup run, and uses less precise
+    // profiling method.
+    std::vector<ExecutionProfile>* execution_profiles = nullptr;
 
     // Should we log the inputs and outputs to stderr?
     bool log_input_output() const {

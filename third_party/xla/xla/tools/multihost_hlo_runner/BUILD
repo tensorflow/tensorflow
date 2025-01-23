@@ -206,6 +206,7 @@ xla_test(
         ":functional_hlo_runner",
         "//xla:debug_options_flags",
         "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/testlib:filecheck",
         "//xla/pjrt:pjrt_client",
