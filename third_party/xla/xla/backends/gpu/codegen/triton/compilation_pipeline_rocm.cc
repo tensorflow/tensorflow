@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+#include "xla/backends/gpu/codegen/triton/xla_triton_passes.h"
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
@@ -47,6 +48,7 @@ namespace ma = ::mlir::arith;
 namespace mm = ::mlir::math;
 namespace ml = ::mlir::LLVM;
 namespace mt = ::mlir::triton;
+namespace mt_xla = ::mlir::triton::xla;
 
 using ::llvm::SmallVector;
 using mlir::ArrayRef;
@@ -63,6 +65,10 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   // TODO(ROCm): Check why some test fail when threadsPerWarp is set to 64.
   const int threadsPerWarp = 32;
   auto cc = se::RocmComputeCapability(std::move(arch_name));
+
+  if (is_xla_fusion) {
+    pm->addPass(mt_xla::CreateInt4ToPackedInt4RewritePass());
+  }
 
   // Based on make_ttir() in
   // @triton//:third_party/amd/backend/compiler.py
