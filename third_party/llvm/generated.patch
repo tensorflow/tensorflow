@@ -1,1 +1,126 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/utils/gn/secondary/llvm/lib/Support/BUILD.gn b/llvm/utils/gn/secondary/llvm/lib/Support/BUILD.gn
+--- a/llvm/utils/gn/secondary/llvm/lib/Support/BUILD.gn
++++ b/llvm/utils/gn/secondary/llvm/lib/Support/BUILD.gn
+@@ -33,7 +33,7 @@
+     "Windows",
+   ]
+   sources = [
+-    "AArch64BuildAttributes.cpp"
++    "AArch64BuildAttributes.cpp",
+     "ABIBreak.cpp",
+     "AMDGPUMetadata.cpp",
+     "APFixedPoint.cpp",
+@@ -42,7 +42,6 @@
+     "APSInt.cpp",
+     "ARMAttributeParser.cpp",
+     "ARMBuildAttrs.cpp",
+-    "AArch64BuildAttributes.cpp",
+     "ARMWinEH.cpp",
+     "Allocator.cpp",
+     "AutoConvert.cpp",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -5545,10 +5545,26 @@
+ 
+ cc_library(
+     name = "LLVMIRTransforms",
+-    srcs = glob([
+-        "lib/Dialect/LLVMIR/Transforms/*.cpp",
+-    ]),
+-    hdrs = glob(["include/mlir/Dialect/LLVMIR/Transforms/*.h"]),
++    srcs = glob(
++        [
++            "lib/Dialect/LLVMIR/Transforms/*.cpp",
++        ],
++        exclude = [
++            "lib/Dialect/LLVMIR/Transforms/DIExpressionLegalization.cpp",
++            "lib/Dialect/LLVMIR/Transforms/DIExpressionRewriter.cpp",
++            "lib/Dialect/LLVMIR/Transforms/LegalizeForExport.cpp",
++        ],
++    ),
++    hdrs = glob(
++        [
++            "include/mlir/Dialect/LLVMIR/Transforms/*.h",
++        ],
++        exclude = [
++            "include/mlir/Dialect/LLVMIR/Transforms/DIExpressionLegalization.h",
++            "include/mlir/Dialect/LLVMIR/Transforms/DIExpressionRewriter.h",
++            "include/mlir/Dialect/LLVMIR/Transforms/LegalizeForExport.h",
++        ],
++    ),
+     includes = ["include"],
+     deps = [
+         ":Analysis",
+@@ -5557,6 +5573,7 @@
+         ":IR",
+         ":InliningUtils",
+         ":LLVMDialect",
++        ":LLVMIRTransformsLegalizeForExport",
+         ":LLVMPassIncGen",
+         ":NVVMDialect",
+         ":Pass",
+@@ -5567,6 +5584,43 @@
+     ],
+ )
+ 
++cc_library(
++    name = "LLVMIRTransformsLegalizeForExport",
++    srcs = ["lib/Dialect/LLVMIR/Transforms/LegalizeForExport.cpp"],
++    hdrs = ["include/mlir/Dialect/LLVMIR/Transforms/LegalizeForExport.h"],
++    includes = ["include"],
++    deps = [
++        ":IR",
++        ":LLVMDialect",
++        ":LLVMPassIncGen",
++        ":LLVMIRTransformsDIExpressionLegalization",
++        ":Pass",
++    ],
++)
++
++cc_library(
++    name = "LLVMIRTransformsDIExpressionLegalization",
++    srcs = ["lib/Dialect/LLVMIR/Transforms/DIExpressionLegalization.cpp"],
++    hdrs = ["include/mlir/Dialect/LLVMIR/Transforms/DIExpressionLegalization.h"],
++    includes = ["include"],
++    deps = [
++        ":LLVMIRTransformsDIExpressionRewriter",
++        "//llvm:BinaryFormat",
++    ],
++)
++
++cc_library(
++    name = "LLVMIRTransformsDIExpressionRewriter",
++    srcs = ["lib/Dialect/LLVMIR/Transforms/DIExpressionRewriter.cpp"],
++    hdrs = ["include/mlir/Dialect/LLVMIR/Transforms/DIExpressionRewriter.h"],
++    includes = ["include"],
++    deps = [
++        ":LLVMDialect",
++        ":TransformUtils",
++        "//llvm:Support",
++    ],
++)
++
+ td_library(
+     name = "GPUOpsTdFiles",
+     srcs = [
+@@ -6459,6 +6513,7 @@
+         ":NVVMOpsIncGen",
+         ":SideEffectInterfaces",
+         ":Support",
++        ":ToLLVMIRTranslation",
+         "//llvm:AsmParser",
+         "//llvm:Core",
+         "//llvm:Support",
+@@ -9212,8 +9267,9 @@
+         ":IR",
+         ":LLVMConversionIncGen",
+         ":LLVMDialect",
+-        ":LLVMIRTransforms",
+         ":LLVMIntrinsicConversionIncGen",
++        ":LLVMIRTransformsDIExpressionLegalization",
++        ":LLVMIRTransformsLegalizeForExport",
+         ":OpenMPDialect",
+         ":Support",
+         ":TransformUtils",

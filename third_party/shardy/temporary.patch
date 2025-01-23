@@ -1,96 +1,325 @@
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
+index 54cefde..570fc0e 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
+@@ -544,28 +544,14 @@ func.func @reverse(%arg0: tensor<4x32x8x2xf32> {sdy.sharding = #sdy.sharding<@me
+ // CHECK-LABEL: func @bitcast_convert_upcast
+ func.func @bitcast_convert_upcast(%arg0: tensor<4x2x2xui32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}) -> tensor<4x2xui64> {
+   // CHECK-NOT: sdy.reshard
+-  %0 = stablehlo.bitcast_convert %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>} : (tensor<4x2x2xui32>) -> tensor<4x2xui64>
+-  return %0 :  tensor<4x2xui64>
+-}
+-
+-// CHECK-LABEL: func @bitcast_convert_upcast_casting_dim_is_sharded
+-func.func @bitcast_convert_upcast_casting_dim_is_sharded(%arg0: tensor<4x2x2xui32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {"y"}]>}) -> tensor<4x2xui64> {
+-  // CHECK-NOT: sdy.reshard
+-  %0 = stablehlo.bitcast_convert %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>} : (tensor<4x2x2xui32>) -> tensor<4x2xui64>
++  %0 = stablehlo.bitcast_convert %arg0 : (tensor<4x2x2xui32>) -> tensor<4x2xui64>
+   return %0 :  tensor<4x2xui64>
+ }
+ 
+ // CHECK-LABEL: func @bitcast_convert_downcast
+ func.func @bitcast_convert_downcast(%arg0: tensor<4x2xui64> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<4x2x2xui32> {
+   // CHECK-NOT: sdy.reshard
+-  %0 = stablehlo.bitcast_convert %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}]>]>}: (tensor<4x2xui64>) -> tensor<4x2x2xui32>
+-  return %0 :  tensor<4x2x2xui32>
+-}
+-
+-// CHECK-LABEL: func @bitcast_convert_downcast_casting_dim_is_sharded
+-func.func @bitcast_convert_downcast_casting_dim_is_sharded(%arg0: tensor<4x2xui64> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> (tensor<4x2x2xui32>  {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {"y"}]>}){
+-  // CHECK-NOT: sdy.reshard
+-  %0 = stablehlo.bitcast_convert %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}, {"y"}]>]>} : (tensor<4x2xui64>) -> tensor<4x2x2xui32>
++  %0 = stablehlo.bitcast_convert %arg0 : (tensor<4x2xui64>) -> tensor<4x2x2xui32>
+   return %0 :  tensor<4x2x2xui32>
+ }
+ 
+@@ -576,94 +562,13 @@ func.func @broadcast_in_dim(%arg0: tensor<2x3x5x1x7xf32> {sdy.sharding = #sdy.sh
+   return %0 :  tensor<2x5x3x11x7x13xf32>
+ }
+ 
+-// CHECK-LABEL: func @concatenate_single_input
+-func.func @concatenate_single_input(%arg0: tensor<4x32x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {}]>}) -> (tensor<4x32x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}) {
+-  // CHECK-NOT: sdy.reshard
+-  %0 = stablehlo.concatenate %arg0, dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}, {}]>]>} : (tensor<4x32x256xf32>) -> tensor<4x32x256xf32>
+-  return %0 : tensor<4x32x256xf32>
+-}
+-
+ // CHECK-LABEL: func @concatenate
+-func.func @concatenate(%arg0: tensor<4x32x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}, %arg1: tensor<4x48x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {}]>}) -> tensor<4x80x256xf32> {
+-  // CHECK-NOT: sdy.reshard
+-  %0 = stablehlo.concatenate %arg0, %arg1, dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}]>]>} : (tensor<4x32x256xf32>, tensor<4x48x256xf32>) -> tensor<4x80x256xf32>
+-  return %0 : tensor<4x80x256xf32>
+-}
+-
+-// CHECK-LABEL: func @concatenate_replicated_dim_is_sharded
+-func.func @concatenate_replicated_dim_is_sharded(%arg0: tensor<4x32x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}, {}]>}, %arg1: tensor<4x48x256xf32>) -> tensor<4x80x256xf32> {
++func.func @concatenate(%arg0: tensor<4x32x256xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}, %arg1: tensor<4x48x256xf32>) -> tensor<4x80x256xf32> {
+   // CHECK-NOT: sdy.reshard
+   %0 = stablehlo.concatenate %arg0, %arg1, dim = 1 : (tensor<4x32x256xf32>, tensor<4x48x256xf32>) -> tensor<4x80x256xf32>
+   return %0 : tensor<4x80x256xf32>
+ }
+ 
+-// CHECK-LABEL: func @add
+-func.func @add(%arg0: tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}, %arg1: tensor<4x32xf32>) -> (tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg1 <@mesh, [{"x"}, {}]> : tensor<4x32xf32>
+-  // CHECK-NEXT: stablehlo.add %arg0, %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<4x32xf32>
+-  %0 = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<4x32xf32>
+-  return %0 : tensor<4x32xf32>
+-}
+-
+-// CHECK-LABEL: func @add_input_sharding_is_larger
+-func.func @add_input_sharding_is_larger(%arg0: tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}, %arg1: tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> (tensor<4x32xf32>) {
+-  // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<4x32xf32>
+-  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ADD]] <@mesh, [{"y"}, {}]> : tensor<4x32xf32>
+-  %0 = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {}]>]>} : tensor<4x32xf32>
+-  return %0 : tensor<4x32xf32>
+-}
+-
+-// CHECK-LABEL: func @add_output_sharding_is_larger
+-func.func @add_output_sharding_is_larger(%arg0: tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}, %arg1: tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {}]>]>} : tensor<4x32xf32>
+-  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[ADD]] <@mesh, [{"x"}, {}]> : tensor<4x32xf32>
+-  %0 = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<4x32xf32>
+-  return %0 : tensor<4x32xf32>
+-}
+-
+-// CHECK-LABEL: func @add_input_and_output_sharded_on_separate_dims
+-func.func @add_input_and_output_sharded_on_separate_dims(%arg0: tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}, %arg1: tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> (tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {"y"}]> : tensor<4x32xf32>
+-  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %arg1 <@mesh, [{"x"}, {"y"}]> : tensor<4x32xf32>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[RESHARD1]], %[[RESHARD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {"y"}]>]>} : tensor<4x32xf32>
+-  // CHECK-NEXT: %[[RESHARD3:.*]] = sdy.reshard %[[ADD]] <@mesh, [{}, {"y"}]> : tensor<4x32xf32>
+-  %0 = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>} : tensor<4x32xf32>
+-  return %0 : tensor<4x32xf32>
+-}
+-
+-// CHECK-LABEL: func @negate
+-func.func @negate(%arg0: tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}) -> (tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {}]> : tensor<4x32xf32>
+-  // CHECK-NEXT: stablehlo.negate %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<4x32xf32>
+-  %0 = stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<4x32xf32>
+-  return %0 : tensor<4x32xf32>
+-}
+-
+-// CHECK-LABEL: func @negate_input_sharding_is_larger
+-func.func @negate_input_sharding_is_larger(%arg0: tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> (tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) {
+-  // CHECK: %[[NEGATE:.*]] = stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<4x32xf32>
+-  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[NEGATE]] <@mesh, [{"y"}, {}]> : tensor<4x32xf32>
+-  %0 = stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {}]>]>} : tensor<4x32xf32>
+-  return %0 : tensor<4x32xf32>
+-}
+-
+-// CHECK-LABEL: func @negate_output_sharding_is_larger
+-func.func @negate_output_sharding_is_larger(%arg0: tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) -> (tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {}]> : tensor<4x32xf32>
+-  // CHECK-NEXT: stablehlo.negate %[[RESHARD]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<4x32xf32>
+-  %0 = stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<4x32xf32>
+-  return %0 : tensor<4x32xf32>
+-}
+-
+-// CHECK-LABEL: func @negate_input_and_output_sharded_on_separate_dims
+-func.func @negate_input_and_output_sharded_on_separate_dims(%arg0: tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) ->( tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) {
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {"y"}]> : tensor<4x32xf32>
+-  // CHECK-NEXT: %[[NEGATE:.*]] = stablehlo.negate %[[RESHARD1]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {"y"}]>]>} : tensor<4x32xf32>
+-  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[NEGATE]] <@mesh, [{}, {"y"}]> : tensor<4x32xf32>
+-  %0 = stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>} : tensor<4x32xf32>
+-  return %0 : tensor<4x32xf32>
+-}
+-
+ // CHECK-LABEL: func @dynamic_slice
+ func.func @dynamic_slice(%arg0: tensor<32x4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<32x1x2xf32> {
+   // CHECK-NOT: sdy.reshard
+@@ -761,28 +666,6 @@ func.func @sort_input_and_output_shardings_are_different_on_sorting_dimension(%a
+   return %0 : tensor<4x32x8xi32>
+ }
+ 
+-// CHECK-LABEL: func @sort_incompatible_on_nonsort_dimensions
+-func.func @sort_incompatible_on_nonsort_dimensions(%arg0: tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}, {}]>}) -> (tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}, {}]>}) {
+-  // CHECK-NOT: sdy.reshard
+-  %0 = "stablehlo.sort"(%arg0) <{dimension = 0 : i64, is_stable = true}> ({
+-    ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
+-      %1 = stablehlo.compare GT, %arg2, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+-      stablehlo.return %1 : tensor<i1>
+-  }) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}, {}]>]>} : (tensor<4x32x8xi32>) -> (tensor<4x32x8xi32>)
+-  return %0 : tensor<4x32x8xi32>
+-}
+-
+-// CHECK-LABEL: func @sort_compatible_on_nonsort_dimension
+-func.func @sort_compatible_on_nonsort_dimension(%arg0: tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}, {}]>}) -> (tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}, {}]>}) {
+-  // CHECK-NOT: sdy.reshard
+-  %0 = "stablehlo.sort"(%arg0) <{dimension = 0 : i64, is_stable = true}> ({
+-    ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
+-      %1 = stablehlo.compare GT, %arg2, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+-      stablehlo.return %1 : tensor<i1>
+-  }) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}, {}]>]>} : (tensor<4x32x8xi32>) -> (tensor<4x32x8xi32>)
+-  return %0 : tensor<4x32x8xi32>
+-}
+-
+ // CHECK-LABEL: func @transpose
+ func.func @transpose(%arg0: tensor<256x32x64x100xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}, {}, {}]>}) -> tensor<100x32x256x64xf32> {
+   // CHECK-NOT: sdy.reshard
+@@ -802,18 +685,6 @@ func.func @triangular_solve(%arg0: tensor<8x3x3xf32> {sdy.sharding = #sdy.shardi
+   return %0 : tensor<8x3x5xf32>
+ }
+ 
+-// CHECK-LABEL: func @triangular_solve_replicated_dim_is_sharded
+-func.func @triangular_solve_replicated_dim_is_sharded(%arg0: tensor<8x3x3xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}, {}]>}, %arg1: tensor<8x3x5xf32>) -> tensor<8x3x5xf32> {
+-  // CHECK-NOT: sdy.reshard
+-  %0 = "stablehlo.triangular_solve"(%arg0, %arg1) <{
+-    left_side = true,
+-    lower = true,
+-    unit_diagonal = false,
+-    transpose_a = #stablehlo<transpose NO_TRANSPOSE>
+-  }> {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}]>]>} : (tensor<8x3x3xf32>, tensor<8x3x5xf32>) -> tensor<8x3x5xf32>
+-  return %0 : tensor<8x3x5xf32>
+-}
+-
+ // CHECK-LABEL: func @fft_complex
+ func.func @fft_complex(%arg0: tensor<8x32x64xcomplex<f32>> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}) -> tensor<8x32x64xcomplex<f32>> {
+   // CHECK-NOT: sdy.reshard
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index ee45488..509398d 100644
+index 509398d..213b182 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,76 +1 @@
+@@ -1 +1,126 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/lldb/bindings/interface/SBSaveCoreOptionsDocstrings.i b/lldb/bindings/interface/SBSaveCoreOptionsDocstrings.i
----- a/lldb/bindings/interface/SBSaveCoreOptionsDocstrings.i
--+++ b/lldb/bindings/interface/SBSaveCoreOptionsDocstrings.i
--@@ -1,71 +0,0 @@
---%feature("docstring",
---"A container to specify how to save a core file.
---
---SBSaveCoreOptions includes API's to specify the memory regions and threads to include
---when generating a core file. It extends the existing SaveCoreStyle option.
---
---* eSaveCoreFull will save off all thread and memory regions, ignoring the memory regions and threads in
---the options object.
---
---* eSaveCoreDirtyOnly pages will capture all threads and all rw- memory regions, in addition to the regions specified
---in the options object if they are not already captured.
---
---* eSaveCoreStackOnly will capture all threads, but no memory regions unless specified.
---
---* eSaveCoreCustomOnly Custom defers entirely to the SBSaveCoreOptions object and will only save what is specified. 
---  Picking custom and specifying nothing will result in an error being returned.
---
---Note that currently ELF Core files are not supported.
---")
---
---%feature("docstring", "
---    Set the plugin name to save a Core file with. Only plugins registered with Plugin manager will be accepted
---    Examples are Minidump and Mach-O."
---) lldb::SBSaveCoreOptions::SetPluginName
---
---%feature("docstring", "
---    Get the specified plugin name, or None if the name is not set."
---) lldb::SBSaveCoreOptions::GetPluginName
---
---%feature("docstring", "
---    Set the lldb.SaveCoreStyle."
---) lldb::SBSaveCoreOptions::SetStyle
---
---%feature("docstring", "
---    Get the specified lldb.SaveCoreStyle, or eSaveCoreUnspecified if not set."
---) lldb::SBSaveCoreOptions::GetStyle
---
---%feature("docstring", "
---    Set the file path to save the Core file at."
---) lldb::SBSaveCoreOptions::SetOutputFile
---
---%feature("docstring", "
---    Get an SBFileSpec corresponding to the specified output path, or none if not set."
---) lldb::SBSaveCoreOptions::GetOutputFile
---
---%feature("docstring", "
---    Set the process to save, or unset a process by providing a default SBProcess. 
---    Resetting will result in the reset of all process specific options, such as Threads to save."
---) lldb::SBSaveCoreOptions::SetProcess
---
---%feature("docstring", "
---    Add an SBThread to be saved, an error will be returned if an SBThread from a different process is specified. 
---    The process is set either by the first SBThread added to the options container, or explicitly by the SetProcess call."
---) lldb::SBSaveCoreOptions::AddThread
---
---%feature("docstring", "
---    Remove an SBthread if present in the container, returns true if a matching thread was found and removed."
---) lldb::SBSaveCoreOptions::RemoveThread
---
---%feature("docstring", "
---    Add a memory region to save, an error will be returned in the region is invalid. 
---    Ranges that overlap will be unioned into a single region."
---) lldb::SBSaveCoreOptions::AddMemoryRegionToSave
---
---%feature("docstring", "
---    Get an SBThreadCollection of all threads marked to be saved. This collection is not sorted according to insertion order."
---) lldb::SBSaveCoreOptions::GetThreadsToSave
---
---%feature("docstring", "
---    Unset all options."
---) lldb::SBSaveCoreOptions::Clear
++diff -ruN --strip-trailing-cr a/llvm/utils/gn/secondary/llvm/lib/Support/BUILD.gn b/llvm/utils/gn/secondary/llvm/lib/Support/BUILD.gn
++--- a/llvm/utils/gn/secondary/llvm/lib/Support/BUILD.gn
+++++ b/llvm/utils/gn/secondary/llvm/lib/Support/BUILD.gn
++@@ -33,7 +33,7 @@
++     "Windows",
++   ]
++   sources = [
++-    "AArch64BuildAttributes.cpp"
+++    "AArch64BuildAttributes.cpp",
++     "ABIBreak.cpp",
++     "AMDGPUMetadata.cpp",
++     "APFixedPoint.cpp",
++@@ -42,7 +42,6 @@
++     "APSInt.cpp",
++     "ARMAttributeParser.cpp",
++     "ARMBuildAttrs.cpp",
++-    "AArch64BuildAttributes.cpp",
++     "ARMWinEH.cpp",
++     "Allocator.cpp",
++     "AutoConvert.cpp",
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++@@ -5545,10 +5545,26 @@
++ 
++ cc_library(
++     name = "LLVMIRTransforms",
++-    srcs = glob([
++-        "lib/Dialect/LLVMIR/Transforms/*.cpp",
++-    ]),
++-    hdrs = glob(["include/mlir/Dialect/LLVMIR/Transforms/*.h"]),
+++    srcs = glob(
+++        [
+++            "lib/Dialect/LLVMIR/Transforms/*.cpp",
+++        ],
+++        exclude = [
+++            "lib/Dialect/LLVMIR/Transforms/DIExpressionLegalization.cpp",
+++            "lib/Dialect/LLVMIR/Transforms/DIExpressionRewriter.cpp",
+++            "lib/Dialect/LLVMIR/Transforms/LegalizeForExport.cpp",
+++        ],
+++    ),
+++    hdrs = glob(
+++        [
+++            "include/mlir/Dialect/LLVMIR/Transforms/*.h",
+++        ],
+++        exclude = [
+++            "include/mlir/Dialect/LLVMIR/Transforms/DIExpressionLegalization.h",
+++            "include/mlir/Dialect/LLVMIR/Transforms/DIExpressionRewriter.h",
+++            "include/mlir/Dialect/LLVMIR/Transforms/LegalizeForExport.h",
+++        ],
+++    ),
++     includes = ["include"],
++     deps = [
++         ":Analysis",
++@@ -5557,6 +5573,7 @@
++         ":IR",
++         ":InliningUtils",
++         ":LLVMDialect",
+++        ":LLVMIRTransformsLegalizeForExport",
++         ":LLVMPassIncGen",
++         ":NVVMDialect",
++         ":Pass",
++@@ -5567,6 +5584,43 @@
++     ],
++ )
++ 
+++cc_library(
+++    name = "LLVMIRTransformsLegalizeForExport",
+++    srcs = ["lib/Dialect/LLVMIR/Transforms/LegalizeForExport.cpp"],
+++    hdrs = ["include/mlir/Dialect/LLVMIR/Transforms/LegalizeForExport.h"],
+++    includes = ["include"],
+++    deps = [
+++        ":IR",
+++        ":LLVMDialect",
+++        ":LLVMPassIncGen",
+++        ":LLVMIRTransformsDIExpressionLegalization",
+++        ":Pass",
+++    ],
+++)
+++
+++cc_library(
+++    name = "LLVMIRTransformsDIExpressionLegalization",
+++    srcs = ["lib/Dialect/LLVMIR/Transforms/DIExpressionLegalization.cpp"],
+++    hdrs = ["include/mlir/Dialect/LLVMIR/Transforms/DIExpressionLegalization.h"],
+++    includes = ["include"],
+++    deps = [
+++        ":LLVMIRTransformsDIExpressionRewriter",
+++        "//llvm:BinaryFormat",
+++    ],
+++)
+++
+++cc_library(
+++    name = "LLVMIRTransformsDIExpressionRewriter",
+++    srcs = ["lib/Dialect/LLVMIR/Transforms/DIExpressionRewriter.cpp"],
+++    hdrs = ["include/mlir/Dialect/LLVMIR/Transforms/DIExpressionRewriter.h"],
+++    includes = ["include"],
+++    deps = [
+++        ":LLVMDialect",
+++        ":TransformUtils",
+++        "//llvm:Support",
+++    ],
+++)
+++
++ td_library(
++     name = "GPUOpsTdFiles",
++     srcs = [
++@@ -6459,6 +6513,7 @@
++         ":NVVMOpsIncGen",
++         ":SideEffectInterfaces",
++         ":Support",
+++        ":ToLLVMIRTranslation",
++         "//llvm:AsmParser",
++         "//llvm:Core",
++         "//llvm:Support",
++@@ -9212,8 +9267,9 @@
++         ":IR",
++         ":LLVMConversionIncGen",
++         ":LLVMDialect",
++-        ":LLVMIRTransforms",
++         ":LLVMIntrinsicConversionIncGen",
+++        ":LLVMIRTransformsDIExpressionLegalization",
+++        ":LLVMIRTransformsLegalizeForExport",
++         ":OpenMPDialect",
++         ":Support",
++         ":TransformUtils",
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 17bc1f8..743f161 100644
+index 743f161..8931e35 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "d33e33fde770214e134ed58f992a5a95a522f7ff"
--    LLVM_SHA256 = "9ab264d7f052d31d5fff65841ad2d3a13b83ad89e3057151d36724eef6273d97"
-+    LLVM_COMMIT = "c6e7b4a61ab8718d9ac9d1d32f7d2d0cd0b19a7f"
-+    LLVM_SHA256 = "297c33e90462043ece1afc1a675a140aa3f5c2f1f3617c3f9ba96162d82a3405"
+-    LLVM_COMMIT = "c6e7b4a61ab8718d9ac9d1d32f7d2d0cd0b19a7f"
+-    LLVM_SHA256 = "297c33e90462043ece1afc1a675a140aa3f5c2f1f3617c3f9ba96162d82a3405"
++    LLVM_COMMIT = "4f26edd5e9eb3b6cea19e15ca8fb2c8416b82fa8"
++    LLVM_SHA256 = "c01ea99bd183560f2c76a7819385f9fdbb9e82f5286d961845627cab16dd5f7d"
  
      tf_http_archive(
          name = name,
