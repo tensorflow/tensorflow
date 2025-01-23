@@ -974,12 +974,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "bitcast_op",
-    deprecation = "use //third_party/tensorflow/c/kernels:bitcast_op instead",
-    deps = ["//tensorflow/c/kernels:bitcast_op"],
-)
-
-tf_kernel_library(
     name = "broadcast_to_op",
     prefix = "broadcast_to_op",
     deps = ARRAY_DEPS,
