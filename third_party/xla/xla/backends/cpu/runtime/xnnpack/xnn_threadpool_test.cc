@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "xnnpack.h"
 #include "absl/algorithm/container.h"
 #include "pthreadpool.h"
