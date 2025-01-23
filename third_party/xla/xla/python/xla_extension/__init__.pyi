@@ -690,6 +690,13 @@ def batched_device_put(
     devices: List[Device],
     committed: bool = True,
 ) -> ArrayImpl: ...
+
+def reorder_shards(
+    x: ArrayImpl,
+    dst_sharding: Any,
+    array_copy_semantics: ArrayCopySemantics,
+) -> ArrayImpl: ...
+
 def check_and_canonicalize_memory_kind(
     memory_kind: Optional[str], device_list: DeviceList
 ) -> Optional[str]: ...

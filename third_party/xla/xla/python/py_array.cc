@@ -38,7 +38,9 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -64,11 +66,13 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/python/guard_lib.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
@@ -84,6 +88,7 @@ limitations under the License.
 #include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/sharding.h"
+#include "xla/python/to_ifrt_sharding.h"
 #include "xla/python/traceback.h"
 #include "xla/python/types.h"
 #include "xla/python/util.h"
@@ -91,6 +96,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -1284,6 +1290,117 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
   return PyArray(aval, weak_type, dtype, std::move(shape), sharding,
                  dst_devices[0]->client(), Traceback::Get(),
                  std::move(ifrt_array), committed, /*skip_checks=*/true);
+}
+
+absl::StatusOr<PyArray> PyArray::ReorderShards(
+    PyArray x, nanobind::object dst_sharding,
+    ifrt::ArrayCopySemantics array_copy_semantics) {
+  xla::ifrt::Array* ifrt_array_ptr = x.ifrt_array();
+  if (ifrt_array_ptr == nullptr) {
+    return absl::InvalidArgumentError(
+        "Reorder() called on deleted or donated buffer");
+  }
+
+  ifrt::Client* const client = ifrt_array_ptr->client();
+
+  const auto& device_list = ifrt_array_ptr->sharding().devices();
+  TF_ASSIGN_OR_RETURN(auto dst_device_list, GetIfrtDeviceList(dst_sharding));
+  if (device_list->AddressableDeviceList()->size() !=
+      dst_device_list->AddressableDeviceList()->size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Array is expected to have ",
+        dst_device_list->AddressableDeviceList()->size(),
+        " addressable shards, but has ",
+        device_list->AddressableDeviceList()->size(), " addressable shards"));
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const xla::ifrt::Sharding> dst_ifrt_sharding,
+      GetIfrtConcreteEvenSharding(dst_sharding, ifrt_array_ptr->dtype(),
+                                  ifrt_array_ptr->shape()));
+
+  tsl::RCReference<xla::ifrt::Array> new_ifrt_array;
+  {
+    nb::gil_scoped_release gil_release;
+
+    const absl::Span<xla::ifrt::Device* const> addressable_devices =
+        device_list->AddressableDeviceList()->devices();
+    const absl::Span<xla::ifrt::Device* const> dst_addressable_devices =
+        dst_device_list->AddressableDeviceList()->devices();
+
+    absl::flat_hash_map<int, int> device_id_to_array_shard_index;
+    device_id_to_array_shard_index.reserve(dst_addressable_devices.size());
+    for (int i = 0; i < dst_addressable_devices.size(); ++i) {
+      const int device_id = dst_addressable_devices[i]->Id().value();
+      const bool inserted =
+          device_id_to_array_shard_index.insert({device_id, i}).second;
+      if (!inserted) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Sharding contains duplicate device id=", device_id));
+      }
+    }
+
+    std::vector<int64_t> from_shard_indices;
+    from_shard_indices.reserve(addressable_devices.size());
+    std::vector<int64_t> to_shard_indices;
+    to_shard_indices.reserve(dst_addressable_devices.size());
+    for (int i = 0; i < dst_addressable_devices.size(); ++i) {
+      from_shard_indices.push_back(i);
+      const int shard_device_id = addressable_devices[i]->Id().value();
+      const auto it = device_id_to_array_shard_index.find(shard_device_id);
+      if (it == device_id_to_array_shard_index.end()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Array shard ", i, " is on device id=", shard_device_id,
+            ", but sharding does not have a shard on that device."));
+      }
+      to_shard_indices.push_back(it->second);
+    }
+
+    auto mappings =
+        std::make_shared<std::vector<xla::ifrt::RemapPlan::Mapping>>();
+    {
+      auto& mapping = mappings->emplace_back();
+      mapping.in_array = 0;
+      mapping.out_array = 0;
+      mapping.from.reserve(dst_addressable_devices.size());
+      mapping.to.reserve(dst_addressable_devices.size());
+      for (int64_t i = 0; i < dst_addressable_devices.size(); ++i) {
+        mapping.from.push_back(xla::ifrt::RemapPlan::Interval{
+            from_shard_indices[i], from_shard_indices[i] + 1, 1});
+        mapping.to.push_back(xla::ifrt::RemapPlan::Interval{
+            to_shard_indices[i], to_shard_indices[i] + 1, 1});
+      }
+    }
+
+    xla::ifrt::RemapPlan plan = {
+        /*input_specs=*/{xla::ifrt::ArraySpec{
+            /*dtype=*/ifrt_array_ptr->dtype(),
+            /*shape=*/ifrt_array_ptr->shape(),
+            /*sharding=*/ifrt_array_ptr->shared_ptr_sharding()}},
+        /*output_specs=*/
+        {xla::ifrt::ArraySpec{/*dtype=*/ifrt_array_ptr->dtype(),
+                              /*shape=*/ifrt_array_ptr->shape(),
+                              /*sharding=*/std::move(dst_ifrt_sharding)}},
+        /*mappings=*/std::move(mappings),
+    };
+    DCHECK_OK(plan.Validate());
+    std::vector<tsl::RCReference<xla::ifrt::Array>> input;
+    input.push_back(tsl::FormRef(ifrt_array_ptr));
+    TF_ASSIGN_OR_RETURN(
+        auto remapped,
+        client->RemapArrays(plan, absl::MakeSpan(input), array_copy_semantics));
+
+    TF_RET_CHECK(remapped.size() == 1);
+    new_ifrt_array = std::move(remapped.front());
+  }
+
+  return xla::PyArray(nb::borrow<nb::object>(x.aval().ptr()), x.weak_type(),
+                      nb::borrow<xla::nb_dtype>(x.dtype().ptr()),
+                      std::vector<int64_t>(x.shape().begin(), x.shape().end()),
+                      std::move(dst_sharding), x.py_client(), x.traceback(),
+                      std::move(new_ifrt_array),
+                      /*committed=*/true,
+                      /*skip_checks=*/true);
 }
 
 absl::Status PyArray::BatchedBlockUntilReady(std::vector<nb::object> objs) {
