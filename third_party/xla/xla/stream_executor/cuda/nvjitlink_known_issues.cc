@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/nvjitlink_known_issues.h"
 
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 
 namespace stream_executor {
@@ -23,15 +24,18 @@ bool LoadedNvJitLinkHasKnownIssues() {
   // There is a memory leak in libnvjitlink from version 12.0 to 12.4.
   // The memory leak was fixed in CUDA Toolkit 12.4 Update 1, but we can't
   // distinguish between NvJitLink coming from CUDA Toolkit 12.4 and 12.4
-  // Update 1. Therefore we only return true for 12.5 and higher to be on the
+  // Update 1. Therefore we only return false for 12.5 and higher to be on the
   // safe side.
   constexpr NvJitLinkVersion kMinVersionWithoutKnownIssues{12, 5};
 
   // Note that this needs to be a runtime version test because we load
   // LibNvJitLink as a dynamic library and the version might vary and not be the
   // same that we saw at compile time.
-  return GetNvJitLinkVersion().value_or(NvJitLinkVersion{0, 0}) >=
-         kMinVersionWithoutKnownIssues;
+  auto version = GetNvJitLinkVersion();
+  if (!version.ok()) {
+    return false;
+  }
+  return version.value() < kMinVersionWithoutKnownIssues;
 }
 
 }  // namespace stream_executor

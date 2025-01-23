@@ -112,7 +112,7 @@ TEST(
   }
 
   CompilationProviderOptions options{
-      CompilationProviderOptions::NvJitLinkMode::kAuto,
+      CompilationProviderOptions::NvJitLinkMode::kEnabled,
       /*enable_libnvptxcompiler=*/false,
       /*enable_llvm_module_compilation_parallelism=*/false,
       /*enable_driver_compilation=*/false,
@@ -138,7 +138,7 @@ TEST(AssembleCompilationProviderTest,
   }
 
   CompilationProviderOptions options{
-      CompilationProviderOptions::NvJitLinkMode::kAuto,
+      CompilationProviderOptions::NvJitLinkMode::kEnabled,
       /*enable_libnvptxcompiler=*/true,
       /*enable_llvm_module_compilation_parallelism=*/false,
       /*enable_driver_compilation=*/false,

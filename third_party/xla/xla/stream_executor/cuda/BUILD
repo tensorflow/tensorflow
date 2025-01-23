@@ -934,7 +934,10 @@ cc_library(
     name = "nvjitlink_known_issues",
     srcs = ["nvjitlink_known_issues.cc"],
     hdrs = ["nvjitlink_known_issues.h"],
-    deps = [":nvjitlink"],
+    deps = [
+        ":nvjitlink",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
 
 xla_cc_test(
