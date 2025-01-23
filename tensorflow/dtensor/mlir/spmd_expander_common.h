@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_SPMD_EXPANDER_COMMON_H_
 #define TENSORFLOW_DTENSOR_MLIR_SPMD_EXPANDER_COMMON_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"

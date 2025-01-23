@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_SHAPE_UTILS_H_
 #define TENSORFLOW_DTENSOR_MLIR_SHAPE_UTILS_H_
 
+#include <cstdint>
+
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project

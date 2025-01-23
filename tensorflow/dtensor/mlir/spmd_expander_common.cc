@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cassert>
+#include <cstdint>
 #include <iterator>
 #include <optional>
 #include <string>
