@@ -78,12 +78,12 @@ Expected<Model> LoadModelThroughRoundTrip(absl::string_view filename) {
   OwningBufferRef buf;
   auto [data, size, offset] = buf.GetWeak();
 
-  LITERT_EXPECT_OK(
+  LITERT_RETURN_IF_ERROR(
       LiteRtSerializeModel(model->Release(), &data, &size, &offset));
 
   // Reload model.
   LiteRtModel result = nullptr;
-  LITERT_EXPECT_OK(
+  LITERT_RETURN_IF_ERROR(
       LiteRtCreateModelFromBuffer(buf.Data(), buf.Size(), &result));
 
   return Model::CreateFromOwnedHandle(result);

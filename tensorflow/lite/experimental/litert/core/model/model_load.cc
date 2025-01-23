@@ -282,12 +282,14 @@ Expected<LiteRtModelT::Ptr> UnpackModel(TflModelPtr tfl_model) {
   FlatbufferContext context(*tfl_model);
 
   for (auto& tfl_subgraph : tfl_model->subgraphs) {
-    LITERT_EXPECT_OK(UnpackSubgraph(context, std::move(tfl_subgraph),
-                                    litert_model->EmplaceSubgraph()));
+    LITERT_RETURN_IF_ERROR(UnpackSubgraph(context, std::move(tfl_subgraph),
+                                          litert_model->EmplaceSubgraph()));
   }
 
-  LITERT_EXPECT_OK(UnpackSignatures(tfl_model->signature_defs, *litert_model));
-  LITERT_EXPECT_OK(UnpackMetadata(context, tfl_model->metadata, *litert_model));
+  LITERT_RETURN_IF_ERROR(
+      UnpackSignatures(tfl_model->signature_defs, *litert_model));
+  LITERT_RETURN_IF_ERROR(
+      UnpackMetadata(context, tfl_model->metadata, *litert_model));
   detail::SetTflOpCodes(*litert_model, std::move(tfl_model->operator_codes));
 
   return litert_model;
