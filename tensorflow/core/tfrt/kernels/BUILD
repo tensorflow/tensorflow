@@ -57,6 +57,7 @@ tf_cc_test(
         "//tensorflow/core/tfrt/ifrt:ifrt_serving_executable_test_util",
         "//tensorflow/core/tfrt/ops:ifrt_program_ops_op_lib",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
