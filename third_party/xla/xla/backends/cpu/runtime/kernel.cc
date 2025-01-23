@@ -61,12 +61,10 @@ static absl::InlinedVector<XLA_CPU_KernelArg, 8> ConvertBuffersToKernelArgs(
   return args;
 }
 
-namespace {
-// A kernel parallel task that is used to parallelize host kernel execution.
-class KernelParallelTask {
+class Kernel::ParallelTask {
  public:
-  KernelParallelTask(XLA_CPU_Kernel* kernel, Kernel::ThreadDim thread_dims,
-                     absl::Span<const XLA_CPU_KernelArg> args);
+  ParallelTask(XLA_CPU_Kernel* kernel, Kernel::ThreadDim thread_dims,
+               absl::Span<const XLA_CPU_KernelArg> args);
 
   // Invokes a host kernel for a given task index.
   absl::Status operator()(size_t task_index) const;
@@ -80,17 +78,15 @@ class KernelParallelTask {
   XLA_CPU_KernelThreadDim thread_dims_;
   absl::InlinedVector<XLA_CPU_KernelArg, 8> args_;
 };
-}  // namespace
 
-KernelParallelTask::KernelParallelTask(XLA_CPU_Kernel* kernel,
-                                       Kernel::ThreadDim thread_dims,
-                                       absl::Span<const XLA_CPU_KernelArg> args)
+Kernel::ParallelTask::ParallelTask(XLA_CPU_Kernel* kernel,
+                                   Kernel::ThreadDim thread_dims,
+                                   absl::Span<const XLA_CPU_KernelArg> args)
     : kernel_(kernel),
       thread_dims_({thread_dims.x, thread_dims.y, thread_dims.z}),
       args_(args.begin(), args.end()) {}
 
-ABSL_ATTRIBUTE_ALWAYS_INLINE absl::Status KernelParallelTask::operator()(
-    uint64_t task_index) const {
+absl::Status Kernel::ParallelTask::operator()(uint64_t task_index) const {
   size_t num_tasks = thread_dims_.x * thread_dims_.y * thread_dims_.z;
   DCHECK_LT(task_index, num_tasks) << "Task index out of range";  // Crash OK
 
@@ -108,7 +104,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE absl::Status KernelParallelTask::operator()(
   }
 }
 
-XLA_CPU_KernelThread KernelParallelTask::Delinearize(
+XLA_CPU_KernelThread Kernel::ParallelTask::Delinearize(
     uint64_t task_index) const {
   uint64_t stride_z = thread_dims_.y * thread_dims_.x;
   uint64_t stride_y = thread_dims_.x;
@@ -188,7 +184,7 @@ tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
                        std::numeric_limits<uint16_t>::max());
 
   return Worker::Parallelize(device, num_workers, num_tasks,
-                             KernelParallelTask(kernel_, thread_dims, args));
+                             ParallelTask(kernel_, thread_dims, args));
 }
 
 }  // namespace xla::cpu
