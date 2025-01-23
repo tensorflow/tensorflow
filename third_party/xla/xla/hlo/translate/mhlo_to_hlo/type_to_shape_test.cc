@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 
+#include <cstdint>
 #include <iostream>
+#include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
