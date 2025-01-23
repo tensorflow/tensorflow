@@ -5,7 +5,7 @@ package tensorflow.profiler;
 import "tensorflow/core/profiler/protobuf/input_pipeline.proto";
 
 // Per-step details on TPU.
-// Next ID: 25
+// Next ID: 26
 message PerTpuStepDetails {
   // The step number of a step.
   int32 step_number = 1;
@@ -35,6 +35,9 @@ message PerTpuStepDetails {
 
   // The core with the maximum infeed time in this step.
   uint32 coreid_max_infeed_time = 7;
+
+  // The name of the core with the maximum infeed time in this step.
+  string max_infeed_time_core_name = 25;
 
   // The part of a step (in ms) that is spent on the all-reduce compute.
   double all_reduce_compute_time_ms = 11;
