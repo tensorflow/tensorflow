@@ -75,6 +75,8 @@ class HloRunnerPropertyTag final {
   static constexpr Type kDefault = 0;
   // Indicates that the runner is using ROCm.
   static constexpr Type kUsingGpuRocm = 1;
+  // Indicates that this runner is a CPU runner.
+  static constexpr Type kCpu = 2;
 
  private:
   HloRunnerPropertyTag() = default;

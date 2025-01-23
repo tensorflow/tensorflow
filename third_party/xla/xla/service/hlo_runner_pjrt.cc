@@ -662,6 +662,9 @@ bool HloRunnerPjRt::HasProperty(const HloRunnerPropertyTag::Type tag) const {
   if (tag == HloRunnerPropertyTag::kUsingGpuRocm) {
     return pjrt_client_->platform_name() == xla::RocmName();
   }
+  if (tag == HloRunnerPropertyTag::kCpu) {
+    return pjrt_client_->platform_name() == xla::CpuName();
+  }
   return false;
 }
 

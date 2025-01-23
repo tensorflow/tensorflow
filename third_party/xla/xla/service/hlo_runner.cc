@@ -718,6 +718,9 @@ bool HloRunner::HasProperty(const HloRunnerPropertyTag::Type tag) const {
     return std::holds_alternative<stream_executor::RocmComputeCapability>(
         device_description.gpu_compute_capability());
   }
+  if (tag == HloRunnerPropertyTag::kCpu) {
+    return backend().platform()->Name() == "Host";
+  }
   return false;
 }
 
