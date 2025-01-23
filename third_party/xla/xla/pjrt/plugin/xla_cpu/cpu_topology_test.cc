@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/test.h"
