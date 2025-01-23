@@ -103,6 +103,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/event_pool.h"
+#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/local_device_state.h"
@@ -1342,7 +1343,7 @@ absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorDevice::memory_spaces()
 
 absl::StatusOr<PjRtMemorySpace*>
 PjRtStreamExecutorDevice::default_memory_space() const {
-  return Unimplemented("default_memory_space is not supported.");
+  return memory_space_by_kind_id(StreamExecutorGpuHbmMemorySpace::kKindId);
 }
 
 absl::StatusOr<PjRtMemorySpace*> PjRtStreamExecutorDevice::memory_space_by_kind(
