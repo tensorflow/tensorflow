@@ -88,16 +88,12 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   // The relocation model used for compilation.
   RelocationModel relocation_model() const { return relocation_model_; }
 
-  bool use_mlir_hlo_lowering() const { return use_mlir_hlo_lowering_; }
-  void set_use_mlir_hlo_lowering(bool value) { use_mlir_hlo_lowering_ = value; }
-
  private:
   const std::string triple_;
   const std::string cpu_name_;
   const std::string features_;
   const std::string entry_point_name_;
   const RelocationModel relocation_model_;
-  bool use_mlir_hlo_lowering_ = false;
 };
 
 class CpuAotCompilationResult : public AotCompilationResult {
@@ -203,20 +199,18 @@ class CpuCompiler : public LLVMCompiler {
   // correctness.
   absl::Status RunHloPasses(HloModule* module, bool is_aot_compile,
                             llvm::TargetMachine* target_machine,
-                            const CompileOptions& compile_options,
-                            bool is_mlir_compile = false);
+                            const CompileOptions& compile_options);
 
   // Runs HLO passes up to and including layout assignment.
   absl::Status RunHloPassesThroughLayoutAssn(
       HloModule* module, bool /*is_aot_compile*/,
-      TargetMachineFeatures* target_machine_features,
-      bool is_mlir_compile = false);
+      TargetMachineFeatures* target_machine_features);
 
   // Runs HLO passes after layout assignment.
   absl::Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
       TargetMachineFeatures* target_machine_features,
-      const CompileOptions& compile_options, bool is_mlir_compile);
+      const CompileOptions& compile_options);
 
   absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
       std::unique_ptr<HloModule> module);
