@@ -86,7 +86,7 @@ class CheckpointOptions(object):
       enable_async: bool Type. Indicates whether async checkpointing is enabled.
         Default is False, i.e., no async checkpoint.  Async checkpoint moves the
         checkpoint file writing off the main thread, so that the model can
-        continue to train while the checkpoing file writing runs in the
+        continue to train while the checkpoint file writing runs in the
         background. Async checkpoint reduces TPU device idle cycles and speeds
         up model training process, while memory consumption may increase.
       experimental_skip_slot_variables: bool Type. If true, ignores slot

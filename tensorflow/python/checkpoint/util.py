@@ -79,7 +79,7 @@ def get_mapped_trackable(trackable, object_map):
 
 
 def get_full_name(var):
-  """Gets the full name of variable for name-based checkpoint compatiblity."""
+  """Gets the full name of variable for name-based checkpoint compatibility."""
   # pylint: disable=protected-access
   if (not (isinstance(var, variables.Variable) or
            # Some objects do not subclass Variable but still act as one.
