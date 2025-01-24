@@ -38,6 +38,7 @@ struct XlaInlinerInterface : public mlir::DialectInlinerInterface {
   // created).
   bool isLegalToInline(mlir::Operation* call, mlir::Operation* callable,
                        bool wouldBeCloned) const final {
+    if (call->hasAttr("noinline")) return false;
     if (!wouldBeCloned) {
       // If no duplicate would be created, 'call' is likely the only caller of
       // 'callable'.
