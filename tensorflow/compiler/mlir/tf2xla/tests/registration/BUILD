@@ -31,7 +31,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:compile_only_client",
         "@local_xla//xla/service/cpu:cpu_compiler",
@@ -39,6 +38,7 @@ cc_library(
         "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/host:host_platform",
         "@local_xla//xla/stream_executor/host:host_platform_id",
+        "@local_xla//xla/tsl/platform:status",
     ],
     alwayslink = 1,
 )

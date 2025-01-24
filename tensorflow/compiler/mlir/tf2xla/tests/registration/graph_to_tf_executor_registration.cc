@@ -37,13 +37,13 @@ limitations under the License.
 #include "xla/client/compile_only_client.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tf2xla {
