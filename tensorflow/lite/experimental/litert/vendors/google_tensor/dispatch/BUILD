@@ -24,6 +24,7 @@ litert_dynamic_lib(
     srcs = [
         "dispatch_api.cc",
         "litert_dispatch_device_context.cc",
+        "litert_dispatch_graph.cc",
         "litert_dispatch_invocation_context.cc",
         "southbound.cc",
     ],
