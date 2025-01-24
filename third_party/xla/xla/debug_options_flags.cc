@@ -207,14 +207,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       std::numeric_limits<int64_t>::max());
   opts.set_xla_gpu_experimental_enable_pipeline_parallelism_opt(false);
 
-  opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
-  opts.set_xla_cpu_enable_custom_matmul_tiling(false);
-  opts.set_xla_cpu_matmul_tiling_m_dim(8);
-  opts.set_xla_cpu_matmul_tiling_n_dim(8);
-  opts.set_xla_cpu_matmul_tiling_k_dim(8);
-  opts.set_xla_cpu_enable_mlir_fusion_outlining(true);
-  opts.set_xla_cpu_enable_experimental_deallocation(true);
-
   opts.set_xla_partitioning_algorithm(
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
 
@@ -1573,42 +1565,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_dump_latency_hiding_schedule),
       debug_options->xla_dump_latency_hiding_schedule(),
       "Dump the schedule from the latency-hiding scheduler."));
-  flag_list->push_back(tsl::Flag(
-      "xla_cpu_enable_mlir_tiling_and_fusion",
-      bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_tiling_and_fusion),
-      debug_options->xla_cpu_enable_mlir_tiling_and_fusion(),
-      "Enable MLIR tiling and fusion."));
-  flag_list->push_back(tsl::Flag(
-      "xla_cpu_enable_mlir_fusion_outlining",
-      bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_fusion_outlining),
-      debug_options->xla_cpu_enable_mlir_fusion_outlining(),
-      "Enable MLIR fusion outlining (to improve compile time)."));
-  flag_list->push_back(tsl::Flag(
-      "xla_cpu_enable_custom_matmul_tiling",
-      bool_setter_for(&DebugOptions::set_xla_cpu_enable_custom_matmul_tiling),
-      debug_options->xla_cpu_enable_custom_matmul_tiling(),
-      "Enable custom tiling given by M, K, N parameters."));
-  flag_list->push_back(tsl::Flag(
-      "xla_cpu_matmul_tiling_m_dim",
-      int64_setter_for(&DebugOptions::set_xla_cpu_matmul_tiling_m_dim),
-      debug_options->xla_cpu_matmul_tiling_m_dim(),
-      "Custom tile size for matmul's M dimension."));
-  flag_list->push_back(tsl::Flag(
-      "xla_cpu_matmul_tiling_n_dim",
-      int64_setter_for(&DebugOptions::set_xla_cpu_matmul_tiling_n_dim),
-      debug_options->xla_cpu_matmul_tiling_n_dim(),
-      "Custom tile size for matmul's N dimension."));
-  flag_list->push_back(tsl::Flag(
-      "xla_cpu_matmul_tiling_k_dim",
-      int64_setter_for(&DebugOptions::set_xla_cpu_matmul_tiling_k_dim),
-      debug_options->xla_cpu_matmul_tiling_k_dim(),
-      "Custom tile size for matmul's K dimension."));
-  flag_list->push_back(tsl::Flag(
-      "xla_cpu_enable_experimental_deallocation",
-      bool_setter_for(
-          &DebugOptions::set_xla_cpu_enable_experimental_deallocation),
-      debug_options->xla_cpu_enable_experimental_deallocation(),
-      "Enable experimental deallocation."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_enable_latency_hiding_scheduler",
                 bool_setter_for(

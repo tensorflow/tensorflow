@@ -1007,21 +1007,13 @@ message DebugOptions {
 
   bool xla_dump_latency_hiding_schedule = 182;
 
-  // By default, MLIR lowering will use Linalg elementwise fusion. If this flag
-  // is enabled, the pipeline will use tiling, fusion, peeling, vectorization
-  // instead.
-  bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
-
-  // XLA:CPU-Next tiling parameters for matmul.
-  bool xla_cpu_enable_custom_matmul_tiling = 195;
-  int64 xla_cpu_matmul_tiling_m_dim = 196;
-  int64 xla_cpu_matmul_tiling_n_dim = 197;
-  int64 xla_cpu_matmul_tiling_k_dim = 198;
-
-  bool xla_cpu_enable_mlir_fusion_outlining = 192;
-
-  // If set, use the experimental deallocation pass from mlir-hlo.
-  bool xla_cpu_enable_experimental_deallocation = 191;
+  reserved 184;  // Was xla_cpu_enable_mlir_tiling_and_fusion.
+  reserved 192;  // Was xla_cpu_enable_mlir_fusion_outlining.
+  reserved 191;  // Was xla_cpu_enable_experimental_deallocation.
+  reserved 195;  // Was xla_cpu_enable_custom_matmul_tiling.
+  reserved 196;  // Was xla_cpu_matmul_tiling_m_dim.
+  reserved 197;  // Was xla_cpu_matmul_tiling_n_dim.
+  reserved 198;  // Was xla_cpu_matmul_tiling_k_dim.
 
   reserved 204;  // Was xla_gpu_lhs_enable_gpu_async_tracker.
   reserved 313;  // Was xla_gpu_run_post_layout_collective_pipeliner.
