@@ -22,6 +22,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -207,10 +209,15 @@ Expected<std::pair<NeuronModelPtr, NeuronCompilationPtr>> LoadFromDlaBytecode(
     }
   }
 
-  if (neuron_adapter.api().compilation_finish(compilation->get()) !=
-      NEURON_NO_ERROR) {
-    return Error(kLiteRtStatusErrorRuntimeFailure,
-                 "Failed to finish compilation");
+  {
+    // NOTE: NeuronCompilation_finish is currently not thread-safe.
+    static absl::Mutex TheMutex(absl::kConstInit);
+    absl::MutexLock lock(&TheMutex);
+    if (neuron_adapter.api().compilation_finish(compilation->get()) !=
+        NEURON_NO_ERROR) {
+      return Error(kLiteRtStatusErrorRuntimeFailure,
+                   "Failed to finish compilation");
+    }
   }
 
   return std::make_pair(std::move(*model), std::move(*compilation));
