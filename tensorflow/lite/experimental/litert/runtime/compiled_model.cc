@@ -310,8 +310,7 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
 #endif
     if (buffer_is_cpu_compatible) {
       void* host_mem_addr;
-      if (auto status =
-              LiteRtLockTensorBuffer(buffer, &host_mem_addr, /*event=*/nullptr);
+      if (auto status = LiteRtLockTensorBuffer(buffer, &host_mem_addr);
           status != kLiteRtStatusOk) {
         return Unexpected(status, "Failed to lock the tensor buffer");
       }

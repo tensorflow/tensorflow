@@ -192,8 +192,7 @@ TEST(CompiledModelTest, Basic) {
   EXPECT_EQ(output_names.at(0), "tfl.add");
   {
     void* host_mem_addr;
-    ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr),
               kLiteRtStatusOk);
     auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
                                  kTestOutputSize);
@@ -280,8 +279,7 @@ TEST(CompiledModelTest, UseAhwbBuffer) {
   EXPECT_EQ(output_names.at(0), "tfl.add");
   {
     void* host_mem_addr;
-    ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr),
               kLiteRtStatusOk);
     auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
                                  kTestOutputSize);
@@ -366,8 +364,7 @@ TEST(CompiledModelTest, UseOpenCLBuffer) {
   EXPECT_EQ(output_names.at(0), "tfl.add");
   {
     void* host_mem_addr;
-    ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(output_buffers[0], &host_mem_addr),
               kLiteRtStatusOk);
     auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
                                  kTestOutputSize);

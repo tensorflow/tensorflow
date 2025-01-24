@@ -107,7 +107,7 @@ class LiteRtTensorBufferT {
   litert::Expected<std::pair<void*, int>> GetFastRpcBuffer();
   litert::Expected<litert::internal::OpenClBuffer*> GetOpenClBuffer();
 
-  litert::Expected<void*> Lock(LiteRtEvent event = nullptr);
+  litert::Expected<void*> Lock();
   litert::Expected<void> Unlock();
 
   // Used to duplicate the current tensor buffer. Internally it increases
