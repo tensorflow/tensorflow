@@ -63,6 +63,7 @@ cc_library(
         "@local_xla//xla/stream_executor:device_memory",
         "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
+        "@local_xla//xla/stream_executor/integrations:stream_executor_allocator",
         "@local_xla//xla/tsl/framework:device_id_utils",
     ],
     alwayslink = 1,
@@ -158,10 +159,10 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:bfc_allocator",
-        "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
+        "@local_xla//xla/tsl/framework:allocator",
         "@local_xla//xla/tsl/framework:bfc_allocator",
     ],
 )
@@ -178,9 +179,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime/device:device_id",
-        "//tensorflow/core/common_runtime/device:device_mem_allocator",
         "//tensorflow/core/framework:allocator",
+        "@local_xla//xla/tsl/framework:allocator",
     ],
 )
 

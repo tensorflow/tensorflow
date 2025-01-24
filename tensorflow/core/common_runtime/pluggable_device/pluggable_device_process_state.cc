@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/integrations/stream_executor_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/device_id_utils.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
@@ -119,11 +120,21 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
 
     bool use_unified_memory = options.per_process_gpu_memory_fraction() > 1.0 ||
                               options.experimental().use_unified_memory();
-    DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
-        platform->ExecutorForDevice(platform_device_id.value()).value(),
-        platform_device_id,
-        use_unified_memory ? stream_executor::MemoryType::kUnified
-                           : stream_executor::MemoryType::kDevice);
+    SubAllocator* sub_allocator = nullptr;
+    if (use_unified_memory) {
+      auto unified_memory_allocator =
+          platform->ExecutorForDevice(platform_device_id.value())
+              .value()
+              ->CreateMemoryAllocator(stream_executor::MemoryType::kUnified)
+              .value();
+      sub_allocator = new stream_executor::StreamExecutorAllocator(
+          std::move(unified_memory_allocator),
+          stream_executor::MemoryType::kUnified, platform_device_id.value());
+    } else {
+      sub_allocator = new DeviceMemAllocator(
+          platform->ExecutorForDevice(platform_device_id.value()).value(),
+          platform_device_id, stream_executor::MemoryType::kDevice);
+    }
     Allocator* device_allocator = nullptr;
     auto cplatform = dynamic_cast<se::CPlatform*>(platform);
     if (cplatform == nullptr) {
