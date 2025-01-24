@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -470,6 +471,38 @@ ENTRY %comp {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       op::Tuple(op::GetTupleElement(crs1, 0), op::GetTupleElement(crs1, 1)));
+}
+
+TEST_F(AllReduceCombinerTest, PreservesMetadata) {
+  absl::string_view hlo_text = R"(
+    HloModule Module
+
+    %add (x: f32[], y: f32[]) -> f32[] {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(f32[] %x, f32[] %y)
+    }
+
+    ENTRY entry {
+      %param.0 = f32[32] parameter(0)
+      %param.1 = f32[32] parameter(1)
+      %all-reduce.0 = f32[32] all-reduce(%param.0), replica_groups={}, to_apply=%add, metadata={op_type="test_type0" op_name="test_name0"}
+      %all-reduce.1 = f32[32] all-reduce(%param.1), replica_groups={}, to_apply=%add, metadata={op_type="test_type1" op_name="test_name1"}
+      ROOT tuple = (f32[32], f32[32]) tuple(%all-reduce.0, %all-reduce.1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  AllReduceCombiner combine(1024 * 1024, kMaxCombineCount);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_TRUE(changed);
+  OpMetadata metadata;
+  metadata.set_op_type("test_type0");
+  metadata.set_op_name("test_name0");
+  auto combined_all_reduce = op::Metadata(metadata);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(combined_all_reduce, 0),
+                        op::GetTupleElement(combined_all_reduce, 1)));
 }
 
 }  // namespace

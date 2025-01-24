@@ -18,8 +18,10 @@ limitations under the License.
 #include <cstddef>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -28,6 +30,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+namespace op = xla::testing::opcode_matchers;
 
 constexpr int64_t kMaxCombineCount = 256;
 constexpr int64_t kMaxByteCount = 10 * 1024 * 1024;
@@ -347,6 +351,35 @@ ENTRY main {
                                 /*combine_while_loops=*/false);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(ReduceScatterCombinerTest, PreservesMetadata) {
+  absl::string_view hlo_string = R"(
+    HloModule Module
+
+    %add (x: f32[], y: f32[]) -> f32[] {
+      %x = f32[] parameter(0)
+      %y = f32[] parameter(1)
+      ROOT %add = f32[] add(f32[] %x, f32[] %y)
+    }
+
+    ENTRY entry {
+      %param.0 = f32[32] parameter(0)
+      %param.1 = f32[32] parameter(1)
+      %rs.0 = f32[16] reduce-scatter(%param.0), replica_groups={{0,1}}, dimensions={0}, to_apply=%add, metadata={op_type="test_type0" op_name="test_name0"}
+      %rs.1 = f32[16] reduce-scatter(%param.1), replica_groups={{0,1}}, dimensions={0}, to_apply=%add, metadata={op_type="test_type1" op_name="test_name1"}
+      ROOT tuple = (f32[16], f32[16]) tuple(%rs.0, %rs.1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/true));
+  OpMetadata metadata;
+  metadata.set_op_type("test_type0");
+  metadata.set_op_name("test_name0");
+  auto combined_reduce_scatter = op::Metadata(metadata);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(combined_reduce_scatter, 0),
+                        op::GetTupleElement(combined_reduce_scatter, 1)));
 }
 
 }  // namespace
