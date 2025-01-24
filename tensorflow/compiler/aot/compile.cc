@@ -117,14 +117,11 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform).value();
   xla::XlaComputation computation;
 
-  bool use_mlir_hlo_lowering = false;
   bool use_mlir_bridge = false;
   if (!flags.mlir_components.empty() && flags.mlir_components != "None") {
     for (auto component : absl::StrSplit(flags.mlir_components, ',')) {
       if (component == "Bridge") {
         use_mlir_bridge = true;
-      } else if (component == "HloLowering") {
-        use_mlir_hlo_lowering = true;
       } else {
         return errors::Unknown("Unknown mlir_component ", component);
       }
@@ -160,7 +157,6 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
       flags.target_triple, flags.target_cpu, flags.target_features,
       flags.entry_point,
       xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
-  aot_opts.set_use_mlir_hlo_lowering(use_mlir_hlo_lowering);
 
   if (flags.sanitize_dataflow) {
     aot_opts.set_sanitize_dataflow(flags.sanitize_dataflow);
