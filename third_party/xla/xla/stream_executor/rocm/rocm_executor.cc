@@ -754,47 +754,33 @@ RocmExecutor::CreateMemoryAllocator(MemoryType type) {
     return std::make_unique<GenericMemoryAllocator>(
         [this](uint64_t size)
             -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
-          void* ptr = UnifiedMemoryAllocate(size);
-          if (ptr == nullptr) {
-            return absl::InternalError("Failed to allocate unified memory");
-          }
+          std::unique_ptr<ActivateContext> activation = Activate();
+          hipDeviceptr_t result = 0;
+          // "managed" memory is visible to both CPU and GPU.
+          TF_RETURN_IF_ERROR(ToStatus(
+              wrap::hipMallocManaged(&result, size, hipMemAttachGlobal),
+              "Failed to allocate managed memory"));
+          void* ptr = reinterpret_cast<void*>(result);
+          VLOG(2) << "allocated " << ptr << " for context " << rocm_context_
+                  << " of " << size << " bytes in unified memory";
           return std::make_unique<GenericMemoryAllocation>(
-              ptr, size, [this](void* ptr, uint64_t size) {
-                UnifiedMemoryDeallocate(ptr);
+              ptr, size, [this](void* location, uint64_t size) {
+                std::unique_ptr<ActivateContext> activation = Activate();
+                hipDeviceptr_t pointer =
+                    absl::bit_cast<hipDeviceptr_t>(location);
+                hipError_t res = wrap::hipFree(pointer);
+                if (res != hipSuccess) {
+                  LOG(ERROR) << "failed to free unified memory at " << location
+                             << "; result: " << ToString(res);
+                } else {
+                  VLOG(2) << "deallocated unified memory at " << location
+                          << " for context " << rocm_context_;
+                }
               });
         });
   }
   return absl::UnimplementedError(
       absl::StrFormat("Unsupported memory type %d", type));
-}
-
-void* RocmExecutor::UnifiedMemoryAllocate(uint64_t size) {
-  std::unique_ptr<ActivateContext> activation = Activate();
-  hipDeviceptr_t result = 0;
-  // "managed" memory is visible to both CPU and GPU.
-  hipError_t res = wrap::hipMallocManaged(&result, size, hipMemAttachGlobal);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to alloc " << size
-               << " bytes unified memory; result: " << ToString(res);
-    return nullptr;
-  }
-  void* ptr = reinterpret_cast<void*>(result);
-  VLOG(2) << "allocated " << ptr << " for context " << rocm_context_ << " of "
-          << size << " bytes in unified memory";
-  return ptr;
-}
-
-void RocmExecutor::UnifiedMemoryDeallocate(void* location) {
-  std::unique_ptr<ActivateContext> activation = Activate();
-  hipDeviceptr_t pointer = absl::bit_cast<hipDeviceptr_t>(location);
-  hipError_t res = wrap::hipFree(pointer);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to free unified memory at " << location
-               << "; result: " << ToString(res);
-  } else {
-    VLOG(2) << "deallocated unified memory at " << location << " for context "
-            << rocm_context_;
-  }
 }
 
 bool RocmExecutor::SynchronizeAllActivity() {

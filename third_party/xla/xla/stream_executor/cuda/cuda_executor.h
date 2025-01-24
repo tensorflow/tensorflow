@@ -116,8 +116,6 @@ class CudaExecutor : public GpuExecutor {
       const override {
     return CudaExecutor::CreateDeviceDescription(device_ordinal());
   }
-  void* UnifiedMemoryAllocate(uint64_t size) override;
-  void UnifiedMemoryDeallocate(void* location) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 

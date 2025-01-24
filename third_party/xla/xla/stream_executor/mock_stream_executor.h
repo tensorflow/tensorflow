@@ -65,8 +65,6 @@ class MockStreamExecutor : public StreamExecutor {
   MOCK_METHOD(DeviceMemoryBase, Allocate, (uint64_t size, int64_t memory_space),
               (override));
   MOCK_METHOD(void, Deallocate, (DeviceMemoryBase * mem), (override));
-  MOCK_METHOD(void*, UnifiedMemoryAllocate, (uint64_t size), (override));
-  MOCK_METHOD(void, UnifiedMemoryDeallocate, (void* mem), (override));
   MOCK_METHOD(absl::StatusOr<void*>, CollectiveMemoryAllocate, (uint64_t size),
               (override));
   MOCK_METHOD(absl::Status, CollectiveMemoryDeallocate, (void* mem),

@@ -156,16 +156,6 @@ class StreamExecutor {
   // Deallocation of a nullptr-representative value is permitted.
   virtual void Deallocate(DeviceMemoryBase* mem) = 0;
 
-  // Allocates unified memory space of the given size, if supported.
-  // See
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-unified-memory-programming-hd
-  // for more details on unified memory.
-  virtual void* UnifiedMemoryAllocate(uint64_t size) { return nullptr; }
-
-  // Deallocates unified memory space previously allocated with
-  // UnifiedMemoryAllocate.
-  virtual void UnifiedMemoryDeallocate(void* mem) {}
-
   // Allocates collective device memory using ncclMemAlloc.
   // See
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html

@@ -107,9 +107,6 @@ class RocmExecutor : public GpuExecutor {
       const override {
     return RocmExecutor::CreateDeviceDescription(device_ordinal());
   }
-  void* UnifiedMemoryAllocate(uint64_t size) override;
-
-  void UnifiedMemoryDeallocate(void* location) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
   void HostMemoryDeallocate(void* location) override;

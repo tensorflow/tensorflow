@@ -240,16 +240,6 @@ class CStreamExecutor : public StreamExecutorCommon {
     stream_executor_->host_memory_deallocate(&device_, mem);
   }
 
-  void* UnifiedMemoryAllocate(uint64_t size) override {
-    CHECK(stream_executor_->unified_memory_allocate);
-    return stream_executor_->unified_memory_allocate(&device_, size);
-  }
-
-  void UnifiedMemoryDeallocate(void* mem) override {
-    CHECK(stream_executor_->unified_memory_deallocate);
-    stream_executor_->unified_memory_deallocate(&device_, mem);
-  }
-
   absl::optional<AllocatorStats> GetAllocatorStats() override {
     SP_AllocatorStats c_stats{SP_ALLOCATORSTATS_STRUCT_SIZE};
     TF_Bool has_stats =

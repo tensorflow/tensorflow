@@ -567,48 +567,32 @@ CudaExecutor::CreateMemoryAllocator(MemoryType type) {
     return std::make_unique<GenericMemoryAllocator>(
         [this](uint64_t size)
             -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
-          void* ptr = UnifiedMemoryAllocate(size);
-          if (ptr == nullptr) {
-            return absl::InternalError("Failed to allocate unified memory");
-          }
+          std::unique_ptr<ActivateContext> activation = Activate();
+          CUdeviceptr result = 0;
+          // "Portable" memory is visible to all CUDA contexts. Safe for our use
+          // model.
+          TF_RETURN_IF_ERROR(cuda::ToStatus(
+              cuMemAllocManaged(&result, size, CU_MEM_ATTACH_GLOBAL)));
+          void* ptr = reinterpret_cast<void*>(result);
+          VLOG(2) << "allocated " << ptr << " for context " << cuda_context_
+                  << " of " << size << " bytes in unified memory";
           return std::make_unique<GenericMemoryAllocation>(
-              ptr, size, [this](void* ptr, uint64_t size) {
-                UnifiedMemoryDeallocate(ptr);
+              ptr, size, [this](void* location, uint64_t size) {
+                std::unique_ptr<ActivateContext> activation = Activate();
+                CUdeviceptr pointer = absl::bit_cast<CUdeviceptr>(location);
+                auto status = cuda::ToStatus(cuMemFree(pointer));
+                if (!status.ok()) {
+                  LOG(ERROR) << "failed to free unified memory at " << location
+                             << "; result: " << status;
+                } else {
+                  VLOG(2) << "deallocated unified memory at " << location
+                          << " for context " << cuda_context_;
+                }
               });
         });
   }
   return absl::UnimplementedError(
       absl::StrFormat("Unsupported memory type %d", type));
-}
-
-void CudaExecutor::UnifiedMemoryDeallocate(void* location) {
-  std::unique_ptr<ActivateContext> activation = Activate();
-  CUdeviceptr pointer = absl::bit_cast<CUdeviceptr>(location);
-  auto status = cuda::ToStatus(cuMemFree(pointer));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to free unified memory at " << location
-               << "; result: " << status;
-  } else {
-    VLOG(2) << "deallocated unified memory at " << location << " for context "
-            << cuda_context_;
-  }
-}
-
-void* CudaExecutor::UnifiedMemoryAllocate(uint64_t size) {
-  std::unique_ptr<ActivateContext> activation = Activate();
-  CUdeviceptr result = 0;
-  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
-  auto status =
-      cuda::ToStatus(cuMemAllocManaged(&result, size, CU_MEM_ATTACH_GLOBAL));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to alloc " << size
-               << " bytes unified memory; result: " << status;
-    return nullptr;
-  }
-  void* ptr = reinterpret_cast<void*>(result);
-  VLOG(2) << "allocated " << ptr << " for context " << cuda_context_ << " of "
-          << size << " bytes in unified memory";
-  return ptr;
 }
 
 absl::Status CudaExecutor::Init() {
