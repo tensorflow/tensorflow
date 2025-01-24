@@ -31,10 +31,6 @@ namespace {
 
 using ::litert::qnn::QnnManager;
 
-static constexpr const int VERSION_MAJOR = 0;
-static constexpr const int VERSION_MINOR = 1;
-static constexpr const int VERSION_PATCH = 0;
-
 static std::unique_ptr<QnnManager> TheQnnManager;
 
 QnnManager& Qnn() { return *TheQnnManager; }
@@ -88,8 +84,8 @@ LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
   snprintf(BuildId, sizeof(BuildId),
            "Qualcomm Dispatch API version %d.%d.%d, QNN API version %d.%d.%d, "
            "build id: %s",
-           VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH,
-           qnn_api_version.coreApiVersion.major,
+           LITERT_API_VERSION_MAJOR, LITERT_API_VERSION_MINOR,
+           LITERT_API_VERSION_PATCH, qnn_api_version.coreApiVersion.major,
            qnn_api_version.coreApiVersion.minor,
            qnn_api_version.coreApiVersion.patch, build_id);
   BuildId[sizeof(BuildId) - 1] = 0;
@@ -280,9 +276,9 @@ LiteRtDispatchInterface TheInterface = {
 };
 
 LiteRtDispatchApi TheApi = {
-    /*.version=*/{/*.major=*/VERSION_MAJOR,
-                  /*.minor=*/VERSION_MINOR,
-                  /*.patch=*/VERSION_PATCH},
+    /*.version=*/{/*.major=*/LITERT_API_VERSION_MAJOR,
+                  /*.minor=*/LITERT_API_VERSION_MINOR,
+                  /*.patch=*/LITERT_API_VERSION_PATCH},
     /*.interface=*/&TheInterface,
     /*.async_interface=*/nullptr,
     /*.graph_interface=*/nullptr,
