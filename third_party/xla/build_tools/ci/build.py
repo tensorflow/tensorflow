@@ -267,7 +267,7 @@ def nvidia_gpu_build_with_compute_capability(
       + extra_gpu_tags,
       build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only"),
       options={
-          "run_under": "//tools/ci_build/gpu_build:parallel_gpu_execute",
+          "run_under": "//build_tools/ci:parallel_gpu_execute",
           "repo_env": f"TF_CUDA_COMPUTE_CAPABILITIES={compute_capability/10}",
           "@cuda_driver//:enable_forward_compatibility": "true",
           **_DEFAULT_BAZEL_OPTIONS,

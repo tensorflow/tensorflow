@@ -71,5 +71,5 @@ bazel \
     --action_env=TF_ROCM_AMDGPU_TARGETS=gfx90a \
     --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
     --action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
-    --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute \
+    --run_under=//build_tools/ci:parallel_gpu_execute \
     -- //xla/...

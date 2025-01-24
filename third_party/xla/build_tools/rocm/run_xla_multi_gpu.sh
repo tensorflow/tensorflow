@@ -26,7 +26,7 @@
 # //xla/pjrt/distributed:topology_util_test
 # //xla/pjrt/distributed:client_server_test
 # ```
-# Also these tests do not use `--run_under=//tools/ci_build/gpu_build:parallel_gpu_execute` with bazel which
+# Also these tests do not use `--run_under=//build_tools/ci:parallel_gpu_execute` with bazel which
 # locks down individual gpus thus making multi gpu tests impossible to run
 
 set -e
