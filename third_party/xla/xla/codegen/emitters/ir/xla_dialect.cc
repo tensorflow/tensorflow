@@ -22,6 +22,7 @@ limitations under the License.
 // The order of these includes is important.
 #define GET_ATTRDEF_CLASSES
 #include "xla/codegen/emitters/ir/xla_attrs.cc.inc"
+#include "xla/codegen/emitters/ir/xla_enums.cc.inc"
 
 namespace xla {
 namespace {

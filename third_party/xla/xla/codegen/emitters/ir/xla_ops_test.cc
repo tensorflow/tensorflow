@@ -17,20 +17,55 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/AsmState.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/Parser/Parser.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/mlir/utils/error_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
+    absl::string_view mlir_module_str, mlir::MLIRContext* context) {
+  mlir::DialectRegistry registry;
+  registry.insert<mlir::func::FuncDialect, xla::XlaDialect>();
+  context->appendDialectRegistry(registry);
+  context->loadDialect<mlir::func::FuncDialect, xla::XlaDialect>();
+
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(
+          llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
+          mlir::ParserConfig{context});
+  if (!module) {
+    mlir::emitError(mlir::UnknownLoc::get(context)) << "Failed to parse MLIR";
+    return diagnostic_handler.ConsumeStatus();
+  }
+  return std::move(module);
+}
 
 class XLAOpsTest : public HloTestBase {
  public:
@@ -116,6 +151,53 @@ d1: no constraints
 s0: no constraints
 s1: no constraints
 )");
+}
+
+TEST_F(XLAOpsTest, BackendKindGetAndSet) {
+  constexpr absl::string_view kHloModule = R"(
+  module {
+    func.func public @main(%arg0: f32) -> f32
+        attributes {xla.backend_kind = #xla.backend_kind<cpu>} {
+      return %arg0 : f32
+    }
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseMlirModuleString(kHloModule, &mlir_context_));
+  auto func = module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(func);
+  EXPECT_EQ(GetBackendKind(func), xla::BackendKind::kCpu);
+
+  // Test that overwriting the attribute works.
+  SetBackendKind(&mlir_context_, func, xla::BackendKind::kGpu);
+  EXPECT_EQ(GetBackendKind(func), xla::BackendKind::kGpu);
+
+  // And that we dump it correctly.
+  std::string mlir_dump;
+  llvm::raw_string_ostream mlir_stream(mlir_dump);
+  module->print(mlir_stream);
+  constexpr absl::string_view kExpected = R"(
+    CHECK-NOT: {xla.backend_kind = #xla.backend_kind<cpu>}
+    CHECK:     {xla.backend_kind = #xla.backend_kind<gpu>}
+    CHECK-NOT: {xla.backend_kind = #xla.backend_kind<cpu>}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                          RunFileCheck(mlir_dump, kExpected));
+  EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(XLAOpsTest, BackendKindCannotGetWrongAttributeName) {
+  constexpr absl::string_view kHloModule = R"(
+  module {
+    func.func public @main(%arg0: f32) -> f32
+        attributes {xla.foo = #xla.backend_kind<gpu>} {
+      return %arg0 : f32
+    }
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseMlirModuleString(kHloModule, &mlir_context_));
+  auto func = module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(func);
+  EXPECT_FALSE(GetBackendKind(func).has_value());
 }
 
 }  // namespace

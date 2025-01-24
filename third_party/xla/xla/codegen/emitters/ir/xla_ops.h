@@ -33,6 +33,9 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
 #include "xla/codegen/emitters/ir/xla_dialect.h.inc"
 #include "xla/hlo/analysis/indexing_map.h"  // IWYU pragma: keep
+
+// The order of these includes is important.
+#include "xla/codegen/emitters/ir/xla_enums.h.inc"  // IWYU pragma: keep
 #define GET_ATTRDEF_CLASSES
 #include "xla/codegen/emitters/ir/xla_attrs.h.inc"
 #define GET_OP_CLASSES
@@ -68,6 +71,11 @@ std::optional<Interval> GetRange(mlir::Value value);
 // Returns the range for the induction variable, if it can be statically
 // determined.
 std::optional<Interval> GetIVRange(mlir::Value iv);
+
+// Helpers for getting/setting xla::BackendKind attribute given a func::FuncOp.
+std::optional<xla::BackendKind> GetBackendKind(mlir::func::FuncOp fn);
+void SetBackendKind(mlir::MLIRContext* context, mlir::func::FuncOp fn,
+                    xla::BackendKind backend_kind);
 
 }  // namespace xla
 

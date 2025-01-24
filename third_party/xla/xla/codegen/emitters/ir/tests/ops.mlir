@@ -134,3 +134,27 @@ func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32,
 // CHECK:        %[[ADD:.*]] = arith.addf %{{.*}}, %[[EXTRACTED]] : f32
 // CHECK:        xla.yield %[[ADD]] : f32
 // CHECK:      } {xla.range = [0 : index, 42 : index]}
+
+// -----
+
+func.func @test_backend_kind(%arg0: f32) attributes { xla.backend_kind = #xla.backend_kind<cpu> } {
+  func.return
+}
+// CHECK:      @test_backend_kind
+// CHECK-SAME: #xla.backend_kind<cpu>
+
+// -----
+
+func.func @test_backend_kind(%arg0: f32) attributes { xla.backend_kind = #xla.backend_kind<gpu> } {
+  func.return
+}
+// CHECK:      @test_backend_kind
+// CHECK-SAME: #xla.backend_kind<gpu>
+
+// -----
+
+func.func @test_backend_kind(%arg0: f32) attributes { xla.backend_kind = #xla.backend_kind<tpu> } {
+  func.return
+}
+// CHECK:      @test_backend_kind
+// CHECK-SAME: #xla.backend_kind<tpu>
