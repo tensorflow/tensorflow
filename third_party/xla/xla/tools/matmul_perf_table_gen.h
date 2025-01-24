@@ -44,10 +44,10 @@ class MatmulPerfTableGen {
   };
 
   struct StepSpec {
-    uint32_t start = 0;
-    uint32_t stop = 1;
-    uint32_t step = 0;
-    uint32_t factor = 0;
+    int start = 0;
+    int stop = -1;
+    int step = 0;
+    int factor = 0;
   };
 
   struct Config {
@@ -58,6 +58,7 @@ class MatmulPerfTableGen {
     StepSpec m_spec;
     StepSpec n_spec;
     StepSpec k_spec;
+    std::string hlo_scan_path;
 
     // Execution opts.
     // Run matrix multiplications but do not trace.

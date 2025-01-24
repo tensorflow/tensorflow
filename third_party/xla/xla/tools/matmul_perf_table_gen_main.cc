@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/tools/matmul_perf_table_gen.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 
@@ -164,6 +165,10 @@ std::pair<std::string /*key*/, std::string /*value*/> ExtractKV(
 
 MatmulPerfTableGen::StepSpec ParseSpec(absl::string_view spec,
                                        char elem_delim = ',') {
+  if (spec.empty()) {
+    return {};
+  }
+
   MatmulPerfTableGen::StepSpec result;
   for (auto& token_it : absl::StrSplit(spec, elem_delim)) {
     auto [key, value] = ExtractKV(token_it);
@@ -187,6 +192,10 @@ MatmulPerfTableGen::StepSpec ParseSpec(absl::string_view spec,
 
 std::vector<MatmulPerfTableGen::DataTypeSpec> ParseDataTypes(
     absl::string_view types, char set_delim = ';', char elem_delim = ',') {
+  if (types.empty()) {
+    return {};
+  }
+
   std::vector<MatmulPerfTableGen::DataTypeSpec> result;
   for (auto& spec : absl::StrSplit(types, set_delim)) {
     MatmulPerfTableGen::DataTypeSpec spec_parsed;
@@ -207,12 +216,16 @@ std::vector<MatmulPerfTableGen::DataTypeSpec> ParseDataTypes(
   return result;
 }
 
-MatmulPerfTableGen::Config CreateConfig(absl::string_view m_spec,
-                                        absl::string_view n_spec,
-                                        absl::string_view k_spec,
-                                        absl::string_view dtypes,
-                                        absl::string_view output,
-                                        bool dry_run) {
+std::string ValidateFilepath(absl::string_view filepath) {
+  std::string path = std::string(filepath);
+  CHECK_OK(tsl::Env::Default()->IsDirectory(path));
+  return path;
+}
+
+MatmulPerfTableGen::Config CreateConfig(
+    absl::string_view m_spec, absl::string_view n_spec,
+    absl::string_view k_spec, absl::string_view dtypes,
+    absl::string_view output, absl::string_view hlo_scan_path, bool dry_run) {
   MatmulPerfTableGen::Config cfg;
 
   // Search space.
@@ -220,6 +233,7 @@ MatmulPerfTableGen::Config CreateConfig(absl::string_view m_spec,
   cfg.n_spec = ParseSpec(n_spec);
   cfg.k_spec = ParseSpec(k_spec);
   cfg.dtypes = ParseDataTypes(dtypes);
+  cfg.hlo_scan_path = ValidateFilepath(hlo_scan_path);
 
   // Execution opts.
   cfg.dry_run = dry_run;
@@ -228,13 +242,15 @@ MatmulPerfTableGen::Config CreateConfig(absl::string_view m_spec,
 }
 
 // TODO(b/390097558): Sweep through minor and major dimensions for dots.
-// TODO(b/390097558): Fetch dots from benchmarks.
+// TODO(b/390097558): Implement deduplication on specs.
+// TODO(b/390097558): Implement sharding on devices.
 int main(int argc, char* argv[]) {
   std::string m_spec;
   std::string n_spec;
   std::string k_spec;
   std::string dtypes;
   std::string out;
+  std::string hlo_scan_path;
   bool dry_run = false;
 
   std::vector<tsl::Flag> flag_list = {
@@ -255,6 +271,9 @@ int main(int argc, char* argv[]) {
                 "provided it's output will be merged (but not deduplicated) "
                 "and rewritten with newly profiled ops. If proto file is "
                 "provided but it does not exist a new one will be created."),
+      tsl::Flag("hlo_scan_path", &hlo_scan_path,
+                "Path to HLO files. Tool will scan provided HLOs for dot "
+                "ops and use those for gathering profiling data."),
       tsl::Flag("dry_run", &dry_run,
                 "For a defined search space does not perform measurements but "
                 "runs everything else."),
@@ -268,7 +287,7 @@ int main(int argc, char* argv[]) {
   }
 
   MatmulPerfTableGen::Config cfg =
-      CreateConfig(m_spec, n_spec, k_spec, dtypes, out, dry_run);
+      CreateConfig(m_spec, n_spec, k_spec, dtypes, out, hlo_scan_path, dry_run);
   MatmulPerfTableGen table_gen(std::move(cfg));
   xla::gpu::DeviceHloInstructionProfiles result = table_gen.ComputeTable();
   CHECK_OK(table_gen.Dump(result));
