@@ -1184,7 +1184,8 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyExecuteTest) {
             data.data(), shape.element_type(), shape.dimensions(),
             /*byte_strides=*/std::nullopt,
             PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
-            /*on_done_with_host_buffer=*/nullptr, device));
+            /*on_done_with_host_buffer=*/nullptr,
+            *device->default_memory_space(), /*device_layout=*/nullptr));
     input_ptrs.push_back({input.get()});
     inputs.push_back(std::move(input));
   }
@@ -1240,7 +1241,7 @@ TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpace) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          device));
+          *device->default_memory_space(), /*device_layout=*/nullptr));
 
   EXPECT_EQ(buffer->memory_space()->kind(), "device");
 
@@ -1270,7 +1271,7 @@ TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpaceInt4) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          device));
+          *device->default_memory_space(), /*device_layout=*/nullptr));
 
   EXPECT_EQ(buffer->memory_space()->kind(), "device");
 
@@ -1355,11 +1356,13 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateDeviceBufferForTest(
   std::vector<int32_t> data{1, 2, 3, 4};
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0});
   TF_ASSIGN_OR_RETURN(
-      auto input, client->BufferFromHostBuffer(
-                      data.data(), shape.element_type(), shape.dimensions(),
-                      /*byte_strides=*/std::nullopt,
-                      PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
-                      /*on_done_with_host_buffer=*/nullptr, device));
+      auto input,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr, *device->default_memory_space(),
+          /*device_layout=*/nullptr));
   EXPECT_EQ(input->memory_space()->kind(), "device");
   return input;
 }
@@ -1493,11 +1496,13 @@ TEST(StreamExecutorGpuClientTest,
   auto device = client->addressable_devices()[0];
   TF_EXPECT_OK(device->default_memory_space());
   TF_ASSERT_OK_AND_ASSIGN(
-      auto input, client->BufferFromHostBuffer(
-                      data.data(), shape.element_type(), shape.dimensions(),
-                      /*byte_strides=*/std::nullopt,
-                      PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
-                      /*on_done_with_host_buffer=*/nullptr, device));
+      auto input,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr, *device->default_memory_space(),
+          /*device_layout=*/nullptr));
   EXPECT_EQ(input->memory_space()->kind(), "device");
 
   TF_ASSERT_OK_AND_ASSIGN(auto memory_kinds,

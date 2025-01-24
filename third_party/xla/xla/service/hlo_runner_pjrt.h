@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -54,7 +55,8 @@ class HloRunnerPjRt : public HloRunnerInterface {
 
   // Transfers data between the host and device.
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> TransferLiteralToDevice(
-      const Literal& literal, const Layout& parameter_layout);
+      const Literal& literal, absl::Nonnull<PjRtMemorySpace*> memory_space,
+      const Layout& on_device_layout);
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   TransferLiteralsToDevice(const ComputationLayout& entry_layout,
                            absl::Span<const Literal* const> literals);

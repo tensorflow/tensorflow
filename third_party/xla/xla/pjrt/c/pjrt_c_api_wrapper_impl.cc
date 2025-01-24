@@ -951,13 +951,16 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
             std::move(on_done_with_host_buffer), args->memory->memory_space,
             /*device_layout=*/nullptr));
   } else {
+    PJRT_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
+                          args->device->device->default_memory_space());
     PJRT_ASSIGN_OR_RETURN(
         buffer, args->client->client->BufferFromHostBuffer(
                     args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
                     dims, byte_strides,
                     ::pjrt::ConvertFromPjRtHostBufferSemantics(
                         args->host_buffer_semantics),
-                    std::move(on_done_with_host_buffer), args->device->device));
+                    std::move(on_done_with_host_buffer), memory_space,
+                    /*device_layout=*/nullptr));
   }
 
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};

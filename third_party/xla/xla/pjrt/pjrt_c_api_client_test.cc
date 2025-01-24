@@ -80,7 +80,7 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
           data0.data(), shape0.element_type(), shape0.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
   std::vector<int32_t> data1{2};
   Shape shape1 = ShapeUtil::MakeShape(S32, {});
   TF_ASSERT_OK_AND_ASSIGN(
@@ -89,7 +89,7 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
           data1.data(), shape1.element_type(), shape1.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
   XlaBuilder builder("DynamicReshape");
   auto inp_0 = Parameter(&builder, 0, shape0, "input0");
   auto inp_1 = Parameter(&builder, 1, shape1, "input1");

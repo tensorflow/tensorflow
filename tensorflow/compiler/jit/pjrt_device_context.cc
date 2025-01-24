@@ -59,6 +59,8 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                       pjrt_client->LookupAddressableDevice(
                           xla::PjRtLocalDeviceId(pjrt_device_id)));
+  TF_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * pjrt_memory,
+                      pjrt_device->default_memory_space());
   auto first_try_buffer = pjrt_client->BufferFromHostBuffer(
       cpu_tensor->data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,
@@ -80,7 +82,8 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
             /*byte_strides=*/std::nullopt,
             xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
             /*on_done_with_host_buffer=*/
-            [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device));
+            [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_memory,
+            /*device_layout=*/nullptr));
     return second_try_buffer;
   } else {
     return first_try_buffer.status();
