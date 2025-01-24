@@ -51,6 +51,7 @@ cc_test(
     data = ["//tensorflow/lite/experimental/litert/test:mlir_test_data"],
     deps = [
         ":example_plugin",  # buildcleaner: keep
+        "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_model",

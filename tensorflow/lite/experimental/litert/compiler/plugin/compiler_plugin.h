@@ -18,7 +18,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -28,7 +27,6 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
@@ -38,19 +36,26 @@
 
 namespace litert::internal {
 
+// Name and index of byte code.
+using CallInfo = std::pair<absl::string_view, LiteRtParamIndex>;
+
 // Wraps vendor compiled result. Must be outlived by the CompilerPlugin
 // the generated it.
 class CompiledResult {
  public:
   friend class CompilerPlugin;
 
+  // Number of byte code modules compiled by the plugin.
+  Expected<LiteRtParamIndex> NumByteCodeModules() const;
+
   // Get the single module of compiled byte code. This contains the
   // compilation result for all entry points.
-  Expected<BufferRef<uint8_t>> ByteCode() const;
+  Expected<BufferRef<uint8_t>> ByteCode(
+      LiteRtParamIndex byte_code_idx = 0) const;
 
   // Get information regarding the "ith" entry points in the compiled module.
   // There will be oe entry point for each subgraph compiled for.
-  Expected<absl::string_view> CallInfo(LiteRtParamIndex call_idx) const;
+  Expected<CallInfo> CallInfo(LiteRtParamIndex call_idx) const;
 
   // Get the number of entry points in the compiled module. This will be equal
   // to the number of subgraphs passed to the compilation step.

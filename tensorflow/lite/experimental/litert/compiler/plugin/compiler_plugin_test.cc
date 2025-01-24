@@ -137,7 +137,6 @@ TEST(CompilerPluginTest, Compile) {
 
   auto call_info = result->CallInfo(0);
   ASSERT_TRUE(call_info);
-  ASSERT_FALSE(call_info->empty());
 }
 
 TEST(CompilerPluginTest, Dump) {

@@ -79,6 +79,7 @@ litert_test(
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings:string_view",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",

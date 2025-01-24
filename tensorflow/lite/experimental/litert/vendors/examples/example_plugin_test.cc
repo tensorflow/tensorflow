@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
@@ -73,18 +74,19 @@ TEST(TestCallDummyPlugin, CompileMulSubgraph) {
   const void* byte_code;
   size_t byte_code_size;
 
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetCompiledResultByteCode(compiled, &byte_code, &byte_code_size));
+  LITERT_ASSERT_STATUS_OK(LiteRtGetCompiledResultByteCode(
+      compiled, 0, &byte_code, &byte_code_size));
 
   absl::string_view byte_code_string(reinterpret_cast<const char*>(byte_code),
                                      byte_code_size);
   ASSERT_EQ(byte_code_string, "Partition_0_with_2_muls:");
 
+  LiteRtParamIndex byte_code_idx;
   const void* op_data;
   size_t op_data_size;
 
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetCompiledResultCallInfo(compiled, 0, &op_data, &op_data_size));
+  LITERT_ASSERT_STATUS_OK(LiteRtGetCompiledResultCallInfo(
+      compiled, 0, &op_data, &op_data_size, &byte_code_idx));
 
   absl::string_view op_data_string(reinterpret_cast<const char*>(op_data),
                                    op_data_size);

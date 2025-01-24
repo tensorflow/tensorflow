@@ -368,6 +368,16 @@ LiteRtStatus Compile(Context& ctx) {
     return compilation_result.Error().Status();
   }
 
+  auto num_byte_code = compilation_result->NumByteCodeModules();
+  if (!num_byte_code || *num_byte_code != 1) {
+    ctx.Dump().Labeled() << absl::StreamFormat(
+        "Standalone compile tool only supports single byte code module, got "
+        "%lu",
+        *num_byte_code);
+    ctx.Dump().Fail();
+    return compilation_result.Error().Status();
+  }
+
   auto byte_code = compilation_result->ByteCode();
   if (!byte_code) {
     ctx.Dump().Fail();

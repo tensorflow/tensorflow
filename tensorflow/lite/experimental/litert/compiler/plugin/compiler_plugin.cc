@@ -56,28 +56,39 @@ namespace litert::internal {
 // CompiledResult
 //
 
-Expected<BufferRef<uint8_t>> CompiledResult::ByteCode() const {
+Expected<BufferRef<uint8_t>> CompiledResult::ByteCode(
+    LiteRtParamIndex byte_code_idx) const {
   const void* data;
   size_t size;
   LITERT_RETURN_IF_ERROR(parent_.get_compiled_result_byte_code(
-      compiled_result_handle_, &data, &size));
+      compiled_result_handle_, byte_code_idx, &data, &size));
   return BufferRef(data, size);
 }
 
-Expected<LiteRtParamIndex> CompiledResult::NumCalls() const {
-  LiteRtParamIndex call_idx;
-  LITERT_RETURN_IF_ERROR(parent_.get_compiled_result_num_calls(
-      compiled_result_handle_, &call_idx));
-  return call_idx;
+Expected<LiteRtParamIndex> CompiledResult::NumByteCodeModules() const {
+  LiteRtParamIndex byte_code_idx;
+  LITERT_RETURN_IF_ERROR(parent_.get_compiled_result_num_byte_code(
+      compiled_result_handle_, &byte_code_idx));
+  return byte_code_idx;
 }
 
-Expected<absl::string_view> CompiledResult::CallInfo(
-    LiteRtParamIndex call_idx) const {
+Expected<LiteRtParamIndex> CompiledResult::NumCalls() const {
+  LiteRtParamIndex num_calls;
+  LITERT_RETURN_IF_ERROR(parent_.get_compiled_result_num_calls(
+      compiled_result_handle_, &num_calls));
+  return num_calls;
+}
+
+Expected<CallInfo> CompiledResult::CallInfo(LiteRtParamIndex call_idx) const {
   const void* data;
   size_t size;
+  LiteRtParamIndex byte_code_idx;
+
   LITERT_RETURN_IF_ERROR(parent_.get_compiled_result_call_info(
-      compiled_result_handle_, call_idx, &data, &size));
-  return absl::string_view(reinterpret_cast<const char*>(data), size);
+      compiled_result_handle_, call_idx, &data, &size, &byte_code_idx));
+
+  absl::string_view call_info_str(reinterpret_cast<const char*>(data), size);
+  return ::litert::internal::CallInfo(call_info_str, byte_code_idx);
 }
 
 CompiledResult::~CompiledResult() {
@@ -138,6 +149,8 @@ LiteRtStatus ResolvePluginApi(void* lib_handle,
 
   RESOLVE_API_FUNC(kLiteRtDestroyCompiledResult,
                    result.destroy_compiled_result);
+  RESOLVE_API_FUNC(kLiteRtCompiledResultNumByteCodeModules,
+                   result.get_compiled_result_num_byte_code);
   RESOLVE_API_FUNC(kLiteRtGetCompiledResultByteCode,
                    result.get_compiled_result_byte_code);
   RESOLVE_API_FUNC(kLiteRtGetCompiledResultCallInfo,
@@ -403,27 +416,42 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
     return compiled_result.Error();
   }
 
-  // Add the bytecode as an external buffer to the model.
-  // TODO update compiled result interface to support multiple bytecodes and
-  // update here.
-  auto byte_code = compiled_result->ByteCode();
-  if (!byte_code) {
-    return byte_code.Error();
+  // Register byte code buffers as external buffers. Map the byte code indices
+  // to the registered buffer ids.
+  auto num_byte_code = compiled_result->NumByteCodeModules();
+  if (!num_byte_code) {
+    return num_byte_code.Error();
   }
 
-  OwningBufferRef<uint8_t> owned_byte_code(byte_code->Data(),
-                                           byte_code->Size());
-  const auto buf_id = model.RegisterExternalBuffer(std::move(owned_byte_code));
+  std::vector<LiteRtParamIndex> byte_code_idx_to_buf_id(*num_byte_code);
 
-  // Mark each dispatch op as being a user of the external bytecode buffer.
+  for (auto i = 0; i < *num_byte_code; ++i) {
+    auto byte_code = compiled_result->ByteCode(i);
+    if (!byte_code) {
+      return byte_code.Error();
+    }
+
+    // TODO: This copy could probably be avoided.
+    OwningBufferRef<uint8_t> owned_byte_code(byte_code->Data(),
+                                             byte_code->Size());
+    const auto buf_id =
+        model.RegisterExternalBuffer(std::move(owned_byte_code));
+
+    byte_code_idx_to_buf_id[i] = buf_id;
+  }
+
+  // Register byte code buffers and add edges from dispatch ops to them.
   for (auto i = 0; i < dispatch_ops.size(); ++i) {
     auto* dispatch_op = dispatch_ops.at(i);
+
     auto call_info = compiled_result->CallInfo(i);
     if (!call_info) {
       return call_info.Error();
     }
-    model.AttachExternalBufferToOp(dispatch_op, buf_id,
-                                   std::string(*call_info));
+    auto [name, byte_code_idx] = *call_info;
+    const auto buf_id = byte_code_idx_to_buf_id[byte_code_idx];
+
+    model.AttachExternalBufferToOp(dispatch_op, buf_id, std::string(name));
   }
 
   // Tag the model with make/model from the plugin.
