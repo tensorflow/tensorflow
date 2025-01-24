@@ -178,13 +178,6 @@ class CpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<AotCompilationResult>>
   LoadAotCompilationResult(const std::string& serialized_aot_result) override;
 
-  // The optional `registry` supports MLIR dialects and plugins to be loaded
-  // during optimization. If non-null, it will be used to construct relevant
-  // MLIR contexts.
-  absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
-      std::unique_ptr<HloModule> module,
-      mlir::DialectRegistry* registry = nullptr);
-
   absl::StatusOr<HloSchedule> CreateHloSchedule(
       const HloModule& hlo_module) const;
 
@@ -212,7 +205,7 @@ class CpuCompiler : public LLVMCompiler {
       TargetMachineFeatures* target_machine_features,
       const CompileOptions& compile_options);
 
-  absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
+  absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileCpuExecutable(
       std::unique_ptr<HloModule> module);
 
   CpuCompiler(const CpuCompiler&) = delete;

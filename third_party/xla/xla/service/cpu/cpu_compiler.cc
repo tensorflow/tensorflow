@@ -1327,9 +1327,9 @@ static void StripPayloadFromLiteralProto(HloProto& proto) {
 }
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>>
-CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
+CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
   TraceMe trace([&] {
-    return TraceMeEncode("CpuCompiler::CompileLegacyCpuExecutable",
+    return TraceMeEncode("CpuCompiler::CompileCpuExecutable",
                          {{"name", module->name()}});
   });
 
@@ -1715,8 +1715,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
   std::unique_ptr<CpuExecutable> cpu_executable;
-  TF_ASSIGN_OR_RETURN(cpu_executable,
-                      CompileLegacyCpuExecutable(std::move(module)));
+  TF_ASSIGN_OR_RETURN(cpu_executable, CompileCpuExecutable(std::move(module)));
 
   cpu_executable->set_debug_info(
       cpu_executable->buffer_assignment().StatsString(
@@ -2129,7 +2128,7 @@ CpuExecutableAotCompilationResult::LoadExecutable(
     // We emit thunks for the HLO module and ignore emitted LLVM IR as we
     // already have it compiled to object file.
     //
-    // See `CpuCompiler::CompileLegacyCpuExecutable` for the jit-compilation
+    // See `CpuCompiler::CompileCpuExecutable` for the jit-compilation
     // version that actually compiles emitted LLVM IR.
     //
     // TODO(ezhulenev): We should make it less wasteful and instead serialize
