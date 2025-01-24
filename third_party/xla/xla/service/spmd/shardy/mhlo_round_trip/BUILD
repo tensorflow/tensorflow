@@ -31,6 +31,7 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

@@ -256,3 +256,24 @@ func.func @callback_no_result(%arg0: tensor<f64>) {
   stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0) {api_version = 2 : i32, backend_config = "56238273106176", has_side_effect = true, operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>], result_layouts = []} : (tensor<i64>, tensor<f64>) -> ()
   return
 }
+
+// -----
+
+module @maximal_sharding_module attributes {mhlo.frontend_attributes = {xla.sdy.meshes = "{maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>}"}} {
+  // CHECK-LABEL: @maximal_sharding_empty_tuple
+  func.func @maximal_sharding_empty_tuple(%arg0: tensor<2xi64>) -> tensor<2xi64> {
+    // CHECK-NEXT: %[[DUMMY_VAL:.*]] = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
+    // CHECK-SAME:   api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
+    // CHECK-SAME:   has_side_effect = true, operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [dense<0> : tensor<1xindex>],
+    // CHECK-SAME:   sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>, xla_shape = "()"
+    // CHECK-SAME: } : (tensor<2xi64>) -> tensor<2xi64>
+    // CHECK-NEXT: return %arg0 : tensor<2xi64>
+    %2 = stablehlo.custom_call @xla_ffi_python_cpu_callback(%arg0) {
+      api_version = 4 : i32, backend_config = {descriptor = 126001424235520 : ui64},
+      has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@maximal_mesh_0, []>]>"},
+      mhlo.sharding = "{{maximal device=0}}",
+      operand_layouts = [dense<0> : tensor<1xindex>], result_layouts = [], xla_shape = "()"
+    } : (tensor<2xi64>) -> tuple<>
+    return %arg0 : tensor<2xi64>
+  }
+}

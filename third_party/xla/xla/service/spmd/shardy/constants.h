@@ -42,9 +42,17 @@ inline constexpr llvm::StringRef kSPMDShardToFullShapeCallTargetName =
 inline constexpr llvm::StringRef kPythonCpuCallbackCustomCallTargetName =
     "xla_python_cpu_callback";
 
+// The target name of the FFI Python CPU callback custom call.
+inline constexpr llvm::StringRef kFFIPythonCpuCallbackCustomCallTargetName =
+    "xla_ffi_python_cpu_callback";
+
 // The target name of the Python GPU callback custom call.
 inline constexpr llvm::StringRef kPythonGpuCallbackCustomCallTargetName =
     "xla_python_gpu_callback";
+
+// The target name of the FFI Python GPU callback custom call.
+inline constexpr llvm::StringRef kFFIPythonGpuCallbackCustomCallTargetName =
+    "xla_ffi_python_gpu_callback";
 
 // The attribute name for backend config.
 inline constexpr llvm::StringRef kXlaBackendConfigAttr = "backend_config";
