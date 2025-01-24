@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"

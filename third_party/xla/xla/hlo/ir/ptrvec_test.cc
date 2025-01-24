@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "tsl/platform/logging.h"

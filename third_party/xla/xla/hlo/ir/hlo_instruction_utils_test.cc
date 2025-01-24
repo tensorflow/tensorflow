@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
