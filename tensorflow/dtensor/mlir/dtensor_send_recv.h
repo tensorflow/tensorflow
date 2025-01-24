@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_DTENSOR_SEND_RECV_H_
 #define TENSORFLOW_DTENSOR_MLIR_DTENSOR_SEND_RECV_H_
 
+#include <type_traits>
+
 #include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
