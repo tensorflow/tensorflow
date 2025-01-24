@@ -185,6 +185,8 @@ void NVPTXBackendInit() {
   InitializePasses(registry);
 }
 
+}  // namespace
+
 std::vector<std::string> GetNVPTXBackendOptions(
     const DebugOptions& debug_options) {
   // Feed all customized flags here, so we can override them with llvm_cl_opts
@@ -228,8 +230,6 @@ std::vector<std::string> GetNVPTXBackendOptions(
 
   return backend_llvm_opts;
 }
-
-}  // namespace
 
 std::string GetSmName(se::CudaComputeCapability compute_capability) {
   int compute_capability_version =

@@ -1627,6 +1627,7 @@ cc_library(
         "//xla/hlo/experimental/auto_sharding",
         "//xla/hlo/experimental/auto_sharding:auto_sharding_option",
     ]) + [
+        "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -1669,6 +1670,7 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/lib/monitoring:collected_metrics",
         "//xla/tsl/lib/monitoring:collection_registry",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

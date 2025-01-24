@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/service/gpu/amdgpu_compiler.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -274,5 +275,9 @@ absl::Status AMDGPUCompiler::AddGemmFusionAutotuningPasses(
   return absl::OkStatus();
 }
 
+std::vector<std::string> AMDGPUCompiler::GetLLVMCommandLineOptions(
+    const DebugOptions& debug_options) const {
+  return amdgpu::GetAMDGPUBackendOptions(debug_options);
+}
 }  // namespace gpu
 }  // namespace xla
