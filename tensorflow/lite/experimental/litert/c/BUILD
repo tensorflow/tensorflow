@@ -11,7 +11,17 @@ package(
 
 cc_library(
     name = "litert_common",
+    srcs = ["litert_common.cc"],
     hdrs = ["litert_common.h"],
+)
+
+cc_test(
+    name = "litert_common_test",
+    srcs = ["litert_common_test.cc"],
+    deps = [
+        ":litert_common",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
