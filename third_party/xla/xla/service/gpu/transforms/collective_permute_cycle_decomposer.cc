@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -53,36 +54,32 @@ namespace {
 using SourceTargetPair = std::pair<int64_t, int64_t>;
 using SourceTargetPairs = std::vector<SourceTargetPair>;
 
-enum class CycleType { kUnknown, kForward, kBackward };
-
-// Returns true if the CollectivePermute instruction has a cycle in its
-// source-target pairs and should be decomposed.
-CycleType ShouldDecomposeWithCycleType(
+// Returns the cycle type and indices of the vertices that form cycles. If the
+// cycle type is kUnknown, the set of indices will be empty.
+std::pair<CycleType, std::set<int>> GetCycleTypeAndIndicesArray(
     const HloCollectivePermuteInstruction& collective_permute,
     int64_t threshold_in_bytes) {
   if (collective_permute.operand_count() != 1) {
-    return CycleType::kUnknown;
+    return std::make_pair(CycleType::kUnknown, std::set<int>{});
   }
 
   // Skip the transformation if there is any context data.
   const Shape& result_shape = collective_permute.shape();
   if (result_shape.IsTuple()) {
-    return CycleType::kUnknown;
+    return std::make_pair(CycleType::kUnknown, std::set<int>{});
   }
 
   CHECK(result_shape.IsArray());
   if (ShapeUtil::ByteSizeOf(result_shape) < threshold_in_bytes) {
-    return CycleType::kUnknown;
+    return std::make_pair(CycleType::kUnknown, std::set<int>{});
   }
 
   const SourceTargetPairs& pairs = collective_permute.source_target_pairs();
   if (pairs.size() == 1) {
-    return CycleType::kUnknown;
+    return std::make_pair(CycleType::kUnknown, std::set<int>{});
   }
 
-  return IsForwardCycle(pairs)    ? CycleType::kForward
-         : IsBackwardCycle(pairs) ? CycleType::kBackward
-                                  : CycleType::kUnknown;
+  return GetCycleTypeAndIndices(pairs);
 }
 
 // Constructs the frontend attributes for the two decomposed CollectivePermute
@@ -136,29 +133,26 @@ absl::Status GetFrontendAttributes(HloCollectivePermuteInstruction* cp,
   return absl::OkStatus();
 }
 
-// Decomposes a CollectivePermute instruction with a cycle in its source-target
-// pairs into two CollectivePermute instructions.
+// Decomposes a CollectivePermute instruction with cycles in its source-target
+// pairs into cycle-free CollectivePermute instructions.
 absl::Status DecomposeCollectivePermuteCycle(
     HloCollectivePermuteInstruction* cp, HloComputation* computation,
-    HloModule* module, int64_t next_channel_id, CycleType cycle_type) {
+    HloModule* module, int64_t next_channel_id, CycleType cycle_type,
+    std::set<int> indices_to_break_out) {
   const SourceTargetPairs& pairs = cp->source_target_pairs();
   const OpMetadata& metadata = cp->metadata();
   absl::string_view cp_name = cp->name();
   int64_t num_pairs = pairs.size();
   Shape shape = cp->shape();
   HloInstruction* data = cp->mutable_operand(0);
-
-  // A forward cycle has its backedge at the end as in
-  // {{0,1},{1,2},{2,3},{3,0}} while a backward cycle has its backedge at the
-  // beginning as in {{0,3},{1,0},{2,1},{3,2}}.
-  auto backedge_start = cycle_type == CycleType::kBackward
-                            ? pairs.begin()
-                            : pairs.begin() + num_pairs - 1;
-  auto other_edges_start =
-      cycle_type == CycleType::kBackward ? pairs.begin() + 1 : pairs.begin();
-  SourceTargetPairs backedge(backedge_start, backedge_start + 1);
-  SourceTargetPairs other_edges(other_edges_start,
-                                other_edges_start + num_pairs - 1);
+  SourceTargetPairs backedge, other_edges;
+  for (int i = 0; i < num_pairs; ++i) {
+    if (indices_to_break_out.find(i) != indices_to_break_out.end()) {
+      backedge.push_back(pairs[i]);
+    } else {
+      other_edges.push_back(pairs[i]);
+    }
+  }
 
   xla::FrontendAttributes cp1_attr, cp2_attr;
   TF_RETURN_IF_ERROR(GetFrontendAttributes(cp, cycle_type, cp1_attr, cp2_attr));
@@ -241,15 +235,18 @@ absl::StatusOr<bool> CollectivePermuteCycleDecomposer::Run(
         continue;
       }
       auto collective_permute = Cast<HloCollectivePermuteInstruction>(hlo);
-      CycleType cycle_type = ShouldDecomposeWithCycleType(*collective_permute,
-                                                          threshold_in_bytes_);
+      std::pair<CycleType, std::set<int>> cycle_type_and_indices =
+          GetCycleTypeAndIndicesArray(*collective_permute, threshold_in_bytes_);
+      CycleType cycle_type = cycle_type_and_indices.first;
+      std::set<int> indices_to_break_out = cycle_type_and_indices.second;
       if (cycle_type != CycleType::kUnknown) {
         if (changed == false) {
           next_channel_id = hlo_query::NextChannelId(*module);
           changed = true;
         }
         TF_RETURN_IF_ERROR(DecomposeCollectivePermuteCycle(
-            collective_permute, comp, module, next_channel_id++, cycle_type));
+            collective_permute, comp, module, next_channel_id++, cycle_type,
+            indices_to_break_out));
       }
     }
   }

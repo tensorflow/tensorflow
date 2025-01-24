@@ -178,6 +178,38 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleNoChannel) {
   )"));
 }
 
+TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleMultipleCycles) {
+  // For a forward cycle, this checks:
+  // 1. Split collectives should not have channel-id
+  // 2. Split collectives are combined based on replica-id.
+  absl::string_view hlo = R"(
+    HloModule test
+    ENTRY test_computation {
+      p = u32[8,8] parameter(0)
+      ROOT start = u32[8,8] collective-permute(p),
+        source_target_pairs={{0,2},{2,4},{4,6},{6,0},{1,3},{3,5},{5,7},{7,1}}
+    }
+  )";
+
+  std::unique_ptr<HloModule> module = Transform(hlo);
+  EXPECT_TRUE(*RunFileCheck(module->ToString(PrintOptions()), R"(
+    // CHECK:     ENTRY %test_computation (p: u32[8,8]) -> u32[8,8] {
+    // CHECK-DAG:   %[[replica_id:.+]] = u32[] replica-id()
+    // CHECK-DAG:   %[[c1:.+]] = u32[] constant(1)
+    // CHECK-DAG:   %[[compare:.+]] = pred[] compare(%[[replica_id]], %[[c1]]), direction=EQ
+    // CHECK-DAG:   %{{.+}} = u32[8,8] parameter(0)
+
+    // CHECK-DAG:   %[[cp1:.+]] = u32[8,8] collective-permute(%{{.+}}), source_target_pairs=
+    // CHECK-SAME{LITERAL}: {{6,0},{7,1}}
+
+    // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), source_target_pairs=
+    // CHECK-SAME{LITERAL}: {{0,2},{2,4},{4,6},{1,3},{3,5},{5,7}}
+
+    // CHECK-DAG:   ROOT %{{.+}} = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
+    // CHECK-DAG: }
+  )"));
+}
+
 TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleWithMatmul) {
   absl::string_view hlo = R"(
   HloModule test

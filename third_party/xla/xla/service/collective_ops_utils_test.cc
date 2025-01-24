@@ -180,6 +180,28 @@ TEST(CollectiveOpsUtilsTest, IsBackwardCycle) {
       << "Out of order pairs are not a cycle";
 }
 
+TEST(CollectiveOpsUtilsTest, GetForwardCycleIndices) {
+  auto res_one_cycle = GetCycleTypeAndIndices({{0, 1}, {1, 2}, {2, 3}, {3, 0}});
+  EXPECT_EQ(res_one_cycle.first, CycleType::kForward);
+  EXPECT_THAT(res_one_cycle.second, testing::UnorderedElementsAreArray({3}));
+  auto res_two_cycles =
+      GetCycleTypeAndIndices({{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 1}});
+  EXPECT_EQ(res_two_cycles.first, CycleType::kForward);
+  EXPECT_THAT(res_two_cycles.second,
+              testing::UnorderedElementsAreArray({3, 4}));
+}
+
+TEST(CollectiveOpsUtilsTest, GetBackwardCycleIndices) {
+  auto res_one_cycle = GetCycleTypeAndIndices({{0, 3}, {1, 0}, {2, 1}, {3, 2}});
+  EXPECT_EQ(res_one_cycle.first, CycleType::kBackward);
+  EXPECT_THAT(res_one_cycle.second, testing::UnorderedElementsAreArray({0}));
+  auto res_two_cycles =
+      GetCycleTypeAndIndices({{0, 3}, {1, 4}, {2, 1}, {3, 2}, {4, 3}, {3, 0}});
+  EXPECT_EQ(res_two_cycles.first, CycleType::kBackward);
+  EXPECT_THAT(res_two_cycles.second,
+              testing::UnorderedElementsAreArray({0, 1}));
+}
+
 TEST(IsExclusivelyCrossModuleTest, CrossReplicaNoChannelSet) {
   int64_t num_replicas = 4;
   int64_t num_partitions = 2;

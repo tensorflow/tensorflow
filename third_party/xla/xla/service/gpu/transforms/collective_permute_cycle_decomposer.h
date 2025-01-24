@@ -27,11 +27,15 @@ limitations under the License.
 namespace xla {
 
 // CollectivePermuteCycleDecomposer is a pass that converts CollectivePermute
-// instructions with all participants forming either a forward cycle (such as
-// {{0,1},{1,2},{2,3},{3,0}) or a backward cycle (such as {{3,2},{2,1},{1,0},
-// {0,3}}) into two CollectivePermute instructions. We currently restrict
-// this transformation to CollectivePermute using partition mode, with one
-// input, without any context data. Here is an example.
+// instructions with all participants forming EITHER multiple forward cycles
+// (such as {{0,1},{1,2},{2,3},{3,0}}) OR multiple backward cycles (such as
+// {{3,2},{2,1},{1,0}, {0,3}}) into two CollectivePermute instructions. The pass
+// leads to undefined behavior if
+//   1. A communication pattern contains both forward and backward cycles, or
+//   2. if the communication pattern cannot be broken into two cycle-free
+//      sub-patterns (i.e. after the initial pass, we still have at least one
+//      cycle within one or more of the sub patterns).
+// Here is an example.
 //
 // before transformation:
 //     start = (<rt>, <rt>) collective-permute(data),
