@@ -326,7 +326,9 @@ class HloModule {
       const absl::flat_hash_set<HloComputation*>& allow_list) const;
 
   // If config().content_aware_computation_sorting() is true, sorts computations
-  // by their contents, otherwise returns MakeComputationPostOrder().
+  // by their contents, otherwise returns MakeComputationPostOrder(). Note that
+  // the sort is potentially expensive, so this should be used only if a
+  // consistent order is required.
   std::vector<HloComputation*> MakeComputationSorted() const {
     return MakeComputationSorted({});
   }
@@ -353,6 +355,8 @@ class HloModule {
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   // Same as MakeNonfusionComputations() but sorting computations by content.
+  // Note that the sort is potentially expensive, so this should be used only if
+  // a consistent order is required.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const {
     return MakeNonfusionComputationsSorted({});
   }
