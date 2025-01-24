@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {

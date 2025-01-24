@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_
 #define TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_HELPER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -27,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
