@@ -843,9 +843,9 @@ xla_cc_test(
 
 cc_library(
     name = "hlo_op_profiler_lib",
-    testonly = True,
     srcs = ["hlo_op_profiler.cc"],
     hdrs = ["hlo_op_profiler.h"],
+    compatible_with = get_compatible_with_portable(),
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     deps = [
         ":hlo_op_profile_proto_cc",

@@ -620,6 +620,81 @@ cc_library(
     deps = [],
 )
 
+cc_library(
+    name = "matmul_perf_table_gen",
+    srcs = ["matmul_perf_table_gen.cc"],
+    hdrs = ["matmul_perf_table_gen.h"],
+    deps = [
+        "//xla:literal",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service:executable",
+        "//xla/service:gpu_plugin",
+        "//xla/service:hlo_runner",
+        "//xla/service:platform_util",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/service/gpu/model:hlo_op_profiler_lib",
+        "//xla/service/gpu/model:hlo_op_profiles",
+        "//xla/tests:test_utils",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+xla_test(
+    name = "matmul_perf_table_gen_test",
+    srcs = ["matmul_perf_table_gen_test.cc"],
+    backends = ["gpu"],
+    local_defines = if_cuda(["GOOGLE_CUDA"]),
+    deps = [
+        ":matmul_perf_table_gen",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "matmul_perf_table_gen_main_lib",
+    testonly = True,
+    srcs = ["matmul_perf_table_gen_main.cc"],
+    compatible_with = None,
+    tags = [
+        "no_mac",
+    ],
+    deps = [
+        ":matmul_perf_table_gen",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:platform_port",
+    ] + if_cuda([
+        "//xla/stream_executor:cuda_platform",
+    ]),
+)
+
+xla_cc_binary(
+    name = "matmul_perf_table_gen_main",
+    testonly = True,
+    tags = [
+        "no_mac",
+    ],
+    deps = [
+        ":matmul_perf_table_gen_main_lib",
+    ],
+)
+
 build_test(
     name = "compute_cost_build_test",
     targets = [
