@@ -104,6 +104,25 @@ TEST(LiteRtAssignOrReturnTest, VariableAssignmentWorks) {
   EXPECT_EQ(canary_value, 1);
 }
 
+TEST(LiteRtAssignOrReturnTest, MoveOnlyVariableAssignmentWorks) {
+  struct MoveOnly {
+    explicit MoveOnly(int val) : val(val) {};
+    MoveOnly(const MoveOnly&) = delete;
+    MoveOnly& operator=(const MoveOnly&) = delete;
+    MoveOnly(MoveOnly&&) = default;
+    MoveOnly& operator=(MoveOnly&&) = default;
+    int val = 1;
+  };
+
+  MoveOnly canary_value{0};
+  auto ChangeCanaryValue = [&canary_value]() -> LiteRtStatus {
+    LITERT_ASSIGN_OR_RETURN(canary_value, Expected<MoveOnly>(1));
+    return kLiteRtStatusOk;
+  };
+  EXPECT_EQ(ChangeCanaryValue(), kLiteRtStatusOk);
+  EXPECT_EQ(canary_value.val, 1);
+}
+
 TEST(LiteRtAssignOrReturnTest, ReturnsOnFailure) {
   const Expected<int> InvalidArgumentError =
       Expected<int>(Unexpected(kLiteRtStatusErrorInvalidArgument));

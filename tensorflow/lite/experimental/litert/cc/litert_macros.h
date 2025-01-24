@@ -147,13 +147,14 @@ class ErrorStatusReturnHelper {
   LITERT_ASSIGN_OR_RETURN_SELECT_OVERLOAD_HELPER args
 
 #define LITERT_ASSIGN_OR_RETURN_HELPER_2(TMP_VAR, DECL, EXPR) \
-  auto&& TMP_VAR = (EXPR);                                    \
-  LITERT_RETURN_IF_ERROR(TMP_VAR);                            \
-  DECL = std::move(TMP_VAR.Value());
+  LITERT_ASSIGN_OR_RETURN_HELPER_3(TMP_VAR, DECL, EXPR,       \
+                                   ErrorStatusReturnHelper(TMP_VAR))
 
 #define LITERT_ASSIGN_OR_RETURN_HELPER_3(TMP_VAR, DECL, EXPR, RETURN_VALUE) \
   auto&& TMP_VAR = (EXPR);                                                  \
-  LITERT_RETURN_IF_ERROR(TMP_VAR, RETURN_VALUE);                            \
+  if (ErrorStatusReturnHelper::IsError(TMP_VAR)) {                          \
+    return RETURN_VALUE;                                                    \
+  }                                                                         \
   DECL = std::move(TMP_VAR.Value());
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MACROS_H_
