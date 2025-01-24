@@ -40,6 +40,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/gelu_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/matmul_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/mean_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/pack_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/quantize_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reduce_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/reshape_op_builder.h"
@@ -391,6 +392,13 @@ LiteRtStatus ConvertOp(
     case LiteRtOpCode::kLiteRtOpCodeTflTranspose: {
       op_wrappers =
           ::qnn::BuildTransposeOp(tensor_pool, input_tensors, output_tensors);
+      break;
+    }
+    case LiteRtOpCode::kLiteRtOpCodeTflPack: {
+      uint32_t axis =
+          detail::GetTflOptions(*litert_op.Get()).AsPackOptions()->axis;
+      op_wrappers =
+          ::qnn::BuildPackOp(tensor_pool, input_tensors, output_tensors, axis);
       break;
     }
     default: {
