@@ -22,6 +22,7 @@ load(
     "internal_visibility",
     "tsl_copts",
 )
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "if_static",
@@ -1923,5 +1924,31 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cc_library(
+    name = "cuda_compute_capability",
+    hdrs = ["cuda_compute_capability.h"],
+    deps = [
+        ":cuda_compute_capability_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_proto_library(
+    name = "cuda_compute_capability_proto",
+    srcs = ["cuda_compute_capability.proto"],
+    make_default_target_header_only = True,
+)
+
+xla_cc_test(
+    name = "cuda_compute_capability_test",
+    srcs = ["cuda_compute_capability_test.cc"],
+    deps = [
+        ":cuda_compute_capability",
+        "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
     ],
 )

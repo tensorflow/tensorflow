@@ -43,7 +43,10 @@ tf_proto_library(
     name = "device_description_proto",
     srcs = ["device_description.proto"],
     make_default_target_header_only = True,
-    protodeps = ["//xla:autotune_results_proto"],
+    protodeps = [
+        "//xla:autotune_results_proto",
+        "//xla/stream_executor/cuda:cuda_compute_capability_proto",
+    ],
 )
 
 cc_library(
@@ -59,6 +62,7 @@ cc_library(
         ":device_description_proto_cc",
         ":launch_dim",
         ":semantic_version",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/lib/math:math_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
