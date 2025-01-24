@@ -28,8 +28,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/service/global_device_id.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/logging.h"
 
 namespace xla::gpu {
 

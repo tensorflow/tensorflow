@@ -39,12 +39,12 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/service:lockable",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -58,6 +58,7 @@ cc_library(
         "//xla/core/collectives:clique_key",
         "//xla/service:global_device_id",
         "//xla/tsl/lib/gtl:int_type",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log:check",
@@ -65,7 +66,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -76,12 +76,13 @@ xla_cc_test(
         ":gpu_clique_key",
         "//xla/core/collectives:clique_id",
         "//xla/service:global_device_id",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -144,12 +145,12 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -179,8 +180,8 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "//xla:util",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
