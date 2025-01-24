@@ -128,6 +128,8 @@ defvar MHLO_PredIntFpOrQuantizedTensor = HLO_PredIntFpOrQuantizedTensor;
 // it is for a legacy op which is only correct with static shapes.
 defvar MHLO_StaticShapeTensor = HLO_StaticShapeTensorOrPerAxisQuantizedTensor;
 
+defvar MHLO_StaticShapeOrBoundedDimTensor = HLO_StaticShapeTensorPerAxisQuantizedTensorOrBoundedTensor;
+
 defvar MHLO_StaticShapeTensorOrToken = HLO_StaticShapeTensorOrPerAxisQuantizedTensorOrToken;
 
 defvar MHLO_StaticShapeIntOrFpTensor = HLO_StaticShapeIntOrFpTensor;

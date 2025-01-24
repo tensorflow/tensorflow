@@ -566,6 +566,16 @@ TEST(XlaBuilderTest, BroadcastInDimWithDegeneratedDim) {
               GmockMatch(m::Broadcast(m::Reshape(m::Broadcast()))));
 }
 
+TEST(XlaBuilderTest, BroadcastInDimWithBoundedDim) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape shape, ParseShape("f32[2, <=3]"));
+  auto x = Parameter(&b, 0, shape, "x");
+  BroadcastInDim(x, {1, 2, 3},
+                 /*broadcast_dimensions=*/{1, 2});
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module), GmockMatch(m::Broadcast()));
+}
+
 TEST(XlaBuilderTest, BroadcastInDimWithNegativeSize) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 1, 4}), "x");
