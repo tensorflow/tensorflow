@@ -101,7 +101,6 @@ struct HloRunnerConfig {
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
   float gpu_client_mem_fraction = xla::GpuAllocatorConfig{}.memory_fraction;
-  bool profile_execution = false;
 };
 
 }  // namespace
@@ -250,14 +249,8 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   }
   CHECK(env.client != nullptr);
 
-  std::vector<ExecutionProfile> execution_profiles;
-  if (opts.profile_execution) {
-    running_options.execution_profiles = &execution_profiles;
-  }
-
   for (int c = 1; c < argc; c++) {
     const char* filename = argv[c];
-    execution_profiles.clear();
     std::cout << "\n** Running " << filename << " **\n";
     if (opts.should_run) {
       TF_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
@@ -268,11 +261,6 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
       TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, argv[c], opts.input_format, opts.task_id));
-    }
-    for (int i = 0; i < execution_profiles.size(); ++i) {
-      std::cout << "## Execution time, file=" << filename << " repeat=" << i
-                << " duration=" << execution_profiles[i].compute_time_ns()
-                << "ns" << std::endl;
     }
   }
   return absl::OkStatus();
@@ -349,10 +337,7 @@ int main(int argc, char** argv) {
       tsl::Flag("gpu_client_mem_fraction", &opts.gpu_client_mem_fraction,
                 "The maximum fraction of available memory to allocate in range "
                 "of (0.0, 1.0). Same as XLA_CLIENT_MEM_FRACTION in the Python "
-                "client. Only used with the BFC allocator."),
-      tsl::Flag(
-          "profile_execution", &opts.profile_execution,
-          "If set, we will profile the execution and print the results.")};
+                "client. Only used with the BFC allocator.")};
 
   xla::AppendDebugOptionsFlags(&flag_list);
 
