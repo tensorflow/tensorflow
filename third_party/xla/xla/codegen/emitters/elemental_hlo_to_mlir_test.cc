@@ -15,12 +15,14 @@ limitations under the License.
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -71,9 +74,12 @@ class ElementalHloToMlirTest : public HloTestBase {
 
   // Converts the root subgraph of the entry function of the given hlo module to
   // MLIR.
-  absl::Status Run(const std::string& hlo, const std::string& filecheck_str,
+  absl::Status Run(const absl::string_view hlo,
+                   const absl::string_view filecheck_str,
                    std::function<EpilogueSpecification(HloComputation* entry)>
-                       epilogue_spec_fn = nullptr) {
+                       epilogue_spec_fn = nullptr,
+                   bool set_xla_entry = false,
+                   std::optional<xla::BackendKind> xla_backend = std::nullopt) {
     auto hlo_module = ParseAndReturnVerifiedModule(hlo).value();
 
     mlir::ImplicitLocOpBuilder builder(mlir::UnknownLoc::get(&context_),
@@ -95,6 +101,12 @@ class ElementalHloToMlirTest : public HloTestBase {
     auto entry_func = fns[&partitioned_computations
                                .FindPartitionedComputation(entry_computation)
                                .GetRootSubgraph()];
+    if (set_xla_entry) {
+      entry_func->setAttr("xla.entry", mlir::UnitAttr::get(&context_));
+    }
+    if (xla_backend) {
+      SetBackendKind(&context_, entry_func, *xla_backend);
+    }
     auto& entry_pc =
         partitioned_computations.FindPartitionedComputation(entry_computation);
     auto call_targets = partitioned_computations.CreateCallTargetProvider(fns);
@@ -1390,41 +1402,78 @@ TEST_F(ElementalHloToMlirTest, PopulationCountUnsigned) {
   )"));
 }
 
-TEST_F(ElementalHloToMlirTest, Epilogue) {
-  TF_EXPECT_OK(Run(
+class ElementalHloToMlirEpilogueTest : public ElementalHloToMlirTest {
+ protected:
+  std::function<EpilogueSpecification(HloComputation* entry)> EpilogueSpec() {
+    return [this](HloComputation* entry) {
+      EpilogueSpecification epilogue;
+      epilogue.heroes.push_back(entry->GetInstructionWithName("transpose"));
+      epilogue.roots.push_back(entry->GetInstructionWithName("add"));
+      epilogue.index_ranges = {2, 16, 17};
+      epilogue.root_indexing.push_back(
+          IndexingMap{mlir::AffineMap::getMultiDimIdentityMap(3, &context_)
+                          .getSubMap({0, 2, 1}),
+                      DimVarsFromTensorSizes({2, 17, 17}),
+                      {},
+                      {}});
+      return epilogue;
+    };
+  }
+  static constexpr absl::string_view kHlo =
       R"(
       ENTRY main {
-        %p0 = f32[2,16,17] parameter(0)
-        %log = f32[2,16,17] log(%p0)
+        // Note: %p0 is only used in some of the tests.
+        %p0 = f32[7] parameter(0)
+        %p1 = f32[2,16,17] parameter(1)
+        %log = f32[2,16,17] log(%p1)
         %transpose = f32[2,17,16] transpose(%log), dimensions={0,2,1}
-        %p1 = f32[] parameter(1)
-        %bc = f32[2,17,16] broadcast(%p1), dimensions={}
+        %p2 = f32[] parameter(2)
+        %bc = f32[2,17,16] broadcast(%p2), dimensions={}
         ROOT %add = f32[2,17,16] add(%transpose, %bc)
-      })",
+      })";
+  static constexpr absl::string_view kCheck =
       R"(
+      // CHECK:      @main_add(
+      // CHECK-SAME:     %[[A0:.*]]: tensor<7xf32>
+      // CHECK:        %[[PURE:.*]] = xla.pure_call @main_transpose(%[[A0]],
+      // CHECK:      @main_transpose(tensor<7xf32>,
       // CHECK:      @main__epilogue__add(
-      // CHECK-SAME:     %[[ARG0:.*]]: tensor<2x16x17xf32>
-      // CHECK-SAME:     %[[ARG1:.*]]: tensor<f32>
+      // CHECK-SAME:     %[[ARG0:.*]]: tensor<7xf32>
+      // CHECK-SAME:     %[[ARG1:.*]]: tensor<2x16x17xf32>
+      // CHECK-SAME:     %[[ARG2:.*]]: tensor<f32>
       // CHECK-SAME:     %[[X:.*]]: index {xla.range = [0 : index, 1 :
       // CHECK-SAME:     %[[Y:.*]]: index {xla.range = [0 : index, 15 :
       // CHECK-SAME:     %[[Z:.*]]: index {xla.range = [0 : index, 16 :
       // CHECK-SAME:     %[[TRANSPOSE:.*]]: f32) -> f32
-      // CHECK:        %[[B:.*]] = tensor.extract %[[ARG1]][]
+      // CHECK:        %[[B:.*]] = tensor.extract %[[ARG2]][]
       // CHECK:        %[[RET:.*]] = arith.addf %[[TRANSPOSE]], %[[B]]
-      // CHECK:        return %[[RET]])",
-      [this](HloComputation* entry) {
-        EpilogueSpecification epilogue;
-        epilogue.heroes.push_back(entry->GetInstructionWithName("transpose"));
-        epilogue.roots.push_back(entry->GetInstructionWithName("add"));
-        epilogue.index_ranges = {2, 16, 17};
-        epilogue.root_indexing.push_back(
-            IndexingMap{mlir::AffineMap::getMultiDimIdentityMap(3, &context_)
-                            .getSubMap({0, 2, 1}),
-                        DimVarsFromTensorSizes({2, 17, 17}),
-                        {},
-                        {}});
-        return epilogue;
-      }));
+      // CHECK:        return %[[RET]]
+      )";
+};
+
+TEST_F(ElementalHloToMlirEpilogueTest, Epilogue) {
+  TF_EXPECT_OK(Run(kHlo, kCheck, EpilogueSpec()));
+}
+
+TEST_F(ElementalHloToMlirEpilogueTest, XlaEntry) {
+  TF_EXPECT_OK(Run(kHlo, kCheck, EpilogueSpec(), /*set_xla_entry=*/true));
+}
+
+TEST_F(ElementalHloToMlirEpilogueTest, XlaGpuEntry) {
+  TF_EXPECT_OK(Run(kHlo, kCheck, EpilogueSpec(), /*set_xla_entry=*/true,
+                   /*xla_backend=*/xla::BackendKind::kGpu));
+}
+
+TEST_F(ElementalHloToMlirEpilogueTest, XlaCpuEntry) {
+  TF_EXPECT_OK(Run(kHlo,
+                   R"(
+      // CHECK:      @main_add(
+      // CHECK-SAME:     %[[ARG0:.*]]: tensor<7xf32>
+      // main_transpose must still have arg0, but the pure_call must not.
+      // CHECK:          %[[PURE:.*]] = xla.pure_call @main_transpose(%arg1,
+      // CHECK:      @main_transpose(tensor<7xf32)",
+                   EpilogueSpec(), /*set_xla_entry=*/true,
+                   /*xla_backend=*/xla::BackendKind::kCpu));
 }
 
 TEST_F(ElementalHloToMlirTest, ScalarConstant) {
