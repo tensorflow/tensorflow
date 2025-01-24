@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/manip_ops.h"
