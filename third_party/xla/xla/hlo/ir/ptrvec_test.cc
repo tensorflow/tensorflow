@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
