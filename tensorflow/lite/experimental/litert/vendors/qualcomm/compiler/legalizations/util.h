@@ -83,6 +83,35 @@ LiteRtStatus BuildQnnTesnorParam(T* param_data, uint32_t* param_dims,
   return kLiteRtStatusOk;
 }
 
+template <typename T>
+LiteRtStatus BuildQnnScalarParam(T& param_data, Qnn_DataType_t param_data_type,
+                                 const char* param_name,
+                                 GraphMapper& graph_mapper,
+                                 Qnn_Param_t& param) {
+  // Build QNN scalar.
+  Qnn_Scalar_t scalar = QNN_SCALAR_INIT;
+  scalar.dataType = param_data_type;
+
+  // Build QNN scalar param.
+  switch (param_data_type) {
+    case QNN_DATATYPE_BOOL_8:
+      scalar.bool8Value = param_data;
+      break;
+    case QNN_DATATYPE_UINT_32:
+      scalar.uint32Value = param_data;
+      break;
+    case QNN_DATATYPE_INT_32:
+      scalar.int32Value = param_data;
+      break;
+    default:
+      return kLiteRtStatusErrorUnsupported;
+  }
+  param.paramType = QNN_PARAMTYPE_SCALAR;
+  param.name = param_name;
+  param.scalarParam = scalar;
+  return kLiteRtStatusOk;
+}
+
 }  // namespace litert::qnn
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_QUALCOMM_COMPILER_LEGALIZATIONS_UTIL_H_
