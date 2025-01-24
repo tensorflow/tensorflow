@@ -78,6 +78,7 @@ cc_library(
         "//xla:util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/parser:hlo_lexer",
         "//xla/service:compilation_environments",
         "//xla/service:computation_layout",
@@ -273,6 +274,7 @@ cc_test(
     srcs = ["ptrvec_test.cc"],
     deps = [
         ":ptrvec",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
