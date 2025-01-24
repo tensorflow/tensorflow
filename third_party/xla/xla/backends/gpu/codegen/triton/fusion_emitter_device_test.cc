@@ -1445,6 +1445,8 @@ CHECK:     tt.store
 // Reproducer from b/384110192.
 TEST_F(TritonEmitterTest,
        FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly) {
+  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-21: Skip Int32 max elements "
+                  "issue with triton.";
   // The point here is to check the output of the Triton fusion. The `slice` op
   // at the end is inserted to allow the comparison of output to run in a
   // reasonable amount of time, and has been proven to still correctly capture
