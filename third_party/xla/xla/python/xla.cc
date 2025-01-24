@@ -72,6 +72,7 @@ limitations under the License.
 #include "gloo/transport/tcp/device.h"
 #include "xla/backends/cpu/collectives/gloo_collectives.h"
 #include "xla/backends/cpu/collectives/gloo_kv_store.h"
+#include "xla/python/transfer/py_socket_transfer.h"
 #elif defined(__APPLE__)
 #include "gloo/transport/uv/device.h"
 #include "xla/backends/cpu/collectives/gloo_collectives.h"  // NOLINT
@@ -599,6 +600,7 @@ NB_MODULE(xla_extension, m) {
   BuildTracebackSubmodule(m);
   BuildMlirSubmodule(m);
   BuildCustomCallShardingPybindAPI(m);
+  aux::RegisterTransferServerTypes(m);
 
   // The following uses python bindings for PyClient defined above using
   // pybind11, and hence needs pybind11::module_ (not just nanobind::module_).

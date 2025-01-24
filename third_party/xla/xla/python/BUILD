@@ -1359,6 +1359,7 @@ tsl_pybind_extension(
         "//conditions:default": [
             "//xla/backends/cpu/collectives:gloo_collectives",
             "//xla/backends/cpu/collectives:gloo_kv_store",
+            "//xla/python/transfer:py_socket_transfer",
             "@gloo//:transport_tcp",
         ],
     }) + select({
