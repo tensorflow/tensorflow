@@ -570,6 +570,22 @@ PJRT_Error* PJRT_Client_CreateBuffersForAsyncHostToDevice(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Client_DmaMap(PJRT_Client_DmaMap_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_DmaMap_Args", PJRT_Client_DmaMap_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_RETURN_IF_ERROR(args->client->client->DmaMap(args->data, args->size));
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_DmaUnmap(PJRT_Client_DmaUnmap_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_DmaUnmap_Args", PJRT_Client_DmaUnmap_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_RETURN_IF_ERROR(args->client->client->DmaUnmap(args->data));
+  return nullptr;
+}
+
 // Searches `device_list` for a PJRT_Device* that wraps a provided
 // `xla::PjRtDevice *` (`cpp_device`). If a match is found, that PJRT_Device*
 // is returned. Otherwise, returns nullptr.
@@ -2805,6 +2821,8 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_AsyncHostToDeviceTransferManager_SetBufferError,
       /*PJRT_AsyncHostToDeviceTransferManager_AddMetadata=*/
       pjrt::PJRT_AsyncHostToDeviceTransferManager_AddMetadata,
+      /*PJRT_Client_DmaMap=*/pjrt::PJRT_Client_DmaMap,
+      /*PJRT_Client_DmaUnmap=*/pjrt::PJRT_Client_DmaUnmap,
   };
 }
 

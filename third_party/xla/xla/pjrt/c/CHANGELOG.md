@@ -1,7 +1,9 @@
 # PJRT C API changelog
 
-## 0.66
+## 0.67
+* Added ``PJRT_Client_DmaMap`` and ``PJRT_Client_DmaUnmap``.
 
+## 0.66
 * Added ``memory`` field of type ``PJRT_Memory *`` in ``PJRT_Client_CreateViewOfDeviceBuffer_Args``.
   The new field should be preferred over ``device``, which is now deprecated.
 

@@ -414,6 +414,10 @@ class PjRtCApiClient : public PjRtClient {
         "https://github.com/google/jax/issues if you need this feature.");
   }
 
+  absl::Status DmaMap(void* data, size_t size) override;
+
+  absl::Status DmaUnmap(void* data) override;
+
   const PJRT_Api* pjrt_c_api() const;
 
   PJRT_Client* pjrt_c_client() { return c_client_.get(); }

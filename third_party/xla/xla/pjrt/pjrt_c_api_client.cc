@@ -679,6 +679,29 @@ absl::StatusOr<Layout> PjRtCApiClient::GetDefaultLayout(
   return pjrt_layout->xla_layout();
 }
 
+absl::Status PjRtCApiClient::DmaMap(void* data, size_t size) {
+  const PJRT_Api* c_api = pjrt_c_api();
+  PJRT_Client_DmaMap_Args args;
+  args.struct_size = PJRT_Client_DmaMap_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = c_client_.get();
+  args.data = data;
+  args.size = size;
+  RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Client_DmaMap(&args), c_api);
+  return absl::OkStatus();
+}
+
+absl::Status PjRtCApiClient::DmaUnmap(void* data) {
+  const PJRT_Api* c_api = pjrt_c_api();
+  PJRT_Client_DmaUnmap_Args args;
+  args.struct_size = PJRT_Client_DmaUnmap_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = c_client_.get();
+  args.data = data;
+  RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Client_DmaUnmap(&args), c_api);
+  return absl::OkStatus();
+}
+
 class PjRtCApiAsyncHostToDeviceTransferManager
     : public PjRtClient::AsyncHostToDeviceTransferManager {
  public:

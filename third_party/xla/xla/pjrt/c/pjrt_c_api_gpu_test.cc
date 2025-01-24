@@ -292,6 +292,35 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
   api_->PJRT_ExecuteContext_Destroy(&destroy_args);
 }
 
+TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
+  void* host_dma_ptr = nullptr;
+  size_t dma_size = 1024 * 1024;
+  ASSERT_EQ(posix_memalign(&host_dma_ptr, dma_size, dma_size), 0);
+
+  PJRT_Client_DmaMap_Args dma_args;
+  dma_args.struct_size = PJRT_Client_DmaMap_Args_STRUCT_SIZE;
+  dma_args.extension_start = nullptr;
+  dma_args.client = client_;
+  dma_args.data = host_dma_ptr;
+  dma_args.size = dma_size;
+  PJRT_Error* dma_error = api_->PJRT_Client_DmaMap(&dma_args);
+  ASSERT_NE(dma_error, nullptr);
+  EXPECT_EQ(dma_error->status.code(), absl::StatusCode::kUnimplemented);
+  MakeErrorDeleter(api_)(dma_error);
+
+  PJRT_Client_DmaUnmap_Args unmap_args;
+  unmap_args.struct_size = PJRT_Client_DmaUnmap_Args_STRUCT_SIZE;
+  unmap_args.extension_start = nullptr;
+  unmap_args.client = client_;
+  unmap_args.data = host_dma_ptr;
+  PJRT_Error* unmap_error = api_->PJRT_Client_DmaUnmap(&unmap_args);
+  ASSERT_NE(unmap_error, nullptr);
+  EXPECT_EQ(unmap_error->status.code(), absl::StatusCode::kUnimplemented);
+  MakeErrorDeleter(api_)(unmap_error);
+
+  free(host_dma_ptr);
+}
+
 TEST_F(PjrtCApiGpuTransferManagerTest, SetBufferError) {
   xla::Shape host_shape =
       xla::ShapeUtil::MakeShape(xla::F32, /*dimensions=*/{8});

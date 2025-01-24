@@ -81,7 +81,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 66
+#define PJRT_API_MINOR 67
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -632,6 +632,27 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_DefaultDeviceAssignment_Args,
 
 typedef PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
+
+struct PJRT_Client_DmaMap_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Client* client;
+  void* data;
+  size_t size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_DmaMap_Args, size);
+
+typedef PJRT_Error* PJRT_Client_DmaMap(PJRT_Client_DmaMap_Args* args);
+
+struct PJRT_Client_DmaUnmap_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Client* client;
+  void* data;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_DmaUnmap_Args, data);
+
+typedef PJRT_Error* PJRT_Client_DmaUnmap(PJRT_Client_DmaUnmap_Args* args);
 
 struct PJRT_AsyncHostToDeviceTransferManager_Destroy_Args {
   size_t struct_size;
@@ -2451,11 +2472,12 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_BufferSize);
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_SetBufferError);
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_AddMetadata);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_DmaMap);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_DmaUnmap);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(
-      PJRT_Api, PJRT_AsyncHostToDeviceTransferManager_AddMetadata)
+  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_DmaUnmap)
 };
 
 #undef _PJRT_API_STRUCT_FIELD
