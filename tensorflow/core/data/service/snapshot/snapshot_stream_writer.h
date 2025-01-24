@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/env.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/snapshot/parallel_tfrecord_writer.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
