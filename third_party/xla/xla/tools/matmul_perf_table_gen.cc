@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <random>
 #include <string>
@@ -148,10 +149,20 @@ gpu::DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
   MatmulPerfTableGen::StepSpec k_spec = config_.k_spec;
 
   std::vector<EntrySpec> specs;
+  auto inc = [](uint32_t i, const MatmulPerfTableGen::StepSpec& spec) {
+    if (spec.step > 0) {
+      return i + spec.step;
+    }
+    if (spec.factor > 0) {
+      return i * spec.factor;
+    }
+    LOG(FATAL) << "Cannot specify both 'step' and 'factor'.";
+    return i;
+  };
   for (MatmulPerfTableGen::DataTypeSpec& dtype : config_.dtypes) {
-    for (int m = m_spec.start; m <= m_spec.stop; m += m_spec.step) {
-      for (int n = n_spec.start; n <= n_spec.stop; n += n_spec.step) {
-        for (int k = k_spec.start; k <= k_spec.stop; k += k_spec.step) {
+    for (uint32_t m = m_spec.start; m <= m_spec.stop; m = inc(m, m_spec)) {
+      for (uint32_t n = n_spec.start; n <= n_spec.stop; n = inc(n, n_spec)) {
+        for (uint32_t k = k_spec.start; k <= k_spec.stop; k = inc(k, k_spec)) {
           EntrySpec spec;
           spec.m = m;
           spec.k = k;

@@ -42,6 +42,9 @@ The specification has a format
 Which means for a particular spec we will generate a set
   {<start> + n * <step> | n * <step> <= <stop> - <start> for every n w/ {0}}
 
+If you specify `factor = <factor>` instead of `step` then the set will be
+{<start> * <factor>^n | <start> * <factor>^n <= <stop> for every n w/ {0}}
+
 Program expects a spec for every dim. The generated matrix multplication shapes
 are a cartesian product of these three specs (+ specified data types).
 
@@ -170,12 +173,15 @@ MatmulPerfTableGen::StepSpec ParseSpec(absl::string_view spec,
       CHECK(absl::SimpleAtoi(value, &result.stop));
     } else if (key == "step") {
       CHECK(absl::SimpleAtoi(value, &result.step));
+    } else if (key == "factor") {
+      CHECK(absl::SimpleAtoi(value, &result.factor));
     } else {
       LOG(FATAL) << "Cannot parse: " << spec;
     }
   }
   CHECK_LE(result.start, result.stop);
-  CHECK_GT(result.step, 0);
+  CHECK(!(result.step > 0 && result.factor > 0))
+      << "Either factor or step should be specified.";
   return result;
 }
 

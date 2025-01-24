@@ -63,5 +63,27 @@ TEST_F(MatmulPerfTableGenTest, DryRunsSpecifiedSweepSpace) {
   EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 4);
 }
 
+TEST_F(MatmulPerfTableGenTest, DryRunsFactorSweepSpace) {
+  MatmulPerfTableGen::Config cfg;
+  cfg.k_spec.start = 1;
+  cfg.k_spec.stop = 1;
+  cfg.k_spec.step = 1;
+  cfg.m_spec.start = 1;
+  cfg.m_spec.stop = 1;
+  cfg.m_spec.step = 1;
+  cfg.n_spec.start = 2;
+  cfg.n_spec.stop = 8;
+  cfg.n_spec.factor = 2;
+  cfg.dry_run = true;
+  cfg.dtypes.emplace_back(
+      MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
+
+  MatmulPerfTableGen gen(cfg);
+  DeviceHloInstructionProfiles profiles = gen.ComputeTable();
+
+  EXPECT_EQ(profiles.entries_size(), 1);
+  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 3);
+}
+
 }  // namespace
 }  // namespace xla::gpu

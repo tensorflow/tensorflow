@@ -44,9 +44,10 @@ class MatmulPerfTableGen {
   };
 
   struct StepSpec {
-    uint64_t start = 0;
-    uint64_t stop = 1;
-    uint64_t step = 0;
+    uint32_t start = 0;
+    uint32_t stop = 1;
+    uint32_t step = 0;
+    uint32_t factor = 0;
   };
 
   struct Config {
