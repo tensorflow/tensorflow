@@ -43,9 +43,16 @@ TEST(CompiledModelTest, Basic) {
   LiteRtModel model;
   ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
 
+  LiteRtCompilationOptions compilation_options;
+  ASSERT_EQ(LiteRtCreateCompilationOptions(&compilation_options),
+            kLiteRtStatusOk);
+  ASSERT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
+                compilation_options, kLiteRtHwAccelatorCpu),
+            kLiteRtStatusOk);
+
   LiteRtCompiledModel compiled_model;
   ASSERT_EQ(
-      LiteRtCreateCompiledModel(model, kLiteRtHwAccelatorCpu, &compiled_model),
+      LiteRtCreateCompiledModel(model, compilation_options, &compiled_model),
       kLiteRtStatusOk);
 
   LiteRtSubgraph subgraph;

@@ -15,8 +15,10 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_COMPILER_PLUGIN_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_COMPILER_PLUGIN_COMPILER_PLUGIN_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
-#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -24,7 +26,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/build_stamp.h"
@@ -150,9 +151,9 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
 
 // Apply all available plugins providing the selected HW accelerators to the
 // given model, modify the model accordingly, and return (1) the number of
-// compiler plugins succesfully applied, (2) a new flatbuffer backing the
+// compiler plugins successfully applied, (2) a new flatbuffer backing the
 // modified model, (3) a string listing the compiler plugins that were
-// succesfully applied, and (4) a string listing the compiler plugins that
+// successfully applied, and (4) a string listing the compiler plugins that
 // failed to apply with an associated error message.
 struct ApplyPluginsResult {
   size_t num_applied_plugins;
@@ -162,7 +163,7 @@ struct ApplyPluginsResult {
 };
 
 Expected<ApplyPluginsResult> ApplyPlugins(
-    LiteRtModel model, LiteRtHwAccelerators selected_hw_accelerators);
+    LiteRtModel model, LiteRtHwAcceleratorSet selected_hw_accelerators);
 
 }  // namespace litert::internal
 

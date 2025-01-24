@@ -443,7 +443,7 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
 }
 
 Expected<ApplyPluginsResult> ApplyPlugins(
-    LiteRtModel model, LiteRtHwAccelerators selected_hw_accelerators) {
+    LiteRtModel model, LiteRtHwAcceleratorSet selected_hw_accelerators) {
   auto environment = litert::internal::Environment::Instance();
   if (!environment) {
     return environment.Error();

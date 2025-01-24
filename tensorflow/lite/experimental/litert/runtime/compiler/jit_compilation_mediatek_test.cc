@@ -13,8 +13,6 @@
 // limitations under the License.
 
 #include <array>
-#include <cstring>
-#include <memory>
 #include <utility>
 #include <vector>
 
@@ -24,23 +22,13 @@
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/lite/c/c_api_opaque.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_compiled_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
-#include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
-#include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
-#include "tensorflow/lite/experimental/litert/test/test_macros.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/signature_runner.h"
 
 constexpr const char* kCompilerPluginLibSearchPath = "/data/local/tmp";
 
@@ -68,8 +56,13 @@ TEST(JitCompilation, MediaTek) {
                   "MediaTek NPU";
 #endif
 
+  auto compilation_options = litert::CompiledModel::Options::Create();
+  ASSERT_TRUE(compilation_options);
+  ASSERT_TRUE(
+      compilation_options->SetHardwareAccelerators(kLiteRtHwAccelatorNpu));
+
   auto compiled_model =
-      litert::CompiledModel::Create(*model, kLiteRtHwAccelatorNpu);
+      litert::CompiledModel::Create(*model, std::move(*compilation_options));
   ASSERT_TRUE(compiled_model);
 
   auto input_buffers =

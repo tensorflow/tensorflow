@@ -16,7 +16,9 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_COMPILED_MODEL_H_
 
 #include <cstddef>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -29,6 +31,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
@@ -54,6 +57,61 @@ namespace litert {
 class CompiledModel
     : public internal::Handle<LiteRtCompiledModel, LiteRtDestroyCompiledModel> {
  public:
+  class Options {
+    struct Deleter {
+      void operator()(LiteRtCompilationOptions options) {
+        LiteRtDestroyCompilationOptions(options);
+      }
+    };
+
+    // Were making the default constructor private to avoid  null options
+    // created by mistake.
+    Options() = default;
+    explicit Options(LiteRtCompilationOptions options) : impl_(options) {}
+
+   public:
+    using Ptr = std::unique_ptr<LiteRtCompilationOptionsT, Deleter>;
+
+    // Creates a new LiteRtCompilationOptions object wrapped in a `unique_ptr`.
+    static Expected<Options> Create() {
+      LiteRtCompilationOptions options;
+      if (auto status = LiteRtCreateCompilationOptions(&options);
+          status != kLiteRtStatusOk) {
+        return Error(status, "Could not create default compilation options");
+      }
+      return Options(options);
+    }
+
+    // Create a NULL pointer.
+    static Options None() { return {}; }
+
+    Ptr GetUnderlyingPtr() { return Ptr(release()); }
+
+    Expected<void> SetHardwareAccelerators(
+        LiteRtHwAcceleratorSet accelerators) {
+      if (auto status = LiteRtSetCompilationOptionsHardwareAccelerators(
+              get(), accelerators);
+          status != kLiteRtStatusOk) {
+        return Error(
+            status,
+            "Could not set hardware accelerators in compilation options");
+      }
+      return {};
+    }
+
+    // Mimic unique_ptr API.
+
+    Ptr::pointer release() noexcept { return impl_.release(); }
+    void reset(Ptr::pointer ptr = nullptr) noexcept { return impl_.reset(ptr); }
+
+    Ptr::pointer get() const noexcept { return impl_.get(); }
+    Ptr::pointer operator->() const noexcept { return impl_.operator->(); }
+    auto& operator*() const noexcept { return impl_.operator*(); }
+
+   private:
+    Ptr impl_;
+  };
+
   CompiledModel() = default;
 
   // Parameter `owned` indicates if the created CompiledModel object should take
@@ -68,17 +126,23 @@ class CompiledModel
   // The model is loaded into memory and the caller takes ownership of the
   // returned CompiledModel object. The caller should keep the model alive
   // until the CompiledModel is destroyed.
-  static Expected<CompiledModel> Create(
-      const Model& model,
-      LiteRtCompilationOptions compilation_options = kLiteRtHwAccelatorCpu) {
+  static Expected<CompiledModel> Create(litert::Model& model,
+                                        Options&& compilation_options) {
     LiteRtModel litert_model = model.Get();
     LiteRtCompiledModel compiled_model;
     if (auto status = LiteRtCreateCompiledModel(
-            litert_model, compilation_options, &compiled_model);
+            litert_model, compilation_options.release(), &compiled_model);
         status != kLiteRtStatusOk) {
       return Unexpected(status, "Failed to create compiled model");
     }
     return CompiledModel(litert_model, compiled_model);
+  }
+
+  static Expected<CompiledModel> Create(
+      litert::Model& model, LiteRtHwAccelerators hardware_accelerator) {
+    LITERT_ASSIGN_OR_RETURN(Options options, Options::Create());
+    options.SetHardwareAccelerators(hardware_accelerator);
+    return Create(model, std::move(options));
   }
 
   // Returns the buffer requirements for the given n-th input tensor. The

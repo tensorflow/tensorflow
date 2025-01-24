@@ -43,6 +43,12 @@
 class LiteRtCompiledModelT {
  public:
   using Ptr = std::unique_ptr<LiteRtCompiledModelT>;
+  struct OptionsDeleter {
+    void operator()(LiteRtCompilationOptionsT* options) {
+      LiteRtDestroyCompilationOptions(options);
+    }
+  };
+  using OptionsPtr = std::unique_ptr<LiteRtCompilationOptionsT, OptionsDeleter>;
 
   LiteRtCompiledModelT() = default;
   ~LiteRtCompiledModelT() = default;
@@ -50,8 +56,8 @@ class LiteRtCompiledModelT {
   // Creates a LiteRtCompiledModelT from a LiteRtModel object.
   // The model is loaded into memory and the caller takes ownership of the
   // returned object.
-  static litert::Expected<Ptr> Create(
-      LiteRtModel model, LiteRtCompilationOptions compilation_options);
+  static litert::Expected<Ptr> Create(LiteRtModel model,
+                                      OptionsPtr compilation_options = nullptr);
 
   // Returns the buffer requirements for the n-th input tensor. The returned
   // LiteRtTensorBufferRequirements is used to create the input tensor

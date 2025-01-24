@@ -16,6 +16,9 @@
 
 #include <stddef.h>
 
+#include <memory>
+#include <utility>
+
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
@@ -27,12 +30,16 @@
 LiteRtStatus LiteRtCreateCompiledModel(
     LiteRtModel model, LiteRtCompilationOptions compilation_options,
     LiteRtCompiledModel* compiled_model) {
+  // We guard the compilation options. Since we consume them, we still need to
+  // release them if there's an error.
+  LiteRtCompiledModelT::OptionsPtr compilation_options_guard(
+      compilation_options);
+
   if (!model || !compiled_model) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-
   auto created_compiled_model =
-      LiteRtCompiledModelT::Create(model, compilation_options);
+      LiteRtCompiledModelT::Create(model, std::move(compilation_options_guard));
   if (!created_compiled_model) {
     LITERT_LOG(LITERT_ERROR, "%s",
                created_compiled_model.Error().Message().c_str());

@@ -22,7 +22,29 @@ extern "C" {
 #endif  // __cplusplus
 
 // The compilation options for the LiteRtCompiledModel.
-typedef LiteRtHwAccelerators LiteRtCompilationOptions;
+LITERT_DEFINE_HANDLE(LiteRtCompilationOptions);
+
+// Creates a compilation option object.
+//
+// This doesn't need to be passed to `LiteRtDestroyCompilationOptions` after
+// calling `LiteRtCreateCompiledModel`.
+LiteRtStatus LiteRtCreateCompilationOptions(LiteRtCompilationOptions* options);
+
+// Destroys a compilation option object.
+//
+// WARNING: this only needs to be called if the options were not passed to
+// `LiteRtCreateCompiledModel`.
+LiteRtStatus LiteRtDestroyCompilationOptions(LiteRtCompilationOptions options);
+
+// Sets the requested hardware accelerators to apply during model compilation.
+LiteRtStatus LiteRtSetCompilationOptionsHardwareAccelerators(
+    LiteRtCompilationOptions options,
+    LiteRtHwAcceleratorSet hardware_accelerators);
+
+// Gets the hardware accelerators to apply during model compilation.
+LiteRtStatus LiteRtGetCompilationOptionsHardwareAccelerators(
+    LiteRtCompilationOptions options,
+    LiteRtHwAcceleratorSet* hardware_accelerators);
 
 #ifdef __cplusplus
 }

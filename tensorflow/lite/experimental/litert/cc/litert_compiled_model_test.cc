@@ -23,6 +23,7 @@
 #include "absl/log/absl_log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
@@ -38,7 +39,11 @@ TEST(CompiledModelTest, Basic) {
   auto model = testing::LoadTestFileModel(kModelFileName);
   ASSERT_TRUE(model);
 
-  auto res_compiled_model = CompiledModel::Create(model);
+  auto options = CompiledModel::Options::Create();
+  ASSERT_TRUE(options);
+  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAccelatorCpu));
+
+  auto res_compiled_model = CompiledModel::Create(model, std::move(*options));
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
 
   auto& compiled_model = *res_compiled_model;
@@ -90,7 +95,11 @@ TEST(CompiledModelTest, RunWithInputOutputMap) {
   auto model = testing::LoadTestFileModel(kModelFileName);
   ASSERT_TRUE(model);
 
-  auto res_compiled_model = CompiledModel::Create(model);
+  auto options = CompiledModel::Options::Create();
+  ASSERT_TRUE(options);
+  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAccelatorCpu));
+
+  auto res_compiled_model = CompiledModel::Create(model, std::move(*options));
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
 
   auto& compiled_model = *res_compiled_model;

@@ -79,6 +79,7 @@ typedef enum {
   kLiteRtStatusErrorUnsupported = 5,
   kLiteRtStatusErrorNotFound = 6,
   kLiteRtStatusErrorTimeoutExpired = 7,
+  kLiteRtStatusErrorWrongVersion = 8,
 
   // File and loading related errors.
   kLiteRtStatusErrorFileIO = 500,

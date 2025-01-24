@@ -68,8 +68,13 @@ TEST(JitCompilation, Qualcomm) {
                   "Qualcomm HTP";
 #endif
 
+  auto compilation_options = litert::CompiledModel::Options::Create();
+  ASSERT_TRUE(compilation_options);
+  ASSERT_TRUE(
+      compilation_options->SetHardwareAccelerators(kLiteRtHwAccelatorNpu));
+
   auto compiled_model =
-      litert::CompiledModel::Create(*model, kLiteRtHwAccelatorNpu);
+      litert::CompiledModel::Create(*model, std::move(*compilation_options));
   ASSERT_TRUE(compiled_model);
 
   auto input_buffers =
