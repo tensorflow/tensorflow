@@ -1,4 +1,3 @@
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//xla:pytype.default.bzl", "pytype_strict_library")
@@ -1170,20 +1169,6 @@ tf_proto_library(
     srcs = ["py_host_callback.proto"],
 )
 
-# If this flag is enabled, it sets RPATH on the xla_extension to values that are suitable for
-# finding NVIDIA's CUDA libraries when they are installed as pip packages.
-bool_flag(
-    name = "jax_cuda_pip_rpaths",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "use_jax_cuda_pip_rpaths",
-    flag_values = {
-        ":jax_cuda_pip_rpaths": "True",
-    },
-)
-
 cc_library(
     name = "logging",
     srcs = ["logging.cc"],
@@ -1251,18 +1236,6 @@ tsl_pybind_extension(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    linkopts = select({
-        ":use_jax_cuda_pip_rpaths": [
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_cupti/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_runtime/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cublas/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cufft/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cudnn/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cusolver/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/nccl/lib",
-        ],
-        "//conditions:default": [],
-    }),
     pytype_deps = [
         "//third_party/py/numpy",
     ],
