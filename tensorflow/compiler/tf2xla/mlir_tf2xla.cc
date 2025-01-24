@@ -28,17 +28,19 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tools/parsers.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -161,9 +163,17 @@ absl::Status ConvertGraphDefToXlaViaMlir(
   }
 
   mlir::MLIRContext context;
+  GraphConstructorOptions options;
+  options.allow_internal_ops = true;
+  options.add_default_attributes = true;
+  options.upgrade_legacy = specs.upgrade_legacy;
+  Graph final_graph(OpRegistry::Global());
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToGraph(options, pruned_graph_def, &final_graph));
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
-      ConvertGraphdefToMlir(pruned_graph_def, debug_info, specs, &context));
+      tf2xla::v2::ConvertGraphToTfExecutor(
+          final_graph, debug_info, final_graph.flib_def(), specs, &context));
 
   // Construct a CPU device and add the device to the operations.
   DeviceSet device_set;
