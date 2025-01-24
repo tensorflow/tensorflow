@@ -143,7 +143,8 @@ class TmaDescriptor {
   // dimensions.
   llvm::SmallVector<uint64_t> global_dims_;
 
-  // Array containing stride size (in bytes) along each of the rank dimensions.
+  // Array containing stride size (in bytes) along each of the rank - 1
+  // dimensions.
   llvm::SmallVector<uint64_t> global_strides_;
 
   // Array containing traversal box size (number of elements) along each of the

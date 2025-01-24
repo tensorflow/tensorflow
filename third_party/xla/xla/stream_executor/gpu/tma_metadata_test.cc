@@ -34,19 +34,19 @@ using tsl::testing::StatusIs;
 
 TEST(TmaMetadataTest, CreateValidTmaInfoReturnsOk) {
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                                    /*global_strides=*/{1600, 360000},
+                                    /*global_strides=*/{1600},
                                     /*box_dims=*/{128, 128},
                                     /*element_strides=*/{1, 1},
                                     /*element_byte_width=*/1),
               IsOk());
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500},
-                                    /*global_strides=*/{1600},
+                                    /*global_strides=*/{},
                                     /*box_dims=*/{128},
                                     /*element_strides=*/{1},
                                     /*element_byte_width=*/2),
               IsOk());
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{100, 280},
-                                    /*global_strides=*/{400, 112000},
+                                    /*global_strides=*/{400},
                                     /*box_dims=*/{64, 64},
                                     /*element_strides=*/{1, 1},
                                     /*element_byte_width=*/4),
@@ -54,7 +54,7 @@ TEST(TmaMetadataTest, CreateValidTmaInfoReturnsOk) {
   constexpr uint64_t kValid32BSwizzleBoxDim = 32;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                            /*global_strides=*/{1600, 360000},
+                            /*global_strides=*/{1600},
                             /*box_dims=*/{kValid32BSwizzleBoxDim, 128},
                             /*element_strides=*/{1, 1},
                             /*element_byte_width=*/1,
@@ -64,7 +64,7 @@ TEST(TmaMetadataTest, CreateValidTmaInfoReturnsOk) {
   constexpr uint64_t kValid64BSwizzleBoxDim = 64;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                            /*global_strides=*/{1600, 360000},
+                            /*global_strides=*/{1600},
                             /*box_dims=*/{kValid64BSwizzleBoxDim, 128},
                             /*element_strides=*/{1, 1},
                             /*element_byte_width=*/1,
@@ -74,7 +74,7 @@ TEST(TmaMetadataTest, CreateValidTmaInfoReturnsOk) {
   constexpr uint64_t kValid128BSwizzleBoxDim = 128;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                            /*global_strides=*/{1600, 360000},
+                            /*global_strides=*/{1600},
                             /*box_dims=*/{kValid128BSwizzleBoxDim, 128},
                             /*element_strides=*/{1, 1},
                             /*element_byte_width=*/1,
@@ -92,14 +92,14 @@ TEST(TmaMetadataTest, CreateInvalidTensorRankFailsGracefully) {
   EXPECT_THAT(
       TmaDescriptor::Create(
           /*global_dims=*/{128, 128, 128, 128, 128, 128},
-          /*global_strides=*/{1000, 1000, 1000, 1000, 1000, 1000},
+          /*global_strides=*/{1000, 1000, 1000, 1000, 1000},
           /*box_dims=*/{16, 16, 16, 16, 16, 16},
           /*element_strides=*/{1, 1, 1, 1, 1, 1}, /*element_byte_width=*/2),
       StatusIs(StatusCode::kInvalidArgument,
                HasSubstr("unsupported rank for TMA")));
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                            /*global_strides=*/{1600, 360000},
+                            /*global_strides=*/{1600},
                             /*box_dims=*/{128, 128},
                             /*element_strides=*/{1, 1},
                             /*element_byte_width=*/1,
@@ -113,48 +113,55 @@ TEST(TmaMetadataTest, CreateMismatchedTensorRanksFailsGracefully) {
   auto kExpectedError = StatusIs(StatusCode::kFailedPrecondition,
                                  HasSubstr("must have the same rank"));
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{128, 128, 128},
-                                    /*global_strides=*/{500, 360},
+                                    /*global_strides=*/{500},
                                     /*box_dims=*/{16, 16},
                                     /*element_strides=*/{1, 1},
                                     /*element_byte_width=*/2),
               kExpectedError);
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{128, 128},
-                            /*global_strides=*/{360},
+                            /*global_strides=*/{},
                             /*box_dims=*/{16},
                             /*element_strides=*/{1}, /*element_byte_width=*/2),
       kExpectedError);
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{128},
-                            /*global_strides=*/{360},
+                            /*global_strides=*/{},
                             /*box_dims=*/{16, 64},
                             /*element_strides=*/{1}, /*element_byte_width=*/2),
       kExpectedError);
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{128},
-                                    /*global_strides=*/{360},
+                                    /*global_strides=*/{},
                                     /*box_dims=*/{16},
                                     /*element_strides=*/{1, 1},
                                     /*element_byte_width=*/2),
               kExpectedError);
+  EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{128, 128},
+                                    /*global_strides=*/{500, 500},
+                                    /*box_dims=*/{16, 16},
+                                    /*element_strides=*/{1, 1},
+                                    /*element_byte_width=*/2),
+              StatusIs(StatusCode::kFailedPrecondition,
+                       HasSubstr("global_strides must have a rank of")));
 }
 
 TEST(TmaMetadataTest, CreateInvalidElementByteWidthFailsGracefully) {
   auto kExpectedError = StatusIs(StatusCode::kInvalidArgument,
                                  HasSubstr("unsupported element size"));
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                                    /*global_strides=*/{1000, 360000},
+                                    /*global_strides=*/{1000},
                                     /*box_dims=*/{128, 128},
                                     /*element_strides=*/{1, 1},
                                     /*element_byte_width=*/3),
               kExpectedError);
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                                    /*global_strides=*/{1000, 360000},
+                                    /*global_strides=*/{1000},
                                     /*box_dims=*/{128, 128},
                                     /*element_strides=*/{1, 1},
                                     /*element_byte_width=*/0),
               kExpectedError);
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                                    /*global_strides=*/{1000, 360000},
+                                    /*global_strides=*/{1000},
                                     /*box_dims=*/{128, 128},
                                     /*element_strides=*/{1, 1},
                                     /*element_byte_width=*/5),
@@ -168,7 +175,7 @@ TEST(TmaMetadataTest, CreateInvalidGlobalDimsFailsGracefully) {
                      HasSubstr("must be non-zero and <= 2^32")));
   constexpr uint64_t kZeroGlobalDim = 0;
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{kZeroGlobalDim, 360},
-                                    /*global_strides=*/{1600, 360000},
+                                    /*global_strides=*/{1600},
                                     /*box_dims=*/{128, 128},
                                     /*element_strides=*/{1, 1},
                                     /*element_byte_width=*/1),
@@ -176,7 +183,7 @@ TEST(TmaMetadataTest, CreateInvalidGlobalDimsFailsGracefully) {
   const uint64_t kOverMaxGlobalDim = static_cast<uint64_t>(pow(2, 33));
   EXPECT_THAT(TmaDescriptor::Create(
                   /*global_dims=*/{500, kOverMaxGlobalDim},
-                  /*global_strides=*/{1600, 360000},
+                  /*global_strides=*/{1600},
                   /*box_dims=*/{128, 128},
                   /*element_strides=*/{1, 1},
                   /*element_byte_width=*/1),
@@ -185,19 +192,18 @@ TEST(TmaMetadataTest, CreateInvalidGlobalDimsFailsGracefully) {
 
 TEST(TmaMetadataTest, CreateInvalidGlobalStridesFailsGracefully) {
   constexpr uint64_t kNotDivisibleBy16 = 1000;
-  EXPECT_THAT(
-      TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                            /*global_strides=*/{kNotDivisibleBy16, 360000},
-                            /*box_dims=*/{128, 128},
-                            /*element_strides=*/{1, 1},
-                            /*element_byte_width=*/1),
-      StatusIs(StatusCode::kInvalidArgument,
-               AllOf(HasSubstr("global_strides"),
-                     HasSubstr("must be a multiple of 16"))));
+  EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
+                                    /*global_strides=*/{kNotDivisibleBy16},
+                                    /*box_dims=*/{128, 128},
+                                    /*element_strides=*/{1, 1},
+                                    /*element_byte_width=*/1),
+              StatusIs(StatusCode::kInvalidArgument,
+                       AllOf(HasSubstr("global_strides"),
+                             HasSubstr("must be a multiple of 16"))));
   const uint64_t kOverMaxGlobalStride = static_cast<uint64_t>(pow(2, 40));
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                            /*global_strides=*/{1600, kOverMaxGlobalStride},
+                            /*global_strides=*/{kOverMaxGlobalStride},
                             /*box_dims=*/{128, 128},
                             /*element_strides=*/{1, 1},
                             /*element_byte_width=*/1),
@@ -207,8 +213,7 @@ TEST(TmaMetadataTest, CreateInvalidGlobalStridesFailsGracefully) {
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360, 200},
                             /*global_strides=*/
-                            {kNotDivisibleBy32, kNotDivisibleBy32 * 500,
-                             kNotDivisibleBy32 * 500 * 360},
+                            {kNotDivisibleBy32, kNotDivisibleBy32 * 500},
                             /*box_dims=*/{128, 128, 128},
                             /*element_strides=*/{1, 1, 1},
                             /*element_byte_width=*/1,
@@ -219,30 +224,29 @@ TEST(TmaMetadataTest, CreateInvalidGlobalStridesFailsGracefully) {
                 HasSubstr("must be a multiple of 32 when interleave is 32B"))));
   constexpr uint64_t kNotDivisibleByStride0 = 6080;
   EXPECT_THAT(
-      TmaDescriptor::Create(/*global_dims=*/{500, 360},
+      TmaDescriptor::Create(/*global_dims=*/{500, 360, 200},
                             /*global_strides=*/{1600, kNotDivisibleByStride0},
-                            /*box_dims=*/{128, 128},
-                            /*element_strides=*/{1, 1},
+                            /*box_dims=*/{128, 128, 128},
+                            /*element_strides=*/{1, 1, 1},
                             /*element_byte_width=*/1),
       StatusIs(StatusCode::kFailedPrecondition,
                AllOf(HasSubstr("global_stride"),
                      HasSubstr("must be a multiple of the previous stride"))));
   constexpr uint64_t kSmallerThanGlobalDims = 160;
-  EXPECT_THAT(
-      TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                            /*global_strides=*/{kSmallerThanGlobalDims, 360000},
-                            /*box_dims=*/{128, 128},
-                            /*element_strides=*/{1, 1},
-                            /*element_byte_width=*/1),
-      StatusIs(StatusCode::kFailedPrecondition,
-               AllOf(HasSubstr("global_stride"),
-                     HasSubstr("must be >= global_dim"))));
+  EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
+                                    /*global_strides=*/{kSmallerThanGlobalDims},
+                                    /*box_dims=*/{128, 128},
+                                    /*element_strides=*/{1, 1},
+                                    /*element_byte_width=*/1),
+              StatusIs(StatusCode::kFailedPrecondition,
+                       AllOf(HasSubstr("global_stride"),
+                             HasSubstr("must be >= global_dim"))));
 }
 
 TEST(TmaMetadataTest, CreateInvalidBoxDimsFailsGracefully) {
   constexpr uint64_t kZeroBoxDim = 0;
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                                    /*global_strides=*/{1600, 360000},
+                                    /*global_strides=*/{1600},
                                     /*box_dims=*/{kZeroBoxDim, 128},
                                     /*element_strides=*/{1, 1},
                                     /*element_byte_width=*/1),
@@ -252,7 +256,7 @@ TEST(TmaMetadataTest, CreateInvalidBoxDimsFailsGracefully) {
   const uint64_t kOverMaxBoxDim = 257;
   EXPECT_THAT(TmaDescriptor::Create(
                   /*global_dims=*/{500, 360},
-                  /*global_strides=*/{1600, 360000},
+                  /*global_strides=*/{1600},
                   /*box_dims=*/{128, kOverMaxBoxDim},
                   /*element_strides=*/{1, 1},
                   /*element_byte_width=*/1),
@@ -262,7 +266,7 @@ TEST(TmaMetadataTest, CreateInvalidBoxDimsFailsGracefully) {
   const uint64_t kNotDivisibleBy16 = 17;
   EXPECT_THAT(TmaDescriptor::Create(
                   /*global_dims=*/{500, 360},
-                  /*global_strides=*/{1600, 360000},
+                  /*global_strides=*/{1600},
                   /*box_dims=*/{kNotDivisibleBy16, 128},
                   /*element_strides=*/{1, 1},
                   /*element_byte_width=*/1),
@@ -277,7 +281,7 @@ TEST(TmaMetadataTest, CreateInvalidElementStridesFailsGracefully) {
                                        HasSubstr("must be non-zero and <= 8")));
   constexpr uint64_t kZeroElementStride = 0;
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                                    /*global_strides=*/{1600, 360000},
+                                    /*global_strides=*/{1600},
                                     /*box_dims=*/{128, 128},
                                     /*element_strides=*/{kZeroElementStride, 1},
                                     /*element_byte_width=*/1),
@@ -285,7 +289,7 @@ TEST(TmaMetadataTest, CreateInvalidElementStridesFailsGracefully) {
   constexpr uint64_t kOverMaxElementStride = 9;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                            /*global_strides=*/{1600, 360000},
+                            /*global_strides=*/{1600},
                             /*box_dims=*/{128, 128},
                             /*element_strides=*/{1, kOverMaxElementStride},
                             /*element_byte_width=*/1),
@@ -296,7 +300,7 @@ TEST(TmaMetadataTest, CreateInvalidInterleaveSwizzleComboFailsGracefully) {
   constexpr uint64_t kGreaterThan32BSwizzle = 64;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                            /*global_strides=*/{1600, 360000},
+                            /*global_strides=*/{1600},
                             /*box_dims=*/{kGreaterThan32BSwizzle, 128},
                             /*element_strides=*/{1, 1},
                             /*element_byte_width=*/1,
@@ -309,7 +313,7 @@ TEST(TmaMetadataTest, CreateInvalidInterleaveSwizzleComboFailsGracefully) {
   constexpr uint64_t kGreaterThan64BSwizzle = 128;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                            /*global_strides=*/{1600, 360000},
+                            /*global_strides=*/{1600},
                             /*box_dims=*/{kGreaterThan64BSwizzle, 128},
                             /*element_strides=*/{1, 1},
                             /*element_byte_width=*/1,
@@ -322,7 +326,7 @@ TEST(TmaMetadataTest, CreateInvalidInterleaveSwizzleComboFailsGracefully) {
   constexpr uint64_t kGreaterThan128BSwizzle = 144;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                            /*global_strides=*/{1600, 360000},
+                            /*global_strides=*/{1600},
                             /*box_dims=*/{kGreaterThan128BSwizzle, 128},
                             /*element_strides=*/{1, 1},
                             /*element_byte_width=*/1,
@@ -337,7 +341,7 @@ TEST(TmaMetadataTest, CreateInvalidInterleaveSwizzleComboFailsGracefully) {
   EXPECT_THAT(
       TmaDescriptor::Create(
           /*global_dims=*/{500, 360, 200},
-          /*global_strides=*/{32 * 500, 32 * 500 * 360, 32 * 500 * 360 * 200},
+          /*global_strides=*/{32 * 500, 32 * 500 * 360},
           /*box_dims=*/{128, 128, 128},
           /*element_strides=*/{1, 1, 1},
           /*element_byte_width=*/1,
