@@ -78,6 +78,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/vendors/cc:backend_ir",
         "//tensorflow/lite/experimental/litert/vendors/cc:conversion",
         "//tensorflow/lite/experimental/litert/vendors/cc:ir_types",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
@@ -149,6 +150,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/test:test_macros",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin",
         "//tensorflow/lite/experimental/litert/vendors/cc:litert_compiler_plugin",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
