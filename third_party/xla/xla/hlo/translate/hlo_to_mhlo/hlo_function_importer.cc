@@ -786,6 +786,30 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                                             attributes)
           .getOperation();
     }
+    case HloOpcode::kRaggedAllToAll: {
+      llvm::SmallVector<NamedAttribute> backendConfigAttributes;
+      backendConfigAttributes.push_back(
+          ConvertReplicaGroups(instruction->replica_groups(), builder_));
+      if (instruction->channel_id().has_value()) {
+        backendConfigAttributes.push_back(builder_->getNamedAttr(
+            "channel_id",
+            builder_->getI64IntegerAttr(instruction->channel_id().value())));
+      }
+      attributes.push_back(builder_->getNamedAttr(
+          "backend_config",
+          builder_->getDictionaryAttr(backendConfigAttributes)));
+      attributes.push_back(builder_->getNamedAttr(
+          "call_target_name", builder_->getStringAttr("ragged_all_to_all")));
+      attributes.push_back(builder_->getNamedAttr(
+          "api_version",
+          mlir::mhlo::CustomCallApiVersionAttr::get(
+              builder_->getContext(),
+              mlir::mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI)));
+      return func_builder
+          ->create<mlir::mhlo::CustomCallOp>(loc, result_type, operands,
+                                             attributes)
+          .getOperation();
+    }
     case HloOpcode::kRaggedDot: {
       attributes.push_back(builder_->getNamedAttr(
           "precision_config",
