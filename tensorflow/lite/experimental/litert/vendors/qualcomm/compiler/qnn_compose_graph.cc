@@ -33,6 +33,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/cast_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/concatenation_op_builder.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/dynamic_update_slice_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/elementwise_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/embedding_lookup_op_builder.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders/fully_connected_op_builder.h"
@@ -399,6 +400,12 @@ LiteRtStatus ConvertOp(
           detail::GetTflOptions(*litert_op.Get()).AsPackOptions()->axis;
       op_wrappers =
           ::qnn::BuildPackOp(tensor_pool, input_tensors, output_tensors, axis);
+      break;
+    }
+    
+    case LiteRtOpCode::kLiteRtOpCodeTflDynamicUpdateSlice: {
+      op_wrappers =
+          ::qnn::BuildDynamicUpdateSliceOp(tensor_pool, input_tensors, output_tensors);
       break;
     }
     default: {

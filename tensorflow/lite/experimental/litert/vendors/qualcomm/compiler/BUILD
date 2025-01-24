@@ -139,6 +139,7 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:tanh_op_builder",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:transpose_op_builder",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:pack_op_builder",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/builders:dynamic_update_slice_op_builder",
     ],
 )
 

@@ -344,3 +344,19 @@ cc_library(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",
     ],
 )
+
+cc_library(
+    name = "dynamic_update_slice_op_builder",
+    srcs = ["dynamic_update_slice_op_builder.cc"],
+    hdrs = ["dynamic_update_slice_op_builder.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    deps = [
+        ":op_builder",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:op_wrapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers:tensor_wrapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/core:tensor_pool",
+    ],
+)
