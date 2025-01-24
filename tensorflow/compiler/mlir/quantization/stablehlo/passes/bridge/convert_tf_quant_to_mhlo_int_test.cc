@@ -80,6 +80,7 @@ class ConvertTfQuantToMhloIntTest : public Test {
     options.cpu_device_count = 1;
     TF_ASSERT_OK_AND_ASSIGN(pjrt_client_, xla::GetXlaPjrtCpuClient(options));
     device_ = pjrt_client_->addressable_devices().front();
+    TF_ASSERT_OK_AND_ASSIGN(memory_space_, device_->default_memory_space());
     CHECK(device_);
   }
 
@@ -208,8 +209,8 @@ class ConvertTfQuantToMhloIntTest : public Test {
     std::vector<xla::PjRtBuffer*> buffer_ptrs;
     buffers.reserve(arguments.size());
     for (const xla::Literal* argument : arguments) {
-      TF_ASSIGN_OR_RETURN(
-          auto buffer, pjrt_client_->BufferFromHostLiteral(*argument, device_));
+      TF_ASSIGN_OR_RETURN(auto buffer, pjrt_client_->BufferFromHostLiteral(
+                                           *argument, memory_space_));
       buffer_ptrs.push_back(buffer.get());
       buffers.push_back(std::move(buffer));
     }
@@ -282,6 +283,7 @@ class ConvertTfQuantToMhloIntTest : public Test {
   std::unique_ptr<MLIRContext> ctx_;
   std::unique_ptr<xla::PjRtClient> pjrt_client_;
   xla::PjRtDevice* device_;
+  xla::PjRtMemorySpace* memory_space_;
   absl::BitGen bitgen_;
 };
 
