@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V2_CLUSTER_TF_H_
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V2_CLUSTER_TF_H_
 
+#include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
