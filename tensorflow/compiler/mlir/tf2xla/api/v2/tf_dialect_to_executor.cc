@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/platform/error_logging.h"
 #include "tsl/platform/status.h"

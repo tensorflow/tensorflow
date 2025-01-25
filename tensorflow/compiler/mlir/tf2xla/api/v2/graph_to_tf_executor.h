@@ -17,7 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V2_GRAPH_TO_TF_EXECUTOR_H_
 
 #include <string>
+#include <unordered_map>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -26,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace tf2xla {
