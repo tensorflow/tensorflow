@@ -207,6 +207,12 @@ LiteRtStatus UnpackSubgraph(FlatbufferContext& context,
 LiteRtStatus UnpackSignatures(std::vector<TflSignaturePtr>& tfl_signatures,
                               LiteRtModelT& parent) {
   for (auto& tfl_signature : tfl_signatures) {
+    if (tfl_signature->subgraph_index >= parent.Subgraphs().size()) {
+      LITERT_LOG(LITERT_ERROR,
+                 "Signature does not refer to a valid subgraph index.");
+      return kLiteRtStatusErrorInvalidArgument;
+    }
+
     auto* litert_subgraph =
         parent.Subgraphs().at(tfl_signature->subgraph_index);
 
