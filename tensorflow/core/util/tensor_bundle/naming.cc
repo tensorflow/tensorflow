@@ -20,12 +20,13 @@ limitations under the License.
 
 namespace tensorflow {
 
-string MetaFilename(StringPiece prefix) {
+string MetaFilename(absl::string_view prefix) {
   return strings::Printf("%.*s.index", static_cast<int>(prefix.size()),
                          prefix.data());
 }
 
-string DataFilename(StringPiece prefix, int32_t shard_id, int32_t num_shards) {
+string DataFilename(absl::string_view prefix, int32_t shard_id,
+                    int32_t num_shards) {
   DCHECK_GT(num_shards, 0);
   DCHECK_LT(shard_id, num_shards);
   return strings::Printf("%.*s.data-%05d-of-%05d",
