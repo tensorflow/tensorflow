@@ -1307,7 +1307,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
         return {'output': out}
 
-    # If bias_size is not explictly given, it should default to width of weight.
+    # If bias_size is not explicitly given, it should default to width of weight.
     if bias_size is None and has_bias:
       bias_size = weight_shape[-1]
 

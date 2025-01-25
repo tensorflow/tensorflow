@@ -390,7 +390,7 @@ GatherScatterDims GetGatherConnectedDimsAcrossIndicesAndOutput(
     absl::Span<const int64_t> excluded_indices_dims = {});
 
 // Returns the index pass-through dimensions, which are defined by
-// GetGatherConnectedDimsAcrossIndicesAndOutput - ExplictBatchDims -
+// GetGatherConnectedDimsAcrossIndicesAndOutput - ExplicitBatchDims -
 // GetGatherScatterBatchParallelDims.
 GatherScatterDims GetGatherScatterIndexPassThroughDims(
     const HloInstruction& hlo, const CallGraph& call_graph);

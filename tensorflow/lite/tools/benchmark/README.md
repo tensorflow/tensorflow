@@ -253,7 +253,7 @@ example: put it in LD_LIBRARY_PATH.
     Note if this option is explicitly set to `false`, the TfLite runtime will
     use its original CPU kernels for model execution. In other words, after
     enabling the feature that the XNNPACK delegate is applied by default in
-    TfLite runtime, explictly setting this flag to `false` will cause the
+    TfLite runtime, explicitly setting this flag to `false` will cause the
     benchmark tool to disable the feature at runtime, and to use the original
     non-delegated CPU execution path for model benchmarking.
 *   `xnnpack_force_fp16`: `bool` (default=false) \
