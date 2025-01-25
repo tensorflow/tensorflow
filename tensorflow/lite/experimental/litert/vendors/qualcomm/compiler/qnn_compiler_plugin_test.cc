@@ -17,18 +17,22 @@
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/test_macros.h"
 #include "tensorflow/lite/experimental/litert/test/test_models.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/cc/litert_compiler_plugin.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_op.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_tensor.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/quantize_op_legalization.h"
 
 namespace litert {
 namespace {
@@ -148,6 +152,98 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
   ASSERT_EQ("qnn_partition_0", op_data_string);
 
   LiteRtDestroyCompiledResult(compiled);
+}
+
+TEST(TestLegalization, QuantizeOpLegalizedToCastOp) {
+  static constexpr absl::string_view kQnnOpName = "Cast";
+  static constexpr int kSUFixed8OffsetDiff = 128;
+  const auto input_quantization_params = MakePerTensorQuantization(
+      /*scale=*/1.0f, /*zero_point=*/0);
+  const auto output_quantization_params = MakePerTensorQuantization(
+      /*scale=*/1.0f, /*zero_point=*/kSUFixed8OffsetDiff);
+  LiteRtOpT quantize_op;
+  LiteRtTensorT input_tensor;
+  LiteRtTensorT output_tensor;
+  // Set quantization params, tensor type for input and output tensors.
+  input_tensor.SetQarams(input_quantization_params);
+  TensorType input_tensor_type =
+      MakeRankedTensorType(kLiteRtElementTypeInt8, {1, 1});
+  input_tensor.SetType(input_tensor_type);
+  output_tensor.SetQarams(output_quantization_params);
+  TensorType output_tensor_type =
+      MakeRankedTensorType(kLiteRtElementTypeUInt8, {1, 1});
+  output_tensor.SetType(output_tensor_type);
+  quantize_op.Inputs().push_back(&input_tensor);
+  quantize_op.Outputs().push_back(&output_tensor);
+  quantize_op.SetOpCode(kLiteRtOpCodeTflQuantize);
+
+  qnn::QuantizeOpLegalization legalization;
+  Qnn_OpConfig_t legalized_qnn_op = qnn::BuildDefaultOp();
+  litert::Op litert_quantize_op(&quantize_op);
+  LITERT_ASSERT_STATUS_OK(
+      legalization.ConfigureQnnOp(litert_quantize_op, legalized_qnn_op));
+  absl::string_view qnn_op_name(legalized_qnn_op.v1.typeName);
+  EXPECT_EQ(qnn_op_name, kQnnOpName);
+}
+
+TEST(TestLegalization, QuantizeOpLegalizedToConvertOp) {
+  static constexpr absl::string_view kQnnOpName = "Convert";
+  static constexpr int kSUFixed8OffsetDiff = 0;
+  const auto input_quantization_params = MakePerTensorQuantization(
+      /*scale=*/1.0f, /*zero_point=*/0);
+  const auto output_quantization_params = MakePerTensorQuantization(
+      /*scale=*/1.0f, /*zero_point=*/kSUFixed8OffsetDiff);
+  LiteRtOpT quantize_op;
+  LiteRtTensorT input_tensor;
+  LiteRtTensorT output_tensor;
+  // Set quantization params, tensor type for input and output tensors.
+  input_tensor.SetQarams(input_quantization_params);
+  TensorType input_tensor_type =
+      MakeRankedTensorType(kLiteRtElementTypeInt8, {1, 1});
+  input_tensor.SetType(input_tensor_type);
+  output_tensor.SetQarams(output_quantization_params);
+  TensorType output_tensor_type =
+      MakeRankedTensorType(kLiteRtElementTypeUInt8, {1, 1});
+  output_tensor.SetType(output_tensor_type);
+  quantize_op.Inputs().push_back(&input_tensor);
+  quantize_op.Outputs().push_back(&output_tensor);
+  quantize_op.SetOpCode(kLiteRtOpCodeTflQuantize);
+
+  qnn::QuantizeOpLegalization legalization;
+  Qnn_OpConfig_t legalized_qnn_op = qnn::BuildDefaultOp();
+  litert::Op litert_quantize_op(&quantize_op);
+  LITERT_ASSERT_STATUS_OK(
+      legalization.ConfigureQnnOp(litert_quantize_op, legalized_qnn_op));
+  absl::string_view qnn_op_name(legalized_qnn_op.v1.typeName);
+  EXPECT_EQ(qnn_op_name, kQnnOpName);
+}
+
+TEST(TestLegalization, QuantizeOpLegalizedToQuantizeOp) {
+  static constexpr absl::string_view kQnnOpName = "Quantize";
+  const auto output_quantization_params = MakePerTensorQuantization(
+      /*scale=*/1.0f, /*zero_point=*/0);
+  LiteRtOpT quantize_op;
+  LiteRtTensorT input_tensor;
+  LiteRtTensorT output_tensor;
+  // Set quantization params, tensor type for input and output tensors.
+  TensorType input_tensor_type =
+      MakeRankedTensorType(kLiteRtElementTypeFloat32, {1, 1});
+  input_tensor.SetType(input_tensor_type);
+  output_tensor.SetQarams(output_quantization_params);
+  TensorType output_tensor_type =
+      MakeRankedTensorType(kLiteRtElementTypeInt16, {1, 1});
+  output_tensor.SetType(output_tensor_type);
+  quantize_op.Inputs().push_back(&input_tensor);
+  quantize_op.Outputs().push_back(&output_tensor);
+  quantize_op.SetOpCode(kLiteRtOpCodeTflQuantize);
+
+  qnn::QuantizeOpLegalization legalization;
+  Qnn_OpConfig_t legalized_qnn_op = qnn::BuildDefaultOp();
+  litert::Op litert_quantize_op(&quantize_op);
+  LITERT_ASSERT_STATUS_OK(
+      legalization.ConfigureQnnOp(litert_quantize_op, legalized_qnn_op));
+  absl::string_view qnn_op_name(legalized_qnn_op.v1.typeName);
+  EXPECT_EQ(qnn_op_name, kQnnOpName);
 }
 
 class QnnPluginOpCompatibilityTest

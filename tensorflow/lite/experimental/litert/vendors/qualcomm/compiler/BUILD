@@ -84,6 +84,7 @@ litert_test(
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
+        "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/test:common",
@@ -91,6 +92,9 @@ litert_test(
         "//tensorflow/lite/experimental/litert/test:test_models",
         "//tensorflow/lite/experimental/litert/vendors/cc:litert_compiler_plugin",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_op",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:quantize_op_legalization",
     ],
 )
 
@@ -134,6 +138,7 @@ litert_lib(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:logical_and_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:mul_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:pack_op_legalization",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:quantize_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:reshape_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:rsqrt_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:select_op_legalization",

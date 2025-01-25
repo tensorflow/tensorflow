@@ -170,6 +170,9 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflPack:
       out << "TFL_PACK";
       break;
+    case kLiteRtOpCodeTflQuantize:
+      out << "TFL_QUANTIZE";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;

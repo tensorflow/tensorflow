@@ -114,6 +114,9 @@ static constexpr absl::string_view kQVauleEinsum16x8Model =
 static constexpr absl::string_view kQAttnVecEinsum16x8Model =
     "static_w8_a16_quantized_attn_vec_einsum.tflite";
 
+static constexpr absl::string_view kQSDPAModel =
+    "static_a8w8_quantized_sdpa.tflite";
+
 // All the quantized test models.
 static constexpr auto kAllQModels = absl::MakeConstSpan((absl::string_view[]){
     kQSimpleMul16x16Model, kQMulAdd16x16Model, kQSingleDynAdd16x8Model,
