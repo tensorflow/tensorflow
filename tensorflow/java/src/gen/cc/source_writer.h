@@ -64,7 +64,7 @@ class SourceWriter {
   // The data might potentially contain newline characters, therefore it will
   // be scanned to ensure that each line is indented and prefixed properly,
   // making it a bit slower than Append().
-  SourceWriter& Write(const StringPiece& str);
+  SourceWriter& Write(const absl::string_view& str);
 
   // Writes a source code snippet read from a file.
   //
@@ -77,7 +77,7 @@ class SourceWriter {
   //
   // It is expected that no newline character is present in the data provided,
   // otherwise Write() must be used.
-  SourceWriter& Append(const StringPiece& str);
+  SourceWriter& Append(const absl::string_view& str);
 
   // Appends a type to the current line.
   //
@@ -156,7 +156,7 @@ class SourceWriter {
                            const Javadoc* javadoc = nullptr);
 
  protected:
-  virtual void DoAppend(const StringPiece& str) = 0;
+  virtual void DoAppend(const absl::string_view& str) = 0;
 
  private:
   // A utility base class for visiting elements of a type.
@@ -226,7 +226,7 @@ class SourceFileWriter : public SourceWriter {
   virtual ~SourceFileWriter() = default;
 
  protected:
-  void DoAppend(const StringPiece& str) override {
+  void DoAppend(const absl::string_view& str) override {
     TF_CHECK_OK(file_->Append(str));
   }
 
@@ -246,7 +246,7 @@ class SourceBufferWriter : public SourceWriter {
   const string& str() { return *buffer_; }
 
  protected:
-  void DoAppend(const StringPiece& str) override {
+  void DoAppend(const absl::string_view& str) override {
     buffer_->append(str.begin(), str.end());
   }
 

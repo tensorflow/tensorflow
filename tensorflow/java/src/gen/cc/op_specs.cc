@@ -138,7 +138,7 @@ std::pair<Type, Type> TypeResolver::TypesOf(const OpDef_AttrDef& attr_def,
                                             bool* iterable_out) {
   std::pair<Type, Type> types = MakeTypePair(Type::Wildcard());
   *iterable_out = false;
-  StringPiece attr_type = attr_def.type();
+  absl::string_view attr_type = attr_def.type();
   if (absl::ConsumePrefix(&attr_type, "list(")) {
     attr_type.remove_suffix(1);  // remove closing brace
     *iterable_out = true;
