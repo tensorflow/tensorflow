@@ -227,6 +227,20 @@ Attribute convertDenseArray(mlir::StringAttr hloName, Attribute hloAttr) {
   if (!stablehloValue.has_value()) return {};                 \
   return stablehlo::Name##Attr::get(attr.getContext(), stablehloValue.value())
 
+stablehlo::ResultAccuracyMode convertResultAccuracyMode(
+    mhlo::ResultAccuracyMode mode) {
+  switch (mode) {
+    case mhlo::ResultAccuracyMode::DEFAULT:
+      return stablehlo::ResultAccuracyMode::DEFAULT;
+    case mhlo::ResultAccuracyMode::HIGHEST:
+      return stablehlo::ResultAccuracyMode::HIGHEST;
+    case mhlo::ResultAccuracyMode::TOLERANCE:
+      return stablehlo::ResultAccuracyMode::TOLERANCE;
+    default:
+      return {};
+  }
+}
+
 Attribute convertAttr(Attribute hloAttr) {
   // Handle MHLO attributes.
   // The logic that handles attributes from other dialects (e.g. builtin
@@ -300,6 +314,19 @@ Attribute convertAttr(Attribute hloAttr) {
   }
   if (auto attr = mlir::dyn_cast<mhlo::TransposeAttr>(hloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(Transpose);
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::ResultAccuracyModeAttr>(hloAttr)) {
+    RETURN_CONVERTED_ENUM_ATTR(ResultAccuracyMode);
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::ResultAccuracyAttr>(hloAttr)) {
+    stablehlo::ResultAccuracyModeAttr modeAttr;
+    modeAttr = stablehlo::ResultAccuracyModeAttr::get(
+        attr.getContext(),
+        convertResultAccuracyMode(attr.getMode().getValue()));
+
+    return stablehlo::ResultAccuracyAttr::get(attr.getContext(), attr.getAtol(),
+                                              attr.getRtol(), attr.getUlps(),
+                                              modeAttr);
   }
   if (hloAttr.getDialect().getNamespace() ==
       mhlo::MhloDialect::getDialectNamespace()) {

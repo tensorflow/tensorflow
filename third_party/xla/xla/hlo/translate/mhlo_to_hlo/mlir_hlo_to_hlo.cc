@@ -638,6 +638,39 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
   return output;
 }
 
+// Converts ResultAccuracyAttr to XLA ResultAccuracy proto.
+static xla::ResultAccuracy Convert_result_accuracy(
+    std::optional<mlir::mhlo::ResultAccuracyAttr>
+        optional_result_accuracy_attr) {
+  if (!optional_result_accuracy_attr.has_value()) return xla::ResultAccuracy();
+
+  auto result_accuracy = xla::ResultAccuracy();
+  if (optional_result_accuracy_attr.value().getMode().getValue() ==
+      mlir::mhlo::ResultAccuracyMode::TOLERANCE) {
+    result_accuracy.mutable_tolerance()->set_atol(
+        optional_result_accuracy_attr.value().getAtol().convertToFloat());
+    result_accuracy.mutable_tolerance()->set_rtol(
+        optional_result_accuracy_attr.value().getRtol().convertToFloat());
+    result_accuracy.mutable_tolerance()->set_ulps(
+        optional_result_accuracy_attr.value().getUlps());
+  } else {
+    xla::ResultAccuracy::Mode mode;
+    auto result_accuracy_mode =
+        ::mlir::mhlo::stringifyResultAccuracyMode(
+            optional_result_accuracy_attr.value().getMode().getValue())
+            .str();
+    if (xla::ResultAccuracy::Mode_Parse(result_accuracy_mode, &mode)) {
+      result_accuracy.set_mode(mode);
+    } else {
+      auto* context = optional_result_accuracy_attr.value().getContext();
+      mlir::emitError(mlir::UnknownLoc::get(context))
+          << "unexpected result accuracy mode " << result_accuracy_mode;
+      return xla::ResultAccuracy();
+    }
+  }
+  return result_accuracy;
+}
+
 // Returns an OpSharding proto from the "sharding" attribute of the op. If the
 // op doesn't have a sharding attribute or the sharding attribute is invalid,
 // returns std::nullopt.
