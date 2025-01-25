@@ -31,7 +31,7 @@ class KernelDefinition {
       : spec_(std::move(spec)), source_(std::move(source)) {}
 
   KernelDefinition(KernelDefinition&& other) = default;
-  KernelDefinition& operator=(KernelDefinition&& other) = default;
+  KernelDefinition& operator=(KernelDefinition&& other) noexcept = default;
 
   const KernelSpec& spec() const { return spec_; }
   const KernelSource& source() const {
