@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tensorflow_graph_matching/resolve_cluster.h"
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
