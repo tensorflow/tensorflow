@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/utils/utils.h"
 
+#include <cassert>
+#include <cstdint>
+#include <numeric>
 #include <optional>
 #include <string>
 
