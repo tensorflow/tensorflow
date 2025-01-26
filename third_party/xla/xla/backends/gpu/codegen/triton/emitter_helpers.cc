@@ -89,20 +89,22 @@ absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
       return b.getF16Type();
     case BF16:
       return b.getBF16Type();
+    case F8E5M2:
+      return b.getType<mlir::Float8E5M2Type>();
+    case F8E4M3FN:
+      return b.getType<mlir::Float8E4M3FNType>();
     case S64:
       return b.getI64Type();
     case S32:
       return b.getI32Type();
     case S16:
       return b.getI16Type();
-    case PRED:
-      return b.getI1Type();
     case S8:
       return b.getI8Type();
-    case F8E5M2:
-      return b.getType<mlir::Float8E5M2Type>();
-    case F8E4M3FN:
-      return b.getType<mlir::Float8E4M3FNType>();
+    case S4:
+      return b.getI4Type();
+    case PRED:
+      return b.getI1Type();
     default:
       return absl::UnimplementedError(
           absl::StrCat("This type is not supported yet: ",
