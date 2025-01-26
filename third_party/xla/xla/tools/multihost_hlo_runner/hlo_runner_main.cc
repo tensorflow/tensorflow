@@ -39,6 +39,7 @@ limitations under the License.
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/profiler_session.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -101,6 +102,7 @@ struct HloRunnerConfig {
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
   float gpu_client_mem_fraction = xla::GpuAllocatorConfig{}.memory_fraction;
+  bool enable_gpu_profiler = false;
 };
 
 }  // namespace
@@ -202,6 +204,22 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
   return out;
 }
 
+static absl::StatusOr<std::unique_ptr<tsl::ProfilerSession>>
+CreateProfilerSession(const HloRunnerConfig& opts) {
+  if (!opts.enable_gpu_profiler) {
+    return nullptr;
+  }
+
+  tensorflow::ProfileOptions profile_options;
+  profile_options.set_host_tracer_level(0);
+  profile_options.set_device_type(tensorflow::ProfileOptions::GPU);
+  profile_options.set_enable_hlo_proto(true);
+  profile_options.set_device_tracer_level(1);
+
+  // Create a ProfilerSession with options.
+  return tsl::ProfilerSession::Create(profile_options);
+}
+
 static absl::Status RunMultihostHloRunner(int argc, char** argv,
                                           HloRunnerConfig& opts) {
   if (std::string error;
@@ -249,6 +267,18 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   }
   CHECK(env.client != nullptr);
 
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<tsl::ProfilerSession> profiler_session,
+                      CreateProfilerSession(opts));
+  if (profiler_session) {
+    // Start profiling.
+    absl::Status status = profiler_session->Status();
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to start profiler session: " << status;
+
+      return absl::InternalError("Failed to start profiler session");
+    }
+  }
+
   for (int c = 1; c < argc; c++) {
     const char* filename = argv[c];
     std::cout << "\n** Running " << filename << " **\n";
@@ -263,6 +293,22 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
           raw_compile_options, argv[c], opts.input_format, opts.task_id));
     }
   }
+  if (profiler_session) {
+    // Stop profiling and collect profiling data.
+    tensorflow::profiler::XSpace xspace;
+    if (profiler_session) {
+      absl::Status collect_data_status = profiler_session->CollectData(&xspace);
+      if (!collect_data_status.ok()) {
+        LOG(ERROR) << "Profiler data collection failed: "
+                   << collect_data_status.message();
+        return absl::InternalError("Failed to collect profiler data.");
+      }
+      LOG(INFO) << "Profiler data collected.";
+      LOG(INFO) << "XSpace debug:" << xspace.DebugString();
+    }
+  }
+
+  LOG(INFO) << "Profiling complete.";
   return absl::OkStatus();
 }
 
@@ -337,7 +383,9 @@ int main(int argc, char** argv) {
       tsl::Flag("gpu_client_mem_fraction", &opts.gpu_client_mem_fraction,
                 "The maximum fraction of available memory to allocate in range "
                 "of (0.0, 1.0). Same as XLA_CLIENT_MEM_FRACTION in the Python "
-                "client. Only used with the BFC allocator.")};
+                "client. Only used with the BFC allocator."),
+      tsl::Flag("enable_gpu_profiler", &opts.enable_gpu_profiler,
+                "Whether to enable GPU profiler.")};
 
   xla::AppendDebugOptionsFlags(&flag_list);
 
