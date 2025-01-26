@@ -142,23 +142,6 @@ TEST(WorkQueueTest, WorkerParallelize) {
   EXPECT_EQ(data, expected);
 }
 
-TEST(WorkQueueTest, ComputeOptimalNumWorkers) {
-  {  // Parallel task with void return type.
-    auto noop = [](size_t task_index) {};
-    size_t num_workers =
-        Worker::ComputeOptimalNumWorkers(absl::Nanoseconds(10), 8, 1024, noop);
-    EXPECT_LE(num_workers, 8);
-  }
-
-  {  // Parallel task with absl:Status return type.
-    auto noop = [](size_t task_index) { return absl::OkStatus(); };
-    TF_ASSERT_OK_AND_ASSIGN(
-        size_t num_workers,
-        Worker::ComputeOptimalNumWorkers(absl::Nanoseconds(10), 8, 1024, noop));
-    EXPECT_LE(num_workers, 8);
-  }
-}
-
 //===----------------------------------------------------------------------===//
 // Performance benchmarks.
 //===----------------------------------------------------------------------===//

@@ -109,17 +109,6 @@ class Worker {
       const Eigen::ThreadPoolDevice* device, size_t num_workers,
       size_t num_tasks, ParallelTask&& parallel_task);
 
-  // Compute the number of workers that should be used for parallel operation,
-  // by executing the first task, measuring the compute time and estimating how
-  // many workers are needed, so that each worker will handle `worker_timeslice`
-  // amount of compute.
-  template <typename ParallelTask>
-  static std::conditional_t<
-      std::is_same_v<std::invoke_result_t<ParallelTask, size_t>, absl::Status>,
-      absl::StatusOr<size_t>, size_t>
-  ComputeOptimalNumWorkers(absl::Duration worker_timeslice, size_t num_threads,
-                           size_t num_tasks, ParallelTask& parallel_task);
-
  private:
   template <typename ParallelTask>
   struct ParallelizeContext;
@@ -343,44 +332,6 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
               std::forward<ParallelTask>(parallel_task));
 
   return execute_event;
-}
-
-template <typename ParallelTask>
-std::conditional_t<
-    std::is_same_v<std::invoke_result_t<ParallelTask, size_t>, absl::Status>,
-    absl::StatusOr<size_t>, size_t>
-Worker::ComputeOptimalNumWorkers(absl::Duration worker_timeslice,
-                                 size_t num_threads, size_t num_tasks,
-                                 ParallelTask& parallel_task) {
-  // Run first task in the caller thread, to estimate the number of parallel
-  // workers that should be used for parallel operation.
-  uint64_t start_ns = tsl::Env::Default()->NowNanos();
-
-  using R = std::invoke_result_t<ParallelTask, size_t>;
-  static_assert(std::is_same_v<R, absl::Status> || std::is_void_v<R>,
-                "Unsupported parallel task return type");
-
-  if constexpr (std::is_same_v<R, absl::Status>) {
-    TF_RETURN_IF_ERROR(parallel_task(0));
-  } else {
-    parallel_task(0);
-  }
-
-  uint64_t end_ns = tsl::Env::Default()->NowNanos();
-
-  // We assume that all tasks take roughly the same amount of compute and we
-  // can estimate the total workload duration by multiplying the number of
-  // remaining tasks by the duration of a single task.
-  size_t workload_ns = (num_tasks - 1) * (end_ns - start_ns);
-  size_t timeslice_ns = absl::ToInt64Nanoseconds(worker_timeslice);
-
-  // Get the number of workers, so that each worker will take roughly
-  // `worker_timeslice` amount of compute. Don't create more workers than
-  // the number of threads in the thread pool or the number of tasks.
-  size_t num_workers =
-      std::min(std::min(num_tasks - 1, num_threads),
-               tsl::MathUtil::CeilOfRatio(workload_ns, timeslice_ns));
-  return std::min(num_workers, size_t{std::numeric_limits<uint16_t>::max()});
 }
 
 }  // namespace xla::cpu
