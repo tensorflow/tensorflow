@@ -39,6 +39,10 @@ class XnnDotThunkTest : public testing::TestWithParam<bool> {
 };
 
 TEST_P(XnnDotThunkTest, SimpleDot) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+
   auto lhs = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto rhs = LiteralUtil::CreateR2<float>({{4.0, 3.0}, {2.0, 1.0}});
   auto out = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
@@ -60,10 +64,6 @@ TEST_P(XnnDotThunkTest, SimpleDot) {
       auto thunk, XnnDotThunk::Create(XnnDotThunk::Options{use_threadpool()},
                                       {"dot"}, dot_dimensions, lhs_slice, shape,
                                       rhs_slice, shape, out_slice, shape));
-
-  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
-  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
-                                 threads.NumThreads());
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;

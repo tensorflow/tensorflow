@@ -88,6 +88,10 @@ class XnnFusionThunkTest : public testing::TestWithParam<bool> {
 };
 
 TEST_P(XnnFusionThunkTest, ElementwiseAdd) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+
   auto lhs = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0, 4.0});
   auto rhs = LiteralUtil::CreateR1<float>({4.0, 3.0, 2.0, 1.0});
   auto out = LiteralUtil::CreateR1<float>({0.0, 0.0, 0.0, 0.0});
@@ -109,10 +113,6 @@ TEST_P(XnnFusionThunkTest, ElementwiseAdd) {
       auto thunk, XnnFusionThunk::Create(
                       XnnFusionThunk::Options{use_threadpool()}, {"fusion"},
                       {lhs_arg, rhs_arg}, {out_res}, &CreateBinaryAdd));
-
-  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
-  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
-                                 threads.NumThreads());
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;

@@ -86,10 +86,10 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -846,8 +846,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       }
 
       if (use_xnn) {
+        XnnDotThunk::Options options = {XnnShouldUseThreadPool(instruction)};
         return ThunkSequence::Of<XnnDotThunk>(
-            XnnDotThunk::Options{}, ThunkInfo(instruction), dnums, lhs_slice,
+            std::move(options), ThunkInfo(instruction), dnums, lhs_slice,
             lhs->shape(), rhs_slice, rhs->shape(), out_slice,
             instruction->shape());
       } else {
@@ -1184,13 +1185,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitXnnFusionThunk(
     results.push_back(XnnFusionThunk::Result{slice, indexed.shape});
   }
 
-  // Construct XNNPACK subgraph builder from the fusion computation.
-  TF_ASSIGN_OR_RETURN(
-      auto builder,
-      EmitXnnFusionBuilder(fusion->fused_instructions_computation()));
+  const HloComputation* computation = fusion->fused_instructions_computation();
 
+  // Construct XNNPACK subgraph builder from the fusion computation.
+  TF_ASSIGN_OR_RETURN(auto builder, EmitXnnFusionBuilder(computation));
+
+  XnnFusionThunk::Options options = {XnnShouldUseThreadPool(computation)};
   return ThunkSequence::Of<XnnFusionThunk>(
-      XnnFusionThunk::Options{}, ThunkInfo(instruction), std::move(arguments),
+      std::move(options), ThunkInfo(instruction), std::move(arguments),
       std::move(results),
       [b = std::move(builder)](auto, auto) mutable { return b(); });
 }
