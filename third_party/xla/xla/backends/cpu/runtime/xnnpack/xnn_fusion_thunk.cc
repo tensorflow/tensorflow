@@ -43,6 +43,26 @@ limitations under the License.
 
 namespace xla::cpu {
 
+namespace {
+enum class ParallelizationMode { kInline, kParallelLoopRunner, kPThreadPool };
+
+template <typename Sink>
+void AbslStringify(Sink& sink, ParallelizationMode m) {
+  switch (m) {
+    case ParallelizationMode::kInline:
+      sink.Append("kInline");
+      break;
+    case ParallelizationMode::kParallelLoopRunner:
+      sink.Append("kParallelLoopRunner");
+      break;
+    case ParallelizationMode::kPThreadPool:
+      sink.Append("kPThreadPool");
+      break;
+  }
+}
+
+}  // namespace
+
 // XNNPACK runtime instantiated for the fusion operation.
 struct XnnFusionThunk::XnnRuntime {
   XnnRuntime() = default;
@@ -109,9 +129,16 @@ XnnFusionThunk::XnnRuntime::Invoke(const Eigen::ThreadPoolDevice* device,
   XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(runtime, external_values.size(),
                                            external_values.data()));
 
-  runner->set_device(device);
+  // Execute XNNPACK runtime using a parallel loop runner.
+  if (runner) {
+    runner->set_device(device);
+    XNN_RETURN_IF_ERROR(xnn_invoke_runtime(runtime));
+    return runner->ResetDoneEvent();
+  }
+
+  // Execute XNNPACK runtime in the caller thread.
   XNN_RETURN_IF_ERROR(xnn_invoke_runtime(runtime));
-  return runner->ResetDoneEvent();
+  return OkExecuteEventSingleton();
 }
 
 void XnnFusionThunk::XnnRuntime::Destroy() {
@@ -125,24 +152,28 @@ void XnnFusionThunk::XnnRuntime::Destroy() {
 
 absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
     const Eigen::ThreadPoolDevice* device) {
-  bool use_custom_threadpool = device && IsCustomPthreadpoolEnabled();
+  ParallelizationMode parallelization_mode =
+      options_.use_threadpool ? (device && IsCustomPthreadpoolEnabled()
+                                     ? ParallelizationMode::kParallelLoopRunner
+                                     : ParallelizationMode::kPThreadPool)
+                              : ParallelizationMode::kInline;
+
   VLOG(3) << absl::StreamFormat(
       "Create XNN runtime for `%s` operation: num_created=%d, "
-      "use_custom_threadpool=%v",
-      info().op_name, xnn_runtime_pool_.num_created(), use_custom_threadpool);
+      "parallelization_mode=%v",
+      info().op_name, xnn_runtime_pool_.num_created(), parallelization_mode);
 
   XnnRuntime runtime;
 
   // Construct XNNPACK subgraph using user-provided builder function.
   TF_ASSIGN_OR_RETURN(runtime.subgraph, builder_(arguments_, results_));
 
-  // If XLA is compiled with custom pthreadpool, use it in XNNPACK runtime,
-  // otherwise we'll run all XNNPACK operations in the default pthreadpool.
-  runtime.runner = std::make_unique<ParallelLoopRunner>(
-      device, /*worker_timeslice=*/absl::Microseconds(100));
-  if (use_custom_threadpool) {
+  // Configure XNNPACK runtime thread pool if parallelization is enabled.
+  if (parallelization_mode == ParallelizationMode::kParallelLoopRunner) {
+    runtime.runner = std::make_unique<ParallelLoopRunner>(
+        device, /*worker_timeslice=*/absl::Microseconds(100));
     runtime.threadpool = CreateCustomPthreadpool(runtime.runner.get());
-  } else {
+  } else if (parallelization_mode == ParallelizationMode::kPThreadPool) {
     runtime.threadpool = DefaultPthreadpool();
   }
 
@@ -158,18 +189,20 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
 }
 
 absl::StatusOr<std::unique_ptr<XnnFusionThunk>> XnnFusionThunk::Create(
-    Info info, std::vector<Argument> arguments, std::vector<Result> results,
-    Builder builder) {
+    Options options, Info info, std::vector<Argument> arguments,
+    std::vector<Result> results, Builder builder) {
   TF_RETURN_IF_ERROR(InitializeXnnPack());
 
-  return absl::WrapUnique(
-      new XnnFusionThunk(std::move(info), std::move(arguments),
-                         std::move(results), std::move(builder)));
+  return absl::WrapUnique(new XnnFusionThunk(
+      std::move(options), std::move(info), std::move(arguments),
+      std::move(results), std::move(builder)));
 }
 
-XnnFusionThunk::XnnFusionThunk(Info info, std::vector<Argument> arguments,
+XnnFusionThunk::XnnFusionThunk(Options options, Info info,
+                               std::vector<Argument> arguments,
                                std::vector<Result> results, Builder builder)
     : Thunk(Kind::kXnnFusion, std::move(info)),
+      options_(std::move(options)),
       arguments_(std::move(arguments)),
       results_(std::move(results)),
       builder_(std::move(builder)),

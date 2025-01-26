@@ -35,7 +35,7 @@ namespace xla::cpu {
 class XnnDotThunk final : public XnnFusionThunk {
  public:
   static absl::StatusOr<std::unique_ptr<XnnDotThunk>> Create(
-      Info info, DotDimensionNumbers dot_dimensions,
+      Options options, Info info, DotDimensionNumbers dot_dimensions,
       BufferAllocation::Slice lhs_buffer, Shape lhs_shape,
       BufferAllocation::Slice rhs_buffer, Shape rhs_shape,
       BufferAllocation::Slice out_buffer, Shape out_shape);
@@ -54,7 +54,7 @@ class XnnDotThunk final : public XnnFusionThunk {
   std::string result_name(size_t index) const final;
 
  private:
-  XnnDotThunk(Info info, DotDimensionNumbers dot_dimensions,
+  XnnDotThunk(Options options, Info info, DotDimensionNumbers dot_dimensions,
               DotSlices dot_slices, DotShape dot_shape,
               DotCanonicalDims dot_canonical_dims);
 

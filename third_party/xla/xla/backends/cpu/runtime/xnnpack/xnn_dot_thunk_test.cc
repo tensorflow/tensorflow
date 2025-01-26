@@ -22,13 +22,23 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 namespace {
 
-TEST(XnnDotThunkTest, SimpleDot) {
+class XnnDotThunkTest : public testing::TestWithParam<bool> {
+ protected:
+  bool use_threadpool() const { return GetParam(); }
+};
+
+TEST_P(XnnDotThunkTest, SimpleDot) {
   auto lhs = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto rhs = LiteralUtil::CreateR2<float>({{4.0, 3.0}, {2.0, 1.0}});
   auto out = LiteralUtil::CreateR2<float>({{0.0, 0.0}, {0.0, 0.0}});
@@ -47,11 +57,17 @@ TEST(XnnDotThunkTest, SimpleDot) {
   dot_dimensions.add_rhs_contracting_dimensions(0);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, XnnDotThunk::Create({"dot"}, dot_dimensions, lhs_slice, shape,
+      auto thunk, XnnDotThunk::Create(XnnDotThunk::Options{use_threadpool()},
+                                      {"dot"}, dot_dimensions, lhs_slice, shape,
                                       rhs_slice, shape, out_slice, shape));
+
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
+  params.intra_op_threadpool = use_threadpool() ? &device : nullptr;
 
   auto execute_event = thunk->Execute(params);
   tsl::BlockUntilReady(execute_event);
@@ -59,6 +75,8 @@ TEST(XnnDotThunkTest, SimpleDot) {
 
   EXPECT_EQ(out, LiteralUtil::CreateR2<float>({{8.0, 5.0}, {20.0, 13.0}}));
 }
+
+INSTANTIATE_TEST_SUITE_P(XnnDot, XnnDotThunkTest, testing::Values(true, false));
 
 }  // namespace
 }  // namespace xla::cpu

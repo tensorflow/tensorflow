@@ -847,8 +847,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
 
       if (use_xnn) {
         return ThunkSequence::Of<XnnDotThunk>(
-            ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
-            rhs->shape(), out_slice, instruction->shape());
+            XnnDotThunk::Options{}, ThunkInfo(instruction), dnums, lhs_slice,
+            lhs->shape(), rhs_slice, rhs->shape(), out_slice,
+            instruction->shape());
       } else {
         return ThunkSequence::Of<DotThunk>(
             ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
@@ -1189,7 +1190,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitXnnFusionThunk(
       EmitXnnFusionBuilder(fusion->fused_instructions_computation()));
 
   return ThunkSequence::Of<XnnFusionThunk>(
-      ThunkInfo(instruction), std::move(arguments), std::move(results),
+      XnnFusionThunk::Options{}, ThunkInfo(instruction), std::move(arguments),
+      std::move(results),
       [b = std::move(builder)](auto, auto) mutable { return b(); });
 }
 

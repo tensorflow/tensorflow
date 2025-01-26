@@ -136,8 +136,14 @@ message XnnDotThunkProto {
 }
 
 message XnnFusionThunkProto {
+  message Options {
+    bool use_threadpool = 1;
+  }
+
+  Options options = 1;
+
   oneof impl {
-    XnnDotThunkProto xnn_dot_thunk = 1;
+    XnnDotThunkProto xnn_dot_thunk = 2;
   }
 }
 

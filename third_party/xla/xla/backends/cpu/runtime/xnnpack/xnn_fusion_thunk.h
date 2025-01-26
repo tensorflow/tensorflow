@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_FUSION_THUNK_H_
 #define XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_FUSION_THUNK_H_
 
+#include <stdbool.h>
+
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -43,6 +45,10 @@ class XnnFusionThunk : public Thunk {
  public:
   ~XnnFusionThunk() override;
 
+  struct Options {
+    bool use_threadpool = true;
+  };
+
   struct Argument {
     BufferAllocation::Slice slice;
     Shape shape;
@@ -58,15 +64,15 @@ class XnnFusionThunk : public Thunk {
       absl::Span<const Argument> arguments, absl::Span<const Result> results)>;
 
   static absl::StatusOr<std::unique_ptr<XnnFusionThunk>> Create(
-      Info info, std::vector<Argument> arguments, std::vector<Result> results,
-      Builder builder);
+      Options options, Info info, std::vector<Argument> arguments,
+      std::vector<Result> results, Builder builder);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
 
  protected:
-  XnnFusionThunk(Info info, std::vector<Argument> arguments,
+  XnnFusionThunk(Options options, Info info, std::vector<Argument> arguments,
                  std::vector<Result> results, Builder builder);
 
   // Extension points for subclasses to customize the logging behavior.
@@ -90,6 +96,8 @@ class XnnFusionThunk : public Thunk {
 
   absl::StatusOr<XnnRuntime> CreateXnnRuntime(
       const Eigen::ThreadPoolDevice* device);
+
+  Options options_;
 
   std::vector<Argument> arguments_;
   std::vector<Result> results_;
