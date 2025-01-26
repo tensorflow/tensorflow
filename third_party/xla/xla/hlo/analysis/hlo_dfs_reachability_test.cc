@@ -29,8 +29,8 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test_benchmark.h"
 
 namespace xla {
 

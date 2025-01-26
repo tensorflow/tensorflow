@@ -23,8 +23,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {

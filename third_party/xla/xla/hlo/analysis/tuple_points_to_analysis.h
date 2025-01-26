@@ -35,9 +35,9 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_tree.h"
 #include "xla/tsl/lib/gtl/compactptrset.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
