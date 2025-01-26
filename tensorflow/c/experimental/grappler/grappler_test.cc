@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -102,7 +102,7 @@ TEST(Grappler, DeviceTypeNotSet) {
     params->device_type = nullptr;
   };
 
-  tensorflow::Status status = InitGraphPlugin(plugin_init);
+  absl::Status status = InitGraphPlugin(plugin_init);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(
       status.message(),
@@ -118,7 +118,7 @@ TEST(Grappler, OptimizeFuncNotSet) {
     params->optimizer->optimize_func = nullptr;
   };
 
-  tensorflow::Status status = InitGraphPlugin(plugin_init);
+  absl::Status status = InitGraphPlugin(plugin_init);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(status.message(),
             "'optimize_func' field in TP_Optimizer must be set.");
@@ -223,7 +223,7 @@ TEST(TF_GraphProperties, InputProperties) {
       EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
       tensorflow::OpInfo::TensorProperties in_props;
-      Status s = tensorflow::BufferToMessage(in_props_buf[0], &in_props);
+      absl::Status s = tensorflow::BufferToMessage(in_props_buf[0], &in_props);
       TF_ASSERT_OK(s);
 
       EXPECT_EQ(DT_FLOAT, in_props.dtype());
@@ -271,7 +271,8 @@ TEST(TF_GraphProperties, OutputProperties) {
       EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
       tensorflow::OpInfo::TensorProperties out_props;
-      Status s = tensorflow::BufferToMessage(out_props_buf[0], &out_props);
+      absl::Status s =
+          tensorflow::BufferToMessage(out_props_buf[0], &out_props);
       TF_ASSERT_OK(s);
 
       EXPECT_EQ(DT_FLOAT, out_props.dtype());
@@ -294,7 +295,7 @@ TEST(TF_FunctionLibraryDefinition, LookUpOpDef) {
   TF_Buffer* op_buf = TF_NewBuffer();
   TF_Status* status = TF_NewStatus();
   GraphDef g_def;
-  Status s = MessageToBuffer(g_def, g_buf);
+  absl::Status s = MessageToBuffer(g_def, g_buf);
   TF_ASSERT_OK(s);
   TF_FunctionLibraryDefinition* func =
       TF_NewFunctionLibraryDefinition(g_buf, status);

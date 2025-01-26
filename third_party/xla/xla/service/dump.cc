@@ -38,29 +38,30 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"
-#include "mlir/Support/FileUtilities.h"
 #include "mlir/Transforms/LocationSnapshot.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_proto_util.h"
+#include "xla/tsl/lib/io/zlib_compression_options.h"
+#include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/util.h"
-#include "tsl/lib/io/zlib_compression_options.h"
-#include "tsl/lib/io/zlib_outputbuffer.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/regexp.h"
-#include "tsl/platform/status.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
+
+// BuildData isn't available in OSS.
+#if !TSL_IS_IN_OSS
+#include "absl/base/builddata.h"
+#endif  // TSL_IS_IN_OSS
 
 namespace xla {
 
@@ -113,11 +114,14 @@ struct CanonicalDebugOptions {
         dump_as_url(opts.xla_dump_hlo_as_url()),
         dump_fusion_visualization(opts.xla_dump_fusion_visualization()),
         dump_snapshots(opts.xla_dump_hlo_snapshots()),
+        dump_unoptimized_snapshots(
+            opts.xla_gpu_dump_hlo_unoptimized_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
         dump_module_metadata(opts.xla_dump_module_metadata()),
         dump_compress_protos(opts.xla_dump_compress_protos()),
         dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
+        dump_fdo_profiles(opts.xla_gpu_experimental_dump_fdo_profiles()),
         dump_as_long_text(opts.xla_dump_hlo_as_long_text()),
         dump_mlir_pretty_form(opts.xla_dump_enable_mlir_pretty_form()),
         dump_large_constants(opts.xla_dump_large_constants()),
@@ -132,7 +136,8 @@ struct CanonicalDebugOptions {
     bool output_format_other_than_url_specified =
         opts.xla_dump_hlo_as_text() || opts.xla_dump_hlo_as_proto() ||
         opts.xla_dump_hlo_as_dot() || opts.xla_dump_hlo_as_html() ||
-        opts.xla_dump_hlo_snapshots();
+        opts.xla_dump_hlo_snapshots() ||
+        opts.xla_gpu_dump_hlo_unoptimized_snapshots();
     bool output_format_specified =
         output_format_other_than_url_specified || opts.xla_dump_hlo_as_url();
 
@@ -213,6 +218,14 @@ struct CanonicalDebugOptions {
         should_dump_pipeline = [](string_view) { return false; };
       }
     }
+
+    // Dumping unoptimized HLO snapshots should not trigger dumping of all
+    // available information for the HLO module and pipelines.
+
+    if (dump_unoptimized_snapshots) {
+      should_dump_module = [](string_view) { return false; };
+      should_dump_pipeline = [](string_view) { return false; };
+    }
   }
 
   bool dumping_to_stdout() const { return dump_to == "-"; }
@@ -231,11 +244,13 @@ struct CanonicalDebugOptions {
   bool dump_as_url;
   bool dump_fusion_visualization;
   bool dump_snapshots;
+  bool dump_unoptimized_snapshots;
   bool dump_include_timestamp;
   int64_t dump_max_hlo_modules;
   bool dump_module_metadata;
   bool dump_compress_protos;
   bool dump_hlo_metadata;
+  bool dump_fdo_profiles;
   bool dump_as_long_text;
   bool dump_mlir_pretty_form;
   bool dump_large_constants;
@@ -460,13 +475,17 @@ static std::vector<std::string> DumpHloModuleImpl(
     file_paths.push_back(DumpToFileInDirOrStdoutImpl(
         StrCat(filename, ".txt"), module.ToString(print_options), opts));
     if (buffer_assn) {
-      DataProducer data_producer;
-      data_producer.Append([&] { return buffer_assn->ToString(); });
-      data_producer.Append([&] { return "\n\n"; });
-      data_producer.Append(
+      DataProducer buffer_assignment;
+      buffer_assignment.Append([&] { return buffer_assn->ToString(); });
+      buffer_assignment.Append([&] { return "\n\n"; });
+      buffer_assignment.Append(
           [&] { return buffer_assn->hlo_live_range().ToString(); });
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-          StrCat(filename, "-buffer-assignment.txt"), data_producer, opts));
+          StrCat(filename, "-buffer-assignment.txt"), buffer_assignment, opts));
+      DataProducer summary_report;
+      summary_report.Append([&] { return buffer_assn->MemoryUsageReport(); });
+      file_paths.push_back(DumpToFileInDirOrStdoutImpl(
+          StrCat(filename, "-memory-usage-report.txt"), summary_report, opts));
     }
   }
 
@@ -521,6 +540,12 @@ static std::vector<std::string> DumpHloModuleImpl(
           FilenameFor(module, computation->name(), "_fusion.html"),
           *rendered_graph, opts));
     }
+  }
+
+  if (opts.dump_fdo_profiles) {
+    file_paths.push_back(
+        DumpToFileInDirImpl(StrFormat("%s.fdo_profile", filename),
+                            module.config().fdo_profile(), opts));
   }
 
   // Special case for rendering graphs as URLs.  We'll dump them to a file
@@ -617,11 +642,20 @@ std::string FilenameFor(int unique_id, string_view module_name,
   if (!module_name.empty()) {
     absl::StrAppend(&filename, ".", module_name);
   }
+
+#if !TSL_IS_IN_OSS
+  absl::string_view cl_number = BuildData::Changelist();
+  if (!cl_number.empty()) {
+    absl::StrAppend(&filename, ".cl_", cl_number);
+  }
+#endif  // !TSL_IS_IN_OSS
+
   absl::StrAppend(&filename, ".", suffix);
   // Skip the module name if the resulting length is too long.
   if (!module_name.empty() && filename.size() > 255) {
     return FilenameFor(unique_id, "", prefix, suffix);
   }
+
   return filename;
 }
 
@@ -740,6 +774,22 @@ std::vector<std::string> DumpHloModuleIfEnabled(
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
     DumpHloModuleImpl(module, &buffer_assn, TimestampFor(module), name, opts);
+  }
+  return {};
+}
+
+std::vector<std::string> DumpHloModuleProtoIfEnabled(
+    const HloModuleProto& module_proto, absl::string_view name) {
+  auto config = xla::HloModule::CreateModuleConfigFromProto(
+      module_proto, xla::GetDebugOptionsFromFlags());
+
+  auto module =
+      xla::HloModule::CreateFromProto(module_proto, config.value()).value();
+
+  CanonicalDebugOptions opts(module->config().debug_options());
+  if (opts.should_dump_module(module->name())) {
+    return DumpHloModuleImpl(*module, /*buffer_assn=*/nullptr,
+                             TimestampFor(*module), name, opts);
   }
   return {};
 }
@@ -866,6 +916,35 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
     LOG(ERROR) << "Failed to serialize HLO snapshot proto " << filename;
   }
   DumpToFileInDirImpl(filename, pb, canonical_opts);
+}
+
+void DumpHloUnoptimizedSnapshotIfEnabled(
+    const HloUnoptimizedSnapshot& hlo_snapshot, const DebugOptions& opts) {
+  CanonicalDebugOptions canonical_opts(opts);
+  std::string name = hlo_snapshot.hlo_module().name();
+  if (!canonical_opts.dump_unoptimized_snapshots) {
+    return;
+  }
+
+  if (hlo_snapshot.partitions_size() == 0) {
+    LOG(ERROR) << "Refusing to write unoptimized HLO snapshot proto for module "
+               << name << ": no partitions input found.";
+    return;
+  }
+  int64_t execution_count;
+  {
+    static absl::Mutex mu(absl::kConstInit);
+    static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
+        *new absl::flat_hash_map<int64_t, int64_t>();
+    absl::MutexLock lock(&mu);
+    execution_count =
+        module_id_to_execution_count[hlo_snapshot.hlo_module().id()]++;
+  }
+  std::string filename = FilenameFor(
+      hlo_snapshot.hlo_module().id(), hlo_snapshot.hlo_module().name(), "",
+      absl::StrFormat("execution_%04d.hlo_unoptimized_snapshot",
+                      execution_count));
+  DumpProtobufToFile(hlo_snapshot, opts, filename, nullptr);
 }
 
 void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules) {

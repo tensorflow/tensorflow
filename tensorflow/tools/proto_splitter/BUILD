@@ -20,8 +20,6 @@ package(
     default_visibility = [
         "__subpackages__",
         "//tensorflow:internal",
-        "//tensorflow/cc/experimental/tf2:__subpackages__",
-        "//tensorflow/cc/saved_model/image_format:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -29,14 +27,12 @@ package(
 tf_proto_library(
     name = "versions_proto",
     srcs = ["versions.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "chunk_proto",
     srcs = ["chunk.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [":versions_proto"],
 )
@@ -55,7 +51,6 @@ cc_library(
 #
 # py_proto_library(
 #     name = "versions_proto_py_pb2",
-#     api_version = 2,
 #     deps = [
 #         ":versions_proto",
 #     ],
@@ -63,7 +58,6 @@ cc_library(
 #
 # py_proto_library(
 #     name = "chunk_proto_py_pb2",
-#     api_version = 2,
 #     deps = [
 #         ":chunk_proto",
 #     ],
@@ -190,7 +184,6 @@ cc_library(
     name = "merge",
     hdrs = ["merge.h"],
     visibility = [
-        "__subpackages__",
         "//tensorflow:internal",
         "//tensorflow/cc/experimental/tf2:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",

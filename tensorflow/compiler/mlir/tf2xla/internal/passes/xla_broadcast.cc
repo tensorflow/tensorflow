@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_rewrite_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -87,8 +88,6 @@ using mlir::tf_device::ReplicateOp;
 #define GEN_PASS_DEF_XLABROADCASTPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
-const char kICIWeightDistributionMlirBridgeMarker[] =
-    "ici_weight_distribution_mlir_bridge_marker";
 
 struct XlaBroadcast : public impl::XlaBroadcastPassBase<XlaBroadcast> {
   void runOnOperation() override;
@@ -279,6 +278,9 @@ LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
   LaunchOp launch = tensorflow::WrapOpInLaunch(
       &before_cluster_builder, val_bcast.getLoc(), assigned_id, device);
 
+  launch->setAttr(kICIWeightDistributionMlirBridgeMarker,
+                  before_cluster_builder.getBoolAttr(true));
+
   Value all_reduce =
       CreateAllReduce(replicate, inner_builder, launch.getResult(0));
 
@@ -300,11 +302,6 @@ LogicalResult MoveAllBroadcastsToCluster(ClusterOp cluster,
   if (!num_cores_per_replica_attr)
     return cluster.emitOpError(
         CreateMissingAttributeMsg(tensorflow::kNumCoresPerReplicaAttr));
-  int num_cores_per_replica = num_cores_per_replica_attr.getInt();
-
-  // TODO(b/329483850): Support spmd ICI weight distribution so when num of core
-  // per replica > 1, it does not need to be skipped.
-  if (num_cores_per_replica != 1) return success();
 
   llvm::SetVector<Value> bcasts;
   cluster->walk([&](Operation* op) {

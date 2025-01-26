@@ -20,10 +20,14 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_COMMON_INTERNAL_H_
 #define TENSORFLOW_LITE_C_COMMON_INTERNAL_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 

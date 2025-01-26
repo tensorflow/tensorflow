@@ -974,12 +974,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "bitcast_op",
-    deprecation = "use //third_party/tensorflow/c/kernels:bitcast_op instead",
-    deps = ["//tensorflow/c/kernels:bitcast_op"],
-)
-
-tf_kernel_library(
     name = "broadcast_to_op",
     prefix = "broadcast_to_op",
     deps = ARRAY_DEPS,
@@ -1496,7 +1490,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -3001,7 +2995,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream",
     ],
 )
 
@@ -3104,7 +3098,6 @@ tf_kernel_library(
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/stream_executor",
     ],
 )
 
@@ -3603,7 +3596,6 @@ tf_kernel_library(
         ":gpu_utils",
         ":conv_ops",
         ":matmul_util",
-        "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
         "@local_xla//xla/stream_executor/gpu:redzone_allocator",
         "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
         "//tensorflow/core/profiler/lib:scoped_annotation",
@@ -3632,7 +3624,6 @@ cc_library(
     ]) + if_cuda([
         "@local_xla//xla/stream_executor/cuda:cublas_lt_header",
     ]) + if_rocm([
-        "@local_xla//xla/stream_executor/platform:dso_loader",
         "@local_xla//xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
@@ -3915,9 +3906,6 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "matmul_op_test",
     srcs = ["matmul_op_test.cc"],
-    tags = [
-        "no_aarch64",  # b/282068262
-    ],
     deps = [
         ":matmul_op",
         ":ops_testutil",
@@ -4168,9 +4156,7 @@ tf_kernel_library(
         ":numeric_options_utils",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
         "@local_xla//xla/stream_executor/cuda:cudnn_plugin",
-        "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
         "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
-        "@local_xla//xla/stream_executor",
         "//tensorflow/core/platform:stream_executor",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
@@ -7892,6 +7878,7 @@ tf_kernel_library(
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -8048,7 +8035,6 @@ tf_cc_shared_library(
         "@com_googlesource_code_re2//:__subpackages__",
         "@compute_library//:__subpackages__",
         "@curl//:__subpackages__",
-        "@double_conversion//:__subpackages__",
         "@eigen_archive//:__subpackages__",
         "@farmhash_archive//:__subpackages__",
         "@farmhash_gpu_archive//:__subpackages__",
@@ -8071,7 +8057,6 @@ tf_cc_shared_library(
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@nsync//:__subpackages__",
         "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",

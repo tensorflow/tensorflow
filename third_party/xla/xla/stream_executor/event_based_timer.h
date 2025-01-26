@@ -27,6 +27,9 @@ namespace stream_executor {
 class EventBasedTimer {
  public:
   virtual ~EventBasedTimer() = default;
+  EventBasedTimer() = default;
+  EventBasedTimer(EventBasedTimer&&) = default;
+  EventBasedTimer& operator=(EventBasedTimer&&) = default;
 
   // Stops the timer on the first call and returns the elapsed duration.
   // Subsequent calls error out.

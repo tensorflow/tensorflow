@@ -19,11 +19,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/layout.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
@@ -613,20 +613,6 @@ TEST_F(LayoutUtilTest, MaxElementsInPerSplit) {
                                 .add_split_configs(SplitConfig(0, {30}))
                                 .add_split_configs(SplitConfig(1, {40, 130}));
   EXPECT_EQ(LayoutUtil::MaxElementsInPerSplit(shape), 150 * 90 * 70);
-}
-
-TEST_F(LayoutUtilTest, GetPhysicalShapeFromLogicalShapeNoLayout) {
-  Shape shape = ShapeUtil::MakeShape(F32, {150, 200, 100});
-  EXPECT_EQ(LayoutUtil::GetPhysicalShapeFromLogicalShape(shape), shape);
-}
-
-TEST_F(LayoutUtilTest, GetPhysicalShapeFromLogicalShapeLayout) {
-  Shape shape = ShapeUtil::MakeShape(F32, {150, 200, 100});
-  *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2});
-  Shape expected_shape = ShapeUtil::MakeShape(F32, {100, 200, 150});
-  *expected_shape.mutable_layout() = LayoutUtil::MakeLayout({2, 1, 0});
-  EXPECT_EQ(LayoutUtil::GetPhysicalShapeFromLogicalShape(shape),
-            expected_shape);
 }
 
 }  // namespace

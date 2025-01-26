@@ -79,7 +79,7 @@ tf_cc_test(
         "//tensorflow/dtensor/cc:tensor_layout",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

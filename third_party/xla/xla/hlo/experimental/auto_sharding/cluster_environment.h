@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <string>
@@ -27,7 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/array.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "xla/hlo/experimental/auto_sharding/profiling_result.h"
@@ -44,8 +45,8 @@ namespace spmd {
 // the real profiling result.
 class ClusterEnvironment {
  public:
-  ClusterEnvironment(const Array<int64_t>& original_device_mesh,
-                     const Array<int64_t>& device_mesh,
+  ClusterEnvironment(const DeviceMesh& original_device_mesh,
+                     const DeviceMesh& device_mesh,
                      absl::Span<const double> mesh_alpha,
                      absl::Span<const double> mesh_beta,
                      const ProfilingResult& prof_result,
@@ -144,9 +145,9 @@ class ClusterEnvironment {
 
   double AllToAllCost(double num_bytes, int mesh_dim) const;
 
-  double ReshardingCostMixedMeshShape(
-      const Shape& shape, absl::Span<const int64_t> src_tensor_dim_to_mesh_dim,
-      absl::Span<const int64_t> dst_tensor_dim_to_mesh_dim) const;
+  double ReshardingCostMixedMeshShape(const Shape& shape,
+                                      const HloSharding& src_sharding,
+                                      const HloSharding& dst_sharding) const;
 
   double CollectivePermuteCost(
       double num_bytes,
@@ -160,7 +161,7 @@ class ClusterEnvironment {
   // shape `shape` sharded according to `src_spec`.
   double OverestimateReplicationCost(const Shape& shape,
                                      const HloSharding& src_spec,
-                                     const Array<int64_t>& device_mesh) const;
+                                     const DeviceMesh& device_mesh) const;
 
   double ReshardingCost(const Shape& shape, const HloSharding& src_spec,
                         const HloSharding& dst_spec) const;
@@ -176,11 +177,11 @@ class ClusterEnvironment {
   }
 
   // The original, complete device mesh shape that describes the hardware.
-  const Array<int64_t> original_device_mesh_;
+  const DeviceMesh original_device_mesh_;
   // When solve_nd_sharding_iteratively is true, it is a partial mesh shape from
   // the original_device_mesh_. When solve_nd_sharding_iteratively is false, it
   // is the same as original_device_mesh_.
-  const Array<int64_t> device_mesh_;
+  const DeviceMesh device_mesh_;
   // Bandwidth of the device mesh
   const std::vector<double> mesh_alpha_;
   const std::vector<double> mesh_beta_;
@@ -190,11 +191,11 @@ class ClusterEnvironment {
 
   // Cache a flatten 1d version of the device mesh.
   // Used for mixed mesh shape strategies.
-  Array<int64_t> device_mesh_1d_;
+  DeviceMesh device_mesh_1d_;
 
   // Cache a flatten 1d version of the original device mesh.
   // Used for mixed mesh shape strategies.
-  Array<int64_t> original_device_mesh_1d_;
+  DeviceMesh original_device_mesh_1d_;
 
   // The option may override the cost of communication primitives
   const AutoShardingOption& auto_sharding_option_;

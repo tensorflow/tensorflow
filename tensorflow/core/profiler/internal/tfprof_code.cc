@@ -290,12 +290,12 @@ class PprofProfileImpl : public PprofProfile {
     samples_->Add(leaf, reversed_call_ids);
   }
 
-  Status WritePprofProfile(const string& filename) override {
+  absl::Status WritePprofProfile(const string& filename) override {
     pprof::Profile profile_pb;
     Build(&profile_pb);
 
     std::unique_ptr<WritableFile> file;
-    Status s = Env::Default()->NewWritableFile(filename, &file);
+    absl::Status s = Env::Default()->NewWritableFile(filename, &file);
     if (!s.ok()) return s;
 
     int32_t buf_size = 1024 * 1024;
@@ -517,7 +517,7 @@ const ShowMultiNode* TFCode::ShowInternal(const Options& opts,
     pprof_profile_ = std::make_unique<PprofProfileImpl>(&opts);
     Format(root, root->show_children, opts, &root->formatted_str,
            root->mutable_proto(), &call_ids);
-    Status s = pprof_profile_->WritePprofProfile(
+    absl::Status s = pprof_profile_->WritePprofProfile(
         opts.output_options.at(kPprofOpts[0]));
     if (!s.ok()) {
       absl::FPrintF(stderr, "%s\n", s.ToString());

@@ -2,7 +2,7 @@
 #   Test util libraries.
 
 load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "//xla/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -21,8 +21,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/tsl/framework:serving_device_selector",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )

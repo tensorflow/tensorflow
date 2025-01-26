@@ -27,7 +27,8 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-Status WriteDatasetDef(const std::string& path, const DatasetDef& dataset_def) {
+absl::Status WriteDatasetDef(const std::string& path,
+                             const DatasetDef& dataset_def) {
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(path, &file));
   io::RecordWriter writer(file.get());
@@ -35,7 +36,7 @@ Status WriteDatasetDef(const std::string& path, const DatasetDef& dataset_def) {
   return absl::OkStatus();
 }
 
-Status ReadDatasetDef(const std::string& path, DatasetDef& dataset_def) {
+absl::Status ReadDatasetDef(const std::string& path, DatasetDef& dataset_def) {
   if (path.empty()) {
     return errors::InvalidArgument("Path is empty");
   }

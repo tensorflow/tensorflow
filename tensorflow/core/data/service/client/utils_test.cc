@@ -17,7 +17,9 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include <gmock/gmock.h>
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
@@ -26,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {

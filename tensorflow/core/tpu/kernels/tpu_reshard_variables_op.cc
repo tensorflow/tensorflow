@@ -67,7 +67,7 @@ void TPUReshardVariablesOpKernel::ComputeAsync(OpKernelContext* context,
   done();
 }
 
-Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
+absl::Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
   VLOG(1) << "Cloud TPU: TPUReshardVariablesOpKernel::DoWork";
   TF_RET_CHECK(context->input_dtype(num_vars_) == DT_STRING);
   const Tensor* new_format_key;
@@ -124,7 +124,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
   return absl::OkStatus();
 }
 
-Status TPUReshardVariablesOpKernel::DoTpuExecute(
+absl::Status TPUReshardVariablesOpKernel::DoTpuExecute(
     OpKernelContext* context, const Tensor& format_key,
     tpu::CompilationCacheFetchTarget fetch_target) {
   const XlaDevice::Metadata* metadata;

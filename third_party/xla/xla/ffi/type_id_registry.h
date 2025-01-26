@@ -20,7 +20,7 @@ limitations under the License.
 #include <string_view>
 
 #include "absl/status/statusor.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::ffi {
 
@@ -41,7 +41,7 @@ namespace xla::ffi {
 //    of time and explicitly get a unique type id for them.
 //
 // 2. Internal type id. When FFI handler defined in the same binary we rely
-//    on a global static registry to automatically assing type ids.
+//    on a global static registry to automatically assign type ids.
 class TypeIdRegistry {
  public:
   TSL_LIB_GTL_DEFINE_INT_TYPE(TypeId, int64_t);

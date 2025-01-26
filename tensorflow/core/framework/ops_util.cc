@@ -37,9 +37,9 @@ Eigen::PaddingType BrainPadding2EigenPadding(Padding padding) {
   return Eigen::PADDING_SAME;  // Prevent compiler warning about missing return
 }
 
-Status GetBroadcastSize(const int index, const int in_size, const int ksize,
-                        const int stride, const int pad_size, int* bindex,
-                        int* bsize) {
+absl::Status GetBroadcastSize(const int index, const int in_size,
+                              const int ksize, const int stride,
+                              const int pad_size, int* bindex, int* bsize) {
   // Cannot have index beyond the input size.
   if (index * stride > in_size) {
     return errors::InvalidArgument(
@@ -59,7 +59,7 @@ Status GetBroadcastSize(const int index, const int in_size, const int ksize,
   if (*bindex + ksize > in_size) {
     *bsize = std::min((in_size - *bindex), ksize);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string SanitizeThreadSuffix(string suffix) {

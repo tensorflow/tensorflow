@@ -21,6 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/types/span.h"
+
 namespace xla {
 namespace cpu {
 

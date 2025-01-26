@@ -59,7 +59,7 @@ struct DecodeContext {
   DecodeContext() : png_ptr(nullptr), info_ptr(nullptr) {}
 };
 
-bool DecodeHeader(StringPiece png_string, int* width, int* height,
+bool DecodeHeader(absl::string_view png_string, int* width, int* height,
                   int* components, int* channel_bit_depth,
                   std::vector<std::pair<std::string, std::string> >* metadata);
 
@@ -74,7 +74,7 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
 //
 // desired_channels may be 0 to detected it from the input.
 
-bool CommonInitDecode(StringPiece png_string, int desired_channels,
+bool CommonInitDecode(absl::string_view png_string, int desired_channels,
                       int desired_channel_bits, DecodeContext* context);
 
 bool CommonFinishDecode(png_bytep data, int row_bytes, DecodeContext* context);

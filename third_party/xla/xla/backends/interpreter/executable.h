@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_INTERPRETER_EXECUTABLE_H_
 #define XLA_BACKENDS_INTERPRETER_EXECUTABLE_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"

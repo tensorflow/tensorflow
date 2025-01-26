@@ -168,9 +168,8 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
   return true;
 }
 
-::tensorflow::Status IdentifyDilatedConv::Run(Model* model,
-                                              std::size_t op_index,
-                                              bool* modified) {
+absl::Status IdentifyDilatedConv::Run(Model* model, std::size_t op_index,
+                                      bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* stb_op = it->get();

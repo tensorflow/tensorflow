@@ -31,9 +31,9 @@ std::string SerializeMlirModule(mlir::ModuleOp module_op);
 
 // Parses a MLIR module from `mlir_module_string` into `mlir_module` with
 // context `mlir_context`.
-Status DeserializeMlirModule(llvm::StringRef serialized_mlir_module,
-                             mlir::MLIRContext* mlir_context,
-                             mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
+absl::Status DeserializeMlirModule(
+    llvm::StringRef serialized_mlir_module, mlir::MLIRContext* mlir_context,
+    mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
 
 }  // namespace tensorflow
 

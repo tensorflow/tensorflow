@@ -114,7 +114,7 @@ DoneCallbackParamDeleter MakeDoneCallbackParamDeleter() {
 }
 
 absl::StatusOr<DoneCallbackParamPtr> DoneCallbackParamsToC(
-    const Status& status, const RendezvousInterface::Args& sender_args,
+    const absl::Status& status, const RendezvousInterface::Args& sender_args,
     const RendezvousInterface::Args& recver_args, const Tensor& tensor,
     const bool is_dead) {
   TF_RendezvousDoneCallback_Params* params =
@@ -125,7 +125,7 @@ absl::StatusOr<DoneCallbackParamPtr> DoneCallbackParamsToC(
   // TODO: Pass args through.
   // params->sender_args = new TF_RendezvousArgsStruct(ToC(sender_args));
   // params->recver_args = new TF_RendezvousArgsStruct(ToC(recver_args));
-  Status tensor_status;
+  absl::Status tensor_status;
   params->tensor = TF_TensorFromTensor(tensor, &tensor_status);
   if (!tensor_status.ok()) {
     MakeDoneCallbackParamDeleter()(params);
@@ -142,7 +142,7 @@ RendezvousInterface::DoneCallback FromC(
   }
   TF_RendezvousDoneCallback_Function callback = c_on_done.callback;
   void* context = c_on_done.context;
-  auto cpp_callback = [callback, context](const Status& status,
+  auto cpp_callback = [callback, context](const absl::Status& status,
                                           RendezvousInterface::Args sender_args,
                                           RendezvousInterface::Args recver_args,
                                           const Tensor& tensor,
@@ -161,7 +161,7 @@ void SendFunctionThunk(void* opa_rendezvous, TF_RendezvousSend_Params* params) {
   RendezvousInterface::ParsedKey key = FromC(*params->key);
   RendezvousInterface::Args args = FromC(*params->args);
   Tensor tensor;
-  Status tensor_status = TF_TensorToTensor(params->tensor, &tensor);
+  absl::Status tensor_status = TF_TensorToTensor(params->tensor, &tensor);
   bool is_dead = params->is_dead;
   if (tensor_status.ok()) {
     tsl::Set_TF_Status_from_Status(
@@ -181,7 +181,8 @@ void RecvFunctionThunk(void* opa_rendezvous,
   RendezvousInterface::Args args = FromC(*params->args);
   RendezvousInterface::DoneCallback on_done =
       [device_context = args.device_context, on_done = params->on_done](
-          const Status& status, const RendezvousInterface::Args& send_args,
+          const absl::Status& status,
+          const RendezvousInterface::Args& send_args,
           const RendezvousInterface::Args& recv_args, const Tensor& tensor,
           const bool is_dead) {
         FromC(on_done)(status, send_args, recv_args, tensor, is_dead);

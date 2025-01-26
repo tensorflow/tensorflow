@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILER_H_
 #define XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILER_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/status/statusor.h"
@@ -31,6 +32,21 @@ namespace xla {
 namespace gpu {
 
 class HloOpProfiler {
+ public:
+  class KernelTracer {
+   public:
+    virtual ~KernelTracer() = default;
+    virtual uint64_t getMedianKernelTimeNs() && = 0;
+  };
+
+  explicit HloOpProfiler(HloRunner& runner);
+
+  static std::unique_ptr<KernelTracer> GetKernelTracer();
+
+  absl::StatusOr<HloInstructionProfile> MeasureClockCyclesPerOp(
+      HloOpcode op, PrimitiveType data_type);
+
+ private:
   static std::unique_ptr<HloModule> MakeModuleForMeasurements(
       HloOpcode op, PrimitiveType data_type, int chain_length);
 
@@ -38,12 +54,6 @@ class HloOpProfiler {
                                                         PrimitiveType data_type,
                                                         int chain_length);
 
- public:
-  explicit HloOpProfiler(HloRunner& runner);
-  absl::StatusOr<HloInstructionProfile> MeasureClockCyclesPerOp(
-      HloOpcode op, PrimitiveType data_type);
-
- private:
   HloRunner& runner_;
   const se::DeviceDescription& dev_info_;
   absl::Duration min_duration_;

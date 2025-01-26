@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#include <cstdint>
 #include <random>
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -53,6 +55,30 @@ inline InputTensorData CreateInputTensorData(int num_elements,
   tmp.data = VoidUniquePtr(static_cast<void*>(raw),
                            [](void* ptr) { delete[] static_cast<T*>(ptr); });
   return tmp;
+}
+
+// Converts a TfLiteTensor to a float array. Returns an error if the tensor
+// dimension is a null pointer.
+template <typename TensorType, typename ValueType>
+TfLiteStatus ConvertToArray(const TfLiteTensor& tflite_tensor,
+                            absl::Span<ValueType>& values) {
+  if (tflite_tensor.dims == nullptr) {
+    return kTfLiteError;
+  }
+
+  int total_elements = 1;
+  for (int i = 0; i < tflite_tensor.dims->size; i++) {
+    total_elements *= tflite_tensor.dims->data[i];
+  }
+  if (total_elements != values.size()) {
+    return kTfLiteError;
+  }
+  const TensorType* tensor_data =
+      reinterpret_cast<const TensorType*>(tflite_tensor.data.data);
+  for (int i = 0; i < total_elements; i++) {
+    values[i] = static_cast<ValueType>(tensor_data[i]);
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace
@@ -165,6 +191,42 @@ void GetDataRangesForType(TfLiteType type, float* low_range,
   } else if (type == kTfLiteInt8) {
     *low_range = -127;
     *high_range = 127;
+  }
+}
+
+TfLiteStatus TfLiteTensorToFloat32Array(const TfLiteTensor& tensor,
+                                        absl::Span<float> values) {
+  switch (tensor.type) {
+    case kTfLiteFloat32:
+      return ConvertToArray<float, float>(tensor, values);
+    case kTfLiteFloat64:
+      return ConvertToArray<double, float>(tensor, values);
+    default:
+      return kTfLiteError;
+  }
+}
+
+TfLiteStatus TfLiteTensorToInt64Array(const TfLiteTensor& tensor,
+                                      absl::Span<int64_t> values) {
+  switch (tensor.type) {
+    case kTfLiteUInt8:
+      return ConvertToArray<uint8_t, int64_t>(tensor, values);
+    case kTfLiteInt8:
+      return ConvertToArray<int8_t, int64_t>(tensor, values);
+    case kTfLiteUInt16:
+      return ConvertToArray<uint16_t, int64_t>(tensor, values);
+    case kTfLiteInt16:
+      return ConvertToArray<int16_t, int64_t>(tensor, values);
+    case kTfLiteInt32:
+      return ConvertToArray<int32_t, int64_t>(tensor, values);
+    case kTfLiteUInt32:
+      return ConvertToArray<uint32_t, int64_t>(tensor, values);
+    case kTfLiteUInt64:
+      return ConvertToArray<uint64_t, int64_t>(tensor, values);
+    case kTfLiteInt64:
+      return ConvertToArray<int64_t, int64_t>(tensor, values);
+    default:
+      return kTfLiteError;
   }
 }
 

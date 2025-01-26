@@ -17,9 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -28,41 +29,63 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace hlo_query {
 
 bool IsCollectiveCommunicationOp(HloOpcode op) {
-  return op == HloOpcode::kAllReduce || op == HloOpcode::kAllGather ||
-         op == HloOpcode::kAllToAll || op == HloOpcode::kCollectivePermute ||
-         op == HloOpcode::kCollectiveBroadcast ||
-         op == HloOpcode::kReduceScatter || op == HloOpcode::kAllReduceStart ||
-         op == HloOpcode::kAllGatherStart ||
-         op == HloOpcode::kCollectivePermuteStart;
+  switch (op) {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kCollectivePermuteStart:
+      return true;
+    default:
+      return false;
+  }
 }
 
 bool IsAsyncCollectiveStartOp(const HloInstruction* instruction,
                               bool include_send_recv) {
   HloOpcode op = instruction->opcode();
-  if (op == HloOpcode::kAsyncStart) {
-    return IsCollectiveCommunicationOp(instruction->async_wrapped_opcode());
+  switch (op) {
+    case HloOpcode::kAsyncStart:
+      return IsCollectiveCommunicationOp(instruction->async_wrapped_opcode());
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kCollectivePermuteStart:
+      return true;
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
+      return include_send_recv;
+    default:
+      return false;
   }
-  return op == HloOpcode::kAllReduceStart || op == HloOpcode::kAllGatherStart ||
-         op == HloOpcode::kCollectivePermuteStart ||
-         (include_send_recv &&
-          (op == HloOpcode::kSend || op == HloOpcode::kRecv));
 }
 
 bool IsAsyncCollectiveDoneOp(const HloInstruction* instruction,
                              bool include_send_recv) {
   HloOpcode op = instruction->opcode();
-  if (op == HloOpcode::kAsyncDone) {
-    return IsCollectiveCommunicationOp(instruction->async_wrapped_opcode());
+  switch (op) {
+    case HloOpcode::kAsyncDone:
+      return IsCollectiveCommunicationOp(instruction->async_wrapped_opcode());
+    case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllGatherDone:
+    case HloOpcode::kCollectivePermuteDone:
+      return true;
+    case HloOpcode::kSendDone:
+    case HloOpcode::kRecvDone:
+      return include_send_recv;
+    default:
+      return false;
   }
-  return op == HloOpcode::kAllReduceDone || op == HloOpcode::kAllGatherDone ||
-         op == HloOpcode::kCollectivePermuteDone ||
-         (include_send_recv &&
-          (op == HloOpcode::kSendDone || op == HloOpcode::kRecvDone));
 }
 
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {
@@ -177,6 +200,13 @@ bool IsBroadcastOfParameter(const HloInstruction& instr) {
          instr.operand(0)->opcode() == HloOpcode::kParameter;
 }
 
+bool IsEffectiveParameter(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kParameter ||
+         ((instr.opcode() == HloOpcode::kBitcast ||
+           instr.opcode() == HloOpcode::kGetTupleElement) &&
+          IsEffectiveParameter(*instr.operand(0)));
+}
+
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               const HloOpcode opcode) {
   auto instructions = computation.instructions();
@@ -280,36 +310,21 @@ HloComputation* FindComputation(HloModule* module, absl::string_view name) {
   return *it;
 }
 
-std::pair<HloInstruction*, int> FindFirstInstruction(
-    const HloComputation* computation, absl::string_view name) {
-  int current_index = 0;
-  for (auto* instruction : computation->instructions()) {
-    if (instruction->name() == name) {
-      return {instruction, current_index};
-      break;
-    }
-    current_index++;
+HloInstruction* FindInstruction(const HloComputation* computation,
+                                absl::string_view name) {
+  for (HloInstruction* instruction : computation->instructions()) {
+    if (instruction->name() == name) return instruction;
   }
-  return {nullptr, -1};
+  return nullptr;
 }
 
-std::pair<HloInstruction*, int> FindFirstInstruction(
-    const HloComputation* computation, HloOpcode opcode) {
-  int current_index = 0;
+HloInstruction* FindInstruction(const HloComputation* computation,
+                                HloOpcode opcode) {
   for (auto* instruction : computation->instructions()) {
-    if (instruction->opcode() == opcode) {
-      return {instruction, current_index};
-      break;
-    }
-    current_index++;
+    if (instruction->opcode() == opcode) return instruction;
   }
-  return {nullptr, -1};
+  return nullptr;
 }
 
-bool IsBeforeInComputation(const HloComputation* computation,
-                           absl::string_view inst1, absl::string_view inst2) {
-  return FindFirstInstruction(computation, inst1).second <
-         FindFirstInstruction(computation, inst2).second;
-}
 }  // namespace hlo_query
 }  // namespace xla

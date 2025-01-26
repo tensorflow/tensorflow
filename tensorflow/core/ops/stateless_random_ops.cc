@@ -22,7 +22,7 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
-static Status StatelessShape(InferenceContext* c) {
+static absl::Status StatelessShape(InferenceContext* c) {
   // Check seed shape
   ShapeHandle seed;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &seed));
@@ -63,7 +63,7 @@ REGISTER_OP("StatelessRandomUniformInt")
     .Attr("Tseed: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
-      Status s = c->WithRank(c->input(2), 0, &unused);
+      absl::Status s = c->WithRank(c->input(2), 0, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
             "minval must be a scalar; got a tensor of shape ",

@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 
@@ -132,7 +132,7 @@ TEST(AsyncValueTest, KeepPayloadOnError) {
 
     EXPECT_TRUE(!value.IsError());
 
-    value.SetError("error");
+    value.SetError(absl::InternalError("error"));
 
     EXPECT_EQ(1, *value->value);
     EXPECT_TRUE(value.IsError());

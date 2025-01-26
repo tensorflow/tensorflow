@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_BLOCK_BUILDER_H_
 #define TENSORFLOW_CORE_LIB_IO_BLOCK_BUILDER_H_
 
+#include "xla/tsl/lib/io/block_builder.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/io/block_builder.h"
 
 namespace tensorflow {
 namespace table {

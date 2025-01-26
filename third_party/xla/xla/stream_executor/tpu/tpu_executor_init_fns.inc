@@ -60,10 +60,6 @@ absl::Status SetExecutorStructFn(
   TFTPU_SET_FN(executor_fn, TpuStatus_Code);
   TFTPU_SET_FN(executor_fn, TpuStatus_Ok);
 
-  TFTPU_SET_FN(executor_fn, TpuStreamExecutorConfig_Default);
-  TFTPU_SET_FN(executor_fn, TpuStreamExecutorConfig_SetOrdinal);
-  TFTPU_SET_FN(executor_fn, TpuStreamExecutorConfig_Free);
-
   TFTPU_SET_FN(executor_fn, TpuDeviceDescription_New);
   TFTPU_SET_FN(executor_fn, TpuDeviceDescription_Free);
 

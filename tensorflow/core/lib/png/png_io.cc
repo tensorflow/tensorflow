@@ -18,6 +18,9 @@ limitations under the License.
 #include <string.h>
 #include <sys/types.h>
 #include <zlib.h>
+
+#include <csetjmp>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -137,7 +140,7 @@ void CommonFreeDecode(DecodeContext* context) {
   }
 }
 
-bool DecodeHeader(StringPiece png_string, int* width, int* height,
+bool DecodeHeader(absl::string_view png_string, int* width, int* height,
                   int* components, int* channel_bit_depth,
                   std::vector<std::pair<std::string, std::string> >* metadata) {
   DecodeContext context;
@@ -198,7 +201,7 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
   return true;
 }
 
-bool CommonInitDecode(StringPiece png_string, int desired_channels,
+bool CommonInitDecode(absl::string_view png_string, int desired_channels,
                       int desired_channel_bits, DecodeContext* context) {
   CHECK(desired_channel_bits == 8 || desired_channel_bits == 16)
       << "desired_channel_bits = " << desired_channel_bits;

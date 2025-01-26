@@ -133,9 +133,9 @@ absl::Status QuantizeModel(
 
   // Export the results.
   tflite::FlatbufferExportOptions options;
-  options.toco_flags.set_force_select_tf_ops(false);
-  options.toco_flags.set_enable_select_tf_ops(true);
-  options.toco_flags.set_allow_custom_ops(true);
+  options.converter_flags.set_force_select_tf_ops(false);
+  options.converter_flags.set_enable_select_tf_ops(true);
+  options.converter_flags.set_allow_custom_ops(true);
   if (!tflite::MlirToFlatBufferTranslateFunction(module.get(), options,
                                                  &output_buffer)) {
     return absl::InternalError("Failed to export MLIR to flatbuffer.");

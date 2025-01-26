@@ -24,7 +24,7 @@ namespace xla::ffi {
 
 // Converts MLIR dictionary attribute attached to a custom call operation to a
 // custom call handler attributes that are forwarded to the FFI handler.
-absl::StatusOr<CallFrameBuilder::FlatAttributesMap> BuildAttributesMap(
+absl::StatusOr<CallFrameBuilder::AttributesMap> BuildAttributesMap(
     mlir::DictionaryAttr dict);
 
 }  // namespace xla::ffi

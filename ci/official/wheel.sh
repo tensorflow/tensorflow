@@ -22,20 +22,39 @@ fi
 
 # Update the version numbers for Nightly only
 if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
-  tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
+  python_bin=python3
+  # TODO(belitskiy): Add a `python3` alias/symlink to Windows Docker image.
+  if [[ $(uname -s) = MSYS_NT* ]]; then
+    python_bin="python"
+  fi
+  tfrun "$python_bin" tensorflow/tools/ci_build/update_version.py --nightly
   # replace tensorflow to tf_nightly in the wheel name
   export TFCI_BUILD_PIP_PACKAGE_ARGS="$(echo $TFCI_BUILD_PIP_PACKAGE_ARGS | sed 's/tensorflow/tf_nightly/')"
 fi
 
-tfrun bazel build $TFCI_BAZEL_COMMON_ARGS //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_ARGS
-tfrun find ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $TFCI_OUTPUT_DIR \;
-tfrun ./ci/official/utilities/rename_and_verify_wheels.sh
+# TODO(b/361369076) Remove the following block after TF NumPy 1 is dropped
+# Move hermetic requirement lock files for NumPy 1 to the root
+if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
+  cp ./ci/official/requirements_updater/numpy1_requirements/*.txt .
+fi
+
+tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_ARGS
+
+tfrun "$TFCI_FIND_BIN" ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $TFCI_OUTPUT_DIR \;
+tfrun mkdir ./dist
+tfrun cp $TFCI_OUTPUT_DIR/*.whl ./dist
+tfrun bash ./ci/official/utilities/rename_and_verify_wheels.sh
 
 if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
   # Note: -n disables overwriting previously created files.
-  gsutil cp -n "$TFCI_OUTPUT_DIR"/*.whl "$TFCI_ARTIFACT_STAGING_GCS_URI"
+  # TODO(b/389744576): Remove when gsutil is made to work properly on MSYS2.
+  if [[ $(uname -s) != MSYS_NT* ]]; then
+    gsutil cp -n "$TFCI_OUTPUT_DIR"/*.whl "$TFCI_ARTIFACT_STAGING_GCS_URI"
+  else
+    powershell -command "gsutil cp -n '$TFCI_OUTPUT_DIR/*.whl' '$TFCI_ARTIFACT_STAGING_GCS_URI'"
+  fi
 fi
 
 if [[ "$TFCI_WHL_BAZEL_TEST_ENABLE" == 1 ]]; then
-  tfrun bazel test $TFCI_BAZEL_COMMON_ARGS --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_wheel_test"
+  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS $TFCI_BUILD_PIP_PACKAGE_ARGS --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_wheel_test"
 fi

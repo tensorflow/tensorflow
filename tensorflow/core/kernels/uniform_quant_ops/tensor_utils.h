@@ -32,16 +32,16 @@ bool AllElementsPositive(const Tensor& tensor) {
 
 // Given data tensor's shape and quantization params, returns if the shapes are
 // valid.
-Status QuantizationAxisAndShapeValid(const TensorShape& data_shape,
-                                     const TensorShape& scales_shape,
-                                     const TensorShape& zero_points_shape,
-                                     int quantization_axis);
+absl::Status QuantizationAxisAndShapeValid(const TensorShape& data_shape,
+                                           const TensorShape& scales_shape,
+                                           const TensorShape& zero_points_shape,
+                                           int quantization_axis);
 
 // Given in_shape and perm to transpose, returns out shape after the transpose.
 // perm must be a permutation of [0, 1, ..., in_shape.rank - 1]. The caller is
 // responsible for guaranteeing it.
 TensorShape TransposedShape(const TensorShape& in_shape,
-                            const gtl::ArraySlice<int32_t> perm);
+                            const absl::Span<const int32_t> perm);
 
 // Given in Tensor and perm to transpose, transpose in Tensor and write to out
 // Tensor.
@@ -50,11 +50,11 @@ TensorShape TransposedShape(const TensorShape& in_shape,
 // Reference:
 // https://github.com/tensorflow/tensorflow/blob/c09dc18b15a56f3e72a08c9f3a53e7ef347d159d/tensorflow/core/kernels/transpose_functor_cpu.cc#L35
 template <typename T>
-void Transpose(const Tensor& in, const gtl::ArraySlice<int32_t> perm,
+void Transpose(const Tensor& in, const absl::Span<const int32_t> perm,
                Tensor& out) {
-  gtl::InlinedVector<int64_t, 8> in_strides =
+  absl::InlinedVector<int64_t, 8UL> in_strides =
       ComputeStride<int64_t>(in.shape());
-  gtl::InlinedVector<int64_t, 8> out_strides =
+  absl::InlinedVector<int64_t, 8UL> out_strides =
       ComputeStride<int64_t>(out.shape());
   const T* in_data = in.flat<T>().data();
   T* out_data = out.flat<T>().data();

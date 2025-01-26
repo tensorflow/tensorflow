@@ -67,6 +67,8 @@ enum class CudnnfMHAKind {
   kBackwardSoftmax,
   kBackwardScaleBiasSoftmax,
   kBackwardScaleBiasSoftmaxDropout,
+  kSoftmaxF8,
+  kBackwardSoftmaxF8,
 };
 
 enum class CudnnfMHAMaskKind {
@@ -180,17 +182,22 @@ bool IsCustomCallToDnnNorm(const HloInstruction& hlo);
 // 3. BMM1 - scale - Bias - Softmax - BMM2
 // 4. BMM1 - scale - Bias - Softmax - Dropout - BMM2
 // Forward calls
+extern const absl::string_view kCudnnfMHASoftmaxF8CallTarget;
 extern const absl::string_view kCudnnfMHASoftmaxCallTarget;
 extern const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget;
 extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget;
 extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxCallTarget;
 // Backward calls
+extern const absl::string_view kCudnnfMHASoftmaxBackwardF8CallTarget;
 extern const absl::string_view kCudnnfMHASoftmaxBackwardCallTarget;
 extern const absl::string_view kCudnnfMHASoftmaxDropoutBackwardCallTarget;
 extern const absl::string_view
     kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget;
 extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget;
 
+bool IsFwdCustomCallTofMHAF8(const HloInstruction& hlo);
+bool IsBwdCustomCallTofMHAF8(const HloInstruction& hlo);
+bool IsCustomCallTofMHAF8(const HloInstruction& hlo);
 bool IsFwdCustomCallTofMHA(const HloInstruction& hlo);
 bool IsBwdCustomCallTofMHA(const HloInstruction& hlo);
 bool IsCustomCallTofMHA(const HloInstruction& hlo);

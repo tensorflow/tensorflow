@@ -140,8 +140,7 @@ LogicalResult SetMetadataProtoArgs(
     int index = operand_type_and_idx.index();
     tensorflow::tpu::TPUCompileMetadataProto::Arg* arg = metadata->add_args();
     tensorflow::DataType dtype;
-    tensorflow::Status status =
-        tensorflow::ConvertToDataType(operand_type, &dtype);
+    absl::Status status = tensorflow::ConvertToDataType(operand_type, &dtype);
     if (!status.ok())
       return op.emitOpError(
           llvm::formatv("failed to determine operand type at index {0}: {1}",

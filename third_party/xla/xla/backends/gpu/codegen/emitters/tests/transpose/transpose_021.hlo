@@ -1,0 +1,6 @@
+// RUN: test_correctness %s --bijection_inputs=transpose --bijection_outputs=transpose
+
+fusion {
+  %input = f32[100,32,64] parameter(0)
+  ROOT transpose = f32[100,64,32] transpose(%input), dimensions={0,2,1}
+}

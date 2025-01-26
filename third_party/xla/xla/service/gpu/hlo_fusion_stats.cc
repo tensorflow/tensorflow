@@ -101,11 +101,6 @@ std::string HloOpcodeHistogram::ToString() {
   return result;
 }
 
-absl::Status HloFusionStatsVisitor::RunOnModule(HloModule* module) {
-  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(this));
-  return absl::OkStatus();
-}
-
 std::string HloFusionStatsVisitor::ToString() {
   return absl::StrCat("HLO Fusion Stats:\n",
                       "Number of fusion ops: ", num_fusions_, "\n",

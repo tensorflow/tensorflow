@@ -17,9 +17,9 @@ limitations under the License.
 #include <atomic>
 
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
 
 namespace tsl {
 namespace profiler {

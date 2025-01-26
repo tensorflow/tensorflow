@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_COMMON_H_
 #define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_COMMON_H_
 
+#include <cstdint>
 #include <optional>
 
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -297,10 +298,6 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
                                      Value result_value, Value indices_value,
                                      Value on_value, Value off_value,
                                      int32_t depth, int32_t axis);
-
-// Lowers 32-bit floating sin operator to a sequence of TOSA ops.
-std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
-                                  Value input, ShapedType output_type);
 
 // Lowers Sign operator to a sequence of TOSA ops.
 std::optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,

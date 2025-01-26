@@ -83,6 +83,9 @@ class GenericTransferManager : public TransferManager {
 
   Shape HostShapeToDeviceShape(const Shape& host_shape) const override;
 
+  absl::StatusOr<Shape> ChooseCompactLayoutForShape(
+      const Shape& host_shape) const override;
+
  private:
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.

@@ -782,11 +782,12 @@ cuda_py_strict_test(
 )
 
 tf_py_strict_test(
-    name = "iterator_ops_test",
+    name = "iterator_model_ops_test",
     size = "small",
-    srcs = ["iterator_ops_test.py"],
+    srcs = ["iterator_model_ops_test.py"],
     deps = [
         "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/experimental/ops:iterator_model_ops",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",

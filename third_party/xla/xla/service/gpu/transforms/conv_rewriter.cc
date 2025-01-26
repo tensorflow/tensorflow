@@ -21,7 +21,6 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <variant>
@@ -398,7 +397,7 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   // (b) cudnn has special fusions for forward conv plus bias and activation,
   // and we want to pattern-match to that after running this pass.
   bool is_reversed_filter =
-      reverse_filter->opcode() == HloOpcode::kReverse &&
+      HloPredicateIsOp<HloOpcode::kReverse>(reverse_filter) &&
       absl::c_is_permutation(dnums.kernel_spatial_dimensions(),
                              reverse_filter->dimensions());
   // For conv1d which reshape to conv2d, filter reverse pattern is
@@ -566,7 +565,7 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   // If we matched against a constant, we need to add a reverse op that can be
   // subsumed by the cuDNN call. algebraic-simplifier will later remove any
   // unnecessary reverses.
-  if (reverse_filter->opcode() != HloOpcode::kReverse &&
+  if (HloPredicateIsNotOp<HloOpcode::kReverse>(reverse_filter) &&
       reverse_filter->IsConstant()) {
     // Create a double-reverse, which is a nop.
     HloComputation* c = conv->parent();
@@ -582,7 +581,7 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   // Calculate the 'rhs' that goes into the backward input convolution.
   HloInstruction* rhs = reverse_filter;
   // One reverse is subsumed by the cuDNN call.
-  if (rhs->opcode() == HloOpcode::kReverse) {
+  if (HloPredicateIsOp<HloOpcode::kReverse>(rhs)) {
     rhs = rhs->mutable_operand(0);
   } else if (is_reversed_conv1d_filter) {
     auto src = rhs->mutable_operand(0)->mutable_operand(0);
@@ -831,7 +830,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
                                       const se::GpuComputeCapability& cc) {
   std::vector<HloInstruction*> convs;
   for (auto* hlo : computation->instructions()) {
-    if (hlo->opcode() == HloOpcode::kConvolution) {
+    if (HloPredicateIsOp<HloOpcode::kConvolution>(hlo)) {
       convs.push_back(hlo);
     }
   }

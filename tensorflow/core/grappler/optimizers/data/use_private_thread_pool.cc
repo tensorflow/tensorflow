@@ -34,10 +34,9 @@ constexpr char kModelDataset[] = "ModelDataset";
 
 }  // namespace
 
-Status UsePrivateThreadPool::OptimizeAndCollectStats(Cluster* cluster,
-                                                     const GrapplerItem& item,
-                                                     GraphDef* output,
-                                                     OptimizationStats* stats) {
+absl::Status UsePrivateThreadPool::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
 

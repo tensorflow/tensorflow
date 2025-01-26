@@ -385,8 +385,8 @@ py_strict_library(
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:state_ops",
+        "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:base",
@@ -775,14 +775,12 @@ py_strict_library(
 tf_proto_library(
     name = "checkpoint_state",
     srcs = ["checkpoint_state.proto"],
-    cc_api_version = 2,
 )
 
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "checkpoint_state_py_pb2",
 #     testonly = 0,
-#     api_version = 2,
 #     deps = [":checkpoint_state"],
 # )
 # copybara:uncomment_end

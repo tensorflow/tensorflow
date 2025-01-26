@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_PROTO_ENCODE_HELPER_H_
 #define TENSORFLOW_CORE_LIB_IO_PROTO_ENCODE_HELPER_H_
 
+#include "xla/tsl/lib/io/proto_encode_helper.h"
 #include "tensorflow/core/platform/coding.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tsl/lib/io/proto_encode_helper.h"
 
 namespace tensorflow {
 namespace io {

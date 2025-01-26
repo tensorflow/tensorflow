@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/expanddims_spmd_expander.h"
 
+#include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"

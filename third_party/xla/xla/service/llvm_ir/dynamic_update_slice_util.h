@@ -15,7 +15,8 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
 #define XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
-#include <utility>
+#include <functional>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -23,8 +24,6 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/elemental_ir_emitter.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 
@@ -70,7 +69,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
 // modify the input/output buffer without touching any of the other elements.
 absl::Status EmitDynamicUpdateSliceInPlace(
     absl::Span<const IrArray> operand_arrays, const IrArray& output_array,
-    absl::string_view name, llvm::IRBuilder<>* b);
+    absl::string_view name, llvm::IRBuilderBase* b);
 
 // Given a loop-fusion node whose root is a dynamic-update-slice op whose
 // array-to-be-updated and output share the same buffer slice, emits
@@ -78,17 +77,7 @@ absl::Status EmitDynamicUpdateSliceInPlace(
 // place.
 absl::Status EmitFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion, const IrArray& fusion_output_array,
-    FusedIrEmitter* fused_emitter, llvm::IRBuilder<>* b);
-
-// Same as EmitFusedDynamicUpdateSliceInPlace, except emits a parallel loop with
-// the given launch dimensions for arbitrarily many independent dynamic slice
-// updates.
-absl::Status EmitParallelFusedDynamicUpdateSliceInPlace(
-    const HloComputation* fusion,
-    const std::vector<std::pair<const HloInstruction*, const IrArray>>&
-        dus_and_output_array,
-    FusedIrEmitter* fused_emitter,
-    const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b);
+    FusedIrEmitter* fused_emitter, llvm::IRBuilderBase* b);
 
 }  // namespace llvm_ir
 }  // namespace xla

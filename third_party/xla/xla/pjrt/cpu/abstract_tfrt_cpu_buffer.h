@@ -243,6 +243,18 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   PjRtFuture<> ToLiteralHelper(MutableLiteralBase* literal,
                                AsyncWorkRunner* async_work_runner);
 
+  PjRtFuture<> DoAsyncWorkOnBuffer(
+      absl::string_view method_name,
+      absl::AnyInvocable<
+          absl::Status(const Shape& device_shape,
+                       TrackedTfrtCpuDeviceBuffer* device_buffer) &&>
+          work_on_buffer,
+      bool should_do_work_sync, AsyncWorkRunner* async_work_runner);
+
+  PjRtFuture<> CopyRawToHostHelper(void* dst, int64_t offset,
+                                   int64_t transfer_size,
+                                   AsyncWorkRunner* async_work_runner);
+
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceAcrossClients(
       PjRtDevice* dst_device);
 
@@ -357,6 +369,11 @@ class AbstractAsyncHostToHostMemoryTransferManager
       absl::InlinedVector<size_t, 4>& buffer_sizes,
       absl::InlinedVector<int64_t, 4>& buffer_transfers_in_flight,
       absl::InlinedVector<bool, 4>& last_transfer_finished);
+
+  absl::Status FillRawDataToSubBuffer(
+      int buffer_index,
+      absl::AnyInvocable<void(void* data, int64_t size)> fill_fn,
+      bool is_last_transfer, absl::AnyInvocable<void() &&> on_done);
 
   mutable absl::Mutex mu_;
   // The number of transfers that are currently in flight.

@@ -25,13 +25,14 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-Status ComputeOutputTensorShapes(
+absl::Status ComputeOutputTensorShapes(
     const tensorflow::tpu::TPUEmbeddingConfiguration& config,
     std::vector<TensorShapeProto>* shapes) {
-  const int64_t core_count_per_replica =
-      config.spmd_sharding().enabled()
-          ? config.spmd_sharding().num_cores_per_replica()
-          : 1;
+  int64_t core_count_per_replica = 1;
+  if (config.spmd_sharding().enabled() &&
+      !config.spmd_sharding().use_manual_partitioning()) {
+    core_count_per_replica = config.spmd_sharding().num_cores_per_replica();
+  }
   if (config.feature_descriptor_size() > 0) {
     for (const TPUEmbeddingConfiguration::FeatureDescriptor& feature :
          config.feature_descriptor()) {

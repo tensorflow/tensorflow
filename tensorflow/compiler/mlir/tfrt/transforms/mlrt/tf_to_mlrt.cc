@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_tpu_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/execute_op_registry.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/mlrt_device_constants.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tpu_conversion_patterns.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
@@ -1050,17 +1051,9 @@ class TfToMlrtConversionPass
     };
 
     type_converter_.addTargetMaterialization(future_to_tensor_materialization);
+    type_converter_.addSourceMaterialization(future_to_tensor_materialization);
     type_converter_.addArgumentMaterialization(
         future_to_tensor_materialization);
-    type_converter_.addSourceMaterialization(
-        [](mlir::OpBuilder &builder, mlir::Type result_type,
-           mlir::ValueRange inputs,
-           mlir::Location loc) -> std::optional<mlir::Value> {
-          return builder
-              .create<mlir::UnrealizedConversionCastOp>(loc, result_type,
-                                                        inputs)
-              .getResult(0);
-        });
 
     if (use_tpu_host_allocator_for_inputs_.hasValue()) {
       options_.use_tpu_host_allocator_for_inputs =

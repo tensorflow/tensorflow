@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
+#include <cassert>
 #include <deque>
 #include <iterator>
 #include <memory>
@@ -24,7 +24,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
@@ -1355,7 +1357,7 @@ void FindRootsAndEmitError(
 // Runs an iteration of layout propagation, where we merge producer and consumer
 // requests and then recompute recommended layouts on all operations that
 // are connected to an updated layout.
-Status RunOneIteration(
+absl::Status RunOneIteration(
     llvm::DenseSet<mlir::Value>& is_locked,
     llvm::DenseSet<mlir::Value>& is_updated,
     llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
@@ -1395,9 +1397,10 @@ Status RunOneIteration(
 
 // Compares every value's layouts in `merged_a` with the ones in `merged_b`,
 // and store the values that differ in `changed`.
-Status CompareMergedLayouts(const llvm::DenseMap<mlir::Value, Layout>& merged_a,
-                            const llvm::DenseMap<mlir::Value, Layout>& merged_b,
-                            llvm::DenseSet<mlir::Value>& changed) {
+absl::Status CompareMergedLayouts(
+    const llvm::DenseMap<mlir::Value, Layout>& merged_a,
+    const llvm::DenseMap<mlir::Value, Layout>& merged_b,
+    llvm::DenseSet<mlir::Value>& changed) {
   if (merged_a.size() != merged_b.size())
     return errors::Internal(
         "Both merged_layouts did not have the same number of set layouts.");
@@ -1490,16 +1493,16 @@ struct DLayoutPropagationPassV2
     int stage = 0;
 
     llvm::DenseMap<mlir::Value, Layout> merged_layouts;
-    Status status;
+    absl::Status status;
 
     while (!is_updated.empty() && stage < kLayoutPropagationMaxStages) {
       ++stage;
       int steps = 0;
       // Step 1. Run the layout propagation v2 until convergence or max steps.
       while (!is_updated.empty() && steps < LayoutPropagationMaxSteps()) {
-        Status status = RunOneIteration(is_locked, is_updated, producer_request,
-                                        consumer_requests, producers, consumers,
-                                        merged_layouts, module, stage, &steps);
+        absl::Status status = RunOneIteration(
+            is_locked, is_updated, producer_request, consumer_requests,
+            producers, consumers, merged_layouts, module, stage, &steps);
         if (!status.ok()) {
           module.emitOpError() << "Failure running iteration.";
           return signalPassFailure();

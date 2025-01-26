@@ -455,7 +455,7 @@ bool OpPropertyHelper::ModifiesInputsInPlace(TFOp op) {
 bool OpPropertyHelper::IsFreeOfSideEffect(TFOp op) {
   tensorflow::OpRegistry *op_registry = tensorflow::OpRegistry::Global();
   const tensorflow::OpDef *op_def;
-  tensorflow::Status status =
+  absl::Status status =
       op_registry->LookUpOpDef(op->getName().stripDialect().str(), &op_def);
   if (!status.ok()) return false;
 
@@ -535,7 +535,7 @@ bool OpPropertyHelper::MaybeFoldable(TFOp op) {
   if (op->getNumResults() <= 1) return false;
 
   const tensorflow::OpDef *op_def = nullptr;
-  tensorflow::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(
+  absl::Status status = tensorflow::OpRegistry::Global()->LookUpOpDef(
       op->getName().stripDialect().str(), &op_def);
   if (!status.ok()) {
     return false;
@@ -3705,7 +3705,7 @@ void ConstantFolding::runOnOperation() {
   GraphFuncOp func = getOperation();
 
   // The max iteration is the same as the max default iteration in
-  // applyPatternsAndFoldGreedily.
+  // applyPatternsGreedily.
   constexpr int max_iterations = 10;
   int iteration = 0;
 

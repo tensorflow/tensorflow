@@ -143,11 +143,6 @@ experimental.
 For a detailed usage example see the
 [auto-clustering tutorial colab](./tutorials/autoclustering_xla.ipynb).
 
-### AOT (Ahead-of-time) compilation for CPU with `tfcompile`
-
-You can also use a standalone [`tfcompile`](./tfcompile.md) tool, which converts
-TensorFlow graph into executable code (for x86-64 CPU only).
-
 ## Inspect compiled programs
 
 XLA provides introspection facilities which let you inspect the generated

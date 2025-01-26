@@ -294,13 +294,16 @@ template <typename T>
 int64_t CalculateDistanceInFloats(T a, T b) {
   auto a_sign_and_magnitude = SignAndMagnitude(a);
   auto b_sign_and_magnitude = SignAndMagnitude(b);
-  int64_t a_distance_from_zero = a_sign_and_magnitude.first
-                                     ? -a_sign_and_magnitude.second
-                                     : a_sign_and_magnitude.second;
-  int64_t b_distance_from_zero = b_sign_and_magnitude.first
-                                     ? -b_sign_and_magnitude.second
-                                     : b_sign_and_magnitude.second;
-  return std::abs(a_distance_from_zero - b_distance_from_zero);
+  uint64_t a_distance_from_zero = a_sign_and_magnitude.first
+                                      ? -a_sign_and_magnitude.second
+                                      : a_sign_and_magnitude.second;
+  uint64_t b_distance_from_zero = b_sign_and_magnitude.first
+                                      ? -b_sign_and_magnitude.second
+                                      : b_sign_and_magnitude.second;
+  // Bitcast into signed type after doing subtraction in unsigned to allow for
+  // integer overflow.
+  int64_t signed_distance = a_distance_from_zero - b_distance_from_zero;
+  return std::abs(signed_distance);
 }
 
 }  // namespace xla

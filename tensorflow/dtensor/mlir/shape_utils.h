@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_SHAPE_UTILS_H_
 #define TENSORFLOW_DTENSOR_MLIR_SHAPE_UTILS_H_
 
+#include <cstdint>
+
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -35,9 +38,9 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalOutputShape(
 
 // If result is a resource, the shape of the result should be adjusted to
 // local value of the resource, based on the layout for output.
-Status InferSPMDExpandedLocalShapeForResourceOutput(mlir::OpResult* op_result,
-                                                    const Layout& output_layout,
-                                                    mlir::MLIRContext* context);
+absl::Status InferSPMDExpandedLocalShapeForResourceOutput(
+    mlir::OpResult* op_result, const Layout& output_layout,
+    mlir::MLIRContext* context);
 
 // Returns op with recalculated local shape of `op` given all it's operands.
 mlir::Operation* InferSPMDExpandedLocalShape(mlir::Operation* op);

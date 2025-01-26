@@ -31,9 +31,12 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/types.pb.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
@@ -44,9 +47,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
-#include "tensorflow/lite/toco/types.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
 
@@ -111,49 +111,49 @@ constexpr mlir::StringRef kUnidirectionalSequenceRnnOp =
     "DT_FLOAT} "
     "attr : { name: '_tflite_input_indices' type: 'list(int)'}";
 
-// Converts the toco::IODataType to tensorflow::DataType. Only contains the
+// Converts the tflite::IODataType to tensorflow::DataType. Only contains the
 // conversion mapping for constants defined in TFLite Python API.
-DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
+DataType ConvertIODataTypeToDataType(tflite::IODataType dtype) {
   switch (dtype) {
-    case toco::IODataType::FLOAT:
+    case tflite::IODataType::FLOAT:
       return DT_FLOAT;
-    case toco::IODataType::FLOAT16:
+    case tflite::IODataType::FLOAT16:
       return DT_HALF;
-    case toco::IODataType::FLOAT64:
+    case tflite::IODataType::FLOAT64:
       return DT_DOUBLE;
-    case toco::IODataType::QUANTIZED_UINT8:
+    case tflite::IODataType::QUANTIZED_UINT8:
       return DT_QUINT8;
-    case toco::IODataType::QUANTIZED_INT8:
+    case tflite::IODataType::QUANTIZED_INT8:
       return DT_QINT8;
-    case toco::IODataType::QUANTIZED_INT16:
+    case tflite::IODataType::QUANTIZED_INT16:
       return DT_QINT16;
-    case toco::IODataType::INT8:
+    case tflite::IODataType::INT8:
       return DT_INT8;
-    case toco::IODataType::INT16:
+    case tflite::IODataType::INT16:
       return DT_INT16;
-    case toco::IODataType::UINT16:
+    case tflite::IODataType::UINT16:
       return DT_UINT16;
-    case toco::IODataType::INT32:
+    case tflite::IODataType::INT32:
       return DT_INT32;
-    case toco::IODataType::UINT32:
+    case tflite::IODataType::UINT32:
       return DT_UINT32;
-    case toco::IODataType::INT64:
+    case tflite::IODataType::INT64:
       return DT_INT64;
-    case toco::IODataType::UINT8:
+    case tflite::IODataType::UINT8:
       return DT_UINT8;
-    case toco::IODataType::UINT64:
+    case tflite::IODataType::UINT64:
       return DT_UINT64;
-    case toco::IODataType::STRING:
+    case tflite::IODataType::STRING:
       return DT_STRING;
-    case toco::IODataType::BOOL:
+    case tflite::IODataType::BOOL:
       return DT_BOOL;
-    case toco::IODataType::COMPLEX64:
+    case tflite::IODataType::COMPLEX64:
       return DT_COMPLEX64;
-    case toco::IODataType::COMPLEX128:
+    case tflite::IODataType::COMPLEX128:
       return DT_COMPLEX128;
-    case toco::IODataType::RESOURCE:
+    case tflite::IODataType::RESOURCE:
       return DT_RESOURCE;
-    case toco::IODataType::VARIANT:
+    case tflite::IODataType::VARIANT:
       return DT_VARIANT;
     default:
       return DT_INVALID;
@@ -201,10 +201,12 @@ absl::Status RegisterCustomBuiltinOps(
 
 }  // namespace
 
-absl::Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags) {
+absl::Status RegisterAllCustomOps(
+    const tflite::ConverterFlags& converter_flags) {
   // Register any custom OpDefs.
-  std::vector<std::string> extra_tf_opdefs(toco_flags.custom_opdefs().begin(),
-                                           toco_flags.custom_opdefs().end());
+  std::vector<std::string> extra_tf_opdefs(
+      converter_flags.custom_opdefs().begin(),
+      converter_flags.custom_opdefs().end());
   extra_tf_opdefs.push_back(kDetectionPostProcessOp.str());
   extra_tf_opdefs.push_back(kUnidirectionalSequenceLstmOp.str());
   extra_tf_opdefs.push_back(kUnidirectionalSequenceRnnOp.str());
@@ -212,16 +214,17 @@ absl::Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags) {
 }
 
 absl::Status PopulateQuantizationSpecs(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    const tflite::ModelFlags& model_flags,
+    tflite::ConverterFlags& converter_flags,
     mlir::quant::QuantizationSpecs* quant_specs,
     std::vector<std::string>* node_names, std::vector<std::string>* node_dtypes,
     std::vector<std::optional<std::vector<int>>>* node_shapes,
     std::vector<std::optional<double>>* node_mins,
     std::vector<std::optional<double>>* node_maxs) {
   quant_specs->inference_input_type =
-      ConvertIODataTypeToDataType(toco_flags.inference_input_type());
+      ConvertIODataTypeToDataType(converter_flags.inference_input_type());
   DataType inference_type =
-      ConvertIODataTypeToDataType(toco_flags.inference_type());
+      ConvertIODataTypeToDataType(converter_flags.inference_type());
   // Use non-float flag `inference_input_type` to override the `inference_type`
   // because we have to apply quantization to satisfy that.
   if (quant_specs->inference_input_type != DT_FLOAT) {
@@ -233,12 +236,12 @@ absl::Status PopulateQuantizationSpecs(
     // TOCO doesn't required `data_type` to be filled for every input.
     // If it's not filled, make it an empty string so the importer will use
     // the data type in the NodeDef.
-    auto toco_data_type = flag.data_type();
-    if (toco_data_type == ::toco::IODataType::IO_DATA_TYPE_UNKNOWN) {
+    auto tflite_data_type = flag.data_type();
+    if (tflite_data_type == tflite::IODataType::IO_DATA_TYPE_UNKNOWN) {
       node_dtypes->push_back("");
     } else {
       node_dtypes->push_back(
-          DataType_Name(ConvertIODataTypeToDataType(toco_data_type)));
+          DataType_Name(ConvertIODataTypeToDataType(tflite_data_type)));
     }
     if (flag.shape().unknown_rank()) {
       node_shapes->push_back(std::nullopt);
@@ -269,11 +272,11 @@ absl::Status PopulateQuantizationSpecs(
   // Some extra flag related to post training quantization. If post-training
   // quantization is enabled, `inference_type` and `inference_input_type` are
   // not used by MLIR passes.
-  if (toco_flags.post_training_quantize()) {
+  if (converter_flags.post_training_quantize()) {
     quant_specs->weight_quantization = true;
     quant_specs->disable_per_channel =
-        toco_flags.disable_per_channel_quantization();
-    if (toco_flags.quantize_to_float16()) {
+        converter_flags.disable_per_channel_quantization();
+    if (converter_flags.quantize_to_float16()) {
       quant_specs->inference_type = DT_HALF;
       quant_specs->inference_input_type = DT_HALF;
     } else {
@@ -284,21 +287,23 @@ absl::Status PopulateQuantizationSpecs(
     // These flags are incompatible with post_training_quantize() as only
     // QAT models can provide required ranges.
     quant_specs->disable_infer_tensor_range =
-        toco_flags.disable_infer_tensor_range();
-    quant_specs->use_fake_quant_num_bits = toco_flags.use_fake_quant_num_bits();
+        converter_flags.disable_infer_tensor_range();
+    quant_specs->use_fake_quant_num_bits =
+        converter_flags.use_fake_quant_num_bits();
   }
 
   // Add information about half-precision support if fp16 quantization applies.
   // TODO(b/195945955): Add e2e test for this.
-  if (toco_flags.quantize_to_float16() || toco_flags.allow_bfloat16()) {
+  if (converter_flags.quantize_to_float16() ||
+      converter_flags.allow_bfloat16()) {
     ReducedPrecisionSupport mask = ReducedPrecisionSupport::None;
-    if (toco_flags.quantize_to_float16()) {
+    if (converter_flags.quantize_to_float16()) {
       mask |= ReducedPrecisionSupport::Float16Inference;
     }
-    if (toco_flags.allow_bfloat16()) {
+    if (converter_flags.allow_bfloat16()) {
       mask |= ReducedPrecisionSupport::Bfloat16Inference;
     }
-    if (toco_flags.accumulation_type() == toco::IODataType::FLOAT16) {
+    if (converter_flags.accumulation_type() == tflite::IODataType::FLOAT16) {
       mask |= ReducedPrecisionSupport::Float16Accumulation;
     } else {
       mask |= ReducedPrecisionSupport::Float32Accumulation;
@@ -307,23 +312,24 @@ absl::Status PopulateQuantizationSpecs(
   }
 
   // Other flags.
-  if (toco_flags.has_default_ranges_min()) {
-    quant_specs->default_ranges.first = toco_flags.default_ranges_min();
+  if (converter_flags.has_default_ranges_min()) {
+    quant_specs->default_ranges.first = converter_flags.default_ranges_min();
   }
-  if (toco_flags.has_default_ranges_max()) {
-    quant_specs->default_ranges.second = toco_flags.default_ranges_max();
+  if (converter_flags.has_default_ranges_max()) {
+    quant_specs->default_ranges.second = converter_flags.default_ranges_max();
   }
   quant_specs->enable_mlir_dynamic_range_quantizer =
-      toco_flags.enable_mlir_dynamic_range_quantizer();
+      converter_flags.enable_mlir_dynamic_range_quantizer();
   quant_specs->enable_mlir_variable_quantization =
-      toco_flags.enable_mlir_variable_quantization();
+      converter_flags.enable_mlir_variable_quantization();
   quant_specs->disable_per_channel_for_dense_layers =
-      toco_flags.disable_per_channel_quantization_for_dense_layers();
+      converter_flags.disable_per_channel_quantization_for_dense_layers();
   return absl::OkStatus();
 }
 
 absl::Status ConvertMLIRToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    const tflite::ModelFlags& model_flags,
+    tflite::ConverterFlags& converter_flags,
     std::unique_ptr<mlir::MLIRContext>&& context,
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
@@ -345,7 +351,7 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
   });
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
-      std::move(context), std::move(module), toco_flags, pass_config_copy,
+      std::move(context), std::move(module), converter_flags, pass_config_copy,
       saved_model_tags, model_flags.saved_model_dir(), result,
       /*serialize_stablehlo_ops=*/false, /*export_to_mlir=*/false,
       quantization_py_function_lib);
@@ -353,21 +359,21 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
   return status;
 }
 
-void WarningUnusedFlags(const toco::ModelFlags& model_flags,
-                        const toco::TocoFlags& toco_flags) {
-  if (toco_flags.output_format()) {
+void WarningUnusedFlags(const tflite::ModelFlags& model_flags,
+                        const tflite::ConverterFlags& converter_flags) {
+  if (converter_flags.output_format()) {
     LOG(WARNING) << "Ignored output_format.";
   }
-  if (toco_flags.drop_control_dependency()) {
+  if (converter_flags.drop_control_dependency()) {
     LOG(WARNING) << "Ignored drop_control_dependency.";
   }
-  if (toco_flags.reorder_across_fake_quant()) {
+  if (converter_flags.reorder_across_fake_quant()) {
     LOG(WARNING) << "Ignored reorder_across_fake_quant.";
   }
   if (model_flags.change_concat_input_ranges()) {
     LOG(WARNING) << "Ignored change_concat_input_ranges.";
   }
-  if (toco_flags.dump_graphviz_include_video()) {
+  if (converter_flags.dump_graphviz_include_video()) {
     LOG(WARNING) << "Ignored dump_graphviz_video.";
   }
   if (model_flags.allow_nonexistent_arrays()) {

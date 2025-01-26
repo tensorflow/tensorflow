@@ -42,6 +42,10 @@ struct GraphViewerParams {
   bool show_metadata;
 };
 
+// Return mapping from style key word to op names separated by comma.
+// following hlo_graph_dumper styling
+absl::StatusOr<std::string> GetNodeStyles();
+
 // Parse tool options to get the parameters for graph viewer.
 absl::StatusOr<GraphViewerParams> ParseGraphViewerParams(
     const ToolOptions& options);
@@ -54,6 +58,11 @@ absl::StatusOr<std::string> ConvertHloProtoToGraph(
     const xla::HloProto& hlo_proto, const std::string& node_name,
     int graph_width, const xla::HloRenderOptions& render_options,
     const xla::RenderedGraphFormat& format);
+
+// Convert `hlo_proto` to ModelExplorer Graph JSON data.
+absl::StatusOr<std::string> ConvertHloProtoToMeGraph(
+    const xla::HloProto& hlo_proto, const std::string& node_name,
+    int graph_width);
 
 // Render graph with the provided render options.
 absl::StatusOr<std::string> RenderGraphView(

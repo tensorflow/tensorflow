@@ -28,11 +28,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -79,7 +81,7 @@ static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
     HloComputation* comp) {
   std::vector<HloCustomCallInstruction*> convs;
   for (HloInstruction* instr : comp->instructions()) {
-    if (instr->opcode() != HloOpcode::kCustomCall ||
+    if (HloPredicateIsNotOp<HloOpcode::kCustomCall>(instr) ||
         (instr->custom_call_target() != kCudnnConvForwardCallTarget &&
          instr->custom_call_target() !=
              kCudnnConvBiasActivationForwardCallTarget) ||
@@ -94,24 +96,6 @@ static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
     }
   }
   return convs;
-}
-
-// Converts an XlaBuilder into an HloComputation in the same module as
-// `sibling_computation`.
-//
-// Yes, we serialize/deserialize as a proto.  :)
-static absl::StatusOr<HloComputation*> BuilderToHloComputation(
-    XlaBuilder& b, XlaOp root, HloComputation* sibling_computation) {
-  TF_ASSIGN_OR_RETURN(XlaComputation comp, b.Build(root));
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, comp.GetProgramShape());
-  HloModuleConfig config(program_shape);
-  TF_ASSIGN_OR_RETURN(auto new_module,
-                      HloModule::CreateFromProto(comp.proto(), config));
-
-  HloModule* dest_module = sibling_computation->parent();
-  HloCloneContext context(dest_module);
-  return dest_module->DeepCloneComputation(new_module->entry_computation(),
-                                           &context);
 }
 
 // Reshapes `instr` so that it has an extra dimension of size `vect_size` right
@@ -460,19 +444,17 @@ static absl::StatusOr<bool> TryRevectorizeConv(
       new_conv_result, dnums->output_feature_dimension(), *output_vect_dim,
       /*orig_vect_size=*/output_shape.dimensions(*output_vect_dim));
 
+  XlaOp root = Tuple(&b, {new_conv_result_unrevectorized, new_conv_scratch});
+  TF_ASSIGN_OR_RETURN(XlaComputation comp, b.Build(root));
   TF_ASSIGN_OR_RETURN(
       HloComputation * new_conv_comp,
-      BuilderToHloComputation(
-          b, Tuple(&b, {new_conv_result_unrevectorized, new_conv_scratch}),
-          conv->parent()));
+      XlaComputationToHloComputation(comp, conv->parent()->parent()));
 
   // Set the name on the new conv.  This is purely cosmetic, but we attempt to
   // preserve e.g. "cudnn-conv.42" instead of "custom-call.42".
   auto new_conv_comp_instrs = new_conv_comp->instructions();
-  auto new_conv_it =
-      absl::c_find_if(new_conv_comp_instrs, [](HloInstruction* instr) {
-        return instr->opcode() == HloOpcode::kCustomCall;
-      });
+  auto new_conv_it = absl::c_find_if(new_conv_comp_instrs,
+                                     HloPredicateIsOp<HloOpcode::kCustomCall>);
   if (new_conv_it != new_conv_comp_instrs.end()) {
     new_conv_comp->parent()->SetAndUniquifyInstrName(*new_conv_it,
                                                      conv->name());
@@ -599,11 +581,11 @@ static absl::StatusOr<bool> TryVectorizeConv(
       Collapse(new_conv_result, {dnums->output_feature_dimension(),
                                  dnums->output_feature_dimension() + 1});
 
+  XlaOp root = Tuple(&b, {conv_result_collapsed, new_conv_scratch});
+  TF_ASSIGN_OR_RETURN(XlaComputation comp, b.Build(root));
   TF_ASSIGN_OR_RETURN(
       HloComputation * new_conv_comp,
-      BuilderToHloComputation(
-          b, Tuple(&b, {conv_result_collapsed, new_conv_scratch}),
-          conv->parent()));
+      XlaComputationToHloComputation(comp, conv->parent()->parent()));
 
   // Create a tuple and replace the old conv with it!
   VLOG(1) << "Vectorized conv to: " << new_conv_comp->ToString();

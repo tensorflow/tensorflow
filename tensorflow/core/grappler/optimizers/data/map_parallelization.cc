@@ -55,10 +55,9 @@ NodeDef MakeParallelMap(const string& name, MutableGraphView* graph) {
 
 }  // namespace
 
-Status MapParallelization::OptimizeAndCollectStats(Cluster* cluster,
-                                                   const GrapplerItem& item,
-                                                   GraphDef* output,
-                                                   OptimizationStats* stats) {
+absl::Status MapParallelization::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   if (!autotune_) {
     VLOG(1) << "The optimization map_parallelization is not applied if "

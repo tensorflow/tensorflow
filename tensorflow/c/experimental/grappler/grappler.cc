@@ -94,8 +94,9 @@ absl::Status ValidateTPOptimizerConfigs(const TP_OptimizerConfigs& configs) {
 namespace tensorflow {
 namespace grappler {
 
-Status CGraphOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                 GraphDef* optimized_graph_def) {
+absl::Status CGraphOptimizer::Optimize(Cluster* cluster,
+                                       const GrapplerItem& item,
+                                       GraphDef* optimized_graph_def) {
   OwnedTFStatus c_status(TF_NewStatus());
   OwnedTFBuffer graph_buf(TF_NewBuffer());
   OwnedTFBuffer optimized_graph_buf(TF_NewBuffer());

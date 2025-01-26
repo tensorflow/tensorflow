@@ -31,7 +31,7 @@ class BCastArgsOp : public OpKernel {
     OP_REQUIRES(
         ctx, ctx->num_inputs() == 2,
         errors::Unimplemented("Broadcast for n-ary operations (n > 2)"));
-    gtl::InlinedVector<BCast::Vec, 4> shapes;
+    absl::InlinedVector<BCast::Vec, 4UL> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const Tensor& in = ctx->input(i);
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in.shape()),
@@ -81,7 +81,7 @@ class BCastGradArgsOp : public OpKernel {
     OP_REQUIRES(
         ctx, ctx->num_inputs() == 2,
         errors::Unimplemented("Broadcast for n-ary operations (n > 2)"));
-    gtl::InlinedVector<BCast::Vec, 4> shapes;
+    absl::InlinedVector<BCast::Vec, 4UL> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const Tensor& in = ctx->input(i);
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in.shape()),

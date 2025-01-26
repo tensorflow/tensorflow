@@ -41,9 +41,9 @@ REGISTER_NO_GRADIENT_OP("GetSessionHandleV2");
 REGISTER_NO_GRADIENT_OP("GetSessionTensor");
 REGISTER_NO_GRADIENT_OP("DeleteSessionTensor");
 
-Status DynamicPartitionGrad(const Scope& scope, const Operation& op,
-                            const std::vector<Output>& grad_inputs,
-                            std::vector<Output>* grad_outputs) {
+absl::Status DynamicPartitionGrad(const Scope& scope, const Operation& op,
+                                  const std::vector<Output>& grad_inputs,
+                                  std::vector<Output>* grad_outputs) {
   // DynamicPartition only moves input values into various positions
   // in the output, so the gradient operation only has to map incoming
   // gradients into their input source locations.
@@ -106,9 +106,9 @@ Status DynamicPartitionGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("DynamicPartition", DynamicPartitionGrad);
 
-Status DynamicStitchGrad(const Scope& scope, const Operation& op,
-                         const std::vector<Output>& grad_inputs,
-                         std::vector<Output>* grad_outputs) {
+absl::Status DynamicStitchGrad(const Scope& scope, const Operation& op,
+                               const std::vector<Output>& grad_inputs,
+                               std::vector<Output>* grad_outputs) {
   // Running example:
   // indices = {2, [1, 0]}
   // data = {[d_1, d_2], [[d_3, d_4], [d_5, d_6]]}

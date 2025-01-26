@@ -63,8 +63,8 @@ string NextIterationName(const Scope& scope, int loop_var_idx) {
 
 // Creates the `loop_var_idx`-th Merge node of a loop being constructed with
 // `scope`. `enter_output` is the `loop_var_idx`-th Enter node's output.
-Status CreateMerge(const Scope& scope, int loop_var_idx,
-                   const Output& enter_output, Output* merge_output) {
+absl::Status CreateMerge(const Scope& scope, int loop_var_idx,
+                         const Output& enter_output, Output* merge_output) {
   // The merge nodes accept the while loop's back edges as an input (i.e. the
   // not-yet-created next iteration nodes). Use the underlying NodeBuilder API
   // directly to create the back edge.
@@ -88,8 +88,8 @@ Status CreateMerge(const Scope& scope, int loop_var_idx,
 }
 
 // Creates the condition subgraph defined by `cond`.
-Status CreateCond(const Scope& scope, const CondGraphBuilderFn& cond,
-                  const std::vector<Output>& inputs, Output* output) {
+absl::Status CreateCond(const Scope& scope, const CondGraphBuilderFn& cond,
+                        const std::vector<Output>& inputs, Output* output) {
   // The control dependency is for constants in the cond graph, and other ops
   // that do not depend on the loop variables. This ensures that these ops are
   // in the while loop frame (since they will indirectly depend on an Enter node
@@ -118,9 +118,9 @@ Status CreateCond(const Scope& scope, const CondGraphBuilderFn& cond,
 
 // Create the body subgraph defined by `body`. `outputs` must be non-null and
 // empty.
-Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
-                  const std::vector<Output>& inputs,
-                  std::vector<Output>* outputs) {
+absl::Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
+                        const std::vector<Output>& inputs,
+                        std::vector<Output>* outputs) {
   DCHECK(outputs != nullptr);
   DCHECK(outputs->empty());
 
@@ -169,11 +169,12 @@ Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
 // If there are multiple loop variables, each of the control flow ops is
 // duplicated for each loop variable.
 // TODO(skyewm): link to public version of design doc
-Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
-                      const CondGraphBuilderFn& cond,
-                      const BodyGraphBuilderFn& body, const string& frame_name,
-                      OutputList* outputs, bool create_while_ctx,
-                      Output* cond_output) {
+absl::Status BuildWhileLoop(const Scope& scope,
+                            const std::vector<Output>& inputs,
+                            const CondGraphBuilderFn& cond,
+                            const BodyGraphBuilderFn& body,
+                            const string& frame_name, OutputList* outputs,
+                            bool create_while_ctx, Output* cond_output) {
   DCHECK(!inputs.empty());
   DCHECK(outputs != nullptr);
   DCHECK(outputs->empty());

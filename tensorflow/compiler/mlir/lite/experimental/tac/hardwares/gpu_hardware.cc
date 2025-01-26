@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/gpu_hardware.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project

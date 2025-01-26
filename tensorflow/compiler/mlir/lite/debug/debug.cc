@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -47,8 +48,8 @@ limitations under the License.
 #include "re2/re2.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
+#include "xla/tsl/lib/io/buffered_file.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tsl/lib/io/buffered_file.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"

@@ -169,7 +169,7 @@ def index_shuffle(index, seed, max_index):
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.map(
   ...  lambda idx: tf.random.experimental.index_shuffle(idx, [5, 8], 9))
-  >>> print(list(dataset.as_numpy_iterator()))
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [3, 8, 0, 1, 2, 7, 6, 9, 4, 5]
 
   This operation is stateless (like the `tf.random.stateless_*`

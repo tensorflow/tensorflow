@@ -23,7 +23,7 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/service.h"
-#include "tsl/platform/grpc_credentials.h"
+#include "xla/tsl/platform/grpc_credentials.h"
 
 namespace xla {
 
@@ -38,10 +38,22 @@ GetDistributedRuntimeService(std::string address,
 }
 
 std::shared_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
-    std::string address, const DistributedRuntimeClient::Options& options) {
-  std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-      address, tsl::GetClientCredentials(kVerifySecureCredentials));
+    std::string address, const DistributedRuntimeClient::Options& options,
+    bool use_compression) {
+  auto channel = GetDistributedRuntimeClientChannel(
+      address, tsl::GetClientCredentials(kVerifySecureCredentials),
+      use_compression);
   return GetDistributedRuntimeClient(channel, options);
+}
+
+std::shared_ptr<::grpc::Channel> GetDistributedRuntimeClientChannel(
+    std::string address, std::shared_ptr<::grpc::ChannelCredentials> creds,
+    bool use_compression) {
+  grpc::ChannelArguments args;
+  if (use_compression) {
+    args.SetCompressionAlgorithm(GRPC_COMPRESS_GZIP);
+  }
+  return ::grpc::CreateCustomChannel(address, creds, args);
 }
 
 }  // namespace xla

@@ -22,13 +22,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
@@ -66,7 +66,7 @@ int PyDevice::id() const { return device_->Id().value(); }
 
 int PyDevice::process_index() const { return device_->ProcessIndex(); }
 
-std::string_view PyDevice::platform() const {
+absl::string_view PyDevice::platform() const {
   // TODO(phawkins): this is a temporary backwards
   // compatibility shim. We changed the name PJRT
   // reports for GPU platforms to "cuda" or "rocm",
@@ -75,13 +75,13 @@ std::string_view PyDevice::platform() const {
   // code.
   if (client_->platform_name() == "cuda" ||
       client_->platform_name() == "rocm") {
-    return std::string_view("gpu");
+    return absl::string_view("gpu");
   } else {
     return client_->platform_name();
   }
 }
 
-std::string_view PyDevice::device_kind() const { return device_->Kind(); }
+absl::string_view PyDevice::device_kind() const { return device_->Kind(); }
 
 std::optional<int> PyDevice::local_hardware_id() const {
   // TODO(phawkins): consider supporting this for non-PJRT devices.
@@ -96,9 +96,9 @@ std::optional<int> PyDevice::local_hardware_id() const {
   return local_hardware_id;
 }
 
-std::string_view PyDevice::Str() const { return device_->DebugString(); }
+absl::string_view PyDevice::Str() const { return device_->DebugString(); }
 
-std::string_view PyDevice::Repr() const { return device_->ToString(); }
+absl::string_view PyDevice::Repr() const { return device_->ToString(); }
 
 absl::Status PyDevice::TransferToInfeed(LiteralSlice literal) {
   GlobalPyRefManager()->CollectGarbage();
@@ -136,7 +136,7 @@ absl::StatusOr<nb::object> PyDevice::TransferFromOutfeed(Shape shape) {
 }
 
 absl::StatusOr<nb_class_ptr<PyMemorySpace>> PyDevice::Memory(
-    std::string_view kind) const {
+    absl::string_view kind) const {
   ifrt::Memory* result_memory_space = nullptr;
   for (auto* memory_space : device_->Memories()) {
     if (memory_space->Kind().memory_kind() == kind) {
@@ -321,7 +321,7 @@ PyType_Slot PyDevice::slots_[] = {
         }
         try {
           auto device = nb::cast<PyDevice*>(nb::handle(self));
-          auto name = nb::cast<std::string_view>(nb::handle(key));
+          auto name = nb::cast<absl::string_view>(nb::handle(key));
           const auto& attrs = device->device_->Attributes().map();
           auto it = attrs.find(name);
           if (it != attrs.end()) {

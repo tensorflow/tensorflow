@@ -21,12 +21,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -70,9 +70,8 @@ XLA_TEST_F(MultithreadedCompilation, EightModuleCompilation) {
   absl::Mutex mu;
   std::vector<std::unique_ptr<Executable>> executables;
   auto do_compilation = [&](int iteration) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Executable> executable,
-        test_runner_.CreateExecutable(std::move(modules[iteration]), true));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                        CreateExecutable(std::move(modules[iteration]), true));
     absl::MutexLock lock(&mu);
     executables.push_back(std::move(executable));
     VLOG(2) << "Adding executable obtained from thread: " << iteration;

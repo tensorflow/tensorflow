@@ -36,13 +36,13 @@ namespace tfd {
 
 // Create an EagerOperation to run the op, taking tensorflow::TensorHandle and
 // returning tensorflow::AbstractTensorHandle*.
-Status CallEagerExecute(const tfrt::ExecutionContext& exec_ctx,
-                        EagerContext* eager_ctx, const char* op_name,
-                        const char* device_name,
-                        llvm::ArrayRef<TensorHandle*> input_tensor_handles,
-                        const tfrt::OpAttrsRef& attrs,
-                        llvm::MutableArrayRef<tensorflow::AbstractTensorHandle*>
-                            result_tensor_handles);
+absl::Status CallEagerExecute(
+    const tfrt::ExecutionContext& exec_ctx, EagerContext* eager_ctx,
+    const char* op_name, const char* device_name,
+    llvm::ArrayRef<TensorHandle*> input_tensor_handles,
+    const tfrt::OpAttrsRef& attrs,
+    llvm::MutableArrayRef<tensorflow::AbstractTensorHandle*>
+        result_tensor_handles);
 
 // Take and return RuntimeFallbackTensors.
 tfrt::AsyncValueRef<tfrt::Chain> RuntimeFallbackExecute(

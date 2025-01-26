@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
@@ -30,9 +31,9 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "stablehlo/dialect/StablehloOps.h"
 
-namespace mhlo = ::mlir::mhlo;
+namespace stablehlo = ::mlir::stablehlo;
 
 namespace xla {
 namespace sdy {
@@ -47,11 +48,11 @@ using ::mlir::func::FuncOp;
 
 using ::mlir::sdy::ConstantOp;
 
-class ConstantPattern : public OpConversionPattern<mhlo::ConstantOp> {
+class ConstantPattern : public OpConversionPattern<stablehlo::ConstantOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConstantOp op, OpAdaptor adaptor,
+      stablehlo::ConstantOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     // We use the generic op builder so that unregistered attributes will be
     // added to the new op.
@@ -70,7 +71,7 @@ class ImportConstantsPass
   void runOnOperation() final {
     mlir::MLIRContext& context = getContext();
     mlir::ConversionTarget target(context);
-    target.addIllegalOp<mhlo::ConstantOp>();
+    target.addIllegalOp<stablehlo::ConstantOp>();
     target.addLegalOp<ConstantOp>();
     mlir::RewritePatternSet patterns(&context);
     patterns.add<ConstantPattern>(&context);
@@ -83,7 +84,7 @@ class ImportConstantsPass
   StringRef getArgument() const override { return "xla-sdy-import-constants"; }
 
   StringRef getDescription() const override {
-    return "Converts an `mhlo.constant` into an `sdy.constant`.";
+    return "Converts an `stablehlo.constant` into an `sdy.constant`.";
   }
 };
 

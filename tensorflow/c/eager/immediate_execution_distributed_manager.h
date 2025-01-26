@@ -41,26 +41,26 @@ class ImmediateExecutionDistributedManager {
   // existing context state with the provided `server_def`. Contexts created
   // on remote tasks will be considered stale and garbage collected after
   // `keep_alive_secs` of inactivity.
-  virtual Status SetOrUpdateServerDef(const ServerDef& server_def,
-                                      bool reset_context, int keep_alive_secs,
-                                      int64_t init_timeout_in_ms, int retries,
-                                      bool clear_existing_contexts = false) = 0;
+  virtual absl::Status SetOrUpdateServerDef(
+      const ServerDef& server_def, bool reset_context, int keep_alive_secs,
+      int64_t init_timeout_in_ms, int retries,
+      bool clear_existing_contexts = false) = 0;
 
   // Initializes context for the local worker and no contexts will be created
   // for remote workers. Currently this only works for resetting context.
   // TODO(b/289445025): Consider removing this when we find a proper fix.
-  virtual Status InitializeLocalOnlyContext(const ServerDef& server_def,
-                                            int keep_alive_secs) = 0;
+  virtual absl::Status InitializeLocalOnlyContext(const ServerDef& server_def,
+                                                  int keep_alive_secs) = 0;
 
   // Set up a multi-client distributed execution environment. Must be called
   // on all tasks in the cluster. This call internally coordinates with other
   // tasks to initialize the eager context and TF server for multi-client
   // execution.
-  virtual Status EnableCollectiveOps(const ServerDef& server_def) = 0;
+  virtual absl::Status EnableCollectiveOps(const ServerDef& server_def) = 0;
 
   // Check if the remote task is alive.
-  virtual Status CheckRemoteAlive(const std::string& remote_task_name,
-                                  bool* is_alive) = 0;
+  virtual absl::Status CheckRemoteAlive(const std::string& remote_task_name,
+                                        bool* is_alive) = 0;
 
   // Get pointer to the coordination service agent instance.
   virtual tsl::CoordinationServiceAgent* GetCoordinationServiceAgent() = 0;

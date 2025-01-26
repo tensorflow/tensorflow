@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace ifrt {
@@ -89,7 +89,13 @@ class Index {
     return *this = *this * multiplier;
   }
 
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Index& index) {
+    sink.Append(index.DebugString());
+  }
 
  private:
   Elements elements_;

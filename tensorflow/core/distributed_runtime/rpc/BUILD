@@ -127,6 +127,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
         "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -208,9 +211,11 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/protobuf:worker_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@local_tsl//tsl/protobuf:rpc_options_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_call",
+        "@local_xla//xla/tsl/protobuf:rpc_options_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -508,6 +513,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/status",
     ] + tf_grpc_cc_dependencies(),
 )
 

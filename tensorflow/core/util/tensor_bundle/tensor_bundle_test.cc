@@ -149,7 +149,7 @@ std::vector<string> AllTensorKeys(BundleReader* reader) {
 
 // Writes out the metadata file of a bundle again, with the endianness marker
 // bit flipped.
-Status FlipEndiannessBit(const string& prefix) {
+absl::Status FlipEndiannessBit(const string& prefix) {
   Env* env = Env::Default();
   const string metadata_tmp_path = Prefix("some_tmp_path");
   std::unique_ptr<WritableFile> metadata_file;
@@ -998,7 +998,7 @@ TEST(TensorBundleTest, Checksum) {
   auto ExpectLookupFails = [](const string& prefix, const string& key,
                               const string& expected_msg, Tensor& val) {
     BundleReader reader(Env::Default(), Prefix(prefix));
-    Status status = reader.Lookup(key, &val);
+    absl::Status status = reader.Lookup(key, &val);
     EXPECT_TRUE(errors::IsDataLoss(status));
     EXPECT_TRUE(absl::StrContains(status.ToString(), expected_msg));
   };

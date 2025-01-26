@@ -16,16 +16,7 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_
 #define XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_
 
-#include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Types.h"
-#include "xla/shape.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla {
-
-// Returns a XLA Shape equivalent of a MLIR Type, else returns empty shape.
-Shape TypeToShape(mlir::Type type);
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 
 #endif  // XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_

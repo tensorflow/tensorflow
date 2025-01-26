@@ -69,6 +69,11 @@ config_setting(
 
 config_setting(
     name = "tflite_gpu_extra_gles_deps",
+    # copybara:uncomment_begin(google-only)
+    # constraint_values = [
+    # "//third_party/bazel_platforms/os:linux",
+    # ],
+    # copybara:uncomment_end
     values = {
         "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",
         "cpu": "k8",
@@ -85,6 +90,7 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/gpu/common:convert",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
@@ -95,9 +101,14 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:api",
         "//tensorflow/lite/delegates/gpu/gl:command_queue",
         "//tensorflow/lite/delegates/gpu/gl:compiler",
+        "//tensorflow/lite/delegates/gpu/gl:compiler_options",
         "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+        "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         "//tensorflow/lite/delegates/gpu/gl:gl_call",
+        "//tensorflow/lite/delegates/gpu/gl:object",
+        "//tensorflow/lite/delegates/gpu/gl:object_manager",
         "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",
+        "//tensorflow/lite/delegates/gpu/gl:runtime_options",
         "//tensorflow/lite/delegates/gpu/gl/converters:bhwc_to_phwc4",
         "//tensorflow/lite/delegates/gpu/gl/converters:phwc4_to_bhwc",
         "//tensorflow/lite/delegates/gpu/gl/kernels:registry",

@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cmath>
 #include <complex>
 #include <functional>
 #include <map>
@@ -30,6 +31,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -54,15 +56,122 @@ limitations under the License.
 
 namespace tflite {
 
+using ::testing::Eq;
+using ::testing::FloatEq;
 using ::testing::FloatNear;
 using ::testing::Matcher;
 
+namespace {
+
+// Converts an integer from the sign-and-magnitude representation to
+// the biased representation.  More precisely, let N be 2 to the
+// power of (kBitCount - 1), an integer x is represented by the
+// unsigned number x + N.
+//
+// For instance,
+//
+//   -N + 1 (the most negative number representable using
+//          sign-and-magnitude) is represented by 1;
+//   0      is represented by N; and
+//   N - 1  (the biggest number representable using
+//          sign-and-magnitude) is represented by 2N - 1.
+//
+// Read https://en.wikipedia.org/wiki/Signed_number_representations
+// for more details on signed number representations.
+uint32_t SignAndMagnitudeToBiased(uint32_t sam) {
+  constexpr uint32_t kSignBitMask = 1u << 31;
+  if (kSignBitMask & sam) {
+    // sam represents a negative number.
+    return ~sam + 1;
+  } else {
+    // sam represents a positive number.
+    return kSignBitMask | sam;
+  }
+}
+// Given two numbers in the sign-and-magnitude representation,
+// returns the distance between them as an unsigned number.
+uint32_t DistanceBetweenSignAndMagnitudeNumbers(uint32_t sam1, uint32_t sam2) {
+  uint32_t biased1 = SignAndMagnitudeToBiased(sam1);
+  uint32_t biased2 = SignAndMagnitudeToBiased(sam2);
+  return (biased1 >= biased2) ? (biased1 - biased2) : (biased2 - biased1);
+}
+// Returns true if and only if lhs is at most max_ulps ULP's away from rhs.
+// In particular, this function:
+//
+//   - returns true if both numbers are NAN.
+//   - returns false if exact one of numbers is NAN.
+//   - treats really large numbers as almost equal to infinity.
+//   - thinks +0.0 and -0.0 are 0 DLP's apart.
+bool AlmostEquals(float lhs, float rhs, uint32_t max_ulps) {
+  if (std::isnan(lhs) || std::isnan(rhs)) {
+    return std::isnan(lhs) && std::isnan(rhs);
+  }
+
+  return DistanceBetweenSignAndMagnitudeNumbers(
+             absl::bit_cast<uint32_t>(lhs), absl::bit_cast<uint32_t>(rhs)) <=
+         max_ulps;
+}
+
+MATCHER_P3(FloatAbsRelNear, value, max_abs_err, max_rel_err, "") {
+  auto matcher =
+      FloatNear(value, std::max(max_abs_err, std::abs(max_rel_err * value)));
+  return ::testing::ExplainMatchResult(matcher, arg, result_listener);
+}
+
+MATCHER(Fp16Eq, "") {
+  // FP16 only has 10 bits precision while FP32 has 23 bits precision. Thus, to
+  // check if results of FP16 are almost equal, we could check the result is
+  // within 4 * 2^13 ULPs of FP32, which equals to 4 ULPs of FP16.
+  constexpr uint32_t fp16_ulps_in_fp32 = 4 * (1 << 13);
+  float actual = std::get<0>(arg);
+  float expected = std::get<1>(arg);
+  // The minimum exponent of FP16 is 2^-14, which means the minimum ULP of FP16
+  // is 2^-24. Therefore, when expected is less than 2^-14, i.e. a subnormal
+  // FP16 number, the minimum ULP of FP16 should be used instead of ULP of FP32.
+  if (std::abs(expected) < 0x1p-14) {
+    return std::abs(actual - expected) <= 4 * 0x1p-24;
+  }
+  return AlmostEquals(actual, expected, fp16_ulps_in_fp32);
+}
+
+}  // namespace
+
+bool AllowFp16PrecisionForFp32() {
+  return tflite::KernelTestDelegateProviders::Get()->ConstParams().Get<bool>(
+      tflite::KernelTestDelegateProviders::kAllowFp16PrecisionForFp32);
+}
+
+Matcher<std::tuple<float, float>> FloatingPointEq() {
+  if (AllowFp16PrecisionForFp32()) {
+    return Fp16Eq();
+  }
+  return Eq();
+}
+
+Matcher<std::tuple<float, float>> FloatingPointAlmostEq() {
+  if (AllowFp16PrecisionForFp32()) {
+    return Fp16Eq();
+  }
+  return FloatEq();
+}
+
 std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
-                                           float max_abs_error) {
+                                           float max_abs_err,
+                                           float fp16_max_abs_err,
+                                           float max_rel_err,
+                                           float fp16_max_rel_err) {
+  if (AllowFp16PrecisionForFp32()) {
+    if (fp16_max_abs_err == kFpErrorAuto) {
+      max_abs_err = std::max(max_abs_err, std::sqrt(max_abs_err));
+    } else {
+      max_abs_err = fp16_max_abs_err;
+    }
+    max_rel_err = fp16_max_rel_err;
+  }
   std::vector<Matcher<float>> matchers;
   matchers.reserve(values.size());
   for (const float& v : values) {
-    matchers.emplace_back(FloatNear(v, max_abs_error));
+    matchers.emplace_back(FloatAbsRelNear(v, max_abs_err, max_rel_err));
   }
   return matchers;
 }

@@ -1,0 +1,5 @@
+These files are internal to XLA and should not be exposed externally.
+Integrators should use the PJRT API. See https://openxla.org/xla/pjrt/pjrt_integration
+
+Even tools within XLA should NOT use these files directly and instead use the
+PJRT API to ensure consistent usage.

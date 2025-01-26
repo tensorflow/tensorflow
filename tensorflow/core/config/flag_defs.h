@@ -67,6 +67,8 @@ class Flags {
   TF_DECLARE_FLAG(enable_skip_encapsulation_for_non_tpu_graphs, false,
                   "If true, TF2XLA encapsulation will be skipped for non-TPU "
                   "graphs.")
+  TF_DECLARE_FLAG(enable_graph_debug_info_caching_for_stack_frames, true,
+                  "If true, graph debug info will cache the stack frames.")
   // LINT.ThenChange(//tensorflow/core/config/flags_api_wrapper.cc)
 };
 

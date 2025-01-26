@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/prefetch_interval_picker.h"
 
-#include <cstdint>
 #include <optional>
 
 #include <gtest/gtest.h>
@@ -35,12 +34,6 @@ limitations under the License.
 namespace xla {
 namespace memory_space_assignment {
 namespace {
-
-constexpr int64_t kPointerSize = 8;
-
-int64_t ShapeSize(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-}
 
 using CostAnalysisPrefetchIntervalPickerTest = HloTestBase;
 
@@ -77,7 +70,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  HloCostAnalysis hlo_cost_analysis;
   CostAnalysisOptions options;
   HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -177,7 +170,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  HloCostAnalysis hlo_cost_analysis;
   CostAnalysisOptions options;
   HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -261,7 +254,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, NestedWhile) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  HloCostAnalysis hlo_cost_analysis;
   CostAnalysisOptions options;
   HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -330,7 +323,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, ConsecutiveConditionals) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  HloCostAnalysis hlo_cost_analysis;
   CostAnalysisOptions options;
   HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -376,7 +369,7 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  HloCostAnalysis hlo_cost_analysis;
   CostAnalysisOptions options;
   HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(

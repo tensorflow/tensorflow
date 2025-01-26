@@ -27,21 +27,21 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
   m.def(
       "Convert",
       [](py::object model_flags_proto_txt_raw,
-         py::object toco_flags_proto_txt_raw, py::object input_contents_txt_raw,
-         bool extended_return, py::object debug_info_txt_raw,
-         bool enable_mlir_converter,
+         py::object converter_flags_proto_txt_raw,
+         py::object input_contents_txt_raw, bool extended_return,
+         py::object debug_info_txt_raw,
          const tensorflow::quantization::PyFunctionLibrary*
              quantization_py_function_library) {
         return tensorflow::PyoOrThrow(tflite::Convert(
-            model_flags_proto_txt_raw.ptr(), toco_flags_proto_txt_raw.ptr(),
-            input_contents_txt_raw.ptr(), extended_return,
-            debug_info_txt_raw.ptr(), enable_mlir_converter,
+            model_flags_proto_txt_raw.ptr(),
+            converter_flags_proto_txt_raw.ptr(), input_contents_txt_raw.ptr(),
+            extended_return, debug_info_txt_raw.ptr(),
             quantization_py_function_library));
       },
-      py::arg("model_flags_proto_txt_raw"), py::arg("toco_flags_proto_txt_raw"),
+      py::arg("model_flags_proto_txt_raw"),
+      py::arg("converter_flags_proto_txt_raw"),
       py::arg("input_contents_txt_raw"), py::arg("extended_return") = false,
       py::arg("debug_info_txt_raw") = py::none(),
-      py::arg("enable_mlir_converter") = false,
       py::arg("quantization_py_function_library") = py::none(),
       R"pbdoc(
       Convert a model represented in `input_contents`. `model_flags_proto`
@@ -50,9 +50,7 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
       representing the contents of the converted model. When extended_return
       flag is set to true returns a dictionary that contains string representation
       of the converted model and some statistics like arithmetic ops count.
-      `debug_info_str` contains the `GraphDebugInfo` proto. When
-      `enable_mlir_converter` is True, tuse MLIR-based conversion instead of
-      TOCO conversion.
+      `debug_info_str` contains the `GraphDebugInfo` proto.
     )pbdoc");
   m.def(
       "ExperimentalMlirQuantizeModel",

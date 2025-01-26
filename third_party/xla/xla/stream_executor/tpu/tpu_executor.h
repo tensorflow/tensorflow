@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -65,8 +66,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   absl::Status Init() override;
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
-
-  absl::Status BlockHostUntilDone(Stream* stream) override;
 
   absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override;

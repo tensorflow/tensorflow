@@ -28,15 +28,16 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/slicing.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/slicing.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
-#include "tsl/platform/macros.h"
 
 typedef tensorflow::monitoring::Gauge<int64_t, 2> TFGaugeMetric;
 static TFGaugeMetric* max_ids_per_partition_gauge_ = TFGaugeMetric::New(
@@ -211,7 +211,7 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     // Get and save quantization config params, if they were configured.
     // num_buckets == 0 indicate no quantization configs were provided.
     int check_num_buckets;
-    Status status =
+    absl::Status status =
         ctx->GetAttr("quantization_config_num_buckets", &check_num_buckets);
     if (status.ok() && check_num_buckets > 0) {
       quantization_config_num_buckets_ = check_num_buckets;

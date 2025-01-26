@@ -21,11 +21,11 @@ limitations under the License.
 #include <ios>
 #include <iterator>
 #include <memory>
-#include <streambuf>
 #include <string>
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "jpeglib.h"  // from @libjpeg_turbo
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"

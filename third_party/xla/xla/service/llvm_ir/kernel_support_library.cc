@@ -15,6 +15,13 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/kernel_support_library.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <vector>
+
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -79,7 +86,7 @@ absl::Status KernelSupportLibrary::IfWithStatus(
 }
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(
-    const HloModuleConfig& module_config, llvm::IRBuilder<>* b,
+    const HloModuleConfig& module_config, llvm::IRBuilderBase* b,
     absl::string_view kernel_name,
     KernelSupportLibrary::ArgumentVector arguments,
     const std::function<void(KernelSupportLibrary::ArgumentVector)>&
@@ -114,7 +121,7 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
                                           llvm::GlobalValue::InternalLinkage,
                                           module_config, kernel_name, module);
 
-    llvm::IRBuilder<>::InsertPointGuard guard(*b);
+    llvm::IRBuilderBase::InsertPointGuard guard(*b);
 
     auto* entry_bb =
         llvm::BasicBlock::Create(b->getContext(), "entry", function);

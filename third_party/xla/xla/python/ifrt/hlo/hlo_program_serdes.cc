@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
-#include "stablehlo/api/PortableApi.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -64,7 +63,8 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     return "xla::ifrt::XlaProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     // Currently, PjRT-IFRT accepts an `HloProgram` that contains C/MHLO. Since
     // these dialects don't provide version compatibility, the following
     // converts the module into StableHLO and use its portable serialization.
@@ -80,7 +80,7 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     // Serialize portable artifact.
     TF_ASSIGN_OR_RETURN(std::string serialized,
                         xla::SerializeUsingVersionedStablehlo(
-                            *module, mlir::stablehlo::getMinimumVersion()));
+                            *module, xla::GetDefaultStablehloVersion()));
     return serialized;
   }
 

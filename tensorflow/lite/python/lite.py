@@ -16,6 +16,7 @@
 
 import enum
 import functools
+import gc
 import pprint
 import shutil
 import sys
@@ -31,6 +32,9 @@ from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as rd
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op  # pylint: disable=unused-import
+# The following imports are needed to make the model_runtime_info_pb2
+# and profiling_info_pb2 protos available via the litert PIP package.
+from tensorflow.lite.profiling.proto import model_runtime_info_pb2  # pylint: disable=unused-import
 from tensorflow.lite.profiling.proto import profiling_info_pb2  # pylint: disable=unused-import
 from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metadata_fb
 from tensorflow.lite.python import lite_constants as constants
@@ -113,8 +117,8 @@ class Optimize(enum.Enum):
       The default optimization strategy that enables post-training quantization.
       The type of post-training quantization that will be used is dependent on
       the other converter options supplied. Refer to the
-      [documentation](/lite/performance/post_training_quantization) for further
-      information on the types available and how to use them.
+      [documentation](https://ai.google.dev/edge/litert/models/post_training_quantization)
+      for further information on the types available and how to use them.
 
   OPTIMIZE_FOR_SIZE
       Deprecated. Does the same as DEFAULT.
@@ -250,6 +254,7 @@ class QuantizationMode:
       experimental_low_bit_qat=False,
       full_integer_quantization_bias_type=None,
       experimental_mlir_variable_quantization=False,
+      experimental_qdq_annotation=False,
   ):
     self._optimizations = optimizations
     for deprecated_optimization in [
@@ -265,6 +270,7 @@ class QuantizationMode:
             deprecated_optimization,
         )
 
+    self._experimental_qdq_annotation = experimental_qdq_annotation
     self._target_spec = target_spec
     self._representative_dataset = representative_dataset
     self._graph_def = graph_def
@@ -350,6 +356,8 @@ class QuantizationMode:
     )
 
   def is_quantization_aware_training(self):
+    if self._experimental_qdq_annotation:
+      return True
     return (
         self.is_any_optimization_enabled()
         and self.is_quantization_aware_trained_model()
@@ -674,6 +682,9 @@ class TFLiteConverterBase:
     self._experimental_qdq_conversion_mode = None
     self._experimental_disable_per_channel_quantization_for_dense_layers = False
     self._experimental_enable_composite_direct_lowering = False
+    self.model_origin_framework = constants.UNSET
+    self.canonicalizing_inf_as_min_max_float = True
+    self._experimental_strict_qdq = False
 
     # Debug parameters
     self.ir_dump_dir = None
@@ -684,6 +695,7 @@ class TFLiteConverterBase:
     self.print_ir_after = None
     self.print_ir_module_scope = None
     self.elide_elementsattrs_if_larger = None
+    self.serialize_debug_metadata = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -772,6 +784,7 @@ class TFLiteConverterBase:
           activations_type,
           bias_type,
           disable_per_channel=self._experimental_disable_per_channel,
+          disable_per_channel_quantization_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
       )
 
   def _is_unknown_shapes_allowed(self):
@@ -789,7 +802,6 @@ class TFLiteConverterBase:
         "allow_custom_ops": self.allow_custom_ops,
         "debug_info": self._debug_info,
         "target_ops": self.target_spec.supported_ops,
-        "enable_mlir_converter": self.experimental_new_converter,
         "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
         "supported_backends": self.target_spec.experimental_supported_backends,
         "unfold_batchmatmul": self.unfold_batchmatmul,
@@ -830,12 +842,18 @@ class TFLiteConverterBase:
             self.experimental_stablehlo_quantizer_config
         ),
         "qdq_conversion_mode": self._experimental_qdq_conversion_mode,
+        "strict_qdq_mode": self._experimental_strict_qdq,
         "disable_per_channel_quantization_for_dense_layers": (
             self._experimental_disable_per_channel_quantization_for_dense_layers
         ),
         "enable_composite_direct_lowering": (
             self._experimental_enable_composite_direct_lowering
         ),
+        "model_origin_framework": self.model_origin_framework,
+        "canonicalizing_inf_as_min_max_float": (
+            self.canonicalizing_inf_as_min_max_float
+        ),
+        "serialize_debug_metadata": self.serialize_debug_metadata,
     }
 
     if self.saved_model_dir:
@@ -1011,6 +1029,7 @@ class TFLiteConverterBase:
         self._experimental_low_bit_qat,
         self._experimental_full_integer_quantization_bias_type,
         self._experimental_variable_quantization,
+        self._experimental_strict_qdq,
     )
     converter_kwargs.update({
         "tf_version": self._metadata.environment.tensorflowVersion,
@@ -1326,6 +1345,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         self._experimental_low_bit_qat,
         self._experimental_full_integer_quantization_bias_type,
         self._experimental_variable_quantization,
+        self._experimental_strict_qdq,
     )
     self._validate_inference_input_output_types(self._quant_mode)
 
@@ -1410,6 +1430,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         self._experimental_low_bit_qat,
         self._experimental_full_integer_quantization_bias_type,
         self._experimental_variable_quantization,
+        self._experimental_strict_qdq,
     )
     self._validate_inference_input_output_types(quant_mode)
     converter_kwargs = {
@@ -1549,16 +1570,19 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
           graph_def, input_tensors, output_tensors
       )
 
-    if self._trackable_obj is None:
+    trackable_obj = _load(self.saved_model_dir, self._saved_model_tags)
+    if trackable_obj is None:
       self._debug_info = _get_debug_info(
           _build_debug_info_func(self._funcs[0].graph), graph_def
       )
     else:
       self._debug_info = _get_debug_info(
-          _convert_debug_info_func(self._trackable_obj.graph_debug_info),
+          _convert_debug_info_func(trackable_obj.graph_debug_info),
           graph_def,
       )
 
+    del trackable_obj
+    gc.collect()
     return self._convert_from_saved_model(graph_def)
 
 
@@ -2045,7 +2069,11 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
 
     # Get quantization options and do some checks.
     quant_mode = QuantizationMode(
-        self.optimizations, self.target_spec, self.representative_dataset, None
+        self.optimizations,
+        self.target_spec,
+        self.representative_dataset,
+        None,
+        experimental_qdq_annotation=self._experimental_strict_qdq,
     )
     self._validate_inference_input_output_types(quant_mode)
     converter_kwargs.update(quant_mode.converter_flags())
@@ -2103,6 +2131,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       variables](https://tensorflow.org/guide/migrate/tf1_vs_tf2#resourcevariables_instead_of_referencevariables)
       to be converted by this converter. This is only allowed if the
       from_saved_model interface is used. (default True)
+    serialize_debug_metadata: Enables serializing debug metadata into the TFLite 
+      model. (default False)
 
   Example usage:
 
@@ -2261,7 +2291,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       funcs.append(saved_model.signatures[key])
 
     saved_model_converter = TFLiteSavedModelConverterV2(
-        saved_model_dir, tags, signature_keys, saved_model
+        saved_model_dir, tags, signature_keys
     )
     if saved_model_converter.saved_model_dir:
       return saved_model_converter
@@ -2534,6 +2564,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
         self._experimental_low_bit_qat,
         self._experimental_full_integer_quantization_bias_type,
         self._experimental_variable_quantization,
+        self._experimental_strict_qdq,
     )
 
     optimized_graph = self._optimize_tf_model(

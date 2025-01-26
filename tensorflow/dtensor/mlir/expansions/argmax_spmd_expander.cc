@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "llvm/ADT/DenseMap.h"

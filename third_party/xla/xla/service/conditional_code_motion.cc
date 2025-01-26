@@ -38,13 +38,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/service/hlo_cse.h"
-#include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -785,6 +785,12 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
   if (to_move_in.empty()) {
     return false;
   }
+
+  if (!conditional->shape().IsTuple() && conditional->user_count() > 1) {
+    // This function cannot handle this case.
+    return false;
+  }
+
   // Mapping boundaries to be moved to their new representations.
   absl::flat_hash_map<Boundary, Boundary> hoisted_boundaries;
   int64_t to_move_in_size = to_move_in.size();

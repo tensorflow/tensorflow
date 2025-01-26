@@ -87,7 +87,8 @@ string DeviceInfoCache::DebugString(const DeviceSet& device_set) const {
 }
 }  // namespace jit
 
-Status DeviceNameToDeviceType(const string& device, DeviceType* device_type) {
+absl::Status DeviceNameToDeviceType(const string& device,
+                                    DeviceType* device_type) {
   DeviceNameUtils::ParsedName parsed;
   if (!DeviceNameUtils::ParseFullName(device, &parsed)) {
     return errors::Internal("Malformed assigned device '", device, "'");

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/integrations/stream_executor_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/bfc_allocator.h"
@@ -120,11 +121,19 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
 
   bool use_unified_memory = (options.per_process_gpu_memory_fraction() > 1.0 ||
                              options.experimental().use_unified_memory());
-  return absl::WrapUnique(new se::DeviceMemAllocator(
-      executor, platform_device_id,
-      use_unified_memory ? stream_executor::MemoryType::kUnified
-                         : stream_executor::MemoryType::kDevice,
-      alloc_visitors, {}));
+  if (use_unified_memory) {
+    auto unified_memory_allocator =
+        executor->CreateMemoryAllocator(stream_executor::MemoryType::kUnified)
+            .value();
+    return std::make_unique<se::StreamExecutorAllocator>(
+        std::move(unified_memory_allocator),
+        stream_executor::MemoryType::kUnified, platform_device_id.value(),
+        alloc_visitors);
+  } else {
+    return std::make_unique<se::DeviceMemAllocator>(
+        executor, platform_device_id, stream_executor::MemoryType::kDevice,
+        alloc_visitors);
+  }
 }
 
 Allocator* GPUProcessState::GetGPUAllocator(
@@ -342,7 +351,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
       options.experimental().gpu_host_mem_limit_in_mb() * (1LL << 20);
   if (mem_limit_bytes <= 0) {
     int64_t limit_mb = -1;
-    Status status =
+    absl::Status status =
         tsl::ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
                                  1LL << 17 /*2^17 MB == 128GB*/, &limit_mb);
     if (!status.ok()) {

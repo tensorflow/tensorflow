@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -73,7 +74,8 @@ TEST(OneHotOpTest, BasicFloat) {
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 3}));
   EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({1.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f}));
+              Pointwise(FloatingPointEq(),
+                        {1.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f}));
 }
 
 TEST(OneHotOpTest, BasicInt) {

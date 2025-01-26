@@ -21,11 +21,19 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/client_library.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -35,7 +43,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -73,11 +81,25 @@ static constexpr char kBadMlirModuleStr[] = R"(
   })";
 
 absl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
-    const char* module_str) {
+    const char* module_str, bool compile_serialized = true) {
   MlirToHloArgs mlir_to_hlo_args;
   mlir_to_hlo_args.rollout_state =
       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
-  mlir_to_hlo_args.mlir_module = module_str;
+
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::mhlo::registerAllMhloDialects(registry);
+  mlir::stablehlo::registerAllDialects(registry);
+  mlir::MLIRContext context(registry);
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
+
+  if (compile_serialized) {
+    mlir_to_hlo_args.mlir_module = module_str;
+  } else {
+    TF_RETURN_IF_ERROR(
+        tensorflow::DeserializeMlirModule(module_str, &context, &mlir_module));
+    mlir_to_hlo_args.mlir_module_op = mlir_module.get();
+  }
 
   se::Platform* platform =
       se::PlatformManager::PlatformWithName("Host").value();
@@ -104,11 +126,15 @@ absl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
                          compilation_result.get());
 }
 
-TEST(LegalizeWithCombinedBridge, DoesNotUseMlirLowering) {
+using LegalizeWithCombinedBridge = ::testing::TestWithParam<bool>;
+
+TEST_P(LegalizeWithCombinedBridge, DoesNotUseMlirLowering) {
+  const bool compile_serialized = GetParam();
+
   CellReader<int64_t> mlir_bridge_legalize_count(kMlirLegalizeCount);
   CellReader<int64_t> counts(kBridgeStatusCounter);
 
-  auto result = CompileMlirModule(kMlirModuleStr);
+  auto result = CompileMlirModule(kMlirModuleStr, compile_serialized);
 
   ASSERT_THAT(result, IsOkOrFiltered());
   EXPECT_EQ(mlir_bridge_legalize_count.Delta("tf.Acos"), 0);
@@ -118,12 +144,14 @@ TEST(LegalizeWithCombinedBridge, DoesNotUseMlirLowering) {
               IncrementedOrFiltered(counts.Delta(kMlirCombinedOldSuccess), 1));
 }
 
-TEST(LegalizeWithCombinedBridge,
-     CorrectlyCountsMlirBridgePassingAndGraphBridgeFailing) {
+TEST_P(LegalizeWithCombinedBridge,
+       CorrectlyCountsMlirBridgePassingAndGraphBridgeFailing) {
+  const bool compile_serialized = GetParam();
+
   CellReader<int64_t> legalize_failure_count(kMlirLegalizeErrors);
   CellReader<int64_t> counts(kBridgeStatusCounter);
 
-  auto result = CompileMlirModule(kBadMlirModuleStr);
+  auto result = CompileMlirModule(kBadMlirModuleStr, compile_serialized);
 
   ASSERT_FALSE(result.ok());
   // Never failed to legalize because it was never attempted
@@ -134,18 +162,23 @@ TEST(LegalizeWithCombinedBridge,
               IncrementedOrFiltered(counts.Delta(kMlirCombinedOldFailure), 1));
 }
 
-TEST(LegalizeWithCombinedBridge, RecordsDynamicOps) {
+TEST_P(LegalizeWithCombinedBridge, RecordsDynamicOps) {
+  const bool compile_serialized = GetParam();
+
   static constexpr char kDynamismFunctionCounterStreamzName[] =
       "/tensorflow/core/tf2xla/api/v2/dynamism_function_counter";
   constexpr char kNotDynamicFunctionName[] = "kNotDynamicFunction";
   CellReader<int64_t> dynamic_function_op_count(
       kDynamismFunctionCounterStreamzName);
 
-  auto result = CompileMlirModule(kMlirModuleStr);
+  auto result = CompileMlirModule(kMlirModuleStr, compile_serialized);
 
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(dynamic_function_op_count.Delta(kNotDynamicFunctionName), 1);
 }
+
+INSTANTIATE_TEST_SUITE_P(LegalizeWithCombinedBridge, LegalizeWithCombinedBridge,
+                         ::testing::Bool());
 
 };  // namespace internal
 };  // namespace tf2xla

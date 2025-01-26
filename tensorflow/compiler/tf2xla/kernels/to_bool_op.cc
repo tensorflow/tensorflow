@@ -13,14 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <numeric>
+#include <cstdint>
 
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/xla_builder.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -34,7 +38,7 @@ class ToBoolOp : public XlaOpKernel {
   }
 
  private:
-  Status DoCompile(XlaOpKernelContext* ctx) {
+  absl::Status DoCompile(XlaOpKernelContext* ctx) {
     auto input = ctx->Input(0);
 
     // If the input is a scalar, then non-zero value returns True.

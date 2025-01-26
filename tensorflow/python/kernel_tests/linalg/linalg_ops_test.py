@@ -336,7 +336,7 @@ class _PinvTest(object):
     a_pinv = np.zeros(s, dtype=a.dtype)
     for i in np.ndindex(a.shape[:(a.ndim - 2)]):
       a_pinv[i] = np.linalg.pinv(
-          a[i], rcond=rcond if isinstance(rcond, float) else rcond[i])
+          a[i], rcond=rcond if isinstance(rcond.tolist(), float) else rcond[i])
     return a_pinv
 
   def test_symmetric(self):

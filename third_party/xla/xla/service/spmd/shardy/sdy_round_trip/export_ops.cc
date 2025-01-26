@@ -40,10 +40,11 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 
-namespace mhlo = ::mlir::mhlo;
+namespace stablehlo = ::mlir::stablehlo;
 
 namespace xla {
 namespace sdy {
@@ -62,10 +63,11 @@ using ::mlir::success;
 
 using ::mlir::sdy::ConstantOp;
 using ::mlir::sdy::ShardingConstraintOp;
+using ::mlir::sdy::ShardingGroupOp;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 
-// Converts `sdy::ConstantOp` to `mhlo::ConstantOp`.
+// Converts `sdy::ConstantOp` to `stablehlo::ConstantOp`.
 class ConstantPattern : public OpConversionPattern<ConstantOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -74,7 +76,7 @@ class ConstantPattern : public OpConversionPattern<ConstantOp> {
       ConversionPatternRewriter& rewriter) const override {
     // We use the generic op builder so that unregistered attributes will be
     // added to the new op.
-    rewriter.replaceOpWithNewOp<mhlo::ConstantOp>(
+    rewriter.replaceOpWithNewOp<stablehlo::ConstantOp>(
         op, op->getResultTypes(), adaptor.getOperands(), op->getAttrs());
     return success();
   }
@@ -91,7 +93,7 @@ class ShardingConstraintPattern
       ConversionPatternRewriter& rewriter) const override {
     TensorShardingAttr sharding = op.getSharding();
 
-    auto customCallOp = rewriter.replaceOpWithNewOp<mhlo::CustomCallOp>(
+    auto customCallOp = rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
         op, op.getType(), adaptor.getInput());
 
     customCallOp.setCallTargetName(kShardingCustomCallTargetName);
@@ -107,6 +109,25 @@ class ShardingConstraintPattern
   }
 };
 
+class ShardingGroupPattern : public OpConversionPattern<ShardingGroupOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+ private:
+  LogicalResult matchAndRewrite(
+      ShardingGroupOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    auto customCallOp = rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
+        op, op->getResultTypes(), adaptor.getInput());
+
+    customCallOp.setCallTargetName(kShardingGroupCustomCallTargetName);
+    setFrontendAttribute(customCallOp, kShardingGroupIdAttr,
+                         op.getGroupIdAttr());
+    customCallOp.setHasSideEffectAttr(rewriter.getBoolAttr(true));
+    return success();
+  }
+};
+
 class SdyRoundTripExportOpsPass
     : public PassWrapper<SdyRoundTripExportOpsPass, OperationPass<ModuleOp>> {
  public:
@@ -116,9 +137,11 @@ class SdyRoundTripExportOpsPass
     mlir::MLIRContext& context = getContext();
     mlir::ConversionTarget target(context);
     target.addIllegalOp<ConstantOp, ShardingConstraintOp>();
-    target.addLegalOp<mhlo::ConstantOp, mhlo::CustomCallOp>();
+    target.addLegalOp<stablehlo::ConstantOp, stablehlo::CustomCallOp>();
     mlir::RewritePatternSet patterns(&context);
-    patterns.add<ConstantPattern, ShardingConstraintPattern>(&context);
+    patterns
+        .add<ConstantPattern, ShardingConstraintPattern, ShardingGroupPattern>(
+            &context);
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
       signalPassFailure();

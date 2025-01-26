@@ -23,8 +23,8 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -61,7 +61,7 @@ using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 class PrepareQuantizePass
     : public PassWrapper<PrepareQuantizePass, OperationPass<func::FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TF::TensorFlowDialect, ::mlir::quant::QuantizationDialect,
+    registry.insert<TF::TensorFlowDialect, ::mlir::quant::QuantDialect,
                     ::mlir::quantfork::QuantizationForkDialect>();
   }
 
@@ -402,7 +402,7 @@ void PrepareQuantizePass::runOnOperation() {
   // Currently, only activation stats are imported, so narrow_range = false.
   patterns.add<PrepareQuantStats>(bit_width, false, true,
                                   /*legacy_float_scale=*/false, ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     signalPassFailure();
   }
 
@@ -417,7 +417,7 @@ void PrepareQuantizePass::runOnOperation() {
 
   RewritePatternSet patterns2(ctx);
   patterns2.add<MergeConsecutiveQuantizeCast>(ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns2)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns2)))) {
     signalPassFailure();
   }
 }

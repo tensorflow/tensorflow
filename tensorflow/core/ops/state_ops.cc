@@ -113,7 +113,7 @@ REGISTER_OP("AssignSub")
 
 namespace {
 
-Status ScatterUpdateShape(InferenceContext* c) {
+absl::Status ScatterUpdateShape(InferenceContext* c) {
   ShapeHandle var_shape = c->input(0);
   ShapeHandle indices_shape = c->input(1);
 
@@ -131,7 +131,7 @@ Status ScatterUpdateShape(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status ScatterNdUpdateShape(InferenceContext* c) {
+absl::Status ScatterNdUpdateShape(InferenceContext* c) {
   ShapeHandle input_shape = c->input(0);
   if (c->input_handle_shapes_and_types(0) != nullptr) {
     const auto& shape_and_type = *(c->input_handle_shapes_and_types(0));

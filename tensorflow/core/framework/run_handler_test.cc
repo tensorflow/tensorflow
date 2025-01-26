@@ -662,8 +662,8 @@ TEST_F(RunHandlerTest, UseRunHandlerPoolEnableSubPool) {
   RunOptions run_options;
   run_options.mutable_experimental()->set_use_run_handler_pool(true);
 
-  Status s = session->Run(run_options, inputs, output_names, target_nodes,
-                          &outputs, nullptr);
+  absl::Status s = session->Run(run_options, inputs, output_names, target_nodes,
+                                &outputs, nullptr);
   EXPECT_EQ(absl::OkStatus(), s);
 
   ASSERT_EQ(1, outputs.size());
@@ -693,8 +693,8 @@ TEST_F(RunHandlerTest, TestConcurrencyUseRunHandlerPool) {
       std::vector<std::pair<string, Tensor>> inputs;
       std::vector<Tensor> outputs;
       // Run the graph
-      Status s = session->Run(run_options, inputs, output_names, {}, &outputs,
-                              nullptr);
+      absl::Status s = session->Run(run_options, inputs, output_names, {},
+                                    &outputs, nullptr);
       EXPECT_EQ(absl::OkStatus(), s);
       ASSERT_EQ(1, outputs.size());
       auto mat = outputs[0].matrix<float>();
@@ -729,8 +729,8 @@ TEST_F(RunHandlerTest, UseRunHandlerPoolEnableSubPoolWithPriority) {
       ->mutable_run_handler_pool_options()
       ->set_priority(1);
 
-  Status s = session->Run(run_options, inputs, output_names, target_nodes,
-                          &outputs, nullptr);
+  absl::Status s = session->Run(run_options, inputs, output_names, target_nodes,
+                                &outputs, nullptr);
   EXPECT_EQ(absl::OkStatus(), s);
 
   ASSERT_EQ(1, outputs.size());
@@ -762,8 +762,8 @@ TEST_F(RunHandlerTest, TestConcurrencyUseRunHandlerPoolWithPriority) {
       std::vector<std::pair<string, Tensor>> inputs;
       std::vector<Tensor> outputs;
       // Run the graph
-      Status s = session->Run(run_options, inputs, output_names, {}, &outputs,
-                              nullptr);
+      absl::Status s = session->Run(run_options, inputs, output_names, {},
+                                    &outputs, nullptr);
       EXPECT_EQ(absl::OkStatus(), s);
       ASSERT_EQ(1, outputs.size());
       auto mat = outputs[0].matrix<float>();

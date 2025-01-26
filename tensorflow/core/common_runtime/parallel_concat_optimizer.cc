@@ -26,7 +26,7 @@ namespace {
 // leaves it untouched otherwise.
 class ParallelConcatRemovePass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override {
+  absl::Status Run(const GraphOptimizationPassOptions& options) override {
     if (options.graph == nullptr) {
       // TODO(apassos) returning OK feels weird here as we can't do anything
       // without a graph, but some tests require this.
@@ -38,7 +38,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
           "Parallel concat removal should happen before partitioning and a "
           "graph should be available.");
     }
-    gtl::InlinedVector<Node*, 2> matches;
+    absl::InlinedVector<Node*, 2UL> matches;
     for (Node* n : g->op_nodes()) {
       if (n->type_string() == "ParallelConcat") {
         matches.push_back(n);

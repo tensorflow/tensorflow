@@ -48,6 +48,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable('RandomCrop')
@@ -4730,7 +4731,7 @@ def sobel_edges(image):
   kernels = [[[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
              [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]]]
   num_kernels = len(kernels)
-  kernels = np.transpose(np.asarray(kernels), (1, 2, 0))
+  kernels = np.transpose(numpy_compat.np_asarray(kernels), (1, 2, 0))
   kernels = np.expand_dims(kernels, -2)
   kernels_tf = constant_op.constant(kernels, dtype=image.dtype)
 

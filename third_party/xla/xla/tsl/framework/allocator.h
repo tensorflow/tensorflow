@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "xla/tsl/framework/numeric_types.h"
 #include "xla/tsl/framework/type_traits.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/numa.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 
@@ -145,6 +145,13 @@ class Allocator {
   // Deallocate a block of memory pointer to by "ptr"
   // REQUIRES: "ptr" was previously returned by a call to AllocateRaw
   virtual void DeallocateRaw(void* ptr) = 0;
+
+  virtual void DeallocateRaw(void* ptr, size_t alignment, size_t num_bytes) {
+    (void)alignment;
+    (void)num_bytes;
+
+    DeallocateRaw(ptr);
+  }
 
   // Returns true if this allocator tracks the sizes of allocations.
   // RequestedSize and AllocatedSize must be overridden if

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>lite/acceleration/configuration/c/delegate_plugin.h</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>lite/acceleration/configuration/c/delegate_plugin.h</h1>
+  <p>C API types for TF Lite delegate plugins. </p>
+  <h2>Summary</h2>
+  <p>
+    <aside class="note"><strong>Note:</strong> Users of TensorFlow Lite should use <pre class="prettyprint">#include "tensorflow/lite/acceleration/configuration/c/delegate_plugin.h"</pre> to access the APIs documented on this page. </aside>
+  </p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Typedefs</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__delegate__plugin_1ga148ca1be6a1af9540686b7b65a371a8d">TfLiteDelegatePlugin</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-delegate-plugin.html#struct_tf_lite_delegate_plugin">TfLiteDelegatePlugin</a></code>
+        </div><div>Struct to hold all the methods for a delegate plugin. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__delegate__plugin_1ga3688949cd80282bac66e3e8e1c118ca1">TfLiteDelegatePluginCreateFunc</a>(const void *tflite_settings)</code>
+      </td>
+      <td>typedef<div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a> *</code>
+        </div><div>Type of delegate creation function used to allocate and construct a delegate. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__delegate__plugin_1ga56c8ce15c6841dc756d4295f19c92c7f">TfLiteDelegatePluginDestroyFunc</a>(TfLiteDelegate *)</code>
+      </td>
+      <td>typedef<div>
+          <code>void</code>
+        </div><div>Type of function to destroy and deallocate a delegate. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__delegate__plugin_1ga843989c081ce4f553578baea93858b1e">TfLiteDelegatePluginGetDelegateErrnoFunc</a>(TfLiteDelegate *)</code>
+      </td>
+      <td>typedef<div>
+          <code>int</code>
+        </div><div>Type of function to return an error code for the last delegate operation. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__delegate__plugin_1ga8f0fafe3eb5588737436726ad7049bea">TfLiteOpaqueDelegatePlugin</a></code>
+      </td>
+      <td>typedef<div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-delegate-plugin.html#struct_tf_lite_delegate_plugin">TfLiteDelegatePlugin</a></code>
+        </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__delegate__plugin_1gacedb45c5eb5ccc01b06e75641c03b9c2">TfLiteOpaqueDelegatePluginCreateFunc</a></code>
+      </td>
+      <td>typedef<div>
+          <code><a href="/lite/api_docs/c/group/delegate-plugin.html#group__delegate__plugin_1ga3688949cd80282bac66e3e8e1c118ca1">TfLiteDelegatePluginCreateFunc</a></code>
+        </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__delegate__plugin_1gad3d837f94c2ecb53105d102961bc1f52">TfLiteOpaqueDelegatePluginDestroyFunc</a></code>
+      </td>
+      <td>typedef<div>
+          <code><a href="/lite/api_docs/c/group/delegate-plugin.html#group__delegate__plugin_1ga56c8ce15c6841dc756d4295f19c92c7f">TfLiteDelegatePluginDestroyFunc</a></code>
+        </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__delegate__plugin_1ga8005a0549e59f5dbc08cdd0d265a267b">TfLiteOpaqueDelegatePluginGetDelegateErrnoFunc</a></code>
+      </td>
+      <td>typedef<div>
+          <code><a href="/lite/api_docs/c/group/delegate-plugin.html#group__delegate__plugin_1ga843989c081ce4f553578baea93858b1e">TfLiteDelegatePluginGetDelegateErrnoFunc</a></code>
+        </div></td>
+    </tr>
+  </table>
+  <table class="constants responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Structs</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-delegate-plugin">TfLiteDelegatePlugin</a>
+      </td>
+      <td>
+        <p>Struct to hold all the methods for a delegate plugin. </p>
+      </td>
+    </tr>
+  </table>
+  <h2>Typedefs</h2>
+  <div id="group__delegate__plugin_1ga148ca1be6a1af9540686b7b65a371a8d">
+    <h3>TfLiteDelegatePlugin</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-delegate-plugin.html#struct_tf_lite_delegate_plugin">TfLiteDelegatePlugin</a> TfLiteDelegatePlugin</pre>
+    <div>
+      <p>Struct to hold all the methods for a delegate plugin. </p>
+    </div>
+  </div>
+  <div id="group__delegate__plugin_1ga3688949cd80282bac66e3e8e1c118ca1">
+    <h3>TfLiteDelegatePluginCreateFunc</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a> * TfLiteDelegatePluginCreateFunc(const void *tflite_settings)</pre>
+    <div>
+      <p>Type of delegate creation function used to allocate and construct a delegate. </p>
+      <p>The <code>tflite_settings</code> parameter passed to the delegate creation function should be a pointer to a FlatBuffer table object of type <code>tflite::TFLiteSettings</code>. We use <code>const void *</code> here rather than <code>const tflite::TFLiteSettings*</code> since this is a C API so we don't want to directly reference C++ types such as <code>tflite::TFLiteSettings</code>. But note that this address should point to the 'parsed' FlatBuffer object, not the raw byte buffer. (Note that 'parsing' FlatBuffers is very cheap, it's just an offset load.)</p>
+      <p>If you are using the FlatBuffers C API, then you can alternatively pass in a value of type <code>tflite_TFLiteSettings_table_t</code>, which is a typedef for <code>const struct tflite_TFLiteSettings_table*</code> that is the corresponding type for the 'parsed' FlatBuffer object in the FlatBuffers C API.</p>
+      <p>Ownership of the <code>tflite_settings</code> flatbuffer remains with the caller. The caller of a delegate creation function may end the lifetime of the <code>tflite_settings</code> FlatBuffer immediately after the call to the function. So the delegate creation function should ensure that any settings that the delegate may need to reference later, after the delegate has been constructed, are copied from the FlatBuffer into storage owned by the delegate. </p>
+    </div>
+  </div>
+  <div id="group__delegate__plugin_1ga56c8ce15c6841dc756d4295f19c92c7f">
+    <h3>TfLiteDelegatePluginDestroyFunc</h3>
+    <pre class="prettyprint">void TfLiteDelegatePluginDestroyFunc(TfLiteDelegate *)</pre>
+    <div>
+      <p>Type of function to destroy and deallocate a delegate. </p>
+      <p>The delegate argument must have been created with the corresponding create function from the same delegate plugin. </p>
+    </div>
+  </div>
+  <div id="group__delegate__plugin_1ga843989c081ce4f553578baea93858b1e">
+    <h3>TfLiteDelegatePluginGetDelegateErrnoFunc</h3>
+    <pre class="prettyprint">int TfLiteDelegatePluginGetDelegateErrnoFunc(TfLiteDelegate *)</pre>
+    <div>
+      <p>Type of function to return an error code for the last delegate operation. </p>
+      <p>The delegate argument must have been created with the corresponding create function from the same delegate plugin. </p>
+    </div>
+  </div>
+  <div id="group__delegate__plugin_1ga8f0fafe3eb5588737436726ad7049bea">
+    <h3>TfLiteOpaqueDelegatePlugin</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-delegate-plugin.html#struct_tf_lite_delegate_plugin">TfLiteDelegatePlugin</a> TfLiteOpaqueDelegatePlugin</pre>
+    <div />
+  </div>
+  <div id="group__delegate__plugin_1gacedb45c5eb5ccc01b06e75641c03b9c2">
+    <h3>TfLiteOpaqueDelegatePluginCreateFunc</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/delegate-plugin.html#group__delegate__plugin_1ga3688949cd80282bac66e3e8e1c118ca1">TfLiteDelegatePluginCreateFunc</a> TfLiteOpaqueDelegatePluginCreateFunc</pre>
+    <div />
+  </div>
+  <div id="group__delegate__plugin_1gad3d837f94c2ecb53105d102961bc1f52">
+    <h3>TfLiteOpaqueDelegatePluginDestroyFunc</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/delegate-plugin.html#group__delegate__plugin_1ga56c8ce15c6841dc756d4295f19c92c7f">TfLiteDelegatePluginDestroyFunc</a> TfLiteOpaqueDelegatePluginDestroyFunc</pre>
+    <div />
+  </div>
+  <div id="group__delegate__plugin_1ga8005a0549e59f5dbc08cdd0d265a267b">
+    <h3>TfLiteOpaqueDelegatePluginGetDelegateErrnoFunc</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/delegate-plugin.html#group__delegate__plugin_1ga843989c081ce4f553578baea93858b1e">TfLiteDelegatePluginGetDelegateErrnoFunc</a> TfLiteOpaqueDelegatePluginGetDelegateErrnoFunc</pre>
+    <div />
+  </div>
+</body>
+</html>

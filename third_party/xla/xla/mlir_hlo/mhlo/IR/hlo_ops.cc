@@ -51,6 +51,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/MathExtras.h"
 #include "mhlo/IR/hlo_ops.h.inc"
 #include "mhlo/IR/hlo_ops_common.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -338,16 +338,6 @@ LogicalResult ReduceScatterOp::verify() {
       channelId, getUseGlobalDeviceIds(), getComputation(), getResult());
 }
 
-void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                            Type resultType, Value operand,
-                            IntegerAttr scatterDimension,
-                            DenseIntElementsAttr replicaGroups,
-                            ChannelHandleAttr channelHandle) {
-  ReduceScatterOp::build(odsBuilder, odsState, resultType, operand,
-                         scatterDimension, replicaGroups, channelHandle,
-                         /*use_global_device_ids=*/nullptr);
-}
-
 //===----------------------------------------------------------------------===//
 // CompatibleOperandsAndResultType
 //===----------------------------------------------------------------------===//
@@ -415,7 +405,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 //===----------------------------------------------------------------------===//
 
 // Follow async operation use-def chain to find the start of the async chain.
-AsyncStartOp findAsyncChainStart(Operation* op) {
+static AsyncStartOp findAsyncChainStart(Operation* op) {
   Operation* start = op;
   while (start != nullptr && !isa<AsyncStartOp>(start)) {
     start = start->getOperand(0).getDefiningOp();
@@ -423,8 +413,8 @@ AsyncStartOp findAsyncChainStart(Operation* op) {
   return dyn_cast_or_null<AsyncStartOp>(start);
 }
 
-Type maybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types,
-                         bool expectsTuple = false) {
+static Type maybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types,
+                                bool expectsTuple = false) {
   if (!expectsTuple && types.size() == 1 && !isa<TupleType>(types[0]))
     return types[0];
   return TupleType::get(ctx, TypeRange(types));
@@ -903,13 +893,31 @@ LogicalResult DotOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult DotGeneralOp::verify() {
+  bool isDefaultPrecisionConfig =
+      !getPrecisionConfig().has_value() ||
+      llvm::all_of(getPrecisionConfig().value(), [](Attribute attr) {
+        return cast<PrecisionAttr>(attr).getValue() == Precision::DEFAULT;
+      });
+  bool hasAlgorithmSpecified = getAlgorithm().has_value();
+  if (hasAlgorithmSpecified) {
+    DotAlgorithmAttr attr = getAlgorithm().value();
+    if (failed(DotAlgorithmAttr::verify(
+            [&] { return this->emitError(); }, attr.getLhsPrecisionType(),
+            attr.getRhsPrecisionType(), attr.getAccumulationType(),
+            attr.getLhsComponentCount(), attr.getRhsComponentCount(),
+            attr.getNumPrimitiveOperations(),
+            attr.getAllowImpreciseAccumulation())))
+      return failure();
+  }
+
   return hlo::verifyDotGeneralOp(
       getLoc(), getLhs(), getRhs(),
       getDotDimensionNumbersAttr().getLhsBatchingDimensions(),
       getDotDimensionNumbersAttr().getRhsBatchingDimensions(),
       getDotDimensionNumbersAttr().getLhsContractingDimensions(),
       getDotDimensionNumbersAttr().getRhsContractingDimensions(),
-      getPrecisionConfig(), getResult());
+      getPrecisionConfig(), isDefaultPrecisionConfig, hasAlgorithmSpecified,
+      getResult());
 }
 
 LogicalResult DotGeneralOp::reifyReturnTypeShapes(
@@ -946,6 +954,214 @@ LogicalResult DotGeneralOp::reifyReturnTypeShapes(
 
   reifiedReturnShapes.push_back(
       builder.create<tensor::FromElementsOp>(getLoc(), dimensions));
+  return success();
+}
+
+LogicalResult DotAlgorithmAttr::verify(
+    ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
+    Type lhsPrecisionType, Type rhsPrecisionType, Type accumulationType,
+    int64_t lhsComponentCount, int64_t rhsComponentCount,
+    int64_t numPrimitiveOperations, bool allowImpreciseAccumulation) {
+  return hlo::verifyDotAlgorithmAttr(
+      emitError, lhsPrecisionType, rhsPrecisionType, accumulationType,
+      lhsComponentCount, rhsComponentCount, numPrimitiveOperations,
+      allowImpreciseAccumulation);
+}
+
+//===----------------------------------------------------------------------===//
+// RaggedDotOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// RaggedDot has three general modes, based on the kind of the ragged dimension.
+// Mode 1, where the ragged dimension is an lhs non-contracting dim (m).
+//   lhs : [b, m, k]
+//   rhs : [g, b, k, n]
+//   group_sizes : [g]
+//   result : [b, m, n]
+// Mode 2, where the ragged dimension is an lhs/rhs contracting dim (k).
+//   lhs : [b, m, k]
+//   rhs : [b, k, n]
+//   group_sizes : [g]
+//   result : [g, b, m, n]
+// Mode 3, where the ragged dimension is an lhs/rhs batch dim (b).
+//   lhs : [b, m, k]
+//   rhs : [b, k, n]
+//   group_sizes : [g]
+//   result : [b, m, n]
+// As with dot_general, the lhs and rhs can have arbitrary batching,
+// contracting and non-contracting dimensions.
+// Additionally:
+//   - In all modes, the lhs must have exactly one ragged dimension.
+//   - In mode 1, the rhs must have exactly one group dimension.
+LogicalResult checkRaggedDotConstraints(
+    std::optional<Location> location, RankedTensorType rankedLhsType,
+    RankedTensorType rankedRhsType, RankedTensorType rankedGroupSizesType,
+    ArrayRef<int64_t> lhsBatchingDimensions,
+    ArrayRef<int64_t> rhsBatchingDimensions,
+    ArrayRef<int64_t> lhsContractingDimensions,
+    ArrayRef<int64_t> rhsContractingDimensions,
+    ArrayRef<int64_t> lhsRaggedDimensions,
+    ArrayRef<int64_t> rhsGroupDimensions) {
+  // Check that the group sizes has rank=1.
+  if (rankedGroupSizesType.getRank() != 1) {
+    return emitOptionalError(
+        location, "expected rank of group_sizes of ragged dot to be 1, got ",
+        rankedGroupSizesType.getRank());
+  }
+  auto numGroups = rankedGroupSizesType.getDimSize(0);
+
+  // Check that there is exactly one lhs ragged dimension.
+  if (lhsRaggedDimensions.size() != 1) {
+    return emitOptionalError(
+        location, "There must be exactly one ragged dimension in the lhs.");
+  }
+  const int64_t lhsRaggedDim = lhsRaggedDimensions[0];
+
+  // Check that the lhs ragged dimension is in range.
+  if (failed(hlo::checkDimInBounds(location, lhsRaggedDim,
+                                   rankedLhsType.getRank(), "lhs_ragged_dim",
+                                   "lhs_rank"))) {
+    return failure();
+  }
+
+  // Validate basic properties of the rhs group dimension(s).
+  for (auto rhsGroupDim : rhsGroupDimensions) {
+    if (failed(hlo::checkDimInBounds(location, rhsGroupDim,
+                                     rankedRhsType.getRank(), "rhs_group_dim",
+                                     "rhs_rank"))) {
+      return failure();
+    }
+  }
+  if (failed(hlo::checkDimsDistinct(
+          location, rhsGroupDimensions, rhsBatchingDimensions,
+          "rhs_group_dimensions", "rhs_batching_dimensions")) ||
+      failed(hlo::checkDimsDistinct(
+          location, rhsGroupDimensions, rhsContractingDimensions,
+          "rhs_group_dimensions", "rhs_contracting_dimensions"))) {
+    return failure();
+  }
+
+  if (llvm::is_contained(lhsBatchingDimensions, lhsRaggedDim) ||
+      llvm::is_contained(lhsContractingDimensions, lhsRaggedDim)) {
+    // Ragged batch (b):       [b,m,k], [b,k,n], [g] -> [b,m,n].
+    // Ragged contracting (k): [b,m,k], [b,k,n], [g] -> [g,b,m,n].
+    if (!rhsGroupDimensions.empty()) {
+      return emitOptionalError(
+          location,
+          "There must be zero group dimensions in the rhs when the "
+          "ragged dimension is batch or contracting.");
+    }
+  } else {
+    // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [g] -> [b,m,n].
+    if (rhsGroupDimensions.size() != 1) {
+      return emitOptionalError(
+          location,
+          "There must be exactly one group dimension in the rhs when the lhs "
+          "ragged dimension is non-contracting.");
+    }
+    // Compare the group dimension size with the number of groups.
+    const int64_t rhsGroupDim = rhsGroupDimensions[0];
+    if (!hlo::verifyCompatibleDims(numGroups,
+                                   rankedRhsType.getDimSize(rhsGroupDim))) {
+      return emitOptionalError(
+          location, "group_sizes is expected to have shape=[",
+          rankedRhsType.getDimSize(rhsGroupDim), "], got [", numGroups, "]");
+    }
+  }
+  return success();
+}
+
+LogicalResult inferRaggedDotOp(
+    std::optional<Location> location, Value lhs, Value rhs, Value groupSizes,
+    ArrayRef<int64_t> lhsBatchingDimensions,
+    ArrayRef<int64_t> rhsBatchingDimensions,
+    ArrayRef<int64_t> lhsContractingDimensions,
+    ArrayRef<int64_t> rhsContractingDimensions,
+    ArrayRef<int64_t> lhsRaggedDimensions, ArrayRef<int64_t> rhsGroupDimensions,
+    std::optional<ArrayAttr> precisionConfig,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  if (failed(hlo::verifyPrecisionConfig(location, precisionConfig))) {
+    return failure();
+  }
+
+  // Validate basic properties of dot dimension numbers.
+  if (failed(hlo::checkDotGeneralConstraints(
+          location, lhs.getType(), rhs.getType(), lhsBatchingDimensions,
+          rhsBatchingDimensions, lhsContractingDimensions,
+          rhsContractingDimensions, precisionConfig))) {
+    return failure();
+  }
+
+  // Validate ragged dot constraints.
+  auto rankedLhsType = cast<RankedTensorType>(lhs.getType());
+  auto rankedRhsType = cast<RankedTensorType>(rhs.getType());
+  auto rankedGroupSizesType = cast<RankedTensorType>(groupSizes.getType());
+  if (failed(checkRaggedDotConstraints(
+          location, rankedLhsType, rankedRhsType, rankedGroupSizesType,
+          lhsBatchingDimensions, rhsBatchingDimensions,
+          lhsContractingDimensions, rhsContractingDimensions,
+          lhsRaggedDimensions, rhsGroupDimensions))) {
+    return failure();
+  }
+  // Already checked that group_sizes is 1-D.
+  const int64_t numGroups = rankedGroupSizesType.getDimSize(0);
+  // Already checked that there is exactly one lhs ragged dim.
+  const int64_t lhsRaggedDim = lhsRaggedDimensions[0];
+
+  // Infer the output dimensions of the ragged dot operation.
+  SmallVector<int64_t> dimensions;
+  // Add the group dimension to the result shape in case of ragged contracting.
+  if (llvm::is_contained(lhsContractingDimensions, lhsRaggedDim)) {
+    dimensions.push_back(numGroups);
+  }
+  auto lhsShape = rankedLhsType.getShape();
+  auto rhsShape = rankedRhsType.getShape();
+  for (const int64_t lhsBatchingDim : lhsBatchingDimensions)
+    dimensions.push_back(lhsShape[lhsBatchingDim]);
+  for (int64_t i = 0; i < rankedLhsType.getRank(); i++)
+    if (!llvm::is_contained(lhsBatchingDimensions, i) &&
+        !llvm::is_contained(lhsContractingDimensions, i))
+      dimensions.push_back(lhsShape[i]);
+  for (int64_t i = 0; i < rankedRhsType.getRank(); i++)
+    if (!llvm::is_contained(rhsBatchingDimensions, i) &&
+        !llvm::is_contained(rhsContractingDimensions, i) &&
+        !llvm::is_contained(rhsGroupDimensions, i))
+      dimensions.push_back(rhsShape[i]);
+
+  inferredReturnShapes.emplace_back(dimensions);
+  return success();
+}
+
+}  // namespace
+
+LogicalResult RaggedDotOp::verify() {
+  auto location = getLoc();
+  auto raggedDotDimNums = getRaggedDotDimensionNumbers();
+  auto dotDimNums = raggedDotDimNums.getDotDimensionNumbers();
+
+  SmallVector<ShapedTypeComponents> inferredReturnShapes;
+  if (failed(inferRaggedDotOp(location, getLhs(), getRhs(), getGroupSizes(),
+                              dotDimNums.getLhsBatchingDimensions(),
+                              dotDimNums.getRhsBatchingDimensions(),
+                              dotDimNums.getLhsContractingDimensions(),
+                              dotDimNums.getRhsContractingDimensions(),
+                              raggedDotDimNums.getLhsRaggedDimensions(),
+                              raggedDotDimNums.getRhsGroupDimensions(),
+                              getPrecisionConfig(), inferredReturnShapes)))
+    return failure();
+  auto inferredShape = inferredReturnShapes[0];
+
+  auto resultType = cast<ShapedType>(getResult().getType());
+  if (failed(verifyCompatibleShape(inferredShape.getDims(),
+                                   resultType.getShape()))) {
+    return emitOptionalError(
+        location, "inferred shape '",
+        hlo::dimSizesToString(inferredShape.getDims()), "' ",
+        "is incompatible with return type of operation ", resultType, "");
+  }
+
   return success();
 }
 
@@ -999,11 +1215,35 @@ LogicalResult SparseDotOp::verify() {
   return success();
 }
 
+// ===----------------------------------------------------------------------===//
+// ExpOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ResultAccuracyAttr::verify(
+    ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError, APFloat atol,
+    APFloat rtol, int64_t ulps, ResultAccuracyModeAttr mode) {
+  return hlo::verifyResultAccuracyAttr(
+      emitError, std::move(atol), std::move(rtol), ulps,
+      stringifyResultAccuracyMode(mode.getValue()));
+}
+
+LogicalResult ExpOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // FftOp
 //===----------------------------------------------------------------------===//
-LogicalResult verify1dTensor(std::optional<Location> loc,
-                             DenseIntElementsAttr attr, std::string attrName) {
+static LogicalResult verify1dTensor(std::optional<Location> loc,
+                                    DenseIntElementsAttr attr,
+                                    std::string attrName) {
   auto rank = attr.getType().getRank();
   if (rank != 1) {
     return emitOptionalError(loc, attrName, " has rank ", rank,
@@ -1221,8 +1461,8 @@ LogicalResult GatherOp::inferReturnTypeComponents(
 //===----------------------------------------------------------------------===//
 
 // Canonicalize mhlo.dynamic_gather to mhlo.gather when slice_sizes is constant.
-LogicalResult simplifyDynamicGatherToGather(DynamicGatherOp op,
-                                            PatternRewriter& rewriter) {
+static LogicalResult simplifyDynamicGatherToGather(DynamicGatherOp op,
+                                                   PatternRewriter& rewriter) {
   DenseIntElementsAttr dynamicGatherSliceSizes;
   if (!matchPattern(op.getSliceSizes(), m_Constant(&dynamicGatherSliceSizes))) {
     return failure();
@@ -1633,7 +1873,7 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
           op.getContext(), {}, {}, {lhsContractDim}, {rhsContractDim});
       auto dotOp = rewriter.create<mhlo::DotGeneralOp>(
           op.getLoc(), op.getType(), lhs, rhs, dotNums,
-          op.getPrecisionConfig().value_or(nullptr));
+          op.getPrecisionConfig().value_or(nullptr), DotAlgorithmAttr{});
 
       rewriter.replaceOp(op, dotOp.getResult());
       return success();
@@ -1669,7 +1909,7 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
         {lhsContractDim + 1}, {rhsContractDim == 0 ? 2 : 0});
     auto dotOp = rewriter.create<mhlo::DotGeneralOp>(
         op.getLoc(), dotTy, lhs, rhs, dotNums,
-        op.getPrecisionConfig().value_or(nullptr));
+        op.getPrecisionConfig().value_or(nullptr), DotAlgorithmAttr{});
 
     llvm::SmallVector<int64_t> perms;
     perms.resize(3, dNums.getOutputBatchDimension() == 0 ? 0 : 2);
@@ -2309,7 +2549,45 @@ LogicalResult BroadcastOp::reifyReturnTypeShapes(
 // BroadcastInDimOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+LogicalResult verifySingleBoundedDynamicDimension(Operation* op,
+                                                  RankedTensorType type) {
+  auto errFn = [&]() {
+    return op->emitOpError() << "load bearing ops with dynamic dimensions must "
+                                "have a single bounded dimension";
+  };
+
+  // Get bounded dims
+  TypeExtensionsAttr encoding =
+      dyn_cast_or_null<TypeExtensionsAttr>(type.getEncoding());
+  if (!encoding) return errFn();
+
+  // Check that all dynamic dims are bounded
+  ArrayRef<int64_t> bounds = encoding.getBounds();
+  ArrayRef<int64_t> shape = type.getShape();
+  for (auto [dim, bound] : llvm::zip(shape, bounds)) {
+    if (ShapedType::isDynamic(dim) && ShapedType::isDynamic(bound))
+      return errFn();
+  }
+
+  // Check single bounded dimension
+  if (llvm::count_if(bounds, [](int64_t dim) {
+        return !ShapedType::isDynamic(dim);
+      }) > 1) {
+    return errFn();
+  }
+  return success();
+}
+}  // namespace
+
 LogicalResult BroadcastInDimOp::verify() {
+  ShapedType resultType = getResult().getType();
+  if (!resultType.hasStaticShape()) {
+    RankedTensorType rankedResultType = cast<RankedTensorType>(resultType);
+    if (failed(verifySingleBoundedDynamicDimension(getOperation(),
+                                                   rankedResultType)))
+      return failure();
+  }
   return hlo::verifyBroadcastInDimOp(
       getLoc(), getOperand(),
       llvm::to_vector(getBroadcastDimensions().getValues<int64_t>()),
@@ -2895,6 +3173,7 @@ LogicalResult DynamicReshapeOp::verify() {
   if (!operandType.hasRank() || !resultType.hasRank() ||
       !outputShapeType.hasStaticShape())
     return success();
+
   return hlo::verifyDynamicReshapeOp(getLoc(), getOperand(), getOutputShape(),
                                      getResult());
 }
@@ -3371,7 +3650,7 @@ Operation* ReduceWindowOp::getReductionOp(int resultIndex) {
   return nullptr;
 }
 
-bool isSplatZero(SplatElementsAttr attr) {
+static bool isSplatZero(SplatElementsAttr attr) {
   if (!attr) return false;
   if (isa<FloatType>(attr.getElementType())) {
     return attr.getSplatValue<APFloat>().isZero();
@@ -3609,7 +3888,7 @@ LogicalResult ReduceOp::fold(FoldAdaptor /*adaptor*/,
   return failure();
 }
 
-bool hasSameOperandAndResultTypes(Operation& op) {
+static bool hasSameOperandAndResultTypes(Operation& op) {
   Type expected;
   if (op.getNumResults() != 0) expected = op.getResult(0).getType();
   if (op.getNumOperands() != 0) expected = op.getOperand(0).getType();
@@ -3976,12 +4255,16 @@ LogicalResult SelectOp::reifyReturnTypeShapes(
 
 OpFoldResult SetDimensionSizeOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
-  DenseElementsAttr input = dyn_cast_or_null<DenseElementsAttr>(operands[0]);
-  if (input) return input;
 
+  // Even if all operands are constants, we can't fold SetDimensionSize to a
+  // constant, since mhlo.constant doesn't support dynamic dimensions. We can,
+  // however, replace the op with its operand, in the case where the (constant)
+  // bound of a dimension is the same as the full extent of said dimension.
   DenseElementsAttr size = dyn_cast_or_null<DenseElementsAttr>(operands[1]);
   if (!size || !size.isSplat()) return {};
 
+  // TODO(b/377537099): This is the result type, which is always dynamic in the
+  // dimension we're looking at. So the code below doesn't do anything.
   auto ty = dyn_cast<RankedTensorType>(getType());
   if (!ty) return {};
 
@@ -4346,6 +4629,15 @@ LogicalResult ReshapeOp::verify() {
   if (!operandType.hasRank() || !resultType.hasRank()) {
     return success();
   }
+
+  // Verify that dynamic outputs are all bounded
+  // HLO allows this, and it is unclear if MHLO/StableHLO should, but it is
+  // needed to raise some TF programs from HLO to MHLO.
+  if (!resultType.hasStaticShape()) {
+    RankedTensorType resultType = cast<RankedTensorType>(getResult().getType());
+    if (failed(verifySingleBoundedDynamicDimension(getOperation(), resultType)))
+      return failure();
+  }
   return hlo::verifyReshapeOp(getLoc(), getOperand(), getResult());
 }
 
@@ -4588,9 +4880,9 @@ struct Abs {
   }
 };
 
-double rsqrt(double d) { return 1.0 / std::sqrt(d); }
+static double rsqrt(double d) { return 1.0 / std::sqrt(d); }
 
-double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
+static double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
 
 // NOLINTBEGIN(bugprone-macro-parentheses)
 #define UNARY_FOLDER(Op, Func)                                                \
@@ -4828,7 +5120,7 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-bool isSplatOne(SplatElementsAttr attr) {
+static bool isSplatOne(SplatElementsAttr attr) {
   if (!attr) return false;
   if (isa<FloatType>(attr.getElementType())) {
     return attr.getSplatValue<APFloat>().convertToDouble() == 1.0;
@@ -5756,8 +6048,8 @@ LogicalResult ScatterOp::verify() {
       getScatterDimensionNumbers().getIndexVectorDim(), getUpdateComputation());
 }
 
-llvm::SmallVector<Attribute, 4> evaluateMhloRegion(Region& region,
-                                                   ArrayRef<Attribute> inputs) {
+static llvm::SmallVector<Attribute, 4> evaluateMhloRegion(
+    Region& region, ArrayRef<Attribute> inputs) {
   if (region.getNumArguments() != inputs.size()) return {};
 
   llvm::DenseMap<Value, Attribute> values;
@@ -5854,9 +6146,9 @@ LogicalResult ScatterOp::fold(
     // value.
     indexIndex.clear();
     if (indexVectorDim == 0) indexIndex.push_back(0);
+    auto updateWindowDims = getScatterDimensionNumbers().getUpdateWindowDims();
     for (int64_t i = 0; i < static_cast<int64_t>(updateIndex.size()); ++i) {
-      if (llvm::count(getScatterDimensionNumbers().getUpdateWindowDims(), i) ==
-          0)
+      if (!llvm::is_contained(updateWindowDims, i))
         indexIndex.push_back(updateIndex[i]);
       if (static_cast<int64_t>(indexIndex.size()) == indexVectorDim)
         indexIndex.push_back(0);
@@ -5864,6 +6156,14 @@ LogicalResult ScatterOp::fold(
 
     // Compute the index for the given update value in the base tensor.
     baseIndex.assign(baseType.getRank(), 0);
+    auto inputBatchingDims =
+        getScatterDimensionNumbers().getInputBatchingDims();
+    auto scatterIndicesBatchingDims =
+        getScatterDimensionNumbers().getScatterIndicesBatchingDims();
+    for (auto [operandDim, indicesDim] :
+         llvm::zip_equal(inputBatchingDims, scatterIndicesBatchingDims)) {
+      baseIndex[operandDim] = indexIndex[indicesDim];
+    }
     uint64_t indexCount = indexType.getShape()[indexVectorDim];
     for (uint64_t i = 0; i < indexCount; ++i) {
       uint64_t operandDim =
@@ -5875,9 +6175,10 @@ LogicalResult ScatterOp::fold(
     uint64_t updateWindowDimIndex = 0;
     auto insertedWindowDims =
         getScatterDimensionNumbers().getInsertedWindowDims();
-    auto updateWindowDims = getScatterDimensionNumbers().getUpdateWindowDims();
     for (uint64_t i = 0; i < baseIndex.size(); ++i) {
-      if (llvm::count(insertedWindowDims, i)) continue;
+      if (llvm::is_contained(insertedWindowDims, i) ||
+          llvm::is_contained(inputBatchingDims, i))
+        continue;
       baseIndex[i] += updateIndex[updateWindowDims[updateWindowDimIndex]];
       updateWindowDimIndex++;
     }
@@ -6456,6 +6757,42 @@ Attribute DotDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
       lhsContractingDimensions, rhsContractingDimensions);
 }
 
+// Custom printer and parser for RaggedDotDimensionNumbersAttr.
+void RaggedDotDimensionNumbersAttr::print(AsmPrinter& printer) const {
+  printStruct(printer, "ragged_dot",
+              std::make_pair("dot_dimension_numbers", getDotDimensionNumbers()),
+              std::make_pair("lhs_ragged_dimensions", getLhsRaggedDimensions()),
+              std::make_pair("rhs_group_dimensions", getRhsGroupDimensions()));
+}
+
+Attribute RaggedDotDimensionNumbersAttr::parse(AsmParser& parser, Type type) {
+  if (failed(parser.parseLess())) return {};
+
+  DotDimensionNumbersAttr dotDimensionNumbers;
+  SmallVector<int64_t> lhsRaggedDimensions;
+  SmallVector<int64_t> rhsGroupDimensions;
+
+  if (failed(parseStruct(
+          parser,
+          {"dot_dimension_numbers", "lhs_ragged_dimensions",
+           "rhs_group_dimensions"},
+          {[&]() {
+             auto result = DotDimensionNumbersAttr::parse(parser, type);
+             if (!result) return ParseResult(failure());
+             dotDimensionNumbers = llvm::cast<DotDimensionNumbersAttr>(result);
+             return ParseResult(success());
+           },
+           [&]() { return parseDims(parser, lhsRaggedDimensions); },
+           [&]() { return parseDims(parser, rhsGroupDimensions); }}))) {
+    parser.emitError(parser.getCurrentLocation())
+        << "failed parsing ragged dot dimension numbers attribute";
+    return {};
+  }
+  return RaggedDotDimensionNumbersAttr::get(
+      parser.getContext(), dotDimensionNumbers, lhsRaggedDimensions,
+      rhsGroupDimensions);
+}
+
 namespace {
 enum NonSpatialDim : int64_t {
   IOBatch = -1,    // Input or output batch dimension
@@ -6947,11 +7284,25 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// Custom unary op
+//===----------------------------------------------------------------------===//
+
+void ResultAccuracyAttr::print(AsmPrinter& odsPrinter) const {
+  hlo::printResultAccuracyAttr(odsPrinter, getAtol(), getRtol(), getUlps(),
+                               getMode());
+}
+
+Attribute ResultAccuracyAttr::parse(AsmParser& parser, Type type) {
+  return hlo::parseResultAccuracyAttr<ResultAccuracyAttr,
+                                      ResultAccuracyModeAttr>(parser, type);
+}
+
 // Each CrossProgramPrefetchAttr specifies a parameter and a ShapeIndex
 // (1) the parameter must be valid
 // (2) there must be a subshape at the given indices
-LogicalResult verifyCrossProgramPrefetchAttr(CrossProgramPrefetchAttr cpp,
-                                             ModuleOp module) {
+static LogicalResult verifyCrossProgramPrefetchAttr(
+    CrossProgramPrefetchAttr cpp, ModuleOp module) {
   func::FuncOp main = module.lookupSymbol<func::FuncOp>("main");
   if (cpp.getParameter() >= main.getNumArguments() || cpp.getParameter() < 0)
     return module->emitOpError()
@@ -7055,7 +7406,7 @@ Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
   return builder.create<mhlo::ConstantOp>(loc, type, elementsAttr);
 }
 
-int64_t getNumLeafBuffers(Type type) {
+static int64_t getNumLeafBuffers(Type type) {
   if (auto tuple = dyn_cast<TupleType>(type)) {
     auto ans = 0;
     for (auto type : tuple.getTypes()) ans += getNumLeafBuffers(type);

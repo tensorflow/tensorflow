@@ -144,8 +144,8 @@ $0.w = $1.w < INIT_FLT(0.0f) ? exp($1.w) - INIT_FLT(1.0f) : $1.w;)";
             "FLT4 exp_val = convert_half4(native_exp(2.0f * "
             "convert_float4($1)));\n";
         result +=
-            "$0 = ((exp_val - INIT_FLT4(1.0f)) / (exp_val + "
-            "INIT_FLT4(1.0f)));";
+            "$0 = isinf(exp_val) ? sign($1) : ((exp_val - INIT_FLT4(1.0f)) / "
+            "(exp_val + INIT_FLT4(1.0f)));\n";
       } else {
         result = "$0 = tanh($1);";
       }

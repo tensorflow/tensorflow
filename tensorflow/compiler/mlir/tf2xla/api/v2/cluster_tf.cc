@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/errors.h"
@@ -55,7 +56,7 @@ using mlir::func::FuncOp;
 
 // Run the TF XLA Bridge based on the input pipeline, which can be either TPU
 // bridge pipeline or non TPU bridge pipeline.
-tensorflow::Status RunTFXLABridge(
+absl::Status RunTFXLABridge(
     ModuleOp module,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder,
     llvm::StringRef module_name = llvm::StringRef(),
@@ -111,11 +112,9 @@ tensorflow::Status RunTFXLABridge(
   return diag_handler.ConsumeStatus();
 }
 
-tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
-                                       bool fallback_enabled,
-                                       std::string bridge_type,
-                                       std::string device_type,
-                                       absl::Status status) {
+absl::Status RecordIfErrorStatus(const std::string error_prefix,
+                                 bool fallback_enabled, std::string bridge_type,
+                                 std::string device_type, absl::Status status) {
   if (status.ok()) {
     return status;
   }
@@ -148,7 +147,7 @@ void CreateReplicatedClusteringPipeline(OpPassManager &pm,
   // TF2-only passes should go here. However, this should be very rare and
   // new passes generally should go into the internal
   // AddReplicatedBridgeClusteringPipelinePasses.
-  pm.addPass(mlir::TFTPU::CreateTPUValidateInputsPass());
+  pm.addPass(tensorflow::tf2xla::internal::CreateTPUValidateInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   tensorflow::tf2xla::internal::AddReplicatedBridgeClusteringPipelinePasses(
@@ -159,7 +158,7 @@ void CreateReplicatedClusteringPipelineV2(OpPassManager &pm) {
   CreateReplicatedClusteringPipeline(pm, /*module_name=*/"");
 }
 
-tensorflow::Status RunFunctionTf2xlaClusteringBridge(
+absl::Status RunFunctionTf2xlaClusteringBridge(
     ModuleOp module, bool is_supported_by_replicated_brige,
     bool is_in_fallback_enabled_mode, llvm::StringRef module_name) {
   std::string device_type = is_supported_by_replicated_brige
@@ -171,7 +170,7 @@ tensorflow::Status RunFunctionTf2xlaClusteringBridge(
       << " Bridge called stack trace is "
       << "(NOTE: this is not an error; rather the stack trace for debugging) : "
       << tensorflow::CurrentStackTrace();
-  Status clustering_status =
+  absl::Status clustering_status =
       is_supported_by_replicated_brige
           ? RunTFXLABridge(
                 module,

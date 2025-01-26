@@ -26,6 +26,7 @@ import threading
 from absl import logging
 import numpy as np
 
+from xla.tsl.protobuf import coordination_config_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -46,7 +47,6 @@ from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
-from tsl.protobuf import coordination_config_pb2
 
 
 # TODO(b/307794935): Remove after a solution is found.
@@ -1387,6 +1387,10 @@ class Context:
     gpu_options = self._compute_gpu_options()
     config.gpu_options.MergeFrom(gpu_options)
 
+    # Configure pluggable_device_options
+    pluggable_device_options = self._compute_pluggable_device_options()
+    config.pluggable_device_options.MergeFrom(pluggable_device_options)
+
     # Configure collective ops
     if self._collective_leader:
       config.experimental.collective_group_leader = self._collective_leader
@@ -1413,29 +1417,38 @@ class Context:
 
     return config
 
-  def _compute_gpu_options(self):
-    """Build the GPUOptions proto."""
+  def _compute_device_options(self, device_type="GPU"):
+    """Build the GPUOptions proto for GPU or PluggableDevice."""
+    if device_type not in ["GPU", "PluggableDevice"]:
+      raise ValueError(
+          "device types other than GPU and PluggableDevice are not supported."
+      )
     visible_device_list = []
     virtual_devices = []
-    gpu_index = -1
+    # This mapping is needed to handle multiple sub types of PluggableDevices.
+    device_to_indices = collections.defaultdict(int)
     memory_growths = set()
-    gpu_devices = self.list_physical_devices("GPU")
-    pluggable_devices = self._pluggable_devices
-    compatible_devices = gpu_devices
-    for dev in pluggable_devices:
-      if dev not in gpu_devices:
-        compatible_devices.append(dev)
+    compatible_devices = (
+        self.list_physical_devices("GPU")
+        if device_type == "GPU"
+        else self._pluggable_devices
+    )
+    support_virtual_devices = device_type == "GPU"
     for dev in compatible_devices:
-      gpu_index += 1
+      device_index = device_to_indices[dev.device_type]
+      device_to_indices[dev.device_type] += 1
 
       if dev not in self._visible_device_list:
         continue
 
       growth = self._memory_growth_map[dev]
       memory_growths.add(growth)
-      visible_device_list.append(str(gpu_index))
+      if device_type == "PluggableDevice":
+        visible_device_list.append(dev.device_type + ":" + str(device_index))
+      else:
+        visible_device_list.append(str(device_index))
 
-      if self._virtual_device_map:
+      if support_virtual_devices and self._virtual_device_map:
         vdevs = self._virtual_device_map.get(dev, [])
         device_ordinals = []
         device_limits = []
@@ -1481,6 +1494,14 @@ class Context:
             virtual_devices=virtual_devices
         ),
     )
+
+  def _compute_gpu_options(self):
+    """Build the GPUOptions proto for GPU."""
+    return self._compute_device_options(device_type="GPU")
+
+  def _compute_pluggable_device_options(self):
+    """Build the GPUOptions proto for PluggableDevice."""
+    return self._compute_device_options(device_type="PluggableDevice")
 
   @property
   def function_call_options(self):

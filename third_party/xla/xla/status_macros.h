@@ -21,14 +21,14 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/base/log_severity.h"
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace status_macros {
@@ -106,6 +106,12 @@ class MakeErrorStream {
   // When this message is logged (see with_logging()), include the stack trace.
   MakeErrorStream& with_log_stack_trace() {
     impl_->should_log_stack_trace_ = true;
+    return *this;
+  }
+
+  // Disables logging this message.
+  MakeErrorStream& without_logging() {
+    impl_->should_log_ = false;
     return *this;
   }
 

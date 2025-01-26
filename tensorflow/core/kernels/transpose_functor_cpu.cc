@@ -35,9 +35,9 @@ template <typename T, bool conjugate>
 void TransposeSimple(const CPUDevice& device, const Tensor& in,
                      const absl::Span<const int32> perm, Tensor* out) {
   const int ndims = in.dims();
-  gtl::InlinedVector<int64_t, 8> in_strides =
+  absl::InlinedVector<int64_t, 8UL> in_strides =
       ComputeStride<int64_t>(in.shape());
-  gtl::InlinedVector<int64_t, 8> out_strides =
+  absl::InlinedVector<int64_t, 8UL> out_strides =
       ComputeStride<int64_t>(out->shape());
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));

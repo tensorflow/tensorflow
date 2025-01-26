@@ -18,11 +18,11 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {

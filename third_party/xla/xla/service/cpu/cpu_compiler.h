@@ -19,25 +19,25 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Target/TargetMachine.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/executable.pb.h"
-#include "xla/service/cpu/target_machine_features.h"
-#include "xla/service/cpu/xla_framework.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/llvm_compiler.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 
@@ -88,16 +88,12 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   // The relocation model used for compilation.
   RelocationModel relocation_model() const { return relocation_model_; }
 
-  bool use_mlir_hlo_lowering() const { return use_mlir_hlo_lowering_; }
-  void set_use_mlir_hlo_lowering(bool value) { use_mlir_hlo_lowering_ = value; }
-
  private:
   const std::string triple_;
   const std::string cpu_name_;
   const std::string features_;
   const std::string entry_point_name_;
   const RelocationModel relocation_model_;
-  bool use_mlir_hlo_lowering_ = false;
 };
 
 class CpuAotCompilationResult : public AotCompilationResult {
@@ -182,12 +178,11 @@ class CpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<AotCompilationResult>>
   LoadAotCompilationResult(const std::string& serialized_aot_result) override;
 
-  // The optional `registry` supports MLIR dialects and plugins to be loaded
-  // during optimization. If non-null, it will be used to construct relevant
-  // MLIR contexts.
-  absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
-      std::unique_ptr<HloModule> module,
-      mlir::DialectRegistry* registry = nullptr);
+  absl::StatusOr<HloSchedule> CreateHloSchedule(
+      const HloModule& hlo_module) const;
+
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> CreateBufferAssignment(
+      const HloModule& module) const;
 
  private:
   // Initialize the LLVM target.
@@ -197,22 +192,20 @@ class CpuCompiler : public LLVMCompiler {
   // correctness.
   absl::Status RunHloPasses(HloModule* module, bool is_aot_compile,
                             llvm::TargetMachine* target_machine,
-                            const CompileOptions& compile_options,
-                            bool is_mlir_compile = false);
+                            const CompileOptions& compile_options);
 
   // Runs HLO passes up to and including layout assignment.
   absl::Status RunHloPassesThroughLayoutAssn(
       HloModule* module, bool /*is_aot_compile*/,
-      LLVMTargetMachineFeatures* target_machine_features,
-      bool is_mlir_compile = false);
+      TargetMachineFeatures* target_machine_features);
 
   // Runs HLO passes after layout assignment.
   absl::Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
-      LLVMTargetMachineFeatures* target_machine_features,
-      const CompileOptions& compile_options, bool is_mlir_compile);
+      TargetMachineFeatures* target_machine_features,
+      const CompileOptions& compile_options);
 
-  absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
+  absl::StatusOr<std::unique_ptr<CpuExecutable>> CompileCpuExecutable(
       std::unique_ptr<HloModule> module);
 
   CpuCompiler(const CpuCompiler&) = delete;

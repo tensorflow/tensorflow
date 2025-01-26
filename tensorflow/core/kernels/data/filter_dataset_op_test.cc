@@ -46,7 +46,7 @@ class FilterDatasetParams : public DatasetParams {
     return other_arguments_;
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->clear();
     input_names->reserve(input_dataset_params_.size() +
                          other_arguments_.size());
@@ -59,7 +59,7 @@ class FilterDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{"predicate", pred_func_},
                     {"Targuments", type_arguments_},
                     {"output_shapes", output_shapes_},

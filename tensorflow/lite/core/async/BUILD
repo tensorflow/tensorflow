@@ -38,8 +38,9 @@ cc_test(
     name = "task_internal_test",
     srcs = ["task_internal_test.cc"],
     deps = [
-        ":async_kernel_internal",
         ":task_internal",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/async/interop/c:types",
         "@com_google_googletest//:gtest_main",

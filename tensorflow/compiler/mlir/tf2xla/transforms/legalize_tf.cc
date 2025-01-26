@@ -15,18 +15,21 @@ limitations under the License.
 
 // This file implements logic for lowering TensorFlow dialect to XLA dialect.
 #include <algorithm>
-#include <cctype>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <numeric>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -59,13 +62,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
-#include "xla/client/lib/conv_grad_size_util.h"
-#include "xla/client/padding.h"
-#include "xla/client/sharding_builder.h"
+#include "xla/hlo/builder/lib/conv_grad_size_util.h"
+#include "xla/hlo/builder/padding.h"
+#include "xla/hlo/builder/sharding_builder.h"
+#include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/utils/convert_op_folder.h"
 #include "xla/mlir_hlo/utils/hlo_utils.h"
-#include "xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/rng_alg.h"
@@ -132,7 +135,7 @@ static DenseIntElementsAttr GetI64ElementsAttrForValue(int size, int64_t val,
 // accumulation over the given input type.
 Type GetSumAccumulationType(Type input_type) {
   MLIRContext *ctx = input_type.getContext();
-  if (input_type.isBF16() || input_type.isF16()) return FloatType::getF32(ctx);
+  if (input_type.isBF16() || input_type.isF16()) return Float32Type::get(ctx);
   if (input_type.isSignlessInteger(8) || input_type.isSignlessInteger(16))
     return IntegerType::get(ctx, 32);
   return input_type;
@@ -652,7 +655,7 @@ static Type ChangeTensorElementType(Builder *b, Type tensor_type,
 static Type GetAccumulationType(Type ty) {
   // Upcast 16 bit sum reductions to 32 bit to reduce the precision loss from
   // repeated floating point additions.
-  return (ty.isF16() || ty.isBF16()) ? FloatType::getF32(ty.getContext()) : ty;
+  return (ty.isF16() || ty.isBF16()) ? Float32Type::get(ty.getContext()) : ty;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1839,7 +1842,7 @@ class ConvertMatrixDiagPartV3Op
     // Boradcasted constants, of the same shape as iotaM and iotaN.
     Value b_zero = BroadcastConstant(loc, indices_shape, 0, 32, rewriter);
     Value b_false = BroadcastConstant(loc, indices_shape, 0, 1, rewriter);
-    Value b_true = BroadcastConstant(loc, indices_shape, 1, 1, rewriter);
+    Value b_true = BroadcastConstant(loc, indices_shape, -1, 1, rewriter);
     Value b_k1 = BroadcastConstant(loc, indices_shape, k[1], 32, rewriter);
     Value b_rows = BroadcastConstant(loc, indices_shape, rows, 32, rewriter);
     Value b_cols = BroadcastConstant(loc, indices_shape, cols, 32, rewriter);
@@ -3145,7 +3148,8 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
     // (The batch dimensions are checked by the broadcasting logic)
     rewriter.replaceOpWithNewOp<DotGeneralOp>(
         op, op.getType(), lhs, rhs, dimension_numbers,
-        /*precision_config=*/GetPrecisionConfig(&rewriter));
+        /*precision_config=*/GetPrecisionConfig(&rewriter),
+        /*algorithm=*/DotAlgorithmAttr{});
     return success();
   }
 };

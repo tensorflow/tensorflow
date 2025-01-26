@@ -16,6 +16,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/log/log.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"

@@ -24,10 +24,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status TF_TensorToMaybeAliasedPyArray(Safe_TF_TensorPtr tensor,
-                                      PyObject** out_ndarray);
+absl::Status TF_TensorToMaybeAliasedPyArray(Safe_TF_TensorPtr tensor,
+                                            PyObject** out_ndarray);
 
-Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray);
+absl::Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor,
+                                PyObject** out_ndarray);
 
 // Creates a tensor in 'ret' from the input `ndarray`. The returned TF_Tensor
 // in `ret` may have its own Python reference to `ndarray`s data. After `ret`
@@ -36,19 +37,19 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray);
 // `convert_string` indicates whether it has to handle tstring conversion.
 // Expected to be removed once tstring migration is done.
 ABSL_MUST_USE_RESULT
-Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
-                       Safe_TF_TensorPtr* ret);
+absl::Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
+                             Safe_TF_TensorPtr* ret);
 
 // Creates a tensor in 'ret' from the input Ndarray.
 // TODO(kkb): This is an old conversion function that does not support TFRT.
 // Currently it's used for session, py_func, and an internal project.  Migrate
 // them.
 ABSL_MUST_USE_RESULT
-Status NdarrayToTensor(PyObject* obj, Tensor* ret);
+absl::Status NdarrayToTensor(PyObject* obj, Tensor* ret);
 
 // Creates a numpy array in 'ret' which either aliases the content of 't' or has
 // a copy.
-Status TensorToNdarray(const Tensor& t, PyObject** ret);
+absl::Status TensorToNdarray(const Tensor& t, PyObject** ret);
 
 }  // namespace tensorflow
 

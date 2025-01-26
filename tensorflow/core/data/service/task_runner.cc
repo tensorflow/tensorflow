@@ -56,8 +56,8 @@ StandaloneTaskIterator::StandaloneTaskIterator(
     std::unique_ptr<standalone::Iterator> iterator)
     : dataset_(std::move(dataset)), iterator_(std::move(iterator)) {}
 
-Status StandaloneTaskIterator::GetNext(std::vector<Tensor>& element,
-                                       bool& end_of_sequence) {
+absl::Status StandaloneTaskIterator::GetNext(std::vector<Tensor>& element,
+                                             bool& end_of_sequence) {
   return iterator_->GetNext(&element, &end_of_sequence);
 }
 
@@ -69,7 +69,7 @@ absl::StatusOr<std::vector<Tensor>> StandaloneTaskIterator::Save() {
   return iterator_->Save();
 }
 
-Status StandaloneTaskIterator::Restore(
+absl::Status StandaloneTaskIterator::Restore(
     const std::vector<Tensor>& saved_iterator) {
   return iterator_->Restore(saved_iterator);
 }
@@ -78,10 +78,10 @@ std::shared_ptr<model::Model> StandaloneTaskIterator::model() const {
   return iterator_->model();
 }
 
-Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
-                          const TaskDef& task_def,
-                          std::unique_ptr<TaskIterator> iterator,
-                          std::unique_ptr<TaskRunner>& out) {
+absl::Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
+                                const TaskDef& task_def,
+                                std::unique_ptr<TaskIterator> iterator,
+                                std::unique_ptr<TaskRunner>& out) {
   if (task_def.optional_num_consumers_case() == TaskDef::kNumConsumers) {
     int64_t cardinality = iterator->Cardinality();
     if (cardinality != kInfiniteCardinality &&
@@ -116,8 +116,8 @@ FirstComeFirstServedTaskRunner::FirstComeFirstServedTaskRunner(
 
 FirstComeFirstServedTaskRunner::~FirstComeFirstServedTaskRunner() { Cancel(); }
 
-Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
-                                               GetElementResult& result) {
+absl::Status FirstComeFirstServedTaskRunner::GetNext(
+    const GetElementRequest& req, GetElementResult& result) {
   if (req.allow_skip() && buffer_.Empty()) {
     result.skip = true;
     return absl::OkStatus();
@@ -125,12 +125,12 @@ Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
   return GetNext(result);
 }
 
-Status FirstComeFirstServedTaskRunner::GetNext(GetElementResult& result) {
+absl::Status FirstComeFirstServedTaskRunner::GetNext(GetElementResult& result) {
   TF_ASSIGN_OR_RETURN(result, buffer_.Pop());
   return absl::OkStatus();
 }
 
-Status FirstComeFirstServedTaskRunner::PrefetchFn() {
+absl::Status FirstComeFirstServedTaskRunner::PrefetchFn() {
   while (true) {
     TF_RETURN_IF_ERROR(buffer_.Push(GetNextFromInputIterator()));
   }
@@ -139,7 +139,7 @@ Status FirstComeFirstServedTaskRunner::PrefetchFn() {
 
 void FirstComeFirstServedTaskRunner::RunPrefetchThread() {
   auto prefetch_fn = [this] {
-    Status status = PrefetchFn();
+    absl::Status status = PrefetchFn();
     if (!status.ok()) {
       buffer_.Cancel(status);
     }
@@ -188,8 +188,8 @@ CachingTaskRunner::CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
 
 CachingTaskRunner::~CachingTaskRunner() { Cancel(); }
 
-Status CachingTaskRunner::GetNext(const GetElementRequest& req,
-                                  GetElementResult& result) {
+absl::Status CachingTaskRunner::GetNext(const GetElementRequest& req,
+                                        GetElementResult& result) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<const GetElementResult> element,
                       cache_.Get(req.trainer_id()));
   result = element->Copy();
@@ -241,7 +241,8 @@ RoundRobinTaskRunner::RoundRobinTaskRunner(
           << num_consumers << " consumers";
 }
 
-Status RoundRobinTaskRunner::ValidateRequest(const GetElementRequest& req) {
+absl::Status RoundRobinTaskRunner::ValidateRequest(
+    const GetElementRequest& req) {
   if (req.consumer_index() < 0 || req.round_index() < 0) {
     return errors::FailedPrecondition(
         "RoundRobinTaskRunner needs to know the consumer index and element "
@@ -255,7 +256,7 @@ Status RoundRobinTaskRunner::ValidateRequest(const GetElementRequest& req) {
   return absl::OkStatus();
 }
 
-Status RoundRobinTaskRunner::PrepareFullRound(int64_t wait_us)
+absl::Status RoundRobinTaskRunner::PrepareFullRound(int64_t wait_us)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   VLOG(1) << worker_address_ << ": Preparing full round for round "
           << current_round_;
@@ -266,7 +267,7 @@ Status RoundRobinTaskRunner::PrepareFullRound(int64_t wait_us)
   return absl::OkStatus();
 }
 
-Status RoundRobinTaskRunner::PreparePartialRound()
+absl::Status RoundRobinTaskRunner::PreparePartialRound()
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   VLOG(1) << worker_address_ << ": Starting partial round " << first_round_
           << " for " << requests_[first_round_].size() << " consumers";
@@ -284,7 +285,7 @@ Status RoundRobinTaskRunner::PreparePartialRound()
   return absl::OkStatus();
 }
 
-Status RoundRobinTaskRunner::PrepareRound(const GetElementRequest& req) {
+absl::Status RoundRobinTaskRunner::PrepareRound(const GetElementRequest& req) {
   mutex_lock l(mu_);
   first_round_ = std::min(first_round_, req.round_index());
   absl::flat_hash_map<int64_t, const GetElementRequest*>& round =
@@ -325,8 +326,8 @@ Status RoundRobinTaskRunner::PrepareRound(const GetElementRequest& req) {
   return prefetch_thread_.GetStatus();
 }
 
-Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
-                                     GetElementResult& result) {
+absl::Status RoundRobinTaskRunner::GetNext(const GetElementRequest& req,
+                                           GetElementResult& result) {
   TF_RETURN_IF_ERROR(ValidateRequest(req));
   result.end_of_sequence = false;
   VLOG(2) << worker_address_ << ": Received request from consumer index "
@@ -394,7 +395,7 @@ void PrefetchThread::Run() {
     }
     std::vector<Tensor> element;
     bool end_of_sequence;
-    Status s = iterator_->GetNext(element, end_of_sequence);
+    absl::Status s = iterator_->GetNext(element, end_of_sequence);
     if (!s.ok()) {
       mutex_lock l(mu_);
       status_ = s;
@@ -417,8 +418,8 @@ void PrefetchThread::Run() {
   }
 }
 
-Status PrefetchThread::FillBuffer(int64_t wait_us,
-                                  std::vector<std::unique_ptr<Element>>& out) {
+absl::Status PrefetchThread::FillBuffer(
+    int64_t wait_us, std::vector<std::unique_ptr<Element>>& out) {
   int64_t start_us = Env::Default()->NowMicros();
   out.clear();
   mutex_lock l(mu_);
@@ -445,7 +446,7 @@ Status PrefetchThread::FillBuffer(int64_t wait_us,
   return absl::OkStatus();
 }
 
-Status PrefetchThread::GetStatus() {
+absl::Status PrefetchThread::GetStatus() {
   mutex_lock l(mu_);
   return status_;
 }

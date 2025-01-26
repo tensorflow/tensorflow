@@ -18,16 +18,16 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -35,21 +35,19 @@ limitations under the License.
 namespace stream_executor {
 
 StreamCommon::StreamCommon(StreamExecutor *parent)
-    : parent_(parent), status_(absl::OkStatus()) {
+    : parent_(parent),
+      status_(absl::OkStatus()),
+      stream_priority_(StreamPriority::Default) {
   CHECK_NE(parent, nullptr);
 }
 
-absl::Status StreamCommon::Launch(const ThreadDim &thread_dims,
-                                  const BlockDim &block_dims, const Kernel &k,
-                                  const KernelArgs &args) {
-  return parent_->Launch(this, thread_dims, block_dims, k, args);
-}
-
-absl::Status StreamCommon::Launch(const ThreadDim &thread_dims,
-                                  const BlockDim &block_dims,
-                                  const ClusterDim &cluster_dims,
-                                  const Kernel &k, const KernelArgs &args) {
-  return parent_->Launch(this, thread_dims, block_dims, cluster_dims, k, args);
+StreamCommon::StreamCommon(
+    StreamExecutor *parent,
+    std::optional<std::variant<StreamPriority, int>> priority)
+    : StreamCommon(parent) {
+  if (priority.has_value()) {
+    stream_priority_ = priority.value();
+  }
 }
 
 StreamCommon::PlatformSpecificHandle StreamCommon::platform_specific_handle()
@@ -98,7 +96,7 @@ absl::StatusOr<Stream *> StreamCommon::GetOrCreateSubStream() {
   // No streams are reusable; create a new stream.
   TF_ASSIGN_OR_RETURN(auto stream, parent_->CreateStream());
   Stream *sub_stream = stream.get();
-  sub_stream->set_name(absl::StrFormat("Sub-stream of %s", name()));
+  sub_stream->SetName(absl::StrFormat("Sub-stream of %s", GetName()));
   sub_streams_.emplace_back(std::move(stream), false);
   VLOG(1) << "stream=" << this << " created new sub_stream=" << sub_stream;
 
@@ -148,22 +146,6 @@ void StreamCommon::CheckError(bool operation_retcode) {
   }
   absl::MutexLock lock(&mu_);
   status_ = absl::InternalError("Unknown error");
-}
-
-absl::Status StreamCommon::BlockHostUntilDone() {
-  if (!ok()) {
-    absl::MutexLock lock(&mu_);
-    LOG(INFO) << status_.ToString();
-    absl::Status status = absl::InternalError(
-        "stream did not block host until done; was already in an error state");
-    LOG(INFO) << "stream = " << this << " " << status;
-    return status;
-  }
-
-  absl::Status error = parent_->BlockHostUntilDone(this);
-  CheckError(error.ok());
-
-  return error;
 }
 
 void StreamCommon::CheckStatus(absl::Status status) {

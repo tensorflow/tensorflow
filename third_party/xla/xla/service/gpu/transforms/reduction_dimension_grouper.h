@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 namespace gpu {
@@ -32,12 +32,12 @@ namespace gpu {
 //
 // For example,
 //
-//   f[] out = reduce(f[10,20,30] input, dimensions={0,1,2})
+//   out = f32[] reduce(f32[10,20,30] input, dimensions={0,1,2})
 //
 // becomes:
 //
-//   f[600] tmp = f[600] bitcast(f[10,20,30] input)
-//   f[] out = reduce(f[600] tmp, dimensions={0})
+//   tmp = f32[6000] bitcast(f32[10,20,30] input)
+//   out = f32[] reduce(f32[6000] tmp, dimensions={0})
 //
 class ReductionDimensionGrouper : public HloModulePass {
  public:

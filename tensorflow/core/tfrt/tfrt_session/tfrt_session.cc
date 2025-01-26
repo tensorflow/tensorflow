@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/threadpool_options.h"
@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -152,7 +153,8 @@ class TfrtSession : public tensorflow::Session {
                        bool tpu_use_tpu_runner, bool use_gpu,
                        TfrtSessionInterOpThreadPools inter_op_thread_pools,
                        bool enable_mlrt,
-                       tensorflow::BackendCompiler* backend_compiler)
+                       tensorflow::BackendCompiler* backend_compiler,
+                       std::unique_ptr<StaticDeviceMgr> device_manager)
       : runtime_{runtime},
         device_target_{device_target},
         tpu_use_tpu_runner_{tpu_use_tpu_runner},
@@ -160,18 +162,19 @@ class TfrtSession : public tensorflow::Session {
         inter_op_thread_pools_{std::move(inter_op_thread_pools)},
         enable_mlrt_(enable_mlrt),
         options_{options},
-        backend_compiler_(backend_compiler) {}
+        backend_compiler_(backend_compiler),
+        device_manager_(std::move(device_manager)) {}
 
-  Status Create(const GraphDef& graph) override {
+  absl::Status Create(const GraphDef& graph) override {
     return Create(GraphDef(graph));
   }
 
-  Status Create(GraphDef&& graph) override {
+  absl::Status Create(GraphDef&& graph) override {
     absl::MutexLock lock(&session_state_lock_);
     return CreateLocked(std::move(graph));
   }
 
-  Status CreateLocked(GraphDef graph)
+  absl::Status CreateLocked(GraphDef graph)
       TF_EXCLUSIVE_LOCKS_REQUIRED(session_state_lock_) {
     if (graph.node_size() == 0) {
       LOG(ERROR) << "Ignoring empty graph.";
@@ -212,9 +215,10 @@ class TfrtSession : public tensorflow::Session {
     // without applying placer or grappler, it is OK for now because it's only
     // used for captured functions in certain tf.data ops
     const auto& fdef_lib = graph.library();
-    TF_ASSIGN_OR_RETURN(auto fallback_state,
-                        tensorflow::tfrt_stub::FallbackState::Create(
-                            session_options, fdef_lib));
+    TF_ASSIGN_OR_RETURN(
+        auto fallback_state,
+        tensorflow::tfrt_stub::FallbackState::CreateWithDeviceMgr(
+            session_options, fdef_lib, device_manager_.get()));
 
     auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
     // Register infra and standard math kernels
@@ -267,16 +271,16 @@ class TfrtSession : public tensorflow::Session {
     return absl::OkStatus();
   }
 
-  Status Extend(const GraphDef& graph) override {
+  absl::Status Extend(const GraphDef& graph) override {
     return Extend(GraphDef(graph));
   }
 
-  Status Extend(GraphDef&& graph) override {
+  absl::Status Extend(GraphDef&& graph) override {
     absl::MutexLock lock(&session_state_lock_);
     return ExtendLocked(std::move(graph));
   }
 
-  Status ExtendLocked(GraphDef graph)
+  absl::Status ExtendLocked(GraphDef graph)
       TF_EXCLUSIVE_LOCKS_REQUIRED(session_state_lock_) {
     if (session_state_ == SessionState::kCreated) {
       return graph_executor_->Extend(graph);
@@ -284,12 +288,13 @@ class TfrtSession : public tensorflow::Session {
     return CreateLocked(std::move(graph));
   }
 
-  Status RunInternal(const RunOptions& run_options,
-                     const std::vector<std::pair<std::string, Tensor>>& inputs,
-                     const std::vector<std::string>& output_tensor_names,
-                     const std::vector<std::string>& target_node_names,
-                     std::vector<Tensor>* outputs,
-                     const thread::ThreadPoolOptions& thread_pool_options) {
+  absl::Status RunInternal(
+      const RunOptions& run_options,
+      const std::vector<std::pair<std::string, Tensor>>& inputs,
+      const std::vector<std::string>& output_tensor_names,
+      const std::vector<std::string>& target_node_names,
+      std::vector<Tensor>* outputs,
+      const thread::ThreadPoolOptions& thread_pool_options) {
     {
       absl::MutexLock lock(&session_state_lock_);
       if (session_state_ == SessionState::kInitialized) {
@@ -350,10 +355,10 @@ class TfrtSession : public tensorflow::Session {
     return absl::OkStatus();
   }
 
-  Status Run(const std::vector<std::pair<std::string, Tensor>>& inputs,
-             const std::vector<std::string>& output_tensor_names,
-             const std::vector<std::string>& target_node_names,
-             std::vector<Tensor>* outputs) override {
+  absl::Status Run(const std::vector<std::pair<std::string, Tensor>>& inputs,
+                   const std::vector<std::string>& output_tensor_names,
+                   const std::vector<std::string>& target_node_names,
+                   std::vector<Tensor>* outputs) override {
     return RunInternal(RunOptions{}, inputs, output_tensor_names,
                        target_node_names, outputs, {});
   }
@@ -361,11 +366,12 @@ class TfrtSession : public tensorflow::Session {
   // TODO(jingdong): run_options and run_metadata are not fully supported for
   // now. Need to figure out the required features and how to handle them
   // properly.
-  Status Run(const RunOptions& run_options,
-             const std::vector<std::pair<std::string, Tensor>>& inputs,
-             const std::vector<std::string>& output_tensor_names,
-             const std::vector<std::string>& target_node_names,
-             std::vector<Tensor>* outputs, RunMetadata* run_metadata) override {
+  absl::Status Run(const RunOptions& run_options,
+                   const std::vector<std::pair<std::string, Tensor>>& inputs,
+                   const std::vector<std::string>& output_tensor_names,
+                   const std::vector<std::string>& target_node_names,
+                   std::vector<Tensor>* outputs,
+                   RunMetadata* run_metadata) override {
     return Run(run_options, inputs, output_tensor_names, target_node_names,
                outputs, run_metadata, /*thread_pool_options=*/{});
   }
@@ -376,12 +382,13 @@ class TfrtSession : public tensorflow::Session {
   // TODO(jingdong): run_options and run_metadata are not fully supported for
   // now. Need to figure out the required features and how to handle them
   // properly.
-  Status Run(const RunOptions& run_options,
-             const std::vector<std::pair<std::string, Tensor>>& inputs,
-             const std::vector<std::string>& output_tensor_names,
-             const std::vector<std::string>& target_tensor_names,
-             std::vector<Tensor>* outputs, RunMetadata* run_metadata,
-             const thread::ThreadPoolOptions& thread_pool_options) override {
+  absl::Status Run(
+      const RunOptions& run_options,
+      const std::vector<std::pair<std::string, Tensor>>& inputs,
+      const std::vector<std::string>& output_tensor_names,
+      const std::vector<std::string>& target_tensor_names,
+      std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& thread_pool_options) override {
     return RunInternal(run_options, inputs, output_tensor_names,
                        target_tensor_names, outputs, thread_pool_options);
   }
@@ -389,8 +396,8 @@ class TfrtSession : public tensorflow::Session {
   /// \brief Creates a `handle` for invoking the subgraph defined by
   /// `callable_options`.
   // NOTE: This API is still experimental and may change.
-  Status MakeCallable(const CallableOptions& callable_options,
-                      CallableHandle* out_handle) override {
+  absl::Status MakeCallable(const CallableOptions& callable_options,
+                            CallableHandle* out_handle) override {
     absl::MutexLock lock(&callables_lock_);
     *out_handle = next_callable_handle_++;
     assert(callables_.find(*out_handle) == callables_.end());
@@ -405,10 +412,10 @@ class TfrtSession : public tensorflow::Session {
   /// match the order of names in `CallableOptions::feed()` and
   /// `CallableOptions::fetch()` when this subgraph was created.
   /// NOTE: This API is still experimental and may change.
-  Status RunCallable(CallableHandle handle,
-                     const std::vector<Tensor>& feed_tensors,
-                     std::vector<Tensor>* fetch_tensors,
-                     RunMetadata* run_metadata) override {
+  absl::Status RunCallable(CallableHandle handle,
+                           const std::vector<Tensor>& feed_tensors,
+                           std::vector<Tensor>* fetch_tensors,
+                           RunMetadata* run_metadata) override {
     return RunCallable(handle, feed_tensors, fetch_tensors, run_metadata, {});
   }
 
@@ -420,7 +427,7 @@ class TfrtSession : public tensorflow::Session {
   /// match the order of names in `CallableOptions::feed()` and
   /// `CallableOptions::fetch()` when this subgraph was created.
   /// NOTE: This API is still experimental and may change.
-  Status RunCallable(
+  absl::Status RunCallable(
       CallableHandle handle, const std::vector<Tensor>& feed_tensors,
       std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
       const thread::ThreadPoolOptions& thread_pool_options) override {
@@ -455,7 +462,7 @@ class TfrtSession : public tensorflow::Session {
   /// \brief Releases resources associated with the given `handle` in this
   /// session.
   /// NOTE: This API is still experimental and may change.
-  Status ReleaseCallable(CallableHandle handle) override {
+  absl::Status ReleaseCallable(CallableHandle handle) override {
     absl::MutexLock lock(&callables_lock_);
     auto it = callables_.find(handle);
     if (it == callables_.end())
@@ -464,18 +471,20 @@ class TfrtSession : public tensorflow::Session {
     return absl::OkStatus();
   }
 
-  Status Close() override {
+  absl::Status Close() override {
     absl::MutexLock lock(&session_state_lock_);
     session_state_ = SessionState::kClosed;
     return absl::OkStatus();
   }
-  Status ListDevices(std::vector<DeviceAttributes>* response) override {
+  absl::Status ListDevices(std::vector<DeviceAttributes>* response) override {
     return errors::Unimplemented("TfrtSession::ListDevices is Unimplemented.");
   }
-  Status LocalDeviceManager(const DeviceMgr** output) override {
-    *output = &graph_executor_->fallback_state().device_manager();
+  absl::Status LocalDeviceManager(const DeviceMgr** output) override {
+    *output = device_manager_.get();
     return absl::OkStatus();
   }
+
+  absl::Status Finalize() override { return absl::OkStatus(); }
 
  private:
   tfrt::HostContext* GetHostContext() {
@@ -513,7 +522,7 @@ class TfrtSession : public tensorflow::Session {
     return options;
   }
 
-  Status CheckNotClosedLocked() const
+  absl::Status CheckNotClosedLocked() const
       TF_EXCLUSIVE_LOCKS_REQUIRED(session_state_lock_) {
     if (session_state_ == SessionState::kClosed) {
       return errors::Cancelled("Session has been closed.");
@@ -551,6 +560,7 @@ class TfrtSession : public tensorflow::Session {
   bool enable_mlrt_ = false;
   SessionOptions options_ = SessionOptions();
   tensorflow::BackendCompiler* backend_compiler_ = nullptr;
+  std::unique_ptr<StaticDeviceMgr> device_manager_;
 };
 
 std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>
@@ -766,7 +776,8 @@ void TfrtSessionFactory::RegisterInitializer(RuntimeInitializer initializer) {
   InitializerRegistry::Get().Register(std::move(initializer));
 }
 
-Status TfrtSessionFactory::InitializeLocked(const TfrtSessionOptions& options) {
+absl::Status TfrtSessionFactory::InitializeLocked(
+    const TfrtSessionOptions& options) {
   mutex_.AssertHeld();
   if (options.use_tpu) {
     DCHECK(!options.backend_compiler);
@@ -801,8 +812,8 @@ bool TfrtSessionFactory::AcceptsOptions(const SessionOptions& options) {
   return false;
 }
 
-Status TfrtSessionFactory::NewSession(const SessionOptions& options,
-                                      Session** out_session)
+absl::Status TfrtSessionFactory::NewSession(const SessionOptions& options,
+                                            Session** out_session)
     TF_LOCKS_EXCLUDED(mutex_) {
   // TODO(b/206499043): `SessionOptions` should be passed to Saved Model to
   // create `FallbackState`.
@@ -815,6 +826,10 @@ Status TfrtSessionFactory::NewSession(const SessionOptions& options,
   *out_session = nullptr;
 
   absl::MutexLock lock(&mutex_);
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
+      options, "/job:localhost/replica:0/task:0", &devices));
+  device_manager_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
   if (!IsInitialized()) {
     TF_RETURN_IF_ERROR(InitializeLocked({}));
     TF_RETURN_IF_ERROR(InitializerRegistry::Get().RunInitializer(runtime_));
@@ -828,9 +843,10 @@ Status TfrtSessionFactory::NewSession(const SessionOptions& options,
                             options.config.experimental().tfrt_use_ifrt())
                                ? backend_compiler_
                                : nullptr;
-  *out_session = new TfrtSession(
-      options, runtime_, device_target_, tpu_use_tpu_runner_, use_gpu_,
-      std::move(inter_op_thread_pools), enable_mlrt_, backend_compiler);
+  *out_session =
+      new TfrtSession(options, runtime_, device_target_, tpu_use_tpu_runner_,
+                      use_gpu_, std::move(inter_op_thread_pools), enable_mlrt_,
+                      backend_compiler, std::move(device_manager_));
   return absl::OkStatus();
 }
 
@@ -844,14 +860,14 @@ tfrt_stub::Runtime* TfrtSessionFactory::GetRuntime() {
   return session_factory->runtime_;
 }
 
-Status InitializeTfrtSession(const TfrtSessionOptions& options) {
+absl::Status InitializeTfrtSession(const TfrtSessionOptions& options) {
   DCHECK(session_factory != nullptr);
   absl::MutexLock lock(&session_factory->mutex_);
   DCHECK(!session_factory->IsInitialized());
   return UpdateTfrtSessionOptionsLocked(options);
 }
 
-Status UpdateTfrtSessionOptionsLocked(const TfrtSessionOptions& options) {
+absl::Status UpdateTfrtSessionOptionsLocked(const TfrtSessionOptions& options) {
   DCHECK(session_factory != nullptr);
   session_factory->mutex_.AssertHeld();
   return session_factory->InitializeLocked(options);

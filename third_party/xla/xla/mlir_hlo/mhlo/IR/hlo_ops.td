@@ -343,6 +343,10 @@ def MHLO_ExpOp: MHLO_UnaryElementwiseOp<"exponential",
     %result = mhlo.exponential %operand : tensor<2x2xf64>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+   DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
   let hasFolder = 1;
 }
 def MHLO_Expm1Op: MHLO_UnaryElementwiseOp<"exponential_minus_one",
@@ -2118,7 +2122,7 @@ def MHLO_BroadcastInDimOp : MHLO_Op<"broadcast_in_dim",
     MHLO_BroadcastDimAttr:$broadcast_dimensions
   );
 
-  let results = (outs MHLO_StaticShapeTensor);
+  let results = (outs MHLO_AnyTensor);
 
   let hasFolder = 1;
   let hasCanonicalizer = 1;
@@ -2150,7 +2154,7 @@ def MHLO_DynamicBroadcastInDimOp : MHLO_ShapedInterfaceOp<
     %result = "mhlo.dynamic_broadcast_in_dim"(%operand, %output_dimensions) {
       broadcast_dimensions = array<i64: 2, 1>,
       known_expanding_dimensions = array<i64: 0>,
-      known_non_expanding_dimensions = array<i64: 1>
+      known_nonexpanding_dimensions = array<i64: 1>
     } : (tensor<1x3xi64>, tensor<3xi64>) -> tensor<2x3x2xi64>
     ```
   }];
@@ -2418,7 +2422,7 @@ def MHLO_ConvolutionOp : MHLO_Op<"convolution", [Pure]> {
       MHLO_ConvDimensionNumbers:$dimension_numbers,
       ConfinedAttr<I64Attr, [IntPositive]>:$feature_group_count,
       ConfinedAttr<I64Attr, [IntPositive]>:$batch_group_count,
-      MHLO_PrecisionConfigAttr:$precision_config
+      OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config
   );
 
   let results = (outs MHLO_Tensor);
@@ -2608,7 +2612,7 @@ def MHLO_DotOp: MHLO_Op<"dot", [Pure]> {
   let arguments = (
     ins MHLO_Tensor:$lhs,
     MHLO_Tensor:$rhs,
-    MHLO_PrecisionConfigAttr:$precision_config
+    OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config
   );
   let results = (outs MHLO_Tensor);
   // Dot op required custom exporter to pass the preferred element type
@@ -2643,12 +2647,48 @@ def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
     MHLO_Tensor:$lhs,
     MHLO_Tensor:$rhs,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
-    MHLO_PrecisionConfigAttr:$precision_config
+    OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config,
+    OptionalAttr<MHLO_DotAlgorithmAttr>:$algorithm
   );
 
   let results = (outs MHLO_Tensor);
   // DotGeneral op required custom exporter to pass the preferred element type
   // to Xla builder.
+  let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
+}
+
+def MHLO_RaggedDotOp: MHLO_Op<"ragged_dot", [Pure]> {
+  let summary = "Ragged matrix multiplication over a single ragged dimension";
+  let description = [{
+    This operation takes three tensor args---lhs, rhs, and group_sizes---and
+    a "ragged_dot_dimension_numbers" attribute. Like dot_general, the lhs and
+    rhs are allowed arbitrary batch and contracting dimensions. Additionally,
+    the lhs is required to have one ragged dimension, and the rhs may have at
+    most one group dimension. The op has three modes, depending on the kind of
+    the lhs ragged dimension.
+
+    In mode 1, the shape-signature is `[b,m,k], [g,b,k,n], [g] -> [b,m,n]`.
+    Here the ragged dimension is an lhs non-contracting dimension (`m`). The
+    dimensions `b` and `k` represent batch and contracting dimensions
+    respectively. The rhs is required to have a group dimension (`g`).
+
+    In mode 2, the shape-signature is `[b,m,k], [b,k,n], [g] -> [g,b,m,n]`.
+    Here the ragged dimension is an lhs/rhs contracting dimension (`k`).
+
+    In mode 3, the shape-signature is `[b,m,k], [b,k,n], [g] -> [b,m,n]`. Here
+    the ragged dimension is an lhs/rhs batch dimension (`b`).
+  }];
+
+  let arguments = (ins
+    MHLO_Tensor:$lhs,
+    MHLO_Tensor:$rhs,
+    MHLO_Tensor:$group_sizes,
+    MHLO_RaggedDotDimensionNumbers:$ragged_dot_dimension_numbers,
+    OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config
+  );
+
+  let results = (outs HLO_Tensor:$result);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
@@ -2667,7 +2707,7 @@ def MHLO_SparseDotOp: MHLO_Op<"sparse_dot", [Pure]> {
     OptionalAttr<MHLO_SparsityDescriptor>:$lhs_sparsity,
     OptionalAttr<MHLO_SparsityDescriptor>:$rhs_sparsity,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
-    MHLO_PrecisionConfigAttr:$precision_config
+    OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config
   );
   let results = (outs MHLO_Tensor);
   // SparseDot op required custom exporter to pass the preferred element type
@@ -2841,7 +2881,7 @@ def MHLO_ReshapeOp: MHLO_Op<"reshape",
 
   let arguments = (ins MHLO_AnyTensor:$operand);
 
-  let results = (outs MHLO_StaticShapeTensor);
+  let results = (outs MHLO_AnyTensor);
   let hasFolder = 1;
   let hasCanonicalizer = 1;
   let hasVerifier = 1;
@@ -3850,7 +3890,7 @@ def MHLO_DynamicConvOp : MHLO_Op<"dynamic_conv", [Pure]> {
       MHLO_ConvDimensionNumbers:$dimension_numbers,
       ConfinedAttr<I64Attr, [IntPositive]>:$feature_group_count,
       ConfinedAttr<I64Attr, [IntPositive]>:$batch_group_count,
-      MHLO_PrecisionConfigAttr:$precision_config
+      OptionalAttr<MHLO_PrecisionConfigAttr>:$precision_config
   );
   let results = (outs MHLO_Tensor);
   let hasCanonicalizer = 1;

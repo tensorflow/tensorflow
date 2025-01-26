@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_BUFFER_INFO_UTIL_H_
 #define XLA_SERVICE_CPU_BUFFER_INFO_UTIL_H_
 
+#include <cstdint>
+#include <vector>
+
 #include "absl/types/span.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_module.h"

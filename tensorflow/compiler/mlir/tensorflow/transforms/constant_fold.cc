@@ -16,15 +16,21 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/constant_fold.h"
 
 #include <algorithm>
+#include <cstdint>
 
+#include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/constant_fold_utils.h"
-#include "tensorflow/core/platform/mutex.h"
 
 namespace mlir {
 namespace TF {
@@ -32,29 +38,25 @@ namespace TF {
 // Implements a TF specific policy on when constant folding is allowed.
 // Policy:
 //
-// Disable constant folding if operands size is greater than a certain
-// threshold (`kOperandsSizeThreshold`).
+// Find the total size of the operands and results, ignoring types with
+// undefined bit widths and unknown shapes.
+// Disable constant folding if operands size is greater than a certain threshold
+// (`kOperandsSizeThreshold`).
 //
-// Otherwise, allow folding if we do not know the shape of an operand or
-// result i.e., one of these values has non-static shape. If we know all the
-// shapes, find the total size of the operands and results. Folding of the op is
-// allowed if one of the following conditions are met:
+// Otherwise, allow folding if:
 // 1. size of results is less than a certain threshold
-// (`kResultsSizeThreshold`), or
-// 2. size of results is within a factor (`kSizeFactor`) of size of operands, or
+//    (`kResultsSizeThreshold`), or
+// 2. size of results is within a factor (`kSizeFactor`) of size of operands.
 // TODO(b/157226221): Look into other heuristics for constant fold policy.
 static bool IsFoldedByDefaultPolicy(Operation* inst) {
-  bool has_unknown_shape = false;
   auto get_size = [&](TypeRange types) {
     int64_t size = 0;
     for (auto t : types) {
       auto tensor_type = mlir::cast<TensorType>(t);
       // Ignore types with undefined bit widths.
       if (!tensor_type.getElementType().isIntOrFloat()) continue;
-      if (!tensor_type.hasStaticShape()) {
-        has_unknown_shape = true;
-        return size;
-      }
+      // Ignore types with dynamic shapes.
+      if (!tensor_type.hasStaticShape()) continue;
       size += tensor_type.getNumElements() *
               tensor_type.getElementType().getIntOrFloatBitWidth();
     }
@@ -65,16 +67,11 @@ static bool IsFoldedByDefaultPolicy(Operation* inst) {
   int64_t operands_size = get_size(inst->getOperandTypes());
 
   constexpr int kSizeFactor = 2;
-// TODO(b/233827625): Remove TF_DISABLE_CONSTANT_FOLDING macro.
-#ifdef TF_DISABLE_CONSTANT_FOLDING
-  constexpr int64_t kResultsSizeThreshold = 0;
-#else
-  constexpr int64_t kResultsSizeThreshold = (1 << 23);  // 1 MB
-#endif
-  constexpr int64_t kOperandsSizeThreshold = (1 << 30);  // 128 MB
+  constexpr int64_t kResultsSizeThreshold = (1 << 16);   // 64 Kib =   8 KiB
+  constexpr int64_t kOperandsSizeThreshold = (1 << 30);  //  1 Gib = 128 MiB
 
   return (operands_size <= kOperandsSizeThreshold) &&
-         (has_unknown_shape || (results_size <= kResultsSizeThreshold) ||
+         ((results_size <= kResultsSizeThreshold) ||
           (results_size <= kSizeFactor * operands_size));
 }
 

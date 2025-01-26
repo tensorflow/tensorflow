@@ -35,7 +35,6 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
@@ -103,7 +102,14 @@ class DotDimensionsInfo {
       batch_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
 
-    for (const int64_t dim : contracting_dimensions) {
+    // Create a sorted contracting dimensions array. This currently doesn't
+    // support dynamic tensors.
+    llvm::SmallVector<int64_t, 4> sorted_contracting_dimensions =
+        llvm::to_vector(contracting_dimensions);
+    if (type.hasStaticShape()) {
+      llvm::sort(sorted_contracting_dimensions);
+    }
+    for (const int64_t dim : sorted_contracting_dimensions) {
       contracting_dimensions_.axes.push_back(dim);
       contracting_dimensions_.sizes.push_back(type.getDimSize(dim));
     }

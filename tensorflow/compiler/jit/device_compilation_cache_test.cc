@@ -22,9 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {

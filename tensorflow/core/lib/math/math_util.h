@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MATH_MATH_UTIL_H_
 #define TENSORFLOW_CORE_LIB_MATH_MATH_UTIL_H_
 
+#include "xla/tsl/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/math/math_util.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

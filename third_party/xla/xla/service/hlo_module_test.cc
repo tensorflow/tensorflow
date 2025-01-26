@@ -24,24 +24,37 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/hlo_memory_scheduler.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/test_compilation_environment.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -945,6 +958,35 @@ ENTRY main {
   EXPECT_EQ(stack_frame.function_name, index->function_names(0));
   EXPECT_EQ(stack_frame.line, location->line());
   EXPECT_EQ(stack_frame.column, location->column());
+}
+
+TEST_F(HloModuleTest, PrintOriginalValue) {
+  // Create a module with a single computation.
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder("Constant");
+  std::vector<float> values(16, 42.0);
+  auto instruction =
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f));
+  auto original_value = std::make_shared<OriginalValue>(instruction->shape());
+  for (auto& leaf : original_value->leaves()) {
+    leaf.second = {std::string(instruction->name()), leaf.first};
+  }
+  instruction->set_original_value(original_value);
+  builder.AddInstruction(std::move(instruction));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      "HloModule PrintOriginalValue, "
+      "entry_computation_layout={()->f32[]}\n\nENTRY %Constant () -> "
+      "f32[] {\n  ROOT %constant = f32[] constant(42), "
+      "origin={{\"constant\"}}\n}\n\n",
+      module->ToString(HloPrintOptions().set_print_original_value(true)));
+
+  EXPECT_EQ(
+      "HloModule PrintOriginalValue, "
+      "entry_computation_layout={()->f32[]}\n\nENTRY %Constant () -> "
+      "f32[] {\n  ROOT %constant = f32[] constant(42)\n}\n\n",
+      module->ToString(HloPrintOptions().set_print_original_value(false)));
 }
 
 }  // namespace

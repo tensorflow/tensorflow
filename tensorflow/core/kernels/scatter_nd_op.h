@@ -64,9 +64,9 @@ struct ScatterNdFunctor {
 // before the scatter is executed.
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp Op>
-Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
-                   const Tensor& updates, const TensorShape& shape, Tensor* out,
-                   bool allocate);
+absl::Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
+                         const Tensor& updates, const TensorShape& shape,
+                         Tensor* out, bool allocate);
 
 }  // namespace functor
 }  // namespace tensorflow

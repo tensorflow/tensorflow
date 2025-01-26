@@ -19,11 +19,11 @@ limitations under the License.
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/allocator_registry.h"
 #include "xla/tsl/framework/tracking_allocator.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/stringprintf.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -119,6 +119,17 @@ class CPUAllocator : public Allocator {
       AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
     }
     port::AlignedFree(ptr);
+  }
+
+  void DeallocateRaw(void* ptr, size_t alignment, size_t num_bytes) override {
+    if (cpu_allocator_collect_stats) {
+      const std::size_t alloc_size =
+          port::MallocExtension_GetAllocatedSize(ptr);
+      mutex_lock l(mu_);
+      stats_.bytes_in_use -= alloc_size;
+      AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
+    }
+    port::AlignedSizedFree(ptr, alignment, num_bytes);
   }
 
   void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,

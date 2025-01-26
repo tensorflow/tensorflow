@@ -20,7 +20,10 @@ limitations under the License.
 #define XLA_BACKENDS_INTERPRETER_EXECUTOR_H_
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
+#include <optional>
+#include <variant>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -112,8 +115,6 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
                                  uint64_t size) override;
 
   void DeallocateStream(Stream *stream) override {}
-
-  absl::Status BlockHostUntilDone(Stream *stream) override;
 
   bool DeviceMemoryUsage(int64_t *free, int64_t *total) const override {
     return false;

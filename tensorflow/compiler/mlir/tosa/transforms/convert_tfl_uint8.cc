@@ -23,12 +23,9 @@ limitations under the License.
 // 3. insert tosa.RESCALE int8 -> uint8 if original returned tensor is uint8
 // typed.
 
-#include <climits>
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <memory>
-#include <numeric>
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -115,15 +112,13 @@ struct ConvertUint8QConstOp : public RewritePattern {
             0, true /* signed */, builder.getBoolAttr(narrow_range))));
 
     Type dst_dense_element_type = builder.getIntegerType(8);
-    llvm::function_ref<APInt(const APInt &)> mapping =
-        [](const APInt &in) -> APInt {
-      int64_t in_i64 = in.getLimitedValue();
-      int64_t out_i64 = in_i64 - 128;
-      return APInt(8, out_i64, true);
-    };
 
-    auto dst_dense_attr =
-        src_dense_attr.mapValues(dst_dense_element_type, mapping);
+    auto dst_dense_attr = src_dense_attr.mapValues(
+        dst_dense_element_type, [](const APInt &in) -> APInt {
+          int64_t in_i64 = in.getLimitedValue();
+          int64_t out_i64 = in_i64 - 128;
+          return APInt(8, out_i64, true);
+        });
 
     builder.replaceOpWithNewOp<TFL::QConstOp>(op, dst_qconst_type,
                                               dst_dense_attr);
@@ -335,7 +330,7 @@ void ConvertUint8ToInt8::runOnOperation() {
 
   // Convert uint8 const tensor. const needs to be handled specifically.
   patterns.add<ConvertUint8QConstOp>(&ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 
   // Replace uint8 tensor in the graph and insert rescale as needed.
   (void)convert_graph_uint8_tensor(ctx, func);

@@ -29,12 +29,11 @@ namespace tensorflow {
 namespace tf2xla {
 namespace internal {
 
-// Compiles a serialized MLIR module and returns a serialized MLIR module of the
-// result of running all the MLIR Bridge passes. If compile_to_xla_hlo is true
-// then those passes include all the Legalization to XLA HLO which is returned
-// in the compilation_result.
-absl::StatusOr<std::string> CompileFromMlirToXlaHlo(
-    bool lower_to_xla_hlo, const tpu::MlirToHloArgs& computation,
+// Runs all the MLIR Bridge passes on the given MLIR module.
+// If compile_to_xla_hlo is true then those passes include all the Legalization
+// to XLA HLO which is returned in the compilation_result.
+absl::Status CompileFromMlirToXlaHlo(
+    bool lower_to_xla_hlo, mlir::ModuleOp mlir_module_op,
     const tpu::TPUCompileMetadataProto& metadata, llvm::StringRef device_type,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns& shape_determination_fns,
     bool use_tuple_args, XlaCompiler::CompilationResult* compilation_result,
@@ -42,19 +41,6 @@ absl::StatusOr<std::string> CompileFromMlirToXlaHlo(
     const std::vector<TensorShape>& arg_shapes,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes);
-
-// Compiles a serialized MLIR module into XLA HLO, generates all accompanying
-// metadata and stores them in CompilationResult.
-absl::StatusOr<XlaCompilationResult> LegalizeWithMlirBridge(
-    const tpu::MlirToHloArgs& computation,
-    const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
-    llvm::StringRef device_type,
-    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
-    const std::vector<tensorflow::TensorShape>& arg_shapes,
-    std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
-    std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
-    XlaCompilationResult* compilation_result);
 
 };  // namespace internal
 };  // namespace tf2xla

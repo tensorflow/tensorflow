@@ -16,34 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_LOGISTIC_EXPANDER_H_
 #define XLA_SERVICE_LOGISTIC_EXPANDER_H_
 
-#include <utility>
-
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-#include "xla/service/op_expander_pass.h"
-
-namespace xla {
-
-// A pass which performs expansion of the logistic function.
-class LogisticExpander : public OpExpanderPass {
- public:
-  LogisticExpander() = default;
-  ~LogisticExpander() override = default;
-  absl::string_view name() const override { return "logistic-expander"; }
-
- private:
-  // Returns `true` if `instruction` should be expanded by this pass.
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-  // Returns a replacement for `instruction`, or nullptr if no replacement is
-  // needed (e.g. only the to_apply subcomputation of the instruction was
-  // modified).
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/logistic_expander.h"
 
 #endif  // XLA_SERVICE_LOGISTIC_EXPANDER_H_

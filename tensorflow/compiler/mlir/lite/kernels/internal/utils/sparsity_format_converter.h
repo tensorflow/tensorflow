@@ -18,7 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "Eigen/Core"  // from @eigen_archive
-#include "tensorflow/compiler/mlir/lite/core/c/dimension_type.h"
+#include "tensorflow/compiler/mlir/lite/core/c/tflite_types.h"
 
 namespace tflite_migration {
 namespace internal {
@@ -60,7 +60,7 @@ class FormatConverter {
   void DenseToSparse(const T* src_data);
 
   // Check if val is equal to zero.
-  bool IsZero(const T val);
+  bool IsZero(T val);
 
   // Shape of the conceptual dense tensor.
   std::vector<int> dense_shape_;

@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/slice_spmd_expander.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -31,7 +30,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -45,11 +43,11 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
-Status GetSliceOpArguments(mlir::TF::SliceOp slice_op,
-                           llvm::SmallVector<int64_t, 4>& begins,
-                           bool& dynamic_begins,
-                           llvm::SmallVector<int64_t, 4>& sizes) {
-  Status begins_result =
+absl::Status GetSliceOpArguments(mlir::TF::SliceOp slice_op,
+                                 llvm::SmallVector<int64_t, 4>& begins,
+                                 bool& dynamic_begins,
+                                 llvm::SmallVector<int64_t, 4>& sizes) {
+  absl::Status begins_result =
       ExtractConstVectorFromValue(slice_op.getBegin(), &begins);
   dynamic_begins = !begins_result.ok();
 

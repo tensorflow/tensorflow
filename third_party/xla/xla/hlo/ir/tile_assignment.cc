@@ -22,10 +22,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/printer.h"
 #include "xla/util.h"
 
 namespace xla {

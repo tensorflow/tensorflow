@@ -32,8 +32,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status ParseTextProto(absl::string_view text_proto,
-                      tpu::TPUEmbeddingConfiguration* parsed_proto) {
+absl::Status ParseTextProto(absl::string_view text_proto,
+                            tpu::TPUEmbeddingConfiguration* parsed_proto) {
   tsl::protobuf::TextFormat::Parser parser;
   // Attempt to parse as text.
   tsl::protobuf::io::ArrayInputStream input_stream(text_proto.data(),

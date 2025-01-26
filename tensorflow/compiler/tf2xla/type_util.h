@@ -24,7 +24,8 @@ limitations under the License.
 namespace tensorflow {
 
 // Converts a Tensorflow DataType to an XLA PrimitiveType.
-Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type);
+absl::Status DataTypeToPrimitiveType(DataType data_type,
+                                     xla::PrimitiveType* type);
 
 // Converts an XLA PrimitiveType to a TensorFlow DataType.
 // Caution: The mapping from TF types to XLA types is not one-to-one: for

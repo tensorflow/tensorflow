@@ -16,27 +16,71 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_RUNNER_INTERFACE_H_
 #define XLA_SERVICE_HLO_RUNNER_INTERFACE_H_
 
-#include <map>
+#include <cstdint>
+#include <functional>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
 class BufferAssignmentProto;
+
+// Tags to identify particular properties of a HloRunnerInterface
+// implementation.
+//
+// Tags are an opaque way to expose arbitrary details about the runner backend.
+// Tags should be added whenever a decision must be made based on the property
+// of a particular backend or runner implementation.
+//
+// For example, if a specific feature is only supported under certain conditions
+// and only known to the backend, a tag can be added here and exposed via all
+// applicable backends. A test or other functionality can then be gated on the
+// presence of that particular tag.
+//
+// Custom tags that cannot be added in this file can be defined elsewhere but
+// should use negative values to avoid conflicts.
+class HloRunnerPropertyTag final {
+ public:
+  // Underlying type for HloRunnerPropertyTag properties as well as other fields
+  // that represent property tags.
+  //
+  // e.g. a custom grouping class for a proprietary codebase could be defined
+  // as:
+  //
+  // class MyCorpPropertyTag final {
+  //  public:
+  //   static constexpr HloRunnerPropertyTag::Type kInternalFeature1 = -1;
+  //   static constexpr HloRunnerPropertyTag::Type kInternalFeature2 = -2;
+  // };
+  using Type = int;
+
+  // Default, reserved value for HloRunnerPropertyTag. Perhaps this could be
+  // used as a sentinel value for a tag that is not present. Do not use.
+  static constexpr Type kDefault = 0;
+  // Indicates that the runner is using ROCm.
+  static constexpr Type kUsingGpuRocm = 1;
+  // Indicates that this runner is a CPU runner.
+  static constexpr Type kCpu = 2;
+
+ private:
+  HloRunnerPropertyTag() = default;
+};
 
 // A base class for running an HloModule. This executes the given HloModule on a
 // certain backend directly without using the client interface. HloModule can be
@@ -84,14 +128,16 @@ class HloRunnerInterface {
     bool use_threads = false;
   };
 
-  HloRunnerInterface() = default;
+  using DeviceShapeRepresentationFn = std::function<Shape(const Shape&)>;
+  using DeviceShapeSizeFn = std::function<int64_t(const Shape&)>;
 
+  HloRunnerInterface() = default;
   virtual ~HloRunnerInterface() = default;
 
   // Converts an HloModule from the given hlo textual IR string (in
   // HloModule::ToString format).
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromString(
-      const absl::string_view hlo_string, const DebugOptions& debug_options);
+      absl::string_view hlo_string, const DebugOptions& debug_options);
 
   // Reads the proto file in xla.HloProto format, creates and returns the
   // HloModule.
@@ -108,7 +154,8 @@ class HloRunnerInterface {
   // Reads the hlo text dump file in HloModule::ToString format, creates and
   // returns the HloModule.
   static absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
-      const std::string& filename, const DebugOptions& debug_options);
+      const std::string& filename, const DebugOptions& debug_options,
+      const HloParserOptions& options = HloParserOptions());
 
   // Creates an executable object given an HLO module. If run_hlo_passes is
   // true, the HLO passes will be run as part of compilation.
@@ -215,7 +262,21 @@ class HloRunnerInterface {
   // Returns the name of this runner.
   virtual absl::string_view Name() const = 0;
 
-  typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
+  // Return the device shape representation of 'host_shape'.
+  virtual DeviceShapeRepresentationFn device_shape_representation_fn()
+      const = 0;
+  // Return the device shape size of 'host_shape'.
+  // This function is used e.g. to create a VerifiedHloModule. It returns an
+  // integer representing the size of the shape in bytes as opposed to a Shape.
+  virtual DeviceShapeSizeFn device_shape_size_fn() const = 0;
+
+  // Returns the number of devices which are known. Not all of these devices may
+  // be usable by XLA.
+  virtual int device_count() const = 0;
+
+  // Returns true if the condition corresponding to the given tag is true for
+  // this runner.
+  virtual bool HasProperty(HloRunnerPropertyTag::Type tag) const = 0;
 };
 
 }  // namespace xla

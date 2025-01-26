@@ -143,8 +143,8 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
     ] + if_not_android([
-        "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder",
-        "@local_tsl//tsl/profiler/utils:time_utils",
+        "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder",
+        "@local_xla//xla/tsl/profiler/utils:time_utils",
     ]),
 )
 
@@ -226,9 +226,10 @@ cc_library(
         "//tensorflow/core/platform",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ] + if_not_android([
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack",
+        "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack",
     ]),
 )
 

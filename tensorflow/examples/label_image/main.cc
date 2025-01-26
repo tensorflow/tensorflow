@@ -35,6 +35,8 @@ limitations under the License.
 // are supported.
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -42,6 +44,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
@@ -115,7 +118,7 @@ static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
   std::unique_ptr<tensorflow::RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
 
-  tensorflow::StringPiece data;
+  absl::string_view data;
   TF_RETURN_IF_ERROR(file->Read(0, file_size, &data, &(contents)[0]));
   if (data.size() != file_size) {
     return tensorflow::errors::DataLoss("Truncated read of '", filename,

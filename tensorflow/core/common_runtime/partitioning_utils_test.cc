@@ -127,7 +127,7 @@ TEST_F(PartitioningUtilsTest, GraphWithoutAssignedDevicesFails) {
   SwapGraph(graph.get());
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
-  Status status =
+  absl::Status status =
       PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << status.ToString();
 }
@@ -138,7 +138,7 @@ TEST_F(PartitioningUtilsTest, OneDevice) {
   int num_nodes = graph->num_op_nodes();
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
-  Status status =
+  absl::Status status =
       PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
@@ -153,7 +153,7 @@ TEST_F(PartitioningUtilsTest, TwoDevices) {
   TwoDeviceSwapGraph(graph.get());
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
-  Status status =
+  absl::Status status =
       PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
@@ -321,7 +321,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
 
-  Status status = UpdateArgAndRetvalMetadata(
+  absl::Status status = UpdateArgAndRetvalMetadata(
       graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
       &ret_alloc_attrs, /*ints_on_device=*/false);
   ASSERT_TRUE(status.ok()) << status.ToString();
@@ -351,7 +351,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsNotOnDevice) {
   TF_ASSERT_OK(
       int32_fulltype.ProcessGraph(graph.get(), /*ints_on_device=*/false));
 
-  Status status = UpdateArgAndRetvalMetadata(
+  absl::Status status = UpdateArgAndRetvalMetadata(
       graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
       &ret_alloc_attrs, /*ints_on_device=*/false);
   ASSERT_TRUE(status.ok()) << status.ToString();
@@ -369,7 +369,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsOnDevice) {
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
 
-  Status status = UpdateArgAndRetvalMetadata(
+  absl::Status status = UpdateArgAndRetvalMetadata(
       graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
       &ret_alloc_attrs, /*ints_on_device=*/true);
   ASSERT_TRUE(status.ok()) << status.ToString();
@@ -398,7 +398,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets_Order) {
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
 
-  Status status = UpdateArgAndRetvalMetadata(
+  absl::Status status = UpdateArgAndRetvalMetadata(
       graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
       &ret_alloc_attrs, /*ints_on_device=*/false);
   ASSERT_TRUE(status.ok()) << status.ToString();

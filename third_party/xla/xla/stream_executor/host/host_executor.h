@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_HOST_HOST_EXECUTOR_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <variant>
@@ -27,7 +26,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -35,7 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_common.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace stream_executor {
 namespace host {
@@ -48,15 +46,6 @@ namespace host {
 // routines executed under the context of a GPU executor.
 class HostExecutor : public StreamExecutorCommon {
  public:
-  // A function that loads a kernel function from a given spec. If spec is not
-  // supported it returns an empty optional.
-  using KernelFunctionLoader = std::function<std::optional<
-      absl::StatusOr<std::unique_ptr<HostKernel::KernelFunction>>>(
-      const MultiKernelLoaderSpec& spec)>;
-
-  // Registers a kernel function loader in a static registry.
-  static void RegisterKernelFunctionLoader(KernelFunctionLoader loader);
-
   HostExecutor(Platform* platform, int device_ordinal)
       : StreamExecutorCommon(platform), device_ordinal_(device_ordinal) {}
 
@@ -87,8 +76,6 @@ class HostExecutor : public StreamExecutorCommon {
                                  uint64_t size) override;
 
   void DeallocateStream(Stream* stream) override;
-
-  absl::Status BlockHostUntilDone(Stream* stream) override;
 
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 

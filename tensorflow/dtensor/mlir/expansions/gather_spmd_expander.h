@@ -16,13 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_GATHER_SPMD_EXPANDER_H_
 #define TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_GATHER_SPMD_EXPANDER_H_
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project

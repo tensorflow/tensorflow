@@ -39,7 +39,7 @@ class FloatSupportTest : public HloTestBase {
 
 class FloatSupportTestWithCublas : public FloatSupportTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = FloatSupportTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
@@ -48,7 +48,7 @@ class FloatSupportTestWithCublas : public FloatSupportTest {
 
 class FloatSupportTestWithTriton : public FloatSupportTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = FloatSupportTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);
     debug_options.set_xla_gpu_triton_gemm_any(true);

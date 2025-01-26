@@ -16,14 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_EAGER_GRPC_EAGER_SERVICE_IMPL_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_EAGER_GRPC_EAGER_SERVICE_IMPL_H_
 
+#include <memory>
+
 #include "grpcpp/alarm.h"
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/server_builder.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/protobuf/eager_service.pb.h"
 
 namespace tensorflow {
 namespace eager {
@@ -45,8 +50,8 @@ class GrpcEagerServiceImpl : public tsl::AsyncServiceInterface {
   virtual ~GrpcEagerServiceImpl() {}
 
   // Create a master context in eager service.
-  Status CreateMasterContext(const tensorflow::uint64 context_id,
-                             EagerContext* context);
+  absl::Status CreateMasterContext(tensorflow::uint64 context_id,
+                                   EagerContext* context);
 
   void HandleRPCsLoop() override;
   void Shutdown() override;
@@ -92,12 +97,12 @@ class GrpcEagerServiceImpl : public tsl::AsyncServiceInterface {
     env_->compute_pool->Schedule([this, call]() {
       auto call_opts = std::make_shared<CallOptions>();
       call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-      local_impl_.RunComponentFunction(call_opts.get(), &call->request,
-                                       &call->response,
-                                       [call, call_opts](const Status& s) {
-                                         call->ClearCancelCallback();
-                                         call->SendResponse(ToGrpcStatus(s));
-                                       });
+      local_impl_.RunComponentFunction(
+          call_opts.get(), &call->request, &call->response,
+          [call, call_opts](const absl::Status& s) {
+            call->ClearCancelCallback();
+            call->SendResponse(ToGrpcStatus(s));
+          });
     });
     tsl::Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,
               RunComponentFunctionRequest, RunComponentFunctionResponse>::
@@ -129,7 +134,7 @@ class GrpcEagerServiceImpl : public tsl::AsyncServiceInterface {
       // NOTE(fishx): Use the address of StreamingCall as the stream_id since we
       // reuse the same StreamingCall for multiple requests in the same
       // streaming connection.
-      Status status = local_impl_.Enqueue(
+      absl::Status status = local_impl_.Enqueue(
           /*call_opts=*/nullptr, &call->request(), call->mutable_response(),
           reinterpret_cast<uint64>(static_cast<void*>(call)));
 

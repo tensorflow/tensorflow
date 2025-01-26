@@ -57,7 +57,6 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
@@ -283,7 +282,7 @@ StatusOr<std::vector<xla::AutotuneResult>> AutotuneMatMulImpl(
     // TODO(zhengxq): profile each algorithm multiple times to better
     // accuracy.
     se::RedzoneAllocator rz_scratch_allocator(
-        stream, &tf_allocator_adapter, se::GpuAsmOpts(),
+        stream, &tf_allocator_adapter,
         /*memory_limit=*/scratch_size_limit);
     BlasScratchAllocator scratch_allocator(ctx, scratch_size_limit);
     se::ScratchAllocator* allocator_used =
@@ -355,8 +354,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
 
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                                 stream);
-    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                      se::GpuAsmOpts());
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter);
     se::DeviceMemory<T> c_ptr_rz(WrapRedzoneBestEffort(&rz_allocator, c_ptr));
 
     std::vector<std::unique_ptr<const se::dnn::FusedMatmulRunner>> runners;
@@ -516,12 +514,11 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     use_cudnn = true;
 #endif
 
-#if TF_HIPBLASLT
-    auto cap = stream->GetRocmComputeCapability();
-    // as of ROCm 5.5, hipblaslt only supports MI200.
-    if (cap.gcn_arch_name().substr(0, 6) != "gfx90a") use_cudnn = true;
-#endif
-
+    const auto& cc =
+        stream->parent()->GetDeviceDescription().gpu_compute_capability();
+    if (auto* procm = std::get_if<se::RocmComputeCapability>(&cc)) {
+      use_cudnn = !procm->gfx9_mi200_or_later();
+    }
     BlasScratchAllocator scratch_allocator(context);
 
     // The Gelu exact fusion is supported by the cuDNN.
@@ -591,7 +588,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
                                          epilog_op};
     absl::Mutex* pmu;
     auto plan_and_algorithms_or =
-        GetPlanAndAlgorithms(stream, matmul_params, &pmu);
+        PlanAndAlgorithms::GetOrCreate(stream, matmul_params, &pmu);
     OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
     absl::MutexLock lock(pmu);
     const auto* plan_and_algorithms = std::move(plan_and_algorithms_or).value();
@@ -602,9 +599,9 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     auto launch_func = [&](BlasScratchAllocator& scratch_allocator,
                            size_t alg_idx,
                            se::blas::ProfileResult* profile_result) {
-      return DoBlasLtMatmul(stream, *plan_and_algorithms, a_ptr, b_ptr, c_ptr,
-                            alg_idx, scratch_allocator, bias_ptr,
-                            profile_result);
+      return plan_and_algorithms->ExecuteOnStream(stream, a_ptr, b_ptr, c_ptr,
+                                                  alg_idx, scratch_allocator,
+                                                  bias_ptr, profile_result);
     };
 
     size_t alg_idx = 0;

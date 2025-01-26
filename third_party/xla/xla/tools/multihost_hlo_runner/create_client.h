@@ -16,41 +16,47 @@ limitations under the License.
 #ifndef XLA_TOOLS_MULTIHOST_HLO_RUNNER_CREATE_CLIENT_H_
 #define XLA_TOOLS_MULTIHOST_HLO_RUNNER_CREATE_CLIENT_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/pjrt/distributed/client.h"
-#include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/service.h"
-#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 
 namespace xla {
 
 struct PjRtEnvironment {
-  std::unique_ptr<xla::PjRtClient> client;
+  // Sequence matters here, client should be destroyed before service.
   std::unique_ptr<xla::DistributedRuntimeService> service;
+  std::unique_ptr<xla::PjRtClient> client;
   std::shared_ptr<xla::KeyValueStoreInterface> kv_store;
   std::shared_ptr<xla::DistributedRuntimeClient> distributed_client;
 };
 
-absl::StatusOr<PjRtEnvironment> GetPjRtClient(absl::string_view device_type,
-                                              absl::string_view address,
-                                              int node_id, int num_nodes,
-                                              bool enable_mock_nccl,
-                                              absl::Duration init_timeout);
+// Creates an environment with a PjRtClient for host CPU.
+absl::StatusOr<PjRtEnvironment> GetPjRtEnvironmentForHostCpu();
 
-// Create a PjRtClient which can run HLOs on Host CPU.
+// Creates an environment with a PjRtClient for GPU and potentially distributed
+// runtime components if using multiple GPU nodes.
+// In GPU options `kv_store` will be initialized separately for the multi-node
+// environment.
+absl::StatusOr<PjRtEnvironment> GetPjRtEnvironmentForGpu(
+    absl::string_view address, GpuClientOptions gpu_options,
+    absl::Duration init_timeout);
+
+// Creates a PjRtClient which can run HLOs on Host CPU.
 absl::StatusOr<std::unique_ptr<PjRtClient>> CreateHostClient();
 
-// Create a PjRtClient which can run HLOs on GPU.
+// Creates a PjRtClient which can run HLOs on GPU.
 absl::StatusOr<std::unique_ptr<PjRtClient>> CreateGpuClient(
-    GpuClientOptions options);
+    const GpuClientOptions& options);
 
-// Create a PjRtClient which mocks multi-hosts GPU run
+// Creates a PjRtClient which mocks multi-host GPU runs.
 absl::StatusOr<std::unique_ptr<PjRtClient>> CreateMockGpuClient(
     int num_nodes = 1);
 

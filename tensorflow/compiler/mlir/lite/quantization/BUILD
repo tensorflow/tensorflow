@@ -25,7 +25,6 @@ tf_proto_library(
     srcs = [
         "quantization_info.proto",
     ],
-    cc_api_version = 2,
 )
 
 cc_library(

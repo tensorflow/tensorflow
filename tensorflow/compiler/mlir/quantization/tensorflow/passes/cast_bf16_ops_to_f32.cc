@@ -117,7 +117,7 @@ void CastBf16OpsToF32Pass::runOnOperation() {
   patterns.add<CastBf16OpsToF32>(ctx);
   populateWithGenerated(patterns);
 
-  if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module_op, std::move(patterns)))) {
     module_op.emitError() << "quant-cast-bf16-ops-to-f32 failed.";
     signalPassFailure();
   }

@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/types.h"
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tsl/platform/types.h"
 
 namespace tensorflow {
 namespace activity_watcher {

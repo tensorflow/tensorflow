@@ -22,13 +22,14 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "xla/layout_util.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
-#include "xla/util.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -46,7 +47,7 @@ ShapedBuffer::ShapedBuffer(Shape on_host_shape, Shape on_device_shape,
                            int device_ordinal, int physical_device_ordinal)
     : ShapedBuffer(on_device_shape, device_ordinal, physical_device_ordinal) {}
 
-ShapedBuffer::ShapedBuffer(ShapedBuffer&& s)
+ShapedBuffer::ShapedBuffer(ShapedBuffer&& s) noexcept
     : on_host_shape_(std::move(s.on_host_shape_)),
       on_device_shape_(std::move(s.on_device_shape_)),
       device_ordinal_(s.device_ordinal_),
@@ -58,7 +59,7 @@ ShapedBuffer::ShapedBuffer(ShapedBuffer&& s)
   buffers_.replace_shape_ptr(on_device_shape_);
 }
 
-ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) {
+ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) noexcept {
   on_device_shape_ = std::move(s.on_device_shape_);
   on_host_shape_ = std::move(s.on_host_shape_);
   device_ordinal_ = s.device_ordinal_;
@@ -140,13 +141,14 @@ ScopedShapedBuffer::ScopedShapedBuffer(ShapedBuffer shaped_buffer,
                                        se::DeviceMemoryAllocator* allocator)
     : ShapedBuffer(std::move(shaped_buffer)), allocator_(allocator) {}
 
-ScopedShapedBuffer::ScopedShapedBuffer(ScopedShapedBuffer&& s)
+ScopedShapedBuffer::ScopedShapedBuffer(ScopedShapedBuffer&& s) noexcept
     : ShapedBuffer(static_cast<ShapedBuffer&&>(s)), allocator_(s.allocator_) {
   // Null out s.allocator_ so it doesn't try to free anything in its destructor.
   s.allocator_ = nullptr;
 }
 
-ScopedShapedBuffer& ScopedShapedBuffer::operator=(ScopedShapedBuffer&& s) {
+ScopedShapedBuffer& ScopedShapedBuffer::operator=(
+    ScopedShapedBuffer&& s) noexcept {
   Deallocate();
 
   *static_cast<ShapedBuffer*>(this) = std::move(static_cast<ShapedBuffer&>(s));

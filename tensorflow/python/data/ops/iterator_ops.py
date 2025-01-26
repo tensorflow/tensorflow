@@ -768,7 +768,7 @@ class OwnedIterator(IteratorBase):
             self._iterator_resource,
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)
-      return structure.from_compatible_tensor_list(self._element_spec, ret)
+        return structure.from_compatible_tensor_list(self._element_spec, ret)
 
     # TODO(b/77291417): This runs in sync mode as iterators use an error status
     # to communicate that there is no more data to iterate over.

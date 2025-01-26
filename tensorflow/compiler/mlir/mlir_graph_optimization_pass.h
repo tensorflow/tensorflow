@@ -76,10 +76,10 @@ class MlirOptimizationPass {
       const Graph& graph,
       const FunctionLibraryDefinition& function_library) const = 0;
 
-  virtual Status Run(const std::string& function_name,
-                     const ConfigProto& config_proto, mlir::ModuleOp module,
-                     const Graph& graph,
-                     const FunctionLibraryDefinition& function_library) = 0;
+  virtual absl::Status Run(
+      const std::string& function_name, const ConfigProto& config_proto,
+      mlir::ModuleOp module, const Graph& graph,
+      const FunctionLibraryDefinition& function_library) = 0;
 };
 
 class MlirOptimizationPassRegistry {
@@ -129,12 +129,13 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
       : registry_(registry) {}
 
   // Executes all of the underlying registered MlirOptimizationPasses.
-  Status Run(const std::string& function_name, const DeviceSet& device_set,
-             const ConfigProto& config_proto,
-             const FunctionOptimizationPass::FunctionOptions& function_options,
-             std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
-             std::vector<std::string>* control_ret_node_names,
-             bool* control_rets_updated) override;
+  absl::Status Run(
+      const std::string& function_name, const DeviceSet& device_set,
+      const ConfigProto& config_proto,
+      const FunctionOptimizationPass::FunctionOptions& function_options,
+      std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
+      std::vector<std::string>* control_ret_node_names,
+      bool* control_rets_updated) override;
 
  private:
   const MlirOptimizationPassRegistry* registry_;
@@ -162,8 +163,8 @@ class MlirV1CompatOptimizationPass {
       const Graph& graph,
       const FunctionLibraryDefinition& function_library) const = 0;
 
-  virtual Status Run(const GraphOptimizationPassOptions& options,
-                     mlir::ModuleOp module) = 0;
+  virtual absl::Status Run(const GraphOptimizationPassOptions& options,
+                           mlir::ModuleOp module) = 0;
 };
 
 class MlirV1CompatOptimizationPassRegistry {
@@ -195,7 +196,7 @@ class MlirV1CompatGraphOptimizationPass : public GraphOptimizationPass {
           &MlirV1CompatOptimizationPassRegistry::Global())
       : registry_(registry) {}
 
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 
  private:
   const MlirV1CompatOptimizationPassRegistry* registry_;

@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -51,7 +51,7 @@ class MLIRContextResource : public ResourceBase {
   static constexpr const char* kDefaultResourceName =
       "mlir-xla-op-cached-context";
 
-  static Status Create(MLIRContextResource** resource) {
+  static absl::Status Create(MLIRContextResource** resource) {
     *resource = new MLIRContextResource();
     return absl::OkStatus();
   }
@@ -70,7 +70,7 @@ class MLIRContextResource : public ResourceBase {
 
 }  // namespace
 
-Status MlirXlaOpKernel::ContextToXlaArgs(
+absl::Status MlirXlaOpKernel::ContextToXlaArgs(
     XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>& xla_args) {
   // Collect arguments that are registered as CompileTimeConstantInput.
   std::vector<int> registered_consts_vec;
@@ -108,7 +108,7 @@ Status MlirXlaOpKernel::ContextToXlaArgs(
 MlirXlaOpKernel::MlirXlaOpKernel(OpKernelConstruction* ctx)
     : XlaOpKernel(ctx) {}
 
-Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
+absl::Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
   // Create input XlaArguments.
   std::vector<XlaCompiler::Argument> xla_args;
   TF_RETURN_IF_ERROR(ContextToXlaArgs(ctx, xla_args));

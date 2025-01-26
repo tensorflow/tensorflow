@@ -55,7 +55,7 @@ class MapAndBatchDatasetParams : public DatasetParams {
     return inputs;
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->reserve(input_dataset_params_.size() +
                          other_arguments_.size() + 3);
     input_names->emplace_back(MapAndBatchDatasetOp::kInputDataset);
@@ -70,7 +70,7 @@ class MapAndBatchDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{"f", func_},
                     {"Targuments", type_arguments_},
                     {"output_shapes", output_shapes_},

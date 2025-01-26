@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -65,7 +65,8 @@ class WhileLoopSimplifier : public HloModulePass {
       : simplify_compare_instrs_(simplify_compare_instrs) {}
 
   ~WhileLoopSimplifier() override = default;
-  absl::string_view name() const override { return "simplify-while-loops"; }
+  static constexpr absl::string_view kName = "simplify-while-loops";
+  absl::string_view name() const override { return kName; }
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,

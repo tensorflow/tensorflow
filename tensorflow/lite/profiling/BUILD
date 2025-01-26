@@ -196,7 +196,7 @@ cc_library(
     copts = common_copts,
     deps = [
         "//tensorflow/core/util:stats_calculator_portable",
-        "//tensorflow/lite/profiling/proto:profiling_info_cc_proto",
+        "//tensorflow/lite/profiling/proto:profiling_info_cc",
         "//tensorflow/lite/tools:logging",
     ],
 )
@@ -207,7 +207,7 @@ cc_test(
     deps = [
         ":profile_summary_formatter",
         "//tensorflow/core/util:stats_calculator_portable",
-        "//tensorflow/lite/profiling/proto:profiling_info_cc_proto",
+        "//tensorflow/lite/profiling/proto:profiling_info_cc",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
@@ -261,6 +261,43 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "@local_tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
+    name = "model_runtime_info",
+    srcs = ["model_runtime_info.cc"],
+    hdrs = ["model_runtime_info.h"],
+    copts = common_copts,
+    deps = [
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite:optional_debug_tools",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:cc_api_stable",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/profiling/proto:model_runtime_info_cc",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+cc_test(
+    name = "model_runtime_info_test",
+    srcs = ["model_runtime_info_test.cc"],
+    deps = [
+        ":model_runtime_info",
+        ":profiler",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/profiling/proto:model_runtime_info_cc",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -17,6 +17,7 @@ package org.tensorflow.lite;
 
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -64,6 +65,7 @@ class InterpreterImpl implements InterpreterApi {
    */
   InterpreterImpl(@NonNull File modelFile, Options options) {
     wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), options);
+    signatureKeyList = getSignatureKeys();
   }
 
   /**
@@ -80,10 +82,12 @@ class InterpreterImpl implements InterpreterApi {
    */
   InterpreterImpl(@NonNull ByteBuffer byteBuffer, Options options) {
     wrapper = new NativeInterpreterWrapper(byteBuffer, options);
+    signatureKeyList = getSignatureKeys();
   }
 
   InterpreterImpl(NativeInterpreterWrapper wrapper) {
     this.wrapper = wrapper;
+    signatureKeyList = getSignatureKeys();
   }
 
   @Override
@@ -157,6 +161,79 @@ class InterpreterImpl implements InterpreterApi {
   }
 
   @Override
+  public void runSignature(
+      @NonNull Map<String, Object> inputs,
+      @NonNull Map<String, Object> outputs,
+      String signatureKey) {
+    checkNotClosed();
+    if (signatureKey == null && signatureKeyList.length == 1) {
+      signatureKey = signatureKeyList[0];
+    }
+    if (signatureKey == null) {
+      throw new IllegalArgumentException(
+          "Input error: SignatureDef signatureKey should not be null. null is only allowed if the"
+              + " model has a single Signature. Available Signatures: "
+              + Arrays.toString(signatureKeyList));
+    }
+    wrapper.runSignature(inputs, outputs, signatureKey);
+  }
+
+  @Override
+  public void runSignature(
+      @NonNull Map<String, Object> inputs, @NonNull Map<String, Object> outputs) {
+    checkNotClosed();
+    runSignature(inputs, outputs, null);
+  }
+
+  @Override
+  public Tensor getInputTensorFromSignature(String inputName, String signatureKey) {
+    checkNotClosed();
+    if (signatureKey == null && signatureKeyList.length == 1) {
+      signatureKey = signatureKeyList[0];
+    }
+    if (signatureKey == null) {
+      throw new IllegalArgumentException(
+          "Input error: SignatureDef signatureKey should not be null. null is only allowed if the"
+              + " model has a single Signature. Available Signatures: "
+              + Arrays.toString(signatureKeyList));
+    }
+    return wrapper.getInputTensor(inputName, signatureKey);
+  }
+
+  @Override
+  public String[] getSignatureKeys() {
+    checkNotClosed();
+    return wrapper.getSignatureKeys();
+  }
+
+  @Override
+  public String[] getSignatureInputs(String signatureKey) {
+    checkNotClosed();
+    return wrapper.getSignatureInputs(signatureKey);
+  }
+
+  @Override
+  public String[] getSignatureOutputs(String signatureKey) {
+    checkNotClosed();
+    return wrapper.getSignatureOutputs(signatureKey);
+  }
+
+  @Override
+  public Tensor getOutputTensorFromSignature(String outputName, String signatureKey) {
+    checkNotClosed();
+    if (signatureKey == null && signatureKeyList.length == 1) {
+      signatureKey = signatureKeyList[0];
+    }
+    if (signatureKey == null) {
+      throw new IllegalArgumentException(
+          "Input error: SignatureDef signatureKey should not be null. null is only allowed if the"
+              + " model has a single Signature. Available Signatures: "
+              + Arrays.toString(signatureKeyList));
+    }
+    return wrapper.getOutputTensor(outputName, signatureKey);
+  }
+
+  @Override
   public Long getLastNativeInferenceDurationNanoseconds() {
     checkNotClosed();
     return wrapper.getLastNativeInferenceDurationNanoseconds();
@@ -192,4 +269,5 @@ class InterpreterImpl implements InterpreterApi {
   }
 
   NativeInterpreterWrapper wrapper;
+  private final String[] signatureKeyList;
 }

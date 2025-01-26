@@ -26,9 +26,9 @@ namespace tfg {
 
 // Import the FunctionDef `func` as a TFG generic function (see GraphFuncOp
 // documentation). The function will be inserted using the provided `builder`.
-tensorflow::Status ConvertGenericFunction(GraphFuncOp func_op,
-                                          const tensorflow::FunctionDef& func,
-                                          OpBuilder& builder);
+absl::Status ConvertGenericFunction(GraphFuncOp func_op,
+                                    const tensorflow::FunctionDef& func,
+                                    OpBuilder& builder);
 
 }  // namespace tfg
 }  // namespace mlir

@@ -73,7 +73,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#include "xla/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -85,8 +84,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/stream_executor/integrations/device_host_allocator.h"
 #endif  // TF_GPU_USE_PJRT
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
@@ -96,6 +93,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/dso_loader.h"
 #ifdef TF_GPU_USE_PJRT
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #endif  // TF_GPU_USE_PJRT
@@ -141,14 +139,12 @@ int GetPriority(const int tf_device_id, const GPUOptions& options) {
 typedef cudaStream_t gpuStream_t;
 typedef cudaDeviceProp gpuDeviceProp_t;
 #define EIGEN_GPU_SCRATCH_SIZE (Eigen::kGpuScratchSize)
-using se::cuda::ScopedActivateExecutorContext;
 
 #elif TENSORFLOW_USE_ROCM
 
 typedef hipStream_t gpuStream_t;
 typedef hipDeviceProp_t gpuDeviceProp_t;
 #define EIGEN_GPU_SCRATCH_SIZE (Eigen::kGpuScratchSize)
-using se::rocm::ScopedActivateExecutorContext;
 
 #endif
 
@@ -500,7 +496,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
     }
     se::DeviceMemory<char> mem(
         se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
-    TF_RETURN_IF_ERROR(executor_->SynchronousMemZero(
+    TF_RETURN_IF_ERROR(stream_->compute->MemZero(
         &mem, Eigen::kGpuScratchSize + sizeof(unsigned int)));
     scratch_ = static_cast<char*>(scratch_buffer);
   }
@@ -790,7 +786,8 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
       kernel_tracker_->PauseWhilePendingExceeds(pending_cap_);
     }
   }
-  ScopedActivateExecutorContext scoped_activation{stream->parent()};
+  std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
+      stream->parent()->Activate();
   profiler::ScopedMemoryDebugAnnotation op_annotation(
       op_kernel->name_view().data(), context->step_id());
   bool should_log_inputs_and_outputs = ShouldLogInputsAndOutputs(op_kernel);
@@ -884,7 +881,8 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
     };
   }
 
-  ScopedActivateExecutorContext scoped_activation{stream->parent()};
+  std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
+      stream->parent()->Activate();
   op_kernel->ComputeAsync(context, std::move(done));
 }
 
@@ -2339,7 +2337,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Try to dlopen GPU libraries if they are supposed to be dynamically loaded.
-  auto handle_or = se::internal::DsoLoader::MaybeTryDlopenGPULibraries();
+  auto handle_or = tsl::internal::DsoLoader::MaybeTryDlopenGPULibraries();
   if (!handle_or.ok()) {
     LOG(WARNING) << "Cannot dlopen some GPU libraries. Please make sure the "
                     "missing libraries mentioned above are installed properly "

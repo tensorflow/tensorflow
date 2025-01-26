@@ -30,8 +30,8 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -118,7 +118,7 @@ class QuantizeCompositeFunctionsPass
   }
 
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TF::TensorFlowDialect, quant::QuantizationDialect,
+    registry.insert<TF::TensorFlowDialect, quant::QuantDialect,
                     quantfork::QuantizationForkDialect>();
   }
 
@@ -1303,7 +1303,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
                                           target_opset_,
                                           enable_per_channel_quantization_);
 
-    if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -1320,7 +1320,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
     patterns_2.add<RestoreWeightShapePattern>(ctx);
   }
 
-  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns_2))) ||
+  if (failed(applyPatternsGreedily(module, std::move(patterns_2))) ||
       failed(verify(module))) {
     signalPassFailure();
   }

@@ -20,7 +20,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_INFEED_MANAGER_H_
 #define XLA_SERVICE_GPU_INFEED_MANAGER_H_
 
-#include <cstdint>
 #include <memory>
 
 #include "absl/status/status.h"
@@ -60,9 +59,6 @@ class InfeedManager
   // Stream used to enqueue infeed device copies.
   std::unique_ptr<se::Stream> stream_;
 };
-
-// Returns the GPU infeed manager for the given stream executor,
-InfeedManager* GetOrCreateInfeedManager(se::StreamExecutor* executor);
 
 }  // namespace gpu
 }  // namespace xla

@@ -20,20 +20,20 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
+#include "xla/tsl/profiler/convert/post_process_single_host_xplane.h"
+#include "xla/tsl/profiler/utils/time_utils.h"
 #include "tsl/platform/host_info.h"
-#include "tsl/profiler/convert/post_process_single_host_xplane.h"
 #include "tsl/profiler/lib/profiler_collection.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/lib/profiler_lock.h"
-#include "tsl/profiler/utils/time_utils.h"
 #endif
 
 namespace tsl {

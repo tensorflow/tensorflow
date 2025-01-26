@@ -181,19 +181,6 @@ absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
   return it->second;
 }
 
-absl::StatusOr<Comparison::Order> StringToComparisonOrder(
-    absl::string_view order) {
-  static auto* map = new absl::flat_hash_map<std::string, Comparison::Order>({
-      {"TOTALORDER", Comparison::Order::kTotal},
-      {"PARTIALORDER", Comparison::Order::kPartial},
-  });
-  auto it = map->find(order);
-  if (it == map->end()) {
-    return InvalidArgument("Unknown comparison type: %s", order);
-  }
-  return it->second;
-}
-
 absl::StatusOr<Comparison::Type> StringToComparisonType(
     absl::string_view comparison) {
   static auto* map = new absl::flat_hash_map<std::string, Comparison::Type>({

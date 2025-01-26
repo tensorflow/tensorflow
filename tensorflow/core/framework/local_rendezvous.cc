@@ -141,12 +141,14 @@ LocalRendezvous::~LocalRendezvous() {
 }
 
 namespace {
-uint64 KeyHash(const StringPiece& k) { return Hash64(k.data(), k.size()); }
+uint64 KeyHash(const absl::string_view& k) {
+  return Hash64(k.data(), k.size());
+}
 }  // namespace
 
-Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
-                             const Rendezvous::Args& send_args,
-                             const Tensor& val, const bool is_dead) {
+absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
+                                   const Rendezvous::Args& send_args,
+                                   const Tensor& val, const bool is_dead) {
   uint64 key_hash = KeyHash(key.FullKey());
   DVLOG(2) << "Send " << this << " " << key_hash << " " << key.FullKey();
 
@@ -191,7 +193,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
     queue->push_back(new Item(std::move(rc_owner), send_args, val, is_dead,
                               std::move(activity_scope)));
     bucket.mu.unlock();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DVLOG(2) << "Consume Recv Item (key:" << key.FullKey() << "). ";
@@ -210,7 +212,8 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
   bucket.mu.unlock();
 
   DCHECK_EQ(item->type, Item::kRecv);
-  (*item->recv_state.waiter)(OkStatus(), send_args, item->args, val, is_dead);
+  (*item->recv_state.waiter)(absl::OkStatus(), send_args, item->args, val,
+                             is_dead);
   {
     mutex_lock l(bucket.mu);
     bucket.pending_callback_counter--;
@@ -220,7 +223,7 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
   }
   // Delete the item at last since it may unref and destruct the rendezvous.
   delete item;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
@@ -329,7 +332,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
       queue->push_back(new Item(
           std::move(rc_owner), recv_args,
           [this, cm, token, done = std::move(done)](
-              const Status& s, const Rendezvous::Args& send_args,
+              const absl::Status& s, const Rendezvous::Args& send_args,
               const Rendezvous::Args& recv_args, const Tensor& v, bool dead) {
             // TryDeregisterCallback returns true when the cancellation callback
             // is successfully deregistered. If it fails because the CM already
@@ -367,7 +370,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
   bucket.mu.unlock();
 
   DCHECK_EQ(item->type, Item::kSend);
-  done(OkStatus(), item->args, recv_args, *item->send_state.value,
+  done(absl::OkStatus(), item->args, recv_args, *item->send_state.value,
        item->send_state.is_dead);
   {
     mutex_lock l(bucket.mu);
@@ -386,7 +389,7 @@ std::vector<tsl::core::RefCountPtr<Rendezvous> >&
     LocalRendezvous::aborted_rendezs_ =
         *new std::vector<tsl::core::RefCountPtr<Rendezvous> >();
 
-void LocalRendezvous::StartAbort(const Status& status) {
+void LocalRendezvous::StartAbort(const absl::Status& status) {
   DoAbort(status);
 
   if (rc_owner_) {
@@ -395,7 +398,7 @@ void LocalRendezvous::StartAbort(const Status& status) {
   }
 }
 
-void LocalRendezvous::DoAbort(const Status& status) {
+void LocalRendezvous::DoAbort(const absl::Status& status) {
   CHECK(!status.ok());
   {
     mutex_lock l(mu_);
@@ -435,7 +438,7 @@ void LocalRendezvous::DoAbort(const Status& status) {
   }
 }
 
-Status LocalRendezvous::status() {
+absl::Status LocalRendezvous::status() {
   tf_shared_lock ml(mu_);
   return status_;
 }

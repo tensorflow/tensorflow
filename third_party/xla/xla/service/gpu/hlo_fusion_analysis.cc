@@ -33,9 +33,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
@@ -77,8 +77,7 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
   std::vector<const HloInstruction*> non_transpose_roots;
 
   for (auto [root, hero] : llvm::zip(hlo_roots, heroes)) {
-    if (auto tr = GetDescriptionForTiledTransposeEmitter(root.instruction(),
-                                                         hero.instruction())) {
+    if (auto tr = GetDescriptionForTiledTransposeEmitter(hero.instruction())) {
       if (!tiled_transpose_hero) {
         // First transpose hero found.
         tiled_transpose_hero = tr;
@@ -257,7 +256,8 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
 
   std::optional<HloInstructionAdaptor> first_reduce_hero;
   for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
-    if (IsRealReductionHero(root.instruction(), hero.instruction())) {
+    if (IsRealReductionHero(root.instruction(), hero.instruction(),
+                            *device_info_)) {
       first_reduce_hero = hero;
       break;
     }
@@ -269,7 +269,8 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
       if (root == *first_reduce_hero) {
         continue;
       }
-      if (!IsRealReductionHero(root.instruction(), hero.instruction())) {
+      if (!IsRealReductionHero(root.instruction(), hero.instruction(),
+                               *device_info_)) {
         // Needs to have a compatible shape to the reduce operand (compatible
         // meaning same number of elements).
         if (ShapeUtil::ElementsIn(root.shape()) !=
@@ -323,7 +324,8 @@ const HloInstruction* HloFusionAnalysis::FindHeroReduction() const {
   // have the same shape and layout as verified by
   // `IsFusedReductionOutputConsistent()`.
   for (auto [root, hero] : llvm::zip(roots, fusion_heroes_)) {
-    if (IsRealReductionHero(root.instruction(), hero.instruction())) {
+    if (IsRealReductionHero(root.instruction(), hero.instruction(),
+                            *device_info_)) {
       return &hero.instruction();
     }
   }

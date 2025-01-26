@@ -18,17 +18,17 @@ project(tensorflow-lite-c C CXX)
 
 option(TFLITE_C_BUILD_SHARED_LIBS "Build shared libraries" ON)
 
-set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
+set(TF_SOURCE_DIR "" CACHE PATH
   "Directory that contains the TensorFlow project"
 )
-if (NOT TENSORFLOW_SOURCE_DIR)
-  get_filename_component(TENSORFLOW_SOURCE_DIR
+if (NOT TF_SOURCE_DIR)
+  get_filename_component(TF_SOURCE_DIR
     "${CMAKE_CURRENT_LIST_DIR}/../../../"
     ABSOLUTE
   )
 endif()
 
-set(TFLITE_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow/lite")
+set(TFLITE_SOURCE_DIR "${TF_SOURCE_DIR}/tensorflow/lite")
 
 add_subdirectory(
   "${TFLITE_SOURCE_DIR}"
@@ -36,7 +36,7 @@ add_subdirectory(
   EXCLUDE_FROM_ALL
 )
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 if(CMAKE_SYSTEM_NAME MATCHES "Windows"
     AND (MSVC AND (CMAKE_SIZEOF_VOID_P EQUAL 4)))
@@ -67,6 +67,7 @@ add_library(tensorflowlite_c ${TFLITE_C_LIBTYPE}
   ${TFLITE_SOURCE_DIR}/core/c/c_api_experimental.cc
   ${TFLITE_SOURCE_DIR}/core/c/common.cc
   ${TFLITE_SOURCE_DIR}/core/c/operator.cc
+  ${TF_SOURCE_DIR}/tensorflow/compiler/mlir/lite/core/c/tflite_types.h
   builtin_op_data.h
   c_api.h
   c_api_experimental.h
@@ -78,6 +79,7 @@ add_library(tensorflowlite_c ${TFLITE_C_LIBTYPE}
 if (TFLITE_C_BUILD_SHARED_LIBS)
   if (WIN32)
     target_compile_definitions(tensorflowlite_c PRIVATE TFL_COMPILE_LIBRARY)
+    target_compile_definitions(tensorflow-lite PRIVATE TFL_COMPILE_LIBRARY)
   elseif (APPLE)
     target_link_options(tensorflowlite_c PRIVATE "-Wl,-exported_symbols_list,${TFLITE_SOURCE_DIR}/c/exported_symbols.lds")
   else ()

@@ -14,8 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_filesystem.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
+#include <iterator>
+#include <memory>
 #include <random>
+#include <string>
+#include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/path.h"

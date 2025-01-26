@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -98,16 +99,14 @@ class CPlatform : public Platform {
   absl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
-  absl::StatusOr<StreamExecutor*> GetExecutor(
-      const StreamExecutorConfig& config) override;
   absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
  private:
-  // Returns a device constructed with the options specified in "config" without
+  // Returns a device constructed with the ordinal without
   // looking in or storing to the Platform's executor cache.
   // Ownership IS transferred to the caller.
   absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config);
+      int ordinal);
 
   SP_Platform platform_;
   void (*destroy_platform_)(SP_Platform*);
@@ -182,7 +181,7 @@ class CStream : public StreamCommon {
         stream_executor_(stream_executor),
         stream_handle_(nullptr) {}
   ~CStream() override {
-    parent()->BlockHostUntilDone(this).IgnoreError();
+    BlockHostUntilDone().IgnoreError();
     parent()->DeallocateStream(this);
     Destroy();
   }
@@ -210,6 +209,33 @@ class CStream : public StreamCommon {
 
   absl::Status RecordEvent(Event* event) override {
     return static_cast<CEvent*>(event)->Record(stream_handle_);
+  }
+
+  absl::Status BlockHostUntilDone() override {
+    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
+    SP_Stream stream_handle = Handle();
+
+    // If `block_host_until_done` is set, use it.
+    if (stream_executor_->block_host_until_done != nullptr) {
+      stream_executor_->block_host_until_done(device_, stream_handle,
+                                              c_status.get());
+      return tensorflow::StatusFromTF_Status(c_status.get());
+    }
+    // Create and record an event and then wait for it.
+    SP_Event event_handle;
+    stream_executor_->create_event(device_, &event_handle, c_status.get());
+    TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
+    stream_executor_->record_event(device_, stream_handle, event_handle,
+                                   c_status.get());
+    absl::Status s = tensorflow::StatusFromTF_Status(c_status.get());
+    if (!s.ok()) {
+      stream_executor_->destroy_event(device_, event_handle);
+      return s;
+    }
+    stream_executor_->block_host_for_event(device_, event_handle,
+                                           c_status.get());
+    stream_executor_->destroy_event(device_, event_handle);
+    return tensorflow::StatusFromTF_Status(c_status.get());
   }
 
   absl::Status WaitFor(Stream* other) override {

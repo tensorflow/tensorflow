@@ -697,6 +697,7 @@ cc_library(
     visibility = ["@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__"] + minibenchmark_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@flatbuffers",
@@ -1118,6 +1119,7 @@ cc_test(
     deps = [
         ":embedded_mobilenet_validation_model",
         ":embedded_nnapi_sl_fake_impl",
+        ":embedded_validator_runner_entrypoint",
         ":mini_benchmark_test_helper",
         ":nnapi_sl_fake_impl_client",
         ":status_codes",

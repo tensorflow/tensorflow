@@ -52,7 +52,7 @@ TEST_F(UnstackerTest, UnstackDSFusionPattern) {
     %param_0.51117 = s8[3,128,128] parameter(0)
     p1 = s32[] parameter(1)
     %constant.85694 = s32[] constant(0)
-    %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128} 
+    %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
     ROOT %bitcast.31250 = s8[128,128] bitcast(s8[1,128,128] %dynamic-slice.22040)
   }
 
@@ -63,8 +63,8 @@ TEST_F(UnstackerTest, UnstackDSFusionPattern) {
     p1 = s8[3,128,128] get-tuple-element(wide_p), index=2
     one = s32[] constant(1)
     inc = s32[] add(i, one)
-    %fusion.67830 = s8[128,128] fusion(s8[3,128,128] p1, i), kind=kLoop, calls=%fused_computation.slice 
-    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] %fusion.67830), dim_labels=bf_io->bf 
+    %fusion.67830 = s8[128,128] fusion(s8[3,128,128] p1, i), kind=kLoop, calls=%fused_computation.slice
+    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] %fusion.67830), dim_labels=bf_io->bf
     ROOT out = (s32[], bf16[8,128], s8[3,128,128]) tuple(inc, conv, p1)
   }
 
@@ -80,7 +80,7 @@ TEST_F(UnstackerTest, UnstackDSFusionPattern) {
     p1 = bf16[8,128] parameter(1)
     init = s32[] constant(0)
     while.input = (s32[], bf16[8,128], s8[3,128,128]) tuple(init, p1, p0)
-    while.out = (s32[], bf16[8,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body 
+    while.out = (s32[], bf16[8,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body
     while_use = s8[3,128,128] get-tuple-element(while.out), index=2
     ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
   }
@@ -92,6 +92,172 @@ TEST_F(UnstackerTest, UnstackDSFusionPattern) {
   EXPECT_TRUE(unstacked);
   // Check for the creation of slice instructions.
   EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice), 3);
+  // Check that the bitcast is unfused and there are not fusions.
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kFusion),
+            0);
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
+                                      std::nullopt, false));
+}
+
+TEST_F(UnstackerTest, NotUnstackDSFusionPattern) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  %fused_computation.slice (param_0.51117: s8[3,128,128], p1: s32[]) -> s8[128,128] {
+    %param_0.51117 = s8[3,128,128] parameter(0)
+    p1 = s32[] parameter(1)
+    %constant.85694 = s32[] constant(0)
+    %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
+    ROOT %bitcast.31250 = s8[128,128] bitcast(s8[1,128,128] %dynamic-slice.22040)
+  }
+
+  %fused_computation.tuple {
+    %param_0.51117 = s8[3,128,128] parameter(0)
+    mult = multiply(param_0.51117, param_0.51117)
+    ROOT out = tuple(param_0.51117, mult)
+  }
+
+  %while.body (wide_param: (s32[], bf16[8,128], s8[3,128,128])) -> (s32[], bf16[8,128], s8[3,128,128]) {
+    wide_p = (s32[], bf16[8,128], s8[3,128,128]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    p0 = bf16[8,128] get-tuple-element(wide_p), index=1
+    p1 = s8[3,128,128] get-tuple-element(wide_p), index=2
+    one = s32[] constant(1)
+    inc = s32[] add(i, one)
+    %fusion.67830 = s8[128,128] fusion(s8[3,128,128] p1, i), kind=kLoop, calls=%fused_computation.slice
+    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] %fusion.67830), dim_labels=bf_io->bf
+    fusion_mult = (s8[3,128,128], s8[3,128,128]) fusion(s8[3,128,128] p1), kind=kLoop, calls=%fused_computation.tuple
+    mult = s8[3,128,128] get-tuple-element(fusion_mult), index=1
+    ROOT out = (s32[], bf16[8,128], s8[3,128,128]) tuple(inc, conv, mult)
+  }
+
+  %while.cond (wide_param: (s32[], bf16[8,128], s8[3,128,128])) -> pred[] {
+    wide_p = (s32[], bf16[8,128], s8[3,128,128]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    %constant.12857 = s32[] constant(3)
+    ROOT %compare.1921 = pred[]{:T(512)} compare(s32[] i, s32[] %constant.12857), direction=LT
+  }
+
+  ENTRY main {
+    p0 = s8[3,128,128] parameter(0)
+    p1 = bf16[8,128] parameter(1)
+    init = s32[] constant(0)
+    while.input = (s32[], bf16[8,128], s8[3,128,128]) tuple(init, p1, p0)
+    while.out = (s32[], bf16[8,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body
+    while_use = s8[3,128,128] get-tuple-element(while.out), index=2
+    ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto original = module->Clone();
+  TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
+  EXPECT_FALSE(unstacked);
+}
+
+TEST_F(UnstackerTest, UnstackDSFusionPatternMultipleLoopRootUse) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  %fused_computation.slice (param_0.51117: s8[3,128,128], p1: s32[]) -> s8[128,128] {
+    %param_0.51117 = s8[3,128,128] parameter(0)
+    p1 = s32[] parameter(1)
+    %constant.85694 = s32[] constant(0)
+    %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
+    ROOT %bitcast.31250 = s8[128,128] bitcast(s8[1,128,128] %dynamic-slice.22040)
+  }
+
+  %while.body (wide_param: (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128])) -> (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128]) {
+    wide_p = (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    p0 = bf16[8,128] get-tuple-element(wide_p), index=1
+    p2 = s8[3,128,128] get-tuple-element(wide_p), index=3
+    one = s32[] constant(1)
+    inc = s32[] add(i, one)
+    %fusion.67830 = s8[128,128] fusion(s8[3,128,128] p2, i), kind=kLoop, calls=%fused_computation.slice
+    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] %fusion.67830), dim_labels=bf_io->bf
+    ROOT out = (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128]) tuple(inc, conv, p2, p2)
+  }
+
+  %while.cond (wide_param: (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128])) -> pred[] {
+    wide_p = (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    %constant.12857 = s32[] constant(3)
+    ROOT %compare.1921 = pred[]{:T(512)} compare(s32[] i, s32[] %constant.12857), direction=LT
+  }
+
+  ENTRY main {
+    p0 = s8[3,128,128] parameter(0)
+    p1 = bf16[8,128] parameter(1)
+    init = s32[] constant(0)
+    zero = s8[] constant(0)
+    buffer = s8[3,128,128] broadcast(zero), dimensions={}
+    while.input = (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128]) tuple(init, p1, p0, buffer)
+    while.out = (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body
+    ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto original = module->Clone();
+  TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
+  EXPECT_TRUE(unstacked);
+  // Check for the creation of slice instructions.
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice), 6);
+  // Check that the bitcast is unfused and there are not fusions.
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kFusion),
+            0);
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
+                                      std::nullopt, false));
+}
+
+TEST_F(UnstackerTest, UnstackDSFusionPatternWithUnusedOperand) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  %fused_computation.slice (param_0.51117: s8[3,128,128], p1: s32[]) -> s8[128,128] {
+    %param_0.51117 = s8[3,128,128] parameter(0)
+    p1 = s32[] parameter(1)
+    %constant.85694 = s32[] constant(0)
+    %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
+    ROOT %bitcast.31250 = s8[128,128] bitcast(s8[1,128,128] %dynamic-slice.22040)
+  }
+
+  %while.body (wide_param: (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128])) -> (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128]) {
+    wide_p = (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    p0 = bf16[8,128] get-tuple-element(wide_p), index=1
+    p1 = s8[3,128,128] get-tuple-element(wide_p), index=2
+    one = s32[] constant(1)
+    inc = s32[] add(i, one)
+    %fusion.67830 = s8[128,128] fusion(s8[3,128,128] p1, i), kind=kLoop, calls=%fused_computation.slice
+    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] %fusion.67830), dim_labels=bf_io->bf
+    ROOT out = (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128]) tuple(inc, conv, p1, p1)
+  }
+
+  %while.cond (wide_param: (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128])) -> pred[] {
+    wide_p = (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    %constant.12857 = s32[] constant(3)
+    ROOT %compare.1921 = pred[]{:T(512)} compare(s32[] i, s32[] %constant.12857), direction=LT
+  }
+
+  ENTRY main {
+    p0 = s8[3,128,128] parameter(0)
+    p1 = bf16[8,128] parameter(1)
+    init = s32[] constant(0)
+    zero = s8[] constant(0)
+    buffer = s8[3,128,128] broadcast(zero), dimensions={}
+    while.input = (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128]) tuple(init, p1, p0, buffer)
+    while.out = (s32[], bf16[8,128], s8[3,128,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body
+    while_use = s8[3,128,128] get-tuple-element(while.out), index=2
+    ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto original = module->Clone();
+  TF_ASSERT_OK_AND_ASSIGN(bool unstacked, HloUnstacker().Run(module.get()));
+  EXPECT_TRUE(unstacked);
+  // Check for the creation of slice instructions.
+  EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kSlice), 6);
   // Check that the bitcast is unfused and there are not fusions.
   EXPECT_EQ(GetInstrCountWithOpcodeInEntry(module.get(), HloOpcode::kFusion),
             0);
@@ -124,8 +290,8 @@ TEST_F(UnstackerTest, UnstackReduceFusionPattern) {
     p1 = s8[3,128,128] get-tuple-element(wide_p), index=2
     one = s32[] constant(1)
     inc = s32[] add(i, one)
-    %fusion.67830 = s8[128,128] fusion(s8[3,128,128] p1, i), kind=kLoop, calls=%fused_computation.1096.clone 
-    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] %fusion.67830), dim_labels=bf_io->bf 
+    %fusion.67830 = s8[128,128] fusion(s8[3,128,128] p1, i), kind=kLoop, calls=%fused_computation.1096.clone
+    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] %fusion.67830), dim_labels=bf_io->bf
     ROOT out = (s32[], bf16[8,128], s8[3,128,128]) tuple(inc, conv, p1)
   }
 
@@ -141,8 +307,8 @@ TEST_F(UnstackerTest, UnstackReduceFusionPattern) {
     p1 = bf16[8,128] parameter(1)
     init = s32[] constant(0)
     while.input = (s32[], bf16[8,128], s8[3,128,128]) tuple(init, p1, p0)
-    while.out = (s32[], bf16[8,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body 
-    while_use = s8[3,128,128] get-tuple-element(while.out), index=2 
+    while.out = (s32[], bf16[8,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body
+    while_use = s8[3,128,128] get-tuple-element(while.out), index=2
     ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
   }
   )";
@@ -162,7 +328,7 @@ TEST_F(UnstackerTest, UnstackDSFusionPatternNoBitcast) {
     %param_0.51117 = s8[3,128,128] parameter(0)
     p1 = s32[] parameter(1)
     %constant.85694 = s32[] constant(0)
-    ROOT %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128} 
+    ROOT %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
   }
 
   %while.body (wide_param: (s32[], bf16[8,128], s8[3,128,128])) -> (s32[], bf16[8,128], s8[3,128,128]) {
@@ -174,7 +340,7 @@ TEST_F(UnstackerTest, UnstackDSFusionPatternNoBitcast) {
     inc = s32[] add(i, one)
     %fusion.67830 = s8[1,128,128] fusion(s8[3,128,128] p1, i), kind=kLoop, calls=%fused_computation.slice
     bitcast.102 = s8[128,128] bitcast(s8[1,128,128] %fusion.67830)
-    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] bitcast.102), dim_labels=bf_io->bf 
+    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] bitcast.102), dim_labels=bf_io->bf
     ROOT out = (s32[], bf16[8,128], s8[3,128,128]) tuple(inc, conv, p1)
   }
 
@@ -190,8 +356,8 @@ TEST_F(UnstackerTest, UnstackDSFusionPatternNoBitcast) {
     p1 = bf16[8,128] parameter(1)
     init = s32[] constant(0)
     while.input = (s32[], bf16[8,128], s8[3,128,128]) tuple(init, p1, p0)
-    while.out = (s32[], bf16[8,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body 
-    while_use = s8[3,128,128] get-tuple-element(while.out), index=2 
+    while.out = (s32[], bf16[8,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body
+    while_use = s8[3,128,128] get-tuple-element(while.out), index=2
     ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
   }
   )";
@@ -216,7 +382,7 @@ TEST_F(UnstackerTest, UnstackDSFusionPatternNoBitcastKeepFused) {
     %param_0.51117 = s8[3,128,128] parameter(0)
     p1 = s32[] parameter(1)
     %constant.85694 = s32[] constant(0)
-    ROOT %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128} 
+    ROOT %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
   }
 
   %while.body (wide_param: (s32[], bf16[8,128], s8[3,128,128])) -> (s32[], bf16[8,128], s8[3,128,128]) {
@@ -228,7 +394,7 @@ TEST_F(UnstackerTest, UnstackDSFusionPatternNoBitcastKeepFused) {
     inc = s32[] add(i, one)
     %fusion.67830 = s8[1,128,128] fusion(s8[3,128,128] p1, i), kind=kLoop, calls=%fused_computation.slice
     bitcast.102 = s8[128,128] bitcast(s8[1,128,128] %fusion.67830)
-    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] bitcast.102), dim_labels=bf_io->bf 
+    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] bitcast.102), dim_labels=bf_io->bf
     ROOT out = (s32[], bf16[8,128], s8[3,128,128]) tuple(inc, conv, p1)
   }
 
@@ -244,8 +410,8 @@ TEST_F(UnstackerTest, UnstackDSFusionPatternNoBitcastKeepFused) {
     p1 = bf16[8,128] parameter(1)
     init = s32[] constant(0)
     while.input = (s32[], bf16[8,128], s8[3,128,128]) tuple(init, p1, p0)
-    while.out = (s32[], bf16[8,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body 
-    while_use = s8[3,128,128] get-tuple-element(while.out), index=2 
+    while.out = (s32[], bf16[8,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body
+    while_use = s8[3,128,128] get-tuple-element(while.out), index=2
     ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
   }
   )";
@@ -263,6 +429,55 @@ TEST_F(UnstackerTest, UnstackDSFusionPatternNoBitcastKeepFused) {
             3);
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(original),
                                       std::nullopt, false));
+}
+
+TEST_F(UnstackerTest, UnstackDSFusionPatternKeepFused) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  %fused_computation.slice (param_0.51117: s8[3,128,128], p1: s32[]) -> s8[128,128] {
+    %param_0.51117 = s8[3,128,128] parameter(0)
+    p1 = s32[] parameter(1)
+    %constant.85694 = s32[] constant(0)
+    %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
+    ROOT out = s8[128,128] bitcast(%dynamic-slice.22040)
+  }
+
+  %while.body (wide_param: (s32[], bf16[8,128], s8[3,128,128])) -> (s32[], bf16[8,128], s8[3,128,128]) {
+    wide_p = (s32[], bf16[8,128], s8[3,128,128]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    p0 = bf16[8,128] get-tuple-element(wide_p), index=1
+    p1 = s8[3,128,128] get-tuple-element(wide_p), index=2
+    one = s32[] constant(1)
+    inc = s32[] add(i, one)
+    %fusion.67830 = s8[128,128] fusion(s8[3,128,128] p1, i), kind=kLoop, calls=%fused_computation.slice
+    conv = bf16[8,128] convolution(bf16[8,128] p0, s8[128,128] %fusion.67830), dim_labels=bf_io->bf
+    ROOT out = (s32[], bf16[8,128], s8[3,128,128]) tuple(inc, conv, p1)
+  }
+
+  %while.cond (wide_param: (s32[], bf16[8,128], s8[3,128,128])) -> pred[] {
+    wide_p = (s32[], bf16[8,128], s8[3,128,128]) parameter(0)
+    i = s32[] get-tuple-element(wide_p), index=0
+    %constant.12857 = s32[] constant(3)
+    ROOT %compare.1921 = pred[]{:T(512)} compare(s32[] i, s32[] %constant.12857), direction=LT
+  }
+
+  ENTRY main {
+    p0 = s8[3,128,128] parameter(0)
+    p1 = bf16[8,128] parameter(1)
+    init = s32[] constant(0)
+    while.input = (s32[], bf16[8,128], s8[3,128,128]) tuple(init, p1, p0)
+    while.out = (s32[], bf16[8,128], s8[3,128,128]) while(while.input), condition=%while.cond , body=%while.body
+    while_use = s8[3,128,128] get-tuple-element(while.out), index=2
+    ROOT out = bf16[8,128] get-tuple-element(while.out), index=1
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto original = module->Clone();
+  auto unfuse = [](HloInstruction* instruction) { return false; };
+  TF_ASSERT_OK_AND_ASSIGN(bool unstacked,
+                          HloUnstacker(unfuse).Run(module.get()));
+  EXPECT_FALSE(unstacked);
 }
 
 TEST_F(UnstackerTest, UnstackDSFusionPatternWithDifferentLayout) {
@@ -447,7 +662,7 @@ TEST_F(UnstackerTest, UnstackNestedDSFusionPatternWithMultipleIndex) {
       %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[4,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
       ROOT %bitcast.31250 = s8[128,128] bitcast(s8[1,128,128] %dynamic-slice.22040)
     }
-    
+
     %fused_computation.slice.2 (param_0.51117: s8[4,128,128], p1: s32[]) -> s8[128,128] {
       %param_0.51117 = s8[4,128,128] parameter(0)
       p1 = s32[] parameter(1)
@@ -463,7 +678,7 @@ TEST_F(UnstackerTest, UnstackNestedDSFusionPatternWithMultipleIndex) {
       %fusion.67830 = s8[128,128] fusion(s8[4,128,128] %param_1.30691, p2), kind=kLoop, calls=%fused_computation.slice.1
       ROOT %convolution.3447 = bf16[8,128] convolution(bf16[8,128] %param_0.34523, s8[128,128] %fusion.67830), dim_labels=bf_io->bf
     }
-    
+
     %fused_computation.inner.2 (param_0.34523: bf16[8,128], param_1.30691: s8[4,128,128], p2: s32[]) -> bf16[8,128] {
       %param_0.34523 = bf16[8,128] parameter(0)
       %param_1.30691 = s8[4,128,128] parameter(1)
@@ -584,7 +799,7 @@ TEST_F(UnstackerTest, UnstackNestedDSFusionPatternWithSameUnstackingComps) {
     %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
     ROOT %bitcast.31250 = s8[128,128] bitcast(s8[1,128,128] %dynamic-slice.22040)
   }
-  
+
   %fused_computation.slice.2 (param_0.51117: s8[3,128,128], p1: s32[]) -> s8[128,128] {
     %param_0.51117 = s8[3,128,128] parameter(0)
     p1 = s32[] parameter(1)
@@ -600,7 +815,7 @@ TEST_F(UnstackerTest, UnstackNestedDSFusionPatternWithSameUnstackingComps) {
     %fusion.67830 = s8[128,128] fusion(s8[3,128,128] %param_1.30691, p2), kind=kLoop, calls=%fused_computation.slice.1
     ROOT %convolution.3447 = bf16[8,128] convolution(bf16[8,128] %param_0.34523, s8[128,128] %fusion.67830), dim_labels=bf_io->bf
   }
-  
+
   %fused_computation.inner.2 (param_0.34523: bf16[8,128], param_1.30691: s8[3,128,128], p2: s32[]) -> bf16[8,128] {
     %param_0.34523 = bf16[8,128] parameter(0)
     %param_1.30691 = s8[3,128,128] parameter(1)
@@ -650,7 +865,8 @@ TEST_F(UnstackerTest, UnstackNestedDSFusionPatternWithSameUnstackingComps) {
                                       std::nullopt, false));
 }
 
-TEST_F(UnstackerTest, NotUnstackNestedDSFusionPatternWithSameUnstackingComps) {
+TEST_F(UnstackerTest,
+       NotUnstackNestedDSFusionPatternWithDifferentUnstackingComps) {
   std::string hlo_string = R"(
   HloModule SimpleLoop
   %fused_computation.slice.1 (param_0.51117: s8[3,128,128], p1: s32[]) -> s8[1,128,128] {
@@ -659,7 +875,7 @@ TEST_F(UnstackerTest, NotUnstackNestedDSFusionPatternWithSameUnstackingComps) {
     %constant.85694 = s32[] constant(0)
     ROOT %dynamic-slice.22040 = s8[1,128,128] dynamic-slice(s8[3,128,128] %param_0.51117, p1, s32[] %constant.85694, s32[] %constant.85694), dynamic_slice_sizes={1,128,128}
   }
-  
+
   %fused_computation.slice.2 (param_0.51117: s8[3,128,128], p1: s32[]) -> s8[128,128] {
     %param_0.51117 = s8[3,128,128] parameter(0)
     p1 = s32[] parameter(1)
@@ -998,7 +1214,7 @@ TEST_F(UnstackerTest, UnstackDSAndDUSPatternNestedLoop) {
     offset = s32[] parameter(1)
     zero = s32[] constant(0)
     %dynamic-slice.22040 = bf16[1,1,8,257,128]
-    dynamic-slice(bf16[4,1,8,257,128] %param_0.51117, offset, zero, zero, zero, zero), dynamic_slice_sizes={1,1,8,257,128} 
+    dynamic-slice(bf16[4,1,8,257,128] %param_0.51117, offset, zero, zero, zero, zero), dynamic_slice_sizes={1,1,8,257,128}
     ROOT %bitcast.31250 = bf16[1,8,257,128] bitcast(%dynamic-slice.22040)
   }
 
@@ -1006,19 +1222,19 @@ TEST_F(UnstackerTest, UnstackDSAndDUSPatternNestedLoop) {
     %param_0.51117 = bf16[4,1,8,257,128] parameter(0)
     offset = s32[] parameter(1)
     zero = s32[] constant(0)
-    %dynamic-slice.22040 = bf16[1,1,8,257,128] dynamic-slice(bf16[4,1,8,257,128] %param_0.51117, offset, zero, zero, zero, zero), dynamic_slice_sizes={1,1,8,257,128} 
+    %dynamic-slice.22040 = bf16[1,1,8,257,128] dynamic-slice(bf16[4,1,8,257,128] %param_0.51117, offset, zero, zero, zero, zero), dynamic_slice_sizes={1,1,8,257,128}
     ROOT %bitcast.31250 = bf16[1,8,257,128] bitcast(%dynamic-slice.22040)
   }
 
   inner.body {
-    loop_var.1 = (s32[], bf16[4,1,8,257,128], bf16[4,1,8,257,128]) parameter(0) 
-    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0 
-    get-tuple-element.2 = bf16[4,1,8,257,128] get-tuple-element(loop_var.1), index=1 
-    get-tuple-element.3 = bf16[4,1,8,257,128] get-tuple-element(loop_var.1), index=2 
-    sliced = bf16[1,8,257,128] fusion(get-tuple-element.2, get-tuple-element.1), kind=kLoop, calls=%fused_computation.slice 
-    sliced.2 = bf16[1,8,257,128] fusion(get-tuple-element.3, get-tuple-element.1), kind=kLoop,calls=%fused_computation.slice.2 
-    temp = bf16[1,8,257,128] add(sliced, sliced.2) 
-    one = s32[] constant(1) idx = s32[] add(get-tuple-element.1, one) 
+    loop_var.1 = (s32[], bf16[4,1,8,257,128], bf16[4,1,8,257,128]) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    get-tuple-element.2 = bf16[4,1,8,257,128] get-tuple-element(loop_var.1), index=1
+    get-tuple-element.3 = bf16[4,1,8,257,128] get-tuple-element(loop_var.1), index=2
+    sliced = bf16[1,8,257,128] fusion(get-tuple-element.2, get-tuple-element.1), kind=kLoop, calls=%fused_computation.slice
+    sliced.2 = bf16[1,8,257,128] fusion(get-tuple-element.3, get-tuple-element.1), kind=kLoop,calls=%fused_computation.slice.2
+    temp = bf16[1,8,257,128] add(sliced, sliced.2)
+    one = s32[] constant(1) idx = s32[] add(get-tuple-element.1, one)
     ROOT out = tuple(idx, get-tuple-element.2, get-tuple-element.3)
   }
   inner.condition {
@@ -1029,7 +1245,7 @@ TEST_F(UnstackerTest, UnstackDSAndDUSPatternNestedLoop) {
   }
 
   outer.body {
-    loop_var.1 = (s32[], bf16[4,1,8,257,128], bf16[4,1,8,257,128]) parameter(0) 
+    loop_var.1 = (s32[], bf16[4,1,8,257,128], bf16[4,1,8,257,128]) parameter(0)
     get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
     get-tuple-element.2 = bf16[4,1,8,257,128] get-tuple-element(loop_var.1), index=1
     get-tuple-element.3 = bf16[4,1,8,257,128] get-tuple-element(loop_var.1), index=2
@@ -1090,12 +1306,12 @@ TEST_F(UnstackerTest, UnstackDSAndDUSPatternLoopFeedingLoop) {
     %param_0.51117 = bf16[4,1,8,257,128] parameter(0)
     offset = s32[] parameter(1)
     zero = s32[] constant(0)
-    %dynamic-slice.22040 = bf16[1,1,8,257,128] dynamic-slice(bf16[4,1,8,257,128] %param_0.51117, offset, zero, zero, zero, zero), dynamic_slice_sizes={1,1,8,257,128} 
+    %dynamic-slice.22040 = bf16[1,1,8,257,128] dynamic-slice(bf16[4,1,8,257,128] %param_0.51117, offset, zero, zero, zero, zero), dynamic_slice_sizes={1,1,8,257,128}
     ROOT %bitcast.31250 = bf16[1,8,257,128] bitcast(%dynamic-slice.22040)
   }
 
   first.body {
-    loop_var.1 = (s32[], bf16[4,1,8,257,128]) parameter(0) 
+    loop_var.1 = (s32[], bf16[4,1,8,257,128]) parameter(0)
     get-tuple-element.1 = s32[] get-tuple-element(loop_var.1),index=0
     get-tuple-element.2 = bf16[4,1,8,257,128] get-tuple-element(loop_var.1), index=1
     constant = bf16[1,8,257,128] constant({...})
@@ -1106,14 +1322,14 @@ TEST_F(UnstackerTest, UnstackDSAndDUSPatternLoopFeedingLoop) {
     ROOT out = tuple(idx, get-tuple-element.2)
   }
   first.condition {
-    loop_var.1 = (s32[], bf16[4,1,8,257,128]) parameter(0) 
+    loop_var.1 = (s32[], bf16[4,1,8,257,128]) parameter(0)
     get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
-    constant.2 = s32[] constant(4) 
+    constant.2 = s32[] constant(4)
     ROOT less-than = pred[] compare(get-tuple-element.1, constant.2), direction=LT
   }
-  
+
   next.body {
-    loop_var.1 = (s32[], bf16[4,1,8,257,128]) parameter(0) 
+    loop_var.1 = (s32[], bf16[4,1,8,257,128]) parameter(0)
     get-tuple-element.1 = s32[] get-tuple-element(loop_var.1),index=0
     get-tuple-element.2 = bf16[4,1,8,257,128] get-tuple-element(loop_var.1), index=1
     constant = bf16[1,8,257,128] constant({...})
@@ -1125,7 +1341,7 @@ TEST_F(UnstackerTest, UnstackDSAndDUSPatternLoopFeedingLoop) {
   next.condition {
     loop_var.1 = (s32[], bf16[4,1,8,257,128]) parameter(0)
     get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
-    constant.2 = s32[] constant(4) 
+    constant.2 = s32[] constant(4)
     ROOT less-than = pred[] compare(get-tuple-element.1, constant.2), direction=LT
   }
 
@@ -1228,13 +1444,13 @@ TEST_F(UnstackerTest, UnstackDUSFusionWithPadPatternLoopFeedingLoop) {
 TEST_F(UnstackerTest, UnstackDUSFusionWithAddPattern) {
   std::string hlo_string = R"(
   HloModule SimpleLoop
-  
+
   add.2771.reduce_sub_computation {
     lhs.44 = bf16[] parameter(0)
     rhs.44 = bf16[] parameter(1)
     ROOT add.3079 = bf16[] add(lhs.44, rhs.44)
   }
-  
+
   fused_computation.75.clone {
     param_0.31658 = bf16[2,4096]{1,0:T(8,128)(2,1)} parameter(0)
     param_1.26202 = s32[]{:T(128)} parameter(1)

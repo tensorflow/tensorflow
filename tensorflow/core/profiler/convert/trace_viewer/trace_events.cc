@@ -31,6 +31,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/io/iterator.h"
+#include "xla/tsl/lib/io/table.h"
+#include "xla/tsl/lib/io/table_builder.h"
+#include "xla/tsl/lib/io/table_options.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -39,14 +44,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_visibility.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
-#include "tsl/lib/io/iterator.h"
-#include "tsl/lib/io/table.h"
-#include "tsl/lib/io/table_builder.h"
-#include "tsl/lib/io/table_options.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
-#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -2,6 +2,6 @@ syntax = "proto3";
 
 package tensorflow.dummy;
 
-import public "tsl/protobuf/bfc_memory_map.proto";
+import public "xla/tsl/protobuf/bfc_memory_map.proto";
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";

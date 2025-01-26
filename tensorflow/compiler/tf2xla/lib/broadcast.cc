@@ -15,20 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 
-#include <vector>
+#include <cstdint>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "xla/client/lib/broadcast.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/broadcast.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/bcast.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -37,7 +37,7 @@ absl::StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
   return xla::BroadcastTo(input, output_dims);
 }
 
-Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs) {
+absl::Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs) {
   TF_ASSIGN_OR_RETURN(auto lhs_xla_shape, lhs->builder()->GetShape(*lhs));
   TF_ASSIGN_OR_RETURN(auto rhs_xla_shape, rhs->builder()->GetShape(*rhs));
   tensorflow::TensorShape lhs_tf_shape;

@@ -28,7 +28,10 @@ class _ListDataset(dataset_ops.DatasetSource):
 
   def __init__(self, elements, name=None):
     if not elements:
-      raise ValueError("Invalid `elements`. `elements` should not be empty.")
+      raise ValueError(
+          "Invalid `elements`. `elements` should not be empty. If you want an"
+          " empty dataset, use `tf.data.Dataset.range(0)`."
+      )
     if not isinstance(elements, list):
       raise ValueError("Invalid `elements`. `elements` must be a list.")
 
@@ -82,14 +85,14 @@ def from_list(elements, name=None):
   example.
 
   >>> dataset = tf.data.experimental.from_list([(1, 'a'), (2, 'b'), (3, 'c')])
-  >>> list(dataset.as_numpy_iterator())
+  >>> [(n.item(), s) for n, s in dataset.as_numpy_iterator()]
   [(1, b'a'), (2, b'b'), (3, b'c')]
 
   To get the same output with `from_tensor_slices`, the data needs to be
   reorganized:
 
   >>> dataset = tf.data.Dataset.from_tensor_slices(([1, 2, 3], ['a', 'b', 'c']))
-  >>> list(dataset.as_numpy_iterator())
+  >>> [(n.item(), s) for n, s in dataset.as_numpy_iterator()]
   [(1, b'a'), (2, b'b'), (3, b'c')]
 
   Unlike `from_tensor_slices`, `from_list` supports non-rectangular input:

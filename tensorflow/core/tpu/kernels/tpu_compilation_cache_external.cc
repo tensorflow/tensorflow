@@ -67,7 +67,8 @@ std::unique_ptr<CompiledSubgraph> CreateAndInitializeCompiledSubgraph(
 
 CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
     const std::string& key,
-    const std::function<Status(TpuProgramGroupInterface*)>& initialize_program,
+    const std::function<absl::Status(TpuProgramGroupInterface*)>&
+        initialize_program,
     const TpuCompilationCacheKey& subgraph_key) {
   CompiledSubgraph* main_entry = new CompiledSubgraph();
   main_entry->parent = this;
@@ -90,7 +91,7 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
 
   // Initialize the programs outside the lock so that other cache operations
   // can proceed during the (potentially lengthy) initialization.
-  Status initialization_status;
+  absl::Status initialization_status;
 
   TpuProgramGroup tpu_program_group;
   {

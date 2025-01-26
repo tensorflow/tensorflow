@@ -1,0 +1,17 @@
+// RUN: fusion_to_mlir %s | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=reduce:0 --bijection_outputs=reduce
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fusion {
+  %input = f32[17,19,127] parameter(0)
+  %c0 = f32[] constant(0)
+  // The output is physically transposed.
+  ROOT reduce = f32[17,19]{0,1} reduce(%input, %c0), dimensions={2}, to_apply=add
+}
+
+// CHECK: xla.predicated_insert {{.*}} : tensor<17x19xf32, dense<[0, 1]> : tensor<2xi64>>

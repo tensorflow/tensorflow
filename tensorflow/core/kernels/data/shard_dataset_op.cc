@@ -111,17 +111,18 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     return n / num_shards_ + (index_ < n % num_shards_ ? 1 : 0);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
 
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override {
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return input_->Get(ctx, index_ + (num_shards_ * index), out_tensors);
   }
@@ -131,9 +132,9 @@ class ShardDatasetOp::Dataset : public DatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* num_shards = nullptr;
@@ -158,7 +159,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       if (dataset()->num_shards_ == kShardHint) {
         return errors::FailedPrecondition(
             "`tf.data.Dataset.shard(SHARD_HINT, ...)` can only be used in "
@@ -171,9 +172,9 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);
       *end_of_sequence = false;
       if (!input_impl_) {
@@ -210,8 +211,9 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       if (dataset()->require_non_empty_ &&
           next_index_ < dataset()->num_shards_) {
         int num_skipped;
-        Status s = input_impl_->Skip(ctx, dataset()->num_shards_ - next_index_,
-                                     end_of_sequence, &num_skipped);
+        absl::Status s =
+            input_impl_->Skip(ctx, dataset()->num_shards_ - next_index_,
+                              end_of_sequence, &num_skipped);
         if (*end_of_sequence || errors::IsOutOfRange(s)) {
           // `dataset()->require_non_empty_` implies that this transformation
           // was introduced by auto_sharding rewrite, so it's acceptable
@@ -232,8 +234,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-               bool* end_of_sequence) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    absl::Status Get(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                     bool* end_of_sequence) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       IteratorContextWithIndexMapper ctx_with_index_mapper(ctx, this);
       auto merge_checkpoint = gtl::MakeCleanup([&ctx_with_index_mapper] {
         ctx_with_index_mapper.MergeCheckpoint();
@@ -274,8 +276,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
           std::move(args), 1.0 / static_cast<double>(dataset()->num_shards_));
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           prefix(), kInputImplEmpty, static_cast<int64_t>(!input_impl_)));
@@ -287,8 +289,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       if (ctx->restored_element_count().has_value()) {
         element_count_ = *ctx->restored_element_count();

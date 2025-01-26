@@ -76,6 +76,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <stack>
 #include <string>
 #include <tuple>
@@ -87,6 +88,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -464,7 +466,8 @@ static_assert(sizeof(uint128) == 16, "uint128 should be 16 bytes in size");
 
 void TransposePlan::Execute(
     const void* a, void* b,
-    const std::function<void(std::function<void(void)>)>& schedule_work) const {
+    std::optional<absl::FunctionRef<void(std::function<void(void)>)>>
+        schedule_work) const {
   if (num_elems_ == 0) {
     return;
   }
@@ -508,7 +511,7 @@ void TransposePlan::Execute(
     absl::BlockingCounter counter(nodes_.size() - 1);
     for (size_t i = 1; i < nodes_.size(); ++i) {
       absl::Span<Node const> nodes = nodes_[i];
-      schedule_work([&, nodes]() {
+      (*schedule_work)([&, nodes]() {
         execute_by_type(nodes);
         counter.DecrementCount();
       });
@@ -897,7 +900,7 @@ void TransposePlan::BuildPlanNodes(
 
 absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     const Options& o) {
-  auto is_negative = [](int d) { return d < 0; };
+  auto is_negative = [](int64_t d) { return d < 0; };
   if (absl::c_find_if(o.dims, is_negative) != o.dims.end()) {
     return InvalidArgument("dims must be non-negative, got %s",
                            absl::StrJoin(o.dims, ","));

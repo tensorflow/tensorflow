@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
 
 // Use a namespace when registering by prepending the
 // package's name to the op’s name and separate with a '>'.

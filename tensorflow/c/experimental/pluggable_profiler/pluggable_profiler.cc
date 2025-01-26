@@ -12,8 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/c_api_macros_internal.h"
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
@@ -26,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -39,7 +47,7 @@ Status ValidateTPProfilerRegistrationParams(
   TF_VALIDATE_NOT_NULL(TF_ProfilerRegistrationParams, params, destroy_profiler);
   TF_VALIDATE_NOT_NULL(TF_ProfilerRegistrationParams, params,
                        destroy_profiler_fns);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidateTPProfiler(const TP_Profiler& profiler) {
@@ -47,7 +55,7 @@ Status ValidateTPProfiler(const TP_Profiler& profiler) {
   TF_VALIDATE_NOT_NULL(TP_Profiler, profiler, device_type);
   TF_RETURN_IF_ERROR(
       tensorflow::device_utils::ValidateDeviceType(profiler.device_type));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidateTPProfilerFns(const TP_ProfilerFns& profiler_fns) {
@@ -56,7 +64,7 @@ Status ValidateTPProfilerFns(const TP_ProfilerFns& profiler_fns) {
   TF_VALIDATE_NOT_NULL(TP_ProfilerFns, profiler_fns, start);
   TF_VALIDATE_NOT_NULL(TP_ProfilerFns, profiler_fns, stop);
   TF_VALIDATE_NOT_NULL(TP_ProfilerFns, profiler_fns, collect_data_xspace);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class PluggableProfiler : public tensorflow::profiler::ProfilerInterface {
@@ -175,8 +183,8 @@ Status InitPluginProfiler(TFInitProfilerFn init_fn) {
         return factory.CreatePluggableProfiler(options);
       };
 
-  tensorflow::profiler::RegisterProfilerFactory(std::move(create_func));
-  return OkStatus();
+  tsl::profiler::RegisterProfilerFactory(std::move(create_func));
+  return absl::OkStatus();
 }
 
 }  // namespace profiler

@@ -31,24 +31,24 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/types.pb.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
-#include "tensorflow/lite/toco/types.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace tensorflow {
@@ -60,69 +60,28 @@ class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
   void AddError(int line, int column, const std::string& message) override {}
 };
 
-bool LoadHloProto(const std::string& contents, xla::HloProto* hlo_proto) {
+absl::StatusOr<xla::HloProto> LoadHloProto(const std::string& contents) {
+  xla::HloProto hlo_proto;
   // NOLINTNEXTLINE: Use tsl::protobuf to be compatible with OSS.
   tsl::protobuf::TextFormat::Parser parser;
   NoOpErrorCollector collector;
   parser.RecordErrorsTo(&collector);
-  return hlo_proto->ParseFromString(contents) ||
-         parser.ParseFromString(contents, hlo_proto) ||
-         hlo_proto->mutable_hlo_module()->ParseFromString(contents) ||
-         parser.ParseFromString(contents, hlo_proto->mutable_hlo_module());
-}
-
-mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
-    mlir::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations) {
-  xla::HloProto hlo_proto;
-  std::string content(input.data(), input.size());
-  if (!LoadHloProto(content, &hlo_proto)) {
-    LOG(ERROR) << "Failed to load proto";
-    return nullptr;
+  bool status =
+      hlo_proto.ParseFromString(contents) ||
+      parser.ParseFromString(contents, &hlo_proto) ||
+      hlo_proto.mutable_hlo_module()->ParseFromString(contents) ||
+      parser.ParseFromString(contents, hlo_proto.mutable_hlo_module());
+  if (!status) {
+    return absl::InternalError("Failed to parse HloProto");
   }
-
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
-  auto status = ConvertHloToMlirHlo(
-      module.get(), hlo_proto.mutable_hlo_module(), import_all_computations);
-  if (!status.ok()) {
-    LOG(ERROR) << "Hlo module import failed: " << status;
-    return nullptr;
-  }
-
-  return module;
-}
-
-mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations) {
-  xla::HloProto hlo_proto;
-  std::string content(input.data(), input.size());
-
-  auto hlo_module_error = xla::ParseAndReturnUnverifiedModule(content);
-  if (!hlo_module_error.ok()) {
-    LOG(ERROR) << "HLO Module loading failed: " << hlo_module_error.status();
-    return nullptr;
-  }
-
-  auto hlo_module = std::move(hlo_module_error.value());
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
-  auto status =
-      ConvertHloToMlirHlo(*module, hlo_module.get(), import_all_computations);
-  if (!status.ok()) {
-    LOG(ERROR) << "HLO Module import failed: " << status;
-    return nullptr;
-  }
-
-  return module;
+  return hlo_proto;
 }
 
 }  // namespace
-absl::Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
-                                          const toco::ModelFlags& model_flags,
-                                          toco::TocoFlags& toco_flags,
-                                          std::string* result) {
+
+absl::Status ConvertJaxToTFLiteFlatBuffer(
+    const std::string& input, const tflite::ModelFlags& model_flags,
+    tflite::ConverterFlags& converter_flags, std::string* result) {
   auto context = std::make_unique<mlir::MLIRContext>();
   mlir::quant::QuantizationSpecs quant_specs;
 
@@ -135,38 +94,45 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
 
   // Populate quantization specs.
   TF_RETURN_IF_ERROR(internal::PopulateQuantizationSpecs(
-      model_flags, toco_flags, &quant_specs, &node_names, &node_dtypes,
+      model_flags, converter_flags, &quant_specs, &node_names, &node_dtypes,
       &node_shapes, &node_mins, &node_maxs));
 
-  internal::WarningUnusedFlags(model_flags, toco_flags);
+  internal::WarningUnusedFlags(model_flags, converter_flags);
 
   // Register all custom ops, including user-specified custom ops.
-  TF_RETURN_IF_ERROR(internal::RegisterAllCustomOps(toco_flags));
+  TF_RETURN_IF_ERROR(internal::RegisterAllCustomOps(converter_flags));
 
   mlir::TFL::PassConfig pass_config(quant_specs);
-  bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
+  bool emit_builtin_tflite_ops = !converter_flags.force_select_tf_ops();
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.enable_tflite_variables =
-      toco_flags.enable_tflite_resource_variables();
-  pass_config.unfold_batch_matmul = toco_flags.unfold_batchmatmul();
-  pass_config.lower_tensor_list_ops = toco_flags.lower_tensor_list_ops();
+      converter_flags.enable_tflite_resource_variables();
+  pass_config.unfold_batch_matmul = converter_flags.unfold_batchmatmul();
+  pass_config.lower_tensor_list_ops = converter_flags.lower_tensor_list_ops();
   // Disable the unfolding of the 16x16 TF::BatchMatMulOp to avoid the
   // conversion to an unsupported 16x16 TFL::FullyConnectedOp.
-  if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {
+  if (converter_flags.inference_type() == tflite::IODataType::QUANTIZED_INT16) {
     pass_config.unfold_batch_matmul = false;
   }
   pass_config.unfold_large_splat_constant =
-      toco_flags.unfold_large_splat_constant();
+      converter_flags.unfold_large_splat_constant();
   pass_config.enable_hlo_to_tf_conversion = true;
-  pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
+  pass_config.enable_stablehlo_conversion =
+      converter_flags.convert_to_stablehlo();
 
   mlir::OwningOpRef<mlir::ModuleOp> module;
-  if (model_flags.hlo_file_type() == toco::ModelFlags::HLO_TEXT) {
-    module = HloTextToMlirHloTranslateFunction(input, context.get(), false);
-  } else if (model_flags.hlo_file_type() == toco::ModelFlags::HLO_PROTO) {
-    module = HloToMlirHloTranslateFunction(input, context.get(), false);
+  std::string content(input.data(), input.size());
+  if (model_flags.hlo_file_type() == tflite::ModelFlags::HLO_TEXT) {
+    TF_ASSIGN_OR_RETURN(auto hlo_module,
+                        xla::ParseAndReturnUnverifiedModule(content));
+    TF_ASSIGN_OR_RETURN(auto module,
+                        xla::ConvertHloToStablehlo(*context, hlo_module.get()));
+  } else if (model_flags.hlo_file_type() == tflite::ModelFlags::HLO_PROTO) {
+    TF_ASSIGN_OR_RETURN(xla::HloProto hlo_proto, LoadHloProto(content));
+    TF_ASSIGN_OR_RETURN(module, xla::ConvertHloToStablehlo(
+                                    *context, hlo_proto.mutable_hlo_module()));
   } else {
-    return errors::InvalidArgument("unknown hlo format type.");
+    return absl::InvalidArgumentError("Unknown hlo format type");
   }
 
   // Set the input names.
@@ -191,9 +157,8 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
   // StableHLO Quantizer is not supported for JAX input models, so
   // quantization_py_function_lib is set to nullptr.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
-      model_flags, toco_flags, std::move(context), std::move(module),
-      pass_config,
-      /*saved_model_tags=*/{}, result,
+      model_flags, converter_flags, std::move(context), std::move(module),
+      pass_config, /*saved_model_tags=*/{}, result,
       /*quantization_py_function_lib=*/nullptr);
   return status;
 }

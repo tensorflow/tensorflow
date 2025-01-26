@@ -17,6 +17,9 @@ permissions:
   contents: read
 on:
   pull_request:
+  push:
+    branches:
+      - main
 
 env:
   # Have `go install` place binaries in $PATH
@@ -28,11 +31,18 @@ jobs:
     defaults:
       run:
         shell: bash
-    timeout-minutes: 2
+    timeout-minutes: 6
     steps:
       - name: "Checking out repository"
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
       - name: "Install bazelisk"
-        run: go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
+      - name: "Run bazel build --nobuild //xla/... with retries"
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazelisk build --nobuild //xla/...
       - name: "Run bazel query //xla/..."
-        run: bazelisk query //xla/...
+        run: bazelisk query //xla/... > /dev/null
+      - name: "Run bazel query deps(//xla/...)"
+        run: bazelisk query "deps(//xla/...)" > /dev/null
+      - name: "Check that TSL doesn't depend on XLA"
+        run: |
+          bazelisk query "somepath(//xla/tsl/..., //xla/... -//xla/tsl/...)" |& tee /dev/fd/2 | grep -q "INFO: Empty results"

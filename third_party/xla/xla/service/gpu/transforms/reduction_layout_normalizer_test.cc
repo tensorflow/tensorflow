@@ -16,21 +16,29 @@ limitations under the License.
 #include "xla/service/gpu/transforms/reduction_layout_normalizer.h"
 
 #include <optional>
+#include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
-
+namespace gpu {
 namespace {
+
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 class ReductionLayoutNormalizerTest : public HloTestBase {
  public:
   void CheckReductionLayoutNormalizer(
       absl::string_view hlo, std::optional<absl::string_view> expected) {
-    RunAndFilecheckHloRewrite(hlo, gpu::ReductionLayoutNormalizer{}, expected);
+    RunAndFilecheckHloRewrite(hlo, ReductionLayoutNormalizer{}, expected);
   }
 };
 
@@ -147,18 +155,15 @@ ENTRY main {
 
 
 )";
-
-  CheckReductionLayoutNormalizer(hlo,
-                                 R"(
-// CHECK:  [[arg0_0:%[^ ]+]] = f32[2,3,4,7]{2,1,0,3} parameter(0)
-// CHECK:  [[bitcast_1:%[^ ]+]] = f32[7,2,3,4]{3,2,1,0} bitcast([[arg0_0]])
-// CHECK:  [[idxs_2:%[^ ]+]] = u32[2,3,4,7]{3,2,1,0} parameter(1)
-// CHECK:  [[copy_3:%[^ ]+]] = u32[2,3,4,7]{2,1,0,3} copy([[idxs_2]])
-// CHECK:  [[bitcast_1_4:%[^ ]+]] = u32[7,2,3,4]{3,2,1,0} bitcast([[copy_3]])
-// CHECK:  ROOT [[reduce0_5:%[^ ]+]] = (f32[2,3,4]{2,1,0}, u32[2,3,4]{2,1,0}) reduce([[bitcast_1]], [[bitcast_1_4]], [[constant0_6:%[^ ]+]], [[constant1_7:%[^ ]+]]), dimensions={0}, to_apply=[[argmax_8:%[^ ]+]]
-      )");
-  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  auto cloned_module = module->Clone();
+  ReductionLayoutNormalizer normalizer;
+  EXPECT_THAT(normalizer.Run(module.get()),
+              StatusIs(tsl::error::FAILED_PRECONDITION,
+                       HasSubstr("Layout assignment")));
+  EXPECT_TRUE(RunAndCompare(std::move(cloned_module), ErrorSpec{1e-5, 1e-5}));
 }
 
 }  // namespace
+}  // namespace gpu
 }  // namespace xla

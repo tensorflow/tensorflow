@@ -23,7 +23,6 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Support/Timing.h"  // from @llvm-project
 
 namespace tensorflow {
 
@@ -83,6 +82,9 @@ class BridgeLoggerConfig : public mlir::PassManager::IRPrinterConfig {
   static bool MatchesFilter(const std::string& str,
                             const std::vector<std::string>& filter,
                             bool exact_match);
+  // Determines whether only top-level passes should be dumped.
+  // Returns true unless the environment variable is set to "0" or "false".
+  static bool ShouldOnlyDumpTopLevelPasses();
 
   // Only log pass invocations whose pass name exactly matches any string in
   // `pass_filter_` (or when `pass_filter_` is empty).

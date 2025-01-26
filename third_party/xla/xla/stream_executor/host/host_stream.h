@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -55,6 +56,8 @@ class HostStream : public StreamCommon {
   // (if any) and clears the error status.
   absl::Status BlockUntilDone();
 
+  absl::Status BlockHostUntilDone() override { return BlockUntilDone(); }
+
   absl::Status WaitFor(Stream* other) override;
   absl::Status WaitFor(Event* event) override;
   absl::Status RecordEvent(Event* event) override;
@@ -69,8 +72,6 @@ class HostStream : public StreamCommon {
                       uint64_t size) override;
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) override;
-  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
-                      const Kernel& kernel, const KernelArgs& args) override;
 
  private:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);

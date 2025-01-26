@@ -20,8 +20,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/allocation.h"
 
 namespace tflite {
 

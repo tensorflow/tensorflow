@@ -1,21 +1,14 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/lite:__subpackages__",
-        "//tensorflow/tools/pip_package:__subpackages__",
-    ],
     licenses = ["notice"],
 )
 
 config_setting(
     name = "tflite_convert_with_select_tf_ops",
     define_values = {"tflite_convert_with_select_tf_ops": "true"},
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
@@ -39,15 +32,6 @@ cc_library(
     deps = [
         "//tensorflow/c:kernels",
         "//tensorflow/c:tf_status_headers",
-        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc",
-        "//tensorflow/compiler/mlir/lite/metrics:error_collector",
-        "//tensorflow/compiler/mlir/lite/python:flatbuffer_to_mlir",
-        "//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer",
-        "//tensorflow/compiler/mlir/lite/python:jax_to_tfl_flatbuffer",
-        "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
-        "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
-        "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -92,43 +76,8 @@ py_strict_library(
     name = "tensorflow_wrap_toco",
     srcs = ["tensorflow_wrap_toco.py"],
     srcs_version = "PY3",
-    visibility = [
-        "//learning/expander/pod/deep_pod/utils:__subpackages__",
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//learning/expander/pod/deep_pod/utils:__subpackages__"],
     deps = [
         "//tensorflow/python:_pywrap_toco_api",
-    ],
-)
-
-py_strict_binary(
-    name = "toco_from_protos",
-    srcs = ["toco_from_protos.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        "@absl_py//absl:app",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
-        "//tensorflow/python:_pywrap_toco_api",
-        "//tensorflow/python:pywrap_tensorflow",
-        # Needed to provide PyArray_API
-        "//third_party/py/numpy",  # buildcleaner: keep
-    ],
-)
-
-tf_py_strict_test(
-    name = "toco_from_protos_test",
-    srcs = ["toco_from_protos_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_oss",
-    ],
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/toco:model_flags_proto_py",
-        "//tensorflow/lite/toco:toco_flags_proto_py",
-        "//tensorflow/lite/toco:types_proto_py",
-        "//tensorflow/python/platform:resource_loader",
-        "//tensorflow/python/platform:test",
     ],
 )

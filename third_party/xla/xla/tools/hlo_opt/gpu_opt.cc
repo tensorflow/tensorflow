@@ -31,12 +31,30 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
+#include "xla/service/gpu/transforms/all_gather_optimizer.h"
+#include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
+#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
+#include "xla/service/gpu/transforms/dot_dimension_sorter.h"
+#include "xla/service/gpu/transforms/dot_normalizer.h"
+#include "xla/service/gpu/transforms/dot_operand_converter.h"
+#include "xla/service/gpu/transforms/gemm_broadcast_folding_rewriter.h"
+#include "xla/service/gpu/transforms/gemv_rewriter.h"
+#include "xla/service/gpu/transforms/pipelined_p2p_rewriter.h"
+#include "xla/service/gpu/transforms/reduce_scatter_creator.h"
+#include "xla/service/gpu/transforms/reduction_degenerate_dim_remover.h"
+#include "xla/service/gpu/transforms/reduction_dimension_grouper.h"
+#include "xla/service/gpu/transforms/reduction_layout_normalizer.h"
+#include "xla/service/gpu/transforms/sanitize_constant_names.h"
+#include "xla/service/gpu/transforms/topk_specializer.h"
+#include "xla/service/gpu/transforms/topk_splitter.h"
+#include "xla/service/gpu/transforms/transpose_dimension_grouper.h"
+#include "xla/service/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tools/hlo_opt/opt_lib.h"
+#include "xla/tools/hlo_opt/compiled_opt_lib.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -44,8 +62,10 @@ namespace xla {
 
 namespace {
 
-class GpuOptProvider : public OptProvider {
+class GpuOptProvider : public CompiledOptProvider {
  public:
+  GpuOptProvider() : CompiledOptProvider() {}
+
   absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
     if (s == "llvm-before-optimizations") {
@@ -72,8 +92,9 @@ class GpuOptProvider : public OptProvider {
           ->ToVerboseString(9999);
     } else {
       // Delegate to base class.
-      TF_ASSIGN_OR_RETURN(std::optional<std::string> out,
-                          OptProvider::GenerateStage(std::move(module), s));
+      TF_ASSIGN_OR_RETURN(
+          std::optional<std::string> out,
+          CompiledOptProvider::GenerateStage(std::move(module), s));
       return out;
     }
   }
@@ -81,10 +102,38 @@ class GpuOptProvider : public OptProvider {
   std::string GetPlatformName() override { return "gpu"; }
 
   std::set<std::string> SupportedStages() override {
-    std::set<std::string> supported = OptProvider::SupportedStages();
+    std::set<std::string> supported = CompiledOptProvider::SupportedStages();
     supported.insert({"ptx", "llvm", "buffer-assignment",
                       "llvm-before-optimizations", "llvm-after-optimizations"});
     return supported;
+  }
+
+  std::string GetRegisteredPassNames() override {
+    return GetRegisteredPassNamesHelper(pass_registry_);
+  }
+
+  // Register only GPU specific passes here.
+  void RegisterProviderPasses(HloModule& module) override {
+    // go/keep-sorted start
+    RegisterPass<gpu::AllGatherOptimizer>();
+    RegisterPass<gpu::CuDnnCustomCallConverter>();
+    RegisterPass<gpu::DotAlgorithmRewriter>();
+    RegisterPass<gpu::DotDimensionSorter>();
+    RegisterPass<gpu::DotNormalizer>();
+    RegisterPass<gpu::DotOperandConverter>();
+    RegisterPass<gpu::GemmBroadcastFoldingRewriter>();
+    RegisterPass<gpu::GemvRewriter>();
+    RegisterPass<gpu::PipelinedP2PRewriter>();
+    RegisterPass<gpu::ReduceScatterCreator>();
+    RegisterPass<gpu::ReductionDegenerateDimRemover>();
+    RegisterPass<gpu::ReductionDimensionGrouper>();
+    RegisterPass<gpu::ReductionLayoutNormalizer>();
+    RegisterPass<gpu::SanitizeConstantNames>();
+    RegisterPass<gpu::TopKSplitter>();
+    RegisterPass<gpu::TopkSpecializer>();
+    RegisterPass<gpu::TransposeDimensionGrouper>();
+    RegisterPass<gpu::WindowedEinsumHandler>();
+    // go/keep-sorted end
   }
 
  private:
@@ -119,7 +168,8 @@ class GpuOptProvider : public OptProvider {
         xla::gpu::CompileModuleToLlvmIr(
             optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),
             gpu_compiler->GetDataLayout(), platform->Name(), platform->id(),
-            target_config.device_description, gpu_compiler->GetCanShareBuffer(),
+            target_config.device_description,
+            gpu_compiler->GetCanShareBuffer(target_config.device_description),
             gpu_compiler->BufferSizeBytesFunction()));
     return llvm_ir::DumpToString(results.llvm_module.get());
   }

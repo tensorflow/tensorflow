@@ -34,7 +34,7 @@ std::string ImmediateExecutionTensorHandle::DebugString() const {
     // messages.
     value_string = absl::StrCat(value_string.substr(0, 100), " [...]");
   }
-  Status s;
+  absl::Status s;
   const char* device_name = DeviceName(&s);
   if (!s.ok()) {
     device_name = "<error fetching device name>";
@@ -44,9 +44,9 @@ std::string ImmediateExecutionTensorHandle::DebugString() const {
                       device_name, "\")");
 }
 
-Status ImmediateExecutionTensorHandle::SummarizeValue(
+absl::Status ImmediateExecutionTensorHandle::SummarizeValue(
     std::string& summary) const {
-  Status status;
+  absl::Status status;
   AbstractTensorPtr resolved(
       // TODO(allenl): Resolve should be const, and the caches that get updated
       // marked mutable.

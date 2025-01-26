@@ -188,16 +188,19 @@ absl::Status ProfileGuidedLatencyEstimator::CheckAccuracy(
   ProfileStatisticsAggregator::Statistics stats = aggregator_->GetStats();
   size_t missing_instructions_count = stats.missing_instructions.size();
   if (missing_instructions_count > 0) {
-    LOG(ERROR) << "Found " << stats.found_instructions_count
-               << " instructions from the profile.";
-    LOG(ERROR) << "Missing " << missing_instructions_count
-               << " instructions from the profile.";
+    LOG(WARNING) << "Found " << stats.found_instructions_count
+                 << " instructions from the profile.";
+    LOG(WARNING) << "Missing " << missing_instructions_count
+                 << " instructions from the profile.";
     for (const HloInstruction* instr : stats.missing_instructions) {
-      LOG(ERROR) << "  " << instr->name();
+      LOG(WARNING) << "  " << instr->name();
     }
-    return absl::InvalidArgumentError(
-        absl::StrCat("Found ", missing_instructions_count,
-                     " missing instructions. Discarding the profile."));
+    if (module.config().debug_options().xla_gpu_pgle_accuracy_checker() ==
+        DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Found ", missing_instructions_count,
+                       " missing instructions. Discarding the profile."));
+    }
   }
   return absl::OkStatus();
 }

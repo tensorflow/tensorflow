@@ -18,8 +18,9 @@ limitations under the License.
 
 #include "tensorflow/lite/core/acceleration/configuration/c/nnapi_plugin.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/core/c/common.h"
 

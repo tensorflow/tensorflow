@@ -129,7 +129,7 @@ std::unique_ptr<Graph> InitGraph() {
   CollectiveReduceNode(&builder, id1, "c3_1", dev1, 3);
 
   std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
-  Status s = GraphDefBuilderToGraph(builder, graph.get());
+  absl::Status s = GraphDefBuilderToGraph(builder, graph.get());
   if (!s.ok()) {
     LOG(FATAL) << "Error building graph " << s;
   }
@@ -177,7 +177,7 @@ std::unique_ptr<Graph> InitGraph2() {
   CollectiveReduceNode(&builder, id, "c3", dev0, 3);
 
   std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
-  Status s = GraphDefBuilderToGraph(builder, graph.get());
+  absl::Status s = GraphDefBuilderToGraph(builder, graph.get());
   if (!s.ok()) {
     LOG(FATAL) << "Error building graph " << s;
   }
@@ -216,7 +216,7 @@ std::unique_ptr<Graph> InitGraphForPruning() {
   CollectiveReduceNode(&builder, z, "c4", dev0, 4);
 
   std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
-  Status s = GraphDefBuilderToGraph(builder, graph.get());
+  absl::Status s = GraphDefBuilderToGraph(builder, graph.get());
   if (!s.ok()) {
     LOG(FATAL) << "Error building graph " << s;
   }

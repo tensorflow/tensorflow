@@ -256,21 +256,23 @@ class SymbolicGradientOp : public AsyncOpKernel {
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
     tsl::profiler::TraceMe trace_me("SymbolicGradientOp");
-    lib->Run(opts, handle, args, rets, [ctx, done, rets](const Status& status) {
-      if (!status.ok()) {
-        ctx->SetStatus(status);
-      } else if (rets->size() != ctx->num_outputs()) {
-        ctx->SetStatus(errors::InvalidArgument(
-            "SymGrad expects to return ", ctx->num_outputs(),
-            " tensor(s), but get ", rets->size(), " tensor(s) instead."));
-      } else {
-        for (size_t i = 0; i < rets->size(); ++i) {
-          ctx->set_output(i, std::move((*rets)[i]));
-        }
-      }
-      delete rets;
-      done();
-    });
+    lib->Run(
+        opts, handle, args, rets,
+        [ctx, done, rets](const absl::Status& status) {
+          if (!status.ok()) {
+            ctx->SetStatus(status);
+          } else if (rets->size() != ctx->num_outputs()) {
+            ctx->SetStatus(errors::InvalidArgument(
+                "SymGrad expects to return ", ctx->num_outputs(),
+                " tensor(s), but get ", rets->size(), " tensor(s) instead."));
+          } else {
+            for (size_t i = 0; i < rets->size(); ++i) {
+              ctx->set_output(i, std::move((*rets)[i]));
+            }
+          }
+          delete rets;
+          done();
+        });
   }
 
  private:
@@ -400,7 +402,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           << " with handle: " << handle;
   tsl::profiler::TraceMe trace_me(
       [&] {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "RemoteCallOp",
             {{"func_name", func_name}, {"device", target_device}});
       },
@@ -408,10 +410,11 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   lib->Run(
       opts, handle, args, rets,
       [rets, done = std::move(done), func_name, ctx, cancel_mgr,
-       target_device = std::move(function_target.first)](const Status& status) {
+       target_device =
+           std::move(function_target.first)](const absl::Status& status) {
         tsl::profiler::TraceMe activity(
             [&] {
-              return profiler::TraceMeEncode(
+              return tsl::profiler::TraceMeEncode(
                   "RemoteCallOpDone",
                   {{"func_name", func_name}, {"device", target_device}});
             },
@@ -431,13 +434,13 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 
 string RemoteCallOp::TraceString(const OpKernelContext& ctx,
                                  bool verbose) const {
-  string trace_string = profiler::TraceMeOp(
+  string trace_string = tsl::profiler::TraceMeOp(
       strings::StrCat(name_view(), "__", func_.name()), type_string_view());
   if (verbose) {
     string shape = ShapeTraceString(ctx);
     if (!shape.empty()) {
-      trace_string =
-          profiler::TraceMeEncode(std::move(trace_string), {{"shape", shape}});
+      trace_string = tsl::profiler::TraceMeEncode(std::move(trace_string),
+                                                  {{"shape", shape}});
     }
   }
   return trace_string;

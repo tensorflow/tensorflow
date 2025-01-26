@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <list>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -43,13 +44,23 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/service/time_utils.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -933,6 +944,36 @@ bool BufferIntervalTree::Remove(int64_t start, int64_t end,
   return true;
 }
 
+int BufferIntervalTree::NumChunksOverlappingInTime(int64_t start,
+                                                   int64_t end) const {
+  int result = 0;
+  if (root_ == nullptr) {
+    return result;
+  }
+  std::vector<const BufferIntervalTreeNode*> visiting_stack;
+  visiting_stack.push_back(root_);
+  while (!visiting_stack.empty()) {
+    const BufferIntervalTreeNode* top = visiting_stack.back();
+    visiting_stack.pop_back();
+    if (start > top->subtree_end) {
+      continue;
+    }
+    if (top->left != nullptr) {
+      visiting_stack.push_back(top->left);
+    }
+    if (top->start <= end && top->end >= start) {
+      ++result;
+    }
+    if (end < top->start) {
+      continue;
+    }
+    if (top->right != nullptr) {
+      visiting_stack.push_back(top->right);
+    }
+  }
+  return result;
+}
+
 std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
     int64_t start, int64_t end) const {
   std::vector<Chunk> result;
@@ -999,6 +1040,35 @@ std::string BufferIntervalTree::NodesOverlappingInTimeToAsciiArt(
       GetMemoryMap(start, end, memory_block_size, num_memory_blocks, nodes);
   return MemoryMapToString(start, end, memory_block_size, group_size,
                            memory_map);
+}
+
+std::vector<int64_t> BufferIntervalTree::MemoryUsedInInterval(
+    int64_t start, int64_t end) const {
+  int64_t total_time = end - start + 1;
+  CHECK_GE(total_time, 0);
+  std::vector<const BufferIntervalTreeNode*> nodes =
+      NodesOverlappingInTime(start, end);
+  std::vector<int64_t> memory_used_in_interval(total_time, 0);
+  for (const BufferIntervalTreeNode* node : nodes) {
+    int64_t node_start = std::max(node->start, start);
+    int64_t node_end = std::min(node->end, end);
+    for (int64_t time = node_start; time <= node_end; ++time) {
+      memory_used_in_interval[time - start] += node->chunk.size;
+    }
+  }
+  return memory_used_in_interval;
+}
+
+int64_t BufferIntervalTree::HeapSizeInInterval(const int64_t start,
+                                               const int64_t end) const {
+  CHECK_LE(start, end);
+  std::vector<const BufferIntervalTreeNode*> nodes =
+      NodesOverlappingInTime(start, end);
+  int64_t max_memory_used = 0;
+  for (const BufferIntervalTreeNode* node : nodes) {
+    max_memory_used = std::max(max_memory_used, node->chunk.chunk_end());
+  }
+  return max_memory_used;
 }
 
 template <typename BufferType>
@@ -2264,7 +2334,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::Finish() {
   VLOG(1) << "result heap_size: " << result_.heap_size;
   Result result;
   result.heap_size = result_.heap_size;
-  result.heap_results.emplace_back(result_);
+  result.heap_results.push_back(result_);
   return result;
 }
 

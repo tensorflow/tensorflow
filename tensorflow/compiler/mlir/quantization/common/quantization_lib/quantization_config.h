@@ -215,6 +215,10 @@ struct QuantizationSpecs {
   // If other than kQDQNone, the model is a floating point graph with QDQ ops
   // to be eliminated and fused into quantized kernels.
   QDQConversionMode qdq_conversion_mode = QDQConversionMode::kQDQNone;
+
+  // When set, adheres to the QDQ annotations added by the framework when
+  // possible rather than quantizing any op that is possible to quantize.
+  bool strict_qdq_mode = false;
 };
 
 // Parses the command line flag strings to the CustomOpMap specification.

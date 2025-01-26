@@ -27,8 +27,8 @@ namespace tensorflow {
 //
 // REQUIRES: `seed_t` must be a length-2 vector of type DT_INT{32,64}.
 // `out_key` and `out_counter` must be non-null.
-Status GenerateKey(Tensor seed_t, random::PhiloxRandom::Key* out_key,
-                   random::PhiloxRandom::ResultType* out_counter);
+absl::Status GenerateKey(Tensor seed_t, random::PhiloxRandom::Key* out_key,
+                         random::PhiloxRandom::ResultType* out_counter);
 
 // A base class for kernels of stateless RNG ops that take shape and seed as the
 // first 2 inputs.

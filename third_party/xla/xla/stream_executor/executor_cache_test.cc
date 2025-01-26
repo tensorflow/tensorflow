@@ -16,112 +16,48 @@ limitations under the License.
 #include "xla/stream_executor/executor_cache.h"
 
 #include <memory>
-#include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "xla/stream_executor/mock_stream_executor.h"
-#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {
 
 TEST(ExecutorCacheTest, GetOnEmptyCacheFails) {
   ExecutorCache cache;
-  StreamExecutorConfig config;
-  config.ordinal = 0;
-  EXPECT_FALSE(cache.Get(config).ok());
+  EXPECT_FALSE(cache.Get(0).ok());
 }
 
-TEST(ExecutorCacheTest, GetViaStreamOnEmptyCacheFails) {
+TEST(ExecutorCacheTest, GetReturnsExpectedExecutor) {
   ExecutorCache cache;
-  StreamExecutorConfig config;
-  config.ordinal = 0;
-  config.gpu_stream = reinterpret_cast<void *>(0x1234);
-  EXPECT_FALSE(cache.Get(config).ok());
-}
-
-TEST(ExecutorCacheTest, GetOrCreateConstructsAndRepeatedlyReturns) {
-  ExecutorCache cache;
-  StreamExecutorConfig config;
-  config.ordinal = 0;
-  StreamExecutor *created = nullptr;
-  auto factory = [&created]() {
+  StreamExecutor *executor0 = nullptr;
+  StreamExecutor *executor1 = nullptr;
+  auto factory = [&executor0, &executor1]() {
     auto executor = std::make_unique<MockStreamExecutor>();
-    created = executor.get();
-    return executor;
-  };
-  TF_ASSERT_OK_AND_ASSIGN(auto executor, cache.GetOrCreate(config, factory));
-  EXPECT_EQ(executor, created);
-  TF_ASSERT_OK_AND_ASSIGN(auto found, cache.GetOrCreate(config, factory));
-  EXPECT_EQ(found, created);
-  TF_ASSERT_OK_AND_ASSIGN(found, cache.Get(config));
-  EXPECT_EQ(found, created);
-}
-
-TEST(ExecutorCacheTest, GetViaStreamFailsIfNotFound) {
-  ExecutorCache cache;
-  StreamExecutorConfig config;
-  config.ordinal = 0;
-  StreamExecutor *created = nullptr;
-  void *expected_stream = reinterpret_cast<void *>(0x1234);
-  auto factory = [&created, &expected_stream]() {
-    auto executor = std::make_unique<MockStreamExecutor>();
-    EXPECT_CALL(*executor, FindAllocatedStream(expected_stream))
-        .WillRepeatedly(testing::Return(nullptr));
-    created = executor.get();
-    return executor;
-  };
-
-  // Create the executor.
-  TF_ASSERT_OK_AND_ASSIGN(auto executor, cache.GetOrCreate(config, factory));
-  EXPECT_EQ(executor, created);
-  // Now look for the expected stream, and don't expected to find it.
-  config.gpu_stream = expected_stream;
-  EXPECT_FALSE(cache.Get(config).ok());
-}
-
-TEST(ExecutorCacheTest, GetViaStreamWorksOnSecondStream) {
-  ExecutorCache cache;
-  StreamExecutorConfig config;
-  config.ordinal = 0;
-  StreamExecutor *created = nullptr;
-  Stream *expected_stream = reinterpret_cast<Stream *>(0x1234);
-
-  // Create a factory that will make the second StreamExecutor find the
-  // expected_stream.
-  auto factory = [&created, &expected_stream]() {
-    static int count = 0;
-    auto executor = std::make_unique<MockStreamExecutor>();
-    if (count != 1) {
-      EXPECT_CALL(*executor, FindAllocatedStream(expected_stream))
-          .WillRepeatedly(testing::Return(nullptr));
+    if (executor0 == nullptr) {
+      executor0 = executor.get();
+    } else if (executor1 == nullptr) {
+      executor1 = executor.get();
     } else {
-      created = executor.get();
-      EXPECT_CALL(*executor, FindAllocatedStream(expected_stream))
-          .WillRepeatedly(testing::Invoke(
-              [expected_stream](void *stream) { return expected_stream; }));
+      LOG(FATAL) << "Bad call to factory.";
     }
-    ++count;
     return executor;
   };
-
-  // Create four executors.
-  std::vector<StreamExecutor *> created_executors;
-  for (int i = 0; i < 4; ++i) {
-    config.ordinal = i;
-    TF_ASSERT_OK_AND_ASSIGN(auto executor, cache.GetOrCreate(config, factory));
-    EXPECT_NE(executor, nullptr);
-    created_executors.push_back(executor);
-  }
-  EXPECT_EQ(created_executors.size(), 4);
-  // Now look for the expected stream, and expect to find it on the second
-  // stream.
-  config.gpu_stream = expected_stream;
-  TF_ASSERT_OK_AND_ASSIGN(auto found, cache.Get(config));
-  EXPECT_EQ(found, created);
+  TF_ASSERT_OK_AND_ASSIGN(auto found, cache.GetOrCreate(0, factory));
+  EXPECT_EQ(found, executor0);
+  TF_ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(1, factory));
+  EXPECT_EQ(found, executor1);
+  TF_ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(0, factory));
+  EXPECT_EQ(found, executor0);
+  TF_ASSERT_OK_AND_ASSIGN(found, cache.GetOrCreate(1, factory));
+  EXPECT_EQ(found, executor1);
+  TF_ASSERT_OK_AND_ASSIGN(found, cache.Get(0));
+  EXPECT_EQ(found, executor0);
+  TF_ASSERT_OK_AND_ASSIGN(found, cache.Get(1));
+  EXPECT_EQ(found, executor1);
 }
 
 }  // namespace

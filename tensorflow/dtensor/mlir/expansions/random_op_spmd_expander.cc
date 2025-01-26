@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/random_op_spmd_expander.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
@@ -47,7 +47,7 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
-Status CheckLayoutIsSupported(const Layout& layout) {
+absl::Status CheckLayoutIsSupported(const Layout& layout) {
   // Currently we support small mesh rank for arbitrary layout.
   if (layout.mesh().rank() > 3)
     return errors::InvalidArgument("Large mesh rank size is not supported",
@@ -56,7 +56,7 @@ Status CheckLayoutIsSupported(const Layout& layout) {
   return absl::OkStatus();
 }
 
-Status ValidateShapeAndGetNewShape(
+absl::Status ValidateShapeAndGetNewShape(
     const llvm::SmallVector<int64_t, 4>& op_shape, const Layout& layout,
     llvm::SmallVectorImpl<int64_t>& new_random_shape) {
   TF_RETURN_IF_ERROR(CheckLayoutIsSupported(layout));

@@ -26,11 +26,11 @@ namespace tensorflow {
 
 // If op_name has '/' in it, then return everything before the first '/'.
 // Otherwise return empty string.
-StringPiece NodeNamePrefix(const StringPiece& op_name);
+absl::string_view NodeNamePrefix(const absl::string_view& op_name);
 
 // If op_name has '/' in it, then return everything before the last '/'.
 // Otherwise return empty string.
-StringPiece NodeNameFullPrefix(const StringPiece& op_name);
+absl::string_view NodeNameFullPrefix(const absl::string_view& op_name);
 
 class MovingAverage {
  public:
@@ -70,6 +70,8 @@ bool IsDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt);
 
 // Check if input type supports AMX on CPU when oneDNN is enabled
 bool IsAMXDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt);
+
+bool IsAVXConvertSupportedByOneDNNOnThisCPU();
 
 }  // namespace tensorflow
 

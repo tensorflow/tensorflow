@@ -39,7 +39,7 @@ constexpr std::array<const char*, 2> kMaxIntraOpParallelismDatasetOps = {
 
 }  // namespace
 
-Status DisableIntraOpParallelism::OptimizeAndCollectStats(
+absl::Status DisableIntraOpParallelism::OptimizeAndCollectStats(
     Cluster* cluster, const GrapplerItem& item, GraphDef* output,
     OptimizationStats* stats) {
   *output = item.graph;

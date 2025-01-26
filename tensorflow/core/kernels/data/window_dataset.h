@@ -41,10 +41,10 @@ namespace data {
 // element components in `elements`.
 // REQUIRES: `output_shapes` must be compatible with the shapes of the
 // respective element components in `elements`.a
-Status NewWindow(std::vector<std::vector<Tensor>> elements,
-                 DataTypeVector output_types,
-                 std::vector<PartialTensorShape> output_shapes,
-                 DatasetBase** out_dataset);
+absl::Status NewWindow(std::vector<std::vector<Tensor>> elements,
+                       DataTypeVector output_types,
+                       std::vector<PartialTensorShape> output_shapes,
+                       DatasetBase** out_dataset);
 
 }  // namespace data
 }  // namespace tensorflow

@@ -1,5 +1,46 @@
 # PJRT C API changelog
 
+## 0.67
+* Added ``PJRT_Client_DmaMap`` and ``PJRT_Client_DmaUnmap``.
+
+## 0.66
+* Added ``memory`` field of type ``PJRT_Memory *`` in ``PJRT_Client_CreateViewOfDeviceBuffer_Args``.
+  The new field should be preferred over ``device``, which is now deprecated.
+
+## 0.65
+* Added ``PJRT_Triton_Extension``.
+
+## 0.64
+* Added ``context`` field of type ``PJRT_ExecuteContext *`` in ``PJRT_ExecuteOptions``.
+
+## 0.63
+*   Added types F4E2M1FN and F8E8M0FNU.
+
+## 0.62
+* Added more member functions for ``PJRT_AsyncHostToDeviceTransferManager``.
+
+## 0.61
+* Added ``PJRT_KeyValueTryGet`` to the KV store interface,
+  which is non-blocking and immediately returns an error if the
+  key is not found.
+
+## 0.60
+* Added ``PJRT_Client_CreateBuffersForAsyncHostToDevice`` and ``PJRT_AsyncHostToDeviceTransferManager_TransferRawDataToSubBuffer``.
+
+## 0.59
+* Added ``PJRT_MemoryDescriptions_Extension``.
+
+## 0.57
+* Rearranged fields in the PJRT_Api
+* Update outdated struct sizes from previous changes to
+  ``PJRT_Client_TopologyDescription`` and ``PJRT_Buffer_CopyRawToHost``.
+
+## 0.56 (Nov 11, 2024)
+* Added ``PJRT_Buffer_CopyRawToHost``
+
+## 0.55
+* Added types F8E4M3 and F8E3M4.
+
 ## 0.54
 * Deprecated PJRT_Buffer_GetMemoryLayout.
 

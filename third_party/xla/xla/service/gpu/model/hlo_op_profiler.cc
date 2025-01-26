@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -54,7 +55,8 @@ namespace xla {
 namespace gpu {
 
 #ifdef GOOGLE_CUDA
-class CuptiKernelTracer : public profiler::CuptiTraceCollector {
+class CuptiKernelTracer : public HloOpProfiler::KernelTracer,
+                          public profiler::CuptiTraceCollector {
  public:
   CuptiKernelTracer()
       : profiler::CuptiTraceCollector({}),
@@ -68,7 +70,7 @@ class CuptiKernelTracer : public profiler::CuptiTraceCollector {
     cupti_tracer_->Enable(options, this);
   }
 
-  uint64_t getMedianKernelTimeNs() && {
+  uint64_t getMedianKernelTimeNs() && override {
     cupti_tracer_->Disable();  // Also flushes buffer.
     if (kernel_times_ns_.empty()) {
       LOG(ERROR) << "No kernel events";
@@ -103,13 +105,18 @@ class CuptiKernelTracer : public profiler::CuptiTraceCollector {
   std::vector<uint64_t> kernel_times_ns_;
 };
 #else
-class CuptiKernelTracer {
+class CuptiKernelTracer : public HloOpProfiler::KernelTracer {
  public:
   uint64_t getMedianKernelTimeNs() && {
     LOG(FATAL) << "Not built with --config=cuda";
   }
 };
 #endif
+
+/*static*/ std::unique_ptr<HloOpProfiler::KernelTracer>
+HloOpProfiler::GetKernelTracer() {
+  return std::make_unique<CuptiKernelTracer>();
+}
 
 /*static*/ std::unique_ptr<HloModule> HloOpProfiler::MakeModuleForMeasurements(
     HloOpcode op, PrimitiveType data_type, int chain_length) {
@@ -158,6 +165,9 @@ absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
 
   std::unique_ptr<HloModule> module =
       MakeModuleForMeasurements(op, data_type, chain_length);
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  TF_RETURN_IF_ERROR(verifier.Run(&*module).status());
 
   std::minstd_rand0 engine;
   // Some operations have dynamic duration that depends on the input values.

@@ -29,9 +29,9 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Declare here, so we don't need a public header.
-Status RoundWeights(const GraphDef& input_graph_def,
-                    const TransformFuncContext& context,
-                    GraphDef* output_graph_def);
+absl::Status RoundWeights(const GraphDef& input_graph_def,
+                          const TransformFuncContext& context,
+                          GraphDef* output_graph_def);
 
 class RoundWeightsTest : public ::testing::Test {
  protected:

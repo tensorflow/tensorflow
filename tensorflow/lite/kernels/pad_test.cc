@@ -242,6 +242,12 @@ TEST_F(PadOpTest, Int64PaddingOverflow) {
                    {TensorType_FLOAT32}),
                "INT64 padding overflow. Only support value between INT32_MIN "
                "and INT32_MAX.");
+  EXPECT_DEATH(PadOpConstModel<int64_t>(
+                   {TensorType_FLOAT32, {1, 1, 2, 1}}, {4, 2},
+                   {0, 0, 1, -1, 2, -1, std::numeric_limits<int64_t>::max(), 0},
+                   {TensorType_FLOAT32}),
+               "INT64 padding overflow. Only support value between INT32_MIN "
+               "and INT32_MAX.");
 }
 #endif
 

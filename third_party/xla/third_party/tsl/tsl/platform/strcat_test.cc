@@ -18,9 +18,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringprintf.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/types.h"
 
 #ifdef _MSC_VER
 // ssize_t is not a standard C++ type.

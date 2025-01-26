@@ -48,7 +48,7 @@ struct SparseReorderFunctor<CPUDevice, T> {
     absl::Span<const int64_t> input_shape(input_shape_in.vec<int64_t>().data(),
                                           input_shape_in.NumElements());
 
-    gtl::InlinedVector<int64_t, 8> std_order(input_shape.size());
+    absl::InlinedVector<int64_t, 8UL> std_order(input_shape.size());
     std::iota(std_order.begin(), std_order.end(), 0);
 
     // Check if the sparse tensor is already ordered correctly

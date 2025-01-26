@@ -13,17 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/java/src/gen/cc/op_specs.h"
+
 #include <map>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/strip.h"
 #include "re2/re2.h"
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/api_def.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/java/src/gen/cc/op_specs.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/java/src/gen/cc/java_defs.h"
 
 namespace tensorflow {
 namespace java {

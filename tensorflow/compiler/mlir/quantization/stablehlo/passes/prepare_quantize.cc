@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -162,7 +162,7 @@ void PrepareQuantizePass::runOnOperation() {
     // deal with the arith::ConstantOp instances.
     patterns.add<ConvertTFConstOpToArithConstOp>(ctx);
     patterns.add<ConvertStablehloConstToArithConstOp>(ctx);
-    if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(func_op, std::move(patterns)))) {
       signalPassFailure();
     }
 
@@ -180,7 +180,7 @@ void PrepareQuantizePass::runOnOperation() {
     patterns_2
         .add<MergeConsecutiveQuantizeCast, ConvertArithConstToStablehloConstOp>(
             ctx);
-    if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns_2)))) {
+    if (failed(applyPatternsGreedily(func_op, std::move(patterns_2)))) {
       signalPassFailure();
     }
   }

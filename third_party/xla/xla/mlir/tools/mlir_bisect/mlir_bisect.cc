@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/mlir/tools/mlir_bisect/bisect_lib.h"
 #include "xla/mlir/tools/mlir_bisect/test_passes.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter.h"
+#include "xla/mlir/tools/mlir_replay/public/execution_trace.pb.h"
 #include "xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"

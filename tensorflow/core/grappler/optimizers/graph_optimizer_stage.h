@@ -66,11 +66,11 @@ struct GraphOptimizerContext {
   RewriterConfig::Toggle opt_level;
 };
 
-Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
-                    NodeDef** node);
-Status GetTensorProperties(const GraphOptimizerContext& ctx,
-                           const string& tensor,
-                           const OpInfo::TensorProperties** properties);
+absl::Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
+                          NodeDef** node);
+absl::Status GetTensorProperties(const GraphOptimizerContext& ctx,
+                                 const string& tensor,
+                                 const OpInfo::TensorProperties** properties);
 
 NodeDef* AddCopyNode(const GraphOptimizerContext& ctx, const string& name,
                      const NodeDef* node_to_copy);
@@ -142,13 +142,13 @@ class GraphOptimizerStage {
   // TODO(ezhulenev): if it will appear that Result output parameter is not
   // sufficiently useful (used with a reason by most optimizers), get rid of it,
   // and remove template parameter.
-  virtual Status TrySimplify(NodeDef* node, Result* result) = 0;
+  virtual absl::Status TrySimplify(NodeDef* node, Result* result) = 0;
 
   // Return InvalidArgumentError if node is not supported by the optimizer
   // stage.
   // TODO(ezhulenev): make this check part of non-virtual public API
   // (TrySimplify), and make virtual implementation protected.
-  Status EnsureNodeIsSupported(const NodeDef* node) const {
+  absl::Status EnsureNodeIsSupported(const NodeDef* node) const {
     return IsSupported(node)
                ? absl::OkStatus()
                : errors::InvalidArgument(
@@ -183,13 +183,13 @@ class GraphOptimizerStage {
 
   // Get a node by input name from a node map. Return an error if node was not
   // found.
-  Status GetInputNode(const string& input, NodeDef** node) const {
+  absl::Status GetInputNode(const string& input, NodeDef** node) const {
     return ::tensorflow::grappler::GetInputNode(ctx_, input, node);
   }
   // Lookup tensor properties by name. Tensor name might have non-zero port
   // number. Return an error if tensor node doesn't exists in a graph, or it
   // doesn't have properties defined for requested port.
-  Status GetTensorProperties(
+  absl::Status GetTensorProperties(
       const string& tensor, const OpInfo::TensorProperties** properties) const {
     return ::tensorflow::grappler::GetTensorProperties(ctx_, tensor,
                                                        properties);
@@ -257,7 +257,7 @@ class GraphOptimizerStagePipeline {
   bool PassThroughAllStages(NodeDef* node, Result* result) {
     for (auto& stage : stages_) {
       if (stage->IsSupported(node)) {
-        const Status stage_status = stage->TrySimplify(node, result);
+        const absl::Status stage_status = stage->TrySimplify(node, result);
         // Each stage must be "error safe" (just like exception safe). In
         // case of any error it must leave optimized graph unmodified.
         if (!stage_status.ok()) {
@@ -275,12 +275,12 @@ class GraphOptimizerStagePipeline {
   // is true or a stage fails.
   //
   // Returns any stage failure status, or else OkStatus().
-  Status PassThroughAllStagesWithStatus(NodeDef* node, Result* result) {
+  absl::Status PassThroughAllStagesWithStatus(NodeDef* node, Result* result) {
     for (auto& stage : stages_) {
       if (!stage->IsSupported(node)) {
         continue;
       }
-      const Status stage_status = stage->TrySimplify(node, result);
+      const absl::Status stage_status = stage->TrySimplify(node, result);
       if (!stage_status.ok()) {
         return stage_status;
       } else if (break_predicate_(*result)) {

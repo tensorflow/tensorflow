@@ -105,10 +105,9 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
 
 }  // namespace
 
-Status MapAndBatchFusion::OptimizeAndCollectStats(Cluster* cluster,
-                                                  const GrapplerItem& item,
-                                                  GraphDef* output,
-                                                  OptimizationStats* stats) {
+absl::Status MapAndBatchFusion::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   absl::flat_hash_set<string> nodes_to_delete;

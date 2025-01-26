@@ -13,18 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <setjmp.h>
 #include <stdio.h>
 #include <string.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
@@ -46,12 +50,12 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
 
 // These are all common classes it's handy to reference with no namespace.
@@ -78,7 +82,7 @@ Status ReadLocationsFile(const string& file_name, std::vector<float>* result,
     result->reserve(string_tokens.size());
     for (const string& string_token : string_tokens) {
       float number;
-      CHECK(tensorflow::strings::safe_strtof(string_token, &number));
+      CHECK(absl::SimpleAtof(string_token, &number));
       result->push_back(number);
     }
   }

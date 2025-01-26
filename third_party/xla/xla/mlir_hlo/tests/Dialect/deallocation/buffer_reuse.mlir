@@ -447,3 +447,36 @@ func.func @propagate_alignment_attr() {
 
 // CHECK-LABEL: @propagate_alignment_attr
 // CHECK-NEXT:  memref.alloca() {alignment = 64 : i64} : memref<f32>
+
+// -----
+
+func.func @reuse_after_each_hoist(%cond: i1, %lb: index, %ub: index, %step: index) {
+  scf.for %i = %lb to %ub step %step {
+    scf.if %cond {
+      %a = memref.alloc() : memref<f32>
+      "a.op"(%a) : (memref<f32>) -> ()
+      memref.dealloc %a : memref<f32>
+    }
+    scf.if %cond {
+      %b = memref.alloc() : memref<f32>
+      "b.op"(%b) : (memref<f32>) -> ()
+      memref.dealloc %b : memref<f32>
+    }
+    %alloc = memref.alloc() : memref<f32>
+     "test.use"(%alloc) : (memref<f32>) -> ()
+       memref.dealloc %alloc : memref<f32>
+  }
+  return
+}
+
+// CHECK-LABEL: @reuse_after_each_hoist
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: scf.for
+// CHECK-NEXT:  scf.if
+// CHECK-NEXT:   a.op
+// CHECK-NEXT:  }
+// CHECK-NEXT:  scf.if
+// CHECK-NEXT:   b.op
+// CHECK-NEXT:  }
+// CHECK-NEXT:  test.use
+// CHECK-NEXT:  }

@@ -36,6 +36,9 @@ limitations under the License.
 #include "xla/stream_executor/tpu/noncopyable_buffer.h"
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -53,9 +56,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -134,10 +134,10 @@ absl::StatusOr<bool> GetLayoutOverride(OpKernelConstruction* ctx,
   return !minor_to_major->empty();
 }
 
-Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
-                                const char* attrn_name,
-                                const xla::Shape& input_shape,
-                                xla::Shape* output_shape) {
+absl::Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
+                                      const char* attrn_name,
+                                      const xla::Shape& input_shape,
+                                      xla::Shape* output_shape) {
   std::vector<int64_t> minor_to_major;
   TF_ASSIGN_OR_RETURN(bool has_override,
                       GetLayoutOverride(ctx, attrn_name, &minor_to_major));
@@ -205,11 +205,10 @@ struct LinearizedBuffersWrapper {
   std::vector<tensorflow::Tensor> tensors;
 };
 
-Status AutoTransposeAndLinearize(OpKernelContext* ctx,
-                                 const Tensor& input_tensor,
-                                 const xla::Shape& shape,
-                                 LinearizerBufferList* linearized_buffers,
-                                 std::vector<Tensor>* saved_input_tensors) {
+absl::Status AutoTransposeAndLinearize(
+    OpKernelContext* ctx, const Tensor& input_tensor, const xla::Shape& shape,
+    LinearizerBufferList* linearized_buffers,
+    std::vector<Tensor>* saved_input_tensors) {
   const Tensor* tensor = &input_tensor;
   // If the given layout is not in dim0major layout, transposes the tensor.
   bool has_transposed = false;
@@ -305,7 +304,8 @@ TpuInfeedEnqueueOp::TpuInfeedEnqueueOp(
                  GetInfeedShapeWithLayout(ctx, "layout", shape, &xla_shape_));
 }
 
-Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx, int device_ordinal) {
+absl::Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx,
+                                        int device_ordinal) {
   VLOG(1) << "TpuInfeedEnqueueOp::DoWork. iter_id=" << ctx->frame_iter().iter_id
           << " device_ordinal=" << device_ordinal;
   const Tensor& input_tensor = ctx->input(0);
@@ -364,8 +364,8 @@ TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(
                                     &tuple_shape_));
 }
 
-Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
-                                       int device_ordinal) {
+absl::Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
+                                             int device_ordinal) {
   VLOG(1) << "TpuInfeedEnqueueTupleOp::DoWork. iter_id="
           << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
   OpInputList values;
@@ -421,8 +421,8 @@ InfeedEnqueuePrelinearizedBufferOp::InfeedEnqueuePrelinearizedBufferOp(
     std::unique_ptr<TpuTransferOpInterface> transfer_op)
     : TpuTransferAsyncOpKernel(ctx, "prelinearized_buffers_to_infeed", 8,
                                std::move(transfer_op)) {}
-Status InfeedEnqueuePrelinearizedBufferOp::DoWork(OpKernelContext* ctx,
-                                                  int device_ordinal) {
+absl::Status InfeedEnqueuePrelinearizedBufferOp::DoWork(OpKernelContext* ctx,
+                                                        int device_ordinal) {
   const Tensor& input_tensor = ctx->input(0);
   const LinearizedBuffersWrapper* wrapper =
       input_tensor.scalar<tensorflow::Variant>()()

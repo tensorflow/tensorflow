@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 
+#include "absl/status/statusor.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {

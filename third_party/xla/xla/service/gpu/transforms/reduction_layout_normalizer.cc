@@ -32,14 +32,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -63,18 +61,9 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
 
       if (operand_idx != 0 &&
           operand->shape().layout() != first_instruction_shape.layout()) {
-        HloInstruction *copy =
-            reduce->parent()->AddInstruction(HloInstruction::CreateUnary(
-                operand->shape(), HloOpcode::kCopy, operand));
-
-        LayoutUtil::ClearLayout(copy->mutable_shape());
-        TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
-            first_instruction_shape, copy->mutable_shape()));
-
-        copy->set_metadata(operand->metadata());
-        operand = copy;
-        VLOG(3) << "Copying to establish consistent inputs layout: "
-                << copy->ToString();
+        return FailedPrecondition(
+            "Layout assignment should have assigned the same layout to all "
+            "reduce inputs");
       }
 
       const Shape &operand_shape = operand->shape();

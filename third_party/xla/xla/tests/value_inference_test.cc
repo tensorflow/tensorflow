@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/client/value_inference.h"
+#include "xla/hlo/builder/value_inference.h"
 
 #include <memory>
 #include <utility>
@@ -23,16 +23,15 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/client/client_library.h"
-#include "xla/client/global_data.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/lib/prng.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/prng.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"

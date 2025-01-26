@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
