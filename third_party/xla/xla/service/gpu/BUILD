@@ -1682,6 +1682,7 @@ xla_test(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:regexp",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
