@@ -283,13 +283,15 @@ void GpuAsyncTrackerBase::PostProcessScheduleGraph(
     // Schedule partially pipelined send/recv instructions late so that they can
     // overlap with compute. Schedule send/recv late and, when unblocked,
     // schedule send-done/recv-done early.
-    if (debug_options.xla_gpu_experimental_enable_pipeline_parallelism_opt() &&
-        IsPartiallyPipelinedSendRecv(inst)) {
+    bool enable_pipeline_parallelism_opt =
+        debug_options.xla_gpu_experimental_pipeline_parallelism_opt_level() !=
+        DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE;
+    if (enable_pipeline_parallelism_opt && IsPartiallyPipelinedSendRecv(inst)) {
       HloGraphNode& node = schedule_graph->GetNode(inst);
       node.SetForceDelay(true);
       VLOG(5) << "Setting force delay for instruction: " << inst->ToString();
     }
-    if (debug_options.xla_gpu_experimental_enable_pipeline_parallelism_opt() &&
+    if (enable_pipeline_parallelism_opt &&
         IsPartiallyPipelinedSendRecvDone(inst)) {
       HloGraphNode& node = schedule_graph->GetNode(inst);
       node.SetForceEarly(true);

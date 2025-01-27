@@ -205,7 +205,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_collective_permute_decomposer_threshold(
       std::numeric_limits<int64_t>::max());
-  opts.set_xla_gpu_experimental_enable_pipeline_parallelism_opt(false);
+  opts.set_xla_gpu_experimental_pipeline_parallelism_opt_level(
+      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE);
 
   opts.set_xla_partitioning_algorithm(
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
@@ -491,6 +492,19 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
             debug_options
                 ->mutable_xla_gpu_analytical_latency_estimator_options();
         parse_xla_backend_extra_options(options_map, comma_separated_values);
+        return true;
+      };
+
+  // Custom "sub-parser" lambda for
+  // xla_gpu_experimental_pipeline_parallelism_opt_level.
+  auto setter_for_xla_gpu_experimental_pipeline_parallelism_opt_level =
+      [debug_options](const std::string& value) {
+        DebugOptions::PipelineParallelismOptLevel level;
+        if (!DebugOptions::PipelineParallelismOptLevel_Parse(value, &level)) {
+          return false;
+        }
+        debug_options->set_xla_gpu_experimental_pipeline_parallelism_opt_level(
+            level);
         return true;
       };
 
@@ -1667,11 +1681,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_collective_permute_decomposer_threshold(),
       "Collective permute decomposer threshold."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_pipeline_parallelism_opt",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_gpu_experimental_enable_pipeline_parallelism_opt),
-      debug_options->xla_gpu_experimental_enable_pipeline_parallelism_opt(),
+      "xla_gpu_experimental_pipeline_parallelism_opt_level",
+      setter_for_xla_gpu_experimental_pipeline_parallelism_opt_level,
+      DebugOptions::PipelineParallelismOptLevel_Name(
+          debug_options->xla_gpu_experimental_pipeline_parallelism_opt_level()),
       "Experimental optimizations for SPMD-based pipeline parallelism on "
       "GPU."));
   flag_list->push_back(tsl::Flag(
