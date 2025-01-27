@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_
 #define XLA_BACKENDS_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_
 
+#include <cstdint>
+#include <initializer_list>
+#include <utility>
+
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -27,6 +31,11 @@ namespace xla::cpu {
 // A string-to-string mapping that allows to parametrize HLO benchmarks.
 using StrToStrMapping =
     std::initializer_list<std::pair<absl::string_view, absl::string_view>>;
+
+struct HloBenchmarkOptions {
+  int32_t num_executions = 1;
+  bool disable_parallel_task_assigner = false;
+};
 
 // Runs the given HLO module as a benchmark.
 //
@@ -41,16 +50,16 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              absl::string_view hlo_module,
                              absl::Span<const Literal* const> args,
                              StrToStrMapping replacements = {},
-                             bool disable_parallel_task_assigner = false);
+                             const HloBenchmarkOptions& benchmark_options = {});
 
 // Benchmarks the given HLO's compilation time.
 //
 // Takes the same options as RunHloBenchmark, except no arguments since the
 // HLO is only compiled, not run.
-absl::Status CompileHloBenchmark(benchmark::State& state,
-                                 absl::string_view hlo_module,
-                                 StrToStrMapping replacements = {},
-                                 bool disable_parallel_task_assigner = false);
+absl::Status CompileHloBenchmark(
+    benchmark::State& state, absl::string_view hlo_module,
+    StrToStrMapping replacements = {},
+    const HloBenchmarkOptions& benchmark_options = {});
 
 }  // namespace xla::cpu
 

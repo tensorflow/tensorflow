@@ -19,9 +19,11 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -33,9 +35,11 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/test_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla::cpu {
 
@@ -43,10 +47,10 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              absl::string_view hlo_module,
                              absl::Span<const Literal* const> args,
                              StrToStrMapping replacements,
-                             bool disable_parallel_task_assigner) {
-  xla::CpuClientOptions options;
+                             const HloBenchmarkOptions& benchmark_options) {
+  xla::CpuClientOptions client_options;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                      xla::GetXlaPjrtCpuClient(options));
+                      xla::GetXlaPjrtCpuClient(client_options));
   PjRtDevice* device = client->devices().front();
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
@@ -58,7 +62,7 @@ absl::Status RunHloBenchmark(benchmark::State& state,
 
   // Compile HLO module to executable.
   CompileOptions compile_options;
-  if (disable_parallel_task_assigner) {
+  if (benchmark_options.disable_parallel_task_assigner) {
     compile_options.executable_build_options.mutable_debug_options()
         ->add_xla_disable_hlo_passes("cpu-parallel-task-assigner");
   }
@@ -97,7 +101,8 @@ absl::Status RunHloBenchmark(benchmark::State& state,
     }
   }
 
-  // Execute in synchronous mode to avoid thread hops.
+  // Execute in synchronous mode to avoid thread hops, as we anyway use our own
+  // thread pool if we need to run multiple executions in parallel.
   ExecuteOptions execute_options;
   execute_options.execution_mode = ExecuteOptions::ExecutionMode::kSynchronous;
 
@@ -107,16 +112,47 @@ absl::Status RunHloBenchmark(benchmark::State& state,
     args_ptrs.push_back(arg.get());
   }
 
+  CHECK_GE(benchmark_options.num_executions, 1);
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results(
+      benchmark_options.num_executions);
+
+  // Thread pool for dispatching multiple executions in parallel.
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "hlo_benchmark_runner",
+                                  benchmark_options.num_executions);
+
   // Warmup executable.
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<PjRtBuffer>> results,
-      executable->ExecuteSharded(args_ptrs, device, execute_options));
+  TF_ASSIGN_OR_RETURN(results[0], executable->ExecuteSharded(args_ptrs, device,
+                                                             execute_options));
 
   // Benchmark executable.
   for (auto _ : state) {
-    TF_ASSIGN_OR_RETURN(results, executable->ExecuteSharded(args_ptrs, device,
-                                                            execute_options));
-    tsl::testing::DoNotOptimize(results);
+    if (benchmark_options.num_executions == 1) {
+      // Single execution always runs in the caller thread.
+      results[0] =
+          executable->ExecuteSharded(args_ptrs, device, execute_options)
+              .value();
+    } else {
+      // Multiple executions run in parallel.
+      absl::BlockingCounter counter(benchmark_options.num_executions);
+
+      for (size_t i = 0; i < benchmark_options.num_executions; ++i) {
+        threads.Schedule([&, i]() {
+          results[i] =
+              executable->ExecuteSharded(args_ptrs, device, execute_options)
+                  .value();
+          counter.DecrementCount();
+        });
+      }
+
+      counter.Wait();
+    }
+
+    // Wait for all results to be ready.
+    for (size_t i = 0; i < benchmark_options.num_executions; ++i) {
+      for (const auto& result : results[i]) {
+        CHECK_OK(result->GetReadyFuture().Await());
+      }
+    }
   }
 
   return absl::OkStatus();
@@ -125,10 +161,10 @@ absl::Status RunHloBenchmark(benchmark::State& state,
 absl::Status CompileHloBenchmark(benchmark::State& state,
                                  absl::string_view hlo_module,
                                  StrToStrMapping replacements,
-                                 bool disable_parallel_task_assigner) {
-  xla::CpuClientOptions options;
+                                 const HloBenchmarkOptions& benchmark_options) {
+  xla::CpuClientOptions client_options;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                      xla::GetXlaPjrtCpuClient(options));
+                      xla::GetXlaPjrtCpuClient(client_options));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       ParseAndReturnUnverifiedModule(
@@ -138,7 +174,7 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
   XlaComputation computation(module->ToProto());
 
   CompileOptions compile_options;
-  if (disable_parallel_task_assigner) {
+  if (benchmark_options.disable_parallel_task_assigner) {
     compile_options.executable_build_options.mutable_debug_options()
         ->add_xla_disable_hlo_passes("cpu-parallel-task-assigner");
   }
