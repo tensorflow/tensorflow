@@ -5263,7 +5263,6 @@ AllocationResult MsaAlgorithm::WindowPrefetch(
 
     WindowPrefetchedAllocation::Options options;
     options.bytes = window.size();
-    options.uid = window.uid();
     options.alternate_memory_space = options_.alternate_memory_space;
     options.notify_operand_appended_fn = options_.notify_operand_appended_fn;
     AllocationRequest window_prefetch_request = request;

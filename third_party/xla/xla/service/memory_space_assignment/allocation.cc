@@ -1012,7 +1012,7 @@ absl::Status WindowPrefetchedAllocation::Process(
 
   // Notify the backend that an operand has been appended as a window prefetch
   // buffer.
-  options_.notify_operand_appended_fn(use_instruction, options_.uid,
+  options_.notify_operand_appended_fn(use_instruction, use_.operand_number,
                                       use_operand);
 
   // Set the original defining position to the window prefetch instruction.
