@@ -379,8 +379,6 @@ INSTANTIATE_TEST_SUITE_P(ParametrizedTritonTest, ParametrizedTritonTest,
                          I4TestParams::ToString);
 
 TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
-  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
-                  "issue with triton.";
   // We cannot do triton_gemm and we use cuBLAS instead.
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutWithManyNonContractingDims
@@ -400,8 +398,6 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
 }
 
 TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
-  GTEST_SKIP() << "TODO(rocm): Weekly-sync 25-01-13: Skip ivestigate int4 "
-                  "issue with triton.";
   // We cannot do triton_gemm and we use cuBLAS instead.
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutWithManyNonContractingDimsReversedLayout
