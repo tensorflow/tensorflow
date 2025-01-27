@@ -562,12 +562,12 @@ tsl_cc_test(
     srcs = ["statusor_test.cc"],
     deps = [
         ":statusor",
+        ":test_main",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "@com_google_absl//absl/base:config",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
