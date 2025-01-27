@@ -242,7 +242,6 @@ MatmulPerfTableGen::Config CreateConfig(
 }
 
 // TODO(b/390097558): Sweep through minor and major dimensions for dots.
-// TODO(b/390097558): Implement deduplication on specs.
 // TODO(b/390097558): Implement sharding on devices.
 int main(int argc, char* argv[]) {
   std::string m_spec;
