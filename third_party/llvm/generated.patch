@@ -1,56 +1,58 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/GlobalMerge.cpp b/llvm/lib/CodeGen/GlobalMerge.cpp
---- a/llvm/lib/CodeGen/GlobalMerge.cpp
-+++ b/llvm/lib/CodeGen/GlobalMerge.cpp
-@@ -423,12 +423,24 @@
+diff -ruN --strip-trailing-cr a/lld/ELF/Config.h b/lld/ELF/Config.h
+--- a/lld/ELF/Config.h
++++ b/lld/ELF/Config.h
+@@ -619,7 +619,6 @@
+   };
+   ElfSym sym{};
+   std::unique_ptr<SymbolTable> symtab;
+-  SmallVector<Symbol *, 0> synthesizedSymbols;
+ 
+   SmallVector<std::unique_ptr<MemoryBuffer>> memoryBuffers;
+   SmallVector<ELFFileBase *, 0> objectFiles;
+diff -ruN --strip-trailing-cr a/lld/ELF/Writer.cpp b/lld/ELF/Writer.cpp
+--- a/lld/ELF/Writer.cpp
++++ b/lld/ELF/Writer.cpp
+@@ -149,7 +149,6 @@
+   if (!s || s->isDefined() || s->isCommon())
+     return nullptr;
+ 
+-  ctx.synthesizedSymbols.push_back(s);
+   s->resolve(ctx, Defined{ctx, ctx.internalFile, StringRef(), STB_GLOBAL,
+                           stOther, STT_NOTYPE, val,
+                           /*size=*/0, sec});
+@@ -283,7 +282,6 @@
+ static void demoteSymbolsAndComputeIsPreemptible(Ctx &ctx) {
+   llvm::TimeTraceScope timeScope("Demote symbols");
+   DenseMap<InputFile *, DenseMap<SectionBase *, size_t>> sectionIndexMap;
+-  bool hasDynSymTab = ctx.arg.hasDynSymTab;
+   for (Symbol *sym : ctx.symtab->getSymbols()) {
+     if (auto *d = dyn_cast<Defined>(sym)) {
+       if (d->section && !d->section->isLive())
+@@ -296,12 +294,11 @@
+                   sym->type)
+             .overwrite(*sym);
+         sym->versionId = VER_NDX_GLOBAL;
+-        if (sym->includeInDynsym(ctx))
+-          sym->isExported = true;
+       }
+     }
+ 
+-    if (hasDynSymTab)
++    sym->isExported = sym->includeInDynsym(ctx);
++    if (ctx.arg.hasDynSymTab)
+       sym->isPreemptible = sym->isExported && computeIsPreemptible(ctx, *sym);
+   }
+ }
+@@ -1839,11 +1836,6 @@
      }
    }
  
-+  // Now we found a bunch of sets of globals used together.  We accumulated
-+  // the number of times we encountered the sets (i.e., the number of functions
-+  // that use that exact set of globals).
-+  //
-+  // Multiply that by the size of the set to give us a crude profitability
-+  // metric.
-+  llvm::stable_sort(UsedGlobalSets,
-+                    [](const UsedGlobalSet &UGS1, const UsedGlobalSet &UGS2) {
-+                      return UGS1.Globals.count() * UGS1.UsageCount <
-+                             UGS2.Globals.count() * UGS2.UsageCount;
-+                    });
-+
-   // We can choose to merge all globals together, but ignore globals never used
-   // with another global.  This catches the obviously non-profitable cases of
-   // having a single global, but is aggressive enough for any other case.
-   if (GlobalMergeIgnoreSingleUse) {
-     BitVector AllGlobals(Globals.size());
--    for (const UsedGlobalSet &UGS : UsedGlobalSets) {
-+    for (const UsedGlobalSet &UGS : llvm::reverse(UsedGlobalSets)) {
-       if (UGS.UsageCount == 0)
-         continue;
-       if (UGS.Globals.count() > 1)
-@@ -437,16 +449,6 @@
-     return doMerge(Globals, AllGlobals, M, isConst, AddrSpace);
-   }
- 
--  // Now we found a bunch of sets of globals used together. We accumulated
--  // the number of times we encountered the sets (i.e., the number of functions
--  // that use that exact set of globals). Multiply that by the size of the set
--  // to give us a crude profitability metric.
--  llvm::stable_sort(UsedGlobalSets,
--                    [](const UsedGlobalSet &UGS1, const UsedGlobalSet &UGS2) {
--                      return UGS1.Globals.count() * UGS1.UsageCount >=
--                             UGS2.Globals.count() * UGS2.UsageCount;
--                    });
+-  // If the previous code block defines any non-hidden symbols (e.g.
+-  // __global_pointer$), they may be exported.
+-  for (Symbol *sym : ctx.synthesizedSymbols)
+-    sym->isExported = sym->includeInDynsym(ctx);
 -
-   // Starting from the sets with the best (=biggest) profitability, find a
-   // good combination.
-   // The ideal (and expensive) solution can only be found by trying all
-@@ -456,7 +458,7 @@
-   BitVector PickedGlobals(Globals.size());
-   bool Changed = false;
+   demoteSymbolsAndComputeIsPreemptible(ctx);
  
--  for (const UsedGlobalSet &UGS : UsedGlobalSets) {
-+  for (const UsedGlobalSet &UGS : llvm::reverse(UsedGlobalSets)) {
-     if (UGS.UsageCount == 0)
-       continue;
-     if (PickedGlobals.anyCommon(UGS.Globals))
+   if (ctx.arg.copyRelocs && ctx.arg.discard != DiscardPolicy::None)
