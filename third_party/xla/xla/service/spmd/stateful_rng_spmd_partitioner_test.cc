@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <utility>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"

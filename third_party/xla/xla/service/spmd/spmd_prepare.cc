@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/spmd/spmd_prepare.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
