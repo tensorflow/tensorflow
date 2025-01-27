@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_api.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
@@ -37,8 +39,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 

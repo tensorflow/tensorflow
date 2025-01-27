@@ -36,6 +36,8 @@ limitations under the License.
 #include "xla/tsl/framework/bfc_allocator.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device_id_utils.h"
@@ -47,10 +49,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/platform/types.h"
 
 #if GOOGLE_CUDA
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"

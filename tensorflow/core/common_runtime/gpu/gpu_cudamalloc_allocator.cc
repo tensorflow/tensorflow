@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tsl/framework/device_id.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace tensorflow {
 

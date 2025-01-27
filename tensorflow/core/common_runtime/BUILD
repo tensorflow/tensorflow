@@ -685,7 +685,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/platform:env",
+        "@local_xla//xla/tsl/platform:env",
     ],
     alwayslink = 1,
 )
@@ -942,7 +942,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:refcount",
-        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -1031,8 +1031,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@local_tsl//tsl/platform:mutex",
-        "@local_tsl//tsl/platform:types",
         "@local_xla//xla/tsl/framework:bfc_allocator",
+        "@local_xla//xla/tsl/platform:types",
     ] + if_static([
         ":executor",
         ":rendezvous_mgr",
@@ -1184,9 +1184,9 @@ cc_library(
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
     alwayslink = 1,
 )
@@ -1235,7 +1235,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:errors",
     ],
     alwayslink = 1,
 )
@@ -1606,7 +1606,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@local_tsl//tsl/platform:env",
+        "@local_xla//xla/tsl/platform:env",
     ],
 )
 
@@ -3464,10 +3464,10 @@ tf_cc_test(
         "//tensorflow/core/framework:function_testlib",
         "//tensorflow/core/framework:optimized_function_graph_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:test",
     ],
 )
 
@@ -3494,9 +3494,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -3514,9 +3514,9 @@ tf_cc_test(
         "//tensorflow/core/kernels:function_ops",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:test",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:test",
     ],
 )
 
