@@ -20,9 +20,13 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/util/command_line_flags.h"
