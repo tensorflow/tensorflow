@@ -1873,9 +1873,11 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
   int num_active_nodes;
   std::tie(use_xla_computation, num_active_nodes) = GetParam();
 
-  tsl::SubProcess child[ShardedAutotuningTest::kNumNodes];
-  for (int node_id = 0; node_id < ShardedAutotuningTest::kNumNodes; ++node_id) {
+  tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=1", /*overwrite=*/true);
+  tsl::SubProcess child[kNumNodes];
+  for (int node_id = 0; node_id < kNumNodes; ++node_id) {
     std::vector<std::string> argv;
+    argv.reserve(4);
     argv.push_back(test_binary_name);
     argv.push_back(absl::StrFormat("--node_id=%d", node_id));
     argv.push_back(
@@ -1886,7 +1888,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
     child[node_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
     ASSERT_TRUE(child[node_id].Start()) << "node " << node_id;
   }
-  for (int node_id = 0; node_id < ShardedAutotuningTest::kNumNodes; ++node_id) {
+  for (int node_id = 0; node_id < kNumNodes; ++node_id) {
     std::string stdout_str;
     std::string stderr_str;
     int child_status =
@@ -1899,6 +1901,14 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
     EXPECT_EQ(child_status, 0) << " node " << node_id << "\nstdout:\n"
                                << stdout_str << "\nstderr:\n"
                                << stderr_str;
+    if (node_id < num_active_nodes) {
+      EXPECT_THAT(stderr_str,
+                  HasSubstr(absl::StrFormat(
+                      "Shard %d / %d: autotuning %d / 1 fusions", node_id + 1,
+                      num_active_nodes, (node_id == 0) ? 1 : 0)));
+    } else {
+      EXPECT_THAT(stderr_str, Not(HasSubstr("autotuning")));
+    }
   }
 }
 
@@ -1945,6 +1955,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
   }
 
   CompileOptions compile_options;
+  compile_options.executable_build_options.set_num_replicas(num_active_nodes);
   DebugOptions* debug_options =
       compile_options.executable_build_options.mutable_debug_options();
   debug_options->set_xla_gpu_shard_autotuning(true);
