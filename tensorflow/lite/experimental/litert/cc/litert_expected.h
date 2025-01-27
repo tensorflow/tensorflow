@@ -17,6 +17,7 @@
 
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <type_traits>
@@ -156,7 +157,7 @@ class Expected {
 
   Expected& operator=(Expected&& other) {
     if (this != &other) {
-      Expected::~Expected();
+      this->~Expected();
       has_value_ = other.has_value_;
       if (HasValue()) {
         value_ = std::move(other.Value());
@@ -267,74 +268,47 @@ class Expected<void> {
  public:
   // Implicit construction is used to simplify returning a valid value, e.g., in
   // "return {};"
-  Expected() : has_value_(true) {}
+  Expected() : unexpected_(std::nullopt) {}
 
   // Construct from Unexpected inplace.
 
   // Allow for implicit conversion from Error.
   // NOLINTNEXTLINE
-  Expected(const Unexpected& err) : has_value_(false), unexpected_(err) {}
+  Expected(const Unexpected& err) : unexpected_(err) {}
   // NOLINTNEXTLINE
-  Expected(Unexpected&& err) : has_value_(false), unexpected_(std::move(err)) {}
+  Expected(Unexpected&& err) : unexpected_(std::move(err)) {}
   // NOLINTNEXTLINE
-  Expected(const Error& e) : has_value_(false), unexpected_(e) {}
-
-  ~Expected() {
-    if (!has_value_) {
-      unexpected_.~Unexpected();
-    }
-  }
-
-  Expected& operator=(Expected&& other) {
-    if (this != &other) {
-      Expected::~Expected();
-      has_value_ = other.has_value_;
-      unexpected_ = std::move(other.unexpected_);
-    }
-    return *this;
-  }
-
-  Expected& operator=(const Expected& other) {
-    if (this != &other) {
-      Expected::~Expected();
-      has_value_ = other.has_value_;
-      unexpected_ = other.unexpected_;
-    }
-    return *this;
-  }
+  Expected(const Error& e) : unexpected_(e) {}
 
   // Observer for Unexpected, program exits if it doesn't have one.
   const class Error& Error() const& {
     CheckNoVal();
-    return unexpected_.Error();
+    return unexpected_->Error();
   }
 
   class Error& Error() & {
     CheckNoVal();
-    return unexpected_.Error();
+    return unexpected_->Error();
   }
 
   const class Error&& Error() const&& {
     CheckNoVal();
-    return std::move(unexpected_.Error());
+    return std::move(unexpected_->Error());
   }
 
   class Error&& Error() && {
     CheckNoVal();
-    return std::move(unexpected_.Error());
+    return std::move(unexpected_->Error());
   }
 
   // Does this expected contain a T Value. It contains an unexpected if not.
-  bool HasValue() const { return has_value_; }
+  bool HasValue() const { return !unexpected_.has_value(); }
 
   // Convert to bool for HasValue.
   explicit operator bool() const { return HasValue(); }
 
  private:
-  bool has_value_;
-  union {
-    Unexpected unexpected_;
-  };
+  std::optional<Unexpected> unexpected_;
   void CheckNoVal() const { ABSL_CHECK(!HasValue()); }
   void CheckVal() const { ABSL_CHECK(HasValue()); }
 };
