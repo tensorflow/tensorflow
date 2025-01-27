@@ -35,20 +35,19 @@ class LlvmIrKernelSource final : public KernelSource {
  public:
   LlvmIrKernelSource(llvm::orc::ThreadSafeContext context,
                      std::unique_ptr<llvm::Module> module)
-      : context_(std::move(context)), module_(std::move(module)) {}
+      : module_(std::move(module), std::move(context)) {}
 
   LlvmIrKernelSource(LlvmIrKernelSource&& other) = default;
   LlvmIrKernelSource& operator=(LlvmIrKernelSource&& other) = default;
 
   llvm::orc::ThreadSafeModule thread_safe_module() && {
-    return llvm::orc::ThreadSafeModule(std::move(module_), context_);
+    return std::move(module_);
   }
 
   std::string ToString() const final;
 
  private:
-  llvm::orc::ThreadSafeContext context_;
-  std::unique_ptr<llvm::Module> module_;
+  llvm::orc::ThreadSafeModule module_;
 };
 
 }  // namespace xla
