@@ -14,6 +14,7 @@
 
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 
@@ -46,6 +47,7 @@ struct LiteRtCompilationOptionsT {
   // Note: Changing a default value does not impact the version.
   LiteRtApiVersion version = {.major = 0, .minor = 0, .patch = 1};
   LiteRtHwAcceleratorSet hardware_accelerators = kLiteRtHwAccelatorNone;
+  LiteRtAcceleratorCompilationOptions accelerator_compilation_options = nullptr;
 };
 
 LiteRtStatus LiteRtCreateCompilationOptions(LiteRtCompilationOptions* options) {
@@ -55,6 +57,8 @@ LiteRtStatus LiteRtCreateCompilationOptions(LiteRtCompilationOptions* options) {
 }
 
 LiteRtStatus LiteRtDestroyCompilationOptions(LiteRtCompilationOptions options) {
+  LiteRtDestroyAcceleratorCompilationOptions(
+      options->accelerator_compilation_options);
   delete options;
   return kLiteRtStatusOk;
 }
@@ -82,6 +86,36 @@ LiteRtStatus LiteRtGetCompilationOptionsHardwareAccelerators(
   LRT_CHECK_NON_NULL(hardware_accelerators);
   LRT_REQUIRE_VERSION(0, 0, 0);
   *hardware_accelerators = options->hardware_accelerators;
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtAddAcceleratorCompilationOptions(
+    LiteRtCompilationOptions options,
+    LiteRtAcceleratorCompilationOptions accelerator_compilation_options) {
+  LRT_CHECK_NON_NULL(options);
+  LRT_CHECK_NON_NULL(accelerator_compilation_options);
+
+  if (!options->accelerator_compilation_options) {
+    options->accelerator_compilation_options = accelerator_compilation_options;
+  } else {
+    LiteRtAppendAcceleratorCompilationOptions(
+        options->accelerator_compilation_options,
+        accelerator_compilation_options);
+  }
+
+  return kLiteRtStatusOk;
+}
+
+// Retrieves the head of the accelerator compilation option list.
+//
+// Note: The following elements may be retrieved with
+// `LiteRtGetNextAcceleratorCompilationOptions`.
+LiteRtStatus LiteRtGetAcceleratorCompilationOptions(
+    LiteRtCompilationOptions options,
+    LiteRtAcceleratorCompilationOptions* accelerator_compilation_options) {
+  LRT_CHECK_NON_NULL(options);
+  LRT_CHECK_NON_NULL(accelerator_compilation_options);
+  *accelerator_compilation_options = options->accelerator_compilation_options;
   return kLiteRtStatusOk;
 }
 

@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILED_MODEL_OPTIONS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILED_MODEL_OPTIONS_H_
 
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 
 #ifdef __cplusplus
@@ -45,6 +46,25 @@ LiteRtStatus LiteRtSetCompilationOptionsHardwareAccelerators(
 LiteRtStatus LiteRtGetCompilationOptionsHardwareAccelerators(
     LiteRtCompilationOptions options,
     LiteRtHwAcceleratorSet* hardware_accelerators);
+
+// Adds compilation options for a specific accelerator to the accelerator
+// compilation option list.
+//
+// Note: Multiple accelerator options may be added to the options object.
+//
+// Note: `accelerator_compilation_options`'s ownership is transferred to
+// `options`.
+LiteRtStatus LiteRtAddAcceleratorCompilationOptions(
+    LiteRtCompilationOptions options,
+    LiteRtAcceleratorCompilationOptions accelerator_compilation_options);
+
+// Retrieves the head of the accelerator compilation option list.
+//
+// Note: The following elements may be retrieved with
+// `LiteRtGetNextAcceleratorCompilationOptions`.
+LiteRtStatus LiteRtGetAcceleratorCompilationOptions(
+    LiteRtCompilationOptions options,
+    LiteRtAcceleratorCompilationOptions* accelerator_compilation_options);
 
 #ifdef __cplusplus
 }

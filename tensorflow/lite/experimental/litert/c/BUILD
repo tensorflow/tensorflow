@@ -243,6 +243,7 @@ cc_library(
         "litert_compiled_model_options.h",
     ],
     deps = [
+        ":litert_accelerator_options",
         ":litert_common",
         ":litert_logging",
     ],
@@ -252,8 +253,10 @@ cc_test(
     name = "litert_compiled_model_options_test",
     srcs = ["litert_compiled_model_options_test.cc"],
     deps = [
+        ":litert_accelerator_options",
         ":litert_common",
         ":litert_compiled_model_options",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -295,6 +298,27 @@ cc_test(
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "litert_accelerator_options",
+    srcs = ["litert_accelerator_options.cc"],
+    hdrs = ["litert_accelerator_options.h"],
+    deps = [
+        ":litert_common",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
+    ],
+)
+
+cc_test(
+    name = "litert_accelerator_options_test",
+    srcs = ["litert_accelerator_options_test.cc"],
+    deps = [
+        ":litert_accelerator_options",
+        ":litert_common",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
         "@com_google_googletest//:gtest_main",
     ],
 )
