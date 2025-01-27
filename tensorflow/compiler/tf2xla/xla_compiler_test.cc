@@ -1708,9 +1708,9 @@ TEST_F(XlaCompilerTest, OpsWithTensorListInput) {
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
     std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-    ops::_Arg(scope.WithOpName("arg"), DT_VARIANT, 0);
+    ops::_Arg give_me_a_name(scope.WithOpName("arg"), DT_VARIANT, 0);
     auto result = ops::Const<bool>(scope, {true}, {});
-    ops::_Retval(scope.WithOpName("ret"), result, 0);
+    ops::_Retval give_me_a_name(scope.WithOpName("ret"), result, 0);
     TF_ASSERT_OK(scope.ToGraph(graph.get()));
     FunctionDef fdef;
     TF_ASSERT_OK(GraphToFunctionDef(*graph, "cond", &fdef));
@@ -1721,7 +1721,7 @@ TEST_F(XlaCompilerTest, OpsWithTensorListInput) {
     Scope scope = Scope::NewRootScope().ExitOnError();
     std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
     auto arg = ops::_Arg(scope.WithOpName("arg"), DT_VARIANT, 0);
-    ops::_Retval(scope.WithOpName("ret"), arg, 0);
+    ops::_Retval give_me_a_name(scope.WithOpName("ret"), arg, 0);
     TF_ASSERT_OK(scope.ToGraph(graph.get()));
     FunctionDef fdef;
     TF_ASSERT_OK(GraphToFunctionDef(*graph, "body", &fdef));
