@@ -57,6 +57,7 @@ extern const char* const kEigenConv2DF16SymbolName;
 extern const char* const kEigenConv2DF32SymbolName;
 extern const char* const kEigenConv3DF16SymbolName;
 extern const char* const kEigenConv3DF32SymbolName;
+extern const char* const kLegacyDuccFftSymbolName;
 extern const char* const kDuccFftSymbolName;
 extern const char* const kDuccSingleThreadedFftSymbolName;
 extern const char* const kEigenSingleThreadedMatMulF16SymbolName;

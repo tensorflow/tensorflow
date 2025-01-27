@@ -92,7 +92,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> FftThunk::Execute(
 
   // Args have been computed, make the call.
   if (is_multi_thread_eigen_) {
-    __xla_cpu_runtime_DuccFft(nullptr,
+    __xla_cpu_runtime_DuccFft(params.intra_op_threadpool,
                               reinterpret_cast<float*>(output_data.opaque()),
                               reinterpret_cast<float*>(input_data.opaque()),
                               fft_type_, is_double_precision_, fft_rank,
