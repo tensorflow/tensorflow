@@ -315,6 +315,9 @@ tf_staging/third_party/nccl/hermetic/nccl_configure.bzl:
 tf_staging/third_party/nccl/nccl_configure.bzl:
 tf_staging/third_party/nccl/system.BUILD.tpl:
 tf_staging/third_party/nlohmann_json.BUILD:
+tf_staging/third_party/nvshmem/archive.patch:
+tf_staging/third_party/nvshmem/nvshmem.BUILD:
+tf_staging/third_party/nvshmem/workspace.bzl:
 tf_staging/third_party/nvtx/BUILD:
 tf_staging/third_party/nvtx/LICENSE:
 tf_staging/third_party/ortools/BUILD:
