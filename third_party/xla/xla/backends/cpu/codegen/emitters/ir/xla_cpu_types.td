@@ -33,4 +33,12 @@ def XLACPU_CallFrame : XLACPU_Type<"CallFrame", "call_frame"> {
   let summary = "XLA:CPU host kernel call frame";
 }
 
+//===----------------------------------------------------------------------===//
+// !xla_cpu.error
+//===----------------------------------------------------------------------===//
+
+def XLACPU_Error : XLACPU_Type<"Error", "error"> {
+  let summary = "error";
+}
+
 #endif // XLA_BACKENDS_CPU_CODEGEN_IR_XLA_CPU_TYPES
