@@ -33,4 +33,35 @@ int LiteRtCompareApiVersion(LiteRtApiVersion v1, LiteRtApiVersion v2) {
   return -1;
 }
 
+const char* LiteRtGetStatusString(LiteRtStatus status) {
+  switch (status) {
+    // NOLINTNEXTLINE(preprocessor-macros)
+#define LITERT_STATUS_STR_CASE(STATUS) \
+  case STATUS:                         \
+    return #STATUS;
+    LITERT_STATUS_STR_CASE(kLiteRtStatusOk);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorInvalidArgument);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorMemoryAllocationFailure);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorRuntimeFailure);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorMissingInputTensor);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorUnsupported);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorNotFound);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorTimeoutExpired);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorFileIO);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorInvalidFlatbuffer);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorDynamicLoading);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorSerialization);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorCompilation);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorIndexOOB);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorInvalidIrType);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorInvalidGraphInvariant);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorGraphModification);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorInvalidToolConfig);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusLegalizeNoMatch);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorInvalidLegalization);
+    LITERT_STATUS_STR_CASE(kLiteRtStatusErrorWrongVersion);
+#undef LITERT_STATUS_STR_CASE
+  }
+}
+
 }  // extern "C"
