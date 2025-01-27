@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/java/src/gen/cc/op_specs.h"
 
+#include <cctype>
 #include <map>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/strip.h"
