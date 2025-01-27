@@ -16,15 +16,19 @@ limitations under the License.
 #ifndef XLA_HLO_PASS_HLO_PASS_FIX_H_
 #define XLA_HLO_PASS_HLO_PASS_FIX_H_
 
-#include <algorithm>
+#include <cstdint>
 #include <type_traits>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -76,6 +80,14 @@ class HloPassFix : public Pass {
       VLOG(3) << "changed_this_iteration: " << changed_this_iteration;
       ++iteration_count;
       if (iteration_count == kIterationLimit) {
+        if (module_group->module(0)
+                .config()
+                .debug_options()
+                .xla_unsupported_crash_on_hlo_pass_fix_max_iterations()) {
+          LOG(FATAL) << "Unexpectedly high number of iterations "
+                     << iteration_count << " in HLO pass '" << Pass::name()
+                     << "' for module group '" << module_group->name() << "'";
+        }
         VLOG(1) << "Unexpectedly high number of iterations in HLO passes, "
                    "exiting fixed point loop.";
         // Return false in case this is fixed point is nested.
@@ -98,6 +110,13 @@ class HloPassFix : public Pass {
               << !run_state->changed_last_iteration.empty();
       run_state->IncrementIteration();
       if (run_state->iteration == kIterationLimit) {
+        if (module->config()
+                .debug_options()
+                .xla_unsupported_crash_on_hlo_pass_fix_max_iterations()) {
+          LOG(FATAL) << "Unexpectedly high number of iterations "
+                     << kIterationLimit << " in HLO pass '" << Pass::name()
+                     << "' for module '" << module->name() << "'";
+        }
         VLOG(1) << "Unexpectedly high number of iterations in HLO passes '"
                 << Pass::name() << "' for module '" << module->name()
                 << "'. Exiting fixed point loop.";

@@ -72,6 +72,8 @@ bazel run tensorflow/examples/speech_commands:test_streaming_accuracy -- \
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -88,8 +90,6 @@ bazel run tensorflow/examples/speech_commands:test_streaming_accuracy -- \
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/examples/speech_commands/accuracy_utils.h"
 #include "tensorflow/examples/speech_commands/recognize_commands.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/types.h"
 
 // These are all common classes it's handy to reference with no namespace.
 using ::int64_t;

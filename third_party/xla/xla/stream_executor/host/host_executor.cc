@@ -22,12 +22,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <new>
 #include <optional>
 #include <string>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -38,18 +36,15 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_event.h"
-#include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/profile_utils/cpu_utils.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace stream_executor {
 namespace host {
@@ -57,16 +52,6 @@ namespace host {
 HostStream* AsHostStream(Stream* stream) {
   DCHECK(stream != nullptr);
   return dynamic_cast<HostStream*>(stream);
-}
-
-static std::vector<HostExecutor::KernelFunctionLoader>&
-KernelFunctionLoaderRegistry() {
-  static auto* registry = new std::vector<HostExecutor::KernelFunctionLoader>();
-  return *registry;
-}
-
-void HostExecutor::RegisterKernelFunctionLoader(KernelFunctionLoader loader) {
-  KernelFunctionLoaderRegistry().push_back(std::move(loader));
 }
 
 absl::Status HostExecutor::Init() {
@@ -77,18 +62,6 @@ absl::Status HostExecutor::Init() {
 
 absl::StatusOr<std::unique_ptr<Kernel>> HostExecutor::LoadKernel(
     const MultiKernelLoaderSpec& spec) {
-  auto host_kernel = std::make_unique<HostKernel>(thread_pool_);
-  host_kernel->SetArity(spec.arity());
-
-  for (auto& loader : KernelFunctionLoaderRegistry()) {
-    auto loaded = loader(spec);
-    if (!loaded.has_value()) continue;
-
-    TF_ASSIGN_OR_RETURN(auto kernel_function, *std::move(loaded));
-    host_kernel->SetKernelFunction(std::move(kernel_function));
-    return std::move(host_kernel);
-  }
-
   return absl::InternalError("No method of loading host kernel provided");
 }
 

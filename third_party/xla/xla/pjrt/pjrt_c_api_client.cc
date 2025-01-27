@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_ffi_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
@@ -71,15 +73,14 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -536,29 +537,10 @@ PjRtCApiClient::BufferFromHostBufferInternalImpl(
   std::unique_ptr<PJRT_Event, ::pjrt::PJRT_EventDeleter> event(
       args.done_with_host_buffer, ::pjrt::MakeEventDeleter(c_api_));
 
-  if (on_done_with_host_buffer) {
-    PJRT_Event_OnReady_Args event_args;
-    event_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
-    event_args.extension_start = nullptr;
-    event_args.event = event.get();
-    event_args.user_arg = new absl::AnyInvocable<void(PJRT_Error*)>(
-        [on_done_with_host_buffer = std::move(on_done_with_host_buffer),
-         c_api = c_api_](PJRT_Error* error) mutable {
-          if (error) {
-            ::pjrt::MakeErrorDeleter(c_api)(error);
-          }
-          std::move(on_done_with_host_buffer)();
-        });
-    event_args.callback = [](PJRT_Error* error, void* args) {
-      auto* on_done_with_host_buffer =
-          reinterpret_cast<absl::AnyInvocable<void(PJRT_Error*)>*>(args);
-      (*on_done_with_host_buffer)(error);
-      delete on_done_with_host_buffer;
-    };
-
-    RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Event_OnReady(&event_args),
-                                c_api_);
-  }
+  RETURN_STATUS_IF_PJRT_ERROR(
+      pjrt::InvokePjRtEventWhenReady(c_api_, event.get(),
+                                     std::move(on_done_with_host_buffer)),
+      c_api_);
 
   return buffer;
 }
@@ -704,24 +686,40 @@ class PjRtCApiAsyncHostToDeviceTransferManager
       : c_client_(client), c_transfer_manager_(std::move(c_transfer_manager)) {}
 
   size_t buffer_count() const override {
-    LOG(FATAL) << "PJRT C API does not support buffer_count. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
-                  "you need "
-                  "this feature.";
+    PJRT_AsyncHostToDeviceTransferManager_BufferCount_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_BufferCount_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_BufferCount(&args), api);
+    return args.buffer_count;
   }
 
   PjRtDevice* device() const override {
-    LOG(FATAL) << "PJRT C API does not support device. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
-                  "you need "
-                  "this feature.";
+    PJRT_AsyncHostToDeviceTransferManager_Device_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_Device_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_Device(&args), api);
+    return c_client_->GetCppDevice(args.device_out);
   }
 
   std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) override {
-    LOG(FATAL) << "PJRT C API does not support RetrieveBuffer. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
-                  "you need "
-                  "this feature.";
+    PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    args.buffer_index = buffer_index;
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer(&args), api);
+    return std::make_unique<PjRtCApiBuffer>(c_client_, args.buffer_out);
   }
 
   absl::Status TransferLiteralToBuffer(
@@ -734,10 +732,16 @@ class PjRtCApiAsyncHostToDeviceTransferManager
   }
 
   size_t buffer_size(int buffer_index) const override {
-    LOG(FATAL)
-        << "PJRT C API does not support buffer_size. Please report an "
-           "issue at https://github.com/google/jax/issues if you need this "
-           "feature.";
+    PJRT_AsyncHostToDeviceTransferManager_BufferSize_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_BufferSize_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    args.buffer_index = buffer_index;
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_BufferSize(&args), api);
+    return args.buffer_size;
   }
 
   absl::Status TransferRawDataToBuffer(
@@ -766,44 +770,47 @@ class PjRtCApiAsyncHostToDeviceTransferManager
         api->PJRT_AsyncHostToDeviceTransferManager_TransferData(&args), api);
     std::unique_ptr<PJRT_Event, ::pjrt::PJRT_EventDeleter> event(
         args.done_with_h2d_transfer, ::pjrt::MakeEventDeleter(api));
-    if (on_done) {
-      PJRT_Event_OnReady_Args event_args;
-      event_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
-      event_args.extension_start = nullptr;
-      event_args.event = event.get();
-      event_args.user_arg = new absl::AnyInvocable<void(PJRT_Error*)>(
-          [on_done = std::move(on_done),
-           c_api = api](PJRT_Error* error) mutable {
-            if (error) {
-              ::pjrt::MakeErrorDeleter(c_api)(error);
-            }
-            std::move(on_done)();
-          });
-      event_args.callback = [](PJRT_Error* error, void* args) {
-        auto* on_done_with_d2h_transfer =
-            reinterpret_cast<absl::AnyInvocable<void(PJRT_Error*)>*>(args);
-        (*on_done_with_d2h_transfer)(error);
-        delete on_done_with_d2h_transfer;
-      };
-
-      RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Event_OnReady(&event_args), api);
-    }
+    RETURN_STATUS_IF_PJRT_ERROR(
+        pjrt::InvokePjRtEventWhenReady(api, event.get(), std::move(on_done)),
+        api);
     return absl::OkStatus();
   }
 
   void SetBufferError(int buffer_index, absl::Status error) override {
-    LOG(FATAL) << "PJRT C API does not support SetBufferError. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
-                  "you need "
-                  "this feature.";
+    PJRT_AsyncHostToDeviceTransferManager_SetBufferError_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_SetBufferError_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    args.buffer_index = buffer_index;
+    args.error_code = pjrt::StatusCodeToPjrtErrorCode(error.code());
+    args.error_message = error.message().data();
+    args.error_message_size = error.message().size();
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_SetBufferError(&args), api);
   }
 
   using TransferMetadata = absl::flat_hash_map<std::string, std::string>;
   void AddTransferMetadata(const TransferMetadata& metadata) override {
-    LOG(FATAL) << "PJRT C API does not support AddTransferMetadata. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
-                  "you need "
-                  "this feature.";
+    PJRT_AsyncHostToDeviceTransferManager_AddMetadata_Args args;
+    args.struct_size =
+        PJRT_AsyncHostToDeviceTransferManager_AddMetadata_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.transfer_manager = c_transfer_manager_.get();
+    absl::flat_hash_map<std::string, xla::PjRtValueType> pjrt_metadata;
+    for (const auto& [key, value] : metadata) {
+      pjrt_metadata[key] = PjRtValueType(value);
+    };
+    absl::StatusOr<std::vector<PJRT_NamedValue>> result =
+        pjrt::ConvertToPjRtNamedValueList(pjrt_metadata);
+    TF_CHECK_OK(result.status());
+    std::vector<PJRT_NamedValue> c_metadata = result.value();
+    args.transfer_metadata = c_metadata.data();
+    args.num_metadata = c_metadata.size();
+    const PJRT_Api* api = c_client_->pjrt_c_api();
+    pjrt::LogFatalIfPjrtError(
+        api->PJRT_AsyncHostToDeviceTransferManager_AddMetadata(&args), api);
   }
 
  private:
@@ -1820,6 +1827,42 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   return args;
 }
 
+static absl::StatusOr<PJRT_ExecuteContext*> ForwardExecuteContext(
+    const PJRT_Api* c_api, const ExecuteContext* context) {
+  // If the execute context is null, we don't have anything to forward.
+  if (context == nullptr) return nullptr;
+
+  // If we can't find the FFI extension, we can't forward anything from the
+  // execute context to the C API.
+  PJRT_FFI_Extension* ffi_extension = pjrt::FindExtension<PJRT_FFI_Extension>(
+      c_api, PJRT_Extension_Type::PJRT_Extension_Type_FFI);
+  if (ffi_extension == nullptr) return nullptr;
+
+  // Create a new instance of the PJRT_ExecuteContext.
+  PJRT_ExecuteContext_Create_Args create_args = {
+      PJRT_ExecuteContext_Create_Args_STRUCT_SIZE, nullptr, nullptr};
+  RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_ExecuteContext_Create(&create_args),
+                              c_api);
+
+  // Forward FFI user data to the C API execute context.
+  using TypeId = ffi::ExecutionContext::TypeId;
+  auto forward_user_data = [&](TypeId type_id, void* data) -> absl::Status {
+    PJRT_FFI_UserData_Add_Args add_args{
+        PJRT_FFI_UserData_Add_Args_STRUCT_SIZE,
+        nullptr,
+        create_args.context,
+        PJRT_FFI_UserData{type_id.value(), data, /*deleter=*/nullptr},
+    };
+    RETURN_STATUS_IF_PJRT_ERROR(ffi_extension->user_data_add(&add_args), c_api);
+    return absl::OkStatus();
+  };
+
+  TF_RETURN_IF_ERROR(
+      context->ffi_context().ForEachWithStatus(forward_user_data));
+
+  return create_args.context;
+}
+
 absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtCApiLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
@@ -1829,14 +1872,27 @@ PjRtCApiLoadedExecutable::Execute(
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
   std::vector<int64_t> non_donatable_input_indices_storage;
-  PJRT_ExecuteOptions c_options;
-  c_options.num_send_ops = 0;
-  c_options.num_recv_ops = 0;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (returned_futures.has_value()) {
     device_complete_events.emplace();
   }
+
+  PJRT_ExecuteOptions c_options = {PJRT_ExecuteOptions_STRUCT_SIZE, nullptr};
+  TF_ASSIGN_OR_RETURN(c_options.context,
+                      ForwardExecuteContext(pjrt_c_api(), options.context));
+
+  // Don't forget to destroy execute context if we created it.
+  auto destroy_context = absl::MakeCleanup([&]() {
+    if (c_options.context != nullptr) {
+      PJRT_ExecuteContext_Destroy_Args destroy_args = {
+          PJRT_ExecuteContext_Destroy_Args_STRUCT_SIZE, nullptr,
+          c_options.context};
+      pjrt::LogFatalIfPjrtError(
+          pjrt_c_api()->PJRT_ExecuteContext_Destroy(&destroy_args),
+          pjrt_c_api());
+    }
+  });
 
   auto callback_data = std::make_shared<SendRecvCallbackData>();
   TF_ASSIGN_OR_RETURN(
@@ -1901,9 +1957,6 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   std::vector<std::vector<PJRT_Buffer*>> c_output_lists_storage;
   std::vector<PJRT_Buffer**> c_output_lists;
   std::vector<int64_t> non_donatable_input_indices_storage;
-  PJRT_ExecuteOptions c_options;
-  c_options.num_send_ops = 0;
-  c_options.num_recv_ops = 0;
   std::vector<PJRT_Buffer**> c_arguments;
   std::optional<std::vector<PJRT_Event*>> device_complete_events;
   if (fill_future) {
@@ -1911,6 +1964,8 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   }
 
   auto callback_data = std::make_shared<SendRecvCallbackData>();
+
+  PJRT_ExecuteOptions c_options = {PJRT_ExecuteOptions_STRUCT_SIZE, nullptr};
   TF_ASSIGN_OR_RETURN(
       PJRT_LoadedExecutable_Execute_Args args,
       GetCommonExecuteArgs(argument_handles_vec, options, c_options,

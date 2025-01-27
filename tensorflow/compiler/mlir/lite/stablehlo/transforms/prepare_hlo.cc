@@ -63,7 +63,7 @@ void PrepareHloPass::runOnOperation() {
   PopulateCustomCallPreparePatterns(context, patterns);
   PopulatePrepareFftPatterns(context, patterns);
 
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     signalPassFailure();
   }
 }

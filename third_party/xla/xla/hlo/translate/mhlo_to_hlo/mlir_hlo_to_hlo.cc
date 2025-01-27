@@ -127,7 +127,7 @@ constexpr char kApproxTopK[] = "ApproxTopK";
 constexpr char kBackendConfig[] = "backend_config";
 constexpr char kCallTargetName[] = "call_target_name";
 constexpr char kCalledComputations[] = "called_computations";
-constexpr char kChannelId[] = "channel_id";
+constexpr char kChannelHandle[] = "channel_handle";
 constexpr char kHasSideEffect[] = "has_side_effect";
 constexpr char kIsFallback[] = "is_fallback";
 constexpr char kRaggedAllToAll[] = "ragged_all_to_all";
@@ -2286,7 +2286,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     DenseIntElementsAttr replica_groups =
         backend_config.getAs<DenseIntElementsAttr>(kReplicaGroups);
     mlir::mhlo::ChannelHandleAttr channel_handle_attr =
-        backend_config.getAs<mlir::mhlo::ChannelHandleAttr>(kChannelId);
+        backend_config.getAs<mlir::mhlo::ChannelHandleAttr>(kChannelHandle);
     xla::ChannelHandle channel_handle;
     if (channel_handle_attr) {
       channel_handle = Convert_channel_handle(channel_handle_attr);

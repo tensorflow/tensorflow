@@ -26,7 +26,7 @@ namespace gpu {
 
 absl::Status Run(const std::string& filename) {
   TF_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
-  TF_ASSIGN_OR_RETURN(auto emitter_data, GetMlirFusionEmitter(*module));
+  TF_ASSIGN_OR_RETURN(auto emitter_data, GetEmitter(*module));
 
   auto context = GetMlirContextForTest();
   TF_ASSIGN_OR_RETURN(auto mlir_module,

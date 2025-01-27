@@ -261,7 +261,7 @@ absl::Status GetInt64Value(const Json::Value& parent, const char* name,
     return absl::OkStatus();
   }
   if (result_value.isString() &&
-      strings::safe_strto64(result_value.asCString(), result)) {
+      absl::SimpleAtoi(result_value.asCString(), result)) {
     return absl::OkStatus();
   }
   return errors::Internal(
@@ -1257,7 +1257,7 @@ absl::Status GcsFileSystem::RequestUploadSessionStatus(
     std::vector<int64_t> range_parts;
     for (const std::string& range_str : range_strs) {
       int64_t tmp;
-      if (strings::safe_strto64(range_str, &tmp)) {
+      if (absl::SimpleAtoi(range_str, &tmp)) {
         range_parts.push_back(tmp);
       } else {
         return return_error(gcs_path, "Range header '" + received_range +

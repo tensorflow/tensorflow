@@ -204,9 +204,11 @@ NB_MODULE(xla_extension, m) {
       .value("U32", U32)
       .value("U64", U64)
       .value("F16", F16)
+      .value("F4E2M1FN", F4E2M1FN)
       // TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
       // .value("F8E3M4", F8E3M4)
       // .value("F8E4M3", F8E4M3)
+      .value("F8E8M0FNU", F8E8M0FNU)
       .value("F8E4M3FN", F8E4M3FN)
       .value("F8E4M3B11FNUZ", F8E4M3B11FNUZ)
       .value("F8E4M3FNUZ", F8E4M3FNUZ)
@@ -657,9 +659,12 @@ NB_MODULE(xla_extension, m) {
           "blocking_key_value_get_bytes",
           [](DistributedRuntimeClient& client, std::string key,
              int64_t timeout_in_ms) -> nb::bytes {
-            nb::gil_scoped_release gil_release;
-            std::string result = xla::ValueOrThrow(client.BlockingKeyValueGet(
-                key, absl::Milliseconds(timeout_in_ms)));
+            std::string result;
+            {
+              nb::gil_scoped_release gil_release;
+              result = xla::ValueOrThrow(client.BlockingKeyValueGet(
+                  key, absl::Milliseconds(timeout_in_ms)));
+            }
             return nb::bytes(result.data(), result.size());
           },
           nb::arg("key"), nb::arg("timeout_in_ms"))
@@ -673,8 +678,11 @@ NB_MODULE(xla_extension, m) {
       .def(
           "key_value_try_get_bytes",
           [](DistributedRuntimeClient& client, std::string key) -> nb::bytes {
-            nb::gil_scoped_release gil_release;
-            std::string result = xla::ValueOrThrow(client.KeyValueTryGet(key));
+            std::string result;
+            {
+              nb::gil_scoped_release gil_release;
+              result = xla::ValueOrThrow(client.KeyValueTryGet(key));
+            }
             return nb::bytes(result.data(), result.size());
           },
           nb::arg("key"))
@@ -731,15 +739,18 @@ NB_MODULE(xla_extension, m) {
           "key_value_dir_get_bytes",
           [](DistributedRuntimeClient& client, absl::string_view key)
               -> std::vector<std::pair<std::string, nb::bytes>> {
-            nb::gil_scoped_release gil_release;
-            std::vector<std::pair<std::string, std::string>> result =
-                xla::ValueOrThrow(client.KeyValueDirGet(key));
+            std::vector<std::pair<std::string, std::string>> result;
+            {
+              nb::gil_scoped_release gil_release;
+              result = xla::ValueOrThrow(client.KeyValueDirGet(key));
+            }
             // Convert std::string values to nb::bytes.
             std::vector<std::pair<std::string, nb::bytes>> kvs;
             kvs.reserve(result.size());
-            for (const auto& kv : result) {
-              kvs.push_back(std::pair(
-                  kv.first, nb::bytes(kv.second.data(), kv.second.size())));
+            for (auto& kv : result) {
+              kvs.push_back(
+                  std::pair(std::move(kv.first),
+                            nb::bytes(kv.second.data(), kv.second.size())));
             }
             return kvs;
           },

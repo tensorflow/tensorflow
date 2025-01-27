@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -69,6 +70,25 @@ template <typename CppType>
     }
     return ::mlir::DenseElementsAttr::getFromRawBuffer(type,
                                                        packed_padded_data);
+  } else if constexpr (std::is_same_v<CppType, tsl::float4_e2m1fn>) {
+    // DenseElementsAttr::get() does not support being passed an array of
+    // tsl::float4_e2m1fn. So convert each element to APFloat first.
+    auto data_span = literal.data<CppType>();
+    std::vector<llvm::APFloat> apfloats;
+    apfloats.reserve(literal.element_count());
+    for (size_t i = 0; i < literal.element_count(); i++) {
+      llvm::APFloat apfloat{static_cast<float>(data_span[i])};
+      bool losesInfo;
+      llvm::APFloat::opStatus status =
+          apfloat.convert(llvm::APFloat::Float4E2M1FN(),
+                          llvm::APFloat::rmNearestTiesToEven, &losesInfo);
+      CHECK_EQ(status, llvm::APFloat::opOK)
+          << "Failed to convert " << data_span[i] << " to Float4E2M1FN APFloat";
+      CHECK(!losesInfo) << "Lost info when converting " << data_span[i]
+                        << " to Float4E2M1FN APFloat";
+      apfloats.push_back(apfloat);
+    }
+    return ::mlir::DenseElementsAttr::get(type, apfloats);
   } else {
     auto data_span = literal.data<CppType>();
     return ::mlir::DenseElementsAttr::get(

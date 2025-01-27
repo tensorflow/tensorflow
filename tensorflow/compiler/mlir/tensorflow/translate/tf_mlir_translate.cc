@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -41,14 +42,19 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/tools/parsers.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/platform/errors.h"
@@ -175,9 +181,19 @@ static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirImport(
     pruned_graph_def.mutable_library()->Swap(graphdef.mutable_library());
     pruned_graph_def.mutable_versions()->Swap(graphdef.mutable_versions());
   }
-  return ConvertGraphdefToMlir(
-      specs.prune_unused_nodes ? pruned_graph_def : graphdef, debug_info, specs,
-      context);
+
+  tensorflow::GraphConstructorOptions options;
+  options.allow_internal_ops = true;
+  options.upgrade_legacy = specs.upgrade_legacy;
+  options.add_default_attributes = true;
+  tensorflow::Graph graph(tensorflow::OpRegistry::Global());
+  TF_RETURN_IF_ERROR(::tensorflow::ConvertGraphDefToGraph(
+      options,
+      specs.prune_unused_nodes ? std::move(pruned_graph_def)
+                               : std::move(graphdef),
+      &graph));
+  return tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+      graph, debug_info, graph.flib_def(), specs, context);
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>

@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -144,6 +144,37 @@ TEST_F(HloTraversalTest, AdaptorUsers) {
            ->GetInstructionWithName("neg.1"),
       fusion_adaptor2.get()};
   EXPECT_TRUE(neg.GetUsers().empty());
+}
+
+TEST_F(HloTraversalTest, NestedFusionIsTraversedCorrectly) {
+  auto module = ParseAndReturnVerifiedModule(
+                    R"(
+    inner {
+      p0 = f32[] parameter(0)
+      ROOT mul = f32[] multiply(p0, p0)
+    }
+
+    outer {
+      p0 = f32[] parameter(0)
+      inner = f32[] fusion(p0), kind=kLoop, calls=inner
+      ROOT neg = f32[] negate(inner)
+    }
+
+    ENTRY entry {
+      p0 = f32[] parameter(0)
+      ROOT fusion = f32[] fusion(p0), kind=kLoop, calls=outer
+    }
+  )")
+                    .value();
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  HloInstructionAdaptor negate_instruction = fusion_adaptor->GetRoots()[0];
+
+  EXPECT_THAT(negate_instruction, InstructionAdaptorName("neg"));
+  EXPECT_THAT(negate_instruction.GetOperands(),
+              ElementsAre(InstructionAdaptorName("mul")));
 }
 
 TEST_F(HloTraversalTest, TraverseFusionConsumerFirst) {

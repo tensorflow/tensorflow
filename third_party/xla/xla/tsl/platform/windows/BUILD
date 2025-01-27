@@ -28,8 +28,8 @@ cc_library(
         "//xla/tsl/platform:env.cc",
         "//xla/tsl/platform:file_system.cc",
         "//xla/tsl/platform:file_system_helper.cc",
+        "//xla/tsl/platform:ram_file_system.h",
         "//xla/tsl/platform:threadpool.cc",
-        "@local_tsl//tsl/platform:ram_file_system.h",
     ],
     hdrs = [
         "//xla/tsl/platform:env.h",
@@ -192,11 +192,11 @@ cc_library(
         "nobuilder",
     ],
     deps = [
+        "//xla/tsl/platform:byte_order",
+        "//xla/tsl/platform:dynamic_annotations",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:byte_order",
-        "@local_tsl//tsl/platform:dynamic_annotations",
         "@snappy",
     ],
 )

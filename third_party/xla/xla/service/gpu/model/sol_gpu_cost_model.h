@@ -33,7 +33,9 @@ class SolGPUCostModel {
   // xla_gpu_analytical_latency_estimator_options
   struct Config {
     absl::Duration nccl_op_launch_time;
-    double nic_speed_gbps;  // it's GBytes/s, not Gbit/s (ex: 40Gb/s = 5GB/s)
+    // it's GBytes/s, not Gbit/s (ex: 40Gb/s = 5GB/s)
+    // GBytes per second = 10^9 bytes per second
+    double nic_speed_gbps;
     absl::Duration chunk_prep_time;
     absl::Duration rtt;
     int64_t gpus_per_node;

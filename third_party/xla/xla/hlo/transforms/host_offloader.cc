@@ -138,7 +138,7 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   absl::flat_hash_set<HloInstruction*> slices_to_dynamify;
   absl::flat_hash_set<HloInstruction*> custom_calls_to_insert_copies_before;
   std::vector<InstructionAndShapeIndex> buffers_to_set_to_host_memory;
-  std::vector<HloInstruction*> dynamic_update_slices;
+  // std::vector<HloInstruction*> move_to_host_dynamic_update_slices;
   HloInstruction* starting_instruction =
       starting_instruction_and_index.instruction;
   std::queue<InstructionAndShapeIndex> queue;
@@ -165,12 +165,17 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       custom_calls_to_insert_copies_before.insert(instruction);
       continue;
     } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      // Save every DynamicUpdateSlice we see to process after all host memory
+      // space propagation is done.
+      if (!absl::c_linear_search(dynamic_update_slices_seen_, instruction)) {
+        dynamic_update_slices_seen_.push_back(instruction);
+      }
       if (instruction == starting_instruction) {
-        dynamic_update_slices.push_back(instruction);
-      } else {
-        // The input to this DynamicUpdateSlice is already in host memory. Save
-        // this so that we don't try to create an AllocateBuffer later.
-        dynamic_update_slices_already_allocated_.insert(instruction);
+        // This DynamicUpdateSlice's update operand had a MoveToHost annotation.
+        if (!absl::c_linear_search(dynamic_update_slices_seen_with_annotation_,
+                                   instruction)) {
+          dynamic_update_slices_seen_with_annotation_.push_back(instruction);
+        }
       }
     } else if (host_offload_utils::IsValidDuringPureMemoryOffload(
                    instruction)) {
@@ -240,12 +245,30 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
           instruction->name());
       SetHostComputeFrontendAttribute(*instruction);
     }
-
     if (!already_saved_buffer) {
-      // Save buffer to be set to host memory.
-      VLOG(5) << "Saving " << instruction_and_shape_index.ToString()
-              << " to be set to host memory.";
-      buffers_to_set_to_host_memory.push_back(instruction_and_shape_index);
+      const HloInstruction* instruction =
+          instruction_and_shape_index.instruction;
+      bool set_as_host_memory = true;
+      if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+        // We'll do DUSes later.
+        set_as_host_memory = false;
+
+        // // At this point, at least one of our operands must be in host memory
+        // // space. Only if the base operand is should we set the
+        // // DynamicUpdateSlice as in host memory.
+        // set_as_host_memory =
+        //     DynamicUpdateSliceOperandIsInHostMemory(instruction,
+        //     buffers_to_set_to_host_memory);
+        // LOG(INFO) << "Setting DUS " << instruction->name() << " as host
+        // memory? " << set_as_host_memory;
+      }
+
+      if (set_as_host_memory) {
+        // Save buffer to be set to host memory.
+        VLOG(5) << "Saving " << instruction_and_shape_index.ToString()
+                << " to be set to host memory.";
+        buffers_to_set_to_host_memory.push_back(instruction_and_shape_index);
+      }
     }
 
     // Check if this path ends at the output of the entry computation.
@@ -283,12 +306,12 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       buffers_to_set_to_host_memory, Layout::kHostMemorySpace);
   changed = changed || set_buffers_changed;
 
-  for (HloInstruction* dus : dynamic_update_slices) {
-    // Create a host AllocateBuffer instruction which this DynamicUpdateSlice
-    // will update-slice into.
-    TF_RETURN_IF_ERROR(CreateAllocateBufferForDynamicUpdateSlice(dus));
-    changed = true;
-  }
+  // for (HloInstruction* dus : move_to_host_dynamic_update_slices) {
+  //   // Create a host AllocateBuffer instruction which this DynamicUpdateSlice
+  //   // will update-slice into.
+  //   TF_RETURN_IF_ERROR(CreateAllocateBufferForDynamicUpdateSlice(dus));
+  //   changed = true;
+  // }
 
   if (insert_copy_before) {
     const auto predecessors =
@@ -446,6 +469,8 @@ absl::StatusOr<bool> HostOffloader::HandleMoveToDeviceCustomCall(
 absl::StatusOr<bool> HostOffloader::InsertCopyBetween(
     const InstructionAndShapeIndex& before_instruction_and_index,
     const InstructionAndShapeIndex& after_instruction_and_index) {
+  VLOG(3) << "InsertCopyBetween: " << before_instruction_and_index.ToString()
+          << " and " << after_instruction_and_index.ToString();
   bool changed = false;
   HloInstruction* after_instruction = after_instruction_and_index.instruction;
 
@@ -465,6 +490,8 @@ absl::StatusOr<bool> HostOffloader::InsertCopyBetween(
       const auto indices =
           caller->OperandIndices(before_instruction_and_index.instruction);
       for (int64_t index : indices) {
+        // We really use operand index as shape index here for the next step's
+        // ReplaceOperandWith().
         instructions_to_insert_copies_before.push_back(
             InstructionAndShapeIndex{caller, {index}});
       }
@@ -494,9 +521,9 @@ absl::StatusOr<bool> HostOffloader::InsertCopyBetween(
         copy_to_host = it->second;
       }
       const int64_t operand_index =
-          after_instruction_and_index.shape_index.empty()
+          instruction_and_index.shape_index.empty()
               ? 0
-              : after_instruction_and_index.shape_index.front();
+              : instruction_and_index.shape_index.front();
       TF_RETURN_IF_ERROR(instruction_and_index.instruction->ReplaceOperandWith(
           operand_index, copy_to_host));
       VLOG(2) << absl::StreamFormat(
@@ -1056,6 +1083,56 @@ absl::StatusOr<bool> HostOffloader::ProcessNextMoveToHostInstr(
   return false;
 }
 
+absl::StatusOr<bool> HostOffloader::HandleDynamicUpdateSlices() {
+  bool changed = false;
+  for (HloInstruction* dus : dynamic_update_slices_seen_) {
+    // Look at the memory spaces of the operand and update. These should have
+    // already been updated by host memory space propagation. Maybe update this
+    // DynamicUpdateSlice depending on what memory space they are and whether or
+    // not the update had a MoveToHost annotation.
+    const int64_t operand_memory_space =
+        dus->operand(0)->shape().layout().memory_space();
+    const int64_t update_memory_space =
+        dus->operand(1)->shape().layout().memory_space();
+    const bool host_to_host = update_memory_space == Layout::kHostMemorySpace &&
+                              operand_memory_space == Layout::kHostMemorySpace;
+    const bool host_to_device =
+        update_memory_space == Layout::kHostMemorySpace &&
+        operand_memory_space == Layout::kDefaultMemorySpace;
+    const bool device_to_host =
+        update_memory_space == Layout::kDefaultMemorySpace &&
+        operand_memory_space == Layout::kHostMemorySpace;
+    const bool device_to_device =
+        update_memory_space == Layout::kDefaultMemorySpace &&
+        operand_memory_space == Layout::kDefaultMemorySpace;
+    if (host_to_device) {
+      // This is only supported via host compute.
+      SetHostComputeFrontendAttribute(*dus);
+      changed = true;
+    } else if (host_to_host) {
+      // Host to host. Execute as host compute. Also set as host memory space.
+      SetHostComputeFrontendAttribute(*dus);
+      SetMemorySpace(dus->mutable_shape(), Layout::kHostMemorySpace);
+      changed = true;
+    } else if (device_to_host) {
+      // Device to host.
+      SetMemorySpace(dus->mutable_shape(), Layout::kHostMemorySpace);
+      changed = true;
+    } else if (device_to_device) {
+      // Device to device.
+      if (absl::c_linear_search(dynamic_update_slices_seen_with_annotation_,
+                                dus)) {
+        // This DynamicUpdateSlice is used as a pure memory offload. Create a
+        // host AllocateBuffer instruction which this DynamicUpdateSlice will
+        // update-slice into.
+        TF_RETURN_IF_ERROR(CreateAllocateBufferForDynamicUpdateSlice(dus));
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 absl::StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -1093,6 +1170,13 @@ absl::StatusOr<bool> HostOffloader::Run(
       changed = true;
     }
   } while (changed_in_loop);
+
+  // For other ops, we can immediately know whether or not they need to be
+  // converted to host compute. DynamicUpdateSlices are different because they
+  // have multiple operands. Only after finishing all host memory space
+  // propagation can we know what to do with the DynamicUpdateSlice.
+  TF_ASSIGN_OR_RETURN(bool any_dus_changed, HandleDynamicUpdateSlices());
+  changed = changed || any_dus_changed;
 
   // Remove all MoveToDevice custom calls.
   for (HloComputation* computation :

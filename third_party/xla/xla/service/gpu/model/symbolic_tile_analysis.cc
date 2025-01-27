@@ -541,10 +541,6 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
   // additional hash calculations.
   tiled_hlo_instructions_set.Reserve(symbolic_tiled_hlo_instructions_.size());
 
-  std::function<absl::StatusOr<TiledHloInstruction*>(
-      const SymbolicTiledHloInstruction*)>
-      get_tiled_hlo_instruction;
-
   for (const std::unique_ptr<SymbolicTiledHloInstruction>& symbolic_tiled_hlo :
        symbolic_tiled_hlo_instructions_) {
     llvm::SmallVector<int64_t> tile_sizes;

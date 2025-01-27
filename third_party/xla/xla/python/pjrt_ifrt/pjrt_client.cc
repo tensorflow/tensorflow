@@ -81,12 +81,12 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -545,9 +545,12 @@ absl::StatusOr<tsl::RCReference<Array>> MakeStringArrayFromHostBuffer(
           "byte_strides is not currently supported for making "
           "BasicStringArrays.");
     }
-    if (semantics != Client::HostBufferSemantics::kImmutableOnlyDuringCall) {
+    if (!(semantics == Client::HostBufferSemantics::kImmutableOnlyDuringCall ||
+          semantics ==
+              Client::HostBufferSemantics::kImmutableUntilTransferCompletes)) {
       return absl::InvalidArgumentError(
-          "HostBufferSemantics other than kImmutableOnlyDuringCall are not "
+          "HostBufferSemantics other than kImmutableOnlyDuringCall and "
+          "kImmutableUntilTransferCompletes are not "
           "currently supported for making BasicStringArrays.");
     }
     if (!llvm::isa<const SingleDeviceSharding>(sharding.get())) {

@@ -18,8 +18,8 @@
 #include <string>
 
 #include "absl/status/status.h"
-#include "third_party/opencl_headers/CL/cl.h"
-#include "third_party/opencl_headers/CL/cl_platform.h"
+#include <CL/cl.h>
+#include <CL/cl_platform.h>
 
 namespace litert {
 namespace cl {

@@ -148,9 +148,9 @@ class ModularRandomAccessFile final : public RandomAccessFile {
 
   ~ModularRandomAccessFile() override { ops_->cleanup(file_.get()); }
 
-  absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
                     char* scratch) const override;
-  absl::Status Name(StringPiece* result) const override;
+  absl::Status Name(absl::string_view* result) const override;
 
  private:
   std::string filename_;
@@ -169,11 +169,11 @@ class ModularWritableFile final : public WritableFile {
 
   ~ModularWritableFile() override { ops_->cleanup(file_.get()); }
 
-  absl::Status Append(StringPiece data) override;
+  absl::Status Append(absl::string_view data) override;
   absl::Status Close() override;
   absl::Status Flush() override;
   absl::Status Sync() override;
-  absl::Status Name(StringPiece* result) const override;
+  absl::Status Name(absl::string_view* result) const override;
   absl::Status Tell(int64_t* position) override;
 
  private:

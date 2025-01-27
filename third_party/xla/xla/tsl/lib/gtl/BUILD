@@ -224,8 +224,8 @@ tsl_cc_test(
         ":map_util",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/platform:types",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:hash",
     ],
 )

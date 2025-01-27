@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -44,9 +44,9 @@ struct EmitterData {
   HloFusionInstruction* fusion;
   std::optional<se::DeviceDescription> device;
   std::optional<HloFusionAnalysis> analysis;
-  std::unique_ptr<MlirFusionEmitterBase> emitter;
+  std::unique_ptr<EmitterBase> emitter;
 };
-absl::StatusOr<std::unique_ptr<EmitterData>> GetMlirFusionEmitter(
+absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
     const HloModule& module);
 
 // Returns an MLIR context with all the dialects needed for testing.

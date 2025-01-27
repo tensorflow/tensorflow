@@ -2143,11 +2143,19 @@ func.func @op_fusion(%arg0: tensor<f32>) -> tensor<f32> {
 
 // -----
 
-func.func @reshape_with_dynamic_size_convert(%arg0: tensor<?x1xi64, #mhlo.type_extensions<bounds = [7, ?]>>) -> tensor<?xi64, #mhlo.type_extensions<bounds = [7]>> {
+func.func @bounded_dynamism_reshape(%arg0: tensor<?x1xi64, #mhlo.type_extensions<bounds = [7, ?]>>) -> tensor<?xi64, #mhlo.type_extensions<bounds = [7]>> {
   // expected-error@+1 {{'stablehlo.reshape' op result #0 must be statically shaped tensor}}
   %0 = "mhlo.reshape"(%arg0) : (tensor<?x1xi64, #mhlo.type_extensions<bounds = [7, ?]>>)
        -> tensor<?xi64, #mhlo.type_extensions<bounds = [7]>>
   return %0 : tensor<?xi64, #mhlo.type_extensions<bounds = [7]>>
+}
+
+// -----
+
+func.func @bounded_dynamism_broadcast_in_dim(%arg0: tensor<1x?xf32, #mhlo.type_extensions<bounds = [?, 5]>>) -> tensor<2x1x?xf32, #mhlo.type_extensions<bounds = [?, ?, 5]>> {
+  // expected-error@+1 {{'stablehlo.broadcast_in_dim' op result #0 must be statically shaped tensor}}
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x?xf32, #mhlo.type_extensions<bounds = [?, 5]>>) -> tensor<2x1x?xf32, #mhlo.type_extensions<bounds = [?, ?, 5]>>
+  return %0 : tensor<2x1x?xf32, #mhlo.type_extensions<bounds = [?, ?, 5]>>
 }
 
 // -----

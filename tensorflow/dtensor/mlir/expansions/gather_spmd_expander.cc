@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/gather_spmd_expander.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>

@@ -30,9 +30,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/mlrt/mlir_to_bytecode.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tf_mlrt {

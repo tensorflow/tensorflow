@@ -658,6 +658,7 @@ cuda_py_strict_test(
 tf_py_strict_test(
     name = "load_v1_in_v2_test",
     srcs = ["load_v1_in_v2_test.py"],
+    shard_count = 2,
     deps = [
         ":builder",
         ":load",
@@ -695,6 +696,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/training:saver",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

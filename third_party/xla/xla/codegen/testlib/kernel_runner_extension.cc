@@ -32,7 +32,9 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_emitter.h"
+#include "xla/codegen/kernel_source.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/comparison_util.h"
@@ -125,18 +127,21 @@ NB_MODULE(_extension, kernel_runner_module) {
   nb::class_<KernelSource>(kernel_runner_module, "KernelSource")
       .def("__str__", &KernelSource::ToString);
 
-  nb::class_<KernelSpec>(kernel_runner_module, "KernelSpec")
-      .def("kernel_source", &KernelSpec::kernel_source,
+  nb::class_<KernelSpec> kernel_spec(kernel_runner_module, "KernelSpec");
+
+  nb::class_<KernelDefinition>(kernel_runner_module, "KernelDefinition")
+      .def("spec", &KernelDefinition::spec, nb::rv_policy::reference_internal)
+      .def("source", &KernelDefinition::source,
            nb::rv_policy::reference_internal);
 
   nb::class_<KernelEmitter>(kernel_runner_module, "KernelEmitter")
-      .def("emit_kernel_spec", [](KernelEmitter* self) {
-        absl::StatusOr<std::unique_ptr<KernelSpec>> spec =
-            self->EmitKernelSpec();
-        if (!spec.ok()) {
-          throw std::runtime_error(std::string(spec.status().message()));
+      .def("emit_kernel_definition", [](KernelEmitter* self) {
+        absl::StatusOr<KernelDefinition> definition =
+            self->EmitKernelDefinition();
+        if (!definition.ok()) {
+          throw std::runtime_error(std::string(definition.status().message()));
         }
-        return std::move(spec).value();
+        return std::move(definition).value();
       });
 
   nb::class_<KernelRunner>(kernel_runner_module, "KernelRunner")

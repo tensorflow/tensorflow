@@ -19,9 +19,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/util.h"
 
 namespace xla::ffi {
 
@@ -44,9 +46,9 @@ absl::Status ExecutionContext::InsertUserData(TypeId type_id,
 
   auto emplaced = user_data_.emplace(type_id, std::move(data));
   if (!emplaced.second) {
-    return absl::AlreadyExistsError(
-        absl::StrCat("User data with type id ", type_id.value(),
-                     " already exists in execution context"));
+    return Internal(
+        "User data with type id %d already exists in execution context",
+        type_id.value());
   }
   return absl::OkStatus();
 }
@@ -55,11 +57,25 @@ absl::StatusOr<ExecutionContext::UserData*> ExecutionContext::LookupUserData(
     TypeId type_id) const {
   auto it = user_data_.find(type_id);
   if (it == user_data_.end()) {
-    return absl::NotFoundError(absl::StrCat("User data with type id ",
-                                            type_id.value(),
-                                            " not found in execution context"));
+    return NotFound("User data with type id %d not found in execution context",
+                    type_id.value());
   }
   return it->second.get();
+}
+
+void ExecutionContext::ForEach(
+    absl::FunctionRef<void(TypeId type_id, void* data)> fn) const {
+  for (auto& [type_id, user_data] : user_data_) {
+    fn(type_id, user_data->data());
+  }
+}
+
+absl::Status ExecutionContext::ForEachWithStatus(
+    absl::FunctionRef<absl::Status(TypeId type_id, void* data)> fn) const {
+  for (auto& [type_id, user_data] : user_data_) {
+    TF_RETURN_IF_ERROR(fn(type_id, user_data->data()));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace xla::ffi

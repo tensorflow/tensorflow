@@ -21,9 +21,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
@@ -340,13 +340,14 @@ ENTRY entry_computation {
     kind=kCustom, calls=dot, backend_config={
       "fusion_backend_config":{
         "kind":"__triton_gemm","triton_gemm_config":{
-          "block_m":"16","block_n":"16","block_k":"32",
+          "block_m":"4","block_n":"16","block_k":"128",
           "split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"
         }
       }
     }
 }
 )";
+  // Note: block sizes were 16,16,32, but that now fails to satisfy constraints.
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   EXPECT_THAT(NestGemmFusion().Run(module.get()), IsOkAndHolds(true));
   TF_ASSERT_OK(verifier().Run(module.get()).status());

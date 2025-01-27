@@ -51,6 +51,11 @@ class InfeedThunk final : public Thunk {
   BufferUses buffer_uses() const final;
   ResourceUses resource_uses() const final;
 
+  const InfeedResources& infeed_resources() const { return infeed_resources_; }
+  const std::vector<InfeedBuffer>& infeed_buffers() const {
+    return infeed_buffers_;
+  }
+
  private:
   InfeedThunk(Info info, absl::Span<const InfeedBuffer> infeed_buffers,
               InfeedResources infeed_resources);

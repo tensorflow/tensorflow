@@ -30,6 +30,11 @@ namespace xla {
 
 class InMemoryKeyValueStore : public KeyValueStoreInterface {
  public:
+  // This is the default behavior in in-memory key-value store to
+  // allow overwriting.
+  InMemoryKeyValueStore() : allow_overwrite_(true) {}
+  explicit InMemoryKeyValueStore(bool allow_overwrite)
+      : allow_overwrite_(allow_overwrite) {};
   absl::StatusOr<std::string> Get(absl::string_view key,
                                   absl::Duration timeout) override;
 
@@ -40,6 +45,7 @@ class InMemoryKeyValueStore : public KeyValueStoreInterface {
  private:
   absl::Mutex mu_;
   absl::flat_hash_map<std::string, std::string> kv_store_ ABSL_GUARDED_BY(mu_);
+  bool allow_overwrite_;
 };
 
 }  // namespace xla

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -33,10 +32,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/codegen/kernel_spec.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -61,6 +60,20 @@ template <int64_t num_arguments = kDynamicKernelParameter,
 class KernelThunk : public Thunk {
  public:
   BufferUses buffer_uses() const final;
+
+  const std::string& kernel_name() const { return kernel_name_; }
+  const se::ThreadDim& thread_dim() const { return thread_dim_; }
+  const std::optional<uint64_t>& min_alignment() const {
+    return min_alignment_;
+  }
+
+  const std::vector<BufferAllocation::Slice>& arguments_buffers() const {
+    return arguments_buffers_;
+  }
+
+  const std::vector<BufferAllocation::Slice>& results_buffers() const {
+    return results_buffers_;
+  }
 
  protected:
   tsl::AsyncValueRef<ExecuteEvent> ExecuteInternal(const ExecuteParams& params);
@@ -160,7 +173,7 @@ class KernelThunk final : public internal::KernelThunk<> {
       std::optional<uint64_t> min_alignment = std::nullopt);
 
   static absl::StatusOr<std::unique_ptr<Thunk>> Create(
-      Thunk::Info info, std::unique_ptr<LlvmIrKernelSpec> kernel_spec,
+      Thunk::Info info, const KernelSpec& kernel_spec,
       std::optional<uint64_t> min_alignment);
 
   tsl::AsyncValueRef<Thunk::ExecuteEvent> Execute(

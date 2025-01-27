@@ -162,8 +162,8 @@ tsl_cc_test(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/platform:types",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -177,7 +177,7 @@ tsl_cc_test(
         ":philox_random_test_utils",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:random",
     ],
 )
@@ -193,7 +193,7 @@ tsl_cc_test(
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:random",
     ],
 )
@@ -206,8 +206,8 @@ tsl_cc_test(
         ":philox",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/platform:types",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -222,7 +222,7 @@ tsl_cc_test(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/platform:types",
+        "@com_google_googletest//:gtest_main",
     ],
 )

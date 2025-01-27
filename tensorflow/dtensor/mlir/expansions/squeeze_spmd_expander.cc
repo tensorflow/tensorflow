@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/squeeze_spmd_expander.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <set>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project

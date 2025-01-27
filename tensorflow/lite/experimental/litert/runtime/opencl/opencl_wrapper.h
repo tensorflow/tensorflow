@@ -19,11 +19,11 @@
 #include <cstddef>
 
 #include "absl/status/status.h"
-#include "third_party/opencl_headers/CL/cl.h"           // IWYU pragma: export
-#include "third_party/opencl_headers/CL/cl_egl.h"       // IWYU pragma: export
-#include "third_party/opencl_headers/CL/cl_ext.h"       // IWYU pragma: export
-#include "third_party/opencl_headers/CL/cl_gl.h"        // IWYU pragma: export
-#include "third_party/opencl_headers/CL/cl_platform.h"  // IWYU pragma: export
+#include <CL/cl.h>           // IWYU pragma: export
+#include <CL/cl_egl.h>       // IWYU pragma: export
+#include <CL/cl_ext.h>       // IWYU pragma: export
+#include <CL/cl_gl.h>        // IWYU pragma: export
+#include <CL/cl_platform.h>  // IWYU pragma: export
 
 namespace litert {
 namespace cl {

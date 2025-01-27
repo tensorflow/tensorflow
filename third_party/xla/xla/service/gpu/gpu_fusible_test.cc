@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 
 #include <memory>
+#include <vector>
 
-#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -27,7 +27,8 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -46,8 +47,6 @@ class GpuFusibleTest : public HloRunnerAgnosticTestBase {
  public:
   GpuFusibleTest()
       : HloRunnerAgnosticTestBase(
-            std::make_unique<HloRunner>(
-                PlatformUtil::GetDefaultPlatform().value()),
             std::make_unique<HloRunner>(
                 PlatformUtil::GetDefaultPlatform().value())),
         device_description_(MakeDeviceDescription()) {}
@@ -406,7 +405,6 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_ElementalReduction) {
     ENTRY entry {
       c0 = f32[] parameter(0)
       p1 = f32[8,512,5,16,1,1]{5,4,3,2,1,0} parameter(1)
-      // Reduction lowered by GpuElementalIrEmitter.
       ROOT reduce = f32[512,5,1,1]{3,2,1,0} reduce(p1, c0), dimensions={3,0},
         to_apply=scalar_add
     })"))

@@ -859,6 +859,69 @@ ENTRY main {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
+TEST_F(HostOffloaderTest, NoCopyThroughComputationForNotParameter0) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+other_computation {
+  param.1 = f32[2048] parameter(1)
+  param.0 = f32[1024] parameter(0)
+  constant = f32[] constant(1.0)
+  pad = f32[2048] pad(param.0, constant), padding=0_1024_0
+  ROOT add = f32[2048] add(pad, param.1)
+}
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  param.1 = f32[1024] parameter(1)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
+  call = f32[2048] call(param.1,offload_custom_call), to_apply=other_computation
+  ROOT load_custom_call = f32[2048] custom-call(call), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Look for the following pattern in the entry computation:
+  // param
+  //   |
+  // copy (to host)
+  //   |             ___
+  //   |            /   \
+  // call===========   param
+  //   |            \___/
+  //   |
+  // copy (to device)
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* call;
+  HloInstruction* copy_to_device;
+
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(
+                  &copy_to_device,
+                  m::Call(&call, m::Parameter(1),
+                          m::Copy(&copy_to_host, m::Parameter(&param, 0))))));
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(call->shape(), Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(copy_to_device->shape(), Layout::kDefaultMemorySpace);
+
+  ASSERT_THAT(call->called_computations(), ::testing::SizeIs(1));
+  HloComputation* called_computation = call->called_computations()[0];
+  HloInstruction* called_computation_param;
+  ASSERT_THAT(
+      called_computation->root_instruction(),
+      GmockMatch(m::Add(m::Pad(), m::Parameter(&called_computation_param, 1))));
+  TestShapeHasMemorySpace(called_computation_param->shape(),
+                          Layout::kHostMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
 TEST_F(HostOffloaderTest, NoCopyThroughComputationAndTuple) {
   const std::string& hlo_string = R"(
 HloModule my_module
@@ -4275,6 +4338,43 @@ TEST_F(HostOffloaderTest, DynamicSliceOnHostMemoryIndexCopied) {
   EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(dynamic_slice));
   HloInstruction* tanh = FindInstruction(module.get(), "tanh");
   EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(tanh));
+}
+
+TEST_F(HostOffloaderTest, DynamicUpdateSliceAllGatherDecomposer) {
+  const absl::string_view hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(s32[4]{0:T(256)S(5)})->s32[32]{0:T(256)S(5)}}, num_partitions=8
+
+add {
+  x = s32[]{:T(256)} parameter(0)
+  y = s32[]{:T(256)} parameter(1)
+  ROOT add.1 = s32[]{:T(256)} add(x, y)
+}
+
+ENTRY main.5_spmd {
+  constant.3 = s32[]{:T(256)} constant(0)
+  broadcast = s32[32]{0:T(256)} broadcast(constant.3), dimensions={}
+  param = s32[4]{0:T(256)} parameter(0), sharding={devices=[8]<=[8]}, metadata={op_name="x"}
+  replica-id = u32[]{:T(256)} replica-id()
+  constant.1 = u32[]{:T(256)} constant(8)
+  multiply = u32[]{:T(256)} multiply(replica-id, constant.1)
+  partition-id.1 = u32[]{:T(256)} partition-id()
+  add = u32[]{:T(256)} add(multiply, partition-id.1)
+  constant.2 = u32[]{:T(256)} constant(4)
+  multiply.1 = u32[]{:T(256)} multiply(add, constant.2)
+  dynamic-update-slice = s32[32]{0:T(256)} dynamic-update-slice(broadcast, param, multiply.1), backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"3","ones":"0","bitwidth":"32"}],"is_index_aligned":[false]},"used_scoped_memory_configs":[]}
+  all-reduce = s32[32]{0:T(256)} all-reduce(dynamic-update-slice), channel_id=1, replica_groups=[1,8]<=[8], use_global_device_ids=true, to_apply=add
+  ROOT custom-call.1 = s32[32]{0:T(256)} custom-call(all-reduce), custom_call_target="MoveToHost"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  HloInstruction* dynamic_update_slice =
+      FindInstruction(module.get(), "dynamic-update-slice");
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(dynamic_update_slice));
 }
 
 }  // namespace

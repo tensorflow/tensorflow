@@ -27,18 +27,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -331,7 +332,7 @@ TEST_F(LayoutAssignmentTest, DotLayoutS8) {
                                 m::Op().WithShape(S8, {64, 96}, {0, 1}))));
 }
 
-TEST_F(LayoutAssignmentTest, SortLayout) {
+TEST_F(LayoutAssignmentTest, SameLayoutOnOperandsAndOutputsOfSort) {
   const char* hlo_text = R"(
   HloModule SortLayout
 
@@ -366,6 +367,37 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Sort(m::Op().WithShape(F32, {3, 2}, {1, 0}),
                                  m::Op().WithShape(F32, {3, 2}, {1, 0}))));
+}
+
+TEST_F(LayoutAssignmentTest,
+       SameLayoutOnOperandsAndOutputsOfCubDeviceRadixSort) {
+  const char* hlo_text = R"(
+  HloModule SortLayout
+
+  ENTRY sort {
+    keys = f32[3,2]{0,1} constant({{0,1},{0,1},{0,1}})
+    values = f32[2,3]{1,0} parameter(0)
+    transpose = f32[3,2]{1,0} transpose(values), dimensions={1,0}
+    ROOT sort = (f32[3,2]{1,0}, f32[3,2]{1,0}, u8[128]{0})
+        custom-call(keys, transpose), custom_call_target="__cub$DeviceRadixSort"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
+      GetDeviceDescription());
+
+  EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall(m::Op().WithShape(F32, {3, 2}, {1, 0}),
+                                       m::Op().WithShape(F32, {3, 2}, {1, 0}))))
+      << module->ToString();
 }
 
 TEST_F(LayoutAssignmentTest, TopKLayout) {
@@ -768,6 +800,73 @@ TEST_F(LayoutAssignmentTest, AutoLayoutE4M3ContractingMinorFirst) {
           m::Dot(m::Parameter(0).WithShape(F8E4M3FN, {128, 5120}, {1, 0}),
                  m::Parameter(1).WithShape(F8E4M3FN, {5120, 10240}, {0, 1}))
               .WithShape(F32, {128, 10240}, {1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest, AutoLayoutS4DotContractingMinorLhs) {
+  const char* hlo = R"(
+  HloModule AutoLayoutS4DotContractingMinorLhs
+
+  ENTRY main {
+    p0 = s4[5120,128] parameter(0)
+    p0.c = bf16[5120,128] convert(p0)
+    p1 = bf16[5120,10240] parameter(1)
+    ROOT dot = bf16[128,10240] dot(p0.c, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
+  DebugOptions debug_options = m->config().debug_options();
+  debug_options.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(
+      true);
+  m->mutable_config().set_debug_options(debug_options);
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
+      GetDeviceDescription());
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+  EXPECT_THAT(m->entry_computation()->parameter_instruction(0),
+              GmockMatch(m::Parameter(0).WithShape(S4, {5120, 128}, {0, 1})));
+  EXPECT_THAT(
+      m->entry_computation()->parameter_instruction(1),
+      GmockMatch(m::Parameter(1).WithShape(BF16, {5120, 10240}, {1, 0})));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot().WithShape(BF16, {128, 10240}, {1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest, AutoLayoutS4DotContractingMinorRhs) {
+  const char* hlo = R"(
+  HloModule AutoLayoutS4DotContractingMinorRhs
+
+  ENTRY main {
+    p0 = bf16[5120,128] parameter(0)
+    p1 = s4[5120,10240] parameter(1)
+    p1.c = bf16[5120,10240] convert(p1)
+    ROOT dot = bf16[128,10240] dot(p0, p1.c), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
+  DebugOptions debug_options = m->config().debug_options();
+  debug_options.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(
+      true);
+  m->mutable_config().set_debug_options(debug_options);
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
+      GetDeviceDescription());
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+  EXPECT_THAT(m->entry_computation()->parameter_instruction(0),
+              GmockMatch(m::Parameter(0).WithShape(BF16, {5120, 128}, {1, 0})));
+  EXPECT_THAT(m->entry_computation()->parameter_instruction(1),
+              GmockMatch(m::Parameter(1).WithShape(S4, {5120, 10240}, {0, 1})));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot().WithShape(BF16, {128, 10240}, {1, 0})));
 }
 
 TEST_F(LayoutAssignmentTest, VariadicReduceSameOperandLayout) {

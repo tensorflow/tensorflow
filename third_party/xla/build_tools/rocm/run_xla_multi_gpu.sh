@@ -72,6 +72,8 @@ TAGS_FILTER="${TAGS_FILTER},${UNSUPPORTED_GPU_TAGS// /,}"
 
 bazel \
     test \
+    --define xnn_enable_avxvnniint8=false \
+    --define xnn_enable_avx512fp16=false \
     --config=rocm \
     --build_tag_filters=${TAGS_FILTER} \
     --test_tag_filters=${TAGS_FILTER} \
@@ -85,6 +87,7 @@ bazel \
     --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
     --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
     --action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
+    --action_env=NCCL_MAX_NCHANNELS=1 \
     -- //xla/tests:collective_ops_e2e_test_gpu_amd_any \
        //xla/tests:collective_ops_test_gpu_amd_any \
        //xla/tests:replicated_io_feed_test_gpu_amd_any \

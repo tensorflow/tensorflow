@@ -22,7 +22,6 @@ limitations under the License.
 #include <cfenv>  // NOLINT
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <queue>
 #include <utility>
 
@@ -34,13 +33,9 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_event.h"
-#include "xla/stream_executor/host/host_kernel.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
 #include "tsl/platform/denormal.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/setround.h"
 
 namespace stream_executor {

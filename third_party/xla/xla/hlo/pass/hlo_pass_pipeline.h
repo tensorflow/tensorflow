@@ -34,8 +34,6 @@ limitations under the License.
 
 namespace xla {
 
-class PhaseOrderPipeline;
-
 // Pipeline of HLO passes.
 class HloPassPipeline : public HloPassInterface {
  public:
@@ -164,10 +162,6 @@ class HloPassPipeline : public HloPassInterface {
   // Default stats instance for when one is not passed in the constructor.
   // Use via compilation_stats_, not directly.
   std::unique_ptr<CompilationStats> empty_compilation_stats_;
-
-  // Allow PhaseOrderPipeline to modify private passes_ member in order to
-  // perform PhaseOrdering.
-  friend class ::xla::PhaseOrderPipeline;
 };
 
 }  // namespace xla

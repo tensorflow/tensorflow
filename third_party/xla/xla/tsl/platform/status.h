@@ -34,10 +34,10 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/stack_frame.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/stack_frame.h"
 
 // Include appropriate platform-dependent parts of status.
 #if defined(PLATFORM_GOOGLE)

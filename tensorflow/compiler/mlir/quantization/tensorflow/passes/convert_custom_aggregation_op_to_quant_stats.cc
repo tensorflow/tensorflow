@@ -109,7 +109,7 @@ void ConvertCustomAggregationOpToQuantStatsPass::runOnOperation() {
   func::FuncOp func = getOperation();
 
   patterns.add<ConvertCustomAggregationOpToQuantStats>(ctx);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitError()
         << "quant-convert-tf-custom-aggregator-op-to-quant-stats failed.";
     signalPassFailure();

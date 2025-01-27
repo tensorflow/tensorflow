@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation_value.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
@@ -66,6 +68,14 @@ using WindowPrefetchNotifyOperandAppendedFunction =
     std::function<void(HloInstruction*, int64_t, int64_t)>;
 using IsAsyncSliceImplementedFunction =
     std::function<bool(const HloInstruction*)>;
+using InitSplitTreeFn = std::function<ShapeTree<int64_t>(
+    const HloInstruction*,
+    absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*)>;
+using DetermineSplitDimensionFunction =
+    std::function<std::optional<SplitConfig>(
+        const HloValue&,
+        absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*)>;
+using ShapeSizeFn = std::function<int64_t(const Shape&)>;
 
 // MSA allows for custom post-allocation transformations. When a post-allocation
 // transformation is performed on an instruction, this result is returned. It
@@ -108,6 +118,8 @@ struct Options {
 
   // Size function for buffer values.
   BufferValue::SizeFunction size_fn;
+
+  ShapeSizeFn shape_size_fn;
 
   std::function<Shape(const Shape&)> get_equivalent_s8_shape_fn;
 
@@ -165,6 +177,21 @@ struct Options {
   // AllocateSegment().
   std::function<void(AllocationRequest&)>
       allocation_request_modifier_testing_fn = nullptr;
+
+  // This function chooses a dimension to split the given HloValue on. Splitting
+  // will be disabled if this function is not provided.
+  DetermineSplitDimensionFunction determine_split_dimension_fn = nullptr;
+
+  // This function sets up a split tree, based on an instruction's shape, with
+  // kAny as the default. Splitting will be disabled if this function is not
+  // provided.
+  InitSplitTreeFn init_split_tree_fn = nullptr;
+
+  // Dimension number indicating no split is present.
+  int64_t replicated_split_dimension = -1;
+
+  // Dimension number indicating any split is allowable.
+  int64_t any_split_dimension = -2;
 
   // Applies post-allocation transformations to the given instruction. This
   // function is called after the allocations are found in the MsaAlgorithm. It

@@ -103,6 +103,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/region_isolation.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/string_utils.h"
@@ -3864,12 +3865,25 @@ std::optional<std::string> Translator::Translate(
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
   if (!UpdateEntryFunction(module)) return std::nullopt;
   if (!IsValidTFLiteMlirModule(module)) return std::nullopt;
+
+  auto new_converter_flags = converter_flags;
+  // If the module size is greater than 2GB, we need to use buffer offset. This
+  // will prevent running export twice, if the module size is known to be
+  // greater than 2GB.
+  if (mlir::TFL::GetApproximateModuleSize(module) > flatbuffer_size_max) {
+    new_converter_flags.set_use_buffer_offset(true);
+  }
+
   auto translator = std::unique_ptr<Translator>(
-      new Translator(module, converter_flags, tags, op_or_arg_name_mapper,
+      new Translator(module, new_converter_flags, tags, op_or_arg_name_mapper,
                      metadata, custom_option_alignment));
   translator->convert_stablehlo_ = serialize_stablehlo_ops;
   auto ret = translator->TranslateInternal();
-  if (translator->require_use_buffer_offset_) {
+
+  // Re-run the translator with use_buffer_offset set to true, if
+  // require_use_buffer_offset_ flag is set during the first run.
+  if (translator->require_use_buffer_offset_ &&
+      !new_converter_flags.use_buffer_offset()) {
     ret = std::nullopt;
     auto new_converter_flags = converter_flags;
     new_converter_flags.set_use_buffer_offset(true);

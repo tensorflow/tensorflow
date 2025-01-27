@@ -35,17 +35,31 @@ cc_library(
     srcs = ["xnn_emitter.cc"],
     hdrs = ["xnn_emitter.h"],
     deps = [
+        ":xnn_fusion",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/runtime/xnnpack:xnn_interop",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
         "@XNNPACK",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "xnn_fusion",
+    srcs = ["xnn_fusion.cc"],
+    hdrs = ["xnn_fusion.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/runtime:dot_lib",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
     ],
 )

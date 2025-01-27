@@ -21,14 +21,13 @@
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "third_party/opencl_headers/CL/cl.h"
-#include "third_party/opencl_headers/CL/cl_platform.h"
+#include <CL/cl.h>
+#include <CL/cl_platform.h>
 #include "tensorflow/lite/experimental/litert/runtime/opencl/cl_context.h"
 #include "tensorflow/lite/experimental/litert/runtime/opencl/opencl_wrapper.h"
 
 namespace litert {
 namespace cl {
-namespace {
 absl::Status CreateClBuffer(cl_context context, int size_in_bytes,
                             bool read_only, void* data, cl_mem* result) {
   cl_mem_flags flags = read_only ? CL_MEM_READ_ONLY : CL_MEM_READ_WRITE;
@@ -57,7 +56,6 @@ absl::Status CreateBuffer(size_t size_in_bytes, bool gpu_read_only,
 
   return absl::OkStatus();
 }
-}  // namespace
 
 Buffer::Buffer(cl_mem buffer, size_t size_in_bytes, bool is_sub_buffer)
     : buffer_(buffer), size_(size_in_bytes), is_sub_buffer_(is_sub_buffer) {}

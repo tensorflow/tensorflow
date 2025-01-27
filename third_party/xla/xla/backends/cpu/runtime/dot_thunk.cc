@@ -24,20 +24,18 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
-#include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
@@ -117,10 +115,6 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
       dot_canonical_dims_.m, dot_canonical_dims_.k, dot_canonical_dims_.n,
       dot_canonical_dims_.lhs_column_major, dot_canonical_dims_.lhs_canonical,
       dot_canonical_dims_.rhs_column_major, dot_canonical_dims_.rhs_canonical);
-
-  if (params.intra_op_threadpool == nullptr) {
-    return InvalidArgument("Intra-op threadpool must be provided for DotThunk");
-  }
 
   // Eigen expects column-major layout. If the matrices are row major, then use
   // the following identity to compute the product:

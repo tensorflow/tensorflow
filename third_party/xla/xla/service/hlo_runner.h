@@ -197,6 +197,10 @@ class HloRunner : public HloRunnerInterface {
 
   int device_count() const override { return backend().device_count(); }
 
+  bool HasProperty(const HloRunnerPropertyTag::Type tag) const override {
+    return false;
+  }
+
  private:
   absl::StatusOr<ExecutionOutput> ExecuteWithExecutionInputs(
       Executable* executable, std::vector<ExecutionInput> arguments,

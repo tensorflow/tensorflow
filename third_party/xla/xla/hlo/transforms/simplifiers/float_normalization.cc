@@ -217,6 +217,9 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
       hlo->mutable_shape(), [&](Shape* subshape, const xla::ShapeIndex& index) {
         if (subshape->element_type() == from) {
           subshape->set_element_type(to);
+          if (subshape->has_layout() && from == F4E2M1FN) {
+            subshape->mutable_layout()->set_element_size_in_bits(0);
+          }
         }
       });
   float_normalization_->UpdateLayout(hlo->mutable_shape());

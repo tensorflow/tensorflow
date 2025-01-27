@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
@@ -49,6 +48,12 @@ class CopyThunk final : public Thunk {
   BufferUses buffer_uses() const final {
     return {{src_buffer_, BufferUse::kRead}, {dst_buffer_, BufferUse::kWrite}};
   }
+
+  const Shape& src_shape() const { return src_shape_; }
+  const Shape& dst_shape() const { return dst_shape_; }
+
+  const BufferAllocation::Slice& src_buffer() const { return src_buffer_; }
+  const BufferAllocation::Slice& dst_buffer() const { return dst_buffer_; }
 
  private:
   CopyThunk(Info info, BufferAllocation::Slice src_buffer,

@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -58,15 +59,15 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -352,7 +353,8 @@ XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
               HasSubstr("Fail with raw backend config str: foo"));
 }
 
-class CustomCallClientAPITest : public ClientLibraryTestBase {};
+class CustomCallClientAPITest
+    : public ClientLibraryTestRunnerMixin<HloTestBase> {};
 
 // When using the client API, CustomCall targets can't begin with '$' -- these
 // are reserved for internal use.
@@ -361,9 +363,7 @@ XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
   CustomCall(&builder, "$illegal", /*operands=*/{},
              ShapeUtil::MakeShape(F32, {1}));
 
-  absl::StatusOr<std::unique_ptr<GlobalData>> result =
-      Execute(&builder, /*arguments=*/{});
-  EXPECT_FALSE(result.ok());
+  EXPECT_IS_NOT_OK(ExecuteAndTransfer(&builder, /*arguments=*/{}).status());
 }
 
 //===----------------------------------------------------------------------===//

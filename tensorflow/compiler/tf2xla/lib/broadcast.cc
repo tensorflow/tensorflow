@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 
-#include <vector>
+#include <cstdint>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

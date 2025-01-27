@@ -132,6 +132,10 @@ build --incompatible_enforce_config_setting_visibility
 # TODO: also enable this flag after fixing the visibility violations
 # build --incompatible_config_setting_private_default_visibility
 
+# Print a stacktrace when a test is killed
+test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
+
+
 # Default options should come above this line.
 
 # Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
@@ -295,6 +299,8 @@ build:tpu --define=enable_mlir_bridge=true
 build:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm_base --define=using_rocm_hipcc=true
 build:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
+build:rocm_base --define=xnn_enable_avxvnniint8=false
+build:rocm_base --define=xnn_enable_avx512fp16=false
 build:rocm_base --repo_env TF_NEED_ROCM=1
 
 build:rocm --config=rocm_base

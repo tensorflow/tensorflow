@@ -23,6 +23,7 @@ ComparisonDirection = _extension.ComparisonDirection
 HloInstruction = _extension.HloInstruction
 HloModule = _extension.HloModule
 HloOpcode = _extension.HloOpcode
+KernelDefinition = _extension.KernelDefinition
 KernelEmmitter = _extension.KernelEmitter
 KernelRunner = _extension.KernelRunner
 KernelSpec = _extension.KernelSpec

@@ -42,6 +42,8 @@ message DebugOptions {
   // XLA backend-agnostic options.
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
+  // Crash if HloPassFix can not converge after a fixed number of iterations.
+  bool xla_unsupported_crash_on_hlo_pass_fix_max_iterations = 363;
   // go/keep-sorted end
 
   reserved 346;  // xla_experimental_exec_time_optimization_effort
@@ -162,11 +164,6 @@ message DebugOptions {
   // can be tiled correctly, and if all the instructions it contains are
   // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
   bool xla_gpu_experimental_enable_triton_heroless_priority_fusion = 340;
-
-  // When enabled, the Triton emitter for dot will use int4 as native type and
-  // later the Triton IR will be rewritten by Triton IR rewriting pass to use
-  // int4 packed into int8.
-  bool xla_gpu_experimental_enable_triton_i4_rewrites = 361;
 
   // When possible, XLA will use Triton's experimental TMA feature.
   bool xla_gpu_experimental_enable_triton_tma = 355;
@@ -863,6 +860,9 @@ message DebugOptions {
   // Enable NCCL per stream communicators.
   bool xla_gpu_enable_nccl_per_stream_comms = 276;
 
+  // Set number of ranks per root rank for NCCL init.
+  int64 xla_gpu_nccl_init_max_rank_per_root_ratio = 277;
+
   // If enabled, uses the libnvptxcompiler library to compile PTX to cuBIN.
   bool xla_gpu_enable_libnvptxcompiler = 269;
 
@@ -946,6 +946,9 @@ message DebugOptions {
 
   reserved 302;  // was xla_use_shardy
 
+  // If true, shards the autotuning work between participating compiler
+  // processes (typically in multi-host setups) and joins the results when
+  // it's done.
   bool xla_gpu_shard_autotuning = 304;
 
   bool xla_gpu_enable_approx_costly_collectives = 305;
@@ -1110,7 +1113,10 @@ message DebugOptions {
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
   bool xla_gpu_experimental_enable_alltoall_windowed_einsum = 360;
 
-  // Next id: 362
+  // For sub-byte dot operands, layout them along contracting dimensions.
+  bool xla_gpu_experimental_pack_dot_operands_along_k_dimension = 362;
+
+  // Next id: 364
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1127,12 +1133,13 @@ message DebugOptions {
   // xla_gpu_single_wave_autotuning
   // xla_gpu_enable_persistent_temp_buffers
   // xla_gpu_enable_triton_gemm_int4
+  // xla_gpu_experimental_enable_triton_i4_rewrites
   // xla_gpu_enable_priority_fusion
   // xla_gpu_experimental_enable_triton_softmax_priority_fusion
   // xla_gpu_pgle_accuracy_checker
   // xla_gpu_enable_heuristic_pass_configuration
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332;
+      325, 326, 332, 361;
 }
 
 // Contains flags which affects the GPU compilation result.

@@ -64,13 +64,13 @@ jobs:
 
       - name: Build CPU Benchmarks
         working-directory: openxla
-        run: bazelisk build -c opt --dynamic_mode=off //xla/service/cpu/benchmarks:*
+        run: bazelisk build -c opt --dynamic_mode=off //xla/backends/cpu/benchmarks:*
 
       - name: Run CPU benchmarks
         working-directory: openxla
         continue-on-error: true
         run: |
-          find ./bazel-bin/xla/service/cpu/benchmarks/ -maxdepth 1 -type f -executable -name "*_test" -print0 | while IFS= read -r -d $'\0' benchmark; do
+          find ./bazel-bin/xla/backends/cpu/benchmarks/ -maxdepth 1 -type f -executable -name "*_test" -print0 | while IFS= read -r -d $'\0' benchmark; do
             benchmark_name=$(basename "$benchmark" | sed 's/_test$//') 
             echo "Running benchmark: $benchmark_name"
 
