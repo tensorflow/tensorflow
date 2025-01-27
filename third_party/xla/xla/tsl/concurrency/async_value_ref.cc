@@ -35,7 +35,7 @@ RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::Status status) {
       internal::AllocateAndConstruct<ErrorAsyncValue>(std::move(status)));
 }
 
-RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(std::string_view message) {
+RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::string_view message) {
   return MakeErrorAsyncValueRef(absl::InternalError(message));
 }
 
