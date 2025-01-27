@@ -116,6 +116,8 @@ class SavedModel {
     bool emit_model_type_metric = true;
 
     GraphExecutionOptions graph_execution_options;
+
+    bool disable_tfrt_ifrt_predict_request_output_filter = false;
   };
 
   // Per-request options.
@@ -138,6 +140,11 @@ class SavedModel {
     DCHECK(options_.graph_execution_options.runtime);
     return *options_.graph_execution_options.runtime;
   }
+
+  bool disable_tfrt_ifrt_predict_request_output_filter() const {
+    return options_.disable_tfrt_ifrt_predict_request_output_filter;
+  }
+
   tfrt::HostContext* GetHostContext() const;
 
   GraphExecutor& graph_executor() const { return *graph_executor_; }
