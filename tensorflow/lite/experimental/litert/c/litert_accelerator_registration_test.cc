@@ -106,7 +106,8 @@ TEST(LiteRtAcceleratorRegistrationTest, CreateDestroyAcceleratorDoesntLeak) {
 }
 
 TEST(LiteRtAcceleratorRegistrationTest, RegisterAcceleratorWorks) {
-  LiteRtEnvironmentCreate(0, nullptr);
+  LiteRtEnvironment env_;
+  LiteRtEnvironmentCreate(/*num_options=*/0, /*options=*/nullptr, &env_);
   auto dummy_accelerator = DummyAccelerator::CpuAccelerator();
   LiteRtAccelerator accelerator;
   LiteRtCreateAccelerator(&accelerator);
@@ -114,21 +115,22 @@ TEST(LiteRtAcceleratorRegistrationTest, RegisterAcceleratorWorks) {
   LiteRtSetAcceleratorGetVersion(accelerator, DummyAccelerator::GetVersion);
   LiteRtSetAcceleratorGetHardwareSupport(accelerator,
                                          DummyAccelerator::GetHardwareSupport);
-  LiteRtRegisterAccelerator(accelerator, dummy_accelerator.release(),
+  LiteRtRegisterAccelerator(env_, accelerator, dummy_accelerator.release(),
                             DummyAccelerator::Destroy);
-  LiteRtEnvironmentDestroy();
+  LiteRtDestroyEnvironment(env_);
 }
 
 TEST(LiteRtAcceleratorRegistrationTest,
      RegisterAcceleratorFailsForNullAccelerator) {
-  LiteRtEnvironmentCreate(0, nullptr);
+  LiteRtEnvironment env;
+  LiteRtEnvironmentCreate(/*num_options=*/0, /*options=*/nullptr, &env);
   // We check that the memory is correctly deallocated if the registration
   // fails.
   auto dummy_accelerator = DummyAccelerator::CpuAccelerator();
-  EXPECT_EQ(LiteRtRegisterAccelerator(nullptr, dummy_accelerator.release(),
+  EXPECT_EQ(LiteRtRegisterAccelerator(env, nullptr, dummy_accelerator.release(),
                                       DummyAccelerator::Destroy),
             kLiteRtStatusErrorInvalidArgument);
-  LiteRtEnvironmentDestroy();
+  LiteRtDestroyEnvironment(env);
 }
 
 }  // namespace

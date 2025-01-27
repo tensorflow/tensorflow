@@ -26,9 +26,9 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
-#include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
@@ -126,12 +126,14 @@ class CompiledModel
   // The model is loaded into memory and the caller takes ownership of the
   // returned CompiledModel object. The caller should keep the model alive
   // until the CompiledModel is destroyed.
-  static Expected<CompiledModel> Create(litert::Model& model,
+  static Expected<CompiledModel> Create(litert::Environment& env,
+                                        litert::Model& model,
                                         Options&& compilation_options) {
     LiteRtModel litert_model = model.Get();
     LiteRtCompiledModel compiled_model;
-    if (auto status = LiteRtCreateCompiledModel(
-            litert_model, compilation_options.release(), &compiled_model);
+    if (auto status = LiteRtCreateCompiledModel(env.Get(), litert_model,
+                                                compilation_options.release(),
+                                                &compiled_model);
         status != kLiteRtStatusOk) {
       return Unexpected(status, "Failed to create compiled model");
     }
@@ -139,10 +141,11 @@ class CompiledModel
   }
 
   static Expected<CompiledModel> Create(
-      litert::Model& model, LiteRtHwAccelerators hardware_accelerator) {
-    LITERT_ASSIGN_OR_RETURN(Options options, Options::Create());
+      litert::Environment& env, litert::Model& model,
+      LiteRtHwAccelerators hardware_accelerator) {
+    LITERT_ASSIGN_OR_RETURN(auto options, Options::Create());
     options.SetHardwareAccelerators(hardware_accelerator);
-    return Create(model, std::move(options));
+    return Create(env, model, std::move(options));
   }
 
   // Returns the buffer requirements for the given n-th input tensor. The

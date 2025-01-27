@@ -20,6 +20,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_accelerator.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/core/accelerator.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
@@ -38,20 +39,17 @@ LiteRtStatus LiteRtDestroyAccelerator(LiteRtAccelerator accelerator) {
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus LiteRtRegisterAccelerator(LiteRtAccelerator accelerator,
+LiteRtStatus LiteRtRegisterAccelerator(LiteRtEnvironment environment,
+                                       LiteRtAccelerator accelerator,
                                        void* data, void (*ReleaseData)(void*)) {
   std::unique_ptr<void, void (*)(void*)> data_guard(data, ReleaseData);
   litert::internal::AcceleratorRegistry::Ptr accelerator_guard(accelerator);
   if (!accelerator_guard) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  litert::Expected<litert::internal::Environment*> environment =
-      litert::internal::Environment::Instance();
-  if (!environment.HasValue()) {
-    return environment.Error().Status();
-  }
+  accelerator_guard->env = environment;
   litert::Expected<LiteRtAccelerator> registered_accelerator =
-      environment.Value()->GetAcceleratorRegistry().RegisterAccelerator(
+      environment->GetAcceleratorRegistry().RegisterAccelerator(
           std::move(accelerator_guard));
   if (!registered_accelerator.HasValue()) {
     return registered_accelerator.Error().Status();

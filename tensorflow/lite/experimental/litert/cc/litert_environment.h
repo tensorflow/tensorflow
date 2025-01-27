@@ -23,11 +23,16 @@
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_any.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-
+#include "tensorflow/lite/experimental/litert/cc/litert_handle.h"
 namespace litert {
 
-class Environment {
+class Environment
+    : public internal::Handle<LiteRtEnvironment, LiteRtDestroyEnvironment> {
  public:
+  explicit Environment(LiteRtEnvironment env)
+      : internal::Handle<LiteRtEnvironment, LiteRtDestroyEnvironment>(env,
+                                                                      true) {}
+
   enum class OptionTag {
     CompilerPluginLibraryPath = kLiteRtEnvOptionTagCompilerPluginLibraryPath,
     DispatchLibraryPath = kLiteRtEnvOptionTagDispatchLibraryPath,
@@ -38,21 +43,20 @@ class Environment {
     std::any value;
   };
 
-  static Expected<void> Create(absl::Span<const Option> options) {
+  static Expected<Environment> Create(absl::Span<const Option> options) {
     auto c_options = ConvertOptions(options);
     if (!c_options) {
       return c_options.Error();
     }
+    LiteRtEnvironment env;
     if (auto status =
-            LiteRtEnvironmentCreate(c_options->size(), c_options->data());
+            LiteRtEnvironmentCreate(c_options->size(), c_options->data(), &env);
         status != kLiteRtStatusOk) {
       return Error(status);
     } else {
-      return {};
+      return Environment(env);
     }
   }
-
-  static void Destroy() { LiteRtEnvironmentDestroy(); }
 
  private:
   static Expected<std::vector<LiteRtEnvOption>> ConvertOptions(

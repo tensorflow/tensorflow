@@ -21,6 +21,7 @@
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
@@ -28,7 +29,8 @@
 #include "tensorflow/lite/experimental/litert/runtime/compiled_model.h"
 
 LiteRtStatus LiteRtCreateCompiledModel(
-    LiteRtModel model, LiteRtCompilationOptions compilation_options,
+    LiteRtEnvironment environment, LiteRtModel model,
+    LiteRtCompilationOptions compilation_options,
     LiteRtCompiledModel* compiled_model) {
   // We guard the compilation options. Since we consume them, we still need to
   // release them if there's an error.
@@ -38,8 +40,8 @@ LiteRtStatus LiteRtCreateCompiledModel(
   if (!model || !compiled_model) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  auto created_compiled_model =
-      LiteRtCompiledModelT::Create(model, std::move(compilation_options_guard));
+  auto created_compiled_model = LiteRtCompiledModelT::Create(
+      environment, model, std::move(compilation_options_guard));
   if (!created_compiled_model) {
     LITERT_LOG(LITERT_ERROR, "%s",
                created_compiled_model.Error().Message().c_str());

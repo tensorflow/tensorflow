@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 
 #if defined(__ANDROID__)
@@ -87,7 +88,8 @@ Expected<void> LiteRtCompiledModelT::Initialize() {
 }
 
 Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
-    LiteRtModel model, OptionsPtr compilation_options) {
+    LiteRtEnvironmentT* env, LiteRtModel model,
+    OptionsPtr compilation_options) {
   auto compiled_model = std::make_unique<LiteRtCompiledModelT>();
 
   std::optional<OwningBufferRef<uint8_t>> new_flatbuffer;
@@ -100,7 +102,7 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
   if (hardware_accelerators != kLiteRtHwAccelatorNone) {
     LITERT_LOG(LITERT_INFO, "Applying compiler plugins...");
     if (auto result =
-            litert::internal::ApplyPlugins(model, hardware_accelerators);
+            litert::internal::ApplyPlugins(env, model, hardware_accelerators);
         !result) {
       LITERT_LOG(LITERT_WARNING, "Failed to apply compiler plugins: %s",
                  result.Error().Message().c_str());
@@ -158,11 +160,12 @@ Expected<LiteRtCompiledModelT::Ptr> LiteRtCompiledModelT::Create(
 
   // Apply the dispatch delegate, unconditionally, since the loaded model may
   // have been compiled for NPU at AOT.
-  auto dispatch_delegate_options = litert::CreateDispatchDelegateOptionsPtr();
+  auto dispatch_delegate_options =
+      litert::CreateDispatchDelegateOptionsPtr(*env);
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            model_buffer);
-  auto dispatch_delegate =
-      litert::CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
+  auto dispatch_delegate = litert::CreateDispatchDelegatePtr(
+      *env, std::move(dispatch_delegate_options));
   if (auto status = compiled_model->interp_->ModifyGraphWithDelegate(
           dispatch_delegate.get());
       status != kTfLiteOk) {

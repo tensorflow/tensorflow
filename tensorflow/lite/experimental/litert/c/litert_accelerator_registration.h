@@ -42,7 +42,8 @@ LiteRtStatus LiteRtDestroyAccelerator(LiteRtAccelerator accelerator);
 //
 // Warning: In case of failure, `accelerator` is released and `data` is released
 // using `ReleaseData`.
-LiteRtStatus LiteRtRegisterAccelerator(LiteRtAccelerator accelerator,
+LiteRtStatus LiteRtRegisterAccelerator(LiteRtEnvironment environment,
+                                       LiteRtAccelerator accelerator,
                                        void* data, void (*ReleaseData)(void*));
 
 // Sets the function used to retrieve the accelerator name.

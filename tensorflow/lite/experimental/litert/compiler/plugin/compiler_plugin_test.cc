@@ -250,8 +250,6 @@ TEST(ApplyTest, MultiSubgraph) {
 }
 
 TEST(ApplyTest, ApplyPlugins) {
-  litert::Environment::Destroy();
-
   auto model_wrap = testing::LoadTestFileModel("mul_simple.tflite");
   ASSERT_TRUE(model_wrap);
   auto& model = *model_wrap.Get();
@@ -262,12 +260,13 @@ TEST(ApplyTest, ApplyPlugins) {
           /*.value=*/kTestPluginSearchPath,
       },
   };
-  ASSERT_TRUE(litert::Environment::Create(environment_options));
+  auto env = litert::Environment::Create(environment_options);
+  ASSERT_TRUE(env);
 
   LiteRtHwAccelerators compilation_options = static_cast<LiteRtHwAccelerators>(
       kLiteRtHwAccelatorCpu | kLiteRtHwAccelatorGpu | kLiteRtHwAccelatorNpu);
   auto new_flatbuffer =
-      litert::internal::ApplyPlugins(&model, compilation_options);
+      litert::internal::ApplyPlugins(env->Get(), &model, compilation_options);
   ASSERT_TRUE(new_flatbuffer);
 
   ASSERT_EQ(model.NumSubgraphs(), 1);
@@ -281,8 +280,6 @@ TEST(ApplyTest, ApplyPlugins) {
   EXPECT_TRUE(model.FindExternalBuffer(op));
 
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
-
-  litert::Environment::Destroy();
 }
 
 }  // namespace

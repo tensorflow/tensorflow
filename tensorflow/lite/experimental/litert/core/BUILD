@@ -92,7 +92,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/cc:litert_any",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "@com_google_absl//absl/types:span",
     ],

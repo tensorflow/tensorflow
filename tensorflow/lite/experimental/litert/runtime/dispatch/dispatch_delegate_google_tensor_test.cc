@@ -30,6 +30,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_compiled_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_buffer.h"
@@ -55,6 +56,8 @@ TEST(DispatchDelegate, GoogleTensorCpuBuffer) {
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
   auto& rt = **runtime;
   auto& interpreter = rt.Interpreter();
+  auto env = litert::Environment::Create({});
+  ASSERT_TRUE(env);
 
   internal::ExternalLiteRtBufferContext buffer_context;
   interpreter.SetExternalContext(kTfLiteLiteRtBufferContext, &buffer_context);
@@ -64,11 +67,12 @@ TEST(DispatchDelegate, GoogleTensorCpuBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
-  auto dispatch_delegate_options = CreateDispatchDelegateOptionsPtr();
+  auto dispatch_delegate_options =
+      CreateDispatchDelegateOptionsPtr(*env->Get());
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
-  auto dispatch_delegate =
-      CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
+  auto dispatch_delegate = CreateDispatchDelegatePtr(
+      *env->Get(), std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -119,6 +123,8 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
   auto& rt = **runtime;
   auto& interpreter = rt.Interpreter();
+  auto env = litert::Environment::Create({});
+  ASSERT_TRUE(env);
 
   internal::ExternalLiteRtBufferContext buffer_context;
   interpreter.SetExternalContext(kTfLiteLiteRtBufferContext, &buffer_context);
@@ -128,11 +134,12 @@ TEST(DispatchDelegate, GoogleTensorHwBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
-  auto dispatch_delegate_options = CreateDispatchDelegateOptionsPtr();
+  auto dispatch_delegate_options =
+      CreateDispatchDelegateOptionsPtr(*env->Get());
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
-  auto dispatch_delegate =
-      CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
+  auto dispatch_delegate = CreateDispatchDelegatePtr(
+      *env->Get(), std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -238,7 +245,10 @@ TEST(DispatchDelegate, CompiledModel) {
   ASSERT_TRUE(options);
   ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAccelatorCpu));
 
-  auto res_compiled_model = CompiledModel::Create(*model, std::move(*options));
+  auto env = litert::Environment::Create({});
+  ASSERT_TRUE(env);
+  auto res_compiled_model =
+      CompiledModel::Create(*env, *model, std::move(*options));
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = *res_compiled_model;
 

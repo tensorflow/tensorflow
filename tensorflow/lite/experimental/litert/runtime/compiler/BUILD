@@ -34,7 +34,6 @@ cc_test(
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/c:litert_compiled_model_options",
         "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate",
         "//tensorflow/lite/experimental/litert/cc:litert_compiled_model",
         "//tensorflow/lite/experimental/litert/cc:litert_environment",

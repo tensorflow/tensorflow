@@ -24,6 +24,7 @@ namespace litert::internal {
 
 void AcceleratorRegistry::DestroyAccelerator(LiteRtAcceleratorT* accelerator) {
   if (accelerator && accelerator->ReleaseData) {
+    accelerator->env = nullptr;
     accelerator->ReleaseData(accelerator->data);
   }
   delete accelerator;

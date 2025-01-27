@@ -34,6 +34,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/core/environment.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
 #include "tensorflow/lite/interpreter.h"
@@ -56,7 +57,8 @@ class LiteRtCompiledModelT {
   // Creates a LiteRtCompiledModelT from a LiteRtModel object.
   // The model is loaded into memory and the caller takes ownership of the
   // returned object.
-  static litert::Expected<Ptr> Create(LiteRtModel model,
+  static litert::Expected<Ptr> Create(LiteRtEnvironmentT* env,
+                                      LiteRtModel model,
                                       OptionsPtr compilation_options = nullptr);
 
   // Returns the buffer requirements for the n-th input tensor. The returned

@@ -35,7 +35,6 @@
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
@@ -471,15 +470,11 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
 }
 
 Expected<ApplyPluginsResult> ApplyPlugins(
-    LiteRtModel model, LiteRtHwAcceleratorSet selected_hw_accelerators) {
-  auto environment = litert::internal::Environment::Instance();
-  if (!environment) {
-    return environment.Error();
-  }
-
+    LiteRtEnvironment environment, LiteRtModel model,
+    LiteRtHwAcceleratorSet selected_hw_accelerators) {
   std::string compiler_plugin_lib_path = ".";
   auto option =
-      (*environment)->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryPath);
+      environment->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryPath);
   if (option.has_value() && option->type == kLiteRtAnyTypeString) {
     compiler_plugin_lib_path = option->str_value;
   }
