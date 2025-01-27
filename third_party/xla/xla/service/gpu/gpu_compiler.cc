@@ -962,7 +962,10 @@ absl::Status RunCollectiveOptimizationPasses(
   if (hlo_module->config()
           .debug_options()
           .xla_gpu_enable_pipelined_collectives() ||
-      hlo_module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
+      hlo_module->config().debug_options().xla_gpu_enable_pipelined_p2p() ||
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_pipeline_parallelism_opt()) {
     AddP2PPipeliner(
         collectives_pipeline,
         hlo_module->config()
