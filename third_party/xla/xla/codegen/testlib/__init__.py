@@ -20,6 +20,7 @@ from xla.codegen.testlib import _extension
 # go/keep-sorted start
 BufferAssignment = _extension.BufferAssignment
 ComparisonDirection = _extension.ComparisonDirection
+DotDimensionNumbers = _extension.DotDimensionNumbers
 HloInstruction = _extension.HloInstruction
 HloModule = _extension.HloModule
 HloOpcode = _extension.HloOpcode

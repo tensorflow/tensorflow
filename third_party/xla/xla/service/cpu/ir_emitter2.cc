@@ -220,38 +220,6 @@ static bool IsDotCodegenStrategy(DotImplementationStrategy strategy) {
          kDotCodegenStrategies.end();
 }
 
-absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotHostKernel(
-    const HloInstruction* instr) {
-  VLOG(2) << "Emit dot host kernel: " << instr->name();
-
-  DotImplementationStrategy strategy = GetDotImplementationStrategy(
-      hlo_module_.config(), *instr,
-      nested_ir_emitter_->target_machine_features());
-
-  if (!IsDotCodegenStrategy(strategy)) {
-    return Internal("Unsupported dot implementation strategy");
-  }
-
-  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                      EmitKernelPrototype(instr));
-
-  llvm::IRBuilder<> b(module_->getContext());
-  b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
-
-  llvm_ir::IrArray lhs_array = kernel_prototype.arguments[0];
-  llvm_ir::IrArray rhs_array = kernel_prototype.arguments[1];
-  llvm_ir::IrArray target_array = kernel_prototype.results[0];
-
-  TF_RETURN_IF_ERROR(EmitDotOperation(
-      *instr, target_array, lhs_array, rhs_array,
-      /*addend_array=*/nullptr, /*executable_run_options_value=*/nullptr, &b,
-      hlo_module_.config(), nested_ir_emitter_->target_machine_features(),
-      /*allow_runtime_calls=*/false));
-
-  return kernels_.emplace_back(
-      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
-}
-
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitConcatenateHostKernel(
     const HloInstruction* instr) {
   VLOG(2) << "Emit concatenate host kernel: " << instr->name();
