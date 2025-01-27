@@ -29,7 +29,8 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
   fi
   tfrun "$python_bin" tensorflow/tools/ci_build/update_version.py --nightly
   # replace tensorflow to tf_nightly in the wheel name
-  export TFCI_BUILD_PIP_PACKAGE_ARGS="$(echo $TFCI_BUILD_PIP_PACKAGE_ARGS | sed 's/tensorflow/tf_nightly/')"
+  export TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG="$(echo $TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG | sed 's/tensorflow/tf_nightly/')"
+  export TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES="$(echo $TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES | sed 's/tensorflow/tf_nightly/g')"
 fi
 
 # TODO(b/361369076) Remove the following block after TF NumPy 1 is dropped
@@ -38,12 +39,23 @@ if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
   cp ./ci/official/requirements_updater/numpy1_requirements/*.txt .
 fi
 
-tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_ARGS
+tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_BASE_ARGS $TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG
 
 tfrun "$TFCI_FIND_BIN" ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $TFCI_OUTPUT_DIR \;
 tfrun mkdir ./dist
 tfrun cp $TFCI_OUTPUT_DIR/*.whl ./dist
 tfrun bash ./ci/official/utilities/rename_and_verify_wheels.sh
+
+if [[ -n "$TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES" ]]; then
+  # Re-build the wheel with the same config, but with different name(s), if any.
+  # This is done after the rename_and_verify_wheel.sh run above, not to have
+  # to contend with extra wheels there.
+  for wheel_name in ${TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES}; do
+    echo "Building for additional WHEEL_NAME: ${wheel_name}"
+    CURRENT_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=${wheel_name}"
+    tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_BASE_ARGS $CURRENT_WHEEL_NAME_ARG
+  done
+fi
 
 if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
   # Note: -n disables overwriting previously created files.
@@ -56,5 +68,5 @@ if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
 fi
 
 if [[ "$TFCI_WHL_BAZEL_TEST_ENABLE" == 1 ]]; then
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS $TFCI_BUILD_PIP_PACKAGE_ARGS --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_wheel_test"
+  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS $TFCI_BUILD_PIP_PACKAGE_BASE_ARGS $TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_wheel_test"
 fi
