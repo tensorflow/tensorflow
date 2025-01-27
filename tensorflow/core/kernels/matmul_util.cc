@@ -176,7 +176,7 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
 
     TF_ASSIGN_OR_RETURN(
         auto algorithms,
-        plan->GetAlgorithms(*max_algorithm_count, max_scratch_size));
+        plan->GetAlgorithms(stream, *max_algorithm_count, max_scratch_size));
 
     ptr->second = {std::move(plan), std::move(algorithms)};
   }
