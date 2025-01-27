@@ -1504,6 +1504,38 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
   return absl::OkStatus();
 }
 
+absl::Status IrEmitterUnnested::EmitAsyncComputation(
+    const HloInstruction* instr) {
+  const HloInstruction* wrapped = instr->async_wrapped_instruction();
+  const ExecutionStreamAssignment& stream_assignment =
+      ir_emitter_context_->execution_stream_assignment();
+  TF_ASSIGN_OR_RETURN(auto stream,
+                      stream_assignment.GetSyncExecutionStreamId(wrapped));
+  TF_RET_CHECK(wrapped->called_computations().size() == 1);
+  auto computation = wrapped->called_computations().front();
+  auto ir_emitter = IrEmitterUnnested::Create(ir_emitter_context_);
+  TF_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(computation));
+  std::unique_ptr<SequentialThunk> thunk_sequence =
+      ir_emitter->ConsumeThunkSequence();
+  for (auto& thunk : thunk_sequence->thunks()) {
+    thunk->set_execution_stream_id(stream);
+  }
+  auto* async_start = Cast<HloAsyncInstruction>(instr);
+  TF_ASSIGN_OR_RETURN(
+      ExecutionStreamAssignment::AsyncExecutionStreamIds async_streams,
+      stream_assignment.GetAsyncExecutionStreamIds(async_start));
+  // We launch the thunk sequence computation on a concurrent stream.
+  // The concurrent stream needs to first wait until the main stream has
+  // finished calculating any values that may be used as input.
+  // We enforce this by inlining a `WaitForStreams` thunk on the main
+  // stream.
+  AddThunkToThunkSequence(std::make_unique<WaitForStreamsThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      async_streams.destination_stream_id, async_streams.source_stream_id));
+  AddThunkToThunkSequence(std::move(thunk_sequence));
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
   const se::DeviceDescription& device_info =
       ir_emitter_context_->gpu_device_info();
@@ -2578,6 +2610,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         case HloOpcode::kCollectiveBroadcast:
           return EmitNcclAsyncDone(Thunk::kNcclCollectiveBroadcastDone, instr);
         case HloOpcode::kFusion:
+        case HloOpcode::kCall:
         case HloOpcode::kCustomCall: {
           // Wait until the concurrent stream has finished.
           auto* async_done = Cast<HloAsyncInstruction>(instr);
@@ -2647,6 +2680,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
               Thunk::ThunkInfo::WithProfileAnnotation(instr),
               streams.destination_stream_id, streams.source_stream_id));
           return EmitFusion(Cast<HloFusionInstruction>(wrapped));
+        }
+        case HloOpcode::kCall: {
+          return EmitAsyncComputation(instr);
         }
         case HloOpcode::kCustomCall: {
           return EmitAsyncCustomCallStart(instr);
