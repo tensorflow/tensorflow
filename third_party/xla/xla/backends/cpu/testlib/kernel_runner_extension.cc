@@ -29,7 +29,7 @@ limitations under the License.
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/backends/cpu/codegen/dot_kernel_emitter.h"
-#include "xla/backends/cpu/codegen/elemental_kernel_emitter.h"
+#include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/testlib/kernel_runner.h"
@@ -75,15 +75,15 @@ NB_MODULE(_extension, kernel_runner_module) {
   using NbThreadDim = std::tuple<uint64_t, uint64_t, uint64_t>;
   nb::class_<LlvmIrKernelEmitter, KernelEmitter>(kernel_runner_module,
                                                  "LlvmIrKernelEmitter")
-      .def("__init__", [](LlvmIrKernelEmitter* self, absl::string_view ir,
-                          absl::string_view kernel_name,
-                          NbThreadDim thread_dim) {
-        new (self) LlvmIrKernelEmitter(
-            ir, kernel_name,
-            se::ThreadDim{std::get<0>(thread_dim), std::get<1>(thread_dim),
-                          std::get<2>(thread_dim)},
-            {});
-      });
+      .def("__init__",
+           [](LlvmIrKernelEmitter* self, absl::string_view ir,
+              absl::string_view kernel_name, NbThreadDim thread_dim) {
+             new (self) LlvmIrKernelEmitter(
+                 ir, kernel_name,
+                 se::ThreadDim{std::get<0>(thread_dim), std::get<1>(thread_dim),
+                               std::get<2>(thread_dim)},
+                 {});
+           });
 
   nb::class_<CpuCompiler>(kernel_runner_module, "HloCompiler")
       .def(nb::init<>())

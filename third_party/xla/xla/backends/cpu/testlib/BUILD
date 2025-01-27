@@ -104,9 +104,9 @@ tsl_pybind_extension(
         "@nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla/backends/cpu/codegen:dot_kernel_emitter",
-        "//xla/backends/cpu/codegen:elemental_kernel_emitter",
         "//xla/backends/cpu/codegen:jit_compiler",
         "//xla/backends/cpu/codegen:target_machine_features",
+        "//xla/backends/cpu/codegen/elemental:elemental_kernel_emitter",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
         "//xla/codegen/testlib:kernel_runner",
