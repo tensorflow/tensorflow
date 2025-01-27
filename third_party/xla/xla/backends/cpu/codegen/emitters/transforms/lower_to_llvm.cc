@@ -30,12 +30,12 @@ limitations under the License.
 
 namespace xla::cpu {
 
-#define GEN_PASS_DECL_LOWERTRIVIALPASS
-#define GEN_PASS_DEF_LOWERTRIVIALPASS
+#define GEN_PASS_DECL_LOWERTOLLVMPASS
+#define GEN_PASS_DEF_LOWERTOLLVMPASS
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h.inc"
 
 namespace {
-class LowerTrivialPass : public impl::LowerTrivialPassBase<LowerTrivialPass> {
+class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
@@ -51,8 +51,8 @@ class LowerTrivialPass : public impl::LowerTrivialPassBase<LowerTrivialPass> {
 };
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateLowerTrivialPass() {
-  return std::make_unique<LowerTrivialPass>();
+std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass() {
+  return std::make_unique<LowerToLLVMPass>();
 }
 
 }  // namespace xla::cpu

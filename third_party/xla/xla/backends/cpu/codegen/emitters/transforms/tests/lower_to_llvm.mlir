@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s --xla-cpu-lower-trivial -split-input-file | FileCheck %s
+// RUN: emitters_opt %s --xla-cpu-lower-to-llvm -split-input-file | FileCheck %s
 
 func.func @fn(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2xi32> {
   return %arg1 : tensor<2xi32>

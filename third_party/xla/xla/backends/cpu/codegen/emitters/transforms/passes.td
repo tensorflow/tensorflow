@@ -15,11 +15,11 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LowerTrivialPass : Pass<"xla-cpu-lower-trivial", "mlir::ModuleOp"> {
-  let summary = "Trivial one shot lowering from tensors + xla_cpu to LLVM";
+def LowerToLLVMPass : Pass<"xla-cpu-lower-to-llvm", "mlir::ModuleOp"> {
+  let summary = "Lowering from tensors + xla_cpu to LLVM";
 
   let description = [{
-      This is a trivial pass for lowering tensors and xla_cpu operations to LLVM
+      This is a pass for lowering tensors and xla_cpu operations to LLVM
       dialect and pointers.
   }];
 
@@ -30,5 +30,5 @@ def LowerTrivialPass : Pass<"xla-cpu-lower-trivial", "mlir::ModuleOp"> {
     "xla::cpu::XlaCpuDialect",
   ];
 
-  let constructor = "::xla::cpu::CreateLowerTrivialPass()";
+  let constructor = "::xla::cpu::CreateLowerToLLVMPass()";
 }

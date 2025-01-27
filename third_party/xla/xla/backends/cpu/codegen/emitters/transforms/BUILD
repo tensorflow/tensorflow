@@ -32,7 +32,7 @@ gentbl_cc_library(
 
 cc_library(
     name = "passes",
-    srcs = ["lower_trivial.cc"],
+    srcs = ["lower_to_llvm.cc"],
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
