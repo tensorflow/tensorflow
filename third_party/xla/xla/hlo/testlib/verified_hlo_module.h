@@ -15,15 +15,18 @@ limitations under the License.
 #ifndef XLA_HLO_TESTLIB_VERIFIED_HLO_MODULE_H_
 #define XLA_HLO_TESTLIB_VERIFIED_HLO_MODULE_H_
 
+#include <cstdint>
 #include <functional>
+#include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
-#include "xla/types.h"
-#include "tsl/platform/status.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -48,7 +51,9 @@ class VerifiedHloModule : public HloModule {
   // builds the VerifiedHloModule in place. Before calling this method, the
   // module must be empty (no computations). Finally verifies the module using
   // HloVerifier and returns the status.
-  absl::Status ParseHloStringAndVerifyModule(absl::string_view str);
+  absl::Status ParseHloStringAndVerifyModule(
+      absl::string_view str,
+      const HloParserOptions& options = HloParserOptions());
 
   // Verifies the module and flags any error with ADD_FAILURE. 'message' is
   // included in the failure message.
