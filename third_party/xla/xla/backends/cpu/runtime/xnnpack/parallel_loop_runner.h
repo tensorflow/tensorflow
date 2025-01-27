@@ -121,6 +121,12 @@ class ParallelLoopRunner {
   size_t num_threads() const;
 
  private:
+  // Forward declarations of the parallel tasks.
+  struct ParallelTask1D;
+  struct ParallelTask1DTile1D;
+  struct ParallelTask2DTile1D;
+  struct ParallelTask3DTile2D;
+
   // Schedules `task` as the AndThen callback of the `done_event_`. Updates
   // `done_event_` to the new completion event.
   template <typename Task>

@@ -214,6 +214,17 @@ static Task3DTile2DIndex Delinearize(size_t task_index, size_t range_i,
 //
 // (2) If done event is not available, we have to overwrite it with a new one
 //     that will be set to concrete state after the task is executed.
+//
+// We wrap all tasks into structs conforming to the `ParallelTest` API, so that
+// in profiles we can see human-readable names of the tasks instead of lambdas.
+
+struct ParallelLoopRunner::ParallelTask1D {
+  ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const {
+    task(task_index);
+  }
+
+  Task1D task;
+};
 
 void ParallelLoopRunner::Parallelize(size_t range, Task1D task) {
   DCHECK(done_event_) << "Parallel loop runner is in moved-from state";
@@ -232,8 +243,19 @@ void ParallelLoopRunner::Parallelize(size_t range, Task1D task) {
     return;
   }
 
-  ScheduleAll(range, std::move(task));
+  ScheduleAll(range, ParallelTask1D{std::move(task)});
 }
+
+struct ParallelLoopRunner::ParallelTask1DTile1D {
+  ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const {
+    auto x = Delinearize(task_index, range, tile);
+    task(x.offset, x.extent);
+  }
+
+  size_t range;
+  size_t tile;
+  Task1DTile1D task;
+};
 
 void ParallelLoopRunner::Parallelize(size_t range, size_t tile,
                                      Task1DTile1D task) {
@@ -255,14 +277,20 @@ void ParallelLoopRunner::Parallelize(size_t range, size_t tile,
     return;
   }
 
-  auto parallel_task = [range, tile,
-                        task = std::move(task)](size_t task_index) {
-    auto x = Delinearize(task_index, range, tile);
-    task(x.offset, x.extent);
-  };
-
-  ScheduleAll(num_tasks, std::move(parallel_task));
+  ScheduleAll(num_tasks, ParallelTask1DTile1D{range, tile, std::move(task)});
 }
+
+struct ParallelLoopRunner::ParallelTask2DTile1D {
+  ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const {
+    auto x = Delinearize(task_index, range_i, range_j, tile_j);
+    task(x.i, x.offset_j, x.extent_j);
+  }
+
+  size_t range_i;
+  size_t range_j;
+  size_t tile_j;
+  Task2DTile1D task;
+};
 
 void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
                                      size_t tile_j, Task2DTile1D task) {
@@ -282,14 +310,23 @@ void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
     return;
   }
 
-  auto parallel_task = [range_i, range_j, tile_j,
-                        task = std::move(task)](size_t task_index) {
-    auto x = Delinearize(task_index, range_i, range_j, tile_j);
-    task(x.i, x.offset_j, x.extent_j);
-  };
-
-  ScheduleAll(num_tasks, std::move(parallel_task));
+  ScheduleAll(num_tasks,
+              ParallelTask2DTile1D{range_i, range_j, tile_j, std::move(task)});
 }
+
+struct ParallelLoopRunner::ParallelTask3DTile2D {
+  ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const {
+    auto x = Delinearize(task_index, range_i, range_j, range_k, tile_j, tile_k);
+    task(x.i, x.offset_j, x.offset_k, x.extent_j, x.extent_k);
+  }
+
+  size_t range_i;
+  size_t range_j;
+  size_t range_k;
+  size_t tile_j;
+  size_t tile_k;
+  Task3DTile2D task;
+};
 
 void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
                                      size_t range_k, size_t tile_j,
@@ -312,13 +349,8 @@ void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
     return;
   }
 
-  auto parallel_task = [range_i, range_j, range_k, tile_j, tile_k,
-                        task = std::move(task)](size_t task_index) {
-    auto x = Delinearize(task_index, range_i, range_j, range_k, tile_j, tile_k);
-    task(x.i, x.offset_j, x.offset_k, x.extent_j, x.extent_k);
-  };
-
-  ScheduleAll(num_tasks, std::move(parallel_task));
+  ScheduleAll(num_tasks, ParallelTask3DTile2D{range_i, range_j, range_k, tile_j,
+                                              tile_k, std::move(task)});
 }
 
 }  // namespace xla::cpu
