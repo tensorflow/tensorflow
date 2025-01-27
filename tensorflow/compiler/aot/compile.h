@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "xla/service/cpu/cpu_compiler.h"
