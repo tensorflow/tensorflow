@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_API_DEF_UPDATE_API_DEF_H_
 // Functions for updating ApiDef when new ops are added.
 
+#include <cstddef>
+
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/types.h"
 
