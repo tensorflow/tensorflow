@@ -60,6 +60,7 @@ tsl_pybind_extension(
         "//xla/python:nb_absl_inlined_vector",
         "//xla/python:nb_absl_span",
         "//xla/service:buffer_assignment",
+        "//xla/service:hlo_module_config",
     ],
 )
 
@@ -92,6 +93,7 @@ py_strict_test(
         ":_extension",
         ":testlib",
         "//third_party/py/numpy",
+        "//xla/python:xla_extension",
         "@absl_py//absl/testing:absltest",
     ],
 )

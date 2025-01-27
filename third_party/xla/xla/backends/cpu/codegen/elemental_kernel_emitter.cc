@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -65,18 +64,6 @@ limitations under the License.
 namespace xla::cpu {
 
 namespace {
-
-KernelApiIrBuilder::Options KernelApiIrBuilderOptionsFromHloModuleConfig(
-    const HloModule* hlo_module) {
-  if (hlo_module == nullptr) {
-    return {true, 256};
-  }
-
-  const HloModuleConfig& config = hlo_module->config();
-  return KernelApiIrBuilder::Options{
-      config.debug_options().xla_llvm_enable_invariant_load_metadata(),
-      config.debug_options().xla_cpu_prefer_vector_width()};
-}
 
 struct ParallelConfig {
   std::vector<int64_t> outer_dimension_partitions;
@@ -211,46 +198,42 @@ ComputationsTransitivelyContainCustomCall(const HloInstruction* instr) {
 
 }  // namespace
 
-ElementalKernelEmitter::ElementalKernelEmitter(const HloInstruction* instr)
-    : ElementalKernelEmitter(instr, nullptr, nullptr) {}
-
 ElementalKernelEmitter::ElementalKernelEmitter(
     const HloInstruction* instr, const BufferAssignment* buffer_assignment,
     const TargetMachineFeatures* target_machine)
     : instr_(instr),
       buffer_assignment_(buffer_assignment),
-      target_machine_(target_machine),
-      context_(std::make_unique<llvm::LLVMContext>()),
-      kernel_api_ir_builder_(
-          *context_.getContext(),
-          KernelApiIrBuilderOptionsFromHloModuleConfig(instr_->GetModule())) {}
+      target_machine_(target_machine) {}
 
 absl::StatusOr<KernelDefinition>
 ElementalKernelEmitter::EmitKernelDefinition() {
   VLOG(2) << "Emit elemental host kernel: " << instr_->name();
 
-  llvm::LLVMContext& ctx = *context_.getContext();
+  auto ctx = std::make_unique<llvm::LLVMContext>();
 
-  // A module identifier (prefix) for emitted LLVM modules.
-  // (Module must be prefixed with this to ensure the cpu_compiler gives correct
-  // name to the dumped IR file)
-  static constexpr absl::string_view kXlaModuleIdentifier = "__compute_module";
-  auto module = std::make_unique<llvm::Module>(
-      absl::StrCat(kXlaModuleIdentifier, "_", instr_->name(),
-                   "_elemental_kernel_module"),
-      ctx);
+  const HloModule* hlo_module = instr_->GetModule();
+  if (hlo_module == nullptr) {
+    return Internal("HloModule is null");
+  }
+
+  KernelApiIrBuilder kernel_api_ir_builder(
+      *ctx,
+      KernelApiIrBuilder::Options::FromHloModuleConfig(hlo_module->config()));
+
+  std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
+      absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx);
 
   TF_ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
-                      kernel_api_ir_builder_.EmitKernelPrototype(
-                          *module, instr_, buffer_assignment_, "_kernel"));
+                      kernel_api_ir_builder.EmitKernelPrototype(
+                          *llvm_module, instr_, buffer_assignment_, "_kernel"));
 
-  llvm::IRBuilder<> ir_builder(ctx);
+  llvm::IRBuilder<> ir_builder(*ctx);
   ir_builder.SetInsertPoint(
       kernel_prototype.function->getEntryBlock().getTerminator());
 
   TF_ASSIGN_OR_RETURN(
       CpuElementalIrEmitter::ThreadLocalCallCallback thread_local_call_fn,
-      ThreadLocalCallbackFactory(ir_builder, *module));
+      ThreadLocalCallbackFactory(ir_builder, *llvm_module));
 
   CpuElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (int64_t i = 0; i < instr_->operand_count(); ++i) {
@@ -261,12 +244,11 @@ ElementalKernelEmitter::EmitKernelDefinition() {
     };
   }
 
-  const HloModule* hlo_module = instr_->GetModule();
   bool enable_fast_min_max =
       hlo_module
           ? hlo_module->config().debug_options().xla_cpu_enable_fast_min_max()
           : true;
-  CpuElementalIrEmitter elemental_ir_emitter(module.get(), &ir_builder,
+  CpuElementalIrEmitter elemental_ir_emitter(llvm_module.get(), &ir_builder,
                                              std::move(thread_local_call_fn),
                                              true, enable_fast_min_max);
 
@@ -277,8 +259,8 @@ ElementalKernelEmitter::EmitKernelDefinition() {
                       EmitElementalLoops(ir_builder, instr_, kernel_prototype,
                                          element_generator));
 
-  auto source =
-      std::make_unique<LlvmIrKernelSource>(context_, std::move(module));
+  auto source = std::make_unique<LlvmIrKernelSource>(std::move(ctx),
+                                                     std::move(llvm_module));
 
   KernelSpec spec(kernel_prototype.function->getName(), thread_dims,
                   std::move(kernel_prototype.buffer_uses));

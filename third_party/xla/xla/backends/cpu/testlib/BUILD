@@ -121,6 +121,7 @@ pytype_strict_library(
     testonly = 1,
     srcs = [
         "__init__.py",
+        "utilities.py",
     ],
     srcs_version = "PY3",
     deps = [

@@ -17,9 +17,34 @@ from absl.testing import absltest
 import numpy as np
 from xla.codegen.testlib import _extension
 from xla.codegen.testlib import utilities as testlib_utilities
+from xla.python import xla_extension
 
 
 create_literal = testlib_utilities.create_literal_from_np
+
+
+class HloModuleParse(absltest.TestCase):
+
+  def test_from_instruction(self):
+    shape = xla_extension.Shape.array_shape(np.dtype(np.int32), (4,))
+    hlo_parameter = _extension.HloInstruction.create_parameter(
+        0, shape, "input"
+    )
+    hlo_op = _extension.HloInstruction.create_variadic(
+        shape, _extension.HloOpcode.sine, [hlo_parameter]
+    )
+    hlo_module = _extension.HloModule.build(hlo_op, hlo_parameter)
+    expected_parts = [
+        "HloModule sine_module,",
+        "{",
+        "%input = s32[4]{0} parameter(0)",
+        "ROOT %sine = s32[4]{0} sine(s32[4]{0} %input)",
+        "}",
+    ]
+    self.assertContainsInOrder(
+        expected_parts,
+        str(hlo_module),
+    )
 
 
 class LiteralFromNpTest(absltest.TestCase):

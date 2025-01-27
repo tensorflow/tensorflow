@@ -116,7 +116,6 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   nb::class_<ElementalKernelEmitter, KernelEmitter>(kernel_runner_module,
                                                     "ElementalKernelEmitter")
-      .def(nb::init<const HloInstruction*>(), nb::keep_alive<1, 2>())
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),

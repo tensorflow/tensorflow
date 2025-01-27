@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_ELEMENTAL_KERNEL_EMITTER_H_
 
 #include "absl/status/statusor.h"
-#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
@@ -34,8 +33,6 @@ namespace xla::cpu {
 
 class ElementalKernelEmitter final : public KernelEmitter {
  public:
-  explicit ElementalKernelEmitter(const HloInstruction* instr);
-
   ElementalKernelEmitter(const HloInstruction* instr,
                          const BufferAssignment* buffer_assignment,
                          const TargetMachineFeatures* target_machine);
@@ -62,10 +59,6 @@ class ElementalKernelEmitter final : public KernelEmitter {
 
   const BufferAssignment* buffer_assignment_ = nullptr;
   const TargetMachineFeatures* target_machine_ = nullptr;
-
-  llvm::orc::ThreadSafeContext context_;
-
-  KernelApiIrBuilder kernel_api_ir_builder_;
 };
 
 }  // namespace xla::cpu
