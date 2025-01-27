@@ -803,38 +803,6 @@ bool IsSyncCollective(const HloInstruction* instr) {
 using SourceTargetPair = std::pair<int64_t, int64_t>;
 using SourceTargetPairs = std::vector<SourceTargetPair>;
 
-bool IsForwardCycle(const SourceTargetPairs& pairs) {
-  int64_t size = pairs.size();
-  if (size <= 1) return false;  // self reference is not a cycle.
-  const SourceTargetPair& last_pair = pairs[size - 1];
-  if (last_pair.first != size - 1 || last_pair.second != 0) {
-    return false;
-  }
-  for (int64_t i = 0; i < size - 1; ++i) {
-    const SourceTargetPair& pair = pairs[i];
-    if (pair.first != i || pair.second != i + 1) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool IsBackwardCycle(const SourceTargetPairs& pairs) {
-  int64_t size = pairs.size();
-  if (size <= 1) return false;  // self reference is not a cycle.
-  const SourceTargetPair& first_pair = pairs[0];
-  if (first_pair.first != 0 || first_pair.second != size - 1) {
-    return false;
-  }
-  for (int64_t i = 1; i < size; ++i) {
-    const SourceTargetPair& pair = pairs[i];
-    if (pair.first != i || pair.second != i - 1) {
-      return false;
-    }
-  }
-  return true;
-}
-
 std::pair<CycleType, std::set<int>> GetCycleTypeAndIndices(
     const SourceTargetPairs& pairs) {
   std::set<int> seen_replica_ids;
