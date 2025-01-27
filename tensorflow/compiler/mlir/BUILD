@@ -86,7 +86,6 @@ cc_library(
         # Link jit lib to link JIT devices required to run
         # xla-legalize-tf-with-tf2xla pass.
         "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:lift_tflite_flex_ops",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
