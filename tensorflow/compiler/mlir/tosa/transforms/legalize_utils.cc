@@ -931,8 +931,8 @@ Value getInputSlicedToItsUsedSize(PatternRewriter& rewriter, Operation* op,
     auto slice_op = CreateOpAndInfer<tosa::SliceOp>(
         rewriter, op->getLoc(),
         UnrankedTensorType::get(input_type.getElementType()), input_val,
-        rewriter.getDenseI64ArrayAttr(start),
-        rewriter.getDenseI64ArrayAttr(size));
+        getTosaConstShape(rewriter, op->getLoc(), start),
+        getTosaConstShape(rewriter, op->getLoc(), size));
 
     return slice_op.getResult();
   }

@@ -572,7 +572,9 @@ func.func @test_transpose(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x21xf32> {
 // -----
 
 // CHECK-LABEL: test_slice
-// CHECK: %[[VAR0:.*]] = tosa.slice %arg0 {size = array<i64: 4, 11, 1>, start = array<i64: 6, 8, 0>}
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {value = dense<[4, 11, 1]> : tensor<3xindex>}
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.const_shape  {value = dense<[6, 8, 0]> : tensor<3xindex>}
+// CHECK: %[[VAL_3:.*]] = tosa.slice %arg0, %[[VAL_2]], %[[VAL_1]] : (tensor<13x21x3xf32>, !tosa.shape<3>, !tosa.shape<3>) -> tensor<4x11x1xf32>
 func.func @test_slice(%arg0: tensor<13x21x3xf32>) -> tensor<4x11x1xf32> {
   %2 = "tf.Const"()  {value = dense<[6, 8, 0]> : tensor<3xi64>}  : () -> tensor<3xi64>
   %3 = "tf.Const"()  {value = dense<[4, 11, 1]> : tensor<3xi64>}  : () -> tensor<3xi64>
@@ -583,10 +585,14 @@ func.func @test_slice(%arg0: tensor<13x21x3xf32>) -> tensor<4x11x1xf32> {
 // -----
 
 // CHECK-LABEL: test_strided_slice
-// CHECK-DAG: %[[VAR0:.*]] = tosa.slice %arg0 {size = array<i64: 9, 21, 2>, start = array<i64: 4, 0, 1>}
-// CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %[[VAR0]] {new_shape = array<i64: 9, 7, 3, 2>}
-// CHECK-DAG: %[[VAR2:.*]] = tosa.slice %[[VAR1]] {size = array<i64: 9, 7, 1, 2>, start = array<i64: 0, 0, 0, 0>}
-// CHECK: %[[VAR3:.*]] = tosa.reshape %[[VAR2]] {new_shape = array<i64: 9, 7, 2>}
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {value = dense<0> : tensor<4xindex>}
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.const_shape  {value = dense<[9, 7, 1, 2]> : tensor<4xindex>}
+// CHECK-DAG: %[[VAL_3:.*]] = tosa.const_shape  {value = dense<[9, 21, 2]> : tensor<3xindex>}
+// CHECK-DAG: %[[VAL_4:.*]] = tosa.const_shape  {value = dense<[4, 0, 1]> : tensor<3xindex>}
+// CHECK: %[[VAL_5:.*]] = tosa.slice %arg0, %[[VAL_4]], %[[VAL_3]] : (tensor<13x21x3xf32>, !tosa.shape<3>, !tosa.shape<3>) -> tensor<9x21x2xf32>
+// CHECK: %[[VAL_6:.*]] = tosa.reshape %[[VAL_5]] {new_shape = array<i64: 9, 7, 3, 2>} : (tensor<9x21x2xf32>) -> tensor<9x7x3x2xf32>
+// CHECK: %[[VAL_7:.*]] = tosa.slice %[[VAL_6]], %[[VAL_1]], %[[VAL_2]] : (tensor<9x7x3x2xf32>, !tosa.shape<4>, !tosa.shape<4>) -> tensor<9x7x1x2xf32>
+// CHECK: %[[VAL_8:.*]] = tosa.reshape %[[VAL_7]] {new_shape = array<i64: 9, 7, 2>} : (tensor<9x7x1x2xf32>) -> tensor<9x7x2xf32>
 func.func @test_strided_slice(%arg0: tensor<13x21x3xf32>) -> tensor<9x7x2xf32> {
   %2 = "tf.Const"()  {value = dense<[4, 0, 1]> : tensor<3xi64>}  : () -> tensor<3xi64>
   %3 = "tf.Const"()  {value = dense<[13, 21, 3]> : tensor<3xi64>}  : () -> tensor<3xi64>
@@ -812,9 +818,13 @@ func.func @test_add_1d(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -
 // -----
 
 // CHECK-LABEL: test_split
-// CHECK-DAG: %[[VAR0:.*]] = tosa.slice %arg0 {size = array<i64: 13, 7, 3>, start = array<i64: 0, 0, 0>}
-// CHECK-DAG: %[[VAR1:.*]] = tosa.slice %arg0 {size = array<i64: 13, 7, 3>, start = array<i64: 0, 7, 0>}
-// CHECK: %[[VAR2:.*]] = tosa.slice %arg0 {size = array<i64: 13, 7, 3>, start = array<i64: 0, 14, 0>}
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {value = dense<[0, 14, 0]> : tensor<3xindex>}
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.const_shape  {value = dense<[0, 7, 0]> : tensor<3xindex>}
+// CHECK-DAG: %[[VAL_3:.*]] = tosa.const_shape  {value = dense<[13, 7, 3]> : tensor<3xindex>}
+// CHECK-DAG: %[[VAL_4:.*]] = tosa.const_shape  {value = dense<0> : tensor<3xindex>}
+// CHECK: %[[VAL_5:.*]] = tosa.slice %arg0, %[[VAL_4]], %[[VAL_3]] : (tensor<13x21x3xf32>, !tosa.shape<3>, !tosa.shape<3>) -> tensor<13x7x3xf32>
+// CHECK: %[[VAL_6:.*]] = tosa.slice %arg0, %[[VAL_2]], %[[VAL_3]] : (tensor<13x21x3xf32>, !tosa.shape<3>, !tosa.shape<3>) -> tensor<13x7x3xf32>
+// CHECK: %[[VAL_7:.*]] = tosa.slice %arg0, %[[VAL_1]], %[[VAL_3]] : (tensor<13x21x3xf32>, !tosa.shape<3>, !tosa.shape<3>) -> tensor<13x7x3xf32>
 func.func @test_split(%arg0: tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>) {
   %6 = "tf.Const"()  {value = dense<1> : tensor<i32>}  : () -> tensor<i32>
   %7:3 = "tf.Split"(%6, %arg0)   : (tensor<i32>, tensor<13x21x3xf32>) -> (tensor<13x7x3xf32>, tensor<13x7x3xf32>, tensor<13x7x3xf32>)
@@ -1024,15 +1034,21 @@ func.func @test_fused_batch_norm_training(%arg0: tensor<8x8x8x8xf32>, %arg1: ten
 // -----
 
 // CHECK-LABEL: mirrorpad_symmetric
-// CHECK-SAME: %[[VAL_0:.*]]: tensor<5x10xf32>
-// CHECK: %[[VAL_1:.*]] = tosa.slice %[[VAL_0]] {size = array<i64: 1, 10>, start = array<i64: 0, 0>} : (tensor<5x10xf32>)
-// CHECK: %[[VAL_2:.*]] = tosa.slice %[[VAL_0]] {size = array<i64: 2, 10>, start = array<i64: 3, 0>} : (tensor<5x10xf32>)
-// CHECK: %[[VAL_3:.*]] = tosa.reverse %[[VAL_2]] {axis = 0 : i32} : (tensor<2x10xf32>)
-// CHECK: %[[VAL_4:.*]] = tosa.concat %[[VAL_1]], %[[VAL_0]], %[[VAL_3]] {axis = 0 : i32} : (tensor<1x10xf32>, tensor<5x10xf32>, tensor<2x10xf32>)
-// CHECK: %[[VAL_5:.*]] = tosa.slice %[[VAL_4]] {size = array<i64: 8, 1>, start = array<i64: 0, 0>} : (tensor<8x10xf32>)
-// CHECK: %[[VAL_6:.*]] = tosa.slice %[[VAL_4]] {size = array<i64: 8, 2>, start = array<i64: 0, 8>} : (tensor<8x10xf32>)
-// CHECK: %[[VAL_7:.*]] = tosa.reverse %[[VAL_6]] {axis = 1 : i32} : (tensor<8x2xf32>)
-// CHECK: %[[VAL_8:.*]] = tosa.concat %[[VAL_5]], %[[VAL_4]], %[[VAL_7]] {axis = 1 : i32} : (tensor<8x1xf32>, tensor<8x10xf32>, tensor<8x2xf32>)
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {value = dense<[0, 8]> : tensor<2xindex>}
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.const_shape  {value = dense<[8, 2]> : tensor<2xindex>}
+// CHECK-DAG: %[[VAL_3:.*]] = tosa.const_shape  {value = dense<[8, 1]> : tensor<2xindex>}
+// CHECK-DAG: %[[VAL_4:.*]] = tosa.const_shape  {value = dense<[3, 0]> : tensor<2xindex>}
+// CHECK-DAG: %[[VAL_5:.*]] = tosa.const_shape  {value = dense<[2, 10]> : tensor<2xindex>}
+// CHECK-DAG: %[[VAL_6:.*]] = tosa.const_shape  {value = dense<[1, 10]> : tensor<2xindex>}
+// CHECK-DAG: %[[VAL_7:.*]] = tosa.const_shape  {value = dense<0> : tensor<2xindex>}
+// CHECK: %[[VAL_8:.*]] = tosa.slice %arg0, %[[VAL_7]], %[[VAL_6]] : (tensor<5x10xf32>, !tosa.shape<2>, !tosa.shape<2>) -> tensor<1x10xf32>
+// CHECK: %[[VAL_9:.*]] = tosa.slice %arg0, %[[VAL_4]], %[[VAL_5]] : (tensor<5x10xf32>, !tosa.shape<2>, !tosa.shape<2>) -> tensor<2x10xf32>
+// CHECK: %[[VAL_10:.*]] = tosa.reverse %[[VAL_9]] {axis = 0 : i32} : (tensor<2x10xf32>) -> tensor<2x10xf32>
+// CHECK: %[[VAL_11:.*]] = tosa.concat %[[VAL_8]], %arg0, %[[VAL_10]] {axis = 0 : i32} : (tensor<1x10xf32>, tensor<5x10xf32>, tensor<2x10xf32>) -> tensor<8x10xf32>
+// CHECK: %[[VAL_12:.*]] = tosa.slice %[[VAL_11]], %[[VAL_7]], %[[VAL_3]] : (tensor<8x10xf32>, !tosa.shape<2>, !tosa.shape<2>) -> tensor<8x1xf32>
+// CHECK: %[[VAL_13:.*]] = tosa.slice %[[VAL_11]], %[[VAL_1]], %[[VAL_2]] : (tensor<8x10xf32>, !tosa.shape<2>, !tosa.shape<2>) -> tensor<8x2xf32>
+// CHECK: %[[VAL_14:.*]] = tosa.reverse %[[VAL_13]] {axis = 1 : i32} : (tensor<8x2xf32>) -> tensor<8x2xf32>
+// CHECK: %[[VAL_15:.*]] = tosa.concat %[[VAL_12]], %[[VAL_11]], %[[VAL_14]] {axis = 1 : i32} : (tensor<8x1xf32>, tensor<8x10xf32>, tensor<8x2xf32>) -> tensor<8x13xf32>
 func.func @mirrorpad_symmetric(%arg0: tensor<5x10xf32>) -> tensor<8x13xf32> {
   %cst = "tf.Const"() {device = "", value = dense<[[1, 2], [1, 2]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
   %0 = "tf.MirrorPad"(%arg0, %cst) {device = "", mode = "SYMMETRIC"} : (tensor<5x10xf32>, tensor<2x2xi32>) -> tensor<8x13xf32>
@@ -1043,13 +1059,18 @@ func.func @mirrorpad_symmetric(%arg0: tensor<5x10xf32>) -> tensor<8x13xf32> {
 // -----
 
 // CHECK-LABEL: mirrorpad_reflect
-// CHECK-SAME: %[[VAL_0:.*]]: tensor<13x21x3xf32>
-// CHECK: %[[VAL_1:.*]] = tosa.slice %[[VAL_0]] {size = array<i64: 1, 21, 3>, start = array<i64: 1, 0, 0>} : (tensor<13x21x3xf32>)
-// CHECK: %[[VAL_2:.*]] = tosa.concat %[[VAL_1]], %[[VAL_0]] {axis = 0 : i32} : (tensor<1x21x3xf32>, tensor<13x21x3xf32>)
-// CHECK: %[[VAL_3:.*]] = tosa.slice %[[VAL_2]] {size = array<i64: 14, 1, 3>, start = array<i64: 0, 1, 0>} : (tensor<14x21x3xf32>)
-// CHECK: %[[VAL_4:.*]] = tosa.concat %[[VAL_3]], %[[VAL_2]] {axis = 1 : i32} : (tensor<14x1x3xf32>, tensor<14x21x3xf32>)
-// CHECK: %[[VAL_5:.*]] = tosa.slice %[[VAL_4]] {size = array<i64: 14, 22, 1>, start = array<i64: 0, 0, 1>} : (tensor<14x22x3xf32>)
-// CHECK: %[[VAL_6:.*]] = tosa.concat %[[VAL_5]], %[[VAL_4]] {axis = 2 : i32} : (tensor<14x22x1xf32>, tensor<14x22x3xf32>)
+// CHECK-DAG: %[[VAL_1:.*]] = tosa.const_shape  {value = dense<[0, 0, 1]> : tensor<3xindex>}
+// CHECK-DAG: %[[VAL_2:.*]] = tosa.const_shape  {value = dense<[14, 22, 1]> : tensor<3xindex>}
+// CHECK-DAG: %[[VAL_3:.*]] = tosa.const_shape  {value = dense<[0, 1, 0]> : tensor<3xindex>}
+// CHECK-DAG: %[[VAL_4:.*]] = tosa.const_shape  {value = dense<[14, 1, 3]> : tensor<3xindex>}
+// CHECK-DAG: %[[VAL_5:.*]] = tosa.const_shape  {value = dense<[1, 21, 3]> : tensor<3xindex>}
+// CHECK-DAG: %[[VAL_6:.*]] = tosa.const_shape  {value = dense<[1, 0, 0]> : tensor<3xindex>}
+// CHECK: %[[VAL_7:.*]] = tosa.slice %arg0, %[[VAL_6]], %[[VAL_5]] : (tensor<13x21x3xf32>, !tosa.shape<3>, !tosa.shape<3>) -> tensor<1x21x3xf32>
+// CHECK: %[[VAL_8:.*]] = tosa.concat %[[VAL_7]], %arg0 {axis = 0 : i32} : (tensor<1x21x3xf32>, tensor<13x21x3xf32>) -> tensor<14x21x3xf32>
+// CHECK: %[[VAL_9:.*]] = tosa.slice %[[VAL_8]], %[[VAL_3]], %[[VAL_4]] : (tensor<14x21x3xf32>, !tosa.shape<3>, !tosa.shape<3>) -> tensor<14x1x3xf32>
+// CHECK: %[[VAL_10:.*]] = tosa.concat %[[VAL_9]], %[[VAL_8]] {axis = 1 : i32} : (tensor<14x1x3xf32>, tensor<14x21x3xf32>) -> tensor<14x22x3xf32>
+// CHECK: %[[VAL_11:.*]] = tosa.slice %[[VAL_10]], %[[VAL_1]], %[[VAL_2]] : (tensor<14x22x3xf32>, !tosa.shape<3>, !tosa.shape<3>) -> tensor<14x22x1xf32>
+// CHECK: %[[VAL_12:.*]] = tosa.concat %[[VAL_11]], %[[VAL_10]] {axis = 2 : i32} : (tensor<14x22x1xf32>, tensor<14x22x3xf32>) -> tensor<14x22x4xf32>
 func.func @mirrorpad_reflect(%arg0: tensor<13x21x3xf32>) -> tensor<14x22x4xf32> {
   %cst = "tf.Const"() {device = "", value = dense<[[1, 0], [1, 0], [1, 0]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
   %0 = "tf.MirrorPad"(%arg0, %cst) {device = "", mode = "REFLECT"} : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<14x22x4xf32>

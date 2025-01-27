@@ -1525,8 +1525,10 @@ LogicalResult ConvertTFSliceOp::matchAndRewrite(
   DenseI64ArrayAttr begin = rewriter.getDenseI64ArrayAttr(begin_vals);
   DenseI64ArrayAttr size = rewriter.getDenseI64ArrayAttr(size_vals);
 
-  CreateReplaceOpAndInfer<tosa::SliceOp>(rewriter, op, output_type,
-                                         tf_slice_op.getInput(), begin, size);
+  CreateReplaceOpAndInfer<tosa::SliceOp>(
+      rewriter, op, output_type, tf_slice_op.getInput(),
+      getTosaConstShape(rewriter, op->getLoc(), begin_vals),
+      getTosaConstShape(rewriter, op->getLoc(), size_vals));
   return success();
 }
 
