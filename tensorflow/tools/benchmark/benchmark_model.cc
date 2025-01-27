@@ -27,6 +27,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -53,8 +55,6 @@ limitations under the License.
 #include "tensorflow/core/util/stat_summarizer.h"
 #include "tensorflow/core/util/stat_summarizer_options.h"
 #include "tensorflow/core/util/stats_calculator.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace benchmark_model {
