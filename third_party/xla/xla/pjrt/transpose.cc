@@ -900,7 +900,7 @@ void TransposePlan::BuildPlanNodes(
 
 absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     const Options& o) {
-  auto is_negative = [](int d) { return d < 0; };
+  auto is_negative = [](int64_t d) { return d < 0; };
   if (absl::c_find_if(o.dims, is_negative) != o.dims.end()) {
     return InvalidArgument("dims must be non-negative, got %s",
                            absl::StrJoin(o.dims, ","));

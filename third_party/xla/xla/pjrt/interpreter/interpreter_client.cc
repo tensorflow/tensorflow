@@ -274,6 +274,9 @@ InterpreterLoadedExecutable::ExecuteSharded(
     returned_future = PjRtFuture<>(absl::OkStatus());
   }
 
+  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
+                      device->default_memory_space());
+
   // Transform the result literal back into a one or more
   // InterpreterLiteralWrapperBuffer.
   std::vector<std::unique_ptr<PjRtBuffer>> result;
@@ -288,11 +291,11 @@ InterpreterLoadedExecutable::ExecuteSharded(
         << "DecomposedTuple returned the wrong number of elements.";
     for (int i = 0; i < tuple_count; ++i) {
       result.push_back(std::make_unique<InterpreterLiteralWrapperBuffer>(
-          client_, device, std::move(tuple_elements[i])));
+          client_, memory_space, std::move(tuple_elements[i])));
     }
   } else {
     result.push_back(std::make_unique<InterpreterLiteralWrapperBuffer>(
-        client_, device, std::move(result_literal)));
+        client_, memory_space, std::move(result_literal)));
   }
   return result;
 }
@@ -403,21 +406,21 @@ InterpreterClient::Compile(mlir::ModuleOp module, CompileOptions options) {
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 InterpreterClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                         PjRtDevice* device) {
-  return std::make_unique<InterpreterLiteralWrapperBuffer>(device->client(),
-                                                           device, literal);
+                                         PjRtMemorySpace* memory_space) {
+  return std::make_unique<InterpreterLiteralWrapperBuffer>(
+      memory_space->client(), memory_space, literal);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 InterpreterClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                         PjRtDevice* device,
+                                         PjRtMemorySpace* memory_space,
                                          const Layout* device_layout) {
   if (device_layout == nullptr) {
-    return BufferFromHostLiteral(literal, device);
+    return BufferFromHostLiteral(literal, memory_space);
   }
   Literal device_literal = literal.Relayout(*device_layout);
   return std::make_unique<InterpreterLiteralWrapperBuffer>(
-      device->client(), device, std::move(device_literal));
+      memory_space->client(), memory_space, std::move(device_literal));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>

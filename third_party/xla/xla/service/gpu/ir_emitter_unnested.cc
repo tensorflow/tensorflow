@@ -96,10 +96,10 @@ limitations under the License.
 #ifdef GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_solver_context.h"
 #endif  // GOOGLE_CUDA
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/fusions/fusions.h"
-#include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -118,42 +118,42 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/rocm/rocm_solver_context.h"
 #endif  // TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/runtime/cholesky_thunk.h"
-#include "xla/service/gpu/runtime/command_buffer_cmd.h"
-#include "xla/service/gpu/runtime/command_buffer_cmd_emitter.h"
-#include "xla/service/gpu/runtime/command_buffer_thunk.h"
-#include "xla/service/gpu/runtime/conditional_thunk.h"
-#include "xla/service/gpu/runtime/convolution_thunk.h"
-#include "xla/service/gpu/runtime/copy_thunk.h"
-#include "xla/service/gpu/runtime/cub_sort_thunk.h"
-#include "xla/service/gpu/runtime/cudnn_thunk.h"
-#include "xla/service/gpu/runtime/custom_call_target.h"
-#include "xla/service/gpu/runtime/custom_call_thunk.h"
-#include "xla/service/gpu/runtime/fft_thunk.h"
-#include "xla/service/gpu/runtime/gemm_thunk.h"
-#include "xla/service/gpu/runtime/gpublas_lt_matmul_thunk.h"
-#include "xla/service/gpu/runtime/infeed_thunk.h"
-#include "xla/service/gpu/runtime/kernel_thunk.h"
-#include "xla/service/gpu/runtime/nccl_all_gather_thunk.h"
-#include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
-#include "xla/service/gpu/runtime/nccl_all_to_all_thunk.h"
-#include "xla/service/gpu/runtime/nccl_collective_broadcast_thunk.h"
-#include "xla/service/gpu/runtime/nccl_collective_permute_thunk.h"
-#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
-#include "xla/service/gpu/runtime/nccl_group_thunk.h"
-#include "xla/service/gpu/runtime/nccl_p2p_thunk_common.h"
-#include "xla/service/gpu/runtime/nccl_ragged_all_to_all_thunk.h"
-#include "xla/service/gpu/runtime/nccl_recv_thunk.h"
-#include "xla/service/gpu/runtime/nccl_send_thunk.h"
-#include "xla/service/gpu/runtime/norm_thunk.h"
-#include "xla/service/gpu/runtime/outfeed_thunk.h"
-#include "xla/service/gpu/runtime/replica_id_thunk.h"
-#include "xla/service/gpu/runtime/send_recv_thunk.h"
-#include "xla/service/gpu/runtime/sequential_thunk.h"
-#include "xla/service/gpu/runtime/thunk.h"
-#include "xla/service/gpu/runtime/triangular_solve_thunk.h"
-#include "xla/service/gpu/runtime/wait_for_streams_thunk.h"
-#include "xla/service/gpu/runtime/while_thunk.h"
+#include "xla/backends/gpu/runtime/cholesky_thunk.h"
+#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
+#include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
+#include "xla/backends/gpu/runtime/command_buffer_thunk.h"
+#include "xla/backends/gpu/runtime/conditional_thunk.h"
+#include "xla/backends/gpu/runtime/convolution_thunk.h"
+#include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/cub_sort_thunk.h"
+#include "xla/backends/gpu/runtime/cudnn_thunk.h"
+#include "xla/backends/gpu/runtime/custom_call_target.h"
+#include "xla/backends/gpu/runtime/custom_call_thunk.h"
+#include "xla/backends/gpu/runtime/fft_thunk.h"
+#include "xla/backends/gpu/runtime/gemm_thunk.h"
+#include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/infeed_thunk.h"
+#include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_all_gather_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_all_reduce_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_all_to_all_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_collective_broadcast_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_collective_permute_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_group_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/nccl_ragged_all_to_all_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_recv_thunk.h"
+#include "xla/backends/gpu/runtime/nccl_send_thunk.h"
+#include "xla/backends/gpu/runtime/norm_thunk.h"
+#include "xla/backends/gpu/runtime/outfeed_thunk.h"
+#include "xla/backends/gpu/runtime/replica_id_thunk.h"
+#include "xla/backends/gpu/runtime/send_recv_thunk.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
+#include "xla/backends/gpu/runtime/wait_for_streams_thunk.h"
+#include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/triton_call.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
@@ -185,8 +185,7 @@ namespace gpu {
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
       send_recv_events_(std::make_shared<SendRecvAsyncEvents>()),
-      copy_events_(std::make_shared<CopyThunk::AsyncEvents>()),
-      elemental_emitter_(*ir_emitter_context, &b_) {}
+      copy_events_(std::make_shared<CopyThunk::AsyncEvents>()) {}
 
 std::unique_ptr<IrEmitterUnnested> IrEmitterUnnested::Create(
     IrEmitterContext* ir_emitter_context) {
@@ -1815,46 +1814,61 @@ absl::Status IrEmitterUnnested::EmitReplicaOrPartitionId(
 
 absl::Status IrEmitterUnnested::EmitCollectivePermute(
     const HloCollectivePermuteInstruction* instr) {
-  TF_RET_CHECK(instr->operand_count() == 1);
-  auto* operand = instr->operand(0);
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
-                      GetAllocationSliceForHlo(operand));
   // First output is aliased.
   TF_RET_CHECK(
       instr->shape().IsTuple() && instr->shape().tuple_shapes_size() == 2 &&
       Shape::Equal().IgnoreMemorySpaceInLayout()(
           instr->shape().tuple_shapes(0), instr->shape().tuple_shapes(1)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
-                      GetAllocationSliceForHlo(instr, {1}));
 
-  const Shape shape = operand->shape();
   const auto& hlo_config = ir_emitter_context_->hlo_module().config();
   const int64_t replica_count = hlo_config.replica_count();
   const int64_t partition_count = hlo_config.num_partitions();
-  const int64_t src_memory_space = shape.layout().memory_space();
-  const int64_t dst_memory_space =
-      instr->shape().tuple_shapes(1).layout().memory_space();
 
-  if (NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
-                                                    partition_count)) {
-    // For a degenerate collective permute, just generate a copy thunk.
-    AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr),
-        /*source_buffer=*/source_slice,
-        /*destination_buffer=*/result_slice,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
-    // Signal that start thunk not created with nullptr.
-    GetCollectivesAsyncEvents().try_emplace(instr, nullptr);
-  } else {
-    const NcclCollectiveThunk::Buffer buffer = {
-        /*element_count=*/ShapeUtil::ElementsIn(shape),
-        /*source_buffer=*/source_slice,
-        /*destination_buffer=*/result_slice,
-        /*source_memory_space=*/src_memory_space,
-        /*destination_memory_space=*/dst_memory_space};
+  auto operands = instr->operands();
+  std::vector<NcclCollectiveThunk::Buffer> buffers;
+  for (int oprd_idx = 0; oprd_idx < operands.size(); ++oprd_idx) {
+    const auto operand = operands.at(oprd_idx);
+    const ShapeIndex nested_shape_idx = {1, oprd_idx}, normal_shape_idx = {1};
+    const Shape operand_shape = operand->shape();
+    const Shape result_shape = instr->shape().tuple_shapes(1);
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                        GetAllocationSliceForHlo(
+                            instr, result_shape.IsTuple() ? nested_shape_idx
+                                                          : normal_shape_idx));
+
+    const int64_t src_memory_space = operand_shape.layout().memory_space();
+    const int64_t dst_memory_space =
+        (result_shape.IsTuple())
+            ? result_shape.tuple_shapes(0).layout().memory_space()
+            : result_shape.layout().memory_space();
+
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
+                        GetAllocationSliceForHlo(operand));
+    if (NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
+                                                      partition_count)) {
+      // For a degenerate collective permute, just generate a copy thunk.
+      AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
+          Thunk::ThunkInfo::WithProfileAnnotation(instr),
+          /*source_buffer=*/source_slice,
+          /*destination_buffer=*/result_slice,
+          /*mem_size=*/ShapeUtil::ByteSizeOf(operand_shape)));
+      // Signal that start thunk not created with nullptr.
+      GetCollectivesAsyncEvents().try_emplace(instr, nullptr);
+    } else {
+      const NcclCollectiveThunk::Buffer buffer = {
+          /*element_count=*/ShapeUtil::ElementsIn(operand_shape),
+          /*source_buffer=*/source_slice,
+          /*destination_buffer=*/result_slice,
+          /*source_memory_space=*/src_memory_space,
+          /*destination_memory_space=*/dst_memory_space};
+      buffers.push_back(buffer);
+    }
+  }
+  if (!NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
+                                                     partition_count)) {
     auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
-        partition_count, buffer,
+        partition_count, buffers,
         ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
     GetCollectivesAsyncEvents().try_emplace(instr, thunk->async_events());
     AddThunkToThunkSequence(std::move(thunk));

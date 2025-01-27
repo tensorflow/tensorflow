@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -135,29 +135,29 @@ TEST_F(ConvertTensorTest, Simple) {
   mlir::MLIRContext context;
   RegisterDialects(context);
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<Eigen::half>(
-      {Eigen::half(1.0)}, DT_HALF, mlir::FloatType::getF16(&context)));
+      {Eigen::half(1.0)}, DT_HALF, mlir::Float16Type::get(&context)));
   ASSERT_NO_FATAL_FAILURE(
       VerifyConversion<bfloat16>({bfloat16(1.0), bfloat16(-1.0)}, DT_BFLOAT16,
-                                 mlir::FloatType::getBF16(&context)));
+                                 mlir::BFloat16Type::get(&context)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<float>(
-      {1.0, -1.0}, DT_FLOAT, mlir::FloatType::getF32(&context)));
+      {1.0, -1.0}, DT_FLOAT, mlir::Float32Type::get(&context)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<double>(
-      {1.0, -1.0}, DT_DOUBLE, mlir::FloatType::getF64(&context)));
+      {1.0, -1.0}, DT_DOUBLE, mlir::Float64Type::get(&context)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e5m2>(
       {tsl::float8_e5m2{1.0}, tsl::float8_e5m2{-1.0}}, DT_FLOAT8_E5M2,
-      mlir::FloatType::getFloat8E5M2(&context)));
+      mlir::Float8E5M2Type::get(&context)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e4m3fn>(
       {tsl::float8_e4m3fn{1.0}, tsl::float8_e4m3fn{-1.0}}, DT_FLOAT8_E4M3FN,
-      mlir::FloatType::getFloat8E4M3FN(&context)));
+      mlir::Float8E4M3FNType::get(&context)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e4m3fnuz>(
       {tsl::float8_e4m3fnuz{1.0}, tsl::float8_e4m3fnuz{-1.0}},
-      DT_FLOAT8_E4M3FNUZ, mlir::FloatType::getFloat8E4M3FNUZ(&context)));
+      DT_FLOAT8_E4M3FNUZ, mlir::Float8E4M3FNUZType::get(&context)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e4m3b11fnuz>(
       {tsl::float8_e4m3b11fnuz{1.0}, tsl::float8_e4m3b11fnuz{-1.0}},
-      DT_FLOAT8_E4M3B11FNUZ, mlir::FloatType::getFloat8E4M3B11FNUZ(&context)));
+      DT_FLOAT8_E4M3B11FNUZ, mlir::Float8E4M3B11FNUZType::get(&context)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e5m2fnuz>(
       {tsl::float8_e5m2fnuz{1.0}, tsl::float8_e5m2fnuz{-1.0}},
-      DT_FLOAT8_E5M2FNUZ, mlir::FloatType::getFloat8E5M2FNUZ(&context)));
+      DT_FLOAT8_E5M2FNUZ, mlir::Float8E5M2FNUZType::get(&context)));
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int4>(
       {static_cast<int4>(1), static_cast<int4>(-1)}, DT_INT4,
@@ -195,30 +195,30 @@ TEST_F(ConvertTensorTest, Simple) {
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<std::complex<float>>(
       {{0.0, 1.0}, {1.0, 0.0}}, DT_COMPLEX64,
-      mlir::ComplexType::get(mlir::FloatType::getF32(&context))));
+      mlir::ComplexType::get(mlir::Float32Type::get(&context))));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<std::complex<double>>(
       {{0.0, 1.0}, {1.0, 0.0}}, DT_COMPLEX128,
-      mlir::ComplexType::get(mlir::FloatType::getF64(&context))));
+      mlir::ComplexType::get(mlir::Float64Type::get(&context))));
 }
 
 TEST_F(ConvertTensorTest, SimpleDenseResourceElements) {
   mlir::MLIRContext context;
   RegisterDialects(context);
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<Eigen::half>(
-      {Eigen::half(1.0)}, DT_HALF, mlir::FloatType::getF16(&context), true));
+      {Eigen::half(1.0)}, DT_HALF, mlir::Float16Type::get(&context), true));
   ASSERT_NO_FATAL_FAILURE(
       VerifyConversion<bfloat16>({bfloat16(1.0), bfloat16(-1.0)}, DT_BFLOAT16,
-                                 mlir::FloatType::getBF16(&context), true));
+                                 mlir::BFloat16Type::get(&context), true));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<float>(
-      {1.0, -1.0}, DT_FLOAT, mlir::FloatType::getF32(&context), true));
+      {1.0, -1.0}, DT_FLOAT, mlir::Float32Type::get(&context), true));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<double>(
-      {1.0, -1.0}, DT_DOUBLE, mlir::FloatType::getF64(&context), true));
+      {1.0, -1.0}, DT_DOUBLE, mlir::Float64Type::get(&context), true));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e5m2>(
       {tsl::float8_e5m2{1.0}, tsl::float8_e5m2{-1.0}}, DT_FLOAT8_E5M2,
-      mlir::FloatType::getFloat8E5M2(&context), true));
+      mlir::Float8E5M2Type::get(&context), true));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::float8_e4m3fn>(
       {tsl::float8_e4m3fn{1.0}, tsl::float8_e4m3fn{-1.0}}, DT_FLOAT8_E4M3FN,
-      mlir::FloatType::getFloat8E4M3FN(&context), true));
+      mlir::Float8E4M3FNType::get(&context), true));
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int4>(
       {static_cast<int4>(1), static_cast<int4>(-1)}, DT_INT4,
@@ -262,10 +262,10 @@ TEST_F(ConvertTensorTest, SimpleDenseResourceElements) {
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<std::complex<float>>(
       {{0.0, 1.0}, {1.0, 0.0}}, DT_COMPLEX64,
-      mlir::ComplexType::get(mlir::FloatType::getF32(&context)), true));
+      mlir::ComplexType::get(mlir::Float32Type::get(&context)), true));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<std::complex<double>>(
       {{0.0, 1.0}, {1.0, 0.0}}, DT_COMPLEX128,
-      mlir::ComplexType::get(mlir::FloatType::getF64(&context))));
+      mlir::ComplexType::get(mlir::Float64Type::get(&context))));
 }
 
 bool IsSplat(mlir::ElementsAttr attr) {

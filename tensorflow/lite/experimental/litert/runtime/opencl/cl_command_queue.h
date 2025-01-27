@@ -20,7 +20,7 @@
 #include <string>
 
 #include "absl/status/status.h"
-#include "third_party/opencl_headers/CL/cl.h"
+#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/runtime/opencl/cl_context.h"
 #include "tensorflow/lite/experimental/litert/runtime/opencl/cl_device.h"
 

@@ -12,13 +12,13 @@ cc_library(
     hdrs = ["test_lib.h"],
     deps = [
         "//xla:status_macros",
-        "//xla/backends/gpu/codegen/ir:xla_gpu",
+        "//xla/backends/gpu/codegen:fusions",
+        "//xla/backends/gpu/codegen/emitters:emitter_base",
+        "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/fusions",
-        "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
         "//xla/stream_executor:device_description",
         "//xla/tools:hlo_module_loader",
         "@com_google_absl//absl/algorithm:container",
@@ -48,7 +48,7 @@ xla_cc_binary(
     # set linkopts in such a way that dynamic libraries are found, which are
     # symlinked from the lit_lib directory.
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
-    visibility = ["//xla/service/gpu/fusions:__subpackages__"],
+    visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
     deps = [
         ":test_lib",
         "@com_google_absl//absl/log:check",
@@ -67,7 +67,7 @@ xla_cc_binary(
     # set linkopts in such a way that dynamic libraries are found, which are
     # symlinked from the lit_lib directory.
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
-    visibility = ["//xla/service/gpu/fusions:__subpackages__"],
+    visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
     deps = [
         ":test_lib",
         "//xla:debug_options_flags",
@@ -96,7 +96,7 @@ xla_cc_binary(
     name = "fusion_wrapper",
     testonly = 1,
     srcs = ["fusion_wrapper.cc"],
-    visibility = ["//xla/service/gpu/fusions:__subpackages__"],
+    visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
     deps = [
         ":test_lib",
         "//xla/tsl/platform:statusor",

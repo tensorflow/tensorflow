@@ -957,7 +957,12 @@ absl::Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
   auto gather = Cast<HloGatherInstruction>(hlo);
   const auto& dnums = gather->gather_dimension_numbers();
   auto operand = GetPartitionedHlo(gather->operand(0));
-  auto indices = GetPartitionedHlo(gather->operand(1));
+  auto raw_indices = GetPartitionedHlo(gather->operand(1));
+  auto indices =
+      (operand.hlo() == raw_indices.hlo())
+          ? MakeACopyAndReturnItsPartitionedHlo(raw_indices, builder())
+          : raw_indices;
+
   std::vector<int64_t> batch_dims;
   for (int64_t i = 0; i < gather->shape().rank(); ++i) {
     if (!absl::c_linear_search(dnums.offset_dims(), i)) {
@@ -1822,6 +1827,13 @@ absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   absl::c_transform(
       scatter->scatter_updates(), std::back_inserter(updates),
       [this](HloInstruction* hlo) { return GetPartitionedHlo(hlo); });
+  for (PartitionedHlo& update : updates) {
+    if (absl::c_any_of(operands, [&](const PartitionedHlo& operand) {
+          return update.hlo() == operand.hlo();
+        })) {
+      update = MakeACopyAndReturnItsPartitionedHlo(update, builder());
+    }
+  }
   if (!absl::c_all_of(updates, [&](const PartitionedHlo& update) {
         return update.sharding() == updates[0].sharding() &&
                update.base_shape() == updates[0].base_shape();
@@ -1847,6 +1859,15 @@ absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
                ? scatter_reduction_root->shape().tuple_shapes_size()
                : 1);
   auto indices = GetPartitionedHlo(scatter->scatter_indices());
+  if (absl::c_any_of(operands,
+                     [&](const PartitionedHlo& operand) {
+                       return indices.hlo() == operand.hlo();
+                     }) ||
+      absl::c_any_of(updates, [&](const PartitionedHlo& update) {
+        return indices.hlo() == update.hlo();
+      })) {
+    indices = MakeACopyAndReturnItsPartitionedHlo(indices, builder());
+  }
   auto indices_sharding = indices.sharding();
   // Reshard indices with -1 padding, which will have no effect on the result as
   // guaranteed by the scatter semantics.

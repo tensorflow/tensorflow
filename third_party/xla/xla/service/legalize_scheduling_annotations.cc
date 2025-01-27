@@ -81,8 +81,9 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   absl::flat_hash_map<HloInstruction*, int64_t> annotation;
-  absl::flat_hash_map<int64_t, HloComputation*> annotation_to_computation;
-  absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>
+  absl::flat_hash_map<
+      int64_t,
+      absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>
       annotation_to_instructions;
   // Filter the annotated ops (using config) to keep the annotations only in the
   // desired sync ops. Annotations in all async ops are kept.
@@ -108,19 +109,9 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
               << attrs.at(kXlaSchedulingGroupIdAttr);
       TF_ASSIGN_OR_RETURN(int64_t annotation_id,
                           ExtractAnnotation(attrs, instr->name()));
-      if (annotation_to_computation.contains(annotation_id) &&
-          annotation_to_computation[annotation_id] != computation) {
-        return absl::UnimplementedError(absl::StrCat(
-            "Support for cross computation annotations doesn't exist yet. Saw "
-            "a scheduling annotation that is already used in another "
-            "computation, inst: ",
-            instr->name(), ", annotation: ", annotation_id,
-            ", computation: ", annotation_to_computation[annotation_id]->name(),
-            ", computation: ", computation->name()));
-      }
+
       annotation[instr] = annotation_id;
-      annotation_to_instructions[annotation_id].push_back(instr);
-      annotation_to_computation[annotation_id] = computation;
+      annotation_to_instructions[annotation_id][computation].push_back(instr);
     }
   }
   // Move the annotation from inside fusion computation to the caller
@@ -163,73 +154,76 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     computation->FusionInstruction()->set_frontend_attributes(
         frontend_attributes);
   }
-  if (annotation_to_computation.empty()) {
+  if (annotation_to_instructions.empty()) {
     return false;
   }
   absl::flat_hash_map<HloInstruction*, HloInstruction*> parent;
-  for (const auto& [id, annotated_instructions] : annotation_to_instructions) {
-    // First find the frontier nodes that are not annotated with id but use an
-    // annotated instruction with id.
-    std::vector<HloInstruction*> stack;
-    absl::flat_hash_set<HloInstruction*> visited;
-    for (HloInstruction* instr : annotated_instructions) {
-      CHECK(annotation.contains(instr));
-      CHECK_EQ(annotation[instr], id);
-      if (HloPredicateIsOp<HloOpcode::kAllGatherDone, HloOpcode::kAllReduceDone,
-                           HloOpcode::kCollectivePermuteDone,
-                           HloOpcode::kAsyncDone>(instr) &&
-          (!annotation.contains(instr->operand(0)) ||
-           annotation[instr->mutable_operand(0)] != id)) {
-        return absl::InternalError(absl::StrCat(
-            "Done instruction's operand is not annotated with the same id: ",
-            instr->operand(0)->name(), ", annotation: ", id));
-      }
-      for (const PtrVec<HloInstruction*>& users :
-           {instr->users(), instr->control_successors()}) {
-        for (HloInstruction* user : users) {
-          if (!visited.contains(user) &&
-              (!annotation.contains(user) || annotation[user] != id)) {
-            stack.push_back(user);
-            parent[user] = instr;
-            visited.insert(user);
-            VLOG(2) << "Annotation group: " << id
-                    << ", frontier using a root: " << user->name();
+  for (const auto& [id, comp_inst_vector] : annotation_to_instructions) {
+    for (const auto& [comp, annotated_instructions] : comp_inst_vector) {
+      // First find the frontier nodes that are not annotated with id but use an
+      // annotated instruction with id.
+      std::vector<HloInstruction*> stack;
+      absl::flat_hash_set<HloInstruction*> visited;
+      for (HloInstruction* instr : annotated_instructions) {
+        CHECK(annotation.contains(instr));
+        CHECK_EQ(annotation[instr], id);
+        if (HloPredicateIsOp<
+                HloOpcode::kAllGatherDone, HloOpcode::kAllReduceDone,
+                HloOpcode::kCollectivePermuteDone, HloOpcode::kAsyncDone>(
+                instr) &&
+            (!annotation.contains(instr->operand(0)) ||
+             annotation[instr->mutable_operand(0)] != id)) {
+          return absl::InternalError(absl::StrCat(
+              "Done instruction's operand is not annotated with the same id: ",
+              instr->operand(0)->name(), ", annotation: ", id));
+        }
+        for (const PtrVec<HloInstruction*>& users :
+             {instr->users(), instr->control_successors()}) {
+          for (HloInstruction* user : users) {
+            if (!visited.contains(user) &&
+                (!annotation.contains(user) || annotation[user] != id)) {
+              stack.push_back(user);
+              parent[user] = instr;
+              visited.insert(user);
+              VLOG(2) << "Annotation group: " << id
+                      << ", frontier using a root: " << user->name();
+            }
           }
         }
       }
-    }
-    VLOG(2) << "Annotation group: " << id << ", frontier has " << stack.size()
-            << " instructions";
-    // Traverse the HLO graph starting from the frontier instructions and move
-    // to the users. If there are gaps in the annotation, the traversal will hit
-    // an instruction that is annotated with the same id.
-    while (!stack.empty()) {
-      HloInstruction* instr = stack.back();
-      stack.pop_back();
-      for (const PtrVec<HloInstruction*>& users :
-           {instr->users(), instr->control_successors()}) {
-        for (HloInstruction* user : users) {
-          if (annotation.contains(user) && annotation[user] == id) {
-            LOG(INFO) << "PATH: " << user->name();
-            HloInstruction* current = instr;
-            LOG(INFO) << "PATH: " << current->name();
-            while (parent.contains(current)) {
-              current = parent[current];
+      VLOG(2) << "Annotation group: " << id << ", frontier has " << stack.size()
+              << " instructions";
+      // Traverse the HLO graph starting from the frontier instructions and move
+      // to the users. If there are gaps in the annotation, the traversal will
+      // hit an instruction that is annotated with the same id.
+      while (!stack.empty()) {
+        HloInstruction* instr = stack.back();
+        stack.pop_back();
+        for (const PtrVec<HloInstruction*>& users :
+             {instr->users(), instr->control_successors()}) {
+          for (HloInstruction* user : users) {
+            if (annotation.contains(user) && annotation[user] == id) {
+              LOG(INFO) << "PATH: " << user->name();
+              HloInstruction* current = instr;
               LOG(INFO) << "PATH: " << current->name();
+              while (parent.contains(current)) {
+                current = parent[current];
+                LOG(INFO) << "PATH: " << current->name();
+              }
+              return absl::UnimplementedError(absl::StrCat(
+                  "Support for annotation groups with gaps doesn't "
+                  "exist yet, annotation: ",
+                  id, ", instr: ", user->name(),
+                  " has the same annotation in its operand tree but "
+                  "has gaps on the way from that operand to itself."));
             }
-            return absl::UnimplementedError(absl::StrCat(
-                "Support for annotation groups with gaps doesn't "
-                "exist yet, annotation: ",
-                id, ", instr: ", user->name(),
-                " has the same annotation in its operand tree but "
-                "has gaps on the way from that operand to itself."));
+            if (visited.contains(user)) {
+              continue;
+            }
+            stack.push_back(user);
+            parent[user] = instr;
+            visited.insert(user);
           }
-          if (visited.contains(user)) {
-            continue;
-          }
-          stack.push_back(user);
-          parent[user] = instr;
-          visited.insert(user);
         }
       }
     }

@@ -556,9 +556,9 @@ struct PadWithWrapPattern {
   std::vector<const HloInstruction*> rhs_modifiers;
 };
 
-// Returns the `PadWithWrapPattern` if the concat(lhs,mid,rhs) is equivalent to
-// padding mid with wrapping (i.e., padding mid with slices of itself). Return
-// std::nullopt if the pattern is not found.
+// Returns the `PadWithWrapPattern` if the concat(lhs, mid, rhs) is equivalent
+// to padding mid with wrapping (i.e., padding mid with slices of itself).
+// Returns std::nullopt if the pattern is not found.
 std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
     const HloInstruction* concat, const HloInstruction* lhs,
     const HloInstruction* mid, const HloInstruction* rhs);
@@ -957,6 +957,11 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
   }
   return std::make_pair(INT64_MAX, INT64_MAX);
 }
+
+// Creates a copy for the HloInstruction in the PartitionedHlo and returns a
+// new PartitionedHlo for the copy.
+PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
+                                                   SpmdBuilder* b);
 
 }  // namespace spmd
 }  // namespace xla

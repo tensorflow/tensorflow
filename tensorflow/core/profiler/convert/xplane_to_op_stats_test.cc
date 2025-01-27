@@ -20,9 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/tsl/profiler/utils/group_events.h"
+#include <gtest/gtest.h>
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/duty_cycle_tracker.h"
 #include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
@@ -35,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/platform/status.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -573,6 +577,117 @@ TEST(ConvertXPlaneToOpStats, TpuMultiDeviceStepDbTest) {
   // For TPU step events, we intersect the step events by step num across
   // different TPU devices.
   EXPECT_EQ(step_db.step_sequence_size(), 1);
+}
+
+TEST(ConvertXPlaneToOpStats, ConstructDutyCycleTrackerFromXlaOps) {
+  XSpace space;
+  XPlane* device_plane = GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, /*device_type=*/"TPU v4",
+      /*peak_tera_flops_per_second=*/0,
+      /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder device_plane_builder(device_plane);
+  XLineBuilder op_line = device_plane_builder.GetOrCreateLine(0);
+  op_line.SetName(kXlaOpLineName);
+  CreateXEvent(&device_plane_builder, &op_line, "op.1", /*offset_ps=*/10,
+               /*duration_ps=*/10,
+               {{StatType::kHloCategory, tsl::profiler::kHloInfeed}});
+  CreateXEvent(&device_plane_builder, &op_line, "op.2", /*offset_ps=*/20,
+               /*duration_ps=*/10,
+               {{StatType::kHloCategory, tsl::profiler::kHloCall}});
+  CreateXEvent(&device_plane_builder, &op_line, "op.3", /*offset_ps=*/30,
+               /*duration_ps=*/10);
+  CreateXEvent(&device_plane_builder, &op_line, "op.4", /*offset_ps=*/40,
+               /*duration_ps=*/10,
+               {{StatType::kHloCategory, tsl::profiler::kHloOutfeed}});
+
+  XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(device_plane);
+  DutyCycleTracker tracker = ConstructDutyCycleTracker(visitor);
+  EXPECT_EQ(tracker.GetActiveTimePs(), 20);
+  EXPECT_EQ(tracker.GetIdleTimePs(), 20);
+}
+
+TEST(ConvertXPlaneToOpStats, ConstructDutyCycleTrackerFromSparseCore) {
+  XSpace space;
+  XPlane* sc_plane = GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, /*device_type=*/"TPU v4",
+      /*peak_tera_flops_per_second=*/0,
+      /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder sc_plane_builder(sc_plane);
+  XLineBuilder op_line = sc_plane_builder.GetOrCreateLine(0);
+  op_line.SetName(kSparseCoreOpLineName);
+  CreateXEvent(&sc_plane_builder, &op_line, "op.1", /*offset_ps=*/10,
+               /*duration_ps=*/10);
+  CreateXEvent(&sc_plane_builder, &op_line, "op.2", /*offset_ps=*/20,
+               /*duration_ps=*/10);
+  CreateXEvent(&sc_plane_builder, &op_line, "op.3", /*offset_ps=*/30,
+               /*duration_ps=*/10);
+  CreateXEvent(&sc_plane_builder, &op_line, "op.4", /*offset_ps=*/40,
+               /*duration_ps=*/10);
+  XLineBuilder module_line = sc_plane_builder.GetOrCreateLine(1);
+  module_line.SetName(kSparseCoreModuleLineName);
+  CreateXEvent(&sc_plane_builder, &module_line, "module.1", /*offset_ps=*/5,
+               /*duration_ps=*/50);
+
+  XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(sc_plane);
+  DutyCycleTracker tracker = ConstructDutyCycleTracker(visitor);
+  EXPECT_EQ(tracker.GetActiveTimePs(), 40);
+  EXPECT_EQ(tracker.GetIdleTimePs(), 10);
+}
+
+TEST(ConvertXPlaneToOpStats, MultiCoreChipBusyAndIdleTimeTest) {
+  XSpace space;
+  CoreDetails tc_core_details;
+  tc_core_details.set_local_chip_id(0);
+  CoreDetails sc_core_details;
+  sc_core_details.set_local_chip_id(0);
+  XPlane* tc_plane = GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/0, /*device_type=*/"TPU v4",
+      /*peak_tera_flops_per_second=*/0,
+      /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder tc_plane_builder(tc_plane);
+  tc_plane_builder.AddStatValue(*tc_plane_builder.GetOrCreateStatMetadata(
+                                    GetStatTypeStr(StatType::kCoreDetails)),
+                                tc_core_details);
+  XLineBuilder xla_op_line = tc_plane_builder.GetOrCreateLine(0);
+  xla_op_line.SetName(kXlaOpLineName);
+  CreateXEvent(&tc_plane_builder, &xla_op_line, "op.1", /*offset_ps=*/10,
+               /*duration_ps=*/10,
+               {{StatType::kHloCategory, tsl::profiler::kHloInfeed}});
+  CreateXEvent(&tc_plane_builder, &xla_op_line, "op.2", /*offset_ps=*/20,
+               /*duration_ps=*/10,
+               {{StatType::kHloCategory, tsl::profiler::kHloCall}});
+  CreateXEvent(&tc_plane_builder, &xla_op_line, "op.3", /*offset_ps=*/30,
+               /*duration_ps=*/10);
+  CreateXEvent(&tc_plane_builder, &xla_op_line, "op.4", /*offset_ps=*/40,
+               /*duration_ps=*/10,
+               {{StatType::kHloCategory, tsl::profiler::kHloOutfeed}});
+
+  XPlane* sc_plane = GetOrCreateTpuXPlane(
+      &space, /*device_ordinal=*/1, /*device_type=*/"TPU v4",
+      /*peak_tera_flops_per_second=*/0,
+      /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder sc_plane_builder(sc_plane);
+  sc_plane_builder.AddStatValue(*sc_plane_builder.GetOrCreateStatMetadata(
+                                    GetStatTypeStr(StatType::kCoreDetails)),
+                                sc_core_details);
+  XLineBuilder sc_op_line = sc_plane_builder.GetOrCreateLine(0);
+  sc_op_line.SetName(kSparseCoreOpLineName);
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "op.1", /*offset_ps=*/10,
+               /*duration_ps=*/10);
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "op.2", /*offset_ps=*/20,
+               /*duration_ps=*/10);
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "op.3", /*offset_ps=*/30,
+               /*duration_ps=*/10);
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "op.4", /*offset_ps=*/40,
+               /*duration_ps=*/10);
+  XLineBuilder sc_module_line = sc_plane_builder.GetOrCreateLine(1);
+  sc_module_line.SetName(kSparseCoreModuleLineName);
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "module.1", /*offset_ps=*/5,
+               /*duration_ps=*/50);
+
+  OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
+  EXPECT_EQ(op_stats.device_op_metrics_db().idle_time_ps(), 10);
+  EXPECT_EQ(op_stats.device_op_metrics_db().busy_time_ps(), 40);
 }
 
 }  // namespace

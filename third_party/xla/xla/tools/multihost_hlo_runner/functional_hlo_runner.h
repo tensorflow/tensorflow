@@ -52,6 +52,15 @@ enum class InputFormat {
   kSnapshotProtoBinary,  // HloSnapshot protobuf binary format. Can be dumped by
                          // TensorFlow by setting the environment variable
                          // xla_dump_hlo_snapshots.
+  kUnoptimizedSnapshotProtoBinary,  // HloUnoptimizedSnapshot protobuf binary
+                                    // format. Can be dumped by
+                                    // setting the flag
+                                    // xla_dump_hlo_snapshots in conjunction
+                                    // with xla_dump_as_text.
+  kUnoptimizedSnapshotProtoText,    // HloUnoptimizedSnapshot protobuf text
+                                    // format. Can be dumped by TensorFlow by
+                                    // setting the flag xla_dump_hlo_snapshots
+                                    // in conjunction with xla_dump_as_text.
 };
 
 // Interface for profiler plugins. If being set in RunningOptions, profiling
@@ -223,7 +232,11 @@ class FunctionalHloRunner {
 
   struct HloModuleAndArguments {
     std::unique_ptr<HloModule> hlo_module;
-    std::vector<Literal> arguments;
+
+    // The outer `std::vector` represents the list of shards. The inner
+    // `std::vector<Literal>` represents a list of arguments for a single shard
+    // partition.
+    std::vector<std::vector<Literal>> arguments;
   };
 
   struct ReplicasAndPartitions {
@@ -324,6 +337,11 @@ class FunctionalHloRunner {
 
   static absl::StatusOr<HloModuleAndArguments>
   ReadModuleFromSnapshotBinaryProtoFile(absl::string_view hlo_file);
+  static absl::StatusOr<HloModuleAndArguments>
+  ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(absl::string_view hlo_file);
+  static absl::StatusOr<HloModuleAndArguments>
+  ReadModuleFromUnoptimizedSnapshotTextProtoFile(absl::string_view hlo_file);
+
   static absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
       absl::string_view hlo_file, InputFormat input_format);
 

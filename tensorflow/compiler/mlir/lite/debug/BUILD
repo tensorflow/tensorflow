@@ -24,6 +24,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
         "//tensorflow/core:portable_gif_internal",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",

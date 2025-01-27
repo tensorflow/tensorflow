@@ -35,6 +35,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -43,8 +45,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
-#include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -805,14 +805,9 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     // If a GEMM requiring padding for cuBLAS is encountered here this
     // happened because earlier ShouldTritonHandleGEMM() accepted it and padding
     // was skipped. Accept it ignoring profitability checks.
-    // TODO(rocm): check ROCM padding requirements.
-    if (std::holds_alternative<se::CudaComputeCapability>(gpu_version_)) {
-      if (!CublasRequiresPadding(
-              *Cast<HloDotInstruction>(dot),
-              std::get<se::CudaComputeCapability>(gpu_version_)) &&
-          !decision.WantToFuse()) {
-        return absl::OkStatus();
-      }
+    if (!CublasRequiresPadding(*Cast<HloDotInstruction>(dot), gpu_version_) &&
+        !decision.WantToFuse()) {
+      return absl::OkStatus();
     }
 
     HloComputation* computation =

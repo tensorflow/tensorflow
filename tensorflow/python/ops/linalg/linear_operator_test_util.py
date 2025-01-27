@@ -206,7 +206,7 @@ class LinearOperatorDerivedClassTest(test.TestCase, metaclass=abc.ABCMeta):
   def assertRaisesError(self, msg):
     """assertRaisesRegexp or OpError, depending on context.executing_eagerly."""
     if context.executing_eagerly():
-      return self.assertRaisesRegexp(Exception, msg)
+      return self.assertRaisesRegex(Exception, msg)
     return self.assertRaisesOpError(msg)
 
   def check_convert_variables_to_tensors(self, operator):

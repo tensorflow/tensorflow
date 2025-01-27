@@ -44,9 +44,9 @@ class Shape {
   Shape();
   ~Shape();
   Shape(const Shape&);
-  Shape(Shape&&);
+  Shape(Shape&&) noexcept;
   Shape& operator=(const Shape&);
-  Shape& operator=(Shape&&);
+  Shape& operator=(Shape&&) noexcept;
 
   // Construct a shape from a ShapeProto.
   explicit Shape(const ShapeProto& shape_proto);
@@ -257,8 +257,8 @@ class Shape {
 
     bool operator()(const Shape& lhs, const Shape& rhs);
 
-    Equal& IgnoreLayout() {
-      ignore_layout_ = true;
+    Equal& IgnoreLayout(bool ignore_layout = true) {
+      ignore_layout_ = ignore_layout;
       return *this;
     }
     Equal& IgnoreTilesInLayout() {

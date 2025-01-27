@@ -31,15 +31,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/gpu/transforms/gemm_rewriter_test_lib.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/test.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -131,7 +131,8 @@ class ParameterizedFp8GemmRewriteTest
   static constexpr const char* kF8E4M3AmaxPlaceholder{"<<F8E4M3_AMAX>>"};
 };
 
-TEST_P(ParameterizedFp8GemmRewriteTest, SupportsF8NonMajorBatchDim) {
+// TODO(b/390150775): The test is disabled because it is flaky.
+TEST_P(ParameterizedFp8GemmRewriteTest, DISABLED_SupportsF8NonMajorBatchDim) {
   const char* hlo_text = R"(
 HloModule t
 

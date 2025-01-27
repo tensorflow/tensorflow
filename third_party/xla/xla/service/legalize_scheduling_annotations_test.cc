@@ -110,10 +110,12 @@ TEST_F(LegalizeSchedulingAnnotationsTest, CrossComputationAnnotation) {
     gte0 = f32[16,64,256]{2,1,0} get-tuple-element(param), index=0
     gte1 = f32[16,64,256]{2,1,0} get-tuple-element(param), index=1
     gte2 = pred[] get-tuple-element(param), index=2
-    c0 = f32[16,256,256]{2,1,0} convolution(gte0, gte1), window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="1"}
-    slice = f32[16,64,256]{2,1,0} slice(c0), slice={[0:16], [0:64], [0:256]}
+    cps1 = (f32[16,64,256]{2,1,0}, f32[16,64,256]{2,1,0}, u32[], u32[]) collective-permute-start(gte1), source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, frontend_attributes={_scheduling_group_id="1"}
+    cpd1 = f32[16,64,256]{2,1,0} collective-permute-done(cps1), frontend_attributes={_scheduling_group_id="1"}
+    c1 = f32[16,256,256]{2,1,0} convolution(gte0, gte0), window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="1"}
+    slice = f32[16,64,256]{2,1,0} slice(c1), slice={[0:16], [0:64], [0:256]}
     add = f32[16,64,256]{2,1,0} add(gte0, slice)
-    ROOT tuple = (f32[16,64,256]{2,1,0}, f32[16,64,256]{2,1,0}, pred[]) tuple(add, gte1, gte2)
+    ROOT tuple = (f32[16,64,256]{2,1,0}, f32[16,64,256]{2,1,0}, pred[]) tuple(add, cpd1, gte2)
   }
 
   ENTRY entry {
@@ -121,18 +123,19 @@ TEST_F(LegalizeSchedulingAnnotationsTest, CrossComputationAnnotation) {
     p1 = f32[16,64,256]{2,1,0} parameter(1)
     p2 = f32[16,64,256]{2,1,0} parameter(2)
     p3 = pred[] parameter(3)
+    c0 = f32[16,256,256]{2,1,0} convolution(p1, p2), window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="1"}
     ags0 = (f32[256,1024]{1,0}, f32[1024,1024]{1,0}) all-gather-start(p0), replica_groups={{0,1,2,3}}, dimensions={0}, frontend_attributes={_scheduling_group_id="1"}
     tuple = (f32[16,64,256]{2,1,0}, f32[16,64,256]{2,1,0}, pred[]) tuple(p1, p2, p3)
     while = (f32[16,64,256]{2,1,0}, f32[16,64,256]{2,1,0}, pred[]) while(tuple), condition=while_cond, body=while_body
     agd0 = f32[1024,1024]{1,0} all-gather-done(ags0), frontend_attributes={_scheduling_group_id="1"}
     gte = f32[16,64,256]{2,1,0} get-tuple-element(while), index=0
-    ROOT tuple1 = (f32[16,64,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(gte, agd0)
+    ROOT tuple1 = (f32[16,64,256]{2,1,0}, f32[16,256,256]{2,1,0}, f32[1024,1024]{1,0}) tuple(gte, c0, agd0)
   }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
   LegalizeSchedulingAnnotations::Config config;
-  EXPECT_IS_NOT_OK(
+  EXPECT_IS_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
 }
 

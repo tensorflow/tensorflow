@@ -915,11 +915,23 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 57) {
       add_field("PJRT_Buffer_CopyRawToHost", kFnPtrSize);
     }
-    if (minor_version >= 58) {
+    if (minor_version >= 60) {
       add_field("PJRT_AsyncHostToDeviceTransferManager_Destroy", kFnPtrSize);
       add_field("PJRT_AsyncHostToDeviceTransferManager_TransferData",
                 kFnPtrSize);
       add_field("PJRT_Client_CreateBuffersForAsyncHostToDevice", kFnPtrSize);
+    }
+    if (minor_version >= 62) {
+      add_field("PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer",
+                kFnPtrSize);
+      add_field("PJRT_AsyncHostToDeviceTransferManager_Device", kFnPtrSize);
+      add_field("PJRT_AsyncHostToDeviceTransferManager_BufferCount",
+                kFnPtrSize);
+      add_field("PJRT_AsyncHostToDeviceTransferManager_BufferSize", kFnPtrSize);
+      add_field("PJRT_AsyncHostToDeviceTransferManager_SetBufferError",
+                kFnPtrSize);
+      add_field("PJRT_AsyncHostToDeviceTransferManager_AddMetadata",
+                kFnPtrSize);
     }
     return version_offsets_and_sizes;
   }
@@ -1260,6 +1272,34 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_Client_CreateBuffersForAsyncHostToDevice",
            {offsetof(PJRT_Api, PJRT_Client_CreateBuffersForAsyncHostToDevice),
             sizeof(PJRT_Api::PJRT_Client_CreateBuffersForAsyncHostToDevice)}},
+          {"PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer",
+           {offsetof(PJRT_Api,
+                     PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer),
+            sizeof(PJRT_Api::
+                       PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer)}},
+          {"PJRT_AsyncHostToDeviceTransferManager_Device",
+           {offsetof(PJRT_Api, PJRT_AsyncHostToDeviceTransferManager_Device),
+            sizeof(PJRT_Api::PJRT_AsyncHostToDeviceTransferManager_Device)}},
+          {"PJRT_AsyncHostToDeviceTransferManager_BufferCount",
+           {offsetof(PJRT_Api,
+                     PJRT_AsyncHostToDeviceTransferManager_BufferCount),
+            sizeof(
+                PJRT_Api::PJRT_AsyncHostToDeviceTransferManager_BufferCount)}},
+          {"PJRT_AsyncHostToDeviceTransferManager_BufferSize",
+           {offsetof(PJRT_Api,
+                     PJRT_AsyncHostToDeviceTransferManager_BufferSize),
+            sizeof(
+                PJRT_Api::PJRT_AsyncHostToDeviceTransferManager_BufferSize)}},
+          {"PJRT_AsyncHostToDeviceTransferManager_SetBufferError",
+           {offsetof(PJRT_Api,
+                     PJRT_AsyncHostToDeviceTransferManager_SetBufferError),
+            sizeof(PJRT_Api::
+                       PJRT_AsyncHostToDeviceTransferManager_SetBufferError)}},
+          {"PJRT_AsyncHostToDeviceTransferManager_AddMetadata",
+           {offsetof(PJRT_Api,
+                     PJRT_AsyncHostToDeviceTransferManager_AddMetadata),
+            sizeof(
+                PJRT_Api::PJRT_AsyncHostToDeviceTransferManager_AddMetadata)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

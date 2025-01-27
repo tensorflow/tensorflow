@@ -88,3 +88,21 @@ cc_library(
         "@opencl_headers",
     ],
 )
+
+cc_test(
+    name = "buffer_test",
+    srcs = ["buffer_test.cc"],
+    # require GPU to run OpenCL tests.
+    tags = [
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":buffer",
+        ":cl_command_queue",
+        ":cl_context",
+        ":cl_device",
+        ":opencl_wrapper",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

@@ -263,7 +263,7 @@ class DilationTest(test.TestCase, parameterized.TestCase):
     if use_gpu and test.is_gpu_available(cuda_only=True):
       try:
         config.enable_op_determinism()
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             errors_impl.UnimplementedError, "Determinism is not yet supported "
             "for Dilation2DBackpropInput."):
           self._ConstructAndTestGradient(

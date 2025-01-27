@@ -158,6 +158,7 @@ CUDA_NCCL_WHEELS = {
     "12.6.0": CUDA_12_NCCL_WHEEL_DICT,
     "12.6.1": CUDA_12_NCCL_WHEEL_DICT,
     "12.6.2": CUDA_12_NCCL_WHEEL_DICT,
+    "12.6.3": CUDA_12_NCCL_WHEEL_DICT,
 }
 
 REDIST_VERSIONS_TO_BUILD_TEMPLATES = {
@@ -168,6 +169,8 @@ REDIST_VERSIONS_TO_BUILD_TEMPLATES = {
             "555": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
             "550": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
             "545": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
+            "530": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
+            "520": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
         },
     },
     "cuda_nccl": {

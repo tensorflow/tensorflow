@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/replicated_spmd_expander.h"
 
-#include <algorithm>
 #include <vector>
 
 #include "llvm/ADT/DenseMap.h"

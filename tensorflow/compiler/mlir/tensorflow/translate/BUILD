@@ -16,7 +16,6 @@ cc_library(
     ],
     deps = [
         ":mlir_roundtrip_flags",
-        ":upgrade_graph",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:loader_lite",
@@ -36,7 +35,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:graph_to_tf_executor",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow",
-        "//tensorflow/compiler/tf2xla:tf2xla_defs",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -98,17 +96,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:types",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
-        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -133,8 +123,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
+        "//tensorflow/compiler/mlir/tensorflow/translate/tools:parsers",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:graph_to_tf_executor",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:ops",
@@ -153,20 +145,5 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
-    name = "upgrade_graph",
-    srcs = ["upgrade_graph.cc"],
-    hdrs = ["upgrade_graph.h"],
-    deps = [
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
     ],
 )

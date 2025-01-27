@@ -814,6 +814,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tensorflow:shape_inference_utils",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
+        "//tensorflow/compiler/mlir/tensorflow/translate/tools:parsers",
         "//tensorflow/compiler/tf2xla/kernels:xla_call_module_loader",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

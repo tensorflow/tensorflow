@@ -57,7 +57,7 @@ tsl_cc_test(
         ":histogram",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:histogram_proto_cc",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -534,6 +534,11 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateBarrierNode(
 
 absl::Status CudaCommandBuffer::Trace(
     Stream* stream, absl::AnyInvocable<absl::Status()> function) {
+#if CUDA_VERSION < 12030
+  return absl::UnimplementedError(
+      "StreamBeginCaptureToGraph is not implemented for CUDA below version "
+      "12.3. Therefore tracing is not supported.");
+#else
   if (parent_->GetDeviceDescription().driver_version() <
       SemanticVersion{12, 3, 0}) {
     return absl::UnimplementedError(
@@ -577,6 +582,7 @@ absl::Status CudaCommandBuffer::Trace(
           << (end_nanos - start_nanos) / 1000 << " μs)";
 
   return absl::OkStatus();
+#endif
 }
 
 absl::Status CudaCommandBuffer::SetNodeExecutionEnabled(

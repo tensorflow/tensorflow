@@ -542,7 +542,6 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
                                   DEPTHWISE_CONV_OP op, int num_threads,
                                   int stride, Padding padding, bool use_gpu,
                                   const string& label) {
-  return;
   if (!IsGoogleCudaEnabled() && use_gpu) {
     state.SkipWithError(
         strings::StrCat("Skipping GPU test (no --config=cuda): ", label)

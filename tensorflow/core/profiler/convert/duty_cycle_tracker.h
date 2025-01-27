@@ -28,8 +28,7 @@ namespace profiler {
 // Disjoint intervals of time in ps for which this core was active.
 class DutyCycleTracker {
  public:
-  explicit DutyCycleTracker() : active_time_spans_() {}
-  ~DutyCycleTracker() = default;
+  DutyCycleTracker() : active_time_spans_() {}
   void AddInterval(tsl::profiler::Timespan time_span, bool is_active);
   void Union(const DutyCycleTracker& other);
   uint64_t GetActiveTimePs() const;

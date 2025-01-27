@@ -214,38 +214,30 @@ LiteRtStatus UnpackSignatures(std::vector<TflSignaturePtr>& tfl_signatures,
     auto& tfl_inputs = tfl_signature->inputs;
     auto& tfl_outputs = tfl_signature->outputs;
 
-#ifndef NDEBUG
-    // Tflite signatures map a tensor index to a name. We just assume
-    // that the indexes are exactly those of the subgraph inputs. Check
-    // this in debug mode.
+    // Tflite signatures map a tensor index to a name. The input & output
+    // indexes of signatures and subgraph are not matched, but the nubmer of
+    // inputs and outputs should be the same.
     if (tfl_inputs.size() != litert_subgraph->Inputs().size() ||
         tfl_outputs.size() != litert_subgraph->Outputs().size()) {
       LITERT_LOG(LITERT_ERROR,
                  "Signature has incorrect number of input/outputs");
     }
 
+    // The tensor names may not be matched between signature and subgraph.
+    // Update the tensor names with the signature names since the signature
+    // names are used for LiteRT APIs.
     for (auto i = 0; i < tfl_inputs.size(); ++i) {
       const auto& tfl_input = tfl_inputs.at(i);
-      const auto* litert_input = litert_subgraph->Inputs().at(i);
-      const auto* index_litert_input =
+      auto* index_litert_input =
           litert_subgraph->Tensors().at(tfl_input->tensor_index);
-      if (litert_input != index_litert_input) {
-        LITERT_LOG(LITERT_ERROR,
-                   "Signature inputs reference tensors not in subgraph i/o");
-      }
+      index_litert_input->SetName(tfl_input->name);
     }
-
     for (auto i = 0; i < tfl_outputs.size(); ++i) {
       const auto& tfl_output = tfl_outputs.at(i);
-      const auto* litert_output = litert_subgraph->Outputs().at(i);
-      const auto* index_litert_output =
+      auto* index_litert_output =
           litert_subgraph->Tensors().at(tfl_output->tensor_index);
-      if (litert_output != index_litert_output) {
-        LITERT_LOG(LITERT_ERROR,
-                   "Signature outputs reference tensors not in subgraph i/o");
-      }
+      index_litert_output->SetName(tfl_output->name);
     }
-#endif
 
     auto get_name = [](const auto& tfl_tensor) { return tfl_tensor->name; };
 

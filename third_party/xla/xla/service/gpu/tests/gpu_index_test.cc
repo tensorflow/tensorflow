@@ -108,7 +108,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
                      R"(
 ; CHECK: %[[urem1:.*]] = urem i{{[0-9]*}} %[[linear_index:.*]], 14
 ; CHECK: %[[idx1:.*]] = zext nneg i{{[0-9]*}} %[[urem1]] to i64
-; CHECK: getelementptr inbounds float, ptr{{( addrspace\(1\))?}} %[[alloc:.*]], i64 %[[idx1]]
+; CHECK: getelementptr inbounds{{( nuw)?}} float, ptr{{( addrspace\(1\))?}} %[[alloc:.*]], i64 %[[idx1]]
       )",
                      /*match_optimized_ir=*/true);
 }

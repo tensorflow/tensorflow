@@ -27,6 +27,7 @@
 #include "tensorflow/lite/experimental/litert/runtime/event.h"
 #include "tensorflow/lite/experimental/litert/runtime/fastrpc_buffer.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/runtime/ion_buffer.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
 
 namespace {
 constexpr const float kTensorData[] = {10, 20, 30, 40};
@@ -330,6 +331,63 @@ TEST(TensorBuffer, Event) {
   ASSERT_EQ(LiteRtHasTensorBufferEvent(tensor_buffer, &has_event),
             kLiteRtStatusOk);
   EXPECT_FALSE(has_event);
+
+  LiteRtDestroyTensorBuffer(tensor_buffer);
+}
+
+TEST(TensorBuffer, OpenCL) {
+// MSAN does not support GPU tests.
+#if defined(MEMORY_SANITIZER)
+  GTEST_SKIP() << "GPU tests are not supported In msan";
+#endif
+
+  if (!litert::internal::OpenClBuffer::IsSupported()) {
+    GTEST_SKIP() << "OpenCL buffers are not supported on this platform; "
+                    "skipping the test";
+  }
+
+  constexpr auto kTensorBufferType = kLiteRtTensorBufferTypeOpenCl;
+
+  LiteRtTensorBuffer tensor_buffer;
+  ASSERT_EQ(
+      LiteRtCreateManagedTensorBuffer(kTensorBufferType, &kTensorType,
+                                      sizeof(kTensorData), &tensor_buffer),
+      kLiteRtStatusOk);
+
+  LiteRtTensorBufferType buffer_type;
+  ASSERT_EQ(LiteRtGetTensorBufferType(tensor_buffer, &buffer_type),
+            kLiteRtStatusOk);
+  ASSERT_EQ(buffer_type, kTensorBufferType);
+
+  LiteRtRankedTensorType tensor_type;
+  ASSERT_EQ(LiteRtGetTensorBufferTensorType(tensor_buffer, &tensor_type),
+            kLiteRtStatusOk);
+  ASSERT_EQ(tensor_type.element_type, kLiteRtElementTypeFloat32);
+  ASSERT_EQ(tensor_type.layout.rank, 1);
+  ASSERT_EQ(tensor_type.layout.dimensions[0], kTensorType.layout.dimensions[0]);
+  ASSERT_EQ(tensor_type.layout.strides, nullptr);
+
+  size_t size;
+  ASSERT_EQ(LiteRtGetTensorBufferSize(tensor_buffer, &size), kLiteRtStatusOk);
+  ASSERT_EQ(size, sizeof(kTensorData));
+
+  size_t offset;
+  ASSERT_EQ(LiteRtGetTensorBufferOffset(tensor_buffer, &offset),
+            kLiteRtStatusOk);
+  ASSERT_EQ(offset, 0);
+
+  void* host_mem_addr;
+  ASSERT_EQ(
+      LiteRtLockTensorBuffer(tensor_buffer, &host_mem_addr, /*event=*/nullptr),
+      kLiteRtStatusOk);
+  std::memcpy(host_mem_addr, kTensorData, sizeof(kTensorData));
+  ASSERT_EQ(LiteRtUnlockTensorBuffer(tensor_buffer), kLiteRtStatusOk);
+
+  ASSERT_EQ(
+      LiteRtLockTensorBuffer(tensor_buffer, &host_mem_addr, /*event=*/nullptr),
+      kLiteRtStatusOk);
+  ASSERT_EQ(std::memcmp(host_mem_addr, kTensorData, sizeof(kTensorData)), 0);
+  ASSERT_EQ(LiteRtUnlockTensorBuffer(tensor_buffer), kLiteRtStatusOk);
 
   LiteRtDestroyTensorBuffer(tensor_buffer);
 }

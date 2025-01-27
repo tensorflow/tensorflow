@@ -30,12 +30,11 @@ limitations under the License.
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/backends/cpu/codegen/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
-#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/testlib/kernel_runner.h"
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_emitter.h"
-#include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -70,9 +69,6 @@ NB_MODULE(_extension, kernel_runner_module) {
   // We depend on the base classes so must import them before python tries to
   // register the derived versions.
   ImportBaseClasses(kernel_runner_module);
-
-  nb::class_<LlvmIrKernelSpec, KernelSpec> kernel_spec(kernel_runner_module,
-                                                       "LlvmIrKernelSpec");
 
   // Use a tuple and cast to ThreadDim to take advantage of built in bindings.
   using NbThreadDim = std::tuple<uint64_t, uint64_t, uint64_t>;
@@ -150,27 +146,19 @@ NB_MODULE(_extension, kernel_runner_module) {
                                               "KernelRunner")
       .def_static(
           "create",
-          [](std::unique_ptr<LlvmIrKernelSpec> kernel_spec,
-             std::unique_ptr<JitCompiler> jit_compiler) {
+          [](std::unique_ptr<KernelDefinition, nb::deleter<KernelDefinition>>
+                 kernel_definition,
+             std::unique_ptr<JitCompiler, nb::deleter<JitCompiler>>
+                 jit_compiler) {
             absl::StatusOr<KernelRunner> runner = KernelRunner::Create(
-                std::move(*kernel_spec), std::move(*jit_compiler));
+                std::move(*kernel_definition), std::move(*jit_compiler));
 
             if (!runner.ok()) {
               throw std::runtime_error(std::string(runner.status().message()));
             }
 
             return std::move(runner).value();
-          })
-      .def_static("create", [](std::unique_ptr<LlvmIrKernelSpec> kernel_spec) {
-        absl::StatusOr<KernelRunner> runner =
-            KernelRunner::Create(std::move(kernel_spec));
-
-        if (!runner.ok()) {
-          throw std::runtime_error(std::string(runner.status().message()));
-        }
-
-        return std::move(runner).value();
-      });
+          });
 }
 
 }  // namespace xla::cpu

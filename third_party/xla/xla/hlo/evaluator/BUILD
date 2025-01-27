@@ -37,6 +37,7 @@ cc_library(
         "hlo_evaluator_typed_visitor_int4.cc",
         "hlo_evaluator_typed_visitor_int64.cc",
         "hlo_evaluator_typed_visitor_int8.cc",
+        "hlo_evaluator_typed_visitor_mxfloat.cc",
         "hlo_evaluator_typed_visitor_uint16.cc",
         "hlo_evaluator_typed_visitor_uint32.cc",
         "hlo_evaluator_typed_visitor_uint64.cc",
@@ -113,7 +114,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test_main",  # fixdeps: keep
     ],
 )
 
@@ -132,14 +132,15 @@ xla_cc_test(
         "//xla:literal_util",
         "//xla:permutation_util",
         "//xla:shape_util",
-        "//xla:test",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:tuple_points_to_analysis",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
         "//xla/hlo/transforms/simplifiers:hlo_element_type_converter",
         "//xla/service:call_graph",
         "//xla/service:dynamic_dimension_inference",
@@ -156,10 +157,10 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",  # fixdeps: keep
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",  # fixdeps: keep
     ],
 )

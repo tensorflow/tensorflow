@@ -664,7 +664,7 @@ ENTRY entry_computation {
 
   const HloInstruction* all_reduce =
       module->entry_computation()->root_instruction()->operand(0);
-  EXPECT_EQ(analysis_.output_bytes_accessed(*all_reduce), 4096 * 4);
+  EXPECT_EQ(analysis_.BytesTransferred(*all_reduce), 4096 * 4);
 }
 
 TEST_F(GpuHloCostAnalysisTest, AllGather) {
@@ -683,7 +683,7 @@ ENTRY entry_computation {
 
   const HloInstruction* all_gather =
       module->entry_computation()->root_instruction();
-  EXPECT_EQ(analysis_.output_bytes_accessed(*all_gather), 4096 * 4);
+  EXPECT_EQ(analysis_.BytesTransferred(*all_gather), 4096 * 4);
 }
 
 TEST_F(GpuHloCostAnalysisTest, AsyncAllGather) {
@@ -706,7 +706,7 @@ ENTRY entry_computation {
   const HloInstruction* all_gather =
       module->entry_computation()->root_instruction()->operand(0);
   // Output is (f32[4096], f32[2048]).
-  EXPECT_EQ(analysis_.output_bytes_accessed(*all_gather), 4096 * 4 + 2048 * 4);
+  EXPECT_EQ(analysis_.BytesTransferred(*all_gather), 4096 * 4 + 2048 * 4);
 }
 
 TEST_F(GpuHloCostAnalysisTest, ReduceScatter) {
@@ -731,7 +731,7 @@ ENTRY entry_computation {
 
   const HloInstruction* reduce_scatter =
       module->entry_computation()->root_instruction();
-  EXPECT_EQ(analysis_.output_bytes_accessed(*reduce_scatter), 4096 * 4);
+  EXPECT_EQ(analysis_.BytesTransferred(*reduce_scatter), 4096 * 4);
 }
 
 TEST_F(GpuHloCostAnalysisTest, AsyncReduceScatter) {
@@ -767,8 +767,7 @@ ENTRY entry_computation {
   const HloInstruction* reduce_scatter =
       module->entry_computation()->root_instruction()->operand(0);
   // Output is (f32[1024],f32[512]).
-  EXPECT_EQ(analysis_.output_bytes_accessed(*reduce_scatter),
-            4096 * 4 + 2048 * 4);
+  EXPECT_EQ(analysis_.BytesTransferred(*reduce_scatter), 4096 * 4 + 2048 * 4);
 }
 
 TEST_F(GpuHloCostAnalysisTest, CustomOpProfileIsUsed) {

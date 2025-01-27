@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/io_op_spmd_expander.h"
 
 #include <algorithm>
+#include <vector>
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"

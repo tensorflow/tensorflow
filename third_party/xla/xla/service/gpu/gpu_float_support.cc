@@ -20,13 +20,13 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/float_support.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 

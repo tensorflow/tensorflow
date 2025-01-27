@@ -949,19 +949,6 @@ class PjRtClient {
     return Unimplemented("BufferFromHostLiteral is not implemented.");
   }
 
-  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device,
-      const Layout* device_layout) {
-    if (device_layout) {
-      return absl::UnimplementedError(absl::StrCat(
-          "BufferFromHostLiteral with device_layout is not implemented on "
-          "platform: ",
-          platform_name()));
-    }
-
-    return this->BufferFromHostLiteral(literal, device);
-  }
-
   // TODO(b/277820585): remove BufferFromHostLiteral with PjRtDevice after the
   // migration is done.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
@@ -1081,6 +1068,19 @@ class PjRtClient {
   virtual PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager()
       const {
     return host_memory_for_device_manager_.get();
+  }
+
+  // Experimental: Maps memory for fast transfers. May have backend specific
+  // alignment requirements (most backends will require at least a page).
+  virtual absl::Status DmaMap(void* data, size_t size) {
+    return Unimplemented("DmaMap not supported on platform %s",
+                         platform_name());
+  }
+
+  // Experimental: Unmaps memory for fast transfers.
+  virtual absl::Status DmaUnmap(void* data) {
+    return Unimplemented("DmaUnmap not supported on platform %s",
+                         platform_name());
   }
 
  private:

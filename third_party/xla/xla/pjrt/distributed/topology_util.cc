@@ -16,8 +16,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/topology_util.h"
 
 #include <algorithm>
-#include <cstdint>
-#include <cstdio>
 #include <fstream>
 #include <map>
 #include <set>
@@ -37,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
@@ -213,15 +212,13 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
   const std::string serialized_local_topology =
       local_topology.SerializeAsString();
 
-  absl::StatusOr<std::string> existing_local_topology =
-      kv_store->TryGet(local_topology_key);
-  printf("existing_local_topology status: %s\n",
-         existing_local_topology.status().ToString().c_str());
-
-  if (existing_local_topology.ok()) {
-    printf("existing topology found");
+  auto status = kv_store->Set(GetLocalTopologyKey(platform, node_id),
+                              serialized_local_topology);
+  if (absl::IsAlreadyExists(status)) {
     // Local topology has been set previously from the same node before
     // restart.
+    absl::StatusOr<std::string> existing_local_topology =
+        kv_store->TryGet(local_topology_key);
     LocalTopologyProto existing_local_topology_proto;
     existing_local_topology_proto.ParseFromString(*existing_local_topology);
     if (!SameLocalTopology(existing_local_topology_proto, local_topology)) {
@@ -231,11 +228,8 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
           node_id, existing_local_topology_proto.DebugString(),
           local_topology.DebugString()));
     }
-  } else if (absl::IsNotFound(existing_local_topology.status())) {
-    TF_RETURN_IF_ERROR(kv_store->Set(GetLocalTopologyKey(platform, node_id),
-                                     serialized_local_topology));
-  } else {
-    return existing_local_topology.status();
+  } else if (!status.ok()) {
+    return status;
   }
 
   // The lead node gets all local topologies, builds the global topology and

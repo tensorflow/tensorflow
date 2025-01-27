@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/softmax_spmd_expander.h"
 
+#include <cassert>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>

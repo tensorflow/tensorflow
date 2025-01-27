@@ -28,10 +28,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -39,7 +39,7 @@ namespace {
 namespace op = ::xla::testing::opcode_matchers;
 using ::testing::HasSubstr;
 
-class CollectiveSelectFolderTest : public HloTestBase {
+class CollectiveSelectFolderTest : public HloHardwareIndependentTestBase {
  public:
   absl::Status ExpectNoTranform(absl::string_view hlo_template) {
     return RunAndCheckHloRewrite(hlo_template, CollectiveSelectFolder(),

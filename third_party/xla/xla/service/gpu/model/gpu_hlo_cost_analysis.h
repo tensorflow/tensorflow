@@ -62,6 +62,7 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
 
   float ScalingRatio(const HloInstruction& hlo) const;
   int64_t NumOfDevices(const HloInstruction& hlo) const;
+  float BytesTransferred(const HloInstruction& hlo) const;
 
   absl::Status HandleCustomCall(const HloInstruction* call) override;
 

@@ -161,6 +161,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
   opts.set_xla_gpu_enable_nccl_per_stream_comms(false);
+  opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(128);
 
   opts.set_xla_gpu_temp_buffer_use_separate_color(false);
   opts.set_xla_gpu_require_exclusive_lock(false);
@@ -178,6 +179,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   sol_estimator_defaults->emplace(
       "nccl_op_launch_us",
       absl::StrCat(static_cast<int>(100.0f * kDefaultNcclCostModelCoeff)));
+  // GBytes per second = 10^9 bytes per second
   sol_estimator_defaults->emplace(
       "nic_speed_gbps",
       absl::StrCat(static_cast<int>(55.56f * kDefaultNcclCostModelCoeff)));
@@ -232,7 +234,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
   opts.set_xla_gpu_experimental_enable_triton_heroless_priority_fusion(false);
-  opts.set_xla_gpu_experimental_enable_triton_i4_rewrites(false);
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
@@ -274,7 +275,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_bf16_3way_gemm(false);
   opts.set_xla_gpu_nccl_collective_max_nchannels(0);
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
-  opts.set_xla_gpu_multi_streamed_windowed_einsum(false);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
 
   opts.set_xla_gpu_experimental_stream_annotation(false);
   // Minimum combined size of matrices in matrix multiplication to
@@ -323,6 +324,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
   opts.set_xla_gpu_enable_scatter_determinism_expander(true);
   opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(false);
+  opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
+  opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   return opts;
 }
 
@@ -1539,6 +1542,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "NCCL collectives are issued concurrently at the cost of more GPU memory"
       " usage."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_nccl_init_max_rank_per_root_ratio",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_nccl_init_max_rank_per_root_ratio),
+      debug_options->xla_gpu_nccl_init_max_rank_per_root_ratio(),
+      "Maximum number of ranks associated with a root rank to initialize a "
+      "NCCL communicator via ncclCommInitRankScalable. "
+      "A value of zero will lead to a single root."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_redzone_scratch_max_megabytes",
       int64_setter_for(
           &DebugOptions::set_xla_gpu_redzone_scratch_max_megabytes),
@@ -1632,8 +1643,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "estimator precision; comma-separated list of 'key=val' "
       "strings (=val may be omitted); no whitespace around commas."
       "Available options: "
-      "--xla_gpu_analytical_latency_estimator_options='nccl_op_launch_ms=55,"
-      "nic_speed_gbps=40,chunk_prep_ms=1,rtt_ms=2,gpus_per_node=4,"
+      "--xla_gpu_analytical_latency_estimator_options='nccl_op_launch_us=55,"
+      "nic_speed_gbps=40,chunk_prep_us=1,rtt_us=2,gpus_per_node=4,"
       "chunk_size_bytes=1024'"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_pgle_profile_file_or_directory_path",
@@ -1722,9 +1733,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_gemm),
                 debug_options->xla_gpu_enable_triton_gemm(),
                 "Use Triton-based matrix multiplication."));
-  flag_list->push_back(tsl::Flag("xla_gpu_enable_triton_softmax_fusion",
-                                 noop_flag_setter<bool>, false,
-                                 "[Deprecated, do not use]"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_verify_triton_fusion_numerics",
       bool_setter_for(&DebugOptions::set_xla_gpu_verify_triton_fusion_numerics),
@@ -2117,14 +2125,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   flag_list->push_back(tsl::Flag("xla_gpu_enable_triton_gemm_int4",
                                  noop_flag_setter<bool>, true,
                                  "[Deprecated, do not use]"));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_triton_i4_rewrites",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_experimental_enable_triton_i4_rewrites),
-      debug_options->xla_gpu_experimental_enable_triton_i4_rewrites(),
-      "When enabled, the Triton emitter for dot will use int4 as native type "
-      "and later the Triton IR will be rewritten by Triton IR rewriting pass "
-      "to use int4 packed into int8."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_async_dot",
                 bool_setter_for(&DebugOptions::set_xla_gpu_async_dot),
@@ -2181,6 +2181,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_enable_fast_math),
                 debug_options->xla_enable_fast_math(),
                 "Enable optimizations that assume finite math, i.e., no NaN."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_experimental_stream_annotation",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_experimental_stream_annotation),
+                debug_options->xla_gpu_experimental_stream_annotation(),
+                "Enable the experimental explicit stream annotation support. "
+                "If false, the annotations are ignored."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_parallel_collective_overlap_limit",
       int32_setter_for(
@@ -2223,7 +2230,22 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enable windowed einsum rewrite for all-to-all+gemm pattern, "
       "This optimization slices the all-to-all into smaller all-to-alls."
       "It is an experimental feature."));
-}  // NOLINT(readability/fn_size)
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_pack_dot_operands_along_k_dimension",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_pack_dot_operands_along_k_dimension),
+      debug_options->xla_gpu_experimental_pack_dot_operands_along_k_dimension(),
+      "For sub-byte dot operands, layout them along contracting dimensions."));
+  flag_list->push_back(tsl::Flag(
+      "xla_unsupported_crash_on_hlo_pass_fix_max_iterations",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations),
+      debug_options->xla_unsupported_crash_on_hlo_pass_fix_max_iterations(),
+      "Crash if HloPassFix can not converge after a fixed number of "
+      "iterations."));
+}  // NOLINT(readability/fn_size)1
 
 // Allocates flag_values and flag_objects; this function must not be called more
 // than once - its call done via call_once.

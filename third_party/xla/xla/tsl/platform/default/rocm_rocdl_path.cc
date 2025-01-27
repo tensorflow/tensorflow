@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/platform/rocm_rocdl_path.h"
+#include "xla/tsl/platform/rocm_rocdl_path.h"
 
 #include <stdlib.h>
 

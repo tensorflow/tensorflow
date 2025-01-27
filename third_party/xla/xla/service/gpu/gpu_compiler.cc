@@ -60,6 +60,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -157,7 +158,6 @@ limitations under the License.
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/fusion_dispatch_pipeline.h"
 #include "xla/service/gpu/fusion_pipeline.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/gpu_collective_combiner_utils.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_float_support.h"
@@ -191,9 +191,9 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
 #include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 #include "xla/service/gpu/transforms/collective_select_folder.h"
+#include "xla/service/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/transforms/command_buffer_scheduling.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
-#include "xla/service/gpu/transforms/convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
@@ -202,6 +202,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
+#include "xla/service/gpu/transforms/explicit_stream_annotation_async_wrapper.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 #include "xla/service/gpu/transforms/gemm_broadcast_folding_rewriter.h"
 #include "xla/service/gpu/transforms/gemm_fusion.h"
@@ -221,7 +222,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/sanitize_constant_names.h"
 #include "xla/service/gpu/transforms/scatter_expander.h"
 #include "xla/service/gpu/transforms/scatter_slice_simplifier.h"
-#include "xla/service/gpu/transforms/simplify_int4_dots.h"
 #include "xla/service/gpu/transforms/softmax_rewriter_triton.h"
 #include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/service/gpu/transforms/stream_attribute_annotator.h"
@@ -262,6 +262,10 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -820,7 +824,6 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<ConditionalSimplifier>();
     pipeline.AddPass<RealImagExpander>();
-    pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
   }();
@@ -834,6 +837,7 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<ConvertMover>();
     pipeline.AddPass<GpuAlgebraicSimplifier>(layout_insensitive_algsimp_opts,
                                              gpu_version);
+    pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
   }();
 
   pipeline.AddPass<HloComputationDeduplicator>(
@@ -1216,7 +1220,11 @@ absl::Status RunPostFusionSimplificationPasses(
         gpu_target_config.device_description);
     pipeline.AddPass<StreamAttributeAsyncWrapper>();
   }
-
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_stream_annotation()) {
+    pipeline.AddPass<ExplicitStreamAnnotationAsyncWrapper>();
+  }
   return pipeline.Run(hlo_module).status();
 }
 
@@ -1479,6 +1487,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   const GpuFloatSupport f8e3m4_support(gpu_version, F8E3M4, F16);
   const GpuFloatSupport s4_support(gpu_version, S4, S8);
   const GpuFloatSupport u4_support(gpu_version, U4, U8);
+  const GpuFloatSupport f4e2m1fn_support(gpu_version, F4E2M1FN, F16);
+  const GpuFloatSupport f8e8m0fnu_support(gpu_version, F8E8M0FNU, F32);
   auto add_float_normalization = [&](HloPassPipeline& pipeline) {
     auto& sub_pipeline =
         pipeline.AddPass<HloPassPipeline>("float_normalization");
@@ -1492,6 +1502,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     sub_pipeline.AddPass<FloatNormalization>(&f8e3m4_support);
     sub_pipeline.AddPass<FloatNormalization>(&s4_support);
     sub_pipeline.AddPass<FloatNormalization>(&u4_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f4e2m1fn_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e8m0fnu_support);
     // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
     if (debug_options.xla_allow_excess_precision()) {
       sub_pipeline.AddPass<SimplifyFPConversions>();
@@ -1547,7 +1559,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       pipeline.AddPass<GemvRewriter>();
       pipeline.AddPass<GemmFusion>(gpu_version);
       pipeline.AddPass<GemmFusionSwapOperands>();
-      pipeline.AddPass<SimplifyInt4Dots>();
     } else if (cuda_cc != nullptr &&
                cuda_cc->major == se::CudaComputeCapability::VOLTA) {
       // Greedy pattern matching for custom kernel fusions.

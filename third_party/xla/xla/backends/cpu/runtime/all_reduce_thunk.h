@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -33,6 +33,9 @@ class AllReduceThunk final : public CollectiveThunk {
       OpBuffers op_buffers, OpResources op_resources, bool single_replica);
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
+
+  ReductionKind reduction_kind() const { return reduction_kind_; }
+  bool single_replica() const { return single_replica_; }
 
  private:
   AllReduceThunk(Info info, ReductionKind reduction_kind, OpParams op_params,

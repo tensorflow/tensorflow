@@ -859,10 +859,11 @@ class CountDownAsyncValueRef {
             MakeConstructedAsyncValueRef<T>(std::forward<Args>(args)...), cnt) {
   }
 
-  // Drops the count by one and returns true if async value became available.
-  bool CountDown(const absl::Status& status = absl::OkStatus()) {
+  // Drops the count by `count` and returns true if async value became
+  // available.
+  bool CountDown(size_t count, const absl::Status& status = absl::OkStatus()) {
     DCHECK(state_->ref.IsUnavailable()) << "AsyncValue must be unavailable";
-    DCHECK_GT(state_->cnt.load(), 0) << "Count must be positive";
+    DCHECK_GE(state_->cnt.load(), count) << "Invalid count down value";
 
     if (ABSL_PREDICT_FALSE(!status.ok())) {
       absl::MutexLock lock(&state_->mutex);
@@ -884,7 +885,8 @@ class CountDownAsyncValueRef {
     // 2. It is also a release barrier because all prior writes in the thread
     //    should be visible to other threads after the fetch_sub -- otherwise
     //    other threads might not see updated values.
-    bool is_complete = state_->cnt.fetch_sub(1, std::memory_order_acq_rel) == 1;
+    bool is_complete =
+        state_->cnt.fetch_sub(count, std::memory_order_acq_rel) == count;
 
     // If this was the last count down, we have to decide if we set async value
     // to concrete or error state.
@@ -908,6 +910,11 @@ class CountDownAsyncValueRef {
     }
 
     return false;
+  }
+
+  // Drops the count by `1` and returns true if async value became available.
+  bool CountDown(absl::Status status = absl::OkStatus()) {
+    return CountDown(1, status);
   }
 
   AsyncValueRef<T> AsRef() const { return state_->ref; }

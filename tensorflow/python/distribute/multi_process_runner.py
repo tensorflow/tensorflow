@@ -1307,7 +1307,7 @@ def run(fn,
         raise ValueError('Task type {}, task id {} is errors out'.format(
             resolver.task_type, resolver.task_id))
 
-      with self.assertRaisesRegexp(ValueError,
+      with self.assertRaisesRegex(ValueError,
                                    'Task type worker, task id 0 is errors out'):
         cluster_spec = (
             tf.__internal__.distribute.multi_process_runner.create_cluster_spec(

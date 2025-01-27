@@ -37,8 +37,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -77,27 +77,6 @@ absl::StatusOr<xnn_subgraph_t> XnnDotThunk::BuildDotSubgraph(
       /*flags=*/dot_canonical_dims_.rhs_canonical ? 0 : XNN_FLAG_TRANSPOSE_B));
 
   return subgraph;
-}
-
-absl::StatusOr<bool> XnnDotThunk::IsSupported(
-    const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
-    const Shape& rhs_shape, const Shape& out_shape) {
-  // TODO(ezhulenev): Support other element types.
-  if (lhs_shape.element_type() != F32 || rhs_shape.element_type() != F32 ||
-      out_shape.element_type() != F32) {
-    return false;
-  }
-
-  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
-                                                      rhs_shape, out_shape));
-
-  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
-                      GetDotCanonicalDims(dot_dimensions, dot_shape));
-
-  // XNNPACK does not support transposing LHS or col-major layouts.
-  return dot_canonical_dims.lhs_canonical &&
-         !dot_canonical_dims.lhs_column_major &&
-         !dot_canonical_dims.rhs_column_major;
 }
 
 absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunk::Create(

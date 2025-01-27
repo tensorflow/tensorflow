@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_c_api_client.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -32,7 +33,12 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
@@ -46,8 +52,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -237,6 +243,64 @@ TEST(PjRtCApiClientTest, WrapClientAroundCApi) {
                           WrapClientAroundCApi(c_api));
   EXPECT_EQ(client->platform_name(), xla::CpuName());
   EXPECT_EQ(client->platform_id(), xla::CpuId());
+}
+
+// User-defined data type to be passed to FFI handler via the execute context
+// side channel.
+struct MemsetValue {
+  explicit MemsetValue(float value) : value(value) {}
+  float value;
+};
+
+static absl::Status MemsetFromValue(
+    ffi::Result<ffi::BufferR1<PrimitiveType::F32>> result,
+    MemsetValue* memset_value) {
+  for (size_t i = 0; i < result->element_count(); ++i) {
+    result->typed_data()[i] = memset_value->value;
+  }
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kMemsetFromValue, MemsetFromValue,
+                       ffi::Ffi::Bind()
+                           .Ret<ffi::BufferR1<PrimitiveType::F32>>()
+                           .Ctx<ffi::UserData<MemsetValue>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "MemsetFromValue", "HOST",
+                         kMemsetFromValue);
+
+TEST(PjRtCApiClientTest, ForwardExecuteContext) {
+  static constexpr char const* kProgram = R"(
+    HloModule ffi_handler
+    ENTRY main {
+      ROOT %custom-call = f32[4] custom-call(),
+                          custom_call_target="MemsetFromValue",
+                          api_version=API_VERSION_TYPED_FFI
+    })";
+
+  const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          WrapClientAroundCApi(c_api));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      client->Compile(XlaComputation(hlo_module->ToProto()), {}));
+
+  ExecuteContext context;
+  TF_ASSERT_OK(context.ffi_context().Emplace<MemsetValue>(42.0f));
+
+  ExecuteOptions options;
+  options.context = &context;
+
+  auto result = executable->Execute(/*argument_handles=*/{{}}, options);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                          result->at(0).at(0)->ToLiteralSync());
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f, 42.0f}),
+      *result_literal));
 }
 
 }  // namespace

@@ -2294,9 +2294,7 @@ std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
   if (lhs->opcode() != HloOpcode::kSlice ||
       rhs->opcode() != HloOpcode::kSlice || lhs->operand(0) != mid ||
       rhs->operand(0) != mid || lhs->slice_strides(dim) != 1 ||
-      rhs->slice_strides(dim) != 1 || lhs->sharding() != mid->sharding() ||
-      rhs->sharding() != mid->sharding() ||
-      lhs->sharding() != concat->sharding()) {
+      rhs->slice_strides(dim) != 1) {
     return std::nullopt;
   }
   pad_pattern.lhs_slice_start = lhs->slice_starts(dim);
@@ -2536,6 +2534,14 @@ CollectiveDeviceList ExpandPartitionGroupListAcrossReplicas(
   return CollectiveDeviceList(
       IotaReplicaGroupList(replica_group_count, partition_group_size,
                            new_reshape_dims, new_transpose_dims));
+}
+
+PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
+                                                   SpmdBuilder* b) {
+  HloInstruction* copy_hlo = b->AddInstruction(HloInstruction::CreateUnary(
+      phlo.hlo()->shape(), HloOpcode::kCopy, phlo.hlo()));
+  copy_hlo->copy_sharding(phlo.hlo());
+  return PartitionedHlo(copy_hlo, phlo.base_shape(), phlo.state());
 }
 
 }  // namespace spmd

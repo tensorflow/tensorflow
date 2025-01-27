@@ -41,6 +41,10 @@ else:
 
 # pylint: enable=g-import-not-at-top
 
+# This file is part of the ai_edge_litert package.
+_IS_LITERT_PACKAGE = os.path.splitext(__file__)[0].endswith(
+    os.path.join('ai_edge_litert', 'interpreter')
+)
 _INTERPRETER_DELETION_WARNING = """\
     Warning: tf.lite.Interpreter is deprecated and is scheduled for deletion in
     TF 2.20. Please use the LiteRT interpreter from the ai_edge_litert package.
@@ -449,7 +453,8 @@ class Interpreter:
     Raises:
       ValueError: If the interpreter was unable to create.
     """
-    warnings.warn(_INTERPRETER_DELETION_WARNING)
+    if not _IS_LITERT_PACKAGE:
+      warnings.warn(_INTERPRETER_DELETION_WARNING)
     if not hasattr(self, '_custom_op_registerers'):
       self._custom_op_registerers = []
 

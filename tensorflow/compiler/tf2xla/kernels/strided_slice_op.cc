@@ -123,8 +123,10 @@ class StridedSliceOp : public XlaOpKernel {
       dims->set_edge_padding_low(0);
 
       dims->set_interior_padding(0);
-      if ((begins_are_dynamic[sparse_index] ||
-           ends_are_dynamic[sparse_index]) &&
+      if (((begins_are_dynamic.size() > sparse_index &&
+            begins_are_dynamic[sparse_index]) ||
+           (ends_are_dynamic.size() > sparse_index &&
+            ends_are_dynamic[sparse_index])) &&
           !shrink_axis_set) {
         // Need to slice this dimension so pad first.
         dims->set_edge_padding_high(input_shape.dim_size(i));

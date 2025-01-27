@@ -249,8 +249,7 @@ class FoldBroadcastPass
     RewritePatternSet patterns(&getContext());
     patterns.add<FoldBroadcastInDimBeforeMulOp>(&getContext());
     patterns.add(ConstantFoldMul);
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
   }

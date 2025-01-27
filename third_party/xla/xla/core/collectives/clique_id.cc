@@ -40,4 +40,21 @@ uint32_t CliqueId::fingerprint() const {
 
 size_t CliqueId::size() const { return data_.size(); }
 
+CliqueIds::CliqueIds(const CliqueId& id) { Add(id); }
+
+void CliqueIds::Add(const CliqueId& id) { ids_.push_back(id); }
+
+absl::Span<const CliqueId> CliqueIds::data() const { return ids_; }
+
+const CliqueId& CliqueIds::at(size_t index) const { return ids_[index]; }
+
+uint32_t CliqueIds::fingerprint() const {
+  absl::crc32c_t crc(0);
+  for (const auto& clique_id : ids_) {
+    crc = absl::ExtendCrc32c(crc, absl::string_view(clique_id.data().data(),
+                                                    clique_id.data().size()));
+  }
+  return static_cast<uint32_t>(crc);
+}
+
 }  // namespace xla

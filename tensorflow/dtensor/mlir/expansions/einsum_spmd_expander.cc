@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/einsum_spmd_expander.h"
 
+#include <cassert>
+#include <cstddef>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"

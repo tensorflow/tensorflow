@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/slice_spmd_expander.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
