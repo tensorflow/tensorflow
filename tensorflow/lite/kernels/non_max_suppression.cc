@@ -17,7 +17,6 @@ limitations under the License.
 #include <initializer_list>
 
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -180,25 +179,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-// If num_selected_indices < max_output_size, the output tensor can contain
-// garbage values initially present in memory. This causes segfault in
-// downstream ops such as GATHER, since one of the outputs denotes indices and
-// int garbage values can be pretty large. This method zeroes-out the remaining
-// values.
-// NOTE: We ensure memory being reset is valid, by setting pertinent output
-// tensors to max_output_size length in Prepare.
-void ResetUnusedElementsToZeroes(const int max_output_size,
-                                 const int num_selected_indices,
-                                 int* selected_indices,
-                                 float* selected_scores) {
-  for (int i = num_selected_indices; i < max_output_size; ++i) {
-    selected_indices[i] = 0;
-    if (selected_scores) {
-      selected_scores[i] = 0.0;
-    }
-  }
-}
-
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const bool is_soft_nms = NumInputs(node) == 6;
 
@@ -263,9 +243,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         max_output_size_value, iou_threshold, score_threshold, soft_nms_sigma,
         output_selected_indices->data.i32, output_selected_scores->data.f,
         output_num_selected_indices->data.i32);
-    ResetUnusedElementsToZeroes(
-        max_output_size_value, *output_num_selected_indices->data.i32,
-        output_selected_indices->data.i32, output_selected_scores->data.f);
+    // Reduce the output size to the actual number of selected indices after nms
+    SetTensorSizes(context, output_selected_indices,
+                   {*output_num_selected_indices->data.i32});
+    SetTensorSizes(context, output_selected_scores,
+                   {*output_num_selected_indices->data.i32});
   } else {
     TF_LITE_ENSURE_OK(
         context, GetOutputSafe(context, node, kNMSOutputTensorSelectedIndices,
@@ -281,9 +263,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         max_output_size_value, iou_threshold, score_threshold, /**sigma=**/ 0.0,
         output_selected_indices->data.i32, /**selected_scores=**/ nullptr,
         output_num_selected_indices->data.i32);
-    ResetUnusedElementsToZeroes(max_output_size_value,
-                                *output_num_selected_indices->data.i32,
-                                output_selected_indices->data.i32, nullptr);
+    // Reduce the output size to the actual number of selected indices after nms
+    SetTensorSizes(context, output_selected_indices,
+                   {*output_num_selected_indices->data.i32});
+    SetTensorSizes(context, output_selected_scores,
+                   {*output_num_selected_indices->data.i32});
   }
 
   return kTfLiteOk;
