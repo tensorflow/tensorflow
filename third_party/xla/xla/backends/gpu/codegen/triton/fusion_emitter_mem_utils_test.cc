@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -72,9 +74,9 @@ class TritonMakeTensorPtrTest : public HloTestBase {
   void SetUp() override { LoadMlirDialectsForTriton(mlir_context_); }
 
   std::pair<std::unique_ptr<VerifiedHloModule>, TiledHloComputation>
-  CreateAndTileParameterHloInstruction(
-      std::vector<int64_t> shape_sizes, const std::vector<int64_t>& tile_sizes,
-      const std::vector<int64_t>& tile_strides);
+  CreateAndTileHloComputation(std::vector<int64_t> shape_sizes,
+                              const std::vector<int64_t>& tile_sizes,
+                              const std::vector<int64_t>& tile_strides);
 
   std::pair<mlir::OwningOpRef<mlir::ModuleOp>, MakeTensorPtrOpAndBoundaryChecks>
   CreateTestTensorPtr(const std::vector<int64_t>& parent_shape,
@@ -85,9 +87,11 @@ class TritonMakeTensorPtrTest : public HloTestBase {
   MLIRContext mlir_context_;
 };
 
-// Returns a Parameter HLO instruction with a parameter number 0.
+// Returns a HloModule and a corresponding TiledHloComputation using
+// `shape_sizes` to replace the placeholders in the hardcoded hlo text.
+// `tile_sizes` and `tile_strides` are used to tile the hlo computation.
 std::pair<std::unique_ptr<VerifiedHloModule>, TiledHloComputation>
-TritonMakeTensorPtrTest::CreateAndTileParameterHloInstruction(
+TritonMakeTensorPtrTest::CreateAndTileHloComputation(
     std::vector<int64_t> shape_sizes, const std::vector<int64_t>& tile_sizes,
     const std::vector<int64_t>& tile_strides) {
   const std::string hlo_text = R"(
@@ -152,15 +156,14 @@ TritonMakeTensorPtrTest::CreateTestTensorPtr(
     const std::vector<int64_t>& tile_sizes,
     const std::vector<int64_t>& tile_strides) {
   auto [hlo_module, tiled_hlo_computation] =
-      CreateAndTileParameterHloInstruction(parent_shape, tile_sizes,
-                                           tile_strides);
+      CreateAndTileHloComputation(parent_shape, tile_sizes, tile_strides);
 
-  const TiledHloInstruction* tiled_hlo =
+  const TiledHloInstruction* tiled_parameter =
       tiled_hlo_computation.GetRoot()->operand(0);
-  const HloInstruction* hlo = tiled_hlo->hlo();
+  const HloInstruction* parameter = tiled_parameter->hlo();
 
   OpBuilder builder(&mlir_context_);
-  auto loc = mlir::NameLoc::get(builder.getStringAttr(hlo->name()));
+  auto loc = mlir::NameLoc::get(builder.getStringAttr(parameter->name()));
   mlir::OwningOpRef<mlir::ModuleOp> triton_module =
       llvm_ir::CreateMlirModuleOp(loc);
   builder.setInsertionPointToEnd(triton_module->getBody());
@@ -174,7 +177,7 @@ TritonMakeTensorPtrTest::CreateTestTensorPtr(
   return std::make_pair(
       std::move(triton_module),
       *ir_emitter_triton_internal::CreateMakeTensorPtrOp(
-          b, tile_multi_index, *tiled_hlo, fn.getArgument(0)));
+          b, tile_multi_index, *tiled_parameter, fn.getArgument(0)));
 }
 
 std::vector<int> ConstOpValuesToInt(const mlir::ValueRange values) {
