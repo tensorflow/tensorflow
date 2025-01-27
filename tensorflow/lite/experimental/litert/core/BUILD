@@ -168,11 +168,11 @@ cc_test(
 #     deps = [
 #         ":dynamic_loading",
 #         ":filesystem",
-#         "@com_google_googletest//:gtest_main",
 #         "@com_google_absl//absl/strings:string_view",
 #         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
 #         "//tensorflow/lite/experimental/litert/test:common",
 #         "//tensorflow/lite/experimental/litert/test:test_macros",
+#         "@com_google_googletest//:gtest_main",
 #     ],
 # )
 # copybara:uncomment_end
