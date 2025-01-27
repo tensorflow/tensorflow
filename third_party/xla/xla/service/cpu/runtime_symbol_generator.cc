@@ -115,11 +115,21 @@ RuntimeSymbolGenerator::ResolveRuntimeSymbol(llvm::StringRef name) {
 extern "C" void __chkstk(size_t);
 #endif
 
+extern "C" {
 // Provided by compiler-rt and MLIR.
 // Converts an F32 value to a BF16.
-extern "C" uint16_t __truncsfbf2(float);
+uint16_t __truncsfbf2(float);
 // Converts an F64 value to a BF16.
-extern "C" uint16_t __truncdfbf2(double);
+uint16_t __truncdfbf2(double);
+
+#ifdef __APPLE__
+// Converts an F32 value to a F16.
+uint16_t __truncsfhf2(float);
+
+float __extendhfsf2(uint16_t a);
+#endif  // __APPLE__
+
+}  // extern "C"
 
 #define REGISTER_CPU_RUNTIME_SYMBOL(base_name)                               \
   do {                                                                       \
@@ -216,6 +226,13 @@ static bool RegisterKnownJITSymbols() {
                      "Host");
   registry->Register("__truncsfbf2", reinterpret_cast<void*>(__truncsfbf2),
                      "Host");
+
+#ifdef __APPLE__
+  registry->Register("__truncsfhf2", reinterpret_cast<void*>(__truncsfhf2),
+                     "Host");
+  registry->Register("__extendhfsf2", reinterpret_cast<void*>(__extendhfsf2),
+                     "Host");
+#endif  // __APPLE__
   registry->Register("__powisf2", reinterpret_cast<void*>(__powisf2), "Host");
   registry->Register("__powidf2", reinterpret_cast<void*>(__powidf2), "Host");
 
