@@ -62,7 +62,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:errors",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
     ] + if_google([

@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
@@ -84,13 +85,15 @@ HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule(
 
 absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule(
-    absl::string_view hlo_text, const HloModuleConfig& config) {
+    absl::string_view hlo_text, const HloModuleConfig& config,
+    const HloParserOptions& parser_options) {
   auto module = std::make_unique<VerifiedHloModule>(
       TestName(), config, verifier_layout_sensitive(),
       allow_mixed_precision_in_hlo_verifier(),
       test_runner_->device_shape_size_fn(),
       instruction_can_change_layout_func());
-  TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
+  TF_RETURN_IF_ERROR(
+      module->ParseHloStringAndVerifyModule(hlo_text, parser_options));
   UpdateEntryComputationLayout(module.get());
   return std::move(module);
 }
