@@ -48,6 +48,7 @@ tsl_pybind_extension(
         "@nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:comparison_util",
+        "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",

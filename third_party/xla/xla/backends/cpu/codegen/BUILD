@@ -344,30 +344,6 @@ cc_library(
 )
 
 cc_library(
-    name = "object_loader",
-    srcs = ["object_loader.cc"],
-    hdrs = ["object_loader.h"],
-    deps = [
-        ":compiled_function_library",
-        ":contiguous_section_memory_manager",
-        "//xla/backends/cpu/runtime:function_library",
-        "//xla/service/cpu:orc_jit_memory_mapper",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:JITLink",
-        "@llvm-project//llvm:OrcShared",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:ir_headers",
-    ],
-)
-
-cc_library(
     name = "dot_kernel_emitter",
     srcs = ["dot_kernel_emitter.cc"],
     hdrs = ["dot_kernel_emitter.h"],
@@ -390,6 +366,45 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+py_strict_test(
+    name = "dot_kernel_emitter_test",
+    srcs = ["dot_kernel_emitter_test.py"],
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        "//third_party/py/numpy",
+        "//xla/backends/cpu/testlib",
+        "//xla/codegen/testlib",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cc_library(
+    name = "object_loader",
+    srcs = ["object_loader.cc"],
+    hdrs = ["object_loader.h"],
+    deps = [
+        ":compiled_function_library",
+        ":contiguous_section_memory_manager",
+        "//xla/backends/cpu/runtime:function_library",
+        "//xla/service/cpu:orc_jit_memory_mapper",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:OrcShared",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
     ],
 )
@@ -423,19 +438,5 @@ xla_cc_test(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:ir_headers",
         "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-py_strict_test(
-    name = "dot_kernel_emitter_test",
-    srcs = ["dot_kernel_emitter_test.py"],
-    tags = [
-        "no_oss",
-    ],
-    deps = [
-        "//third_party/py/numpy",
-        "//xla/backends/cpu/testlib",
-        "//xla/codegen/testlib",
-        "@absl_py//absl/testing:absltest",
     ],
 )

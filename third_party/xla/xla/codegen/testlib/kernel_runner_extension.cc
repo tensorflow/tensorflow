@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -86,6 +87,12 @@ std::unique_ptr<HloInstruction> CreateComparisonHloInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     Comparison::Direction direction) {
   return HloInstruction::CreateCompare(shape, lhs, rhs, direction);
+}
+
+HloModuleConfig DefaultHloModuleConfigWithDebugOptions() {
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsFromFlags());
+  return config;
 }
 
 // A dummy kernel runner that implements a simple elementwise add.
@@ -182,22 +189,27 @@ NB_MODULE(_extension, kernel_runner_module) {
       .value("kLt", Comparison::Direction::kLt);
 
   nb::class_<DotDimensionNumbers>(kernel_runner_module, "DotDimensionNumbers")
-      .def("__init__", [](DotDimensionNumbers* self,
-                          std::vector<int64_t> lhs_contracting_dims,
-                          std::vector<int64_t> rhs_contracting_dims,
-                          std::vector<int64_t> lhs_batch_dims,
-                          std::vector<int64_t> rhs_batch_dims) {
-        new (self) DotDimensionNumbers();
-        self->mutable_lhs_contracting_dimensions()->Assign(
-            lhs_contracting_dims.begin(), lhs_contracting_dims.end());
-        self->mutable_rhs_contracting_dimensions()->Assign(
-            rhs_contracting_dims.begin(), rhs_contracting_dims.end());
+      .def(
+          "__init__",
+          [](DotDimensionNumbers* self,
+             std::vector<int64_t> lhs_contracting_dims,
+             std::vector<int64_t> rhs_contracting_dims,
+             std::vector<int64_t> lhs_batch_dims,
+             std::vector<int64_t> rhs_batch_dims) {
+            new (self) DotDimensionNumbers();
+            self->mutable_lhs_contracting_dimensions()->Assign(
+                lhs_contracting_dims.begin(), lhs_contracting_dims.end());
+            self->mutable_rhs_contracting_dimensions()->Assign(
+                rhs_contracting_dims.begin(), rhs_contracting_dims.end());
 
-        self->mutable_lhs_batch_dimensions()->Assign(lhs_batch_dims.begin(),
-                                                     lhs_batch_dims.end());
-        self->mutable_rhs_batch_dimensions()->Assign(rhs_batch_dims.begin(),
-                                                     rhs_batch_dims.end());
-      });
+            self->mutable_lhs_batch_dimensions()->Assign(lhs_batch_dims.begin(),
+                                                         lhs_batch_dims.end());
+            self->mutable_rhs_batch_dimensions()->Assign(rhs_batch_dims.begin(),
+                                                         rhs_batch_dims.end());
+          },
+          nb::arg("lhs_contracting_dims"), nb::arg("rhs_contracting_dims"),
+          nb::arg("lhs_batch_dims") = std::vector<int64_t>{},
+          nb::arg("rhs_batch_dims") = std::vector<int64_t>{});
 
   nb::class_<HloInstruction> hlo_instruction(kernel_runner_module,
                                              "HloInstruction");
@@ -237,7 +249,8 @@ NB_MODULE(_extension, kernel_runner_module) {
       .def_static("parse_from_string",
                   [](absl::string_view str) {
                     absl::StatusOr<std::unique_ptr<HloModule>> hlo_module =
-                        ParseAndReturnUnverifiedModule(str);
+                        ParseAndReturnUnverifiedModule(
+                            str, DefaultHloModuleConfigWithDebugOptions());
 
                     if (!hlo_module.ok()) {
                       throw std::runtime_error(
@@ -250,7 +263,8 @@ NB_MODULE(_extension, kernel_runner_module) {
           "build",
           [](std::unique_ptr<HloInstruction> root, nb::args instructions) {
             auto hlo_module = std::make_unique<HloModule>(
-                absl::StrCat(root->name(), "_module"), HloModuleConfig());
+                absl::StrCat(root->name(), "_module"),
+                DefaultHloModuleConfigWithDebugOptions());
 
             HloComputation::Builder builder(
                 absl::StrCat(root->name(), "_computation"));

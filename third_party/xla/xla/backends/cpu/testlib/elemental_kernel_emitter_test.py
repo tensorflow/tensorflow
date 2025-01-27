@@ -115,10 +115,7 @@ class ElementalHloOpcodeDef:
     shape=[(4,), (4, 3), (4, 3, 10)],
     dtype=[np.dtype(np.float32), np.dtype(np.float64)],
 )
-class ElementalKernelRunnerTest(absltest.TestCase):
-
-  def id(self):
-    return self._test_params_reprs.get(self._testMethodName, "")
+class ElementalKernelRunnerTest(parameterized.TestCase):
 
   def test_elemental_kernel_emitter(
       self,
@@ -204,7 +201,7 @@ class ElementalKernelRunnerTest(absltest.TestCase):
         np.dtype(np.float64),
     ],
 )
-class ElementalComparisonKernelRunnerTest(absltest.TestCase):
+class ElementalComparisonKernelRunnerTest(parameterized.TestCase):
 
   def test_elemental_comparision_kernel_emitter(self, op_def, shape, dtype):
     [direction, np_op] = op_def
@@ -264,10 +261,7 @@ class ElementalComparisonKernelRunnerTest(absltest.TestCase):
         np.dtype(np.float64),
     ],
 )
-class HloModuleKernelRunnerTest(absltest.TestCase):
-
-  def id(self):
-    return self._test_params_reprs.get(self._testMethodName, "")
+class HloModuleKernelRunnerTest(parameterized.TestCase):
 
   def test_map(self, input_dimensions, dtype):
     scalar_shape = xla_extension.Shape.scalar_shape(dtype)
