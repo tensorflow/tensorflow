@@ -372,21 +372,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "convolution_lib",
-    srcs = ["convolution_lib.cc"],
-    hdrs = ["convolution_lib.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla/runtime:buffer_use",
-        "//xla/service:buffer_assignment",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "convolution_thunk_internal",
     srcs = [
         "convolution_thunk_f16.cc",
@@ -397,11 +382,10 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":concurrency",
-        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
-        "//xla/tsl/platform:logging",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -411,7 +395,6 @@ cc_library(
     hdrs = ["convolution_thunk.h"],
     copts = runtime_copts(),
     deps = [
-        ":convolution_lib",
         ":convolution_thunk_internal",
         ":thunk",
         "//xla:executable_run_options",
@@ -1163,7 +1146,6 @@ cc_library(
         ":collective_permute_thunk",
         ":collective_thunk",
         ":conditional_thunk",
-        ":convolution_lib",
         ":convolution_thunk",
         ":copy_thunk",
         ":custom_call_thunk",

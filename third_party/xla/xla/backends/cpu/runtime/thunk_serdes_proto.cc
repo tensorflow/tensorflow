@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/conditional_thunk.h"
-#include "xla/backends/cpu/runtime/convolution_lib.h"
 #include "xla/backends/cpu/runtime/convolution_thunk.h"
 #include "xla/backends/cpu/runtime/copy_thunk.h"
 #include "xla/backends/cpu/runtime/custom_call_thunk.h"
@@ -482,18 +481,16 @@ static absl::Status ToProto(const ConvolutionThunk& thunk, ThunkProto& proto) {
 
   convolution_thunk_proto->set_feature_group_count(thunk.feature_group_count());
 
-  const ConvolutionSlices& convolution_slices = thunk.convolution_slices();
-
   TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      convolution_slices.input_buffer, convolution_slices.input_shape,
+      thunk.input_buffer(), thunk.input_shape(),
       convolution_thunk_proto->mutable_input_buffer_shape()));
 
   TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      convolution_slices.output_buffer, convolution_slices.output_shape,
+      thunk.output_buffer(), thunk.output_shape(),
       convolution_thunk_proto->mutable_output_buffer_shape()));
 
   TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      convolution_slices.kernel_buffer, convolution_slices.kernel_shape,
+      thunk.kernel_buffer(), thunk.kernel_shape(),
       convolution_thunk_proto->mutable_kernel_buffer_shape()));
 
   convolution_thunk_proto->mutable_options()->set_multi_threaded(

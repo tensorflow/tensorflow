@@ -8,25 +8,6 @@ package(
     licenses = ["notice"],
 )
 
-filegroup(
-    name = "xla_cpu_runtime_hdrs",
-    srcs = [
-        "async_value.h",
-        "async_value_ref.h",
-        "chain.h",
-        "concurrent_vector.h",
-        "ref_count.h",
-    ],
-)
-
-filegroup(
-    name = "xla_cpu_runtime_srcs",
-    srcs = [
-        "async_value.cc",
-        "async_value_ref.cc",
-    ],
-)
-
 cc_library(
     name = "async_value",
     srcs = [

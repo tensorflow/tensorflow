@@ -47,7 +47,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv3DF32(
       y_stride, z_stride, padding_x_before, padding_x_after, padding_y_before,
       padding_y_after, padding_z_before, padding_z_after, lhs_x_dilation,
       lhs_y_dilation, lhs_z_dilation, rhs_x_dilation, rhs_y_dilation,
-      rhs_z_dilation, feature_group_count, {});
+      rhs_z_dilation, feature_group_count, nullptr);
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv3DF16(
@@ -72,5 +72,5 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv3DF16(
       y_stride, z_stride, padding_x_before, padding_x_after, padding_y_before,
       padding_y_after, padding_z_before, padding_z_after, lhs_x_dilation,
       lhs_y_dilation, lhs_z_dilation, rhs_x_dilation, rhs_y_dilation,
-      rhs_z_dilation, feature_group_count, {});
+      rhs_z_dilation, feature_group_count, nullptr);
 }

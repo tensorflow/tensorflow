@@ -928,8 +928,6 @@ class CountDownAsyncValueRef {
   // Returns the number of count down operations left.
   int64_t count() const { return state_->cnt.load(std::memory_order_acquire); }
 
-  explicit operator bool() const { return state_ != nullptr; }
-
  private:
   static constexpr size_t kAtomicAlignment =
 #if defined(__cpp_lib_hardware_interference_size)
