@@ -18,7 +18,8 @@ TFCI_DOCKER_IMAGE="gcr.io/tensorflow-testing/tf-win2022@sha256:915cb093630432c38
 TFCI_BAZEL_BAZELRC_ARGS="--output_user_root=C:/t"
 TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config=windows_x86_cpu_2022"
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=windows_x86_cpu_2022
-TFCI_BUILD_PIP_PACKAGE_ARGS="--repo_env=WHEEL_NAME=tensorflow_cpu"
+TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=tensorflow"
+TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES="tensorflow_cpu"
 TFCI_OUTPUT_DIR=build_output
 TFCI_FIND_BIN=C:/tools/msys64/usr/bin/find.exe
 TFCI_LIB_SUFFIX="-cpu-windows-x86_64"
