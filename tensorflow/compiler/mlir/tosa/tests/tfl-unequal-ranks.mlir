@@ -1,5 +1,5 @@
 // RUN: tf-opt --split-input-file --tfl-to-tosa-pipeline --verify-each %s | FileCheck %s
-
+// REQUIRES: tf_tosa
 // Test tf legalization that produce TOSA ResultsBroadcastableShape operators with unequal ranks
 
 // -----
