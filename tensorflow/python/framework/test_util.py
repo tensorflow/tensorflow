@@ -76,7 +76,6 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
-from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_sync_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -2738,7 +2737,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def assertProtoEquals(
       self,
       expected_message_maybe_ascii,
-      message,
+      validate_message,
       msg=None,
       relative_tolerance=None,
   ):
@@ -2749,36 +2748,36 @@ class TensorFlowTestCase(googletest.TestCase):
 
     Args:
       expected_message_maybe_ascii: proto message in original or ascii form.
-      message: the message to validate.
+      validate_message: the message to validate.
       msg: Optional message to report on failure.
       relative_tolerance: float. The allowable difference between the two values
         being compared is determined by multiplying the relative tolerance by
         the maximum of the two values. If this is not provided, then all floats
         are compared using string comparison.
     """
-    if isinstance(expected_message_maybe_ascii, type(message)):
+    if isinstance(expected_message_maybe_ascii, type(validate_message)):
       expected_message = expected_message_maybe_ascii
       self._AssertProtoEquals(
           expected_message,
-          message,
+          validate_message,
           msg=msg,
           relative_tolerance=relative_tolerance,
       )
     elif isinstance(expected_message_maybe_ascii, (str, bytes)):
-      expected_message = type(message)()
+      expected_message = type(validate_message)()
       text_format.Merge(
           expected_message_maybe_ascii,
           expected_message,
           descriptor_pool=descriptor_pool.Default())
       self._AssertProtoEquals(
           expected_message,
-          message,
+          validate_message,
           msg=msg,
           relative_tolerance=relative_tolerance,
       )
     else:
       assert False, ("Can't compare protos of type %s and %s." %
-                     (type(expected_message_maybe_ascii), type(message)))
+          (type(expected_message_maybe_ascii), type(validate_message)))
 
   def assertProtoEqualsVersion(
       self,
