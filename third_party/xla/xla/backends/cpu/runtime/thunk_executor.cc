@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -220,12 +221,20 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
   // This also works for thunks with nested thunk executors (i.e., WhileThunk),
   // as launching nested thunk sequence must not reduce the available
   // concurrency for the other thunks executing in parallel.
-  if (options_.use_priority_ready_queue) {
-    Execute(state.get(), params, PriorityReadyQueue(nodes_defs_, source_),
-            /*lock=*/nullptr);
-  } else {
-    Execute(state.get(), params, FifoReadyQueue(source_),
-            /*lock=*/nullptr);
+  auto execute = [&](auto ready_queue) {
+    Execute(state.get(), params, std::move(ready_queue), /*lock=*/nullptr);
+  };
+
+  switch (options_.ready_queue_type) {
+    case Options::ReadyQueueType::kFifo:
+      execute(FifoReadyQueue(source_));
+      break;
+    case Options::ReadyQueueType::kLifo:
+      execute(LifoReadyQueue(source_));
+      break;
+    case Options::ReadyQueueType::kPriority:
+      execute(PriorityReadyQueue(nodes_defs_, source_));
+      break;
   }
 
   // If execution already completed (all kernels executed in the caller thread),
@@ -294,7 +303,7 @@ ThunkExecutor::ExecuteSequential(const Thunk::ExecuteParams& params) {
 
         if (ABSL_PREDICT_FALSE(!status.ok())) {
           event.SetError(std::move(status));
-        } else if (!runner || runner->current_worker_id()) {
+        } else if (ABSL_PREDICT_TRUE(!runner || runner->current_worker_id())) {
           // Resume execution in the current thread if we are already running
           // on a thread managed by the task runner.
           ResumeExecuteSequential(it + 1, params, std::move(event));
@@ -334,23 +343,23 @@ void ThunkExecutor::ResumeExecuteSequential(
     // If thunk execution is not completed yet, attach a continuation to
     // resume sequential execution starting from the next thunk.
     if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
-      execute_event.AndThen(
-          [this, &params, it, event = std::move(event)](absl::Status status) {
-            Thunk::TaskRunner* runner = params.task_runner;
+      execute_event.AndThen([this, &params, it,
+                             event = std::move(event)](absl::Status status) {
+        Thunk::TaskRunner* runner = params.task_runner;
 
-            if (ABSL_PREDICT_FALSE(!status.ok())) {
-              event.SetError(std::move(status));
-            } else if (!runner || runner->current_worker_id()) {
-              // Resume execution in the current thread if we are already
-              // running on a thread managed by the task runner.
-              ResumeExecuteSequential(it + 1, params, std::move(event));
-            } else {
-              // Resume execution in the task runner to avoid thread "leaks".
-              (*runner)([this, &params, it, event = std::move(event)] {
-                ResumeExecuteSequential(it + 1, params, std::move(event));
-              });
-            }
+        if (ABSL_PREDICT_FALSE(!status.ok())) {
+          event.SetError(std::move(status));
+        } else if (ABSL_PREDICT_TRUE(!runner || runner->current_worker_id())) {
+          // Resume execution in the current thread if we are already
+          // running on a thread managed by the task runner.
+          ResumeExecuteSequential(it + 1, params, std::move(event));
+        } else {
+          // Resume execution in the task runner to avoid thread "leaks".
+          (*runner)([this, &params, it, event = std::move(event)] {
+            ResumeExecuteSequential(it + 1, params, std::move(event));
           });
+        }
+      });
       return;
     }
 
@@ -443,7 +452,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
             }
 
             Thunk::TaskRunner* runner = state->runner;
-            if (!runner || runner->current_worker_id()) {
+            if (ABSL_PREDICT_TRUE(!runner || runner->current_worker_id())) {
               // Resume execution in the current thread if we are already
               // running on a thread managed by the task runner.
               state->executor->Execute(state, params, std::move(ready_queue),
@@ -738,6 +747,39 @@ bool ThunkExecutor::FifoReadyQueue::Empty() const {
 ThunkExecutor::FifoReadyQueue
 ThunkExecutor::FifoReadyQueue::CreateEmptyReadyQueue() const {
   return FifoReadyQueue(absl::Span<const NodeId>());
+}
+
+ThunkExecutor::LifoReadyQueue::LifoReadyQueue(
+    absl::Span<const NodeId> ready_nodes)
+    : queue_(ready_nodes.begin(), ready_nodes.end()) {}
+
+void ThunkExecutor::LifoReadyQueue::Push(NodeId id) { queue_.push_back(id); }
+
+ThunkExecutor::NodeId ThunkExecutor::LifoReadyQueue::Pop() {
+  DCHECK(!Empty()) << "Queue must not be empty";
+  NodeId id = queue_.back();
+  queue_.pop_back();
+  return id;
+}
+
+ThunkExecutor::LifoReadyQueue ThunkExecutor::LifoReadyQueue::PopHalf() {
+  DCHECK(!Empty()) << "Queue must not be empty";
+  auto mid = Size() / 2 + 1;
+  LifoReadyQueue popped(
+      absl::MakeConstSpan(queue_.begin(), queue_.begin() + mid));
+
+  std::move(queue_.begin() + mid, queue_.end(), queue_.begin());
+  queue_.resize(queue_.size() - mid);
+  return popped;
+}
+
+size_t ThunkExecutor::LifoReadyQueue::Size() const { return queue_.size(); }
+
+bool ThunkExecutor::LifoReadyQueue::Empty() const { return queue_.empty(); }
+
+ThunkExecutor::LifoReadyQueue
+ThunkExecutor::LifoReadyQueue::CreateEmptyReadyQueue() const {
+  return LifoReadyQueue(absl::Span<const NodeId>());
 }
 
 ThunkExecutor::PriorityReadyQueue::PriorityReadyQueue(

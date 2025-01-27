@@ -44,6 +44,8 @@ namespace internal {
 // Clang does not allow defining a nested struct with member initializer, as
 // a workaround we define a struct in internal namespace and create an alias.
 struct ThunkExecutorOptions {
+  enum class ReadyQueueType { kFifo, kLifo, kPriority };
+
   // If all thunks in a sequence use buffers of size less than or equal to the
   // given threshold, we mark execution as sequential, as concurrency overheads
   // will likely dominate the overall execution time.
@@ -54,9 +56,8 @@ struct ThunkExecutorOptions {
   // the overall execution time.
   size_t execute_sequential_num_thunks_threshold = 8;
 
-  // Use priority ready queue to execute nodes according to their priority. By
-  // default we use FIFO ready queue.
-  bool use_priority_ready_queue = false;
+  // The type of a queue for ready thunks.
+  ReadyQueueType ready_queue_type = ReadyQueueType::kFifo;
 };
 }  // namespace internal
 
@@ -144,6 +145,25 @@ class ThunkExecutor {
    private:
     absl::InlinedVector<NodeId, 8> queue_;
     size_t head_ = 0;
+  };
+
+  // A ready queue that executes nodes in LIFO order.
+  class LifoReadyQueue {
+   public:
+    explicit LifoReadyQueue(absl::Span<const NodeId> ready_nodes);
+
+    void Push(NodeId id);
+
+    NodeId Pop();
+    LifoReadyQueue PopHalf();
+
+    size_t Size() const;
+    bool Empty() const;
+
+    LifoReadyQueue CreateEmptyReadyQueue() const;
+
+   private:
+    absl::InlinedVector<NodeId, 8> queue_;
   };
 
   // A ready queue that executes nodes sorted by NodeDef priority.
