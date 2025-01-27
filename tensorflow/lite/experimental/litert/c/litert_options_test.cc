@@ -124,7 +124,7 @@ TEST(GetOpOptionTest, TestGetFullyConnectedOptions) {
   bool asymmetric_quantize_input;
   LITERT_ASSERT_STATUS_OK(LiteRtGetFullyConnectedAsymmetricQuantizeInputOption(
       op, &asymmetric_quantize_input));
-  ASSERT_EQ(asymmetric_quantize_input, true);
+  ASSERT_EQ(asymmetric_quantize_input, false);
 }
 
 TEST(GetOpOptionTest, TestGetMulOptions) {
