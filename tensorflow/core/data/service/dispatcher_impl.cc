@@ -37,6 +37,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
 #include "tensorflow/core/data/service/auto_scaler.h"
@@ -76,11 +81,6 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace data {
