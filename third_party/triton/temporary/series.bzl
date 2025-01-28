@@ -18,5 +18,7 @@ temporary_patch_list = [
     # but not merged into llvm_head branch nor Google's fork yet.
     # Without this XLA fails to build on macos crosscompile and other targets.
     "//third_party/triton:temporary/header.patch",
+    # Force MMA v2 layout for Blackwell until MMA v5 support is integrated.
+    "//third_party/triton:temporary/sm100_mmav2.patch",
     # Add new patches just above this line
 ]

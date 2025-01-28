@@ -80,6 +80,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/codegen/object_loader.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -2127,6 +2128,8 @@ CpuExecutableAotCompilationResult::LoadExecutable(
       /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
   };
 
+  ObjectLoader object_loader(jit_compiler_options.num_dylibs);
+
   TF_ASSIGN_OR_RETURN(
       JitCompiler jit_compiler,
       JitCompiler::Create(CompilerTargetOptions(module->config()),
@@ -2141,9 +2144,10 @@ CpuExecutableAotCompilationResult::LoadExecutable(
   size_t obj_file_index = 0;
   for (auto& obj_file : proto_.obj_files()) {
     llvm::StringRef data(obj_file.data(), obj_file.size());
-    TF_RETURN_IF_ERROR(jit_compiler.AddObjFile(llvm::MemoryBuffer::getMemBuffer(
-        data,
-        absl::StrCat(proto_.entry_function_name(), "_", obj_file_index++))));
+    TF_RETURN_IF_ERROR(
+        object_loader.AddObjFile(llvm::MemoryBuffer::getMemBuffer(
+            data, absl::StrCat(proto_.entry_function_name(), "_",
+                               obj_file_index++))));
   }
 
   std::unique_ptr<CpuExecutable> cpu_executable;
@@ -2205,8 +2209,11 @@ CpuExecutableAotCompilationResult::LoadExecutable(
     }
 
     VLOG(3) << "Collected " << compiled_symbols.size() << " compiled symbols";
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> function_library,
-                        std::move(jit_compiler).Compile(compiled_symbols));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<FunctionLibrary> function_library,
+        std::move(object_loader)
+            .Load(compiled_symbols,
+                  jit_compiler.target_machine()->createDataLayout()));
 
     // Create constant allocations from the buffer assignment.
     TF_ASSIGN_OR_RETURN(
