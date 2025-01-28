@@ -528,24 +528,33 @@ LogicalResult DynamicApproxTopKOpAdaptor::verify() {
            << "DynamicApproxTopK must take 1 called_computations";
   }
 
-  auto backend_config = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(
-      op_->getAttr("mhlo.backend_config"));
+  mlir::DictionaryAttr backend_config;
+  if (op_.getApiVersion() ==
+      stablehlo::CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+    backend_config = mlir::cast<mlir::DictionaryAttr>(
+        op_.getBackendConfig().value_or(mlir::DictionaryAttr()));
+  } else {
+    // TODO(b/392911302): Cleanup code after XLA plugins and stored SavedModels
+    // are updated to support API v4 (~July 2025).
+       backend_config = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(
+        op_->getAttr("mhlo.backend_config"));
+  }
+
   if (!backend_config)
-    return op_.emitOpError() << "Missing mhlo.backend_config attribute";
+    return op_.emitOpError() << "Missing backend_config dictionary";
 
   // C1
   if (backend_config.contains("top_k"))
-    return op_.emitOpError("mhlo.backend_config attribute contains top_k");
+    return op_.emitOpError("backend_config dictionary contains top_k");
 
   // C2
   if (!backend_config.contains("reduction_dim"))
     return op_.emitOpError(
-        "mhlo.backend_config attribute does not contain "
-        "reduction_dim");
+        "backend_config dictionary does not contain reduction_dim");
   auto reduction_dim_attr = backend_config.getAs<IntegerAttr>("reduction_dim");
   if (!reduction_dim_attr || !reduction_dim_attr.getType().isInteger(64))
     return op_.emitOpError()
-           << "mhlo.backend_config attribute reduction_dim must be i64";
+           << "backend_config dictionary reduction_dim must be i64";
   int64_t reduction_dim = reduction_dim_attr.getInt();
 
   // C3
