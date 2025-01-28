@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -47,6 +48,25 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+
+// Indvar is a thread-local map that stores the induction variable for each
+// dynamic slice thunk. The same thunk object in the memory is shared by
+// multiple replicas of the same computation. So, each replica should have its
+// own tracking of the induction variable (threadlocal). With threadlocal, we
+// cannot embed this inside the dynamic slice thunk object, and so we have a
+// static map. There could be multiple dynamic slice thunks in the same module,
+// and so we need a map to store the induction variable for each thunk. The
+// usage of threadlocal in this context is similar to `LoopCounters` in
+// while_thunk.cc (b/343294327).
+Literal& Indvar(DynamicSliceThunk* thunk) {
+  static thread_local absl::flat_hash_map<DynamicSliceThunk*, Literal>
+      indvar_map;
+  return indvar_map[thunk];
+}
+
+}  // namespace
+
 DynamicSliceThunk::DynamicSliceThunk(
     ThunkInfo thunk_info, std::unique_ptr<ThunkSequence> embedded_thunk,
     std::vector<std::optional<BufferAllocation::Slice>> arguments,
@@ -54,7 +74,9 @@ DynamicSliceThunk::DynamicSliceThunk(
     std::vector<std::optional<std::vector<Offset>>> offsets,
     std::vector<std::optional<Shape>> orig_shapes,
     std::vector<std::optional<Shape>> sliced_shapes,
-    std::vector<std::optional<uint64_t>> offset_byte_sizes)
+    std::vector<std::optional<uint64_t>> offset_byte_sizes,
+    std::optional<OffsetAsFunctionOfIndvarModulesMetadata>
+        offset_as_function_of_indvar_metadata)
     : Thunk(Kind::kDynamicSlice, thunk_info),
       embedded_thunk_(std::make_unique<SequentialThunk>(
           ThunkInfo(), std::move(*embedded_thunk))),
@@ -63,7 +85,9 @@ DynamicSliceThunk::DynamicSliceThunk(
       offsets_(offsets),
       orig_shapes_(orig_shapes),
       sliced_shapes_(sliced_shapes),
-      offset_byte_sizes_(offset_byte_sizes) {
+      offset_byte_sizes_(offset_byte_sizes),
+      offset_as_function_of_indvar_metadata_(
+          std::move(offset_as_function_of_indvar_metadata)) {
   // Zip all arguments together to create a list of SliceDef.
   for (auto [arg, offsets, orig_shape, sliced_shape, offset_byte_size] :
        llvm::zip_equal(arguments, offsets, orig_shapes, sliced_shapes,
@@ -105,6 +129,16 @@ absl::Status DynamicSliceThunk::Prepare(
   }
 
   TF_RETURN_IF_ERROR(embedded_thunk_->Prepare(params, resource_requests));
+
+  if (offset_as_function_of_indvar_metadata_ != std::nullopt) {
+    Indvar(this) =
+        HloEvaluator()
+            .Evaluate(
+                /*module=*/*offset_as_function_of_indvar_metadata_->indvar_init,
+                /*arg_literals=*/{})
+            .value();
+    VLOG(2) << "Indvar = " << Indvar(this).ToString();
+  }
   return absl::OkStatus();
 }
 
@@ -182,6 +216,20 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
                 << "]: constant offset = " << *const_offset;
         offset_value(argument_idx, offset_idx) = *const_offset;
 
+      } else if (HloModule** offset_module = std::get_if<HloModule*>(&offset)) {
+        TF_ASSIGN_OR_RETURN(
+            Literal offset,
+            HloEvaluator().Evaluate(**offset_module, {&Indvar(this)}));
+        auto offset_int = LiteralUtil::LiteralAsScalarInt64(offset);
+        if (offset_int.has_value()) {
+          offset_value(argument_idx, offset_idx) = *offset_int;
+        } else {
+          return absl::InternalError(
+              absl::StrFormat("Unhandled type returned from offset module: %s",
+                              offset.shape().ToString()));
+        }
+        VLOG(2) << "Offset value = " << offset_value(argument_idx, offset_idx);
+
       } else {
         // Transfer slice offset value from device to host.
         auto alloc_slice = std::get<BufferAllocation::Slice>(offset);
@@ -251,6 +299,15 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Execute the underlying custom call thunk with the new buffers.
   TF_RETURN_IF_ERROR(embedded_thunk_->ExecuteOnStream(new_params));
+
+  if (offset_as_function_of_indvar_metadata_ != std::nullopt) {
+    Indvar(this) =
+        HloEvaluator()
+            .Evaluate(*offset_as_function_of_indvar_metadata_->indvar_update,
+                      {&Indvar(this)})
+            .value();
+    VLOG(2) << "Indvar = " << Indvar(this).ToString();
+  }
 
   return absl::OkStatus();
 }
