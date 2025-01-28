@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -25,6 +27,8 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
+#include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla::gpu {
 
@@ -35,11 +39,11 @@ absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
   return absl::UnimplementedError("not supported for this build configuration");
 }
 
-absl::Status EmitMatMul(EmitterLocOpBuilder& builder,
-                        absl::string_view libdevice_path,
-                        const se::DeviceDescription& device_info,
-                        const HloFusionInstruction* fusion,
-                        mlir::triton::FuncOp fn, const BlockLevelParameters&) {
+absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
+    EmitterLocOpBuilder& builder, absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info,
+    const HloFusionInstruction* fusion, mlir::triton::FuncOp fn,
+    const BlockLevelParameters&) {
   return absl::UnimplementedError("not supported for this build configuration");
 }
 
