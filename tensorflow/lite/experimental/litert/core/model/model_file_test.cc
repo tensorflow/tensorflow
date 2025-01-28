@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>  // NOLINT
 #include <fstream>
 #include <functional>
@@ -25,6 +26,7 @@
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
@@ -45,6 +47,8 @@
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/test_macros.h"
 #include "tensorflow/lite/experimental/litert/test/test_models.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace litert::internal {
 namespace {
@@ -216,6 +220,35 @@ TEST(ModelSerializeTest, WithSignature) {
   EXPECT_THAT(inputs, ElementsAreArray({kInput}));
   EXPECT_THAT(outputs, ElementsAreArray({kOutput}));
   EXPECT_EQ(&sig.GetSubgraph(), re_loaded->get()->MainSubgraph());
+}
+
+TEST(ModelLoadTest, WithOffsetTensorBuffer) {
+  static constexpr absl::string_view kTensorData = "SOME_TENSOR_DATA";
+
+  auto flatbuffer =
+      FlatbufferWrapper::CreateFromTflFile(GetTestFilePath(kAddSimple));
+  auto tfl_model = flatbuffer->get()->Unpack();
+  const auto buf_ind = tfl_model->subgraphs[0]->tensors[0]->buffer;
+  auto& tfl_buffer = tfl_model->buffers[buf_ind];
+  tfl_buffer->offset = 1;
+  tfl_buffer->size = 1;
+  auto model_buf = SerializeFlatbuffer(*tfl_model);
+  auto* packed_tfl = tflite::GetMutableModel(model_buf.Data());
+  auto* buf = packed_tfl->mutable_buffers()->GetMutableObject(buf_ind);
+  ASSERT_TRUE(buf->mutate_offset(model_buf.Size()));
+  ASSERT_TRUE(buf->mutate_size(kTensorData.size()));
+  OwningBufferRef<uint8_t> final_serializd(kTensorData.size() +
+                                           model_buf.Size());
+  std::memcpy(final_serializd.Data(), model_buf.Data(), model_buf.Size());
+  std::memcpy(final_serializd.Data() + model_buf.Size(), kTensorData.data(),
+              kTensorData.size());
+
+  auto litert_model = LoadModelFromBuffer(final_serializd);
+  ASSERT_TRUE(litert_model);
+
+  const auto& weights_buffer =
+      litert_model->get()->Subgraph(0).Tensor(0).Weights();
+  EXPECT_EQ(weights_buffer.Buffer().StrView(), kTensorData);
 }
 
 TEST(ModelSerializeTest, WithOffsetTensorBuffer) {
