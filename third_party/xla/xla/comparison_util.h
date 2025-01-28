@@ -18,10 +18,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
