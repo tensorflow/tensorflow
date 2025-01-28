@@ -1,0 +1,12 @@
+
+--- a/include/triton/Dialect/TritonGPU/IR/Dialect.h	2025-01-21 05:40:49.000000000 -0800
++++ b/include/triton/Dialect/TritonGPU/IR/Dialect.h	2025-01-28 05:00:43.000000000 -0800
+@@ -11,6 +11,8 @@
+ #include "triton/Dialect/TritonGPU/IR/Attributes.h"
+ #include "triton/Dialect/TritonGPU/IR/Types.h"
+ 
++#include <unordered_map>
++
+ // LinearLayoutCache Utils
+ using CacheKey =
+     std::tuple<std::vector<int64_t>, mlir::Attribute, std::optional<int32_t>>;

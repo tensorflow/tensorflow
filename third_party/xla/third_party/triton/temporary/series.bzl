@@ -14,5 +14,9 @@ those to this list.
 """
 
 temporary_patch_list = [
+    # Patch merged into Triton upstream (https://github.com/triton-lang/triton/pull/5721)
+    # but not merged into llvm_head branch nor Google's fork yet.
+    # Without this XLA fails to build on macos crosscompile and other targets.
+    "//third_party/triton:temporary/header.patch",
     # Add new patches just above this line
 ]
