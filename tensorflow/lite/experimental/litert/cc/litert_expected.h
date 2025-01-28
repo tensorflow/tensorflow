@@ -42,8 +42,8 @@ class Error {
  public:
   // Construct Unexpected from status and optional error message. NOTE:
   // kLiteRtStatusOk should not be passed to Unexpected.
-  explicit Error(LiteRtStatus status, absl::string_view message = "")
-      : status_(status), message_(message) {
+  explicit Error(LiteRtStatus status, std::string message = "")
+      : status_(status), message_(std::move(message)) {
     ABSL_DCHECK(status != kLiteRtStatusOk);
   }
 
