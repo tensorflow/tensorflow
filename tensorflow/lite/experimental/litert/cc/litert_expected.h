@@ -40,8 +40,9 @@ namespace litert {
 // as an error message.
 class Error {
  public:
-  // Construct Unexpected from status and optional error message. NOTE:
-  // kLiteRtStatusOk should not be passed to Unexpected.
+  // Construct Unexpected from status and optional error message.
+  //
+  // NOTE: kLiteRtStatusOk should not be passed to Unexpected.
   explicit Error(LiteRtStatus status, std::string message = "")
       : status_(status), message_(std::move(message)) {
     ABSL_DCHECK(status != kLiteRtStatusOk);
@@ -54,7 +55,11 @@ class Error {
   const std::string& Message() const { return message_; }
 
   friend std::ostream& operator<<(std::ostream& stream, const Error& error) {
-    return stream << error.Message();
+    stream << '(' << LiteRtGetStatusString(error.Status()) << ')';
+    if (!error.Message().empty()) {
+      stream << ' ' << error.Message();
+    }
+    return stream;
   }
 
  private:
@@ -69,7 +74,7 @@ class Unexpected {
       : error_(std::forward<Args>(args)...) {}
 
   // Allow for implicit conversion from convertible Error value inplace.
-  // NOLINTNEXTLINE
+  // NOLINTNEXTLINE(*-explicit-constructor)
   Unexpected(class Error&& e) : error_(std::move(e)) {}
 
   Unexpected(Unexpected&& other) = default;
@@ -88,14 +93,13 @@ class Unexpected {
   class Error error_;
 };
 
-// Utility for generic return values that may be a statused failure.
-// Expecteds store and own the lifetime of either an Unexpected, or a T.
-// T may be any type, primitive or non-primitive.
+// Utility for generic return values that may be a statused failure. Expecteds
+// store and own the lifetime of either an Unexpected, or a T. T may be any
+// type, primitive or non-primitive.
 //
-// No dynamic allocations occur during initialization,
-// so the underlying T is only movable (as opposed to something like "release").
-// Arguments should be constructed inplace at the time of initilizing
-// the expcted if possible.
+// No dynamic allocations occur during initialization, so the underlying T is
+// only movable (as opposed to something like "release"). Arguments should be
+// constructed in place at the time of initializing the expected if possible.
 //
 // Unexpected&& and T&& may be implicitly casted
 // to an Expected. For example,
@@ -120,21 +124,20 @@ class Expected {
   explicit Expected(Args&&... args)
       : has_value_(true), value_(std::forward<Args>(args)...) {}
 
+  // NOLINTBEGIN(*-explicit-constructor)
+
   // Allow for implicit conversion from convertible T value inplace.
-  // NOLINTNEXTLINE
   Expected(const T& t) : has_value_(true), value_(t) {}
-  // NOLINTNEXTLINE
   Expected(T&& t) : has_value_(true), value_(std::move(t)) {}
 
   // Construct from Unexpected inplace.
 
   // Allow for implicit conversion from Error.
-  // NOLINTNEXTLINE
   Expected(const Unexpected& err) : has_value_(false), unexpected_(err) {}
-  // NOLINTNEXTLINE
   Expected(Unexpected&& err) : has_value_(false), unexpected_(std::move(err)) {}
-  // NOLINTNEXTLINE
   Expected(const class Error& e) : has_value_(false), unexpected_(e) {}
+
+  // NOLINTEND(*-explicit-constructor)
 
   // Copy/move
 
@@ -270,15 +273,16 @@ class Expected<void> {
   // "return {};"
   Expected() : unexpected_(std::nullopt) {}
 
+  // NOLINTBEGIN(*-explicit-constructor)
+
   // Construct from Unexpected inplace.
+  Expected(const Unexpected& err) : unexpected_(err) {}
+  Expected(Unexpected&& err) : unexpected_(std::move(err)) {}
 
   // Allow for implicit conversion from Error.
-  // NOLINTNEXTLINE
-  Expected(const Unexpected& err) : unexpected_(err) {}
-  // NOLINTNEXTLINE
-  Expected(Unexpected&& err) : unexpected_(std::move(err)) {}
-  // NOLINTNEXTLINE
   Expected(const Error& e) : unexpected_(e) {}
+
+  // NOLINTEND(*-explicit-constructor)
 
   // Observer for Unexpected, program exits if it doesn't have one.
   const class Error& Error() const& {
