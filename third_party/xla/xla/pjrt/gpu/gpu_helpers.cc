@@ -110,8 +110,7 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
         stream_executor::MemoryType::kUnified, device_ordinal);
   } else {
     sub_allocator = std::make_unique<se::DeviceMemAllocator>(
-        executor, tsl::PlatformDeviceId(device_ordinal),
-        stream_executor::MemoryType::kDevice);
+        executor, tsl::PlatformDeviceId(device_ordinal));
   }
 
   int64_t free_memory;

@@ -32,15 +32,12 @@ class DeviceMemAllocator : public tsl::SubAllocator {
   // the process and must reference a valid ID in the process.
   // Note: stream_exec cannot be null.
   DeviceMemAllocator(StreamExecutor* stream_exec,
-                     tsl::PlatformDeviceId device_id, MemoryType memory_type,
+                     tsl::PlatformDeviceId device_id,
                      const std::vector<Visitor>& alloc_visitors = {})
       : SubAllocator(alloc_visitors, {}),
         stream_exec_(stream_exec),
-        device_id_(device_id),
-        memory_type_(memory_type) {
+        device_id_(device_id) {
     CHECK(stream_exec_ != nullptr);
-    CHECK(memory_type_ != MemoryType::kUnified);
-    CHECK(memory_type_ != MemoryType::kCollective);
   }
 
   ~DeviceMemAllocator() override = default;
@@ -52,14 +49,7 @@ class DeviceMemAllocator : public tsl::SubAllocator {
     void* ptr = nullptr;
     *bytes_received = num_bytes;
     if (num_bytes > 0) {
-      if (memory_type_ == MemoryType::kHost) {
-        // Convert size_t to long unsigned int
-        long unsigned int value = static_cast<long unsigned int>(num_bytes);
-        auto status_or = stream_exec_->HostMemoryAllocate(value);
-        CHECK(status_or.ok()) << status_or.status().message();
-      } else {
-        ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
-      }
+      ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
       VisitAlloc(ptr, device_id_.value(), num_bytes);
     }
     return ptr;
@@ -70,12 +60,8 @@ class DeviceMemAllocator : public tsl::SubAllocator {
 
     if (ptr != nullptr) {
       VisitFree(ptr, device_id_.value(), num_bytes);
-      if (memory_type_ == MemoryType::kHost) {
-        stream_exec_->HostMemoryDeallocate(ptr);
-      } else {
-        DeviceMemoryBase device_ptr(ptr);
-        stream_exec_->Deallocate(&device_ptr);
-      }
+      DeviceMemoryBase device_ptr(ptr);
+      stream_exec_->Deallocate(&device_ptr);
     }
   }
 
@@ -88,7 +74,6 @@ class DeviceMemAllocator : public tsl::SubAllocator {
  private:
   StreamExecutor* stream_exec_;  // not owned, non-null
   const tsl::PlatformDeviceId device_id_;
-  const MemoryType memory_type_ = MemoryType::kDevice;
 
   DeviceMemAllocator(const DeviceMemAllocator&) = delete;
   void operator=(const DeviceMemAllocator&) = delete;

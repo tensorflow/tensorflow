@@ -133,7 +133,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
     } else {
       sub_allocator = new DeviceMemAllocator(
           platform->ExecutorForDevice(platform_device_id.value()).value(),
-          platform_device_id, stream_executor::MemoryType::kDevice);
+          platform_device_id);
     }
     Allocator* device_allocator = nullptr;
     auto cplatform = dynamic_cast<se::CPlatform*>(platform);
