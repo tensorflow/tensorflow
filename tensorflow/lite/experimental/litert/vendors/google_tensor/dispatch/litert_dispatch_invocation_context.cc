@@ -423,6 +423,12 @@ litert::Expected<void> LiteRtDispatchInvocationContextT::Invoke() {
 
 litert::Expected<void> LiteRtDispatchInvocationContextT::AttachInputEvent(
     int graph_input_index, LiteRtEvent input_event) {
+  int input_fence_fd;
+  if (auto status = LiteRtGetEventSyncFenceFd(input_event, &input_fence_fd);
+      status != kLiteRtStatusOk) {
+    return Error(status, "Failed to get sync fence fd from event");
+  }
+
   auto edge = graph_->InputEdge(graph_input_index);
   if (!edge) {
     LITERT_LOG(LITERT_ERROR, "Unexpected graph input index: %d",
@@ -439,12 +445,6 @@ litert::Expected<void> LiteRtDispatchInvocationContextT::AttachInputEvent(
         "thr_invocation_context_attach_input_buffer_sync_fence not found");
   }
 
-  int input_fence_fd;
-  if (auto status = LiteRtGetEventSyncFenceFd(input_event, &input_fence_fd);
-      status != kLiteRtStatusOk) {
-    return Error(status, "Failed to sync fence fd from event");
-  }
-
   auto thr_edge_id = ThrEdgeIdStr(edge_id);
   if (auto status = thr_invocation_context_attach_input_buffer_sync_fence(
           thr_invocation_context_, thr_edge_id.data(), input_fence_fd);
@@ -459,7 +459,6 @@ litert::Expected<void> LiteRtDispatchInvocationContextT::AttachInputEvent(
   }
 
   input_sync_fences_[thr_edge_id.data()] = input_fence_fd;
-
   return {};
 }
 
@@ -502,7 +501,7 @@ litert::Expected<void> GetOutputEvent(
   if (auto status = LiteRtCreateEventFromSyncFenceFd(
           output_fence_fd, /*owns_fd=*/false, output_event);
       status != kLiteRtStatusOk) {
-    return Error(status, "Failed to create event");
+    return Error(status, "Failed to create event from sync fence fd");
   }
 
   return {};
@@ -550,6 +549,7 @@ litert::Expected<void> LiteRtDispatchInvocationContextT::InvokeAsync(
   }
   input_sync_fences_.clear();
 
+  // Extract output events.
   for (auto graph_output_index = 0; graph_output_index < num_output_events;
        ++graph_output_index) {
     if (auto status = GetOutputEvent(southbound_, this, graph_output_index,
