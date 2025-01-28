@@ -1003,6 +1003,33 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
+TEST_P(CollectiveTest,
+       UnsupportedCollectivePermuteStartAndDoneFailGracefullyWithTriton) {
+  auto [data_type, cc] = GetParam();
+  // 'collective-permute-start' and 'collective-permute-done' need to be tested
+  // together, since the HLO verifier relies on one directly consuming the
+  // other.
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  a = $0[128,32] parameter(0)
+  start = ($0[128,32], $0[128,32]) collective-permute-start(a),
+      source_target_pairs={{1,0}, {0,1}, {2,2}}
+  ROOT done = $0[128,32] collective-permute-done(start)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_start,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kCollectivePermuteStart));
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_done,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kCollectivePermuteDone));
+
+  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{2, 2}, cc);
+  RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
 TEST_P(CollectiveTest, UnsupportedReduceScatterFailsGracefullyWithTriton) {
   auto [data_type, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
@@ -1073,6 +1100,32 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
+TEST_P(CollectiveTest, UnsupportedReplicaIdFailsGracefullyWithTriton) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  ROOT replica_id = u32[] replica-id()
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kReplicaId));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
+}
+
+TEST_P(CollectiveTest, UnsupportedPartitionIdFailsGracefullyWithTriton) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  ROOT partition_id = u32[] partition-id()
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kPartitionId));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
+}
+
 constexpr std::array kTestedOpsCollectives = {
     // clang-format off
     // go/keep-sorted start
@@ -1088,7 +1141,11 @@ constexpr std::array kTestedOpsCollectives = {
     HloOpcode::kAsyncUpdate,
     HloOpcode::kCollectiveBroadcast,
     HloOpcode::kCollectivePermute,
-    HloOpcode::kReduceScatter
+    HloOpcode::kCollectivePermuteDone,
+    HloOpcode::kCollectivePermuteStart,
+    HloOpcode::kPartitionId,
+    HloOpcode::kReduceScatter,
+    HloOpcode::kReplicaId
     // go/keep-sorted end
     // clang-format on
 };
@@ -1241,8 +1298,6 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kBitcastConvert,
     HloOpcode::kCall,
     HloOpcode::kCholesky,
-    HloOpcode::kCollectivePermuteDone,
-    HloOpcode::kCollectivePermuteStart,
     HloOpcode::kComplex,
     HloOpcode::kConcatenate,
     HloOpcode::kConditional,
@@ -1266,13 +1321,11 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kOptimizationBarrier,
     HloOpcode::kOutfeed,
     HloOpcode::kPad,
-    HloOpcode::kPartitionId,
     HloOpcode::kRaggedAllToAll,
     HloOpcode::kRaggedDot,
     HloOpcode::kRecv,
     HloOpcode::kRecvDone,
     HloOpcode::kReduceWindow,
-    HloOpcode::kReplicaId,
     HloOpcode::kReverse,
     HloOpcode::kRngBitGenerator,
     HloOpcode::kRngGetAndUpdateState,
