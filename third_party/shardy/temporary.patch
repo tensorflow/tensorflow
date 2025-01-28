@@ -1,127 +1,89 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 776d4e6..bdba21a 100644
+index bdba21a..609122c 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,56 +1,58 @@
+@@ -1,58 +1,12 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/GlobalMerge.cpp b/llvm/lib/CodeGen/GlobalMerge.cpp
----- a/llvm/lib/CodeGen/GlobalMerge.cpp
--+++ b/llvm/lib/CodeGen/GlobalMerge.cpp
--@@ -423,12 +423,24 @@
-+diff -ruN --strip-trailing-cr a/lld/ELF/Config.h b/lld/ELF/Config.h
-+--- a/lld/ELF/Config.h
-++++ b/lld/ELF/Config.h
-+@@ -619,7 +619,6 @@
-+   };
-+   ElfSym sym{};
-+   std::unique_ptr<SymbolTable> symtab;
-+-  SmallVector<Symbol *, 0> synthesizedSymbols;
-+ 
-+   SmallVector<std::unique_ptr<MemoryBuffer>> memoryBuffers;
-+   SmallVector<ELFFileBase *, 0> objectFiles;
-+diff -ruN --strip-trailing-cr a/lld/ELF/Writer.cpp b/lld/ELF/Writer.cpp
-+--- a/lld/ELF/Writer.cpp
-++++ b/lld/ELF/Writer.cpp
-+@@ -149,7 +149,6 @@
-+   if (!s || s->isDefined() || s->isCommon())
-+     return nullptr;
-+ 
-+-  ctx.synthesizedSymbols.push_back(s);
-+   s->resolve(ctx, Defined{ctx, ctx.internalFile, StringRef(), STB_GLOBAL,
-+                           stOther, STT_NOTYPE, val,
-+                           /*size=*/0, sec});
-+@@ -283,7 +282,6 @@
-+ static void demoteSymbolsAndComputeIsPreemptible(Ctx &ctx) {
-+   llvm::TimeTraceScope timeScope("Demote symbols");
-+   DenseMap<InputFile *, DenseMap<SectionBase *, size_t>> sectionIndexMap;
-+-  bool hasDynSymTab = ctx.arg.hasDynSymTab;
-+   for (Symbol *sym : ctx.symtab->getSymbols()) {
-+     if (auto *d = dyn_cast<Defined>(sym)) {
-+       if (d->section && !d->section->isLive())
-+@@ -296,12 +294,11 @@
-+                   sym->type)
-+             .overwrite(*sym);
-+         sym->versionId = VER_NDX_GLOBAL;
-+-        if (sym->includeInDynsym(ctx))
-+-          sym->isExported = true;
-+       }
-      }
+-diff -ruN --strip-trailing-cr a/lld/ELF/Config.h b/lld/ELF/Config.h
+---- a/lld/ELF/Config.h
+-+++ b/lld/ELF/Config.h
+-@@ -619,7 +619,6 @@
+-   };
+-   ElfSym sym{};
+-   std::unique_ptr<SymbolTable> symtab;
+--  SmallVector<Symbol *, 0> synthesizedSymbols;
+- 
+-   SmallVector<std::unique_ptr<MemoryBuffer>> memoryBuffers;
+-   SmallVector<ELFFileBase *, 0> objectFiles;
+-diff -ruN --strip-trailing-cr a/lld/ELF/Writer.cpp b/lld/ELF/Writer.cpp
+---- a/lld/ELF/Writer.cpp
+-+++ b/lld/ELF/Writer.cpp
+-@@ -149,7 +149,6 @@
+-   if (!s || s->isDefined() || s->isCommon())
+-     return nullptr;
+- 
+--  ctx.synthesizedSymbols.push_back(s);
+-   s->resolve(ctx, Defined{ctx, ctx.internalFile, StringRef(), STB_GLOBAL,
+-                           stOther, STT_NOTYPE, val,
+-                           /*size=*/0, sec});
+-@@ -283,7 +282,6 @@
+- static void demoteSymbolsAndComputeIsPreemptible(Ctx &ctx) {
+-   llvm::TimeTraceScope timeScope("Demote symbols");
+-   DenseMap<InputFile *, DenseMap<SectionBase *, size_t>> sectionIndexMap;
+--  bool hasDynSymTab = ctx.arg.hasDynSymTab;
+-   for (Symbol *sym : ctx.symtab->getSymbols()) {
+-     if (auto *d = dyn_cast<Defined>(sym)) {
+-       if (d->section && !d->section->isLive())
+-@@ -296,12 +294,11 @@
+-                   sym->type)
+-             .overwrite(*sym);
+-         sym->versionId = VER_NDX_GLOBAL;
+--        if (sym->includeInDynsym(ctx))
+--          sym->isExported = true;
+-       }
+-     }
+- 
+--    if (hasDynSymTab)
+-+    sym->isExported = sym->includeInDynsym(ctx);
+-+    if (ctx.arg.hasDynSymTab)
+-       sym->isPreemptible = sym->isExported && computeIsPreemptible(ctx, *sym);
 -   }
-  
--+  // Now we found a bunch of sets of globals used together.  We accumulated
--+  // the number of times we encountered the sets (i.e., the number of functions
--+  // that use that exact set of globals).
--+  //
--+  // Multiply that by the size of the set to give us a crude profitability
--+  // metric.
--+  llvm::stable_sort(UsedGlobalSets,
--+                    [](const UsedGlobalSet &UGS1, const UsedGlobalSet &UGS2) {
--+                      return UGS1.Globals.count() * UGS1.UsageCount <
--+                             UGS2.Globals.count() * UGS2.UsageCount;
--+                    });
--+
--   // We can choose to merge all globals together, but ignore globals never used
--   // with another global.  This catches the obviously non-profitable cases of
--   // having a single global, but is aggressive enough for any other case.
--   if (GlobalMergeIgnoreSingleUse) {
--     BitVector AllGlobals(Globals.size());
---    for (const UsedGlobalSet &UGS : UsedGlobalSets) {
--+    for (const UsedGlobalSet &UGS : llvm::reverse(UsedGlobalSets)) {
--       if (UGS.UsageCount == 0)
--         continue;
--       if (UGS.Globals.count() > 1)
--@@ -437,16 +449,6 @@
--     return doMerge(Globals, AllGlobals, M, isConst, AddrSpace);
-+-    if (hasDynSymTab)
-++    sym->isExported = sym->includeInDynsym(ctx);
-++    if (ctx.arg.hasDynSymTab)
-+       sym->isPreemptible = sym->isExported && computeIsPreemptible(ctx, *sym);
-+   }
-+ }
-+@@ -1839,11 +1836,6 @@
-+     }
-    }
-  
---  // Now we found a bunch of sets of globals used together. We accumulated
---  // the number of times we encountered the sets (i.e., the number of functions
---  // that use that exact set of globals). Multiply that by the size of the set
---  // to give us a crude profitability metric.
---  llvm::stable_sort(UsedGlobalSets,
---                    [](const UsedGlobalSet &UGS1, const UsedGlobalSet &UGS2) {
---                      return UGS1.Globals.count() * UGS1.UsageCount >=
---                             UGS2.Globals.count() * UGS2.UsageCount;
---                    });
-+-  // If the previous code block defines any non-hidden symbols (e.g.
-+-  // __global_pointer$), they may be exported.
-+-  for (Symbol *sym : ctx.synthesizedSymbols)
-+-    sym->isExported = sym->includeInDynsym(ctx);
- -
--   // Starting from the sets with the best (=biggest) profitability, find a
--   // good combination.
--   // The ideal (and expensive) solution can only be found by trying all
--@@ -456,7 +458,7 @@
--   BitVector PickedGlobals(Globals.size());
--   bool Changed = false;
-+   demoteSymbolsAndComputeIsPreemptible(ctx);
-  
---  for (const UsedGlobalSet &UGS : UsedGlobalSets) {
--+  for (const UsedGlobalSet &UGS : llvm::reverse(UsedGlobalSets)) {
--     if (UGS.UsageCount == 0)
--       continue;
--     if (PickedGlobals.anyCommon(UGS.Globals))
-+   if (ctx.arg.copyRelocs && ctx.arg.discard != DiscardPolicy::None)
+- }
+-@@ -1839,11 +1836,6 @@
+-     }
+-   }
+- 
+--  // If the previous code block defines any non-hidden symbols (e.g.
+--  // __global_pointer$), they may be exported.
+--  for (Symbol *sym : ctx.synthesizedSymbols)
+--    sym->isExported = sym->includeInDynsym(ctx);
+--
+-   demoteSymbolsAndComputeIsPreemptible(ctx);
+- 
+-   if (ctx.arg.copyRelocs && ctx.arg.discard != DiscardPolicy::None)
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/lld/BUILD.bazel b/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
++@@ -43,6 +43,7 @@
++     srcs = [":config_version_gen"] + glob(["Common/*.cpp"]),
++     hdrs = glob(["include/lld/Common/*.h"]),
++     includes = ["include"],
+++    textual_hdrs = glob(["include/lld/Common/*.inc"]),
++     deps = [
++         ":vcs_version",
++         "//llvm:CodeGen",
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 6b3934d..9a336b9 100644
+index 9a336b9..3a734a0 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "77c780d64b950d6850d5ec1ee06cd0c21b38b89e"
--    LLVM_SHA256 = "109bdf7b5e62992fa8ccf9445eb462b046ffc6409de859f5f7482ea3cde8f967"
-+    LLVM_COMMIT = "2e5a5237daf82a657561c490845c406e13657311"
-+    LLVM_SHA256 = "e0622b7f81a046e1576d8d07c5ba916346c2a1c06528655d3ddd45a1028eac89"
+-    LLVM_COMMIT = "2e5a5237daf82a657561c490845c406e13657311"
+-    LLVM_SHA256 = "e0622b7f81a046e1576d8d07c5ba916346c2a1c06528655d3ddd45a1028eac89"
++    LLVM_COMMIT = "e0c7f081f1582d49f81ec4c6cdbf5d6ef13c58ba"
++    LLVM_SHA256 = "cbc8748bf153ae2d0f2f910930e14fa15ac38bab384634ada12247a2bb2bcf6a"
  
      tf_http_archive(
          name = name,
