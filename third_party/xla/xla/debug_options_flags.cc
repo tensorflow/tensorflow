@@ -942,7 +942,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_cpu_prefer_vector_width",
       int32_setter_for(&DebugOptions::set_xla_cpu_prefer_vector_width),
       debug_options->xla_cpu_prefer_vector_width(),
-      "Preferred vector with for the XLA:CPU LLVM backend."));
+      "Preferred vector width for the XLA:CPU LLVM backend."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_max_isa",
       uppercase_string_setter_for(&DebugOptions::set_xla_cpu_max_isa),
