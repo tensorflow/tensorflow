@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -348,7 +349,10 @@ class AsyncValueRef {
 
   ABSL_DEPRECATED("Use SetError with absl::Status argument")
   void SetError(std::string_view message) const {
-    SetError(absl::InternalError(message));
+    // Converting to `absl::string_view` because implicit conversion is not
+    // supported in android builds.
+    absl::string_view message_view(message.data(), message.size());
+    SetError(absl::InternalError(message_view));
   }
 
   explicit operator bool() const { return value_.get() != nullptr; }
