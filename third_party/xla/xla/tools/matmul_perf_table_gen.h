@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_TOOLS_MATMUL_PERF_TABLE_GEN_H_
 #define XLA_TOOLS_MATMUL_PERF_TABLE_GEN_H_
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>

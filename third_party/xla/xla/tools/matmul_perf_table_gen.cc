@@ -162,6 +162,16 @@ void AddDotsFromHlos(const std::string& hlo_scan_path,
     return;
   }
 
+  // `IsDirectory` returns FAILED_PRECONDITION if file exists but is not a
+  // directory. Add it to scanning.
+  if (auto is_dir = tsl::Env::Default()->IsDirectory(hlo_scan_path);
+      absl::IsFailedPrecondition(is_dir)) {
+    PathSpec spec;
+    spec.filepath = hlo_scan_path;
+    specs.push_back(spec);
+    return;
+  }
+
   std::vector<std::string> filenames;
   CHECK_OK(tsl::Env::Default()->GetChildren(hlo_scan_path, &filenames));
   for (const std::string& filename : filenames) {

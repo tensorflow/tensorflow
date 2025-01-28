@@ -148,6 +148,32 @@ entries {
     }
   }
 }
+
+3. Parallelize file generation on 8 GPUs easily using GNU parallel.
+
+Make sure you have GNU parallel installed.
+
+```
+user@host:~$ parallel --version
+GNU parallel 20240222
+...
+```
+
+Then run the following command to read HLOs from `path/to/hlos` and split the work on 8 GPUs.
+
+user@host:~$ find `realpath path/to/hlos/` -type f -print0 | parallel -u -j 8 -0 -a - 'CUDA_VISIBLE_DEVICES=$(({%}-1)) bazel --output_base=/tmp/out-$(({%}-1)) run matmul_perf_table_gen_main --config=cuda -- --alsologtostderr --output=/tmp/out-$(({%}-1)).pbtxt --hlo_scan_path={}'
+
+You will end up with a set of files in /tmp
+
+```
+out-0.pbtxt
+out-1.pbtxt
+...
+out-7.pbtxt
+```
+
+Each containing profiled ops supporting `xla.gpu.DeviceHloInstructionProfiles` proto format.
+
 )";
 
 using ::xla::gpu::MatmulPerfTableGen;
@@ -218,7 +244,7 @@ std::vector<MatmulPerfTableGen::DataTypeSpec> ParseDataTypes(
 
 std::string ValidateFilepath(absl::string_view filepath) {
   std::string path = std::string(filepath);
-  CHECK_OK(tsl::Env::Default()->IsDirectory(path));
+  CHECK_OK(tsl::Env::Default()->FileExists(path));
   return path;
 }
 
@@ -242,7 +268,6 @@ MatmulPerfTableGen::Config CreateConfig(
 }
 
 // TODO(b/390097558): Sweep through minor and major dimensions for dots.
-// TODO(b/390097558): Implement sharding on devices.
 int main(int argc, char* argv[]) {
   std::string m_spec;
   std::string n_spec;
