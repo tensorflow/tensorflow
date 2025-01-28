@@ -87,7 +87,6 @@ def _write_to_sponge_config(key, value) -> None:
 
 class BuildType(enum.Enum):
   """Enum representing all types of builds."""
-  CPU_X86 = enum.auto()
   CPU_X86_SELF_HOSTED = enum.auto()
   CPU_ARM64 = enum.auto()
   GPU = enum.auto()
@@ -285,16 +284,6 @@ cpu_x86_tag_filter = (
     "-requires-gpu-nvidia",
     "-requires-gpu-amd",
 )
-_CPU_X86_BUILD = Build(
-    type_=BuildType.CPU_X86,
-    repo="openxla/xla",
-    image_url=_ML_BUILD_IMAGE,
-    configs=("warnings", "nonccl", "rbe_linux_cpu"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
-    build_tag_filters=cpu_x86_tag_filter,
-    test_tag_filters=cpu_x86_tag_filter,
-    options=_DEFAULT_BAZEL_OPTIONS,
-)
 _CPU_X86_SELF_HOSTED_BUILD = Build(
     type_=BuildType.CPU_X86_SELF_HOSTED,
     repo="openxla/xla",
@@ -466,11 +455,9 @@ _TENSORFLOW_GPU_BUILD = Build(
 
 _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/arm64/build_cpu": _CPU_ARM64_BUILD,
-    "tensorflow/xla/linux/cpu/build_cpu": _CPU_X86_BUILD,
     "tensorflow/xla/linux/gpu/build_gpu": _GPU_BUILD,
     "tensorflow/xla/linux/github_continuous/arm64/build_cpu": _CPU_ARM64_BUILD,
     "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_BUILD,
-    "tensorflow/xla/linux/github_continuous/build_cpu": _CPU_X86_BUILD,
     "tensorflow/xla/macos/github_continuous/cpu_py39_full": _MACOS_X86_BUILD,
     "tensorflow/xla/jax/cpu/build_cpu": _JAX_CPU_BUILD,
     "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
