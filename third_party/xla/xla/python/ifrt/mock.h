@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -385,6 +386,7 @@ class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
               (std::optional<tsl::RCReference<DeviceList>> devices,
                std::optional<MemoryKind> memory_kind),
               (const final));
+  MOCK_METHOD(void, Hash, (absl::HashState), (const final));
 
   std::string DebugString() const final { return "MockSharding"; }
 

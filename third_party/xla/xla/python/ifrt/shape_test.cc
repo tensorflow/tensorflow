@@ -101,6 +101,19 @@ TEST(ShapeTest, ToFromProto) {
   }
 }
 
+TEST(ShapeTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      Shape({}),
+      Shape({1}),
+      Shape({2}),
+      Shape({1, 2}),
+      Shape({1, 3}),
+      Shape({2, 1}),
+      Shape({1, 2, 3}),
+      Shape({1, 2, 4}),
+  }));
+}
+
 TEST(BoundedDynamicShapeTagDeathTest, NoDynamicDim) {
   EXPECT_DEATH(BoundedDynamicShapeTag tag({false, false}),
                "At least one dimension needs to be dynamically sized");
@@ -195,16 +208,11 @@ TEST(DynamicShapeTest, ToString) {
   }
 }
 
-TEST(ShapeTest, Hash) {
+TEST(DynamicShapeTest, Hash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
-      Shape({}),
-      Shape({1}),
-      Shape({2}),
-      Shape({1, 2}),
-      Shape({1, 3}),
-      Shape({2, 1}),
-      Shape({1, 2, 3}),
-      Shape({1, 2, 4}),
+      DynamicShape::Create(Shape({1}), BoundedDynamicShapeTag({true})).value(),
+      DynamicShape::Create(Shape({1, 2}), BoundedDynamicShapeTag({true, false}))
+          .value(),
   }));
 }
 
