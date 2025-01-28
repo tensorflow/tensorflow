@@ -123,6 +123,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
+  VLOG(3) << "hlo_computation: " << hlo_computation->ToString();
 
   auto generate = [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
     VLOG(3) << "Generating: " << suggested_kernel_name;
