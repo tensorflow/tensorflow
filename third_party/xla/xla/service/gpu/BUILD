@@ -2136,6 +2136,7 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service:hlo_module_config",
         "//xla/service:latency_hiding_scheduler",
+        "//xla/service:legalize_scheduling_annotations",
         "//xla/service:p2p_schedule_preparation",
         "//xla/service:profile_guided_latency_estimator",
         "//xla/service/gpu/model:analytical_latency_estimator",
