@@ -48,8 +48,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
   explicit HloRunnerPjRt(
       std::unique_ptr<PjRtClient> pjrt_client,
       DeviceShapeRepresentationFn device_shape_representation_fn,
-      DeviceShapeSizeFn device_shape_size_fn,
-      bool use_parameter_layout_on_device = false);
+      DeviceShapeSizeFn device_shape_size_fn);
 
   ~HloRunnerPjRt() override;
 
@@ -146,7 +145,6 @@ class HloRunnerPjRt : public HloRunnerInterface {
   std::unique_ptr<PjRtClient> pjrt_client_;
   DeviceShapeRepresentationFn device_shape_representation_fn_;
   DeviceShapeSizeFn device_shape_size_fn_;
-  bool use_parameter_layout_on_device_ = false;
 };
 
 }  // namespace xla

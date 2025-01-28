@@ -16,11 +16,13 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/source_target_pairs.h"
 
 namespace xla {
 
+using CycleType = SourceTargetPairs::CycleType;
+
 // Finds and returns the non-constant operand in instr.
-//
 // CHECK-fails if instr doesn't have exactly one unique non-constant operand.
 static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
   const HloInstruction* result = nullptr;

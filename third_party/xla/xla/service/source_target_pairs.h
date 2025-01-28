@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SOURCE_TARGET_PAIRS_H_
 #define XLA_SERVICE_SOURCE_TARGET_PAIRS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -23,16 +24,29 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 
 namespace xla {
 
+// SourceTargetPairs is a class that represents a list of (source, target)
+// pairs using in a collective permute instruction,
+// e.g. {{0,1},{1,2},{2,3},{3,0}}.
 class SourceTargetPairs {
+  static constexpr int64_t kInlineFactor = 8;
+
+ public:
   struct SourceTargetPair {
     int64_t source;
     int64_t target;
+    bool operator==(const SourceTargetPair& other) const {
+      return source == other.source && target == other.target;
+    }
   };
 
- public:
+  enum class CycleType { kUnknown, kForward, kBackward };
+  using STVector = absl::InlinedVector<SourceTargetPair, kInlineFactor>;
+
   SourceTargetPairs() = default;
 
   explicit SourceTargetPairs(
@@ -42,8 +56,12 @@ class SourceTargetPairs {
     }
   }
 
+  static absl::StatusOr<SourceTargetPairs> FromString(absl::string_view str);
+
   // Returns a cannoical string such as {{0,1},{1,2},{2,3},{3,0}}.
   std::string ToString() const;
+
+  STVector& data() { return pairs_; }
 
   SourceTargetPair& operator[](int64_t i) {
     CHECK_LT(i, pairs_.size())
@@ -56,9 +74,23 @@ class SourceTargetPairs {
     return pairs_[i];
   }
 
-  int64_t size() const { return pairs_.size(); }
+  bool operator==(const SourceTargetPairs& other) const {
+    return pairs_ == other.pairs_;
+  }
 
-  std::vector<std::pair<int64_t, int64_t>> data() const {
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const SourceTargetPairs& pairs) {
+    absl::Format(&sink, "%s", pairs.ToString());
+  }
+
+  int64_t size() const { return pairs_.size(); }
+  void push_back(int64_t source, int64_t target) {
+    pairs_.push_back({.source = source, .target = target});
+  }
+  void push_back(const SourceTargetPair& pair) { pairs_.push_back(pair); }
+
+  // Converts to a vector of pairs of ints.
+  std::vector<std::pair<int64_t, int64_t>> expand() const {
     std::vector<std::pair<int64_t, int64_t>> data;
     for (const auto& pair : pairs_) {
       data.push_back({pair.source, pair.target});
@@ -68,6 +100,12 @@ class SourceTargetPairs {
 
   // Returns true if the (source, target) relationship has a cycle.
   bool HasCycles();
+
+  // Splits input into backward (first) and forwards (second) edges.
+  // In backward cycle, backwards edge is the first element and in forwards
+  // cycle, backward edge is the last element.
+  std::pair<SourceTargetPairs, SourceTargetPairs> SplitEdges(
+      CycleType cycle_type) const;
 
   // Returns true if the (source, target) pairs form a forward cycle with all
   // participants in the cycle, such as {{0,1},{1,2},{2,3},{3,0}}. We assume
@@ -84,8 +122,7 @@ class SourceTargetPairs {
                               const SourceTargetPairs& others);
 
  private:
-  static constexpr int64_t kInlineFactor = 8;
-  absl::InlinedVector<SourceTargetPair, kInlineFactor> pairs_;
+  STVector pairs_;
 };
 
 }  // namespace xla

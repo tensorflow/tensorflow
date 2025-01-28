@@ -119,7 +119,6 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
 
   HloComputation* AddEntryComputationAndUpdateEntryComputationLayout(
       HloModule*, std::unique_ptr<HloComputation> computation);
-  void UpdateEntryComputationLayout(HloModule* module) const;
 
   // Executes the given module and return the result as a Literal.
   absl::StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,

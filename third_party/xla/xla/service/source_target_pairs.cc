@@ -15,14 +15,22 @@ limitations under the License.
 
 #include "xla/service/source_target_pairs.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/graphcycles/graphcycles.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -32,6 +40,22 @@ std::string SourceTargetPairs::ToString() const {
   };
   const std::string pairs_str = absl::StrJoin(pairs_, ",", formatter);
   return absl::StrCat("{", pairs_str, "}");
+}
+
+absl::StatusOr<SourceTargetPairs> SourceTargetPairs::FromString(
+    absl::string_view str) {
+  // reusing replica groups parsing.
+  TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
+                      // absl::StatusOr<std::vector<ReplicaGroup>> groups =
+                      ParseReplicaGroupsOnly(str));
+  SourceTargetPairs res;
+  for (const ReplicaGroup& group : groups) {
+    if (group.replica_ids_size() != 2) {
+      return Internal("Incorrect element size : %s", str);
+    }
+    res.push_back(group.replica_ids(0), group.replica_ids(1));
+  }
+  return res;
 }
 
 namespace {
@@ -92,6 +116,20 @@ bool SourceTargetPairs::IsBackwardCycle(const SourceTargetPairs& backedge,
     }
   }
   return true;
+}
+
+std::pair<SourceTargetPairs, SourceTargetPairs> SourceTargetPairs::SplitEdges(
+    CycleType cycle_type) const {
+  SourceTargetPairs back, fwd;
+  size_t back_pair_index = cycle_type == CycleType::kBackward ? 0 : size() - 1;
+  for (size_t i = 0; i < pairs_.size(); ++i) {
+    if (i == back_pair_index) {
+      back.push_back(pairs_[i]);
+    } else {
+      fwd.push_back(pairs_[i]);
+    }
+  }
+  return {back, fwd};
 }
 
 }  // namespace xla
