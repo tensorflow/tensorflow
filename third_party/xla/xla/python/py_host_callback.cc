@@ -144,6 +144,23 @@ PyCpuLoadedHostCallback::Create(ifrt::Client* ifrt_client,
                                             std::move(cpu_callback)));
 }
 
+absl::StatusOr<tsl::RCReference<PyCpuLoadedHostCallback>>
+PyCpuLoadedHostCallback::Create(ifrt::Client* ifrt_client,
+                                nb::callable callable) {
+  ifrt::PlatformId platform_id = ifrt_client->platform_id();
+  if (platform_id != CpuId() && platform_id != CudaId() &&
+      platform_id != RocmId() && platform_id != SyclId()) {
+    return Unimplemented("CpuCallback supports CPU and GPU only");
+  }
+
+  // `callable` will be destroyed safely with `PythonRefManager` when
+  // `CpuCallback` is destroyed.
+  auto cpu_callback = std::make_unique<CpuCallback>(std::move(callable));
+  return tsl::RCReference<PyCpuLoadedHostCallback>(
+      tsl::MakeRef<PyCpuLoadedHostCallback>(ifrt_client,
+                                            std::move(cpu_callback)));
+}
+
 absl::StatusOr<std::string> PyCpuLoadedHostCallback::Serialize() const {
   return Unimplemented(
       "PyHostSendAndRecvLoadedHostCallback serialization is not supported");

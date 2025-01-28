@@ -547,6 +547,14 @@ PjRtLoadedExecutable::Execute(
   opts.use_major_to_minor_data_layout_for_callbacks = true;
   opts.non_donatable_input_indices = options.non_donatable_input_indices;
 
+  auto context = std::make_shared<xla::ExecuteContext>();
+  // TODO(dsuo): Mock TPU doesn't support passing ExecuteContext. This is a bit
+  // of a kludge.
+  if (pjrt_loaded_executable_->client()->platform_name() != "tpu") {
+    CHECK_OK(context->ffi_context().Insert(all_loaded_host_callbacks_.get()));
+    opts.context = context.get();
+  }
+
   if (!all_loaded_host_callbacks_->empty() && !returned_future_supported) {
     return Internal(
         "Host callback not supported without returned future support in "
@@ -623,9 +631,10 @@ PjRtLoadedExecutable::Execute(
     // can use the futures to extend the lifetime of the host callbacks until
     // the execution finishes.
     status.OnReady([all_loaded_host_callbacks = all_loaded_host_callbacks_,
-                    host_callback_states =
-                        std::move(host_callback_states)](absl::Status) mutable {
+                    host_callback_states = std::move(host_callback_states),
+                    context = context](absl::Status) mutable {
       all_loaded_host_callbacks.reset();
+      context.reset();
     });
   }
 

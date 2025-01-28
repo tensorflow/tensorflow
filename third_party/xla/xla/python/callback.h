@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -26,7 +25,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "nanobind/nanobind.h"
+#include "xla/ffi/ffi.h"
 #include "xla/pjrt/transpose.h"
+#include "xla/python/ifrt/host_callback.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/xla_data.pb.h"
@@ -62,6 +63,9 @@ class CpuCallback {
         results_(std::move(results)),
         transpose_cache_(/*capacity=*/16) {}
 
+  explicit CpuCallback(nanobind::callable callable)
+      : callable_(std::move(callable)), transpose_cache_(/*capacity=*/16) {}
+
   ~CpuCallback();
 
   const std::vector<Arg>& args() const { return args_; }
@@ -76,15 +80,15 @@ class CpuCallback {
 
   absl::StatusOr<nanobind::tuple> Call(nanobind::tuple args);
 
+  absl::StatusOr<nanobind::tuple> FfiCall(ffi::RemainingRets rets,
+                                          nanobind::tuple args);
+
  private:
   nanobind::callable callable_;
   std::vector<Arg> args_;
   std::vector<Result> results_;
   xla::TransposePlanCache transpose_cache_;
 };
-
-void XlaPythonCpuCallback(void* output, void** inputs,
-                          XlaCustomCallStatus* status);
 
 }  // namespace xla
 
