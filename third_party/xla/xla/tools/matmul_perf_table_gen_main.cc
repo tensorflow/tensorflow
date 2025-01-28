@@ -242,12 +242,6 @@ std::vector<MatmulPerfTableGen::DataTypeSpec> ParseDataTypes(
   return result;
 }
 
-std::string ValidateFilepath(absl::string_view filepath) {
-  std::string path = std::string(filepath);
-  CHECK_OK(tsl::Env::Default()->FileExists(path));
-  return path;
-}
-
 MatmulPerfTableGen::Config CreateConfig(
     absl::string_view m_spec, absl::string_view n_spec,
     absl::string_view k_spec, absl::string_view dtypes,
@@ -259,7 +253,7 @@ MatmulPerfTableGen::Config CreateConfig(
   cfg.n_spec = ParseSpec(n_spec);
   cfg.k_spec = ParseSpec(k_spec);
   cfg.dtypes = ParseDataTypes(dtypes);
-  cfg.hlo_scan_path = ValidateFilepath(hlo_scan_path);
+  cfg.hlo_scan_path = hlo_scan_path;
 
   // Execution opts.
   cfg.dry_run = dry_run;
@@ -275,6 +269,7 @@ int main(int argc, char* argv[]) {
   std::string dtypes;
   std::string out;
   std::string hlo_scan_path;
+  std::string merge_path;
   bool dry_run = false;
 
   std::vector<tsl::Flag> flag_list = {
@@ -298,6 +293,8 @@ int main(int argc, char* argv[]) {
       tsl::Flag("hlo_scan_path", &hlo_scan_path,
                 "Path to HLO files. Tool will scan provided HLOs for dot "
                 "ops and use those for gathering profiling data."),
+      tsl::Flag("merge_path", &merge_path,
+                "Path to DeviceHloInstructionProfiles files."),
       tsl::Flag("dry_run", &dry_run,
                 "For a defined search space does not perform measurements but "
                 "runs everything else."),
@@ -313,6 +310,15 @@ int main(int argc, char* argv[]) {
   MatmulPerfTableGen::Config cfg =
       CreateConfig(m_spec, n_spec, k_spec, dtypes, out, hlo_scan_path, dry_run);
   MatmulPerfTableGen table_gen(std::move(cfg));
+
+  if (!merge_path.empty()) {
+    LOG(INFO) << "Merging profiling data from: " << merge_path;
+    auto profile_data = table_gen.Merge(merge_path);
+    CHECK_OK(profile_data);
+    CHECK_OK(table_gen.Dump(*profile_data));
+    return 0;
+  }
+
   xla::gpu::DeviceHloInstructionProfiles result = table_gen.ComputeTable();
   CHECK_OK(table_gen.Dump(result));
 

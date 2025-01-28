@@ -75,6 +75,11 @@ class MatmulPerfTableGen {
   // Dumps a performance `table` to a given `output_file` from `Config`.
   absl::Status Dump(const DeviceHloInstructionProfiles& table);
 
+  // Reads, deduplicates and merges multiple `xla.gpu.DeviceInstructionProfiles`
+  // residing in a given `filepath`.
+  absl::StatusOr<DeviceHloInstructionProfiles> Merge(
+      absl::string_view filepath);
+
  private:
   std::unique_ptr<Executable> Compile(std::unique_ptr<HloModule> module);
 

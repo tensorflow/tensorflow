@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiler.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/tests/test_utils.h"
@@ -78,6 +80,28 @@ struct StaticSpec {
   std::string dtype_lhs;
   std::string dtype_rhs;
   std::string dtype_out;
+};
+
+struct ProfilingResult {
+  std::string device_info;
+  HloInstructionProto hlo_proto;
+  std::string fingerprint;
+  int64_t clock_cycles;
+
+  struct Hash {
+    size_t operator()(const ProfilingResult& profiling_result) const {
+      return absl::HashOf(profiling_result.device_info,
+                          profiling_result.fingerprint);
+    }
+  };
+
+  struct Eq {
+    bool operator()(const ProfilingResult& lhs,
+                    const ProfilingResult& rhs) const {
+      return lhs.device_info == rhs.device_info &&
+             lhs.fingerprint == rhs.fingerprint;
+    }
+  };
 };
 
 struct ExplicitSpec {
@@ -175,12 +199,8 @@ void AddDotsFromHlos(const std::string& hlo_scan_path,
   std::vector<std::string> filenames;
   CHECK_OK(tsl::Env::Default()->GetChildren(hlo_scan_path, &filenames));
   for (const std::string& filename : filenames) {
-    // Read file.
-    std::string hlo_data;
-    std::string hlo_path = absl::StrJoin({hlo_scan_path, filename}, "/");
-
     PathSpec spec;
-    spec.filepath = hlo_path;
+    spec.filepath = absl::StrCat(hlo_scan_path, "/", filename);
     specs.push_back(spec);
   }
 }
@@ -311,7 +331,64 @@ absl::Duration MatmulPerfTableGen::Profile(std::unique_ptr<HloModule> module) {
   return absl::Nanoseconds(std::move(*tracer).getMedianKernelTimeNs());
 }
 
-gpu::DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
+absl::StatusOr<DeviceHloInstructionProfiles> MatmulPerfTableGen::Merge(
+    absl::string_view filepath) {
+  DeviceHloInstructionProfiles result;
+  std::vector<std::string> filenames;
+  CHECK_OK(tsl::Env::Default()->GetChildren(std::string(filepath), &filenames));
+
+  absl::flat_hash_set<ProfilingResult, ProfilingResult::Hash,
+                      ProfilingResult::Eq>
+      profiling_results;
+  uint64_t profiling_results_counter = 0;
+  for (const std::string& filename : filenames) {
+    // Read file.
+    std::string profile_path = absl::StrCat(filepath, "/", filename);
+    DeviceHloInstructionProfiles partial_profile;
+
+    CHECK_OK(tsl::Env::Default()->FileExists(profile_path));
+    if (!tsl::ReadTextOrBinaryProto(tsl::Env::Default(), profile_path,
+                                    &partial_profile)
+             .ok()) {
+      LOG(WARNING) << "Cannot read :" << profile_path;
+      continue;
+    }
+
+    for (auto& [device_descriptor, data] : partial_profile.entries()) {
+      for (const HloInstructionProfile& profile : data.entries()) {
+        CHECK(!profile.fingerprint().empty())
+            << "Expected fingerprint to deduplicate: " << profile.DebugString();
+        ProfilingResult profiling_result{
+            device_descriptor, std::move(profile.instruction()),
+            std::move(profile.fingerprint()), profile.clock_cycles()};
+        profiling_results.insert(profiling_result);
+        profiling_results_counter++;
+      }
+    }
+  }
+  LOG(INFO) << "Merging and deduplication entries count. Before "
+            << profiling_results_counter << ", after "
+            << profiling_results.size() << ".";
+  for (const ProfilingResult& profiling_result : profiling_results) {
+    std::string device_descriptor = profiling_result.device_info;
+    if (!result.mutable_entries()->contains(device_descriptor)) {
+      result.mutable_entries()->insert({device_descriptor, {}});
+    }
+
+    HloInstructionProfile profile_proto;
+    *profile_proto.mutable_instruction() =
+        std::move(profiling_result.hlo_proto);
+    profile_proto.set_clock_cycles(profiling_result.clock_cycles);
+    profile_proto.set_fingerprint(profiling_result.fingerprint);
+
+    *result.mutable_entries()->at(device_descriptor).add_entries() =
+        std::move(profile_proto);
+  }
+
+  return result;
+}
+
+DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
   gpu::DeviceHloInstructionProfiles device_profiles;
   gpu::HloInstructionProfileList profile_list;
 
@@ -378,24 +455,28 @@ absl::Status MatmulPerfTableGen::Dump(
         tsl::ReadTextOrBinaryProto(tsl::Env::Default(), config_.output, &file));
   }
 
-  CHECK_EQ(table.entries_size(), 1)
-      << "Expecting one program run, for one device config";
-  std::string sm_ver = table.entries().begin()->first;
-  if (file.entries().contains(sm_ver)) {
-    file.mutable_entries()->at(sm_ver).MergeFrom(table.entries().at(sm_ver));
-  } else {
-    file.MergeFrom(table);
-  }
+  for (const auto& [sm_ver, entries] : table.entries()) {
+    if (file.entries().contains(sm_ver)) {
+      file.mutable_entries()->at(sm_ver).MergeFrom(entries);
+    } else {
+      file.MergeFrom(table);
+    }
 
-  if (absl::StrContains(config_.output, ".pbtxt")) {
-    return tsl::WriteTextProto(tsl::Env::Default(), config_.output, file);
+    if (absl::StrContains(config_.output, ".pbtxt")) {
+      TF_RETURN_IF_ERROR(
+          tsl::WriteTextProto(tsl::Env::Default(), config_.output, file));
+      continue;
+    }
+    if (absl::StrContains(config_.output, ".pb")) {
+      TF_RETURN_IF_ERROR(
+          tsl::WriteBinaryProto(tsl::Env::Default(), config_.output, file));
+      continue;
+    }
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported file: ", config_.output,
+                     ". Expecting .pb or .pbtxt suffix."));
   }
-  if (absl::StrContains(config_.output, ".pb")) {
-    return tsl::WriteBinaryProto(tsl::Env::Default(), config_.output, file);
-  }
-  return absl::InvalidArgumentError(
-      absl::StrCat("Unsupported file: ", config_.output,
-                   ". Expecting .pb or .pbtxt suffix."));
+  return absl::OkStatus();
 }
 
 }  // namespace xla::gpu
