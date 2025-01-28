@@ -40,6 +40,7 @@ class DeviceMemAllocator : public tsl::SubAllocator {
         memory_type_(memory_type) {
     CHECK(stream_exec_ != nullptr);
     CHECK(memory_type_ != MemoryType::kUnified);
+    CHECK(memory_type_ != MemoryType::kCollective);
   }
 
   ~DeviceMemAllocator() override = default;
@@ -51,11 +52,7 @@ class DeviceMemAllocator : public tsl::SubAllocator {
     void* ptr = nullptr;
     *bytes_received = num_bytes;
     if (num_bytes > 0) {
-      if (memory_type_ == MemoryType::kCollective) {
-        auto status_or = stream_exec_->CollectiveMemoryAllocate(num_bytes);
-        CHECK(status_or.ok()) << status_or.status().message();
-        ptr = status_or.value();
-      } else if (memory_type_ == MemoryType::kHost) {
+      if (memory_type_ == MemoryType::kHost) {
         // Convert size_t to long unsigned int
         long unsigned int value = static_cast<long unsigned int>(num_bytes);
         auto status_or = stream_exec_->HostMemoryAllocate(value);
@@ -73,10 +70,7 @@ class DeviceMemAllocator : public tsl::SubAllocator {
 
     if (ptr != nullptr) {
       VisitFree(ptr, device_id_.value(), num_bytes);
-      if (memory_type_ == MemoryType::kCollective) {
-        auto status = stream_exec_->CollectiveMemoryDeallocate(ptr);
-        CHECK(status.ok()) << status.message();
-      } else if (memory_type_ == MemoryType::kHost) {
+      if (memory_type_ == MemoryType::kHost) {
         stream_exec_->HostMemoryDeallocate(ptr);
       } else {
         DeviceMemoryBase device_ptr(ptr);

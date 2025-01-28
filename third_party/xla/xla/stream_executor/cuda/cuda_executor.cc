@@ -590,6 +590,27 @@ CudaExecutor::CreateMemoryAllocator(MemoryType type) {
                 }
               });
         });
+  } else if (type == MemoryType::kCollective) {
+    return std::make_unique<GenericMemoryAllocator>(
+        [this](uint64_t size)
+            -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+          TF_ASSIGN_OR_RETURN(
+              void* ptr, CudaCollectives::CollectiveMemoryAllocate(this, size));
+          VLOG(2) << "allocated " << ptr << " for context " << cuda_context_
+                  << " of " << size << " bytes of collective memory";
+          return std::make_unique<GenericMemoryAllocation>(
+              ptr, size, [this](void* location, uint64_t size) {
+                auto status =
+                    CudaCollectives::CollectiveMemoryDeallocate(this, location);
+                if (!status.ok()) {
+                  LOG(ERROR) << "failed to free collective memory at "
+                             << location << "; result: " << status;
+                } else {
+                  VLOG(2) << "deallocated collective memory at " << location
+                          << " for context " << cuda_context_;
+                }
+              });
+        });
   }
   return absl::UnimplementedError(
       absl::StrFormat("Unsupported memory type %d", type));

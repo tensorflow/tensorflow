@@ -156,20 +156,6 @@ class StreamExecutor {
   // Deallocation of a nullptr-representative value is permitted.
   virtual void Deallocate(DeviceMemoryBase* mem) = 0;
 
-  // Allocates collective device memory using ncclMemAlloc.
-  // See
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
-  // for more details on User Buffer Registration.
-  virtual absl::StatusOr<void*> CollectiveMemoryAllocate(uint64_t size) {
-    return absl::UnimplementedError("Not implemented");
-  }
-
-  // Deallocates collective device memory previously allocated with
-  // CollectiveMemoryAllocate.
-  virtual absl::Status CollectiveMemoryDeallocate(void* mem) {
-    return absl::UnimplementedError("Not implemented");
-  }
-
   // Allocates a region of host memory and registers it with the platform API.
   // Memory allocated in this manner is required for use in asynchronous memcpy
   // operations, such as Stream::Memcpy.
