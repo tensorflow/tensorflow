@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/cc/training/queue_runner.h"
 
+#include <chrono>
+#include <cstddef>
+#include <functional>
+#include <memory>
+
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/cc/training/coordinator.h"
