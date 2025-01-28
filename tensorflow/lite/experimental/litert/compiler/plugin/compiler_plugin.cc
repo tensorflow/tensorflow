@@ -434,7 +434,7 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
     OwningBufferRef<uint8_t> owned_byte_code(byte_code->Data(),
                                              byte_code->Size());
     const auto buf_id =
-        model.RegisterExternalBuffer(std::move(owned_byte_code));
+        model.Buffers()->RegisterOwnedBuffer(std::move(owned_byte_code));
 
     byte_code_idx_to_buf_id[i] = buf_id;
   }
@@ -450,7 +450,7 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
     auto [name, byte_code_idx] = *call_info;
     const auto buf_id = byte_code_idx_to_buf_id[byte_code_idx];
 
-    model.AttachExternalBufferToOp(dispatch_op, buf_id, std::string(name));
+    model.AttachAssetToOp(dispatch_op, buf_id, std::string(name));
   }
 
   // Tag the model with make/model from the plugin.

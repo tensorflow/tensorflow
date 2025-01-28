@@ -48,9 +48,10 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
 
   OwningBufferRef<uint8_t> byte_code(npu_byte_code.Data(),
                                      npu_byte_code.Size());
-  const auto buf_id = model.RegisterExternalBuffer(std::move(byte_code));
+  const auto buf_id =
+      model.Buffers()->RegisterOwnedBuffer(std::move(byte_code));
 
-  model.AttachExternalBufferToOp(op, buf_id, "");
+  model.AttachAssetToOp(op, buf_id, "");
 
   return SerializeModel(std::move(model));
 }

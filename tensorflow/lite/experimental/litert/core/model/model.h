@@ -668,12 +668,13 @@ class LiteRtModelT {
   using Ptr = std::unique_ptr<LiteRtModelT>;
   using TflOpCodes = std::vector<litert::internal::TflOpCodePtr>;
 
-  using ExternalBufferId = uint32_t;
-  using ExternalBufferReference = std::pair<ExternalBufferId, std::string>;
-  using ExternalBufferMap =
-      absl::flat_hash_map<LiteRtOp, ExternalBufferReference>;
   using BufferManager = ::litert::internal::BufferManager;
-  using MetadataMap = absl::flat_hash_map<std::string, BufferManager::BufferId>;
+  using BufferId = BufferManager::BufferId;
+
+  using OpAssetReference = std::pair<BufferId, std::string>;
+  using OpAssetMap = absl::flat_hash_map<LiteRtOp, OpAssetReference>;
+
+  using MetadataMap = absl::flat_hash_map<std::string, BufferId>;
 
   // TODO replace this with the index of the default signature.
   static constexpr const size_t kMainSubgraphIndex = 0;
@@ -771,47 +772,29 @@ class LiteRtModelT {
 
   // BUFFERS
 
-  // Register a new external buffer and get back an id.
-  ExternalBufferId RegisterExternalBuffer(
-      litert::OwningBufferRef<uint8_t>&& buffer) {
-    auto buffer_id = external_buffers_.size();
-    external_buffers_.push_back(std::move(buffer));
-    return buffer_id;
-  }
+  // Get stable pointer to buffer manager object.
+  BufferManager* Buffers() const { return buffer_manager_.get(); }
 
-  // Get a view of the external buffer at the given id.
-  litert::Expected<litert::BufferRef<uint8_t>> GetExternalBuffer(
-      ExternalBufferId id) {
-    if (id >= external_buffers_.size()) {
-      return ::litert::Error(kLiteRtStatusErrorIndexOOB);
-    }
-    return external_buffers_[id];
-  }
-
-  // Attach an external buffer to the given op. Upon
-  // serialization, the ops custom options will contain the offset and size of
-  // the buffer relative to the start of the model file. External buffers are
-  // added to the back of the model and not managed through flatbuffer api.
-  void AttachExternalBufferToOp(LiteRtOp op, ExternalBufferId buf_id,
-                                std::string name) {
-    external_buffer_map_[op] = {buf_id, std::move(name)};
+  // Attach an asset to the given op. An asset is a non-tensor buffer
+  // that is used by the op. Assets may be referenced by multiple ops.
+  // Each edge from an op to an asset is identified by a name. All buffers
+  // are appended to the model upon serialization and referenced by offset
+  // relative to the start of the model within the referring op's custom
+  // options.
+  void AttachAssetToOp(LiteRtOp op, BufferId buf_id, std::string name) {
+    OpAssetReference ref = {buf_id, std::move(name)};
+    external_buffer_map_.emplace(op, std::move(ref));
   }
 
   // Returns an immutable view of the external buffer and the name of the edge
   // if the given op has one attached.
-  litert::Expected<ExternalBufferReference> FindExternalBuffer(LiteRtOp op) {
+  litert::Expected<OpAssetReference> FindOpAsset(LiteRtOp op) {
     if (auto it = external_buffer_map_.find(op);
         it != external_buffer_map_.end()) {
       return it->second;
     }
     return ::litert::Error(kLiteRtStatusErrorNotFound);
   }
-
-  // Number of external buffers. Ids will be 0 <-> num - 1.
-  size_t NumExternalBuffers() const { return external_buffers_.size(); }
-
-  // Get stable pointer to buffer manager object.
-  BufferManager* Buffers() const { return buffer_manager_.get(); }
 
   // IR is generally, default constructible and movable but not copyable.
   LiteRtModelT() = default;
@@ -844,7 +827,7 @@ class LiteRtModelT {
   MetadataMap metadata_;
   // TODO use the new unified buffer manager for external buffers.
   std::vector<litert::OwningBufferRef<uint8_t>> external_buffers_;
-  ExternalBufferMap external_buffer_map_;
+  OpAssetMap external_buffer_map_;
 
   // Use unique ptr here to keep stable.
   BufferManager::Ptr buffer_manager_ = std::make_unique<BufferManager>();

@@ -211,7 +211,7 @@ TEST(ApplyTest, Simple) {
   auto* op = subgraph.Ops().front();
 
   EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
-  EXPECT_TRUE(model.FindExternalBuffer(op));
+  EXPECT_TRUE(model.FindOpAsset(op));
 
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
 }
@@ -233,7 +233,7 @@ TEST(ApplyTest, MultiSubgraph) {
     auto* op = subgraph.Ops().front();
 
     EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
-    EXPECT_TRUE(model.FindExternalBuffer(op));
+    EXPECT_TRUE(model.FindOpAsset(op));
   }
 
   {
@@ -243,7 +243,7 @@ TEST(ApplyTest, MultiSubgraph) {
     auto* op = subgraph.Ops().front();
 
     EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
-    EXPECT_TRUE(model.FindExternalBuffer(op));
+    EXPECT_TRUE(model.FindOpAsset(op));
   }
 
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
@@ -278,7 +278,7 @@ TEST(ApplyTest, ApplyPlugins) {
   auto* op = subgraph.Ops().front();
 
   EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
-  EXPECT_TRUE(model.FindExternalBuffer(op));
+  EXPECT_TRUE(model.FindOpAsset(op));
 
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
 }

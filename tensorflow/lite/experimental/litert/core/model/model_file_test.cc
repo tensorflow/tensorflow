@@ -226,8 +226,8 @@ TEST(ModelSerializeTest, WithSingleExternalBuffer) {
   auto& op = sg.EmplaceOp();
 
   OwningBufferRef<uint8_t> buffer(kByteCode);
-  const auto buf_id = root.RegisterExternalBuffer(std::move(buffer));
-  root.AttachExternalBufferToOp(&op, buf_id, std::string(kName));
+  const auto buf_id = root.Buffers()->RegisterOwnedBuffer(std::move(buffer));
+  root.AttachAssetToOp(&op, buf_id, std::string(kName));
 
   auto serialized = SerializeModel(std::move(root));
   ASSERT_TRUE(serialized);
@@ -260,12 +260,12 @@ TEST(ModelSerializeTest, WithMultipleUniqueExternalBuffer) {
   auto& op2 = sg.EmplaceOp();
 
   OwningBufferRef<uint8_t> buffer(kByteCode);
-  const auto buf_id = root.RegisterExternalBuffer(std::move(buffer));
-  root.AttachExternalBufferToOp(&op, buf_id, std::string(kName));
+  const auto buf_id = root.Buffers()->RegisterOwnedBuffer(std::move(buffer));
+  root.AttachAssetToOp(&op, buf_id, std::string(kName));
 
   OwningBufferRef<uint8_t> buffer2(kByteCode2);
-  const auto buf_id2 = root.RegisterExternalBuffer(std::move(buffer2));
-  root.AttachExternalBufferToOp(&op2, buf_id2, std::string(kName2));
+  const auto buf_id2 = root.Buffers()->RegisterOwnedBuffer(std::move(buffer2));
+  root.AttachAssetToOp(&op2, buf_id2, std::string(kName2));
 
   auto serialized = SerializeModel(std::move(root));
   ASSERT_TRUE(serialized);
@@ -311,10 +311,10 @@ TEST(ModelSerializeTest, WithSharedExternalBuffer) {
   auto& op2 = sg.EmplaceOp();
 
   OwningBufferRef<uint8_t> buffer(kByteCode);
-  const auto buf_id = root.RegisterExternalBuffer(std::move(buffer));
+  const auto buf_id = root.Buffers()->RegisterOwnedBuffer(std::move(buffer));
 
-  root.AttachExternalBufferToOp(&op, buf_id, std::string(kName));
-  root.AttachExternalBufferToOp(&op2, buf_id, std::string(kName2));
+  root.AttachAssetToOp(&op, buf_id, std::string(kName));
+  root.AttachAssetToOp(&op2, buf_id, std::string(kName2));
 
   auto serialized = SerializeModel(std::move(root));
   ASSERT_TRUE(serialized);

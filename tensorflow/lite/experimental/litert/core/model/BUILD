@@ -137,6 +137,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core:build_stamp",
         "//tensorflow/lite/experimental/litert/core:dispatch_op_schema",
+        "//tensorflow/lite/experimental/litert/core:insert_order_map",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",

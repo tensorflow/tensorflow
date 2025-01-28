@@ -100,17 +100,17 @@ TEST(ModelTest, AttachExternalBufferToOp) {
 
   OwningBufferRef<uint8_t> external_buf(kBufferData);
 
-  auto buf1_id = model.RegisterExternalBuffer(std::move(external_buf));
+  auto buf1_id = model.Buffers()->RegisterOwnedBuffer(std::move(external_buf));
 
-  model.AttachExternalBufferToOp(&op, buf1_id, std::string(kOpName));
-  model.AttachExternalBufferToOp(&op2, buf1_id, std::string(kOp2Name));
+  model.AttachAssetToOp(&op, buf1_id, std::string(kOpName));
+  model.AttachAssetToOp(&op2, buf1_id, std::string(kOp2Name));
 
-  auto op_1_res = model.FindExternalBuffer(&op);
+  auto op_1_res = model.FindOpAsset(&op);
   ASSERT_TRUE(op_1_res);
   EXPECT_EQ(op_1_res->second, kOpName);
   EXPECT_EQ(op_1_res->first, buf1_id);
 
-  auto op_2_res = model.FindExternalBuffer(&op2);
+  auto op_2_res = model.FindOpAsset(&op2);
   ASSERT_TRUE(op_2_res);
   EXPECT_EQ(op_2_res->second, kOp2Name);
   EXPECT_EQ(op_2_res->first, buf1_id);
@@ -119,7 +119,7 @@ TEST(ModelTest, AttachExternalBufferToOp) {
 TEST(ModelTest, ExternalBufferNotFound) {
   LiteRtModelT model;
   LiteRtOpT op;
-  ASSERT_FALSE(model.FindExternalBuffer(&op));
+  ASSERT_FALSE(model.FindOpAsset(&op));
 }
 
 //
