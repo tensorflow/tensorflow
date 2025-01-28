@@ -472,6 +472,7 @@ cc_library(
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@triton//:TritonAnalysis",
         "@triton//:TritonDialects",
         "@triton//:TritonGPUToLLVM",
         "@triton//:TritonGPUTransforms",
