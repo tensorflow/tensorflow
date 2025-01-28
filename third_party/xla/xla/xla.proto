@@ -127,8 +127,9 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // XLA:CPU options.
   //--------------------------------------------------------------------------//
-  // go/keep-sorted start newline_separated=yes skip_lines=1
-
+  // clang-format off
+  // go/keep-sorted start newline_separated=yes skip_lines=1 ignore_prefixes=["bool","int32","string"]
+  // clang-format on
   // Use region analysis in copy insertion pass.
   bool xla_cpu_copy_insertion_use_region_analysis = 337;
 
@@ -176,14 +177,10 @@ message DebugOptions {
   // false.
   bool xla_cpu_fast_math_honor_nans = 120;
 
-  // When true, XLA:CPU uses the thunk runtime to execute compiled program.
-  bool xla_cpu_use_thunk_runtime = 298;
-
-  // When true, XLA:CPU uses XNNPACK to execute supported operations.
-  bool xla_cpu_use_xnnpack = 359;
-
-  // Enabling this will enable optimizations that ignore the possibility of NaN.
-  bool xla_enable_fast_math = 335;
+  // When set, XLA:CPU will only generate code up to the specified ISA.
+  // (It will not use newer ISAs.) Using the string format allows us to extend
+  // the flag for more flexible control if necessary.
+  string xla_cpu_max_isa = 333;
 
   // The number of parts to split the LLVM module into before codegen. This
   // allows XLA to compile all parts in parallel, and resolve kernel symbols
@@ -194,10 +191,14 @@ message DebugOptions {
   // value is `256` (AVX2 on x86 platforms).
   int32 xla_cpu_prefer_vector_width = 308;
 
-  // When set, XLA:CPU will only generate code up to the specified ISA.
-  // (It will not use newer ISAs.) Using the string format allows us to extend
-  // the flag for more flexible control if necessary.
-  string xla_cpu_max_isa = 333;
+  // When true, XLA:CPU uses the thunk runtime to execute compiled program.
+  bool xla_cpu_use_thunk_runtime = 298;
+
+  // When true, XLA:CPU uses XNNPACK to execute supported operations.
+  bool xla_cpu_use_xnnpack = 359;
+
+  // Enabling this will enable optimizations that ignore the possibility of NaN.
+  bool xla_enable_fast_math = 335;
 
   // go/keep-sorted end
 
