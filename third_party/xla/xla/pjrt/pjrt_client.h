@@ -641,9 +641,17 @@ class PjRtClient {
   }
 
   // Creates a buffer on the device without initializing or copying any data.
+  ABSL_DEPRECATED("Use CreateUninitializedBuffer(Shape, PjRtMemorySpace*)")
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) {
-    return Unimplemented("CreateUnitializedBuffer is not supported.");
+    return Unimplemented("CreateUninitializedBuffer is not supported.");
+  }
+
+  // Creates a buffer in the given memory space without initializing or copying
+  // any data.
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+      const Shape& shape, PjRtMemorySpace* memory_space) {
+    return Unimplemented("CreateUninitializedBuffer is not supported.");
   }
 
   // Creates buffer in the given memory space that carries an error future
