@@ -84,6 +84,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
@@ -1909,11 +1910,13 @@ Value EmitMaskOnInput(EmitterLocOpBuilder& b,
 // Use tiling and execution parameters from 'config'. BlockLevelParameters are
 // ignored.
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
-absl::Status EmitMatMul(EmitterLocOpBuilder& b,
-                        absl::string_view libdevice_path,
-                        const se::DeviceDescription& device_info,
-                        const HloFusionInstruction* fusion,
-                        mlir::triton::FuncOp fn, const BlockLevelParameters&) {
+absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
+    EmitterLocOpBuilder& b, absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info,
+    const HloFusionInstruction* fusion, mlir::triton::FuncOp fn,
+    const BlockLevelParameters&) {
+  // TODO b/315957220: Populate tma_metadata.
+  stream_executor::gpu::TmaMetadata tma_metadata;
   auto backend_config =
       fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
 
@@ -2199,7 +2202,7 @@ absl::Status EmitMatMul(EmitterLocOpBuilder& b,
     b.create<mt::StoreOp>(tensor_pointer, values_out[producer], boundary_checks,
                           mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
   }
-  return absl::OkStatus();
+  return tma_metadata;
 }
 
 absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(

@@ -50,7 +50,7 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
                                      npu_byte_code.Size());
   const auto buf_id = model.RegisterExternalBuffer(std::move(byte_code));
 
-  model.AttachExternalBufferToOp(op, buf_id, "CUSTOM_DISPATCH");
+  model.AttachExternalBufferToOp(op, buf_id, "");
 
   return SerializeModel(std::move(model));
 }

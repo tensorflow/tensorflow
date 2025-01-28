@@ -29,6 +29,7 @@ limitations under the License.
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/backends/cpu/codegen/dot_kernel_emitter.h"
+#include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
@@ -124,6 +125,13 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   nb::class_<DotKernelEmitter, KernelEmitter>(kernel_runner_module,
                                               "DotKernelEmitter")
+      .def(nb::init<const HloInstruction*, const BufferAssignment*,
+                    const TargetMachineFeatures*>(),
+           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
+           nb::keep_alive<1, 4>());
+
+  nb::class_<ConcatenateKernelEmitter, KernelEmitter>(
+      kernel_runner_module, "ConcatenateKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),

@@ -2892,6 +2892,7 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor/gpu:tma_metadata",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",

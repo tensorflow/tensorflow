@@ -229,7 +229,9 @@ NB_MODULE(_extension, kernel_runner_module) {
       .def_static("create_variadic", &HloInstruction::CreateVariadic,
                   nb::keep_alive<0, 3>())
       .def_static("create_compare", &CreateComparisonHloInstruction,
-                  nb::keep_alive<0, 2>(), nb::keep_alive<0, 3>());
+                  nb::keep_alive<0, 2>(), nb::keep_alive<0, 3>())
+      .def_static("create_concatenate", &HloInstruction::CreateConcatenate,
+                  nb::keep_alive<0, 2>());
 
   // Accessors
   hlo_instruction.def("opcode", &HloInstruction::opcode);

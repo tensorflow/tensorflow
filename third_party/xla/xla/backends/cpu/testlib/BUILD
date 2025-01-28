@@ -106,6 +106,7 @@ tsl_pybind_extension(
         "//xla/backends/cpu/codegen:dot_kernel_emitter",
         "//xla/backends/cpu/codegen:jit_compiler",
         "//xla/backends/cpu/codegen:target_machine_features",
+        "//xla/backends/cpu/codegen/elemental:concatenate_kernel_emitter",
         "//xla/backends/cpu/codegen/elemental:elemental_kernel_emitter",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",

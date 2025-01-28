@@ -214,7 +214,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
     return {{kernel->getName().str(), launch_dimensions,
              triton_wrapper_result.cluster_dim,
-             triton_wrapper_result.shmem_bytes}};
+             triton_wrapper_result.shmem_bytes, /*binary=*/"",
+             triton_wrapper_result.tma_metadata}};
   };
 
   auto [status_or_entry, was_cached] =
@@ -226,7 +227,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
       &fusion, entry->kernel_name, kernel_arguments.args(),
-      entry->launch_dimensions, entry->cluster_dim, entry->shmem_bytes));
+      entry->launch_dimensions, entry->cluster_dim, entry->shmem_bytes,
+      entry->tma_metadata));
 
   return result;
 }
