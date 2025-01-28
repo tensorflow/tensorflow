@@ -327,8 +327,8 @@ TEST(TensorBuffer, Event) {
 
 TEST(TensorBuffer, OpenCL) {
 // MSAN does not support GPU tests.
-#if defined(MEMORY_SANITIZER)
-  GTEST_SKIP() << "GPU tests are not supported In msan";
+#if defined(MEMORY_SANITIZER) || defined(THREAD_SANITIZER)
+  GTEST_SKIP() << "GPU tests are not supported In msan or tsan";
 #endif
 
   if (!litert::internal::OpenClBuffer::IsSupported()) {

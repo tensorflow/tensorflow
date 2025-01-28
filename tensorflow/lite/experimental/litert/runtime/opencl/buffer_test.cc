@@ -32,7 +32,7 @@ namespace internal {
 
 TEST(OpenCLTest, BufferTestFloat) {
   // MSAN does not support GPU tests.
-#if defined(MEMORY_SANITIZER)
+#if defined(MEMORY_SANITIZER) || defined(THREAD_SANITIZER)
   GTEST_SKIP() << "GPU tests are not supported In msan";
 #endif
 
