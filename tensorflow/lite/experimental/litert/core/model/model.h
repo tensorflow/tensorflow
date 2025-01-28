@@ -681,7 +681,7 @@ class LiteRtModelT {
   // TODO replace this with the index of the default signature.
   static constexpr const size_t kMainSubgraphIndex = 0;
 
-  // OBSERVERS
+  // SUBGRAPHS
 
   // Get a stable pointer for all of the subgraphs within this model.
   absl::Span<LiteRtSubgraph> Subgraphs() { return subgraphs_.Elements(); }
@@ -715,10 +715,35 @@ class LiteRtModelT {
     return ::litert::Error(kLiteRtStatusErrorNotFound, "Signature not found");
   }
 
+  // Build a new subgraph and get a stable reference to it.
+  template <class... Args>
+  LiteRtSubgraphT& EmplaceSubgraph(Args&&... args) {
+    return subgraphs_.EmplaceBack(std::forward<Args>(args)...);
+  }
+
+  // Transfers given subgraphs into this model.
+  void TransferSubgraphs(LiteRtSubgraphT::Alloc&& subgraphs) {
+    subgraphs_.Transfer(std::move(subgraphs));
+  }
+
+  // Cut all by the first `size` subgraphs. Does nothing if given size is
+  // greater or equal to current.
+  void ResizeSubgraphsDown(size_t size) { subgraphs_.ResizeDown(size); }
+
+  // SIGNATURES
+
   // All signatures registered with this model.
   absl::Span<LiteRtSignature> Signatures() const {
     return signatures_.Elements();
   }
+
+  // Construct a new signature for this model.
+  template <class... Args>
+  LiteRtSignatureT& EmplaceSignature(Args&&... args) {
+    return signatures_.EmplaceBack(std::forward<Args>(args)...);
+  }
+
+  // METADATA
 
   // Look up metadata by key, getting a view of its buffer as a string
   // if it exists.
@@ -743,23 +768,6 @@ class LiteRtModelT {
     return ::litert::Error(kLiteRtStatusErrorNotFound);
   }
 
-  // BUILDERS
-
-  // Build a new subgraph and get a stable reference to it.
-  template <class... Args>
-  LiteRtSubgraphT& EmplaceSubgraph(Args&&... args) {
-    return subgraphs_.EmplaceBack(std::forward<Args>(args)...);
-  }
-
-  // Transfers given subgraphs into this model.
-  void TransferSubgraphs(LiteRtSubgraphT::Alloc&& subgraphs) {
-    subgraphs_.Transfer(std::move(subgraphs));
-  }
-
-  // Cut all by the first `size` subgraphs. Does nothing if given size is
-  // greater or equal to current.
-  void ResizeSubgraphsDown(size_t size) { subgraphs_.ResizeDown(size); }
-
   // Adds a new metadata buffer to the model. Fails if it already exists.
   template <class... Args>
   LiteRtStatus PushMetadata(absl::string_view key, Args&&... args) {
@@ -772,11 +780,7 @@ class LiteRtModelT {
     return kLiteRtStatusOk;
   }
 
-  // Construct a new signature for this model.
-  template <class... Args>
-  LiteRtSignatureT& EmplaceSignature(Args&&... args) {
-    return signatures_.EmplaceBack(std::forward<Args>(args)...);
-  }
+  // BUFFERS
 
   // Register a new external buffer and get back an id.
   ExternalBufferId RegisterExternalBuffer(
@@ -826,6 +830,8 @@ class LiteRtModelT {
   LiteRtModelT(LiteRtModelT&&) = default;
   LiteRtModelT& operator=(const LiteRtModelT&) = delete;
   LiteRtModelT& operator=(LiteRtModelT&&) = default;
+
+  // TFLITE
 
   // Friendship for internal tflite details.
   friend const TflOpCodes& detail::GetTflOpCodes(
