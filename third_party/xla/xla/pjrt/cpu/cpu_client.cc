@@ -879,6 +879,50 @@ TfrtCpuClient::CreateBuffersForAsyncHostToDevice(
   return CreateBuffersForAsyncHostToDevice(shapes, memory_space->devices()[0]);
 }
 
+static absl::StatusOr<std::vector<xla::Shape>> ConvertShapeSpecToShapes(
+    absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+    std::optional<absl::Span<const std::optional<Layout>>> device_layouts) {
+  if (device_layouts.has_value() &&
+      device_layouts->size() != shape_specs.size()) {
+    return InvalidArgument(
+        "Number of layouts %d does not match the number of shapes %d",
+        device_layouts->size(), shape_specs.size());
+  }
+  std::vector<xla::Shape> device_shapes;
+  device_shapes.reserve(shape_specs.size());
+  for (size_t i = 0; i < shape_specs.size(); ++i) {
+    auto& shape_spec = shape_specs[i];
+    Shape& device_shape = device_shapes.emplace_back(
+        ShapeUtil::MakeShape(shape_spec.element_type, shape_spec.dims));
+    if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
+      *device_shape.mutable_layout() = *(*device_layouts)[i];
+    }
+  }
+  return device_shapes;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+TfrtCpuClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+    PjRtMemorySpace* memory_space) {
+  TF_ASSIGN_OR_RETURN(std::vector<xla::Shape> device_shapes,
+                      ConvertShapeSpecToShapes(shape_specs, device_layouts));
+  return CreateBuffersForAsyncHostToDevice(absl::MakeSpan(device_shapes),
+                                           memory_space);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+TfrtCpuClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+    std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+    PjRtDevice* device) {
+  TF_ASSIGN_OR_RETURN(std::vector<xla::Shape> device_shapes,
+                      ConvertShapeSpecToShapes(shape_specs, device_layouts));
+  return CreateBuffersForAsyncHostToDevice(absl::MakeSpan(device_shapes),
+                                           device);
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
