@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 
 namespace tensorflow {
 namespace profiler {
