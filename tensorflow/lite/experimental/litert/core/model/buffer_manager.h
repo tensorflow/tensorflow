@@ -39,7 +39,9 @@ struct BufferContext {
 // buffers may be owned or non-owned by the model. Uses id based indexing.
 class BufferManager {
  public:
+  // Unique identifier for a buffer. 0 is reserved for empty buffers.
   using BufferId = uint32_t;
+  static constexpr BufferId kEmptyBufferId = 0;
 
   // Register a buffer that is not owned by the model. Caller must ensure the
   // buffer outlives the model.
@@ -79,7 +81,11 @@ class BufferManager {
   // Number of buffers. Ids will be 0 <-> num - 1.
   size_t NumBuffers() const { return buffers_.size(); }
 
-  BufferManager() = default;
+  BufferManager() {
+    // Zero is reserved for empty buffers.
+    buffers_.emplace_back(
+        BufferWithContext(BufferRef<uint8_t>(), BufferContext{}));
+  }
   BufferManager(const BufferManager&) = delete;
   BufferManager& operator=(const BufferManager&) = delete;
   BufferManager(BufferManager&& other) = default;

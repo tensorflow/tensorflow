@@ -27,13 +27,20 @@ namespace {
 
 static constexpr absl::string_view kData = "foo";
 
+TEST(BufferManagerTest, EmptyFirstBuffer) {
+  BufferManager manager;
+
+  EXPECT_EQ(manager.NumBuffers(), 1);
+  EXPECT_EQ(manager.GetBuffer(BufferManager::kEmptyBufferId)->Size(), 0);
+}
+
 TEST(BufferManagerTest, RegisterNonOwnedBuffer) {
   BufferManager manager;
 
   OwningBufferRef<uint8_t> buffer(kData);
   const auto id = manager.RegisterNonOwnedBuffer(buffer);
 
-  EXPECT_EQ(manager.NumBuffers(), 1);
+  EXPECT_EQ(manager.NumBuffers(), 2);
   EXPECT_EQ(manager.GetBuffer(id)->StrView(), kData);
 }
 
@@ -43,7 +50,7 @@ TEST(BufferManagerTest, RegisterOwnedBuffer) {
   OwningBufferRef<uint8_t> buffer(kData);
   const auto id = manager.RegisterOwnedBuffer(std::move(buffer));
 
-  EXPECT_EQ(manager.NumBuffers(), 1);
+  EXPECT_EQ(manager.NumBuffers(), 2);
   EXPECT_EQ(manager.GetBuffer(id)->StrView(), kData);
 }
 
@@ -54,7 +61,7 @@ TEST(BufferManagerTest, RegisterWithContext) {
   BufferContext context = {true};
   const auto id = manager.RegisterNonOwnedBuffer(buffer, context);
 
-  EXPECT_EQ(manager.NumBuffers(), 1);
+  EXPECT_EQ(manager.NumBuffers(), 2);
   EXPECT_EQ(manager.GetBuffer(id)->StrView(), kData);
   EXPECT_EQ(manager.GetContext(id)->should_append, true);
 }
