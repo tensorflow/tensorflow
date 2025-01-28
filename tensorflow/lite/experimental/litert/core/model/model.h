@@ -249,19 +249,21 @@ class LiteRtWeightsT {
 
 // Set weights via an unowned buffer. Caller is responsible for ensuring the
 // buffer outlives the weights. Registers the buffer with the manager.
-inline void SetWeightsFromUnownedBuffer(LiteRtWeightsT& weights,
-                                        ::litert::BufferRef<uint8_t> buffer) {
+inline void SetWeightsFromUnownedBuffer(
+    LiteRtWeightsT& weights, ::litert::BufferRef<uint8_t> buffer,
+    std::optional<litert::internal::BufferContext> context = std::nullopt) {
   auto* manager = weights.GetBufferManager();
-  auto buf_id = manager->RegisterNonOwnedBuffer(buffer);
+  auto buf_id = manager->RegisterNonOwnedBuffer(buffer, context);
   weights.SetBufferId(buf_id);
 }
 
 // Set weights via an unowned buffer. Caller is responsible for ensuring the
 // buffer outlives the weights. Registers the buffer with the manager.
 inline void SetWeightsFromOwnedBuffer(
-    LiteRtWeightsT& weights, ::litert::OwningBufferRef<uint8_t>&& buffer) {
+    LiteRtWeightsT& weights, ::litert::OwningBufferRef<uint8_t>&& buffer,
+    std::optional<litert::internal::BufferContext> context = std::nullopt) {
   auto* manager = weights.GetBufferManager();
-  auto buf_id = manager->RegisterOwnedBuffer(std::move(buffer));
+  auto buf_id = manager->RegisterOwnedBuffer(std::move(buffer), context);
   weights.SetBufferId(buf_id);
 }
 
