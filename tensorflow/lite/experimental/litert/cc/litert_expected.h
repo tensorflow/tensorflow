@@ -24,7 +24,6 @@
 #include <utility>
 
 #include "absl/log/absl_check.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 
