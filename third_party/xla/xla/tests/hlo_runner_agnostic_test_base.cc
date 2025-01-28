@@ -102,15 +102,9 @@ HloRunnerAgnosticTestBase::AddEntryComputationAndUpdateEntryComputationLayout(
     HloModule* const module, std::unique_ptr<HloComputation> computation) {
   HloComputation* const comp =
       module->AddEntryComputation(std::move(computation));
-  UpdateEntryComputationLayout(module);
-  return comp;
-}
-
-void HloRunnerAgnosticTestBase::UpdateEntryComputationLayout(
-    HloModule* const module) const {
-  // TODO - b/391868033: Remove UpdateEntryComputationLayout from this class.
   xla::UpdateEntryComputationLayout(
       module, test_runner_->device_shape_representation_fn());
+  return comp;
 }
 
 absl::StatusOr<Literal> HloRunnerAgnosticTestBase::Execute(

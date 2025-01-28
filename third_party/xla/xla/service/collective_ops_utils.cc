@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -40,12 +41,14 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+using CycleType = SourceTargetPairs::CycleType;
 
 absl::StatusOr<ReductionKind> StringToReductionKind(
     absl::string_view reduction_kind) {
@@ -800,11 +803,11 @@ bool IsSyncCollective(const HloInstruction* instr) {
   return backend_config->collective_backend_config().is_sync();
 }
 
-using SourceTargetPair = std::pair<int64_t, int64_t>;
-using SourceTargetPairs = std::vector<SourceTargetPair>;
+using SourceTargetPairType = std::pair<int64_t, int64_t>;
+using SourceTargetPairsType = std::vector<SourceTargetPairType>;
 
 std::pair<CycleType, std::set<int>> GetCycleTypeAndIndices(
-    const SourceTargetPairs& pairs) {
+    const SourceTargetPairsType& pairs) {
   std::set<int> seen_replica_ids;
   std::set<std::pair<int64_t, int64_t>> tentative_results;
   // first figure out if we're dealing with a potential forward or backward
@@ -816,7 +819,7 @@ std::pair<CycleType, std::set<int>> GetCycleTypeAndIndices(
   }
   bool is_forward_cycle = forward_edge_counter > backward_edge_counter;
   for (int64_t i = 0; i < pairs.size(); ++i) {
-    const SourceTargetPair& pair = pairs[i];
+    const SourceTargetPairType& pair = pairs[i];
     if (is_forward_cycle) {
       // check if the source of the current pair is smaller than the target
       if (pair.first < pair.second) {

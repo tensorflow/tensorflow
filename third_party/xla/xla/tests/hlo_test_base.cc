@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/backend.h"
@@ -170,20 +171,17 @@ void HloTestBase::MatchOptimizedHlo(absl::string_view hlo,
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
-    absl::string_view hlo) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> module,
-      ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
-  // TODO - b/391868033: Remove calls to UpdateEntryComputationLayout.
-  UpdateEntryComputationLayout(module.get());
+    const absl::string_view hlo) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      ParseAndReturnVerifiedModule(
+                          hlo, GetModuleConfigForTest(),
+                          HloParserOptions().set_fill_missing_layouts(false)));
   return backend().compiler()->RunHloPasses(
       std::move(module), backend().default_stream_executor(), GetAllocator());
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
     std::unique_ptr<HloModule> hlo_module) {
-  // TODO - b/391868033: Remove calls to UpdateEntryComputationLayout.
-  UpdateEntryComputationLayout(hlo_module.get());
   return backend().compiler()->RunHloPasses(std::move(hlo_module),
                                             backend().default_stream_executor(),
                                             GetAllocator());
