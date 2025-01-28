@@ -121,7 +121,7 @@ TEST_P(PjRtClientTest, Execute) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -150,7 +150,7 @@ TEST_P(PjRtClientTest, ExecuteWithImmutableUntilTransferCompletes) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
-          nullptr, client->addressable_devices()[0]));
+          nullptr, client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -187,7 +187,7 @@ TEST_P(PjRtClientTest, ExecuteWithTupleZeroCopy) {
                          // after `on_done_with_host_buffer` is called.
                          std::fill(data.begin(), data.end(), 1);
                        },
-                       client->addressable_devices()[0]));
+                       client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -216,11 +216,12 @@ TEST_P(PjRtClientTest, ExecuteWithDonation) {
   std::vector<int32_t> data(4, 0);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->BufferFromHostBuffer(
-                       data.data(), shape.element_type(), shape.dimensions(),
-                       /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
-                       nullptr, client->addressable_devices()[0]));
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -249,11 +250,12 @@ TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
   std::vector<int32_t> data(4, 0);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->BufferFromHostBuffer(
-                       data.data(), shape.element_type(), shape.dimensions(),
-                       /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
-                       nullptr, client->addressable_devices()[0]));
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   auto external_reference = buffer->AcquireExternalReference();
 
@@ -280,7 +282,7 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsage) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -323,11 +325,12 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
   std::vector<int32_t> expected(4, 1);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->BufferFromHostBuffer(
-                       data.data(), shape.element_type(), shape.dimensions(),
-                       /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
-                       nullptr, client->addressable_devices()[0]));
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -395,7 +398,7 @@ TEST(PjRtClientTest, CopyToDevice) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   auto* device_1 = client->addressable_devices()[1];
 
@@ -420,7 +423,7 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   auto* device_1 = client->addressable_devices()[1];
 
@@ -531,7 +534,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakeFloatBuffer(
       data.data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,
       PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-      client->addressable_devices()[0]);
+      client->memory_spaces()[0], /*device_layout=*/nullptr);
 }
 
 TEST(PjRtClientTest, DuplicateDonationError) {

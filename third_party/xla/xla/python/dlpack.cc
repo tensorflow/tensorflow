@@ -353,11 +353,13 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakePjrtBuffer(
       TF_ASSIGN_OR_RETURN(byte_strides, GetByteStrides(dlmt->dl_tensor));
     }
 
+    TF_ASSIGN_OR_RETURN(auto* memory_space, device.default_memory_space());
+
     // Create a copy.
     result = device.client()->BufferFromHostBuffer(
         data, element_type, dimensions, byte_strides,
         PjRtClient::HostBufferSemantics::kMutableZeroCopy, on_delete_callback,
-        &device);
+        memory_space, /*device_layout=*/nullptr);
   }
   return result;
 }

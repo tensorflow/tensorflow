@@ -284,6 +284,7 @@ BENCHMARK(BM_NanoRtFibonacci);
 static void BM_PjRtAddScalars(benchmark::State& state) {
   auto client = GetXlaPjrtCpuClient(/*options=*/{});
   PjRtDevice* device = (*client)->devices().front();
+  PjRtMemorySpace* memory_space = *device->default_memory_space();
 
   auto computation = CreateAddScalarsComputation();
 
@@ -299,11 +300,13 @@ static void BM_PjRtAddScalars(benchmark::State& state) {
   for (auto _ : state) {
     auto p0 = (*client)->BufferFromHostBuffer(
         &p0_value, PrimitiveType::F32, {}, std::nullopt,
-        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr, device);
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+        memory_space, /*device_layout=*/nullptr);
 
     auto p1 = (*client)->BufferFromHostBuffer(
         &p1_value, PrimitiveType::F32, {}, std::nullopt,
-        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr, device);
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+        memory_space, /*device_layout=*/nullptr);
 
     absl::InlinedVector<PjRtBuffer*, 2> arguments = {p0->get(), p1->get()};
     CHECK_OK((*executable)->ExecuteSharded(arguments, device, execute_options));
@@ -315,6 +318,7 @@ BENCHMARK(BM_PjRtAddScalars);
 static void BM_PjRtFibonacci(benchmark::State& state) {
   auto client = GetXlaPjrtCpuClient(/*options=*/{});
   PjRtDevice* device = (*client)->devices().front();
+  PjRtMemorySpace* memory_space = *device->default_memory_space();
 
   auto computation = CreateFibonacciComputation();
 
@@ -330,11 +334,13 @@ static void BM_PjRtFibonacci(benchmark::State& state) {
   for (auto _ : state) {
     auto p0 = (*client)->BufferFromHostBuffer(
         &p0_value, PrimitiveType::F32, {}, std::nullopt,
-        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr, device);
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+        memory_space, /*device_layout=*/nullptr);
 
     auto p1 = (*client)->BufferFromHostBuffer(
         &p1_value, PrimitiveType::F32, {}, std::nullopt,
-        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr, device);
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+        memory_space, /*device_layout=*/nullptr);
 
     absl::InlinedVector<PjRtBuffer*, 2> arguments = {p0->get(), p1->get()};
     CHECK_OK((*executable)->ExecuteSharded(arguments, device, execute_options));

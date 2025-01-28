@@ -177,7 +177,8 @@ class ConvertTfQuantToMhloIntTest : public Test {
         pjrt_client_->BufferFromHostBuffer(
             tensor.data(), xla_shape.element_type(), xla_shape.dimensions(),
             /*byte_strides=*/std::nullopt, host_buffer_semantics,
-            /*on_done_with_host_buffer=*/nullptr, device_));
+            /*on_done_with_host_buffer=*/nullptr,
+            *device_->default_memory_space(), /*device_layout=*/nullptr));
     return buffer->ToLiteralSync();
   }
 

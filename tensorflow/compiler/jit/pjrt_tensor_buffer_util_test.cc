@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -45,13 +46,16 @@ TEST(PjRtTensorBufferUtilTest, MakeTensorFromPjRtBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetPjRtClient(DEVICE_GPU));
   std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
   xla::Shape xla_shape = xla::ShapeUtil::MakeShape(xla::S32, dimensions);
+  xla::PjRtDevice* pjrt_device = pjrt_client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(xla::PjRtMemorySpace * pjrt_memory,
+                          pjrt_device->default_memory_space());
   TF_ASSERT_OK_AND_ASSIGN(
       auto pjrt_buffer,
       pjrt_client->BufferFromHostBuffer(
           data.data(), xla_shape.element_type(), xla_shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
-          nullptr, pjrt_client->addressable_devices()[0]));
+          nullptr, pjrt_memory, /*device_layout=*/nullptr));
 
   TF_ASSERT_OK_AND_ASSIGN(
       Tensor tensor, MakeTensorFromPjRtBuffer(DT_INT32, TensorShape(dimensions),

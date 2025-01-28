@@ -519,11 +519,14 @@ AbstractTfrtCpuBuffer::CopyToDeviceAcrossClients(PjRtDevice* dst_device) {
       literal->shape().dimensions_size());
   TF_RETURN_IF_ERROR(
       ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
+  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * dst_memory_space,
+                      dst_device->default_memory_space());
   return dst_device->client()->BufferFromHostBuffer(
       literal_pointer->untyped_data(), literal_pointer->shape().element_type(),
       literal_pointer->shape().dimensions(), byte_strides,
       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
-      [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
+      [literal{std::move(literal)}]() { /* frees literal */ }, dst_memory_space,
+      /*device_layout=*/nullptr);
 }
 
 absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
