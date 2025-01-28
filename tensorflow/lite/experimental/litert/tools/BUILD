@@ -56,6 +56,7 @@ cc_test(
         "noasan",
         "nomsan",
         "nosan",
+        "notsan",
     ],
     deps = [
         ":apply_plugin",
