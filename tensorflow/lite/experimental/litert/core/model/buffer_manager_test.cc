@@ -63,7 +63,7 @@ TEST(BufferManagerTest, RegisterWithContext) {
 
   EXPECT_EQ(manager.NumBuffers(), 2);
   EXPECT_EQ(manager.GetBuffer(id)->StrView(), kData);
-  EXPECT_EQ(manager.GetContext(id)->should_append, true);
+  EXPECT_EQ(manager.GetContext(id)->get().should_append, true);
 }
 
 }  // namespace

@@ -17,6 +17,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -30,6 +31,8 @@ namespace litert::internal {
 
 // Extra info about how the buffer is handled during load or serialization.
 struct BufferContext {
+  using Ref = std::reference_wrapper<BufferContext>;
+
   // Whether the buffer should be appended to the flatbuffer during
   // serialization.
   bool should_append = false;
@@ -71,11 +74,11 @@ class BufferManager {
   }
 
   // Get the context of the buffer at the given id.
-  Expected<BufferContext> GetContext(BufferId id) {
+  Expected<BufferContext::Ref> GetContext(BufferId id) {
     if (id >= buffers_.size()) {
       return Error(kLiteRtStatusErrorIndexOOB);
     }
-    return buffers_[id].second;
+    return std::ref(buffers_[id].second);
   }
 
   // Number of buffers. Ids will be 0 <-> num - 1.
