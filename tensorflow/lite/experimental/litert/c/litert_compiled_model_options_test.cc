@@ -39,44 +39,44 @@ TEST(LiteRtCompiledModelOptionsTest, SetAndGetHardwareAcceleratorsWorks) {
   LiteRtHwAcceleratorSet hardware_accelerators;
 
   EXPECT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
-                options, kLiteRtHwAccelatorNone),
+                options, kLiteRtHwAcceleratorNone),
             kLiteRtStatusOk);
   EXPECT_EQ(LiteRtGetCompilationOptionsHardwareAccelerators(
                 options, &hardware_accelerators),
             kLiteRtStatusOk);
-  EXPECT_EQ(hardware_accelerators, kLiteRtHwAccelatorNone);
+  EXPECT_EQ(hardware_accelerators, kLiteRtHwAcceleratorNone);
 
   EXPECT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
-                options, kLiteRtHwAccelatorCpu),
+                options, kLiteRtHwAcceleratorCpu),
             kLiteRtStatusOk);
   EXPECT_EQ(LiteRtGetCompilationOptionsHardwareAccelerators(
                 options, &hardware_accelerators),
             kLiteRtStatusOk);
-  EXPECT_EQ(hardware_accelerators, kLiteRtHwAccelatorCpu);
+  EXPECT_EQ(hardware_accelerators, kLiteRtHwAcceleratorCpu);
 
   EXPECT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
-                options, kLiteRtHwAccelatorGpu),
+                options, kLiteRtHwAcceleratorGpu),
             kLiteRtStatusOk);
   EXPECT_EQ(LiteRtGetCompilationOptionsHardwareAccelerators(
                 options, &hardware_accelerators),
             kLiteRtStatusOk);
-  EXPECT_EQ(hardware_accelerators, kLiteRtHwAccelatorGpu);
+  EXPECT_EQ(hardware_accelerators, kLiteRtHwAcceleratorGpu);
 
   EXPECT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
-                options, kLiteRtHwAccelatorNpu),
+                options, kLiteRtHwAcceleratorNpu),
             kLiteRtStatusOk);
   EXPECT_EQ(LiteRtGetCompilationOptionsHardwareAccelerators(
                 options, &hardware_accelerators),
             kLiteRtStatusOk);
-  EXPECT_EQ(hardware_accelerators, kLiteRtHwAccelatorNpu);
+  EXPECT_EQ(hardware_accelerators, kLiteRtHwAcceleratorNpu);
 
   EXPECT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
-                options, (kLiteRtHwAccelatorCpu | kLiteRtHwAccelatorGpu |
-                          kLiteRtHwAccelatorNpu) +
+                options, (kLiteRtHwAcceleratorCpu | kLiteRtHwAcceleratorGpu |
+                          kLiteRtHwAcceleratorNpu) +
                              1),
             kLiteRtStatusErrorInvalidArgument);
   EXPECT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
-                nullptr, kLiteRtHwAccelatorNone),
+                nullptr, kLiteRtHwAcceleratorNone),
             kLiteRtStatusErrorInvalidArgument);
 
   EXPECT_EQ(LiteRtDestroyCompilationOptions(options), kLiteRtStatusOk);

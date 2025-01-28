@@ -48,7 +48,7 @@ TEST(CompiledModelTest, Basic) {
   ASSERT_EQ(LiteRtCreateCompilationOptions(&compilation_options),
             kLiteRtStatusOk);
   ASSERT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
-                compilation_options, kLiteRtHwAccelatorCpu),
+                compilation_options, kLiteRtHwAcceleratorCpu),
             kLiteRtStatusOk);
 
   LiteRtEnvironment environment;

@@ -60,7 +60,7 @@ TEST(JitCompilation, MediaTek) {
   auto compilation_options = litert::CompiledModel::Options::Create();
   ASSERT_TRUE(compilation_options);
   ASSERT_TRUE(
-      compilation_options->SetHardwareAccelerators(kLiteRtHwAccelatorNpu));
+      compilation_options->SetHardwareAccelerators(kLiteRtHwAcceleratorNpu));
 
   auto compiled_model = litert::CompiledModel::Create(
       *env, *model, std::move(*compilation_options));

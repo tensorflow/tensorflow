@@ -112,7 +112,7 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedHardware(
   if (!compiler_plugin || !supported_hardware) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *supported_hardware = kLiteRtHwAccelatorNpu;
+  *supported_hardware = kLiteRtHwAcceleratorNpu;
   return kLiteRtStatusOk;
 }
 

@@ -188,12 +188,12 @@ void SortPlugins(std::vector<CompilerPlugin>& compiler_plugins) {
               auto x_supported_hardware = x.SupportedHardware();
               auto y_supported_hardware = y.SupportedHardware();
               if (x_supported_hardware && y_supported_hardware) {
-                bool x_npu = (*x_supported_hardware & kLiteRtHwAccelatorNpu);
-                bool x_gpu = (*x_supported_hardware & kLiteRtHwAccelatorGpu);
-                bool x_cpu = (*x_supported_hardware & kLiteRtHwAccelatorCpu);
-                bool y_npu = (*y_supported_hardware & kLiteRtHwAccelatorNpu);
-                bool y_gpu = (*y_supported_hardware & kLiteRtHwAccelatorGpu);
-                bool y_cpu = (*y_supported_hardware & kLiteRtHwAccelatorCpu);
+                bool x_npu = (*x_supported_hardware & kLiteRtHwAcceleratorNpu);
+                bool x_gpu = (*x_supported_hardware & kLiteRtHwAcceleratorGpu);
+                bool x_cpu = (*x_supported_hardware & kLiteRtHwAcceleratorCpu);
+                bool y_npu = (*y_supported_hardware & kLiteRtHwAcceleratorNpu);
+                bool y_gpu = (*y_supported_hardware & kLiteRtHwAcceleratorGpu);
+                bool y_cpu = (*y_supported_hardware & kLiteRtHwAcceleratorCpu);
                 int x_score = 100 * x_npu + 10 * x_gpu + x_cpu;
                 int y_score = 100 * y_npu + 10 * y_gpu + y_cpu;
                 return x_score < y_score;
