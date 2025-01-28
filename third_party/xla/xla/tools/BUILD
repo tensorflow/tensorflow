@@ -630,6 +630,7 @@ cc_library(
     deps = [
         "//xla:debug_options_flags",
         "//xla:literal",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",

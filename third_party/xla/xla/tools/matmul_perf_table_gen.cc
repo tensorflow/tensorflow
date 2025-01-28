@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -85,8 +86,10 @@ struct StaticSpec {
 struct ProfilingResult {
   std::string device_info;
   HloInstructionProto hlo_proto;
+  std::vector<HloInstructionProto> operands;
   std::string fingerprint;
   int64_t clock_cycles;
+  int64_t flops;
 
   struct Hash {
     size_t operator()(const ProfilingResult& profiling_result) const {
@@ -285,6 +288,45 @@ std::vector<ExplicitSpec> Deduplicate(std::vector<ExplicitSpec>& specs) {
   return deduplicated_specs;
 }
 
+// Gets # of FMAs instructions from a `dot`.
+int64_t GetFlops(const HloDotInstruction& dot) {
+  int64_t fmas = 1;
+
+  auto dim_size = [](const HloInstruction& instr, int idx) {
+    return ShapeUtil::GetDimension(instr.shape(), idx);
+  };
+
+  // Get non-contracting dims
+  auto get_non_contracting_dim_sizes =
+      [&dot, &dim_size](const absl::flat_hash_set<int>& contracting_dims,
+                        int operand_id) {
+        int64_t fmas = 1;
+        for (int dim = 0; dim < dot.operand(operand_id)->shape().rank();
+             ++dim) {
+          if (contracting_dims.contains(dim)) {
+            continue;
+          }
+          fmas *= dim_size(*dot.operand(operand_id), dim);
+        }
+        return fmas;
+      };
+  fmas *= get_non_contracting_dim_sizes(
+      {dot.dot_dimension_numbers().lhs_contracting_dimensions().begin(),
+       dot.dot_dimension_numbers().lhs_contracting_dimensions().end()},
+      0);
+  fmas *= get_non_contracting_dim_sizes(
+      {dot.dot_dimension_numbers().rhs_contracting_dimensions().begin(),
+       dot.dot_dimension_numbers().rhs_contracting_dimensions().end()},
+      1);
+
+  // Get contracting dim.
+  for (int dim : dot.dot_dimension_numbers().lhs_contracting_dimensions()) {
+    fmas *= dim_size(*dot.operand(0), dim);
+  }
+
+  return fmas * 2;  // Every FMA is 2 floating point ops.
+}
+
 }  // namespace
 
 std::unique_ptr<Executable> MatmulPerfTableGen::Compile(
@@ -318,7 +360,7 @@ absl::Duration MatmulPerfTableGen::Profile(std::unique_ptr<HloModule> module) {
     for (int i = 0; i < kNumProfilingRuns; i++) {
       Measure(runner_, compiled.get(), args_small, args_large);
     }
-    return absl::ZeroDuration();
+    return absl::Nanoseconds(42);
   }
 
   // Trace `kNumProfilingRuns` times to get decent measurement.
@@ -358,9 +400,18 @@ absl::StatusOr<DeviceHloInstructionProfiles> MatmulPerfTableGen::Merge(
       for (const HloInstructionProfile& profile : data.entries()) {
         CHECK(!profile.fingerprint().empty())
             << "Expected fingerprint to deduplicate: " << profile.DebugString();
+
         ProfilingResult profiling_result{
-            device_descriptor, std::move(profile.instruction()),
-            std::move(profile.fingerprint()), profile.clock_cycles()};
+            device_descriptor,
+            std::move(profile.instruction()),
+            {
+                profile.operands().begin(),
+                profile.operands().end(),
+            },
+            std::move(profile.fingerprint()),
+            profile.clock_cycles(),
+            profile.flops(),
+        };
         profiling_results.insert(profiling_result);
         profiling_results_counter++;
       }
@@ -378,6 +429,10 @@ absl::StatusOr<DeviceHloInstructionProfiles> MatmulPerfTableGen::Merge(
     HloInstructionProfile profile_proto;
     *profile_proto.mutable_instruction() =
         std::move(profiling_result.hlo_proto);
+    for (auto op : profiling_result.operands) {
+      *profile_proto.add_operands() = std::move(op);
+    }
+    profile_proto.set_flops(profiling_result.flops);
     profile_proto.set_clock_cycles(profiling_result.clock_cycles);
     profile_proto.set_fingerprint(profiling_result.fingerprint);
 
@@ -422,16 +477,22 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
     CHECK_EQ(module->entry_computation()->root_instruction()->opcode(),
              HloOpcode::kDot);
 
-    HloInstructionProto instr =
-        module->entry_computation()->root_instruction()->ToProto();
+    HloInstruction* instr = module->entry_computation()->root_instruction();
+    HloInstructionProto instr_proto = instr->ToProto();
 
     gpu::HloInstructionProfile entry;
     *entry.mutable_fingerprint() = CanonicalKey(*module);
-    *entry.mutable_instruction() = instr;
+    *entry.mutable_instruction() = instr_proto;
+    for (auto* operand : instr->operands()) {
+      *entry.add_operands() = operand->ToProto();
+    }
 
+    HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
+    int64_t fmas = GetFlops(*dot);
     absl::Duration time = Profile(std::move(module));
     entry.set_clock_cycles(device_info.clock_rate_ghz() *
                            absl::ToInt64Nanoseconds(time));
+    entry.set_flops(fmas * 1e9 / absl::ToInt64Nanoseconds(time));
 
     *profile_list.add_entries() = entry;
 
