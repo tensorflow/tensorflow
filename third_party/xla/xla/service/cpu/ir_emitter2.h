@@ -105,10 +105,6 @@ class IrEmitter2 {
   absl::StatusOr<KernelInfo> EmitFusionHostKernel(
       const HloFusionInstruction* fusion);
 
-  // Emits a host kernel for the given concatenate instruction.
-  absl::StatusOr<KernelInfo> EmitConcatenateHostKernel(
-      const HloInstruction* instr);
-
   // Emits a host kernel for the given dot fusion instruction (output fusion).
   absl::StatusOr<KernelInfo> EmitDotFusionHostKernel(
       const HloFusionInstruction* fusion);
@@ -124,7 +120,6 @@ class IrEmitter2 {
   // Emits a comparator function for the given sort instruction.
   absl::StatusOr<ComparatorInfo> EmitSortComparator(HloComputation* comparator);
 
-  absl::Status CanDoFastConcatenate(const HloInstruction* concatenate) const;
   bool CanUpdateDynamicSliceInPlace(const HloInstruction* update) const;
 
  private:
