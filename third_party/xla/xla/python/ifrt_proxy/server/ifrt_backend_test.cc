@@ -55,6 +55,7 @@
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -194,6 +195,10 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
+    const auto* deserialize_program_options =
+        llvm::cast<DeserializeProgramOptions>(options.get());
+    CHECK_OK(deserialize_program_options->lookup_device(DeviceId(0)));
+
     return std::make_unique<TestProgram>();
   }
 

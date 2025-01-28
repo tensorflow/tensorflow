@@ -39,8 +39,10 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 
@@ -72,6 +74,14 @@ class ProfilerInterface {
   virtual void CreateSession() = 0;
   // Uploads profiling session data after finishing running HLO module.
   virtual void UploadSession() = 0;
+};
+
+// Interface that may optionally returns an XSpace proto after UploadSession()
+// is called. This can be used by caller to get a programmatic handler of the
+// profile data.
+class XSpaceProfilerInterface : public ProfilerInterface {
+ public:
+  virtual const tensorflow::profiler::XSpace* GetXSpace() = 0;
 };
 
 bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
@@ -223,6 +233,10 @@ class FunctionalHloRunner {
     // Whether to untuple the result of running HLO module into a vector of
     // arrays. If unprovided, use the default in ExecuteOptions.
     std::optional<bool> untuple_result = std::nullopt;
+    // If not null, profiles will be stored for this run, one per repeat.
+    // Note that the first repeat is a warmup run, and uses less precise
+    // profiling method.
+    std::vector<ExecutionProfile>* execution_profiles = nullptr;
 
     // Should we log the inputs and outputs to stderr?
     bool log_input_output() const {

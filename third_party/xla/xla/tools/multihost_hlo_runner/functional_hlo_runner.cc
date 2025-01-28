@@ -1117,6 +1117,11 @@ FunctionalHloRunner::RunInternal(
       }
     }
     execute_options.launch_id = repeat + 1;
+    if (running_options.execution_profiles != nullptr) {
+      execute_options.execution_profile =
+          &running_options.execution_profiles->emplace_back();
+      execute_options.execution_profile->set_warmup_run_executed(repeat > 0);
+    }
     futures->clear();
     TF_ASSIGN_OR_RETURN(
         output_buffers,

@@ -103,18 +103,6 @@ TflOptions&& TakeTflOptions(LiteRtOpT& litert_op) {
   return std::move(litert_op.tfl_option_);
 }
 
-const TflBuffer& GetTflBuffer(const LiteRtWeightsT& litert_weights) {
-  return *litert_weights.tfl_buf_;
-}
-
-TflBufferPtr TakeTflBuffer(LiteRtWeightsT& litert_weights) {
-  return std::move(litert_weights.tfl_buf_);
-}
-
-void SetTflBuffer(LiteRtWeightsT& litert_weights, TflBufferPtr tfl_buffer) {
-  litert_weights.tfl_buf_ = std::move(tfl_buffer);
-}
-
 const std::vector<TflOpCodePtr>& GetTflOpCodes(
     const LiteRtModelT& litert_model) {
   return litert_model.tfl_operator_codes_;

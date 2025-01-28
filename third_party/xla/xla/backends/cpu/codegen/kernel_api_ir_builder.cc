@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -48,13 +49,14 @@ limitations under the License.
 #include "xla/cpu_function_runtime.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -86,10 +88,6 @@ class MemoryDependencyAnalyzer {
 
   // Returns alias scope for the given buffer slice.
   llvm::MDNode* GetAliasScope(BufferAllocation::Slice slice) {
-    if (slice.allocation() == nullptr) {
-      return nullptr;
-    }
-
     auto it = alias_scopes_.find(slice);
     return it == alias_scopes_.end() ? nullptr
                                      : llvm::MDNode::get(context_, it->second);
@@ -107,9 +105,6 @@ class MemoryDependencyAnalyzer {
   };
 
   bool ResultContainsSlice(BufferAllocation::Slice slice) {
-    if (slice.allocation() == nullptr) {
-      return false;
-    }
     return result_slices_.contains(slice);
   }
 
@@ -245,10 +240,6 @@ absl::Status VerifyKernelParameters(
 absl::StatusOr<BufferAllocation::Slice> GetUniqueSlice(
     const BufferAssignment* buffer_assignment,
     const HloInstruction* instruction, const ShapeIndex& index) {
-  if (buffer_assignment == nullptr) {
-    return BufferAllocation::Slice{};
-  }
-
   return buffer_assignment->GetUniqueSlice(instruction, index);
 }
 
@@ -285,6 +276,13 @@ GetKernelResultsParameters(const HloInstruction* instruction,
 
 }  // namespace
 
+auto KernelApiIrBuilder::Options::FromHloModuleConfig(
+    const HloModuleConfig& config) -> Options {
+  return KernelApiIrBuilder::Options{
+      config.debug_options().xla_llvm_enable_invariant_load_metadata(),
+      config.debug_options().xla_cpu_prefer_vector_width()};
+}
+
 KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
                                        Options options)
     : context_(context), options_(std::move(options)) {
@@ -304,15 +302,14 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
                       GetKernelResultsParameters(instr, buffer_assignment));
 
-  bool compute_alias_metadata = buffer_assignment != nullptr;
   return EmitKernelPrototype(module, absl::StrCat(instr->name(), suffix),
-                             arguments, results, compute_alias_metadata);
+                             arguments, results);
 }
 
 auto KernelApiIrBuilder::EmitKernelPrototype(
     llvm::Module& module, absl::string_view name,
     absl::Span<const KernelParameter> arguments,
-    absl::Span<const KernelParameter> results, bool compute_alias_metadata)
+    absl::Span<const KernelParameter> results)
     -> absl::StatusOr<KernelPrototype> {
   CHECK(&module.getContext() == &context_) << "Module context mismatch";
 
@@ -328,13 +325,9 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
             << result.slice.ToString();
   }
 
-  if (compute_alias_metadata) {
-    TF_RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
-  }
+  TF_RETURN_IF_ERROR(VerifyKernelParameters(arguments, results));
 
-  MemoryDependencyAnalyzer memory_dependency_analyzer(
-      context_, name,
-      compute_alias_metadata ? results : absl::Span<const KernelParameter>{});
+  MemoryDependencyAnalyzer memory_dependency_analyzer(context_, name, results);
 
   llvm::IRBuilder<> b(context_);
 
@@ -401,13 +394,11 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
       llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(context_)));
 
   absl::InlinedVector<BufferUse, 8> buffer_uses;
-  if (compute_alias_metadata) {
-    for (const KernelParameter& argument : arguments) {
-      buffer_uses.push_back(BufferUse::Read(argument.slice));
-    }
-    for (const KernelParameter& result : results) {
-      buffer_uses.push_back(BufferUse::Write(result.slice));
-    }
+  for (const KernelParameter& argument : arguments) {
+    buffer_uses.push_back(BufferUse::Read(argument.slice));
+  }
+  for (const KernelParameter& result : results) {
+    buffer_uses.push_back(BufferUse::Write(result.slice));
   }
 
   return KernelPrototype{function,
@@ -418,6 +409,13 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
                          std::move(ir_results),
                          std::move(invariant_arguments),
                          std::move(buffer_uses)};
+}
+
+std::unique_ptr<llvm::Module> KernelApiIrBuilder::CreateModule(
+    absl::string_view name, llvm::LLVMContext& context) {
+  constexpr absl::string_view kXlaModuleIdentifier = "__compute_module";
+  return std::make_unique<llvm::Module>(
+      absl::StrCat(kXlaModuleIdentifier, "_", name), context);
 }
 
 auto KernelApiIrBuilder::EmitKernelThreadDims(llvm::IRBuilderBase& builder,

@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -30,6 +31,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -789,6 +792,7 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis)
   constexpr int64_t kMinorReducedElementsPerThread = 16;
 
   int64_t num_threads_kept = 1;
+  // Number of threads doing the reduction.
   int64_t num_threads_reduced = [&] {
     int64_t max_block_size = MinThreadsXRowReduction();
     return std::min(max_block_size,
@@ -835,6 +839,14 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis)
                            minor_reduced_tile_size * num_threads_reduced};
   num_blocks_ = {CeilOfRatio(input_shape_[1], tile_sizes_per_block_[0]),
                  CeilOfRatio(input_shape_[2], tile_sizes_per_block_[1])};
+  VLOG(3) << absl::StrFormat(
+      "RowReductionFusion::RowReductionFusion selected parameters: num_threads "
+      "= [%s], tile_sizes_per_thread = [%s], tile_sizes_per_block = [%s], "
+      "num_blocks = [%s]",
+      absl::StrJoin(num_threads_, ","),
+      absl::StrJoin(tile_sizes_per_thread_, ","),
+      absl::StrJoin(tile_sizes_per_block_, ","),
+      absl::StrJoin(num_blocks_, ","));
 }
 
 IndexingMap RowReductionFusion::ComputeReductionInputIndexing(
@@ -940,6 +952,8 @@ std::unique_ptr<ReductionFusion> MultiRowReductionFusion::TryCreate(
   // This emitter only supports reductions where the reduced dimension is a
   // power of 2.
   if (shape[kRowMinorReduced] & (shape[kRowMinorReduced] - 1)) {
+    VLOG(3) << "MultiRowReductionFusion::TryCreate shape[kRowMinorReduced] = "
+            << shape[kRowMinorReduced] << " is not a power of 2";
     return nullptr;
   }
 
@@ -970,12 +984,19 @@ std::unique_ptr<ReductionFusion> MultiRowReductionFusion::TryCreate(
   // a bit on the high side, but remember that we also have very small inputs
   // or outputs.
   if (largest_input_or_output_bits >= 32) {
+    VLOG(3) << "MultiRowReductionFusion::TryCreate limiting vector size to 16 "
+               "bytes as largest_input_or_output_bits is "
+            << largest_input_or_output_bits;
     vector_size = std::min(128 / largest_input_or_output_bits, vector_size);
   }
 
   // The reduced dimension must fit into a single warp.
   const int64_t warp_size = analysis.device_info().threads_per_warp();
   if (shape[kRowMinorReduced] > warp_size * vector_size) {
+    VLOG(3) << "MultiRowReductionFusion::TryCreate reduced dimension "
+            << shape[kRowMinorReduced] << " is larger than warp size "
+            << warp_size << " * vector size " << vector_size
+            << ". Will not use multi-row reduction";
     return nullptr;
   }
 
@@ -994,9 +1015,15 @@ std::unique_ptr<ReductionFusion> MultiRowReductionFusion::TryCreate(
   // Check again that the reduced dimension fits after potentially reducing the
   // vector size.
   if (shape[kRowMinorReduced] > warp_size * vector_size) {
+    VLOG(3) << "MultiRowReductionFusion::TryCreate reduced dimension "
+            << shape[kRowMinorReduced] << " is larger than warp size "
+            << warp_size << " * vector size " << vector_size
+            << ". Will not use multi-row reduction";
     return nullptr;
   }
 
+  VLOG(3) << "MultiRowReductionFusion::TryCreate selected vector_size = "
+          << vector_size;
   return std::make_unique<MultiRowReductionFusion>(analysis, vector_size);
 }
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
@@ -40,8 +41,8 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -131,8 +132,7 @@ class ParameterizedFp8GemmRewriteTest
   static constexpr const char* kF8E4M3AmaxPlaceholder{"<<F8E4M3_AMAX>>"};
 };
 
-// TODO(b/390150775): The test is disabled because it is flaky.
-TEST_P(ParameterizedFp8GemmRewriteTest, DISABLED_SupportsF8NonMajorBatchDim) {
+TEST_P(ParameterizedFp8GemmRewriteTest, SupportsF8NonMajorBatchDim) {
   const char* hlo_text = R"(
 HloModule t
 
@@ -155,10 +155,6 @@ ENTRY main {
       f32[8,16,2560]{2,1,0} %dot.6237)
 })";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-; CHECK:    custom-call({{.*}}"lhs_batch_dimensions":["1"],"rhs_batch_dimensions":["0"]
-  )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {

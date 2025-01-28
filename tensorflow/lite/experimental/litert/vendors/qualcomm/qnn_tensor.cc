@@ -32,7 +32,7 @@ QnnTensor::QnnTensor(const QnnTensor& other) : QnnTensor(other.Tensor()) {
   // This should never fail because the input QnnTensor was already deep-copied.
   if (!status) {
     LITERT_LOG(LITERT_ERROR, "Failed to build QnnTensor: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     ABSL_CHECK(status);
   }
 }

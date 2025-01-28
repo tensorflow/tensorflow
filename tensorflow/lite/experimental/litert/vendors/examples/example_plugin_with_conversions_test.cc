@@ -17,6 +17,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
@@ -78,8 +79,8 @@ TEST(ExamplePluginWithConvertTypesTest, CompileMulSubgraph) {
 
   const void* byte_code;
   size_t byte_code_size;
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetCompiledResultByteCode(compiled, &byte_code, &byte_code_size));
+  LITERT_ASSERT_STATUS_OK(LiteRtGetCompiledResultByteCode(
+      compiled, 0, &byte_code, &byte_code_size));
   absl::string_view byte_code_str(reinterpret_cast<const char*>(byte_code),
                                   byte_code_size);
 
@@ -98,11 +99,13 @@ TEST(ExamplePluginWithConvertTypesTest, CompileMulSubgraph) {
 
   const void* op_data;
   size_t op_data_size;
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetCompiledResultCallInfo(compiled, 0, &op_data, &op_data_size));
+  LiteRtParamIndex byte_code_idx;
+
+  LITERT_ASSERT_STATUS_OK(LiteRtGetCompiledResultCallInfo(
+      compiled, 0, &op_data, &op_data_size, &byte_code_idx));
+
   absl::string_view op_data_str(reinterpret_cast<const char*>(op_data),
                                 op_data_size);
-
   EXPECT_EQ(op_data_str, kName);
 
   LiteRtDestroyCompiledResult(compiled);

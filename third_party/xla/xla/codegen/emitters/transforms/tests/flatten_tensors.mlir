@@ -196,6 +196,16 @@ func.func @index_switch(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>,
 
 // -----
 
+func.func @cpu_load(%arg0: !xla_cpu.call_frame) -> tensor<10x10x4xf32> {
+  %0 = xla_cpu.load %arg0, 0 : tensor<10x10x4xf32>
+  return %0 : tensor<10x10x4xf32>
+}
+// CHECK-LABEL: func.func @cpu_load
+// CHECK-SAME: -> tensor<400xf32>
+// CHECK-NOT:  builtin.unrealized_conversion_cast
+
+// -----
+
 func.func @constant() -> tensor<2x3xf32> {
    %cst = arith.constant dense<[
     [-3.000000e+00, 2.000000e+00, 1.000000e+00],

@@ -16,22 +16,24 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/kernel.h"
 
 #include <atomic>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 
@@ -93,60 +95,53 @@ TEST(KernelTest, InternalAddition3D) {
 }
 
 TEST(KernelTest, LaunchAsync) {
-  auto* no_op = +[](const XLA_CPU_KernelCallFrame*) {
+  auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "test", tsl::port::MaxParallelism());
+  Eigen::ThreadPoolDevice device(thread_pool->AsEigenThreadPool(),
+                                 thread_pool->NumThreads());
+
+  std::atomic<int32_t> num_tasks = 0;
+  XLA_CPU_KernelArg arg = {&num_tasks, sizeof(num_tasks)};
+
+  auto* no_op = +[](const XLA_CPU_KernelCallFrame* call_frame) {
+    auto* n = reinterpret_cast<std::atomic<int32_t>*>(call_frame->args[0].data);
+    n->fetch_add(1);
     return static_cast<XLA_CPU_KernelError*>(nullptr);
   };
 
-  auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
-      tsl::Env::Default(), "benchmark", tsl::port::MaxParallelism());
-
-  std::atomic<size_t> num_tasks = 0;
-
-  Kernel::TaskRunner runner = [&](Kernel::Task task) {
-    num_tasks.fetch_add(1, std::memory_order_relaxed);
-    thread_pool->Schedule(std::move(task));
-  };
-
-  Kernel host_kernel(/*arity=*/0, no_op);
-  auto event = host_kernel.Launch(Kernel::ThreadDim(4, 4, 4),
-                                  absl::Span<const XLA_CPU_KernelArg>(),
-                                  std::move(runner));
+  Kernel host_kernel(/*arity=*/1, no_op);
+  auto event = host_kernel.Launch(Kernel::ThreadDim(4, 4, 4), {arg}, &device);
 
   tsl::BlockUntilReady(event);
   EXPECT_TRUE(event.IsConcrete());
-  EXPECT_EQ(num_tasks.load(std::memory_order_relaxed), 4 * 4 * 4 - 1);
+  EXPECT_EQ(num_tasks.load(), 4 * 4 * 4);
 }
 
 TEST(KernelTest, LaunchAsyncError) {
+  auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "test", tsl::port::MaxParallelism());
+  Eigen::ThreadPoolDevice device(thread_pool->AsEigenThreadPool(),
+                                 thread_pool->NumThreads());
+
   // XLA_CPU_KernelError type is not defined so we simply return a non-nullptr
   // pointer to signal error to the runtime.
   auto* maybe_error = +[](const XLA_CPU_KernelCallFrame* call_frame) {
     if (call_frame->thread->x == 2 && call_frame->thread->z == 2) {
       return reinterpret_cast<XLA_CPU_KernelError*>(0xDEADBEEF);
+    } else {
+      return static_cast<XLA_CPU_KernelError*>(nullptr);
     }
-    return static_cast<XLA_CPU_KernelError*>(nullptr);
-  };
-
-  auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
-      tsl::Env::Default(), "benchmark", tsl::port::MaxParallelism());
-
-  std::atomic<size_t> num_tasks = 0;
-
-  Kernel::TaskRunner runner = [&](Kernel::Task task) {
-    num_tasks.fetch_add(1, std::memory_order_relaxed);
-    thread_pool->Schedule(std::move(task));
   };
 
   Kernel host_kernel(/*arity=*/0, maybe_error);
-  auto event = host_kernel.Launch(Kernel::ThreadDim(4, 4, 4),
-                                  absl::Span<const XLA_CPU_KernelArg>(),
-                                  std::move(runner));
+  auto event =
+      host_kernel.Launch(Kernel::ThreadDim(4, 4, 4),
+                         absl::Span<const XLA_CPU_KernelArg>(), &device);
 
   tsl::BlockUntilReady(event);
   ASSERT_TRUE(event.IsError());
   EXPECT_TRUE(absl::StrContains(event.GetError().message(),
                                 "Failed to call host kernel:"));
-  EXPECT_EQ(num_tasks.load(std::memory_order_relaxed), 4 * 4 * 4 - 1);
 }
 
 //===----------------------------------------------------------------------===//
@@ -175,16 +170,14 @@ static void BM_KernelAsyncLaunch(benchmark::State& state) {
 
   auto thread_pool = std::make_shared<tsl::thread::ThreadPool>(
       tsl::Env::Default(), "benchmark", tsl::port::MaxParallelism());
-
-  auto task_runner = [&thread_pool](Kernel::Task task) {
-    thread_pool->Schedule(std::move(task));
-  };
+  Eigen::ThreadPoolDevice device(thread_pool->AsEigenThreadPool(),
+                                 thread_pool->NumThreads());
 
   Kernel kernel(/*arity=*/0, NoOp);
   absl::Span<const XLA_CPU_KernelArg> args;
 
   for (auto _ : state) {
-    auto event = kernel.Launch(Kernel::ThreadDim(tdim_x), args, task_runner);
+    auto event = kernel.Launch(Kernel::ThreadDim(tdim_x), args, &device);
     tsl::BlockUntilReady(event);
   }
 }
@@ -196,7 +189,9 @@ BENCHMARK(BM_KernelSyncLaunch)
     ->Arg(8)
     ->Arg(16)
     ->Arg(32)
-    ->Arg(64);
+    ->Arg(64)
+    ->Arg(128)
+    ->Arg(256);
 
 BENCHMARK(BM_KernelAsyncLaunch)
     ->MeasureProcessCPUTime()
@@ -205,6 +200,8 @@ BENCHMARK(BM_KernelAsyncLaunch)
     ->Arg(8)
     ->Arg(16)
     ->Arg(32)
-    ->Arg(64);
+    ->Arg(64)
+    ->Arg(128)
+    ->Arg(256);
 
 }  // namespace xla::cpu

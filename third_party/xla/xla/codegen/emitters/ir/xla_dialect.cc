@@ -22,6 +22,7 @@ limitations under the License.
 // The order of these includes is important.
 #define GET_ATTRDEF_CLASSES
 #include "xla/codegen/emitters/ir/xla_attrs.cc.inc"
+#include "xla/codegen/emitters/ir/xla_enums.cc.inc"
 
 namespace xla {
 namespace {
@@ -37,6 +38,7 @@ struct XlaInlinerInterface : public mlir::DialectInlinerInterface {
   // created).
   bool isLegalToInline(mlir::Operation* call, mlir::Operation* callable,
                        bool wouldBeCloned) const final {
+    if (call->hasAttr("noinline")) return false;
     if (!wouldBeCloned) {
       // If no duplicate would be created, 'call' is likely the only caller of
       // 'callable'.

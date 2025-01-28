@@ -80,6 +80,13 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
           new_control_predecessor->AddControlDependencyTo(new_hlo_pointer));
     }
 
+    // The newly inlined instructions should honor the control predecessors of
+    // the previous call instruction.
+    for (HloInstruction* control_predecessor : call_->control_predecessors()) {
+      TF_RETURN_IF_ERROR(control_predecessor->AddControlDependencyTo(
+          /*instruction=*/new_hlo_pointer));
+    }
+
     return absl::OkStatus();
   }
 
@@ -98,7 +105,15 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_root, Resolve(root));
     VLOG(1) << "Replacing all uses of " << call_->ToString()
             << " with new root " << new_root->ToString();
-    return outer_->ReplaceInstruction(call_, new_root);
+    // We must relay the control dependencies from this call instruction to the
+    // successors too after inlining. The will now depend on the newly inlined
+    // root.
+    return outer_
+        ->ReplaceInstruction(
+            /*old_instruction=*/call_, /*new_instruction=*/new_root,
+            /*preserve_sharding=*/false, /*relay_control_dependency=*/true,
+            /*remove_unused_operands=*/true)
+        .status();
   }
 
   CallInliner::InlinedInstructionMap ConsumeInstructionMap() {

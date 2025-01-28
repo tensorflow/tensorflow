@@ -60,8 +60,8 @@ tsl_cc_test(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
-        "@com_google_googletest//:gtest_main",
     ] + tsl_grpc_cc_dependencies(),
 )
 

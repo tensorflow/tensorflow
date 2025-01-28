@@ -450,7 +450,7 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
-        "@com_google_googletest//:gtest_main",
+        "//xla/tsl/platform:test_main",
     ],
 )
 

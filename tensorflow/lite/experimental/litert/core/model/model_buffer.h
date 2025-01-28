@@ -24,7 +24,11 @@ namespace litert::internal {
 
 // Get a buffer that is the concatenation of given tflite file and
 // npu byte code file. Adds metadata containing the offset/size of npu byte
-// code.
+// code. Expects the model contains a single subgraph with a single dispatch
+// op.
+//
+// NOTE: this is intended to be used for testing and tools and may be removed in
+// the future.
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     absl::string_view tfl_file, absl::string_view npu_file);
 

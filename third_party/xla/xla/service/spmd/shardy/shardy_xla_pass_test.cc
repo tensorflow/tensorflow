@@ -22,11 +22,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -37,13 +38,23 @@ namespace {
 
 using ShardyXLATest = xla::HloTestBase;
 
-void runShardy(VerifiedHloModule* module) {
+void runShardy(VerifiedHloModule* module, bool mhloImport) {
   FrontendAttributes attrs;
-  attrs.mutable_map()->try_emplace(xla::sdy::kImportMhloShardings, "t");
+  if (mhloImport) {
+    attrs.mutable_map()->try_emplace(xla::sdy::kImportMhloShardings, "t");
+  }
   module->add_frontend_attributes(attrs);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
+}
+
+void runShardyWithMhloImport(VerifiedHloModule* module) {
+  runShardy(module, /*mhloImport=*/true);
+}
+
+void runShardyWithSdyImport(VerifiedHloModule* module) {
+  runShardy(module, /*mhloImport=*/false);
 }
 
 }  // namespace
@@ -61,7 +72,7 @@ TEST_F(ShardyXLATest, AllowSpmdShardingPropagationParametersOutputRespected) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{replicated}"));
@@ -88,7 +99,7 @@ TEST_F(ShardyXLATest, ElementWise) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   HloInstruction* add = FindInstruction(module.get(), xla::HloOpcode::kAdd);
   EXPECT_NE(add, nullptr);
@@ -123,7 +134,7 @@ TEST_F(ShardyXLATest, CostantSplitter) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   HloInstruction* dot = FindInstruction(module.get(), xla::HloOpcode::kDot);
 
@@ -171,7 +182,7 @@ TEST_F(ShardyXLATest, Dot) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
@@ -206,7 +217,7 @@ TEST_F(ShardyXLATest, DotTiledBatchDim) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,2,1]<=[4]}"));
@@ -232,7 +243,7 @@ TEST_F(ShardyXLATest, DotMergeOperands1) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
@@ -258,7 +269,7 @@ TEST_F(ShardyXLATest, DotMergeOperands2) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,2,2]<=[8]}"));
@@ -281,7 +292,7 @@ TEST_F(ShardyXLATest, DotMergeOperands3) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,4]<=[8]}"));
@@ -307,7 +318,7 @@ TEST_F(ShardyXLATest, BackwardDotFromContracting) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,2,2]<=[8]}"));
@@ -332,7 +343,7 @@ TEST_F(ShardyXLATest, EntryComputationLayoutSingleResult) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_EQ(
       module->entry_computation_layout().ToString(),
@@ -351,7 +362,7 @@ TEST_F(ShardyXLATest, EntryComputationLayoutNestedTuple) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_EQ(module->entry_computation_layout().ToString(),
             "(f32[4,2]{0,1:T(2,128)}, f32[4,2]{0,1:T(2,128)}, "
@@ -375,7 +386,7 @@ TEST_F(ShardyXLATest, EntryComputationLayoutMissingLayout) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_EQ(module->entry_computation_layout().ToString(),
             "(f32[3,8,32,4]{2,1,3,0:T(8,128)}, "
@@ -394,7 +405,7 @@ TEST_F(ShardyXLATest, InputOutputAliasConfigSingleResult) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_EQ(module->input_output_alias_config().ToShortString(),
             "{}: (1, {}, may-alias)");
@@ -413,7 +424,7 @@ TEST_F(ShardyXLATest, InputOutputAliasConfigSingleResultNestedParams) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_EQ(module->input_output_alias_config().ToShortString(),
             "{}: (1, {}, may-alias)");
@@ -430,7 +441,7 @@ TEST_F(ShardyXLATest, InputOutputAliasConfigNestedResultAndParams) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_EQ(module->input_output_alias_config().ToShortString(),
             "{1}: (1, {}, may-alias), {3}: (3, {}, may-alias)");
@@ -448,7 +459,7 @@ TEST_F(ShardyXLATest, BufferDonorConfigSingleResult) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_EQ(module->buffer_donor_config().ToShortString(), "(1, {})");
 }
@@ -464,7 +475,7 @@ TEST_F(ShardyXLATest, BufferDonorConfigNestedTuple) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_EQ(module->buffer_donor_config().ToShortString(), "(0, {}), (2, {})");
 }
@@ -480,7 +491,7 @@ TEST_F(ShardyXLATest, ShardingCustomCall) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,1]<=[2]}"));
@@ -503,7 +514,7 @@ TEST_F(ShardyXLATest, RngBitGenerator) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Sharding("{{devices=[16,2]<=[32]}, {devices=[8,4]<=[32]}}"));
@@ -550,7 +561,7 @@ TEST_F(ShardyXLATest, WhileWithFreeVariables) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   HloInstruction* whileInst =
       FindInstruction(module.get(), xla::HloOpcode::kWhile);
@@ -595,7 +606,7 @@ TEST_F(ShardyXLATest, ShardMap) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   // The entry computation and the region_add for the all-reduce. shmap_body is
   // inlined.
@@ -624,7 +635,7 @@ TEST_F(ShardyXLATest, EmptyModule) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_EQ(module->entry_computation_layout().ToString(), "()->()");
   EXPECT_EQ(module->input_output_alias_config().ToShortString(), "");
@@ -649,7 +660,7 @@ TEST_F(ShardyXLATest, TestUseTuplesTrue) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardy(module.get());
+  runShardyWithMhloImport(module.get());
 
   EXPECT_EQ(module->entry_computation()->parameter_instructions().size(), 1);
   EXPECT_EQ(module->buffer_donor_config().ToShortString(), "(0, {1})");
@@ -658,6 +669,37 @@ TEST_F(ShardyXLATest, TestUseTuplesTrue) {
   EXPECT_EQ(module->entry_computation_layout().ToString(),
             "((f32[8,16]{1,0:T(8,128)}, f32[16,32]{1,0:T(8,128)}, "
             "f32[8,32]{1,0:T(8,128)}))->f32[8,32]{1,0:T(8,128)}");
+}
+
+TEST_F(ShardyXLATest, TestMaximalShardingNoResults) {
+  const char* const hloString = R"(
+HloModule maximal_sharding_module, entry_computation_layout={(s64[2]{0})->s64[2]{0}},
+    frontend_attributes={xla.sdy.meshes={maximal_mesh_0 = #sdy.mesh<[], device_ids=[0]>}}
+
+ENTRY %main.0 (Arg_0.0: s64[2]) -> s64[2] {
+  ROOT %Arg_0.0 = s64[2] parameter(0)
+  %custom-call.0 = () custom-call(s64[2] %Arg_0.0), custom_call_target="xla_ffi_python_cpu_callback",
+      operand_layout_constraints={s64[2]{0}}, custom_call_has_side_effect=true, api_version=API_VERSION_TYPED_FFI,
+      frontend_attributes={xla.sdy.sharding="#sdy.sharding_per_value<[<@maximal_mesh_0, []>]>"},
+      sharding={{maximal device=0}}, metadata={op_name="custom-call.2"}, backend_config={descriptor = 126001424235520 : ui64}
+}
+)";
+  const char* const expected = R"(
+  // CHECK:               ENTRY %main.3 (Arg_0.1: s64[2]) -> s64[2] {
+  // CHECK-NEXT:            ROOT %Arg_0.1 = s64[2] parameter(0), metadata={op_name="Arg_0.0"}
+  // CHECK-NEXT{LITERAL}:   %custom-call.2 = () custom-call(s64[2] %Arg_0.1), custom_call_target="xla_ffi_python_cpu_callback",
+  // CHECK-SAME{LITERAL}:   operand_layout_constraints={s64[2]{0}}, custom_call_has_side_effect=true, api_version=API_VERSION_TYPED_FFI,
+  // CHECK-SAME{LITERAL}:   sharding={{maximal device=0}}, metadata={op_name="custom-call.2"}, backend_config={descriptor = 126001424235520 : ui64}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithSdyImport(module.get());
+  LOG(INFO) << module->ToString(
+      HloPrintOptions{}.set_include_layout_in_shapes(false));
+  EXPECT_TRUE(*RunFileCheck(
+      module->ToString(HloPrintOptions{}.set_include_layout_in_shapes(false)),
+      expected));
 }
 }  // namespace sdy
 }  // namespace xla

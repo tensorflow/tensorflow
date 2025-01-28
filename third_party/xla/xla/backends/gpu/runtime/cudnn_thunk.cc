@@ -50,7 +50,7 @@ absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
   absl::Status ret = absl::OkStatus();
   absl::call_once(once_flag_, [&] {
     auto result = params.stream->parent()->AsDnn()->DeserializeGraph(
-        params.src.dnn_compiled_graphs.at(fingerprint_));
+        *params.stream, params.src.dnn_compiled_graphs.at(fingerprint_));
     std::string().swap(fingerprint_);
     if (result.ok()) {
       graph_->swap(*result);

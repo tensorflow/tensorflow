@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_OP_UTILS_H_
 #define TENSORFLOW_DTENSOR_MLIR_OP_UTILS_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 

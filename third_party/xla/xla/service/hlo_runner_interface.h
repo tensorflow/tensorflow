@@ -73,6 +73,10 @@ class HloRunnerPropertyTag final {
   // Default, reserved value for HloRunnerPropertyTag. Perhaps this could be
   // used as a sentinel value for a tag that is not present. Do not use.
   static constexpr Type kDefault = 0;
+  // Indicates that the runner is using ROCm.
+  static constexpr Type kUsingGpuRocm = 1;
+  // Indicates that this runner is a CPU runner.
+  static constexpr Type kCpu = 2;
 
  private:
   HloRunnerPropertyTag() = default;

@@ -119,14 +119,6 @@ class SimplePropagatorState {
   // Returns an array of `Entry` objects corresponding to the inputs of
   // `tagged_node`.
   Entry* GetInputTensors(const TaggedNode& tagged_node) {
-#if defined(THREAD_SANITIZER) || defined(DEBUG)
-    // NOTE: This read of `pending_[...]` works around a limitation in TSAN.
-    // To avoid false positive data race reports, we need to perform an atomic
-    // object access that will establish the happens-before relation between
-    // the write to input_tensors_ in `PropagateOutputs()` and the read in
-    // `PrepareInputs()`.
-    CHECK_EQ(pending_[tagged_node.node_item->node_id], 0);
-#endif  // defined(THREAD_SANITIZER) || defined(DEBUG)
     return input_tensors_.data() + tagged_node.node_item->input_start;
   }
 

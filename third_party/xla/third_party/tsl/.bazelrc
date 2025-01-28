@@ -471,22 +471,19 @@ test:win_clang --linkopt=/FORCE:MULTIPLE
 test:win_clang --host_linkopt=/FORCE:MULTIPLE
 test:win_clang --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
 
-# build:windows_x86_cpu --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
-# build:windows_x86_cpu --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
-# build:windows_x86_cpu --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
-build:windows_x86_cpu --crosstool_top="//tensorflow/tools/toolchains/win2022/20241118:toolchain"
-build:windows_x86_cpu --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
-build:windows_x86_cpu --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
-build:windows_x86_cpu --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
-build:windows_x86_cpu --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
-build:windows_x86_cpu --copt=/clang:-Weverything
-build:windows_x86_cpu --host_copt=/clang:-Weverything
-build:windows_x86_cpu --compiler=clang-cl
-build:windows_x86_cpu --linkopt=/FORCE:MULTIPLE
-build:windows_x86_cpu --host_linkopt=/FORCE:MULTIPLE
-test:windows_x86_cpu --linkopt=/FORCE:MULTIPLE
-test:windows_x86_cpu --host_linkopt=/FORCE:MULTIPLE
-test:windows_x86_cpu --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
+build:windows_x86_cpu_2022 --crosstool_top="//tensorflow/tools/toolchains/win2022/20241118:toolchain"
+build:windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
+build:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
+build:windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
+build:windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
+build:windows_x86_cpu_2022 --copt=/clang:-Weverything
+build:windows_x86_cpu_2022 --host_copt=/clang:-Weverything
+build:windows_x86_cpu_2022 --compiler=clang-cl
+build:windows_x86_cpu_2022 --linkopt=/FORCE:MULTIPLE
+build:windows_x86_cpu_2022 --host_linkopt=/FORCE:MULTIPLE
+test:windows_x86_cpu_2022 --linkopt=/FORCE:MULTIPLE
+test:windows_x86_cpu_2022 --host_linkopt=/FORCE:MULTIPLE
+test:windows_x86_cpu_2022 --action_env=PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW
 
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior
@@ -601,6 +598,7 @@ build:rbe_win_clang --host_linkopt=/FORCE:MULTIPLE
 
 # TODO(belitskiy): Rename `rbe_win_clang` to this, once done switching presubmits.
 build:rbe_windows_x86_cpu --config=rbe_win_clang
+build:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022
 
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
@@ -617,7 +615,6 @@ build:elinux_armhf --copt -mfp16-format=ieee
 
 # Load rc file written by ./configure.
 try-import %workspace%/.tf_configure.bazelrc
-try-import %workspace%/xla_configure.bazelrc
 
 # Load rc file with user-specific options.
 try-import %workspace%/.bazelrc.user
@@ -758,7 +755,7 @@ build:tf_public_macos_cache_push --config=tf_public_macos_cache --remote_upload_
 # LIBTENSORFLOW TESTS are for building Libtensorflow archives. These are CUDA/CPU-agnostic.
 test:linux_libtensorflow_test --config=cuda_wheel -- //tensorflow/tools/lib_package:libtensorflow_test //tensorflow/tools/lib_package:libtensorflow_java_test
 build:linux_libtensorflow_build --config=cuda_wheel -- //tensorflow/tools/lib_package:libtensorflow.tar.gz //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz //tensorflow/java:libtensorflow.jar //tensorflow/java:libtensorflow-src.jar //tensorflow/tools/lib_package:libtensorflow_proto.zip
-build:windows_libtensorflow_build --config=cuda_wheel --config=windows_x86_cpu -- //:LICENSE //tensorflow:tensorflow.dll //tensorflow:tensorflow_dll_import_lib //tensorflow/tools/lib_package:clicenses_generate //tensorflow/java:tensorflow_jni.dll //tensorflow/tools/lib_package:jnilicenses_generate
+build:windows_libtensorflow_build --config=cuda_wheel --config=windows_x86_cpu_2022 -- //:LICENSE //tensorflow:tensorflow.dll //tensorflow:tensorflow_dll_import_lib //tensorflow/tools/lib_package:clicenses_generate //tensorflow/java:tensorflow_jni.dll //tensorflow/tools/lib_package:jnilicenses_generate
 
 # PYTHON TESTS run a suite of Python tests intended for verifying that the Python wheel
 # will work properly. These are usually run Nightly or upon Release.
@@ -792,6 +789,8 @@ test:windows_x86_cpu_wheel_test_filters --test_tag_filters=-no_windows,-windows_
 test:windows_x86_cpu_wheel_test_filters --build_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded,-benchmark-test
 test:windows_x86_cpu_wheel_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
 test:windows_x86_cpu_wheel_test --build_tests_only --config=windows_x86_cpu_pycpp_test_filters -- //tensorflow/... -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
+# TODO(belitskiy): Get rid of once 2019 is shut down
+test:windows_x86_cpu_2022_wheel_test --config=windows_x86_cpu_wheel_test
 
 # PYCPP TESTS run a suite of Python and C++ tests to verify general correctness over
 # the whole TF code base. These are usually run continuously or upon presubmit.
@@ -848,6 +847,7 @@ test:windows_x86_cpu_pycpp_test_filters --build_tag_filters=-no_windows,-windows
 test:windows_x86_cpu_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
 test:windows_x86_cpu_pycpp_test_opts --config=windows_x86_cpu_pycpp_test_build_opts --build_tests_only
 test:windows_x86_cpu_pycpp_test --config=windows_x86_cpu_pycpp_test_opts --config=windows_x86_cpu_pycpp_test_filters -- //tensorflow/... -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
+test:windows_x86_cpu_2022_pycpp_test --config=windows_x86_cpu_pycpp_test
 
 # END TF TEST SUITE OPTIONS
 
@@ -917,6 +917,3 @@ build:rbe_cross_compile_macos_x86 --jobs=100
 test:rbe_cross_compile_macos_x86 --jobs=100
 # END MACOS CROSS-COMPILE CONFIGS
 # END CROSS-COMPILE CONFIGS
-
-# Try to load the XLA warnings config if available
-try-import %workspace%/warnings.bazelrc

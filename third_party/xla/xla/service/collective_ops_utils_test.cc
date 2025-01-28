@@ -149,35 +149,26 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
   EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion2.get()), nullptr);
 }
 
-TEST(CollectiveOpsUtilsTest, IsForwardCycle) {
-  EXPECT_TRUE(IsForwardCycle({{0, 1}, {1, 0}}));
-  EXPECT_TRUE(IsForwardCycle({{0, 1}, {1, 2}, {2, 3}, {3, 0}}));
-  EXPECT_FALSE(IsForwardCycle({{0, 0}})) << "Self link is not a cycle!";
-  EXPECT_FALSE(IsForwardCycle({{}})) << "Self link due to initialization to 0";
-
-  EXPECT_FALSE(IsForwardCycle({}));
-  EXPECT_FALSE(IsForwardCycle({{0, 1}}));
-  EXPECT_FALSE(IsForwardCycle({{0, 1}, {2, 0}})) << "No link between 1 and 2";
-  EXPECT_FALSE(IsForwardCycle({{1, 0}, {0, 1}})) << "Backward cycle";
-  EXPECT_FALSE(IsForwardCycle({{3, 0}, {0, 1}, {1, 2}, {2, 3}}))
-      << "Unordered pairs are not a cycle";
-  EXPECT_FALSE(IsForwardCycle({{0, 1}, {1, 2}, {2, 3}, {4, 5}, {3, 0}}))
-      << "Out of order pairs are not a cycle";
+TEST(CollectiveOpsUtilsTest, GetForwardCycleIndices) {
+  auto res_one_cycle = GetCycleTypeAndIndices({{0, 1}, {1, 2}, {2, 3}, {3, 0}});
+  EXPECT_EQ(res_one_cycle.first, CycleType::kForward);
+  EXPECT_THAT(res_one_cycle.second, testing::UnorderedElementsAreArray({3}));
+  auto res_two_cycles =
+      GetCycleTypeAndIndices({{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 1}});
+  EXPECT_EQ(res_two_cycles.first, CycleType::kForward);
+  EXPECT_THAT(res_two_cycles.second,
+              testing::UnorderedElementsAreArray({3, 4}));
 }
 
-TEST(CollectiveOpsUtilsTest, IsBackwardCycle) {
-  EXPECT_TRUE(IsBackwardCycle({{0, 1}, {1, 0}}));
-  EXPECT_TRUE(IsBackwardCycle({{0, 3}, {1, 0}, {2, 1}, {3, 2}}));
-  EXPECT_FALSE(IsBackwardCycle({{0, 0}})) << "Self link is a backward cycle!";
-  EXPECT_FALSE(IsBackwardCycle({{}})) << "Self link due to initialization to 0";
-
-  EXPECT_FALSE(IsForwardCycle({}));
-  EXPECT_FALSE(IsForwardCycle({{1, 0}}));
-  EXPECT_FALSE(IsForwardCycle({{2, 1}, {0, 2}})) << "No link between 1 and 2";
-  EXPECT_FALSE(IsBackwardCycle({{3, 2}, {0, 3}, {1, 0}, {2, 1}}))
-      << "Unordered pairs are not a cycle";
-  EXPECT_FALSE(IsForwardCycle({{0, 1}, {1, 2}, {4, 5}, {3, 0}}))
-      << "Out of order pairs are not a cycle";
+TEST(CollectiveOpsUtilsTest, GetBackwardCycleIndices) {
+  auto res_one_cycle = GetCycleTypeAndIndices({{0, 3}, {1, 0}, {2, 1}, {3, 2}});
+  EXPECT_EQ(res_one_cycle.first, CycleType::kBackward);
+  EXPECT_THAT(res_one_cycle.second, testing::UnorderedElementsAreArray({0}));
+  auto res_two_cycles =
+      GetCycleTypeAndIndices({{0, 3}, {1, 4}, {2, 1}, {3, 2}, {4, 3}, {3, 0}});
+  EXPECT_EQ(res_two_cycles.first, CycleType::kBackward);
+  EXPECT_THAT(res_two_cycles.second,
+              testing::UnorderedElementsAreArray({0, 1}));
 }
 
 TEST(IsExclusivelyCrossModuleTest, CrossReplicaNoChannelSet) {

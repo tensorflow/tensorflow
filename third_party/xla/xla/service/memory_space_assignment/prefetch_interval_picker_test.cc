@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/prefetch_interval_picker.h"
 
-#include <cstdint>
 #include <optional>
 
 #include <gtest/gtest.h>

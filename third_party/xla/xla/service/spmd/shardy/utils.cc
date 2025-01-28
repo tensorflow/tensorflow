@@ -206,7 +206,9 @@ CustomCallOp cloneCustomCallWithNewResultTypes(CustomCallOp op,
 bool isPythonCallbackCustomCall(mlir::stablehlo::CustomCallOp op) {
   mlir::StringRef targetName = op.getCallTargetName();
   return targetName == kPythonCpuCallbackCustomCallTargetName ||
-         targetName == kPythonGpuCallbackCustomCallTargetName;
+         targetName == kPythonGpuCallbackCustomCallTargetName ||
+         targetName == kFFIPythonCpuCallbackCustomCallTargetName ||
+         targetName == kFFIPythonGpuCallbackCustomCallTargetName;
 }
 
 }  // namespace sdy

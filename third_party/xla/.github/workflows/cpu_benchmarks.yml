@@ -24,7 +24,8 @@ on:
 
 jobs:
   benchmark:
-    runs-on: ubuntu-24.04
+    runs-on: "linux-x86-n2-16"
+    container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest"
     steps:
       - name: Checkout OpenXLA
         uses: actions/checkout@v3
@@ -38,6 +39,25 @@ jobs:
           free -h  # Memory information
           df -h    # Disk space information
           uname -a # Kernel information
+
+      - name: Set up Bazel
+        uses: bazelbuild/setup-bazel@v2
+        with:
+          bazel-version: 'latest'
+
+      - name: Install updates and Python env
+        working-directory: xla/xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
+        run: |
+          sudo apt-get update
+          sudo apt install python3.10-venv
+
+      - name: Run setup.sh for E2E benchmarks flax_2b
+        working-directory: xla/xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
+        run: bash setup.sh
+
+      - name: Run run.sh for E2E benchmarks flax_2b
+        working-directory: xla/xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
+        run: bash run.sh
 
       - name: Build run_hlo_module
         working-directory: openxla

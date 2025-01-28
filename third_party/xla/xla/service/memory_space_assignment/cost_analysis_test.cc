@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 
 #include <algorithm>
-#include <cstdint>
 #include <memory>
 
 #include <gtest/gtest.h>

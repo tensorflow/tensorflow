@@ -64,15 +64,17 @@ absl::Status ValidateRank(llvm::ArrayRef<uint64_t> global_dims,
                           llvm::ArrayRef<uint32_t> element_strides,
                           TmaDescriptor::TmaInterleave interleave) {
   int rank = global_dims.size();
-  if (global_strides.size() != rank || box_dims.size() != rank ||
-      element_strides.size() != rank) {
-    return absl::FailedPreconditionError(
-        "global_dims, global_strides, box_dims and "
-        "element_strides must have the same rank");
-  }
   if (rank < kMinRank || rank > kMaxRank) {
     return absl::InvalidArgumentError(
         absl::StrFormat("unsupported rank for TMA: %d. Must be 1-5", rank));
+  }
+  if (element_strides.size() != rank || box_dims.size() != rank) {
+    return absl::FailedPreconditionError(
+        "global_dims, box_dims and element_strides must have the same rank");
+  }
+  if (global_strides.size() != rank - 1) {
+    return absl::FailedPreconditionError(
+        "global_strides must have a rank of: rank(global_dims) - 1.");
   }
   if (interleave != TmaDescriptor::TmaInterleave::kNone && rank < 3) {
     return absl::FailedPreconditionError(

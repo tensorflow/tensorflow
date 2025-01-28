@@ -313,6 +313,15 @@ func.func @callback_no_tuple_result_used(%arg0: tensor<2xf64>) -> tensor<2xf64> 
   return %0 : tensor<2xf64>
 }
 
+// CHECK-LABEL: func @maximal_sharding_no_results
+// CHECK-SAME:      (%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @maximal_sharding_no_results(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK-NEXT: stablehlo.custom_call @foo(%arg0) {has_side_effect = true, mhlo.sharding = "{maximal device=0}"} : (tensor<8x8xf32>) -> ()
+  // CHECK-NEXT: return %arg0 : tensor<8x8xf32>
+  stablehlo.custom_call @foo(%arg0) {has_side_effect = true, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (tensor<8x8xf32>) -> ()
+  return %arg0 : tensor<8x8xf32>
+}
+
 
 // CHECK-LABEL: func private @foo
 // CHECK-SAME:    %arg0: tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}"}

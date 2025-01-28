@@ -26,8 +26,8 @@ limitations under the License.
 #include "stablehlo/dialect/Register.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/test.h"
 
 // This file should contain tests for interfaces that can't be tested at the
 // MLIR level.

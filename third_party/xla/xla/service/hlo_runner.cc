@@ -12,30 +12,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#define EIGEN_USE_THREADS
 
 #include "xla/service/hlo_runner.h"
 
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/hlo/ir/hlo_module_group.h"
-#include "xla/hlo/parser/hlo_parser.h"
-#include "xla/layout_util.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo_module_util.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "tsl/platform/blocking_counter.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -712,6 +709,19 @@ const Backend& HloRunner::backend() const {
 
 absl::string_view HloRunner::Name() const {
   return backend_->platform()->Name();
+}
+
+bool HloRunner::HasProperty(const HloRunnerPropertyTag::Type tag) const {
+  if (tag == HloRunnerPropertyTag::kUsingGpuRocm) {
+    const stream_executor::DeviceDescription& device_description =
+        backend().default_stream_executor()->GetDeviceDescription();
+    return std::holds_alternative<stream_executor::RocmComputeCapability>(
+        device_description.gpu_compute_capability());
+  }
+  if (tag == HloRunnerPropertyTag::kCpu) {
+    return backend().platform()->Name() == "Host";
+  }
+  return false;
 }
 
 }  // namespace xla

@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

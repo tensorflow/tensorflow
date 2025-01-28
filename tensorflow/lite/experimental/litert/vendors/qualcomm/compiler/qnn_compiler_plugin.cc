@@ -77,6 +77,9 @@ constexpr LiteRtOpCode kSupportedOps[] = {
   kLiteRtOpCodeTflLess,
   kLiteRtOpCodeTflGreater,
   kLiteRtOpCodeTflGelu,
+  kLiteRtOpCodeTflDynamicUpdateSlice,
+  kLiteRtOpCodeTflPack,
+  kLiteRtOpCodeTflQuantize,
 };
 // clang-format on
 
@@ -153,11 +156,13 @@ struct LiteRtCompiledResultT {
 };
 
 LiteRtStatus LiteRtGetCompiledResultByteCode(
-    LiteRtCompiledResult compiled_result, const void** byte_code,
-    size_t* byte_code_size) {
-  if (!compiled_result || !byte_code || !byte_code_size) {
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex byte_code_idx,
+    const void** byte_code, size_t* byte_code_size) {
+  if (!compiled_result || !byte_code || !byte_code_size ||
+      (byte_code_idx != 0)) {
     return kLiteRtStatusErrorInvalidArgument;
   }
+
   *byte_code = compiled_result->context_bin.data();
   *byte_code_size = compiled_result->context_bin.size();
   return kLiteRtStatusOk;
@@ -165,7 +170,8 @@ LiteRtStatus LiteRtGetCompiledResultByteCode(
 
 LiteRtStatus LiteRtGetCompiledResultCallInfo(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex call_idx,
-    const void** call_info, size_t* call_info_size) {
+    const void** call_info, size_t* call_info_size,
+    LiteRtParamIndex* byte_code_idx) {
   if (!compiled_result || !call_info || !call_info_size) {
     return kLiteRtStatusErrorInvalidArgument;
   } else if (call_idx >= compiled_result->graph_names.size()) {
@@ -174,6 +180,7 @@ LiteRtStatus LiteRtGetCompiledResultCallInfo(
 
   *call_info = compiled_result->graph_names.at(call_idx).data();
   *call_info_size = compiled_result->graph_names.at(call_idx).size();
+  *byte_code_idx = 0;
 
   return kLiteRtStatusOk;
 }
@@ -189,6 +196,12 @@ LiteRtStatus LiteRtGetNumCompiledResultCalls(
 
 void LiteRtDestroyCompiledResult(LiteRtCompiledResult compiled_result) {
   delete compiled_result;
+}
+
+LiteRtStatus LiteRtCompiledResultNumByteCodeModules(
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_byte_code) {
+  *num_byte_code = 1;
+  return kLiteRtStatusOk;
 }
 
 //
@@ -236,7 +249,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
       continue;
     }
 
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op.Get()));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
   }
 
   return kLiteRtStatusOk;
@@ -265,7 +278,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   auto qnn_manager = QnnManager::Create(
       backend_configs, /*shared_library_dir=*/std::nullopt, opt_soc_model);
   if (!qnn_manager) {
-    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().c_str());
     return qnn_manager.Error().Status();
   }
   LITERT_LOG(LITERT_INFO, "%s", "QNN manager created");
@@ -276,7 +289,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   auto context_configs = QnnManager::DefaultContextConfigs();
   auto context_handle = (*qnn_manager)->CreateContextHandle(context_configs);
   if (!context_handle) {
-    LITERT_LOG(LITERT_ERROR, "%s", context_handle.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", context_handle.Error().Message().c_str());
     return context_handle.Error().Status();
   }
   LITERT_LOG(LITERT_INFO, "%s", "Context handle created");
@@ -291,7 +304,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   {
     std::string& entry_point_name = result->graph_names.emplace_back();
     entry_point_name = "qnn_partition_0";
-    LITERT_RETURN_STATUS_IF_NOT_OK(litert::qnn::ComposeGraph(
+    LITERT_RETURN_IF_ERROR(litert::qnn::ComposeGraph(
         **qnn_manager, context_handle->get(), partitions[0], entry_point_name));
   }
   LITERT_LOG(LITERT_INFO, "%s", "Graph composed");
@@ -299,7 +312,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   // Generate context binary.
 
   LITERT_LOG(LITERT_INFO, "%s", "Generating context binary");
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       (*qnn_manager)
           ->GenerateContextBinary(context_handle->get(), result->context_bin));
   LITERT_LOG(LITERT_INFO, "%s", "Context binary generated");

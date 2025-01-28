@@ -80,8 +80,8 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
         continue;
       }
       auto sourceTargetPairs = inst->source_target_pairs();
-      if (!IsForwardCycle(sourceTargetPairs) &&
-          !IsBackwardCycle(sourceTargetPairs)) {
+      if (GetCycleTypeAndIndices(sourceTargetPairs).first ==
+          CycleType::kUnknown) {
         continue;
       }
 
@@ -136,7 +136,8 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
         sendRecvValidation[currIdx] = {currIdx, currIdx + offset};
       }
 
-      if (IsBackwardCycle(sourceTargetPairs)) {
+      if (GetCycleTypeAndIndices(sourceTargetPairs).first ==
+          CycleType::kBackward) {
         std::reverse(sendRecvValidation.begin(), sendRecvValidation.end());
       }
 

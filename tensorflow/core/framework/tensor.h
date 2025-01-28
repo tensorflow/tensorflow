@@ -51,7 +51,8 @@ class TensorProto;
 class Var;
 
 namespace batch_util {
-absl::Status CopyElementToSlice(Tensor element, Tensor* parent, int64_t index);
+absl::Status CopyElementToSlice(const Tensor& element, Tensor* parent,
+                                int64_t index);
 absl::Status CopySliceToElement(const Tensor& parent, Tensor* element,
                                 int64_t index);
 absl::Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element,
@@ -708,7 +709,7 @@ class Tensor {
   friend class ScopedAllocator;       // For access to buf_.
   friend class PjRtTensorBufferUtil;  // For access to buf_.
   friend absl::Status batch_util::CopyElementToSlice(
-      Tensor element, Tensor* parent,
+      const Tensor& element, Tensor* parent,
       int64_t index);  // For access to base<T>().
   friend absl::Status batch_util::CopySliceToElement(
       const Tensor& parent, Tensor* element,

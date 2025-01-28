@@ -27,13 +27,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/env.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/snapshot/snapshot_stream_writer.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/standalone.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 
 namespace tensorflow {

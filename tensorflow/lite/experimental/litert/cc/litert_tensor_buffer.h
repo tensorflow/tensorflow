@@ -224,9 +224,9 @@ class TensorBuffer
     return {};
   }
 
-  Expected<void*> Lock(LiteRtEvent event = nullptr) {
+  Expected<void*> Lock() {
     void* host_mem_addr;
-    if (auto status = LiteRtLockTensorBuffer(Get(), &host_mem_addr, event);
+    if (auto status = LiteRtLockTensorBuffer(Get(), &host_mem_addr);
         status != kLiteRtStatusOk) {
       return Unexpected(status, "Failed to lock the tensor buffer");
     }
@@ -301,16 +301,15 @@ class TensorBufferScopedLock {
 
   template <typename T = void>
   static Expected<std::pair<TensorBufferScopedLock, T*>> Create(
-      TensorBuffer& tensor_buffer, LiteRtEvent event = nullptr) {
-    return Create<T>(tensor_buffer.Get(), event);
+      TensorBuffer& tensor_buffer) {
+    return Create<T>(tensor_buffer.Get());
   }
 
   template <typename T = void>
   static Expected<std::pair<TensorBufferScopedLock, T*>> Create(
-      LiteRtTensorBuffer tensor_buffer, LiteRtEvent event = nullptr) {
+      LiteRtTensorBuffer tensor_buffer) {
     void* host_mem_addr;
-    if (auto status =
-            LiteRtLockTensorBuffer(tensor_buffer, &host_mem_addr, event);
+    if (auto status = LiteRtLockTensorBuffer(tensor_buffer, &host_mem_addr);
         status != kLiteRtStatusOk) {
       return Unexpected(status, "Failed to lock the tensor buffer");
     }

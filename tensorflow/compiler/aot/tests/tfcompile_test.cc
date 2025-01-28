@@ -26,42 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 
-// The header files for the tests using mlir_bridge have the _mlir_bridge suffix
-// inherited from the tf_library target names.
-#if defined(ENABLE_MLIR_BRIDGE_TEST)
-#include "tensorflow/compiler/aot/tests/test_graph_tfadd_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfcond_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tffunction_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfgather_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_with_profiling_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfsplits_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tftop_k_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly_mlir_bridge.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates_mlir_bridge.h"
-// Similarly, there are files for testing the MLIR based lowering of HLO to
-// object code for XLA:CPU
-#elif defined(MHLO_LOWERING_TEST)
-#include "tensorflow/compiler/aot/tests/test_graph_tfadd_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfcond_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tffunction_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfgather_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfsplits_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tftop_k_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly_mhlo_lowering.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates_mhlo_lowering.h"
-#else
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver.h"
@@ -77,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates.h"
-#endif
 
 namespace tensorflow {
 namespace tfcompile {
@@ -675,10 +638,6 @@ TEST(TFCompileTest, ProgramShape) {
   EXPECT_TRUE(ShapeUtil::Compatible(muladd_result1, f32_2x2));
 }
 
-// tf_compile with mlir_component=HloLowering does not currently support
-// profiling, so we disable the test case here rather than creating a new test
-// target that could allow more divergence.
-#if !defined(MHLO_LOWERING_TEST)
 TEST(TFCompileTest, HloProfiling) {
   Eigen::ThreadPool tp(1);
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
@@ -707,11 +666,6 @@ TEST(TFCompileTest, HloProfiling) {
                            /*clock_rate_ghz=*/1.0);
   VLOG(1) << "Original HLO profile string:\n" << hlo_profile_as_string;
 
-  // Replace Arg_n with argn when the MLIR bridge is used.
-#if defined(ENABLE_MLIR_BRIDGE_TEST)
-  RE2::GlobalReplace(&hlo_profile_as_string, "(Arg_)([0-9].)", "arg\\2");
-#endif
-
   // Strip away identifier details from the profile string to avoid this test
   // being a change detector for xla internals. Identifiers such as '%dot.0.7'
   // just become '%dot'.
@@ -737,7 +691,6 @@ TEST(TFCompileTest, HloProfiling) {
               IsSupersetOf({header, total_cycles_profile_line, dot_profile_line,
                             add_profile_line, tuple_profile_line}));
 }
-#endif
 
 }  // namespace
 }  // namespace tfcompile

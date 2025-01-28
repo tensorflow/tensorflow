@@ -6,6 +6,10 @@ load(
     "tf_proto_library",
 )
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -663,6 +667,7 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -1025,4 +1030,63 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:macros",
     ],
+)
+
+cc_library(
+    name = "triton",
+    srcs = if_cuda_is_configured(
+        ["triton_cuda.cc"],
+        ["triton_stub.cc"],
+    ),
+    hdrs = ["triton.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ] + if_cuda_is_configured(
+        [
+            "@com_google_absl//absl/base",
+            "@com_google_absl//absl/status",
+            "@com_google_absl//absl/strings:str_format",
+            "@com_google_absl//absl/strings",
+            "@llvm-project//llvm:Core",
+            "@llvm-project//llvm:IRReader",
+            "@llvm-project//llvm:Linker",
+            "@llvm-project//llvm:MC",
+            "@llvm-project//llvm:Support",
+            "@llvm-project//llvm:Target",
+            "@llvm-project//mlir:ArithDialect",
+            "@llvm-project//mlir:ArithToLLVM",
+            "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
+            "@llvm-project//mlir:BytecodeWriter",
+            "@llvm-project//mlir:ConversionPasses",
+            "@llvm-project//mlir:DataLayoutInterfaces",
+            "@llvm-project//mlir:ExecutionEngineUtils",
+            "@llvm-project//mlir:FuncExtensions",
+            "@llvm-project//mlir:IndexToLLVM",
+            "@llvm-project//mlir:IR",
+            "@llvm-project//mlir:LLVMCommonConversion",
+            "@llvm-project//mlir:LLVMIRTransforms",
+            "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+            "@llvm-project//mlir:NVVMTarget",
+            "@llvm-project//mlir:NVVMToLLVMIRTranslation",
+            "@llvm-project//mlir:Parser",
+            "@llvm-project//mlir:Pass",
+            "@llvm-project//mlir:SCFToControlFlow",
+            "@llvm-project//mlir:ToLLVMIRTranslation",
+            "@llvm-project//mlir:Transforms",
+            "//xla/tsl/platform:errors",
+            "//xla/tsl/platform:statusor",
+            "@triton//:TritonDialects",
+            "@triton//:TritonGPUToLLVM",
+            "@triton//:TritonGPUTransforms",
+            "@triton//:TritonNvidiaGPUTransforms",
+            "@triton//:TritonToTritonGPU",
+            "@triton//:TritonTransforms",
+            "@triton//third_party/nvidia:NVGPUToLLVM",
+            "@triton//third_party/nvidia:TritonNVIDIAGPUToLLVM",
+        ],
+        ["@com_google_absl//absl/status"],
+    ),
 )

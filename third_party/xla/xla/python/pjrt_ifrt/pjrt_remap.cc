@@ -89,8 +89,10 @@ PjRtCompatibleClientRemapArrays(
 
   std::vector<PjRtArray::PjRtBuffers> out_buffers_list(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
-    out_buffers_list[i].resize(
-        plan.output_specs[i].sharding->devices()->size());
+    out_buffers_list[i].resize(plan.output_specs[i]
+                                   .sharding->devices()
+                                   ->AddressableDeviceList()
+                                   ->size());
   }
 
   for (const RemapPlan::Mapping& mapping : *plan.mappings) {

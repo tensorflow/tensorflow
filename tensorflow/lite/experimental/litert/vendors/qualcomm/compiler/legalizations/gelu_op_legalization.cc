@@ -39,10 +39,10 @@ LiteRtStatus GeluOpLegalization::LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
     return kLiteRtStatusLegalizeNoMatch;
   }
   const std::string op_name = absl::StrFormat(kGeluOpFmt, op_counter_++);
-  LITERT_RETURN_STATUS_IF_NOT_OK(SetOpInfo(op_name.c_str(),
-                                           kDefaultQnnOpPackageName.data(),
-                                           kQnnGeluOpTypeName.data(), dest));
-  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeSimpleOp(src, dest, graph_mapper));
+  LITERT_RETURN_IF_ERROR(SetOpInfo(op_name.c_str(),
+                                   kDefaultQnnOpPackageName.data(),
+                                   kQnnGeluOpTypeName.data(), dest));
+  LITERT_RETURN_IF_ERROR(LegalizeSimpleOp(src, dest, graph_mapper));
   LITERT_LOG(LITERT_INFO, "Legalized gelu op", "");
   return kLiteRtStatusOk;
 }

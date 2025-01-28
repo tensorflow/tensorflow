@@ -56,7 +56,7 @@ class CollectivePipelineParallelismTest
 
     // Set debug options.
     DebugOptions debug_options = GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_experimental_pipeline_parallelism_opt(
+    debug_options.set_xla_gpu_experimental_enable_pipeline_parallelism_opt(
         GetParam());
     config.set_debug_options(debug_options);
 

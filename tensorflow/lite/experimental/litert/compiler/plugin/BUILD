@@ -27,11 +27,10 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
-        "//tensorflow/lite/experimental/litert/cc:litert_detail",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
-        "//tensorflow/lite/experimental/litert/core:byte_code_util",
+        "//tensorflow/lite/experimental/litert/core:build_stamp",
         "//tensorflow/lite/experimental/litert/core:dynamic_loading",
         "//tensorflow/lite/experimental/litert/core:environment",
         "//tensorflow/lite/experimental/litert/core:filesystem",
@@ -64,16 +63,17 @@ cc_library(
 #     ],
 #     deps = [
 #         ":compiler_plugin",
-#         "@com_google_googletest//:gtest_main",
 #         "@com_google_absl//absl/strings:string_view",
 #         "//tensorflow/lite/experimental/litert/c:litert_common",
+#         "//tensorflow/lite/experimental/litert/c:litert_environment",
 #         "//tensorflow/lite/experimental/litert/c:litert_op_code",
 #         "//tensorflow/lite/experimental/litert/cc:litert_environment",
-#         "//tensorflow/lite/experimental/litert/core:byte_code_util",
+#         "//tensorflow/lite/experimental/litert/core:build_stamp",
 #         "//tensorflow/lite/experimental/litert/core:filesystem",
 #         "//tensorflow/lite/experimental/litert/test:common",
 #         "//tensorflow/lite/experimental/litert/test:test_macros",
 #         "//tensorflow/lite/experimental/litert/tools:dump",
+#         "@com_google_googletest//:gtest_main",
 #     ],
 # )
 # copybara:uncomment_end
@@ -84,11 +84,11 @@ cc_library(
     hdrs = ["algo.h"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/core:insert_order_map",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/core/model:model_graph",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_check",
-        "@llvm-project//llvm:Support",
     ],
 )
 

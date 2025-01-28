@@ -467,7 +467,7 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
 
 absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool is_aot_compile,
-    TargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
+    TargetMachineFeatures* target_machine_features) {
   const int64_t num_partitions = module->config().num_partitions();
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
@@ -519,9 +519,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
-  if (!is_mlir_compile) {
-    pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
-  }
+  pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
   // Remove zero-sized HLO from the input so that other passes don't have to
   // handle it.
@@ -655,10 +653,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   dynamic_padder_options.shape_check_mode =
       DynamicDimensionInference::ShapeCheckMode::kIgnore;
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
-  if (!is_mlir_compile) {
-    pipeline.AddPass<SelectAndScatterExpander>();
-    pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
-  }
+  pipeline.AddPass<SelectAndScatterExpander>();
+  pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
 
   // Run fp16 dots/convs in fp32 and then downcast the result to fp16.
@@ -714,13 +710,9 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }();
   pipeline.AddPass<BitcastDtypesExpander>();
 
-  // XLA lowers topk to a libcall while the MLIR based pipeline does not yet
-  // support libcalls. Disable this for now.
-  if (!is_mlir_compile) {
-    pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
-      return sort->operand(0)->shape().element_type() == F32;
-    });
-  }
+  pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
+    return sort->operand(0)->shape().element_type() == F32;
+  });
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
       [&](const HloInstruction& dot, int64_t operand) -> absl::StatusOr<bool> {
@@ -744,19 +736,13 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // flattened.
   pipeline.AddPass<FlattenCallGraph>();
   ChannelLayoutConstraints layout_constraints;
-  // The MLIR pipeline always uses default layouts, so we don't need to run
-  // layout assignment. The exception to this is at the ABI boundary, where
-  // custom layouts may be used. The XlaAbiLegalization pass takes care of
-  // these.
-  if (!is_mlir_compile) {
-    pipeline.AddPass<CpuLayoutAssignment>(
-        module->mutable_entry_computation_layout(), target_machine_features,
-        &layout_constraints);
-    // Run SubByteNormalization because CpuLayoutAssignment may modify a
-    // Layout's element_size_in_bits field.
-    pipeline.AddPass<SubByteNormalization>(
-        SubByteNormalization::SET_ELEMENT_SIZE);
-  }
+  pipeline.AddPass<CpuLayoutAssignment>(
+      module->mutable_entry_computation_layout(), target_machine_features,
+      &layout_constraints);
+  // Run SubByteNormalization because CpuLayoutAssignment may modify a
+  // Layout's element_size_in_bits field.
+  pipeline.AddPass<SubByteNormalization>(
+      SubByteNormalization::SET_ELEMENT_SIZE);
 
   // Finally canonicalize all literals larger than 1024 bytes in the module to
   // reuse the same literal across multiple HLO modules.
@@ -769,16 +755,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     HloModule* module, bool is_aot_compile,
     TargetMachineFeatures* target_machine_features,
-    const CompileOptions& compile_options, bool is_mlir_compile) {
+    const CompileOptions& compile_options) {
   HloPassPipeline pipeline("HLO passes after layout assignment");
-
-  // CopyInsertion is still needed by BufferAssignment. MLIR passes will handle
-  // everything else done by XLA, but CopyInsertion is needed to interface with
-  // the existing runtime.
-  if (is_mlir_compile) {
-    pipeline.AddPass<CopyInsertion>();
-    return pipeline.Run(module).status();
-  }
 
   {
     HloPassPipeline normalization_pipeline("hlo normalization");
@@ -886,15 +864,13 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
 absl::Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
                                        llvm::TargetMachine* target_machine,
-                                       const CompileOptions& compile_options,
-                                       bool is_mlir_compile) {
+                                       const CompileOptions& compile_options) {
   TargetMachineFeatures target_machine_features(target_machine);
-  TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(
-      module, is_aot_compile, &target_machine_features, is_mlir_compile));
+  TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(module, is_aot_compile,
+                                                   &target_machine_features));
 
   return RunHloPassesAfterLayoutAssn(module, is_aot_compile,
-                                     &target_machine_features, compile_options,
-                                     is_mlir_compile);
+                                     &target_machine_features, compile_options);
 }
 
 namespace {
@@ -1026,8 +1002,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
 
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
                                   jit_target_machine.get(),
-                                  /*compile_options=*/options,
-                                  /*is_mlir_compile=*/false));
+                                  /*compile_options=*/options));
   return std::move(module);
 }
 
@@ -1352,9 +1327,9 @@ static void StripPayloadFromLiteralProto(HloProto& proto) {
 }
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>>
-CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
+CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
   TraceMe trace([&] {
-    return TraceMeEncode("CpuCompiler::CompileLegacyCpuExecutable",
+    return TraceMeEncode("CpuCompiler::CompileCpuExecutable",
                          {{"name", module->name()}});
   });
 
@@ -1740,8 +1715,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
 
   std::unique_ptr<CpuExecutable> cpu_executable;
-  TF_ASSIGN_OR_RETURN(cpu_executable,
-                      CompileLegacyCpuExecutable(std::move(module)));
+  TF_ASSIGN_OR_RETURN(cpu_executable, CompileCpuExecutable(std::move(module)));
 
   cpu_executable->set_debug_info(
       cpu_executable->buffer_assignment().StatsString(
@@ -1849,10 +1823,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     VLOG(1) << "Compiling ahead-of-time: " << module->name();
 
     if (!module->has_schedule()) {
-      TF_RETURN_IF_ERROR(
-          RunHloPasses(module, /*is_aot_compile=*/true, target_machine.get(),
-                       /*dummy*/ CompileOptions{},
-                       /*is_mlir_compile=*/options.use_mlir_hlo_lowering()));
+      TF_RETURN_IF_ERROR(RunHloPasses(module, /*is_aot_compile=*/true,
+                                      target_machine.get(),
+                                      /*dummy*/ CompileOptions{}));
 
       TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                           ScheduleModule(module, BufferSizeBytesFunction()));
@@ -2155,7 +2128,7 @@ CpuExecutableAotCompilationResult::LoadExecutable(
     // We emit thunks for the HLO module and ignore emitted LLVM IR as we
     // already have it compiled to object file.
     //
-    // See `CpuCompiler::CompileLegacyCpuExecutable` for the jit-compilation
+    // See `CpuCompiler::CompileCpuExecutable` for the jit-compilation
     // version that actually compiles emitted LLVM IR.
     //
     // TODO(ezhulenev): We should make it less wasteful and instead serialize

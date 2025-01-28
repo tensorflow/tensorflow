@@ -1,3 +1,5 @@
+load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "litert_dynamic_lib")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -9,7 +11,17 @@ package(
 
 cc_library(
     name = "litert_common",
+    srcs = ["litert_common.cc"],
     hdrs = ["litert_common.h"],
+)
+
+cc_test(
+    name = "litert_common_test",
+    srcs = ["litert_common_test.cc"],
+    deps = [
+        ":litert_common",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
@@ -24,6 +36,7 @@ cc_library(
     deps = [
         ":litert_any",
         ":litert_common",
+        ":litert_logging",
         "//tensorflow/lite/experimental/litert/core:environment",
         "@com_google_absl//absl/types:span",
     ],
@@ -214,6 +227,7 @@ cc_library(
         "litert_dispatch_delegate.h",
     ],
     deps = [
+        ":litert_environment",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:c_api_types",
@@ -226,11 +240,26 @@ cc_library(
 
 cc_library(
     name = "litert_compiled_model_options",
+    srcs = ["litert_compiled_model_options.cc"],
     hdrs = [
         "litert_compiled_model_options.h",
     ],
     deps = [
+        ":litert_accelerator_options",
         ":litert_common",
+        ":litert_logging",
+    ],
+)
+
+cc_test(
+    name = "litert_compiled_model_options_test",
+    srcs = ["litert_compiled_model_options_test.cc"],
+    deps = [
+        ":litert_accelerator_options",
+        ":litert_common",
+        ":litert_compiled_model_options",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -243,12 +272,12 @@ cc_library(
     deps = [
         ":litert_common",
         ":litert_compiled_model_options",
+        ":litert_environment",
         ":litert_logging",
         ":litert_model",
         ":litert_tensor_buffer",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/litert/runtime:compiled_model",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -264,6 +293,7 @@ cc_test(
         ":litert_common",
         ":litert_compiled_model",
         ":litert_compiled_model_options",
+        ":litert_environment",
         ":litert_model",
         ":litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/test:common",
@@ -271,6 +301,80 @@ cc_test(
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "litert_accelerator_options",
+    srcs = ["litert_accelerator_options.cc"],
+    hdrs = ["litert_accelerator_options.h"],
+    deps = [
+        ":litert_common",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
+    ],
+)
+
+cc_test(
+    name = "litert_accelerator_options_test",
+    srcs = ["litert_accelerator_options_test.cc"],
+    deps = [
+        ":litert_accelerator_options",
+        ":litert_common",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "litert_accelerator",
+    srcs = ["litert_accelerator.cc"],
+    hdrs = ["litert_accelerator.h"],
+    deps = [
+        ":litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
+        "//tensorflow/lite/experimental/litert/core:environment",
+    ],
+)
+
+cc_test(
+    name = "litert_accelerator_test",
+    srcs = ["litert_accelerator_test.cc"],
+    deps = [
+        ":litert_accelerator",
+        ":litert_accelerator_registration",
+        ":litert_common",
+        ":litert_environment",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "litert_accelerator_registration",
+    srcs = ["litert_accelerator_registration.cc"],
+    hdrs = ["litert_accelerator_registration.h"],
+    deps = [
+        ":litert_accelerator",
+        ":litert_common",
+        ":litert_compiled_model",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
+        "//tensorflow/lite/experimental/litert/core:environment",
+    ],
+)
+
+cc_test(
+    name = "litert_accelerator_registration_test",
+    srcs = ["litert_accelerator_registration_test.cc"],
+    deps = [
+        ":litert_accelerator",
+        ":litert_accelerator_registration",
+        ":litert_common",
+        ":litert_compiled_model",
+        ":litert_environment",
+        "//tensorflow/lite/experimental/litert/core:accelerator",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -287,26 +391,44 @@ filegroup(
     visibility = ["//tensorflow/lite/experimental/litert/core/model:__pkg__"],
 )
 
+# Collection of all C API targets.
+LITERT_C_API_COMMON_DEPS = [
+    ":litert_accelerator",
+    ":litert_accelerator_registration",
+    ":litert_any",
+    ":litert_common",
+    ":litert_compiled_model",
+    ":litert_compiled_model_options",
+    ":litert_dispatch_delegate",
+    ":litert_event",
+    ":litert_layout",
+    ":litert_logging",
+    ":litert_model",
+    ":litert_op_code",
+    ":litert_options",
+    ":litert_tensor_buffer",
+]
+
 # This test verifies that the C API header files can build via C compiler.
 cc_test(
     name = "litert_c_api_common_test",
     srcs = ["litert_c_api_common_test.c"],
     copts = ["--std=c11"],
     linkopts = ["-ldl"],
-    deps = [
-        ":litert_any",
-        ":litert_common",
-        ":litert_compiled_model",
-        ":litert_compiled_model_options",
-        ":litert_dispatch_delegate",
-        ":litert_event",
-        ":litert_layout",
-        ":litert_logging",
-        ":litert_model",
-        ":litert_op_code",
-        ":litert_options",
-        ":litert_tensor_buffer",
-    ],
+    deps = LITERT_C_API_COMMON_DEPS,
+)
+
+# Build `litert/c:litert_runtime_c_api_so` for `libLiteRtRuntimeCApi.so`.
+litert_dynamic_lib(
+    name = "litert_runtime_c_api",
+    export_litert_only = True,
+    linkopts = select({
+        "//tensorflow:android": ["-landroid"],
+        "//conditions:default": [],
+    }),
+    shared_lib_name = "litert_runtime_c_api_so",
+    so_name = "libLiteRtRuntimeCApi.so",
+    deps = LITERT_C_API_COMMON_DEPS,
 )
 
 exports_files(srcs = glob(["litert_*.h"]))

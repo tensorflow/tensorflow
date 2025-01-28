@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
                 "Print the input and result literals to stdout."),
       tsl::Flag("output_literals_file", &opts.output_literals_file,
                 "Output literals as RunHloModuleLiterals protobuf to the"
-                " destimation file."),
+                " destination file."),
       tsl::Flag("input_literals_file", &opts.input_literals_file,
                 "Use arguments from the provided literals file. Cannot be used "
                 "in combination with \"force_fake_data\"."),

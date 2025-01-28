@@ -239,6 +239,7 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/layout_normalization.h"
+#include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/reduce_scatter_reassociate.h"
 #include "xla/service/scatter_determinism_expander.h"
@@ -271,14 +272,9 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -537,9 +533,7 @@ AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
       opts_from_compiler;
   layout_insensitive_algsimp_opts.set_conv_is_lowerable_callback(
       ConvRewriter::ConvIsLowerable);
-  layout_insensitive_algsimp_opts.set_enable_dot_strength_reduction(
-      hlo_module_config.debug_options()
-          .xla_gpu_enable_dot_strength_reduction());
+  layout_insensitive_algsimp_opts.set_enable_dot_strength_reduction(true);
 
   // GPU only supports canonical convolutions.
   layout_insensitive_algsimp_opts.set_supports_non_canonical_dots(false);
@@ -956,7 +950,7 @@ absl::Status RunCollectiveOptimizationPasses(
 
   if (hlo_module->config()
           .debug_options()
-          .xla_gpu_enable_experimental_pipeline_parallelism_opt()) {
+          .xla_gpu_experimental_enable_pipeline_parallelism_opt()) {
     collectives_pipeline.AddPass<CollectiveSelectFolder>();
   }
 
@@ -968,12 +962,15 @@ absl::Status RunCollectiveOptimizationPasses(
   if (hlo_module->config()
           .debug_options()
           .xla_gpu_enable_pipelined_collectives() ||
-      hlo_module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
+      hlo_module->config().debug_options().xla_gpu_enable_pipelined_p2p() ||
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_pipeline_parallelism_opt()) {
     AddP2PPipeliner(
         collectives_pipeline,
         hlo_module->config()
             .debug_options()
-            .xla_gpu_enable_experimental_pipeline_parallelism_opt());
+            .xla_gpu_experimental_enable_pipeline_parallelism_opt());
   }
 
   // Run algebraic simplifier to reshape(broadcast) into a broadcast when
@@ -1407,8 +1404,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
 AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
     const HloModuleConfig& config) {
   AlgebraicSimplifierOptions opts;
-  opts.set_enable_dot_strength_reduction(
-      config.debug_options().xla_gpu_enable_dot_strength_reduction());
+  opts.set_enable_dot_strength_reduction(true);
   return opts;
 }
 
@@ -2301,14 +2297,20 @@ GpuCompiler::CompileToBackendResult(
       split_modules &&
       !module->config().debug_options().xla_gpu_kernel_cache_file().empty();
 
-  // Compile the module
-  TF_ASSIGN_OR_RETURN(
-      CompileModuleResults compile_module_results,
-      CompileModuleToLlvmIr(module, llvm_context, target_triple_, data_layout_,
-                            platform->Name(), platform->id(), gpu_device_info,
-                            GetCanShareBuffer(gpu_device_info),
-                            BufferSizeBytesFunction(),
-                            /*split_constants_module=*/use_cache));
+  CompileModuleResults compile_module_results;
+
+  {
+    xla::llvm_ir::LLVMCommandLineOptionsLock llvm_options_lock(
+        GetLLVMCommandLineOptions(module->config().debug_options()));
+    // Compile the module
+    TF_ASSIGN_OR_RETURN(
+        compile_module_results,
+        CompileModuleToLlvmIr(
+            module, llvm_context, target_triple_, data_layout_,
+            platform->Name(), platform->id(), gpu_device_info,
+            GetCanShareBuffer(gpu_device_info), BufferSizeBytesFunction(),
+            /*split_constants_module=*/use_cache));
+  }
 
   if (user_pre_optimization_hook_) {
     user_pre_optimization_hook_(*compile_module_results.llvm_module);
@@ -2672,7 +2674,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
 
     if (!module->config()
              .debug_options()
-             .xla_gpu_enable_experimental_pipeline_parallelism_opt() &&
+             .xla_gpu_experimental_enable_pipeline_parallelism_opt() &&
         (module->config()
              .debug_options()
              .xla_gpu_enable_pipelined_collectives() ||

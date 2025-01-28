@@ -463,7 +463,7 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->CreateViewOfDeviceBuffer(
-          data_ptr, shape, client->addressable_devices()[0],
+          data_ptr, shape, client->memory_spaces()[0],
           /*on_delete_callback=*/[data = std::move(data)]() mutable {
             (void)data;
           }));
@@ -515,7 +515,7 @@ TEST(PjRtClientTest, CreateViewOfUnalignedBufferReturnsErrorCpuOnly) {
 
   // Attempt to create a view of the unaligned buffer. Expect an error.
   auto result = client->CreateViewOfDeviceBuffer(
-      unaligned_ptr, shape, client->addressable_devices()[0],
+      unaligned_ptr, shape, client->memory_spaces()[0],
       /*on_delete_callback=*/std::function<void()>());
 
   ASSERT_FALSE(result.ok());

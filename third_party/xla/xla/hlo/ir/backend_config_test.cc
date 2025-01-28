@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {

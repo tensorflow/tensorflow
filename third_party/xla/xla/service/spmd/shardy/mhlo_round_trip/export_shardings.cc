@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace sdy {
@@ -350,8 +352,11 @@ StringAttr convertToHloShardingAttr(
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
     std::function<StringAttr(const HloSharding&)> getStringAttr,
     ArrayRef<StringAttr> manualAxes) {
-  assert(shardings.size() == op->getNumResults());
-  if (op->getNumResults() == 1) {
+  // TODO(bartchr): pass through a symbol table to `getMesh(...)` below.
+  bool isNoResultMaximal = op->getNumResults() == 0 && shardings.size() == 1 &&
+                           shardings.front().getMesh(op).isMaximal();
+  CHECK(shardings.size() == op->getNumResults() || isNoResultMaximal);
+  if (op->getNumResults() == 1 || isNoResultMaximal) {
     return getStringAttr(
         convertToHloSharding(shardings.front(), getMeshAttr, manualAxes));
   }

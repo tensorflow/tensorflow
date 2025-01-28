@@ -41,6 +41,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Transforms/LocationSnapshot.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -773,6 +774,22 @@ std::vector<std::string> DumpHloModuleIfEnabled(
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
     DumpHloModuleImpl(module, &buffer_assn, TimestampFor(module), name, opts);
+  }
+  return {};
+}
+
+std::vector<std::string> DumpHloModuleProtoIfEnabled(
+    const HloModuleProto& module_proto, absl::string_view name) {
+  auto config = xla::HloModule::CreateModuleConfigFromProto(
+      module_proto, xla::GetDebugOptionsFromFlags());
+
+  auto module =
+      xla::HloModule::CreateFromProto(module_proto, config.value()).value();
+
+  CanonicalDebugOptions opts(module->config().debug_options());
+  if (opts.should_dump_module(module->name())) {
+    return DumpHloModuleImpl(*module, /*buffer_assn=*/nullptr,
+                             TimestampFor(*module), name, opts);
   }
   return {};
 }

@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_context.h"
@@ -106,9 +107,6 @@ class RocmExecutor : public GpuExecutor {
       const override {
     return RocmExecutor::CreateDeviceDescription(device_ordinal());
   }
-  void* UnifiedMemoryAllocate(uint64_t size) override;
-
-  void UnifiedMemoryDeallocate(void* location) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
   void HostMemoryDeallocate(void* location) override;
@@ -130,8 +128,13 @@ class RocmExecutor : public GpuExecutor {
   // Returns a RocmKernel pointer for a given Kernel, if the kernel is
   // associated with this executor. Otherwise a NotFound error is returned.
   absl::StatusOr<const RocmKernel*> GetRocmKernel(const Kernel* kernel);
+  absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
+      MemoryType type) override;
 
  private:
+  // Initializes Blas interfaces
+  absl::Status InitBlas();
+
   // Loads a module in HSACO format.
   absl::StatusOr<ModuleHandle> LoadModuleFromHsaco(const char* hsaco)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);

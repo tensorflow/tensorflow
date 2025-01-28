@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/types.h"

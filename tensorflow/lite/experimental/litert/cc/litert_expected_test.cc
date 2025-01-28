@@ -23,6 +23,7 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 
@@ -153,6 +154,13 @@ TEST(UnexpectedTest, WithMessage) {
   Unexpected err(kErrorStatus, "MESSAGE");
   EXPECT_EQ(err.Error().Status(), kErrorStatus);
   EXPECT_EQ(err.Error().Message(), "MESSAGE");
+}
+
+TEST(UnexpectedTest, WithLocalMessageString) {
+  // Message is a string with scoped lifetime.
+  Unexpected err(kErrorStatus, absl::StrCat("MESSAGE", 1));
+  EXPECT_EQ(err.Error().Status(), kErrorStatus);
+  EXPECT_EQ(err.Error().Message(), "MESSAGE1");
 }
 
 Expected<OwningBufferRef<uint8_t>> Go() {

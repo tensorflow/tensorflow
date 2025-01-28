@@ -37,14 +37,15 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/integrations/device_host_allocator.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/integrations/stream_executor_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/bfc_allocator.h"
 #include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -98,11 +99,20 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   }
 
   int device_ordinal = executor->device_ordinal();
-  auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
-      executor, tsl::PlatformDeviceId(device_ordinal),
-      /*memory_type=*/
-      enable_unified_memory ? stream_executor::MemoryType::kUnified
-                            : stream_executor::MemoryType::kDevice);
+  std::unique_ptr<tsl::SubAllocator> sub_allocator;
+
+  if (enable_unified_memory) {
+    TF_ASSIGN_OR_RETURN(
+        auto unified_memory_allocator,
+        executor->CreateMemoryAllocator(stream_executor::MemoryType::kUnified));
+    sub_allocator = std::make_unique<se::StreamExecutorAllocator>(
+        std::move(unified_memory_allocator),
+        stream_executor::MemoryType::kUnified, device_ordinal);
+  } else {
+    sub_allocator = std::make_unique<se::DeviceMemAllocator>(
+        executor, tsl::PlatformDeviceId(device_ordinal),
+        stream_executor::MemoryType::kDevice);
+  }
 
   int64_t free_memory;
   int64_t total_memory;

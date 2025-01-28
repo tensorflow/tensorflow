@@ -72,6 +72,7 @@ limitations under the License.
 #include "gloo/transport/tcp/device.h"
 #include "xla/backends/cpu/collectives/gloo_collectives.h"
 #include "xla/backends/cpu/collectives/gloo_kv_store.h"
+#include "xla/python/transfer/py_socket_transfer.h"
 #elif defined(__APPLE__)
 #include "gloo/transport/uv/device.h"
 #include "xla/backends/cpu/collectives/gloo_collectives.h"  // NOLINT
@@ -599,6 +600,9 @@ NB_MODULE(xla_extension, m) {
   BuildTracebackSubmodule(m);
   BuildMlirSubmodule(m);
   BuildCustomCallShardingPybindAPI(m);
+#if defined(__linux__)
+  aux::RegisterTransferServerTypes(m);
+#endif  // defined(__linux__)
 
   // The following uses python bindings for PyClient defined above using
   // pybind11, and hence needs pybind11::module_ (not just nanobind::module_).
@@ -930,6 +934,14 @@ NB_MODULE(xla_extension, m) {
       nb::arg("committed") = true, nb::arg("force_copy") = false,
       nb::arg("host_buffer_semantics") =
           PjRtClient::HostBufferSemantics::kImmutableZeroCopy);
+  m.def(
+      "reorder_shards",
+      [](PyArray x, nb::object dst_sharding,
+         ifrt::ArrayCopySemantics array_copy_semantics) {
+        return ValueOrThrow(PyArray::ReorderShards(
+            std::move(x), std::move(dst_sharding), array_copy_semantics));
+      },
+      nb::arg("x"), nb::arg("dst_sharding"), nb::arg("array_copy_semantics"));
 
   m.def("batched_block_until_ready", [](std::vector<nb::object> xs) {
     ThrowIfError(PyArray::BatchedBlockUntilReady(std::move(xs)));

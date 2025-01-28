@@ -251,14 +251,14 @@ TEST(ThunkExecutorTest, FifoReadyQueueTest) {
   queue.Push(2);
   queue.Push(3);
 
-  EXPECT_EQ(queue.Size(), 3);
+  ASSERT_EQ(queue.Size(), 3);
 
   EXPECT_EQ(queue.Pop(), 1);
   EXPECT_EQ(queue.Pop(), 2);
   EXPECT_EQ(queue.Pop(), 3);
 
   EXPECT_TRUE(queue.Empty());
-  EXPECT_EQ(queue.Size(), 0);
+  ASSERT_EQ(queue.Size(), 0);
 
   // Prepare queue for PopHalf test case.
   queue.Push(1);
@@ -267,16 +267,16 @@ TEST(ThunkExecutorTest, FifoReadyQueueTest) {
 
   // Pop half of the queue.
   ThunkExecutor::FifoReadyQueue half0 = queue.PopHalf();
-  EXPECT_EQ(half0.Size(), 2);
+  ASSERT_EQ(half0.Size(), 2);
   EXPECT_EQ(half0.Pop(), 2);
   EXPECT_EQ(half0.Pop(), 3);
 
   // Check that the rest is still in the queue.
-  EXPECT_EQ(queue.Size(), 1);
+  ASSERT_EQ(queue.Size(), 1);
 
   // Pop the rest of the queue.
   ThunkExecutor::FifoReadyQueue half1 = queue.PopHalf();
-  EXPECT_EQ(half1.Size(), 1);
+  ASSERT_EQ(half1.Size(), 1);
 
   // Check that all nodes were returned from PopHalf.
   EXPECT_EQ(queue.Size(), 0);
@@ -292,9 +292,67 @@ TEST(ThunkExecutorTest, FifoReadyQueueTest) {
 
   // Check that PopHalf returns 2 last nodes.
   ThunkExecutor::FifoReadyQueue half2 = queue.PopHalf();
-  EXPECT_EQ(half2.Size(), 2);
+  ASSERT_EQ(half2.Size(), 2);
   EXPECT_EQ(half2.Pop(), 4);
   EXPECT_EQ(half2.Pop(), 5);
+}
+
+TEST(ThunkExecutorTest, LifoReadyQueueTest) {
+  ThunkExecutor::LifoReadyQueue queue({});
+
+  // Check basic queue properties.
+  EXPECT_TRUE(queue.Empty());
+  EXPECT_EQ(queue.Size(), 0);
+
+  queue.Push(1);
+  queue.Push(2);
+  queue.Push(3);
+
+  ASSERT_EQ(queue.Size(), 3);
+
+  EXPECT_EQ(queue.Pop(), 3);
+  EXPECT_EQ(queue.Pop(), 2);
+  EXPECT_EQ(queue.Pop(), 1);
+
+  EXPECT_TRUE(queue.Empty());
+  EXPECT_EQ(queue.Size(), 0);
+
+  // Prepare queue for PopHalf test case.
+  queue.Push(1);
+  queue.Push(2);
+  queue.Push(3);
+
+  // Pop half of the queue.
+  ThunkExecutor::LifoReadyQueue half0 = queue.PopHalf();
+  ASSERT_EQ(half0.Size(), 2);
+  EXPECT_EQ(half0.Pop(), 2);
+  EXPECT_EQ(half0.Pop(), 1);
+
+  // Check that the rest is still in the queue.
+  ASSERT_EQ(queue.Size(), 1);
+
+  // Pop the rest of the queue.
+  ThunkExecutor::LifoReadyQueue half1 = queue.PopHalf();
+  ASSERT_EQ(half1.Size(), 1);
+
+  // ASSERT_EQ that all nodes were returned from PopHalf.
+  EXPECT_EQ(queue.Size(), 0);
+
+  // Add 5 elements to test Pop followed by PopHalf.
+  queue.Push(1);
+  queue.Push(2);
+  queue.Push(3);
+  queue.Push(4);
+  queue.Push(5);
+
+  EXPECT_EQ(queue.Pop(), 5);
+
+  // Check that PopHalf returns first 2 nodes.
+  ThunkExecutor::LifoReadyQueue half2 = queue.PopHalf();
+  ASSERT_EQ(half2.Size(), 3);
+  EXPECT_EQ(half2.Pop(), 3);
+  EXPECT_EQ(half2.Pop(), 2);
+  EXPECT_EQ(half2.Pop(), 1);
 }
 
 TEST(ThunkExecutorTest, PriorityReadyQueueTest) {
@@ -326,20 +384,20 @@ TEST(ThunkExecutorTest, PriorityReadyQueueTest) {
 
   // Pop half of the queue.
   ThunkExecutor::PriorityReadyQueue half0 = queue.PopHalf();
-  EXPECT_EQ(half0.Size(), 2);
+  ASSERT_EQ(half0.Size(), 2);
   EXPECT_EQ(half0.Pop(), 2);
   EXPECT_EQ(half0.Pop(), 1);
 
   // Check that the rest is still in the queue.
-  EXPECT_EQ(queue.Size(), 1);
+  ASSERT_EQ(queue.Size(), 1);
 
   // Pop the rest of the queue.
   ThunkExecutor::PriorityReadyQueue half1 = queue.PopHalf();
-  EXPECT_EQ(half1.Size(), 1);
+  ASSERT_EQ(half1.Size(), 1);
   EXPECT_EQ(half1.Pop(), 3);
 
   // Check that all nodes were returned from PopHalf.
-  EXPECT_EQ(queue.Size(), 0);
+  ASSERT_EQ(queue.Size(), 0);
 
   // Add 5 elements to test Pop followed by PopHalf.
   queue.Push(4);
@@ -352,7 +410,7 @@ TEST(ThunkExecutorTest, PriorityReadyQueueTest) {
 
   // Check that PopHalf returns 2 last nodes.
   ThunkExecutor::PriorityReadyQueue half2 = queue.PopHalf();
-  EXPECT_EQ(half2.Size(), 2);
+  ASSERT_EQ(half2.Size(), 2);
   EXPECT_EQ(half2.Pop(), 2);
   EXPECT_EQ(half2.Pop(), 1);
 }

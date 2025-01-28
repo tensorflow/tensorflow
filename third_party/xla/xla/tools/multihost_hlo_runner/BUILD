@@ -172,6 +172,7 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -194,6 +195,7 @@ xla_test(
         "data/multiple_gemm_fusions_2.hlo",
         "data/sharded_16_devices.hlo",
         "data/sharded_2_devices.hlo",
+        "data/sharded_computation.hlo",
         "data/sharded_unoptimized_hlo_snapshot.pbtxt",
         "data/single_device.hlo",
         "data/single_device_tupled.hlo",
@@ -205,6 +207,7 @@ xla_test(
         ":functional_hlo_runner",
         "//xla:debug_options_flags",
         "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/testlib:filecheck",
         "//xla/pjrt:pjrt_client",

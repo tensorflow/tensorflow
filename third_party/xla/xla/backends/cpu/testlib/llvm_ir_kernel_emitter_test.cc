@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/casts.h"
 
 namespace xla::cpu {

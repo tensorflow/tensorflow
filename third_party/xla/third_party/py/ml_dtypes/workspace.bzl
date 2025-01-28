@@ -13,7 +13,6 @@ def repo():
         name = "ml_dtypes",
         build_file = "//third_party/py/ml_dtypes:ml_dtypes.BUILD",
         link_files = {
-            "//third_party/py/ml_dtypes:ml_dtypes.tests.BUILD": "tests/BUILD.bazel",
             "//third_party/py/ml_dtypes:LICENSE": "LICENSE",
         },
         sha256 = ML_DTYPES_SHA256,

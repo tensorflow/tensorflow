@@ -28,6 +28,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_model_hdrs",
     ],
     deps = [
+        ":buffer_manager",
         ":ir_allocator",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/core/c:c_api_types",
@@ -52,6 +53,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/test:testdata/simple_model.tflite",
     ],
     deps = [
+        ":buffer_manager",
         ":model",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
@@ -69,6 +71,7 @@ cc_library(
     srcs = ["model_load.cc"],
     hdrs = ["model_load.h"],
     deps = [
+        ":buffer_manager",
         ":flatbuffer_to_litert",
         ":model",
         ":model_graph",
@@ -81,7 +84,6 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
@@ -97,6 +99,7 @@ cc_test(
         ":graph_validation",
         ":model",
         ":model_file_test_util",
+        ":model_graph",
         ":model_load",
         ":model_serialize",
         "//tensorflow/lite/experimental/litert/c:litert_common",
@@ -107,7 +110,8 @@ cc_test(
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
-        "//tensorflow/lite/experimental/litert/core:byte_code_util",
+        "//tensorflow/lite/experimental/litert/core:build_stamp",
+        "//tensorflow/lite/experimental/litert/core:dispatch_op_schema",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:test_macros",
@@ -125,14 +129,17 @@ cc_library(
     deps = [
         ":litert_to_flatbuffer",
         ":model",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
-        "//tensorflow/lite/experimental/litert/core:byte_code_util",
+        "//tensorflow/lite/experimental/litert/core:build_stamp",
+        "//tensorflow/lite/experimental/litert/core:dispatch_op_schema",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -199,11 +206,10 @@ cc_library(
         ":model",
         ":model_load",
         ":model_serialize",
+        "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/cc:litert_macros",
-        "//tensorflow/lite/experimental/litert/core:byte_code_util",
         "//tensorflow/lite/experimental/litert/core:filesystem",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -271,6 +277,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "buffer_manager",
+    hdrs = ["buffer_manager.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+    ],
+)
+
 cc_test(
     name = "model_graph_test",
     srcs = ["model_graph_test.cc"],
@@ -298,10 +314,22 @@ cc_test(
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:cc_api_stable",
-        "//tensorflow/lite/experimental/litert/core:byte_code_util",
+        "//tensorflow/lite/experimental/litert/c:litert_op_code",
+        "//tensorflow/lite/experimental/litert/core:dispatch_op_schema",
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:simple_model_npu",
         "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "buffer_manager_test",
+    srcs = ["buffer_manager_test.cc"],
+    deps = [
+        ":buffer_manager",
+        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

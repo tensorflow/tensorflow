@@ -164,6 +164,15 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflGelu:
       out << "TFL_GELU";
       break;
+    case kLiteRtOpCodeTflDynamicUpdateSlice:
+      out << "TFL_DYNAMIC_UPDATE_SLICE";
+      break;
+    case kLiteRtOpCodeTflPack:
+      out << "TFL_PACK";
+      break;
+    case kLiteRtOpCodeTflQuantize:
+      out << "TFL_QUANTIZE";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;
@@ -395,6 +404,9 @@ void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
       break;
     case kLiteRtOpCodeTflSum:
       out << "keepdims: " << opts.AsReducerOptions()->keep_dims << "\n";
+      break;
+    case kLiteRtOpCodeTflPack:
+      out << "axis: " << opts.AsPackOptions()->axis << "\n";
       break;
     default:
       out << "No options for op code: " << op.OpCode();

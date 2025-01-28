@@ -81,6 +81,7 @@ tf_proto_library(
 cc_library(
     name = "xla_sharding_serdes",
     srcs = ["xla_sharding_serdes.cc"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":xla_ifrt",
         ":xla_sharding_proto_cc",

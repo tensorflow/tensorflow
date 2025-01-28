@@ -113,11 +113,11 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
 
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py
-  pm->addPass(mt::NVIDIA::createDecomposeUnsupportedConversionsPass());
   // This pass reduces Hopper compile time extensively: b/344841434.
   if (cc.IsAtLeastHopper()) {
     pm->addPass(mt_xla::CreatePreventMmaV3LoopUnrollingPass());
   }
+  pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
   pm->addPass(mlir::createConvertSCFToCFPass());
   pm->addPass(mlir::createConvertIndexToLLVMPass());
   pm->addPass(mt::gpu::createAllocateSharedMemoryPass());

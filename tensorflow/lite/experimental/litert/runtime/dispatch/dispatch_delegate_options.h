@@ -37,15 +37,8 @@
 
 class LiteRtDispatchDelegateOptions {
  public:
-  LiteRtDispatchDelegateOptions() {
-    auto environment = litert::internal::Environment::Instance();
-    if (!environment) {
-      LITERT_LOG(LITERT_WARNING, "LiteRT environment not found");
-      return;
-    }
-
-    auto option =
-        (*environment)->GetOption(kLiteRtEnvOptionTagDispatchLibraryPath);
+  explicit LiteRtDispatchDelegateOptions(LiteRtEnvironmentT& environment) {
+    auto option = environment.GetOption(kLiteRtEnvOptionTagDispatchLibraryPath);
     if (!option.has_value()) {
       return;
     }

@@ -174,12 +174,16 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
+  // TODO - b/391868033: Remove calls to UpdateEntryComputationLayout.
+  UpdateEntryComputationLayout(module.get());
   return backend().compiler()->RunHloPasses(
       std::move(module), backend().default_stream_executor(), GetAllocator());
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
     std::unique_ptr<HloModule> hlo_module) {
+  // TODO - b/391868033: Remove calls to UpdateEntryComputationLayout.
+  UpdateEntryComputationLayout(hlo_module.get());
   return backend().compiler()->RunHloPasses(std::move(hlo_module),
                                             backend().default_stream_executor(),
                                             GetAllocator());

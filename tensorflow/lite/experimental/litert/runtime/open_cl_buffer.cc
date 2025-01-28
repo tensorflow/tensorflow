@@ -51,41 +51,48 @@ class EnvironmentSingleton {
   litert::cl::ClCommandQueue* getCommandQueue() { return &command_queue_; }
 
   static EnvironmentSingleton& GetInstance() {
-    static EnvironmentSingleton* instance = new EnvironmentSingleton();
-    return *instance;
+    if (instance_ == nullptr) {
+      instance_ = new EnvironmentSingleton(nullptr);
+    }
+    return *instance_;
+  }
+  static EnvironmentSingleton& GetInstance(LiteRtEnvironmentT* environment) {
+    if (instance_ == nullptr) {
+      instance_ = new EnvironmentSingleton(environment);
+    }
+    return *instance_;
   }
 
  private:
   // Load the OpenCL device, context and command queue from the environment if
   // available. Otherwise, create the default device, context and command queue.
-  EnvironmentSingleton() {
-    auto environment = litert::internal::Environment::Instance();
+  explicit EnvironmentSingleton(LiteRtEnvironmentT* environment) {
     cl_device_id device_id = nullptr;
     cl_platform_id platform_id = nullptr;
     cl_context context = nullptr;
     cl_command_queue command_queue = nullptr;
     if (environment) {
       auto device_option =
-          (*environment)->GetOption(kLiteRtEnvOptionTagOpenClDeviceId);
+          environment->GetOption(kLiteRtEnvOptionTagOpenClDeviceId);
       if (device_option.has_value() &&
           device_option->type == kLiteRtAnyTypeInt) {
         device_id = reinterpret_cast<cl_device_id>(device_option->int_value);
       }
       auto platform_option =
-          (*environment)->GetOption(kLiteRtEnvOptionTagOpenClPlatformId);
+          environment->GetOption(kLiteRtEnvOptionTagOpenClPlatformId);
       if (platform_option.has_value() &&
           platform_option->type == kLiteRtAnyTypeInt) {
         platform_id =
             reinterpret_cast<cl_platform_id>(platform_option->int_value);
       }
       auto context_option =
-          (*environment)->GetOption(kLiteRtEnvOptionTagOpenClContext);
+          environment->GetOption(kLiteRtEnvOptionTagOpenClContext);
       if (context_option.has_value() &&
           context_option->type == kLiteRtAnyTypeInt) {
         context = reinterpret_cast<cl_context>(platform_option->int_value);
       }
       auto command_queue_option =
-          (*environment)->GetOption(kLiteRtEnvOptionTagOpenClCommandQueue);
+          environment->GetOption(kLiteRtEnvOptionTagOpenClCommandQueue);
       if (command_queue_option.has_value() &&
           command_queue_option->type == kLiteRtAnyTypeInt) {
         command_queue =
@@ -122,7 +129,10 @@ class EnvironmentSingleton {
   litert::cl::ClDevice device_;
   litert::cl::ClContext context_;
   litert::cl::ClCommandQueue command_queue_;
+  static EnvironmentSingleton* instance_;
 };
+
+EnvironmentSingleton* EnvironmentSingleton::instance_ = nullptr;
 }  // namespace
 
 template Expected<float*> OpenClBuffer::Lock<float>();

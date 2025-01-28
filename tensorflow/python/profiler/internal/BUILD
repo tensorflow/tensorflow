@@ -232,6 +232,7 @@ tsl_pybind_extension(
         "@local_xla//xla/service/gpu:backend_configs_cc_impl",
         "@local_xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
         "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
+        "@local_xla//xla/stream_executor/cuda:cuda_compute_capability_proto_cc_impl",
         "@local_xla//xla/tsl/framework:allocator_registry_impl",
         "@local_xla//xla/tsl/lib/io:table",
         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",

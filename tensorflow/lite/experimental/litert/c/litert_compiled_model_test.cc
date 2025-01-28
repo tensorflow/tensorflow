@@ -25,6 +25,7 @@
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
@@ -43,10 +44,22 @@ TEST(CompiledModelTest, Basic) {
   LiteRtModel model;
   ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
 
+  LiteRtCompilationOptions compilation_options;
+  ASSERT_EQ(LiteRtCreateCompilationOptions(&compilation_options),
+            kLiteRtStatusOk);
+  ASSERT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
+                compilation_options, kLiteRtHwAccelatorCpu),
+            kLiteRtStatusOk);
+
+  LiteRtEnvironment environment;
+  LiteRtEnvOption options = {};
+  ASSERT_EQ(LiteRtEnvironmentCreate(/*num_options=*/0, &options, &environment),
+            kLiteRtStatusOk);
+
   LiteRtCompiledModel compiled_model;
-  ASSERT_EQ(
-      LiteRtCreateCompiledModel(model, kLiteRtHwAccelatorCpu, &compiled_model),
-      kLiteRtStatusOk);
+  ASSERT_EQ(LiteRtCreateCompiledModel(environment, model, compilation_options,
+                                      &compiled_model),
+            kLiteRtStatusOk);
 
   LiteRtSubgraph subgraph;
   ASSERT_EQ(LiteRtGetModelSubgraph(model, 0, &subgraph), kLiteRtStatusOk);
@@ -112,15 +125,13 @@ TEST(CompiledModelTest, Basic) {
     ABSL_LOG(INFO) << "Filling inputs with data";
     void* host_mem_addr;
 
-    ASSERT_EQ(LiteRtLockTensorBuffer(input_tensor_buffers[0], &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(input_tensor_buffers[0], &host_mem_addr),
               kLiteRtStatusOk);
     std::memcpy(host_mem_addr, kTestInput0Tensor, sizeof(kTestInput0Tensor));
     ASSERT_EQ(LiteRtUnlockTensorBuffer(input_tensor_buffers[0]),
               kLiteRtStatusOk);
 
-    ASSERT_EQ(LiteRtLockTensorBuffer(input_tensor_buffers[1], &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(input_tensor_buffers[1], &host_mem_addr),
               kLiteRtStatusOk);
     std::memcpy(host_mem_addr, kTestInput1Tensor, sizeof(kTestInput1Tensor));
     ASSERT_EQ(LiteRtUnlockTensorBuffer(input_tensor_buffers[1]),
@@ -136,8 +147,7 @@ TEST(CompiledModelTest, Basic) {
   {
     ABSL_LOG(INFO) << "Checking output...";
     void* host_mem_addr;
-    ASSERT_EQ(LiteRtLockTensorBuffer(output_tensor_buffers[0], &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(output_tensor_buffers[0], &host_mem_addr),
               kLiteRtStatusOk);
     auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
                                  kTestOutputSize);
@@ -151,6 +161,7 @@ TEST(CompiledModelTest, Basic) {
 
   LiteRtDestroyCompiledModel(compiled_model);
   LiteRtDestroyModel(model);
+  LiteRtDestroyEnvironment(environment);
 
   for (auto tensor_buffer : input_tensor_buffers) {
     LiteRtDestroyTensorBuffer(tensor_buffer);

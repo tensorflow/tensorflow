@@ -326,3 +326,15 @@ LiteRtStatus LiteRtGetSumKeepDimsOption(LiteRtOp op, bool* keepdims) {
   *keepdims = opts.AsReducerOptions()->keep_dims;
   return kLiteRtStatusOk;
 }
+
+LiteRtStatus LiteRtGetPackAxisOption(LiteRtOp op, int32_t* axis) {
+  if (op->OpCode() != kLiteRtOpCodeTflPack) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  auto& opts = detail::GetTflOptions(*op);
+  if (opts.value == nullptr) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *axis = opts.AsPackOptions()->axis;
+  return kLiteRtStatusOk;
+}

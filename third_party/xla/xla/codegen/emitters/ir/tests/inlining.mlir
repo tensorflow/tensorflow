@@ -28,6 +28,34 @@ module {
 // -----
 
 module {
+  func.func private @mul(%a: f32, %b: f32) -> f32 {
+    %ret = arith.mulf %a, %b : f32
+    return %ret : f32
+  }
+
+  func.func private @add(%a: f32, %b: f32) -> f32 {
+    %add = arith.addf %a, %b : f32
+    %ret = xla.pure_call @mul(%add, %add) : (f32, f32) -> (f32)
+    return %ret : f32
+  }
+
+  func.func @caller(%a: f32, %b: f32) -> f32 {
+    %ret = xla.pure_call @add(%a, %b) {noinline} : (f32, f32) -> (f32)
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: module {
+// CHECK:         func.func {{.*}}@add
+// CHECK:           arith.addf
+// CHECK-NOT:       xla.pure_call @mul
+// CHECK:           arith.mulf
+// CHECK:         func.func {{.*}}@caller
+// CHECK:           xla.pure_call @add
+
+// -----
+
+module {
   func.func @fused_computation(%arg0: tensor<2xf32> {xla.slice_index = 0 : index}, %arg1: tensor<2xf32> {xla.slice_index = 1 : index}, %arg2: tensor<2xf32> {xla.slice_index = 2 : index}) -> tensor<2xf32> attributes {xla.entry} {
     %0 = gpu.thread_id  x {xla.range = [0 : index, 1 : index]}
     %1 = xla.pure_call @fused_computation_atan2(%arg0, %arg1, %0) : (tensor<2xf32>, tensor<2xf32>, index) -> f32

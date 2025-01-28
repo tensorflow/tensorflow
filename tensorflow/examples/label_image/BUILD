@@ -51,8 +51,8 @@ tf_cc_binary(
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "@local_xla//xla/tsl/util:command_line_flags",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:types",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:types",
         # cc:cc_ops is used to include image ops (for label_image)
         # Jpg, gif, and png related code won't be included
         "//tensorflow/cc:cc_ops",

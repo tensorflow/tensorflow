@@ -162,8 +162,8 @@ tsl_cc_test(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "//xla/tsl/platform:types",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -222,7 +222,7 @@ tsl_cc_test(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "//xla/tsl/platform:types",
-        "@com_google_googletest//:gtest_main",
     ],
 )

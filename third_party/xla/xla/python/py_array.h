@@ -292,6 +292,10 @@ class PyArray : public nanobind::object {
       bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics,
       bool jax_enable_x64);
 
+  static absl::StatusOr<PyArray> ReorderShards(
+      PyArray x, nanobind::object dst_sharding,
+      ifrt::ArrayCopySemantics array_copy_semantics);
+
   static absl::Status BatchedBlockUntilReady(
       std::vector<nanobind::object> objs);
 

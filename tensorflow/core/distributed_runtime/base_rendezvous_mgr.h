@@ -137,7 +137,7 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   // Forwards to local_, where the Tensor "val" will be buffered and
   // any waiting callback stored.
   absl::Status Send(const ParsedKey& key, const Rendezvous::Args& args,
-                    const Tensor& val, const bool is_dead) override;
+                    const Tensor& val, bool is_dead) override;
 
   // This method is called only by the RecvOp.  It tests to see
   // whether the value will be produced by a local or remote device

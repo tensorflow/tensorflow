@@ -251,7 +251,7 @@ cc_library(
     srcs = ["fusions.cc"],
     hdrs = ["fusions.h"],
     visibility = [
-        "//xla/backends/gpu/codegen/triton:__subpackages__",
+        "//xla/backends/gpu/codegen:__subpackages__",
         "//xla/service/gpu:__subpackages__",
     ],
     deps = [

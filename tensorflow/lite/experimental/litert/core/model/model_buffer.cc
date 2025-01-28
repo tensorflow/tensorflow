@@ -18,11 +18,10 @@
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_load.h"
@@ -33,25 +32,25 @@ namespace internal {
 
 Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
     LiteRtModelT&& model, BufferRef<uint8_t> npu_byte_code) {
-  LITERT_EXPECT_OK(model.PushMetadata(
-      kByteCodeMetadataKey, npu_byte_code.Data(), npu_byte_code.Size()));
-
-  for (auto* subgraph : model.Subgraphs()) {
-    for (auto* op : subgraph->Ops()) {
-      if (op->OpCode() != kLiteRtOpCodeTflCustom) {
-        continue;
-      }
-      auto exec_info =
-          MakeExecInfo(op->CustomOptions().StrView(), kByteCodeMetadataKey);
-      if (!exec_info) {
-        return exec_info.Error();
-      }
-      op->SetCustomOptions(std::move(*exec_info));
-    }
+  if (model.NumSubgraphs() != 1) {
+    return Error(kLiteRtStatusErrorUnsupported);
   }
 
-  auto build_stamp = MakeBuildStamp("", "", Serialization::kAppend);
-  LITERT_EXPECT_OK(model.PushMetadata(kLiteRtBuildStampKey, *build_stamp));
+  auto* subgraph = model.Subgraphs().front();
+  if (subgraph->Ops().size() != 1) {
+    return Error(kLiteRtStatusErrorUnsupported);
+  }
+
+  auto* op = subgraph->Ops().front();
+  if (op->OpCode() != kLiteRtOpCodeTflCustom) {
+    return Error(kLiteRtStatusErrorUnsupported);
+  }
+
+  OwningBufferRef<uint8_t> byte_code(npu_byte_code.Data(),
+                                     npu_byte_code.Size());
+  const auto buf_id = model.RegisterExternalBuffer(std::move(byte_code));
+
+  model.AttachExternalBufferToOp(op, buf_id, "CUSTOM_DISPATCH");
 
   return SerializeModel(std::move(model));
 }

@@ -41,3 +41,8 @@ diff_test(
     file2 = ":generated_build_commands",
     tags = ["not_run:arm"],
 )
+
+sh_binary(
+    name = "parallel_gpu_execute",
+    srcs = ["parallel_gpu_execute.sh"],
+)

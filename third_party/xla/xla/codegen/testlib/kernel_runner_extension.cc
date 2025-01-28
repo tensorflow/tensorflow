@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <stack>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -23,11 +24,13 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
@@ -38,7 +41,10 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -46,6 +52,7 @@ limitations under the License.
 #include "xla/python/nb_absl_inlined_vector.h"  // IWYU pragma: keep
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/util.h"
 
@@ -63,16 +70,29 @@ void KernelRunnerCall(KernelRunner* kernel_runner,
   }
 }
 
-// Need this helper as Literal rquires an explicit clone.
+// Need this helper as Literal requires an explicit clone.
 std::unique_ptr<HloInstruction> CreateConstantHloInstruction(
     const Literal& literal) {
   return HloInstruction::CreateConstant(literal.Clone());
+}
+
+std::unique_ptr<HloInstruction> CreateDot(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    const DotDimensionNumbers& dimension_numbers) {
+  return HloInstruction::CreateDot(shape, lhs, rhs, dimension_numbers,
+                                   PrecisionConfig());
 }
 
 std::unique_ptr<HloInstruction> CreateComparisonHloInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     Comparison::Direction direction) {
   return HloInstruction::CreateCompare(shape, lhs, rhs, direction);
+}
+
+HloModuleConfig DefaultHloModuleConfigWithDebugOptions() {
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsFromFlags());
+  return config;
 }
 
 // A dummy kernel runner that implements a simple elementwise add.
@@ -168,17 +188,48 @@ NB_MODULE(_extension, kernel_runner_module) {
       .value("kLe", Comparison::Direction::kLe)
       .value("kLt", Comparison::Direction::kLt);
 
+  nb::class_<DotDimensionNumbers>(kernel_runner_module, "DotDimensionNumbers")
+      .def(
+          "__init__",
+          [](DotDimensionNumbers* self,
+             std::vector<int64_t> lhs_contracting_dims,
+             std::vector<int64_t> rhs_contracting_dims,
+             std::vector<int64_t> lhs_batch_dims,
+             std::vector<int64_t> rhs_batch_dims) {
+            new (self) DotDimensionNumbers();
+            self->mutable_lhs_contracting_dimensions()->Assign(
+                lhs_contracting_dims.begin(), lhs_contracting_dims.end());
+            self->mutable_rhs_contracting_dimensions()->Assign(
+                rhs_contracting_dims.begin(), rhs_contracting_dims.end());
+
+            self->mutable_lhs_batch_dimensions()->Assign(lhs_batch_dims.begin(),
+                                                         lhs_batch_dims.end());
+            self->mutable_rhs_batch_dimensions()->Assign(rhs_batch_dims.begin(),
+                                                         rhs_batch_dims.end());
+          },
+          nb::arg("lhs_contracting_dims"), nb::arg("rhs_contracting_dims"),
+          nb::arg("lhs_batch_dims") = std::vector<int64_t>{},
+          nb::arg("rhs_batch_dims") = std::vector<int64_t>{});
+
   nb::class_<HloInstruction> hlo_instruction(kernel_runner_module,
                                              "HloInstruction");
   // Factory methods
   hlo_instruction
       .def_static("create_parameter", &HloInstruction::CreateParameter)
       .def_static("create_constant", &CreateConstantHloInstruction)
-      .def_static("create_unary", &HloInstruction::CreateUnary)
-      .def_static("create_binary", &HloInstruction::CreateBinary)
-      .def_static("create_ternary", &HloInstruction::CreateTernary)
-      .def_static("create_variadic", &HloInstruction::CreateVariadic)
-      .def_static("create_compare", &CreateComparisonHloInstruction);
+      .def_static("create_dot", &CreateDot, nb::keep_alive<0, 2>(),
+                  nb::keep_alive<0, 3>())
+      .def_static("create_unary", &HloInstruction::CreateUnary,
+                  nb::keep_alive<0, 3>())
+      .def_static("create_binary", &HloInstruction::CreateBinary,
+                  nb::keep_alive<0, 3>(), nb::keep_alive<0, 4>())
+      .def_static("create_ternary", &HloInstruction::CreateTernary,
+                  nb::keep_alive<0, 3>(), nb::keep_alive<0, 4>(),
+                  nb::keep_alive<0, 5>())
+      .def_static("create_variadic", &HloInstruction::CreateVariadic,
+                  nb::keep_alive<0, 3>())
+      .def_static("create_compare", &CreateComparisonHloInstruction,
+                  nb::keep_alive<0, 2>(), nb::keep_alive<0, 3>());
 
   // Accessors
   hlo_instruction.def("opcode", &HloInstruction::opcode);
@@ -198,7 +249,8 @@ NB_MODULE(_extension, kernel_runner_module) {
       .def_static("parse_from_string",
                   [](absl::string_view str) {
                     absl::StatusOr<std::unique_ptr<HloModule>> hlo_module =
-                        ParseAndReturnUnverifiedModule(str);
+                        ParseAndReturnUnverifiedModule(
+                            str, DefaultHloModuleConfigWithDebugOptions());
 
                     if (!hlo_module.ok()) {
                       throw std::runtime_error(
@@ -207,6 +259,30 @@ NB_MODULE(_extension, kernel_runner_module) {
 
                     return std::move(hlo_module).value();
                   })
+      .def_static(
+          "build",
+          [](std::unique_ptr<HloInstruction> root, nb::args instructions) {
+            auto hlo_module = std::make_unique<HloModule>(
+                absl::StrCat(root->name(), "_module"),
+                DefaultHloModuleConfigWithDebugOptions());
+
+            HloComputation::Builder builder(
+                absl::StrCat(root->name(), "_computation"));
+            for (nb::handle handle : instructions) {
+              builder.AddInstruction(
+                  nb::cast<std::unique_ptr<HloInstruction>>(handle));
+            }
+            builder.AddInstruction(std::move(root));
+
+            // Annoyingly if we don't clone the computation, nanobind thinks
+            // that the object has been destroyed and will raise an exception
+            // after we call get_root_instruction. See
+            // https://github.com/wjakob/nanobind/issues/879.
+            // TODO(willfroom): Remove the clone once the nanobind bug is
+            // fixed and integrated.
+            hlo_module->AddEntryComputation(builder.Build()->Clone());
+            return hlo_module;
+          })
       .def("set_schedule",
            [](HloModule& self, HloSchedule schedule) {
              absl::Status status = self.set_schedule(std::move(schedule));
@@ -219,7 +295,8 @@ NB_MODULE(_extension, kernel_runner_module) {
           [](HloModule* self) {
             return self->entry_computation()->root_instruction();
           },
-          nb::rv_policy::reference_internal);
+          nb::rv_policy::reference_internal)
+      .def("__str__", nb::overload_cast<>(&HloModule::ToString, nb::const_));
 }
 
 }  // namespace xla

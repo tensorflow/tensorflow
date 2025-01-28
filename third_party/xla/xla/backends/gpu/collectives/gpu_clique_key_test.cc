@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/service/global_device_id.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::gpu {
 

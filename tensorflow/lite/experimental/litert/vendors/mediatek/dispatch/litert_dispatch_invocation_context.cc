@@ -289,7 +289,9 @@ LiteRtDispatchInvocationContextT::IoRequirementsBuilder::IoRequirementsBuilder(
 Expected<LiteRtTensorBufferRequirements>
 LiteRtDispatchInvocationContextT::IoRequirementsBuilder::Create() {
   static constexpr std::array kSupportedTensorBufferTypes = {
+#if defined(__ANDROID__)
       kLiteRtTensorBufferTypeAhwb,
+#endif  // __ANDROID__
       kLiteRtTensorBufferTypeDmaBuf,
   };
 

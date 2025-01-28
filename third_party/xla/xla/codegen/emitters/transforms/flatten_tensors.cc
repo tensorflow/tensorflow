@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/layout_util.h"
@@ -251,6 +252,26 @@ struct RewriteAllocateShared : OpRewritePattern<gpu::AllocateSharedOp> {
     Location loc = op.getLoc();
     Value new_op =
         rewriter.create<gpu::AllocateSharedOp>(op.getLoc(), flat_type);
+    auto cast_to_orig_type =
+        rewriter.create<UnrealizedConversionCastOp>(loc, tensor_type, new_op);
+    rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
+    return mlir::success();
+  }
+};
+
+struct RewriteCpuLoad : OpRewritePattern<cpu::LoadOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(cpu::LoadOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tensor_type = op.getResult().getType();
+    if (IsScalarOrFlat(tensor_type)) {
+      return rewriter.notifyMatchFailure(op, "the tensor is already flat");
+    }
+    auto flat_type = GetFlattenedType(tensor_type);
+    Location loc = op.getLoc();
+    Value new_op = rewriter.create<cpu::LoadOp>(
+        op.getLoc(), flat_type, op.getCallFrame(), op.getIndex());
     auto cast_to_orig_type =
         rewriter.create<UnrealizedConversionCastOp>(loc, tensor_type, new_op);
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
@@ -696,7 +717,8 @@ class FlattenTensorsPass
         RewriteTensorExtract,
         RewriteTensorInsert,
         RewriteVectorExtract,
-        RewriteVectorInsert
+        RewriteVectorInsert,
+        RewriteCpuLoad
     >(mlir_context);
     // clang-format on
     ApplyIndexingOp::getCanonicalizationPatterns(patterns, mlir_context);

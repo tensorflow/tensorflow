@@ -286,8 +286,10 @@ std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForInstruction(
 
 /*static*/
 std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForProducerConsumer(
-    const HloInstruction* producer, const HloInstruction* consumer) {
-  auto fusion_adaptor = absl::WrapUnique(new HloFusionAdaptor);
+    const HloInstruction* producer, const HloInstruction* consumer,
+    bool with_extra_outputs) {
+  auto fusion_adaptor =
+      absl::WrapUnique(new HloFusionAdaptor(with_extra_outputs));
   fusion_adaptor->AddInstruction(producer);
   fusion_adaptor->AddInstruction(consumer);
   return fusion_adaptor;
@@ -344,7 +346,7 @@ absl::InlinedVector<HloInstructionAdaptor, 2> HloFusionAdaptor::GetRoots()
     }
   }
 
-  if (!producer_fusion.IsMultiOutputFusion()) {
+  if (!with_extra_outputs_) {
     return roots;
   }
 

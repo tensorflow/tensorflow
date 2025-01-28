@@ -38,7 +38,7 @@ LiteRtStatus LiteRtCreateTensorBufferFromHostMemory(
       deallocator);
   if (!created_tensor_buffer) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               created_tensor_buffer.Error().Message().data());
+               created_tensor_buffer.Error().Message().c_str());
     return created_tensor_buffer.Error().Status();
   }
   *tensor_buffer = created_tensor_buffer->release();
@@ -57,7 +57,7 @@ LiteRtStatus LiteRtCreateTensorBufferFromAhwb(
       *tensor_type, ahwb, ahwb_offset, deallocator);
   if (!created_tensor_buffer) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               created_tensor_buffer.Error().Message().data());
+               created_tensor_buffer.Error().Message().c_str());
     return created_tensor_buffer.Error().Status();
   }
   *tensor_buffer = created_tensor_buffer->release();
@@ -72,7 +72,7 @@ LiteRtStatus LiteRtGetTensorBufferAhwb(LiteRtTensorBuffer tensor_buffer,
 
   auto ahwb_buffer = tensor_buffer->GetAhwbBuffer();
   if (!ahwb_buffer) {
-    LITERT_LOG(LITERT_ERROR, "%s", ahwb_buffer.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", ahwb_buffer.Error().Message().c_str());
     return ahwb_buffer.Error().Status();
   }
 
@@ -94,7 +94,7 @@ LiteRtStatus LiteRtCreateTensorBufferFromIonBuffer(
       ion_buffer_offset, deallocator);
   if (!created_tensor_buffer) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               created_tensor_buffer.Error().Message().data());
+               created_tensor_buffer.Error().Message().c_str());
     return created_tensor_buffer.Error().Status();
   }
   *tensor_buffer = created_tensor_buffer->release();
@@ -110,7 +110,7 @@ LiteRtStatus LiteRtGetTensorBufferIonBuffer(LiteRtTensorBuffer tensor_buffer,
 
   auto ion_buffer = tensor_buffer->GetIonBuffer();
   if (!ion_buffer) {
-    LITERT_LOG(LITERT_ERROR, "%s", ion_buffer.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", ion_buffer.Error().Message().c_str());
     return ion_buffer.Error().Status();
   }
 
@@ -134,7 +134,7 @@ LiteRtStatus LiteRtCreateTensorBufferFromDmaBufBuffer(
       dmabuf_buffer_offset, deallocator);
   if (!created_tensor_buffer) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               created_tensor_buffer.Error().Message().data());
+               created_tensor_buffer.Error().Message().c_str());
     return created_tensor_buffer.Error().Status();
   }
   *tensor_buffer = created_tensor_buffer->release();
@@ -150,7 +150,7 @@ LiteRtStatus LiteRtGetTensorBufferDmaBufBuffer(LiteRtTensorBuffer tensor_buffer,
 
   auto dmabuf_buffer = tensor_buffer->GetDmaBufBuffer();
   if (!dmabuf_buffer) {
-    LITERT_LOG(LITERT_ERROR, "%s", dmabuf_buffer.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", dmabuf_buffer.Error().Message().c_str());
     return dmabuf_buffer.Error().Status();
   }
 
@@ -171,7 +171,7 @@ LiteRtStatus LiteRtCreateTensorBufferFromOpenCLBuffer(
       *tensor_type, cl_mem_addr, opencl_buffer_size);
   if (!created_tensor_buffer) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               created_tensor_buffer.Error().Message().data());
+               created_tensor_buffer.Error().Message().c_str());
     return created_tensor_buffer.Error().Status();
   }
   *buffer = created_tensor_buffer->release();
@@ -186,7 +186,7 @@ LiteRtStatus LiteRtGetTensorBufferOpenCLBuffer(LiteRtTensorBuffer tensor_buffer,
 
   auto opencl_buffer = tensor_buffer->GetOpenClBuffer();
   if (!opencl_buffer) {
-    LITERT_LOG(LITERT_ERROR, "%s", opencl_buffer.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", opencl_buffer.Error().Message().c_str());
     return opencl_buffer.Error().Status();
   }
 
@@ -208,7 +208,7 @@ LiteRtStatus LiteRtCreateTensorBufferFromFastRpcBuffer(
       fastrpc_buffer_offset, deallocator);
   if (!created_tensor_buffer) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               created_tensor_buffer.Error().Message().data());
+               created_tensor_buffer.Error().Message().c_str());
     return created_tensor_buffer.Error().Status();
   }
   *tensor_buffer = created_tensor_buffer->release();
@@ -224,7 +224,7 @@ LiteRtStatus LiteRtGetTensorBufferFastRpcBuffer(
 
   auto fastrpc_buffer = tensor_buffer->GetFastRpcBuffer();
   if (!fastrpc_buffer) {
-    LITERT_LOG(LITERT_ERROR, "%s", fastrpc_buffer.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", fastrpc_buffer.Error().Message().c_str());
     return fastrpc_buffer.Error().Status();
   }
 
@@ -245,7 +245,7 @@ LiteRtStatus LiteRtCreateManagedTensorBuffer(
       buffer_type, *tensor_type, buffer_size);
   if (!created_tensor_buffer) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               created_tensor_buffer.Error().Message().data());
+               created_tensor_buffer.Error().Message().c_str());
     return created_tensor_buffer.Error().Status();
   }
   *tensor_buffer = created_tensor_buffer->release();
@@ -304,7 +304,7 @@ LiteRtStatus LiteRtGetTensorBufferHostMemory(LiteRtTensorBuffer tensor_buffer,
 
   auto host_buffer = tensor_buffer->GetHostBuffer();
   if (!host_buffer) {
-    LITERT_LOG(LITERT_ERROR, "%s", host_buffer.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", host_buffer.Error().Message().c_str());
     return host_buffer.Error().Status();
   }
 
@@ -328,7 +328,7 @@ LiteRtStatus LiteRtGetTensorBufferEvent(LiteRtTensorBuffer tensor_buffer,
   }
   auto result = tensor_buffer->GetEvent();
   if (!result) {
-    LITERT_LOG(LITERT_ERROR, "%s", result.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", result.Error().Message().c_str());
     return result.Error().Status();
   }
   *event = *result;
@@ -353,14 +353,14 @@ LiteRtStatus LiteRtClearTensorBufferEvent(LiteRtTensorBuffer tensor_buffer) {
 }
 
 LiteRtStatus LiteRtLockTensorBuffer(LiteRtTensorBuffer tensor_buffer,
-                                    void** host_mem_addr, LiteRtEvent event) {
+                                    void** host_mem_addr) {
   if (!tensor_buffer || !host_mem_addr) {
     return kLiteRtStatusErrorInvalidArgument;
   }
 
-  auto mapped_addr = tensor_buffer->Lock(event);
+  auto mapped_addr = tensor_buffer->Lock();
   if (!mapped_addr) {
-    LITERT_LOG(LITERT_ERROR, "%s", mapped_addr.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", mapped_addr.Error().Message().c_str());
     return mapped_addr.Error().Status();
   }
 
@@ -374,7 +374,7 @@ LiteRtStatus LiteRtUnlockTensorBuffer(LiteRtTensorBuffer tensor_buffer) {
   }
 
   if (auto status = tensor_buffer->Unlock(); !status) {
-    LITERT_LOG(LITERT_ERROR, "%s", status.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", status.Error().Message().c_str());
     return status.Error().Status();
   }
 
