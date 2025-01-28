@@ -2560,6 +2560,7 @@ xla_test(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
+        "//xla/service:hlo_runner_interface",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
