@@ -308,7 +308,12 @@ Expected<TflModelPtr> PackAsTflite(SerializationContext& builder) {
   // Serialize metadata.
   for (auto it = litert_model.MetadataBegin(); it != litert_model.MetadataEnd();
        ++it) {
-    builder.PushMetadata(it->first, it->second);
+    const auto& [key, buf_id] = *it;
+    auto buf = litert_model.Buffers()->GetBuffer(buf_id);
+    if (!buf) {
+      return buf.Error();
+    }
+    builder.PushMetadata(key, *buf);
   }
 
   builder.Model().version = 3;

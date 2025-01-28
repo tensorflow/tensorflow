@@ -22,7 +22,6 @@
 #include <iterator>
 #include <list>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,7 +38,6 @@
 #include "tensorflow/lite/experimental/litert/core/model/buffer_manager.h"
 #include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 // Internal LiteRtIR
@@ -669,14 +667,13 @@ class LiteRtModelT {
   using Ref = std::reference_wrapper<LiteRtModelT>;
   using Ptr = std::unique_ptr<LiteRtModelT>;
   using TflOpCodes = std::vector<litert::internal::TflOpCodePtr>;
-  using MetadataMap =
-      absl::flat_hash_map<std::string, litert::OwningBufferRef<uint8_t>>;
 
   using ExternalBufferId = uint32_t;
   using ExternalBufferReference = std::pair<ExternalBufferId, std::string>;
   using ExternalBufferMap =
       absl::flat_hash_map<LiteRtOp, ExternalBufferReference>;
   using BufferManager = ::litert::internal::BufferManager;
+  using MetadataMap = absl::flat_hash_map<std::string, BufferManager::BufferId>;
 
   // TODO replace this with the index of the default signature.
   static constexpr const size_t kMainSubgraphIndex = 0;
@@ -750,7 +747,8 @@ class LiteRtModelT {
   litert::Expected<litert::BufferRef<uint8_t>> FindMetadata(
       absl::string_view key) const {
     if (auto it = metadata_.find(key); it != metadata_.end()) {
-      return it->second;
+      const auto buf_id = it->second;
+      return Buffers()->GetBuffer(buf_id);
     }
     return ::litert::Error(kLiteRtStatusErrorNotFound);
   }
@@ -759,24 +757,15 @@ class LiteRtModelT {
   MetadataMap::iterator MetadataBegin() { return metadata_.begin(); }
   MetadataMap::iterator MetadataEnd() { return metadata_.end(); }
 
-  // Remvoe and take ownership of the metadata under given key if it exists.
-  litert::Expected<litert::OwningBufferRef<uint8_t>> PopMetadata(
-      absl::string_view key) {
-    if (auto it = metadata_.find(key); it != metadata_.end()) {
-      return metadata_.extract(it).mapped();
-    }
-    return ::litert::Error(kLiteRtStatusErrorNotFound);
-  }
-
   // Adds a new metadata buffer to the model. Fails if it already exists.
   template <class... Args>
   LiteRtStatus PushMetadata(absl::string_view key, Args&&... args) {
     if (metadata_.contains(key)) {
       return kLiteRtStatusErrorInvalidArgument;
     }
-    metadata_.insert(
-        {std::string(key.begin(), key.end()),
-         ::litert::OwningBufferRef<uint8_t>(std::forward<Args>(args)...)});
+    const auto buf_id = Buffers()->RegisterOwnedBuffer(
+        ::litert::OwningBufferRef<uint8_t>(std::forward<Args>(args)...));
+    metadata_.emplace(std::make_pair(std::string(key), buf_id));
     return kLiteRtStatusOk;
   }
 
@@ -822,7 +811,7 @@ class LiteRtModelT {
   size_t NumExternalBuffers() const { return external_buffers_.size(); }
 
   // Get stable pointer to buffer manager object.
-  BufferManager* Buffers() { return buffer_manager_.get(); }
+  BufferManager* Buffers() const { return buffer_manager_.get(); }
 
   // IR is generally, default constructible and movable but not copyable.
   LiteRtModelT() = default;
