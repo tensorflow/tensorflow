@@ -708,7 +708,10 @@ class PjRtCApiAsyncHostToDeviceTransferManager
   PjRtCApiAsyncHostToDeviceTransferManager(
       PjRtCApiClient* client,
       PJRT_AsyncHostToDeviceTransferManager* c_transfer_manager)
-      : c_client_(client), c_transfer_manager_(std::move(c_transfer_manager)) {}
+      : c_client_(client),
+        c_transfer_manager_(c_transfer_manager,
+                            ::pjrt::MakeAsyncHostToDeviceTransferManagerDeleter(
+                                client->pjrt_c_api())) {}
 
   size_t buffer_count() const override {
     PJRT_AsyncHostToDeviceTransferManager_BufferCount_Args args;

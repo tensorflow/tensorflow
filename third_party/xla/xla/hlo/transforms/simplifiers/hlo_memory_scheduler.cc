@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -544,6 +545,9 @@ absl::StatusOr<HloInstructionSequence> BFSMemoryScheduler(
 
     sequence.push_back(inst);
   }
+  if (postprocessor) {
+    sequence = postprocessor(sequence);
+  }
 
   CHECK_EQ(sequence.size(), computation->instruction_count());
   if (peak_memory) {
@@ -554,6 +558,50 @@ absl::StatusOr<HloInstructionSequence> BFSMemoryScheduler(
   }
 
   return sequence;
+}
+namespace {
+
+bool IsConstant(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kConstant ||
+         (instr->opcode() == HloOpcode::kBroadcast &&
+          instr->operand(0)->opcode() == HloOpcode::kConstant);
+}
+}  // namespace
+
+HloInstructionSequence ConstantDeferringPostprocessor(
+    const HloInstructionSequence& sequence) {
+  HloInstructionSequence new_sequence = sequence;
+  auto get_index = [&](HloInstruction* instr) {
+    return absl::c_find(new_sequence.instructions(), instr) -
+           new_sequence.instructions().begin();
+  };
+  for (HloInstruction* instr : sequence.instructions()) {
+    if (IsConstant(instr) && instr->user_count() > 0) {
+      int64_t instr_index = get_index(instr);
+      int64_t first_user_index = std::numeric_limits<int64_t>::max();
+      absl::c_for_each(instr->users(), [&](HloInstruction* user) {
+        int64_t user_index = get_index(user);
+        if (user_index < first_user_index) {
+          first_user_index = user_index;
+        }
+      });
+      int64_t first_control_successor_index =
+          std::numeric_limits<int64_t>::max();
+      absl::c_for_each(instr->control_successors(), [&](HloInstruction* succ) {
+        int64_t succ_index = get_index(succ);
+        if (succ_index < first_control_successor_index) {
+          first_control_successor_index = succ_index;
+        }
+      });
+      if (first_user_index - instr_index > 1) {
+        new_sequence.remove_instruction(instr);
+        new_sequence.insert_instruction(
+            instr,
+            std::min(first_user_index, first_control_successor_index) - 1);
+      }
+    }
+  }
+  return new_sequence;
 }
 
 ModuleSchedulerAlgorithm ComputationSchedulerToModuleScheduler(
@@ -697,26 +745,27 @@ absl::StatusOr<HloSchedule> DefaultModuleScheduler(
   // List wins for most of our benchmarks; postorder-based schedulers win for
   // some RNNs.
   int64_t list_memory;
-  TF_ASSIGN_OR_RETURN(
-      HloSchedule list_sequence,
-      ComputationSchedulerToModuleScheduler(ListMemoryScheduler, {})(
-          module, points_to_analysis, alias_analysis, size_function,
-          execution_threads, &list_memory));
+  TF_ASSIGN_OR_RETURN(HloSchedule list_sequence,
+                      ComputationSchedulerToModuleScheduler(
+                          ListMemoryScheduler, ConstantDeferringPostprocessor)(
+                          module, points_to_analysis, alias_analysis,
+                          size_function, execution_threads, &list_memory));
 
   VLOG(2) << "Min-memory list sequence: " << HumanReadableNumBytes(list_memory);
 
   int64_t dfs_memory;
-  TF_ASSIGN_OR_RETURN(
-      HloSchedule dfs_sequence,
-      ComputationSchedulerToModuleScheduler(DFSMemoryScheduler, {})(
-          module, points_to_analysis, alias_analysis, size_function,
-          execution_threads, &dfs_memory));
+  TF_ASSIGN_OR_RETURN(HloSchedule dfs_sequence,
+                      ComputationSchedulerToModuleScheduler(
+                          DFSMemoryScheduler, ConstantDeferringPostprocessor)(
+                          module, points_to_analysis, alias_analysis,
+                          size_function, execution_threads, &dfs_memory));
   VLOG(2) << "Min-memory dfs sequence: " << HumanReadableNumBytes(dfs_memory);
 
   int64_t post_order_memory;
   TF_ASSIGN_OR_RETURN(
       HloSchedule post_order_sequence,
-      ComputationSchedulerToModuleScheduler(PostOrderMemoryScheduler, {})(
+      ComputationSchedulerToModuleScheduler(PostOrderMemoryScheduler,
+                                            ConstantDeferringPostprocessor)(
           module, points_to_analysis, alias_analysis, size_function,
           execution_threads, &post_order_memory));
   VLOG(2) << "Min-memory post order sequence: "

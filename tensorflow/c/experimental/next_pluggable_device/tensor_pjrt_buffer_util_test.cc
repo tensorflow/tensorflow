@@ -66,7 +66,8 @@ PJRT_Buffer* CreateCBuffer() {
       data.data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,
       xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-      c_api_client->pjrt_c_client()->client->addressable_devices()[0]);
+      c_api_client->pjrt_c_client()->client->memory_spaces()[0],
+      /*device_layout=*/nullptr);
   CHECK_OK(buffer.status());
 
   return new PJRT_Buffer{std::move(*buffer), c_api_client->pjrt_c_client()};
@@ -98,7 +99,7 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorIncoorectType) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
-          nullptr, pjrt_client->addressable_devices()[0]));
+          nullptr, pjrt_client->memory_spaces()[0], /*device_layout=*/nullptr));
   tensorflow::AsyncValueTensor* av_tensor =
       tensorflow::AsyncValueTensor::FromTensor(&tensor);
   av_tensor->SetBuffer(std::move(buffer));
@@ -127,7 +128,7 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorSuccess) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
-          nullptr, pjrt_client->addressable_devices()[0]));
+          nullptr, pjrt_client->memory_spaces()[0], /*device_layout=*/nullptr));
   tensorflow::AsyncValueTensor* av_tensor =
       tensorflow::AsyncValueTensor::FromTensor(&tensor);
   av_tensor->SetBuffer(std::move(buffer));

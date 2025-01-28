@@ -16,15 +16,23 @@ limitations under the License.
 #include "xla/service/source_target_pairs.h"
 
 #include <memory>
+#include <utility>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
+
+using CycleType = SourceTargetPairs::CycleType;
 
 struct Cannonical {
   SourceTargetPairs cycle;
@@ -38,7 +46,7 @@ class CollectivePermuteUtilsTest : public ::testing::Test {
                       .fwd_edge = SourceTargetPairs({{0, 1}}),
                       .bwd_edge = SourceTargetPairs({{1, 0}})};
 
-  Cannonical bwd2_ = {.cycle = SourceTargetPairs({{1, 0}, {0, 1}}),
+  Cannonical bwd2_ = {.cycle = SourceTargetPairs({{0, 1}, {1, 0}}),
                       .fwd_edge = SourceTargetPairs({{1, 0}}),
                       .bwd_edge = SourceTargetPairs({{0, 1}})};
 
@@ -57,9 +65,27 @@ class CollectivePermuteUtilsTest : public ::testing::Test {
       const SourceTargetPairs& pairs) {
     return HloCollectivePermuteInstruction(
         HloOpcode::kCollectivePermute, ShapeUtil::MakeShape(U32, {8, 8}),
-        {simple_input_.get()}, pairs.data(), 1);
+        {simple_input_.get()}, pairs.expand(), 1);
   }
 };
+
+TEST_F(CollectivePermuteUtilsTest, FromString) {
+  EXPECT_EQ(SourceTargetPairs::FromString("{{0,1},{1,0}}").value(),
+            fwd2_.cycle);
+  EXPECT_EQ(SourceTargetPairs::FromString("{{0,1}, {1,0}}").value(),
+            bwd2_.cycle);
+  EXPECT_EQ(SourceTargetPairs::FromString("{{0,1},{1,2},{2,3},{3,0}}").value(),
+            fwd4_.cycle);
+  EXPECT_THAT(SourceTargetPairs::FromString("{{0,1},{1}}"),
+              ::tsl::testing::StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST_F(CollectivePermuteUtilsTest, AbslStringify) {
+  EXPECT_EQ(
+      absl::StrFormat("Source Target Pairs: %v",
+                      SourceTargetPairs::FromString("{{0,1},{1,0}}").value()),
+      "Source Target Pairs: {{0,1},{1,0}}");
+}
 
 TEST_F(CollectivePermuteUtilsTest, HasCycles) {
   EXPECT_TRUE(fwd2_.cycle.HasCycles());
@@ -108,9 +134,21 @@ TEST_F(CollectivePermuteUtilsTest, IsBackwardCycle) {
 
 TEST_F(CollectivePermuteUtilsTest, SourceTargetPairsString) {
   EXPECT_EQ(fwd2_.cycle.ToString(), "{{0,1},{1,0}}");
-  EXPECT_EQ(bwd2_.cycle.ToString(), "{{1,0},{0,1}}");
+  EXPECT_EQ(bwd2_.cycle.ToString(), "{{0,1},{1,0}}");
   EXPECT_EQ(fwd4_.cycle.ToString(), "{{0,1},{1,2},{2,3},{3,0}}");
   EXPECT_EQ(bwd4_.cycle.ToString(), "{{0,3},{1,0},{2,1},{3,2}}");
+}
+
+TEST_F(CollectivePermuteUtilsTest, SplitEdges) {
+  EXPECT_EQ(fwd2_.cycle.SplitEdges(CycleType::kForward),
+            std::make_pair(fwd2_.bwd_edge, fwd2_.fwd_edge));
+  EXPECT_EQ(bwd2_.cycle.SplitEdges(CycleType::kBackward),
+            std::make_pair(bwd2_.bwd_edge, bwd2_.fwd_edge));
+
+  EXPECT_EQ(fwd4_.cycle.SplitEdges(CycleType::kForward),
+            std::make_pair(fwd4_.bwd_edge, fwd4_.fwd_edge));
+  EXPECT_EQ(bwd4_.cycle.SplitEdges(CycleType::kBackward),
+            std::make_pair(bwd4_.bwd_edge, bwd4_.fwd_edge));
 }
 
 }  // namespace
