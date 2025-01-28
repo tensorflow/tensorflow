@@ -347,7 +347,7 @@ class AsyncValueRef {
   }
 
   ABSL_DEPRECATED("Use SetError with absl::Status argument")
-  void SetError(std::string_view message) const {
+  void SetError(absl::string_view message) const {
     SetError(absl::InternalError(message));
   }
 
