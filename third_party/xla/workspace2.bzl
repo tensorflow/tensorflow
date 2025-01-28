@@ -4,7 +4,7 @@
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
 # Import TSL Workspaces
-load("@local_tsl//:workspace2.bzl", "tsl_workspace2")
+load("//:tsl_workspace2.bzl", "tsl_workspace2")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 
