@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_READER_BASE_H_
 #define TENSORFLOW_CORE_FRAMEWORK_READER_BASE_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/queue_interface.h"
 #include "tensorflow/core/framework/reader_interface.h"
 #include "tensorflow/core/lib/core/stringpiece.h"

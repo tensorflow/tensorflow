@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_OP_SEGMENT_H_
 #define TENSORFLOW_CORE_FRAMEWORK_OP_SEGMENT_H_
 
+#include <functional>
 #include <string>
 #include <unordered_map>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"

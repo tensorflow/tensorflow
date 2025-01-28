@@ -16,10 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_RESOURCE_VAR_H_
 #define TENSORFLOW_CORE_FRAMEWORK_RESOURCE_VAR_H_
 
+#include <atomic>
+#include <cstdint>
 #include <string>
+#include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 // Forward declarations to avoid introducing a dependency on headers in

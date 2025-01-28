@@ -16,6 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_RUN_HANDLER_H_
 #define TENSORFLOW_CORE_FRAMEWORK_RUN_HANDLER_H_
 
+#include <atomic>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/platform/context.h"
