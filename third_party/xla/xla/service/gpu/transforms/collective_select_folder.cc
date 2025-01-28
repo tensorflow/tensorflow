@@ -41,8 +41,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using SourceTargetPair = std::pair<int64_t, int64_t>;
-using SourceTargetPairs = std::vector<SourceTargetPair>;
+using SourceTargetPairType = std::pair<int64_t, int64_t>;
+using SourceTargetPairsType = std::vector<SourceTargetPairType>;
 
 struct FoldableSelect {
   Comparison::Direction cmp_direction;
@@ -127,7 +127,7 @@ std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
 }
 
 bool SelectPredicateEval(const FoldableSelect& select_match,
-                         const SourceTargetPair& pair) {
+                         const SourceTargetPairType& pair) {
   int64_t src_id = pair.first;
   return select_match.cmp_direction == Comparison::Direction::kEq
              ? src_id == select_match.constant_id
@@ -135,7 +135,7 @@ bool SelectPredicateEval(const FoldableSelect& select_match,
 };
 
 std::optional<bool> StaticallyEvaluatePredicateForAllSourceIDs(
-    const FoldableSelect& select_match, const SourceTargetPairs& pairs) {
+    const FoldableSelect& select_match, const SourceTargetPairsType& pairs) {
   // If there are no pairs, the predicate is undefined.
   if (pairs.empty()) return std::nullopt;
 
@@ -147,7 +147,7 @@ std::optional<bool> StaticallyEvaluatePredicateForAllSourceIDs(
   // Check that the result is the same for all source target pairs. If not,
   // we have a contradiction and cannot statically evaluate the predicate. We
   // return std::nullopt in this case.
-  if (!absl::c_all_of(pairs, [&](const SourceTargetPair& it) -> bool {
+  if (!absl::c_all_of(pairs, [&](const SourceTargetPairType& it) -> bool {
         return result_candidate == SelectPredicateEval(select_match, it);
       })) {
     return std::nullopt;
