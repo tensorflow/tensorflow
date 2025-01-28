@@ -94,7 +94,6 @@ HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule(
       instruction_can_change_layout_func());
   TF_RETURN_IF_ERROR(
       module->ParseHloStringAndVerifyModule(hlo_text, parser_options));
-  UpdateEntryComputationLayout(module.get());
   return std::move(module);
 }
 
@@ -109,6 +108,7 @@ HloRunnerAgnosticTestBase::AddEntryComputationAndUpdateEntryComputationLayout(
 
 void HloRunnerAgnosticTestBase::UpdateEntryComputationLayout(
     HloModule* const module) const {
+  // TODO - b/391868033: Remove UpdateEntryComputationLayout from this class.
   xla::UpdateEntryComputationLayout(
       module, test_runner_->device_shape_representation_fn());
 }

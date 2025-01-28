@@ -112,6 +112,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
   absl::string_view Name() const override;
 
   void UpdateEntryComputationLayout(HloModule* module) {
+    // TODO - b/391868033: Remove UpdateEntryComputationLayout from this class.
     xla::UpdateEntryComputationLayout(module, device_shape_representation_fn_);
   }
 
