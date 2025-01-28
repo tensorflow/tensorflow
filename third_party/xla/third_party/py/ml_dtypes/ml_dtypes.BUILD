@@ -40,7 +40,12 @@ cc_library(
     # include these headers with the  prefix.
     includes = [
         ".",
+        "float8",
         "ml_dtypes",
+    ],
+    deps = [
+        ":float8",
+        "@eigen_archive//:eigen3",
     ],
 )
 
