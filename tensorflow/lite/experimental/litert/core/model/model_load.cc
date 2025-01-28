@@ -28,6 +28,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
+#include "tensorflow/lite/experimental/litert/core/model/buffer_manager.h"
 #include "tensorflow/lite/experimental/litert/core/model/flatbuffer_to_litert.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_graph.h"
@@ -40,7 +41,11 @@ namespace {
 // Provides a view of model-level resources when constructing litert graph.
 class FlatbufferContext {
  public:
-  explicit FlatbufferContext(TflModel& tfl_model) : tfl_model_(tfl_model) {}
+  FlatbufferContext(TflModel& tfl_model, BufferManager* buffer_manager,
+                    const uint8_t* alloc_base)
+      : tfl_model_(tfl_model),
+        buffer_manager_(buffer_manager),
+        alloc_base_(alloc_base) {}
 
   void SetOpCode(LiteRtOpT& litert_op, uint32_t ind) {
     auto tfl_op_code = GetTflOpCode(tfl_model_, ind);
@@ -48,19 +53,20 @@ class FlatbufferContext {
     detail::SetTflOpCodeInd(litert_op, ind);
   }
 
-  // Take ownership of the tfl buffer under the given index if it exists.
-  Expected<TflBufferPtr> TakeTflBuffer(uint32_t ind) {
-    // TODO: Return (and store in litert model) these as shared pointers
-    // and remove copy.
-    auto tfl_buf = GetBuffer(tfl_model_, ind);
-    if (!tfl_buf) {
-      return tfl_buf.Error();
-    }
-    return std::make_unique<TflBuffer>(**tfl_buf);
+  // Get the buffer at the given index in the tflite model. This must be a
+  // copied currently since we are using the object based flatbuffer API.
+  // TODO switch to use the lower level flatbuffer api to avoid the copy.
+  Expected<const tflite::BufferT*> GetTflBuffer(uint32_t ind) const {
+    return GetBuffer(tfl_model_, ind);
   }
+
+  BufferManager* GetBufferManager() { return buffer_manager_; }
 
  private:
   TflModel& tfl_model_;
+  BufferManager* buffer_manager_;
+  // NOLINTNEXTLINE
+  const uint8_t* alloc_base_;
 };
 
 LiteRtStatus UnpackOp(FlatbufferContext& context, LiteRtSubgraphT& parent,
@@ -116,19 +122,28 @@ LiteRtStatus UnpackTensor(FlatbufferContext& context, TflTensorPtr tfl_tensor,
                           LiteRtTensorT& litert_tensor) {
   // WEIGHTS
 
+  litert_tensor.Weights().SetBufferManager(context.GetBufferManager());
+
   const auto buffer_ind = tfl_tensor->buffer;
   if (buffer_ind != 0) {
-    auto buffer = context.TakeTflBuffer(buffer_ind);
+    auto buffer = context.GetTflBuffer(buffer_ind);
     if (!buffer) {
       return buffer.Error().Status();
     }
+    const auto& tfl_buffer = **buffer;
 
-    if (buffer->get()->offset != 0) {
+    if (tfl_buffer.offset != 0) {
       // TODO: b/365299994 - Support buffer with offset.
       LITERT_LOG(LITERT_ERROR, "Buffers with offset not yet supported.");
       return kLiteRtStatusErrorUnsupported;
     }
-    detail::SetTflBuffer(litert_tensor.Weights(), std::move(*buffer));
+
+    // TODO we can switch to lower level flatbuffer api here and just pass the
+    // view through w/ no copy.
+    OwningBufferRef<uint8_t> weights_buffer(tfl_buffer.data.data(),
+                                            tfl_buffer.data.size());
+    SetWeightsFromOwnedBuffer(litert_tensor.Weights(),
+                              std::move(weights_buffer));
   }
 
   // TENSOR TYPE
@@ -270,21 +285,24 @@ LiteRtStatus UnpackMetadata(FlatbufferContext& context,
                             std::vector<TflMetadataPtr>& tfl_metadata,
                             LiteRtModelT& parent) {
   for (auto& tfl_m_data : tfl_metadata) {
-    auto tfl_buffer = context.TakeTflBuffer(tfl_m_data->buffer);
+    auto tfl_buffer = context.GetTflBuffer(tfl_m_data->buffer);
     if (!tfl_buffer) {
       return tfl_buffer.Error().Status();
     }
-
-    const auto& tfl_vec = tfl_buffer->get()->data;
-    parent.PushMetadata(tfl_m_data->name, tfl_vec.data(), tfl_vec.size());
+    const auto& tfl_buf = **tfl_buffer;
+    // TODO switch to lower level flatbuffer api here and just pass the view
+    // through w/ no copy.
+    parent.PushMetadata(tfl_m_data->name, tfl_buf.data.data(),
+                        tfl_buf.data.size());
   }
 
   return kLiteRtStatusOk;
 }
 
-Expected<LiteRtModelT::Ptr> UnpackModel(TflModelPtr tfl_model) {
+Expected<LiteRtModelT::Ptr> UnpackModel(TflModelPtr tfl_model,
+                                        const uint8_t* alloc_base) {
   auto litert_model = std::make_unique<LiteRtModelT>();
-  FlatbufferContext context(*tfl_model);
+  FlatbufferContext context(*tfl_model, litert_model->Buffers(), alloc_base);
 
   for (auto& tfl_subgraph : tfl_model->subgraphs) {
     LITERT_RETURN_IF_ERROR(UnpackSubgraph(context, std::move(tfl_subgraph),
@@ -307,7 +325,7 @@ Expected<LiteRtModelT::Ptr> LoadModelFromBuffer(BufferRef<uint8_t> buffer) {
   if (!flatbuffer) {
     return flatbuffer.Error();
   }
-  auto litert_model = UnpackModel(flatbuffer->get()->Unpack());
+  auto litert_model = UnpackModel(flatbuffer->get()->Unpack(), buffer.Data());
   if (litert_model) {
     // Save the original FB pointer to use it later on CompiledModel.
     detail::SetTflInitFlatbuffer(**litert_model, buffer);
@@ -320,7 +338,8 @@ Expected<LiteRtModelT::Ptr> LoadModelFromFile(absl::string_view filename) {
   if (!flatbuffer) {
     return flatbuffer.Error();
   }
-  return UnpackModel(flatbuffer->get()->Unpack());
+  return UnpackModel(flatbuffer->get()->Unpack(),
+                     flatbuffer->get()->Buf().Data());
 }
 
 }  // namespace litert::internal

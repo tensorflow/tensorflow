@@ -22,6 +22,7 @@
 #include <iterator>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,6 +36,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/core/model/buffer_manager.h"
 #include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -99,16 +101,6 @@ const ::litert::internal::TflOptions& GetTflOptions(const LiteRtOpT& litert_op);
 
 ::litert::internal::TflOptions&& TakeTflOptions(LiteRtOpT& litert_op);
 
-// WEIGHT
-
-const ::litert::internal::TflBuffer& GetTflBuffer(
-    const LiteRtWeightsT& litert_weights);
-
-litert::internal::TflBufferPtr TakeTflBuffer(LiteRtWeightsT& litert_weights);
-
-void SetTflBuffer(LiteRtWeightsT& litert_weights,
-                  litert::internal::TflBufferPtr tfl_buffer);
-
 // MODEL
 
 const std::vector<::litert::internal::TflOpCodePtr>& GetTflOpCodes(
@@ -120,6 +112,7 @@ void SetTflOpCodes(LiteRtModelT& litert_model, Arg&& arg);
 std::vector<::litert::internal::TflOpCodePtr>&& TakeTflOpCodes(
     LiteRtModelT& litert_model);
 
+// TODO promote the init buf to be an official method.
 void SetTflInitFlatbuffer(LiteRtModelT& litert_model,
                           ::litert::BufferRef<uint8_t> init_flatbuffer);
 
@@ -208,42 +201,71 @@ class LiteRtWeightsT {
   using OwnedBuffer = ::litert::OwningBufferRef<uint8_t>;
 
  public:
+  using BufferId = ::litert::internal::BufferManager::BufferId;
+  using BufferManager = ::litert::internal::BufferManager;
+
   // Underlying data.
-  ::litert::BufferRef<uint8_t> Buf() const {
-    return ::litert::BufferRef<uint8_t>(tfl_buf_->data.data(),
-                                        tfl_buf_->data.size());
+  ::litert::BufferRef<uint8_t> Buffer() const {
+    auto buf = GetBufferManager()->GetBuffer(buffer_id_);
+    ABSL_DCHECK(buf.HasValue());
+    return *buf;
   }
 
-  // Set weights via copied data.
-  void SetFromBuf(::litert::BufferRef<uint8_t> buf) {
-    tfl_buf_->data.assign(buf.Data(), buf.Data() + buf.Size());
+  // Set the buffer manager, expects a stable pointer. A default buffer manager
+  // will be initialized for convenience but most cases will share a single
+  // buffer manager owned by the model.
+  void SetBufferManager(BufferManager* buffer_manager) {
+    buffer_manager_ = buffer_manager;
   }
 
-  // Set via copied vec.
-  void SetFromVec(const std::vector<uint8_t>& vec) { tfl_buf_->data = vec; }
+  // Get the underlying buffer manager.
+  BufferManager* GetBufferManager() const {
+    if (std::holds_alternative<BufferManager*>(buffer_manager_)) {
+      return std::get<BufferManager*>(buffer_manager_);
+    } else {
+      return std::get<BufferManager::Ptr>(buffer_manager_).get();
+    }
+  }
+
+  // Set from a pre-registered buffer. This expects buffer was registered
+  // with the same manager.
+  void SetBufferId(BufferId buffer_id) { buffer_id_ = buffer_id; }
+
+  // Get the id generated for the buffer by the manager.
+  BufferId GetBufferId() const { return buffer_id_; }
 
   // IR is generally, default constructible and movable but not copyable.
-  LiteRtWeightsT()
-      : tfl_buf_(std::make_unique<::litert::internal::TflBuffer>()) {}
+  LiteRtWeightsT() = default;
+  explicit LiteRtWeightsT(BufferManager* buffer_manager)
+      : buffer_manager_(buffer_manager) {}
   LiteRtWeightsT(const LiteRtWeightsT&) = delete;
   LiteRtWeightsT(LiteRtWeightsT&&) = default;
   LiteRtWeightsT& operator=(const LiteRtWeightsT&) = delete;
   LiteRtWeightsT& operator=(LiteRtWeightsT&&) = default;
 
-  // Friendship for internal tflite details.
-  friend const ::litert::internal::TflBuffer& detail::GetTflBuffer(
-      const LiteRtWeightsT& litert_weights);
-
-  friend litert::internal::TflBufferPtr detail::TakeTflBuffer(
-      LiteRtWeightsT& litert_weights);
-
-  friend void detail::SetTflBuffer(LiteRtWeightsT& litert_weights,
-                                   litert::internal::TflBufferPtr tfl_buffer);
-
  private:
-  // TFLITE
-  ::litert::internal::TflBufferPtr tfl_buf_;
+  BufferId buffer_id_ = BufferManager::kEmptyBufferId;
+  std::variant<BufferManager*, BufferManager::Ptr> buffer_manager_ =
+      std::make_unique<BufferManager>();
 };
+
+// Set weights via an unowned buffer. Caller is responsible for ensuring the
+// buffer outlives the weights. Registers the buffer with the manager.
+inline void SetWeightsFromUnownedBuffer(LiteRtWeightsT& weights,
+                                        ::litert::BufferRef<uint8_t> buffer) {
+  auto* manager = weights.GetBufferManager();
+  auto buf_id = manager->RegisterNonOwnedBuffer(buffer);
+  weights.SetBufferId(buf_id);
+}
+
+// Set weights via an unowned buffer. Caller is responsible for ensuring the
+// buffer outlives the weights. Registers the buffer with the manager.
+inline void SetWeightsFromOwnedBuffer(
+    LiteRtWeightsT& weights, ::litert::OwningBufferRef<uint8_t>&& buffer) {
+  auto* manager = weights.GetBufferManager();
+  auto buf_id = manager->RegisterOwnedBuffer(std::move(buffer));
+  weights.SetBufferId(buf_id);
+}
 
 // Fundamental value in a litert program, "edges" in the graph.
 class LiteRtTensorT {
@@ -654,6 +676,7 @@ class LiteRtModelT {
   using ExternalBufferReference = std::pair<ExternalBufferId, std::string>;
   using ExternalBufferMap =
       absl::flat_hash_map<LiteRtOp, ExternalBufferReference>;
+  using BufferManager = ::litert::internal::BufferManager;
 
   // TODO replace this with the index of the default signature.
   static constexpr const size_t kMainSubgraphIndex = 0;
@@ -794,6 +817,9 @@ class LiteRtModelT {
   // Number of external buffers. Ids will be 0 <-> num - 1.
   size_t NumExternalBuffers() const { return external_buffers_.size(); }
 
+  // Get stable pointer to buffer manager object.
+  BufferManager* Buffers() { return buffer_manager_.get(); }
+
   // IR is generally, default constructible and movable but not copyable.
   LiteRtModelT() = default;
   LiteRtModelT(const LiteRtModelT&) = delete;
@@ -821,8 +847,12 @@ class LiteRtModelT {
   LiteRtSignatureT::Alloc signatures_;
 
   MetadataMap metadata_;
+  // TODO use the new unified buffer manager for external buffers.
   std::vector<litert::OwningBufferRef<uint8_t>> external_buffers_;
   ExternalBufferMap external_buffer_map_;
+
+  // Use unique ptr here to keep stable.
+  BufferManager::Ptr buffer_manager_ = std::make_unique<BufferManager>();
 
   // TFLITE
   TflOpCodes tfl_operator_codes_;

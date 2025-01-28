@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -42,6 +43,8 @@ struct BufferContext {
 // buffers may be owned or non-owned by the model. Uses id based indexing.
 class BufferManager {
  public:
+  using Ptr = std::unique_ptr<BufferManager>;
+
   // Unique identifier for a buffer. 0 is reserved for empty buffers.
   using BufferId = uint32_t;
   static constexpr BufferId kEmptyBufferId = 0;

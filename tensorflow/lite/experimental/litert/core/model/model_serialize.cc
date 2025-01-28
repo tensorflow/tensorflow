@@ -27,6 +27,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
@@ -175,8 +176,29 @@ LiteRtStatus PackTensor(SerializationContext& builder,
   }
   tfl_tensor.quantization = std::move(*tfl_quantization);
 
-  tfl_tensor.buffer =
-      builder.SubmitBuffer(detail::TakeTflBuffer(litert_tensor.Weights()));
+  const auto litert_buf_id = litert_tensor.Weights().GetBufferId();
+  auto* buffer_manager = litert_tensor.Weights().GetBufferManager();
+
+  auto litert_buf_ctx = buffer_manager->GetContext(litert_buf_id);
+  if (!litert_buf_ctx) {
+    return litert_buf_ctx.Error().Status();
+  }
+
+  if (litert_buf_ctx->get().should_append) {
+    // TODO support this.
+    LITERT_LOG(LITERT_ERROR,
+               "Tensors with offset not yet supported in model serialize");
+    return kLiteRtStatusErrorUnsupported;
+  }
+
+  auto litert_buf = buffer_manager->GetBuffer(litert_buf_id);
+
+  auto tfl_buffer = std::make_unique<TflBuffer>();
+  tfl_buffer->data.assign(litert_buf->Data(),
+                          litert_buf->Data() + litert_buf->Size());
+  const auto tfl_buffer_ind = builder.SubmitBuffer(std::move(tfl_buffer));
+  tfl_tensor.buffer = tfl_buffer_ind;
+
   tfl_tensor.name = std::string(litert_tensor.Name());
 
   return kLiteRtStatusOk;

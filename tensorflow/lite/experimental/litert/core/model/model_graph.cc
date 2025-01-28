@@ -14,11 +14,13 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/model_graph.h"
 
+#include <cstdint>
 #include <optional>
 #include <utility>
 
 #include "absl/log/absl_check.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 
@@ -40,8 +42,10 @@ void CloneTo(const LiteRtTensorT& src, LiteRtTensorT& dest) {
   dest.SetName({src.Name().cbegin(), src.Name().cend()});
   dest.SetQarams(src.Qparams());
   dest.SetType(src.Type());
-  // TODO: b/383906683 Avoid copying for better performance.
-  dest.Weights().SetFromBuf(src.Weights().Buf());
+  // TODO: Optimize buffer handoffs here.
+  OwningBufferRef<uint8_t> weights_buffer(src.Weights().Buffer().Data(),
+                                          src.Weights().Buffer().Size());
+  SetWeightsFromOwnedBuffer(dest.Weights(), std::move(weights_buffer));
 }
 
 void CloneTo(const LiteRtOpT& src, LiteRtOpT& dest) {
@@ -102,7 +106,7 @@ bool IsConstant(const LiteRtTensorT& tensor) {
       is_zero_sized = true;
     }
   }
-  const auto is_const = tensor.Weights().Buf().Size() > 0 || is_zero_sized;
+  const auto is_const = tensor.Weights().Buffer().Size() > 0 || is_zero_sized;
   ABSL_DCHECK(!is_const || tensor.DefiningOp() == nullptr)
       << "Constant tensors should not be defined by an op";
   return is_const;

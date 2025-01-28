@@ -282,7 +282,7 @@ TEST(ConvertGraphTest, ConvertMultipleOps) {
 
   auto& cst = subgraph.EmplaceTensor();
   OwningBufferRef<uint8_t> weights(8);
-  cst.Weights().SetFromBuf(weights);
+  SetWeightsFromUnownedBuffer(cst.Weights(), weights);
   cst.SetName("cst");
   cst.SetType(GetTestTensorType());
 

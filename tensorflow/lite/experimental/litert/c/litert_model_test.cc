@@ -14,6 +14,7 @@
 
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -34,7 +35,7 @@
 namespace {
 
 using ::litert::BufferRef;
-using ::litert::internal::MakeTflBuffer;
+using ::litert::OwningBufferRef;
 using ::testing::ElementsAreArray;
 
 TEST(LiteRtWeightsTest, GetNullWeights) {
@@ -49,8 +50,13 @@ TEST(LiteRtWeightsTest, GetNullWeights) {
 }
 
 TEST(LiteRtWeightsTest, GetWeights) {
+  static constexpr std::array kData = {1, 2, 3};
+  const uint8_t* kDataPtr = reinterpret_cast<const uint8_t*>(kData.data());
+  const auto kDataSize = kData.size() * sizeof(int32_t);
+
   LiteRtWeightsT weights;
-  detail::SetTflBuffer(weights, MakeTflBuffer({1, 2, 3}));
+  SetWeightsFromOwnedBuffer(weights,
+                            OwningBufferRef<uint8_t>(kDataPtr, kDataSize));
 
   const void* addr;
   size_t size;
@@ -60,7 +66,7 @@ TEST(LiteRtWeightsTest, GetWeights) {
   EXPECT_EQ(size, 3 * sizeof(int32_t));
 
   EXPECT_THAT(absl::MakeConstSpan(reinterpret_cast<const int32_t*>(addr), 3),
-              ElementsAreArray({1, 2, 3}));
+              ElementsAreArray(kData));
 }
 
 TEST(LiteRtTensorTest, GetUnrankedType) {

@@ -28,6 +28,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_model_hdrs",
     ],
     deps = [
+        ":buffer_manager",
         ":ir_allocator",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/core/c:c_api_types",
@@ -52,6 +53,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/test:testdata/simple_model.tflite",
     ],
     deps = [
+        ":buffer_manager",
         ":model",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
@@ -69,6 +71,7 @@ cc_library(
     srcs = ["model_load.cc"],
     hdrs = ["model_load.h"],
     deps = [
+        ":buffer_manager",
         ":flatbuffer_to_litert",
         ":model",
         ":model_graph",
