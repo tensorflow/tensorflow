@@ -23,12 +23,12 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 
 using testing::Not;
+using testing::StrEq;
+using testing::litert::IsError;
+using testing::litert::IsOk;
 
 namespace litert {
 namespace {
-
-using ::testing::litert::IsError;
-using ::testing::litert::IsOk;
 
 struct CopyOnly {
   CopyOnly() = default;
@@ -43,7 +43,7 @@ struct MoveOnly {
 };
 
 TEST(IsOkMatcherTest, Works) {
-  const Expected<int> error = Error(kLiteRtStatusErrorNotFound);
+  const Expected<int> error = Error(kLiteRtStatusErrorNotFound, "not found");
   EXPECT_THAT(kLiteRtStatusOk, IsOk());
   EXPECT_THAT(Expected<int>(3), IsOk());
 
@@ -52,6 +52,25 @@ TEST(IsOkMatcherTest, Works) {
   EXPECT_THAT(Error(kLiteRtStatusErrorInvalidArgument), Not(IsOk()));
 
   EXPECT_THAT(kLiteRtStatusErrorUnsupported, Not(IsOk()));
+
+  EXPECT_THAT(testing::DescribeMatcher<Expected<int>>(IsOk()), StrEq("is ok."));
+  EXPECT_THAT(testing::DescribeMatcher<Expected<int>>(Not(IsOk())),
+              StrEq("is not ok."));
+
+  testing::StringMatchResultListener listener;
+  EXPECT_FALSE(testing::ExplainMatchResult(
+      IsOk(), kLiteRtStatusErrorUnsupported, &listener));
+  EXPECT_THAT(listener.str(), StrEq("status is kLiteRtStatusErrorUnsupported"));
+
+  listener.Clear();
+  EXPECT_FALSE(testing::ExplainMatchResult(IsOk(), error, &listener));
+  EXPECT_THAT(listener.str(),
+              StrEq("error is (kLiteRtStatusErrorNotFound) not found"));
+
+  listener.Clear();
+  EXPECT_FALSE(testing::ExplainMatchResult(IsOk(), error.Error(), &listener));
+  EXPECT_THAT(listener.str(),
+              StrEq("error is (kLiteRtStatusErrorNotFound) not found"));
 }
 
 // No, I'm not creating a templated test fixture just for that. This only
@@ -69,6 +88,16 @@ void TestErrorWrapper() {
   EXPECT_THAT(error, Not(IsError(kLiteRtStatusErrorInvalidArgument)));
   // This checks against the wrong message.
   EXPECT_THAT(error, Not(IsError(kLiteRtStatusErrorNotFound, "oob")));
+
+  testing::StringMatchResultListener listener;
+  EXPECT_FALSE(testing::ExplainMatchResult(
+      IsError(kLiteRtStatusErrorInvalidArgument), error, &listener));
+  EXPECT_THAT(listener.str(), StrEq("status is kLiteRtStatusErrorNotFound"));
+
+  listener.Clear();
+  EXPECT_FALSE(testing::ExplainMatchResult(
+      IsError(kLiteRtStatusErrorNotFound, "oob"), error, &listener));
+  EXPECT_THAT(listener.str(), StrEq("message doesn't match"));
 }
 
 TEST(IsErrorMatcherTest, Works) {
@@ -81,14 +110,28 @@ TEST(IsErrorMatcherTest, Works) {
   EXPECT_THAT(Expected<int>(3), Not(IsError()));
 
   EXPECT_THAT(testing::DescribeMatcher<Expected<int>>(IsError()),
-              testing::StrEq("is an error."));
-  EXPECT_THAT(testing::DescribeMatcher<Expected<int>>(
-                  IsError(kLiteRtStatusErrorUnsupported)),
-              testing::StrEq("is an error with status code 5."));
+              StrEq("is an error."));
+  EXPECT_THAT(testing::DescribeMatcher<Expected<int>>(Not(IsError())),
+              StrEq("is not an error."));
+  EXPECT_THAT(
+      testing::DescribeMatcher<Expected<int>>(
+          IsError(kLiteRtStatusErrorUnsupported)),
+      testing::StrEq("is an error with status kLiteRtStatusErrorUnsupported."));
   EXPECT_THAT(testing::DescribeMatcher<Expected<int>>(
                   IsError(kLiteRtStatusErrorUnsupported, "unsupported")),
-              testing::StrEq("is an error with status code 5 and message "
+              testing::StrEq("is an error with status "
+                             "kLiteRtStatusErrorUnsupported and message "
                              "matching: 'unsupported'."));
+
+  testing::StringMatchResultListener listener;
+  EXPECT_FALSE(
+      testing::ExplainMatchResult(IsError(), kLiteRtStatusOk, &listener));
+  EXPECT_THAT(listener.str(), StrEq("status is kLiteRtStatusOk"));
+
+  listener.Clear();
+  EXPECT_FALSE(
+      testing::ExplainMatchResult(IsError(), Expected<int>(3), &listener));
+  EXPECT_THAT(listener.str(), StrEq("expected holds a value"));
 }
 
 TEST(LitertAssertOk, Works) {

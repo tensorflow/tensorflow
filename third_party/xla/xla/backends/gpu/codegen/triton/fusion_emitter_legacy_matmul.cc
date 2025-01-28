@@ -114,6 +114,26 @@ using ::mlir::ValueRange;
 
 namespace {
 
+const int kLhsIndex = 0;
+const int kRhsIndex = 1;
+const int kMetaIndex = 2;
+const int kOutputIndex = 3;
+
+// Returns the index of the operand in the fusion's parameter list. This
+// might work better as a map from Scope->X, but it needs more refactoring.
+size_t GetOperandIndex(TritonFusionAnalysis::Scope scope) {
+  switch (scope) {
+    case TritonFusionAnalysis::Scope::LHS:
+      return kLhsIndex;
+    case TritonFusionAnalysis::Scope::RHS:
+      return kRhsIndex;
+    case TritonFusionAnalysis::Scope::META:
+      return kMetaIndex;
+    case TritonFusionAnalysis::Scope::OUTPUT:
+      return kOutputIndex;
+  }
+}
+
 absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
   switch (t) {
     case F64:
@@ -1818,6 +1838,66 @@ class Scopes {
   Value pid_n_;
 };
 
+// This class represents a loadable input that needs to be partially loaded on
+// each iteration of a ForOp. It keeps track of which iterable argument indices
+// correspond to this input & all information necessary to load & modify
+// iteration arguments for the next iteration.
+class IterableInput {
+ public:
+  IterableInput(size_t iter_arg_index, size_t operand_index,
+                int contracting_dimension, Type type, Type storage_type,
+                const HloInstruction* hlo_instr, const Side* side,
+                std::vector<int32_t> boundary_checks)
+      : iter_arg_index_(iter_arg_index),
+        operand_index_(operand_index),
+        contracting_dimension_(contracting_dimension),
+        type_(type),
+        storage_type_(storage_type),
+        hlo_instr_(hlo_instr),
+        side_(side),
+        boundary_checks_(boundary_checks) {};
+
+  static absl::StatusOr<IterableInput> CreateIterableInput(
+      size_t iter_arg_index, EmitterLocOpBuilder& b, const MatMulDims& dims,
+      const Side* side, const HloInstruction* hlo_instr) {
+    Type input_ty;
+    if (side->scope == TritonFusionAnalysis::Scope::META) {
+      input_ty = b.getI16Type();
+    } else {
+      TF_ASSIGN_OR_RETURN(input_ty,
+                          TritonType(b, hlo_instr->shape().element_type()));
+    }
+    int contracting_dimension =
+        (side->scope == TritonFusionAnalysis::Scope::RHS)
+            ? dims.rhs_contracting_dim_idx
+            : dims.lhs_contracting_dim_idx;
+
+    return IterableInput(iter_arg_index, GetOperandIndex(side->scope),
+                         contracting_dimension, input_ty,
+                         StorageType(b, input_ty), hlo_instr, side,
+                         /*boundary_checks=*/{});
+  }
+
+  // Index of the iter_arg of the ForOp associated with this input.
+  size_t iter_arg_index_;
+  // Index used to differentiate it between LHS, RHS, and META inputs.
+  size_t operand_index_;
+  // Index of the contracting dimension in the input.
+  int contracting_dimension_;
+  // Type of the input.
+  Type type_;
+  // Storage type of the input (in case it is different & needs to be casted).
+  Type storage_type_;
+
+  // Necessary for some operations at the moment. Maybe could be refactored out.
+  const HloInstruction* hlo_instr_;
+  const Side* side_;
+
+  // This is currently set afterwards, but needs to be associated with the input
+  // during iteration.
+  std::vector<int32_t> boundary_checks_;
+};
+
 enum MaskExpandDimension { kMajor = 0, kMinor = 1 };
 
 Value EmitMaskOnInput(EmitterLocOpBuilder& b,
@@ -1985,28 +2065,15 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
   ma::ConstantOp accumulator_init =
       CreateConst(b, acc_ty, 0, {block_m, block_n});
 
-  // Parameters are passed to the loop in non-trivial order, these maps help
-  // finding them and their attributes.
-  absl::flat_hash_map<int, const HloInstruction*> iter_args_to_inputs;
-  absl::flat_hash_map<int, std::vector<int32_t>> iter_args_to_boundary_checks;
-
   // Calculate the sizes of the lhs, rhs, meta, and output sides.
   Scopes scopes(b, dot_instr, analysis, dims, config, launch_config, is_sparse);
 
   auto c32 = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
 
-  constexpr size_t kLhsMetaOperandIdx = HloDotInstruction::kOperands;
   size_t lsize = ScopeInputs(analysis, TritonFusionAnalysis::Scope::LHS).size();
   size_t rsize = ScopeInputs(analysis, TritonFusionAnalysis::Scope::RHS).size();
 
-  absl::flat_hash_map<const HloInstruction*, Type> triton_type_for_input;
-  for (const Side& side : {scopes.lhs(), scopes.rhs()}) {
-    for (const HloInstruction* input : ScopeInputs(analysis, side.scope)) {
-      TF_ASSIGN_OR_RETURN(Type input_ty,
-                          TritonType(b, input->shape().element_type()));
-      triton_type_for_input.insert({input, input_ty});
-    }
-  }
+  llvm::SmallVector<IterableInput> inputs;
 
   auto body_builder = [&](mlir::OpBuilder&, mlir::Location, Value ki,
                           ValueRange iter_args) -> void {
@@ -2015,51 +2082,48 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     std::array<absl::flat_hash_map<const HloInstruction*, Value>, 3> values;
 
     // Load tiles of all parameters of LHS and RHS scopes and advance pointers.
-    for (int i = 0; i < iter_args.size() - 1; ++i) {
-      const int index = i < lsize ? 0 : i < lsize + rsize ? 1 : 2;
-      const Side& side = *(scopes.input_scopes()[index]);
-
-      const HloInstruction* param_hlo = iter_args_to_inputs[i];
-      Type param_ty = index == kLhsMetaOperandIdx
-                          ? b.getI16Type()
-                          : triton_type_for_input.at(param_hlo);
-      Type param_storage_ty = StorageType(b, param_ty);
-      Value param_value =
-          EmitParameterLoad(b, iter_args[i], iter_args_to_boundary_checks[i]);
-      if (param_ty != param_storage_ty) {
+    for (const IterableInput& input : inputs) {
+      Value param_value = EmitParameterLoad(b, iter_args[input.iter_arg_index_],
+                                            input.boundary_checks_);
+      if (input.type_ != input.storage_type_) {
         // For example cast i8 to i1.
-        param_value = Cast(b, param_value, param_ty);
+        param_value = Cast(b, param_value, input.type_);
       }
 
-      CHECK(values[index].insert({param_hlo, param_value}).second);
+      CHECK(values[input.operand_index_]
+                .insert({input.hlo_instr_, param_value})
+                .second);
       SmallVector<Value> increments;
-      for (const DimProperties& dim : side.tiled_dims) {
+      for (const DimProperties& dim : input.side_->tiled_dims) {
         if (emitter.NonTrivialTiledDimensionHasNoIterationAtParameter(
-                side.scope, *iter_args_to_inputs[i], dim.index)) {
+                input.side_->scope, *input.hlo_instr_, dim.index)) {
           continue;
         }
         // Only the contracting dimensions are advanced.
-        if (dim.index == (index == 0 || index == kLhsMetaOperandIdx
-                              ? dims.lhs_contracting_dim_idx
-                              : dims.rhs_contracting_dim_idx)) {
+        if (dim.index == input.contracting_dimension_) {
           increments.push_back(c32(dim.block_size * split_k));
         } else {
           increments.push_back(c32(0));
         }
       }
       if (increments.empty()) {
-        iter_args_next.push_back(iter_args[i]);
+        iter_args_next.push_back(iter_args[input.iter_arg_index_]);
       } else {
         iter_args_next.push_back(b.create<mt::AdvanceOp>(
-            iter_args[i].getType(), iter_args[i], increments));
+            iter_args[input.iter_arg_index_].getType(),
+            iter_args[input.iter_arg_index_], increments));
       }
     }
 
     // Emit all operations of LHS and RHS scopes.
-    Value dot_input_lhs = emitter.MakeInput(scopes.lhs(), 0, values[0]);
-    Value dot_input_rhs = emitter.MakeInput(scopes.rhs(), 1, values[1]);
+    Value dot_input_lhs =
+        emitter.MakeInput(scopes.lhs(), kLhsIndex, values[kLhsIndex]);
+    Value dot_input_rhs =
+        emitter.MakeInput(scopes.rhs(), kRhsIndex, values[kRhsIndex]);
     Value dot_input_meta =
-        is_sparse ? emitter.MakeInput(*scopes.meta(), 2, values[2]) : Value{};
+        is_sparse
+            ? emitter.MakeInput(*scopes.meta(), kMetaIndex, values[kMetaIndex])
+            : Value{};
 
     // Operation in the fusion before the dot can alter the elements of the
     // tiles that were zero masked during loads. These have to be zeroed here
@@ -2140,14 +2204,16 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
 
   for (const Side* side : scopes.input_scopes()) {
     for (const HloInstruction* input : ScopeInputs(analysis, side->scope)) {
-      TF_RET_CHECK(
-          iter_args_to_inputs.insert({iter_args.size(), input}).second);
       TF_ASSIGN_OR_RETURN(SmallVector<Value> arguments,
                           GetArguments(fn, *input));
-      TF_ASSIGN_OR_RETURN(Value tensor_ptr,
-                          emitter.EmitTensorPointer(
-                              input, *side, arguments, scopes.pid_k(),
-                              iter_args_to_boundary_checks[iter_args.size()]));
+      TF_ASSIGN_OR_RETURN(IterableInput iter_input,
+                          IterableInput::CreateIterableInput(
+                              iter_args.size(), b, dims, side, input));
+      TF_ASSIGN_OR_RETURN(
+          Value tensor_ptr,
+          emitter.EmitTensorPointer(input, *side, arguments, scopes.pid_k(),
+                                    iter_input.boundary_checks_));
+      inputs.push_back(iter_input);
       iter_args.push_back(tensor_ptr);
     }
   }
