@@ -43,6 +43,15 @@ absl::Status CreateErrorFromPTXASLog(absl::string_view log,
 void WarnIfBadPtxasVersion(absl::string_view method,
                            const CudaComputeCapability& cc,
                            SemanticVersion compiler_version);
+
+// Determine whether the PTX extension for a compute capability should be used.
+//
+// Returns true if the argument compute capability has PTX extensions that are
+// only valid for that compute capability. For example, "sm_90" only includes
+// features that are forward compatible, whereas "sm_90a" (the extension) also
+// includes Hopper-specific features, such as WGMMA. We want to use the latter.
+bool ShouldUsePtxExtension(const CudaComputeCapability& cc);
+
 }  // namespace stream_executor
 
 #endif  // XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_HELPERS_H_
