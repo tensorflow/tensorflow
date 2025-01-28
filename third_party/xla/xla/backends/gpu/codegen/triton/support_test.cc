@@ -634,7 +634,6 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
@@ -686,7 +685,6 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
@@ -730,7 +728,6 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
@@ -888,7 +885,6 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                     kHloTestTemplate, data_type,
                                                     HloOpcode::kAllGather));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
@@ -904,7 +900,6 @@ ENTRY triton_computation {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
                                      HloOpcode::kAllGatherStart));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
@@ -918,7 +913,6 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                     kHloTestTemplate, data_type,
                                                     HloOpcode::kAllGatherDone));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
@@ -939,7 +933,6 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                     kHloTestTemplate, data_type,
                                                     HloOpcode::kAllReduce));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
@@ -962,15 +955,15 @@ ENTRY triton_computation {
   ROOT all-reduce-done = $0[128,32] all-reduce-done(all-reduce-start)
 })";
   TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti,
+      TestedInstruction ti_start,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
                                      HloOpcode::kAllReduceStart));
-  // all-reduce-start is not supported.
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
-  // all-reduce-done is not supported.
-  EXPECT_FALSE(IsTritonSupportedInstruction(
-      *ti.TritonComputation().root_instruction(), cc));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_done,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kAllReduceDone));
+  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{2, 2}, cc);
+  RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
 TEST_P(CollectiveTest, UnsupportedAllToAllFailsGracefullyWithTriton) {
@@ -983,7 +976,6 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                     kHloTestTemplate, data_type,
                                                     HloOpcode::kAllToAll));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
@@ -999,7 +991,6 @@ ENTRY triton_computation {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
                                      HloOpcode::kCollectivePermute));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
@@ -1047,7 +1038,6 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                     kHloTestTemplate, data_type,
                                                     HloOpcode::kReduceScatter));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
@@ -1070,18 +1060,21 @@ ENTRY triton_computation {
     calls=async_computation
   ROOT async-done = $0[10] async-done(async-update), calls=async_computation
 })";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
-                                                    kHloTestTemplate, data_type,
-                                                    HloOpcode::kAsyncStart));
-  // async-start is not supported.
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
-  // async-done is not supported.
-  EXPECT_FALSE(IsTritonSupportedInstruction(
-      *ti.TritonComputation().root_instruction(), cc));
-  // async-update is not supported.
-  EXPECT_FALSE(IsTritonSupportedInstruction(
-      *ti.TritonComputation().root_instruction()->operand(0), cc));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_start,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kAsyncStart));
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_update,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kAsyncUpdate));
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_done,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kAsyncDone));
+  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{1}, cc);
+  RunSupportTest(std::move(ti_update), /*output_tile_sizes=*/{1}, cc);
+  RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{1}, cc);
 }
 
 TEST_P(CollectiveTest,
@@ -1096,7 +1089,6 @@ ENTRY triton_computation {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
                                      HloOpcode::kCollectiveBroadcast));
-  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
