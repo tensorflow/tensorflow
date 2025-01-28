@@ -208,6 +208,24 @@ message DebugOptions {
   // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["AutotuneCacheMode","bool","float","int32","int64","LibNvJitLinkMode","map<string, string>","PGLEStrictnessLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","ShapeChecks","string","WhileLoopUnrolling"] // NOLINT
   // clang-format on
 
+  PipelineParallelismOptLevel
+      xla_gpu_experimental_pipeline_parallelism_opt_level = 351;
+
+  // Experimental optimizations for SPMD-based pipeline parallelism on GPU.
+  enum PipelineParallelismOptLevel {
+    PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE = 0;
+    // Enable only collective-permute decomposer to overlap send and recv
+    // separately, allowing to reveive data in the previous iteration while
+    // sending the current iteration.
+    PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE = 1;
+    // Additionally, enable collective-permute cycle decomposer. This set of
+    // optimizations will lead to best overlap for trivial pipeline parallelism
+    // implementation.
+    // TODO: Remove these optimizations when all users implement cycle
+    // decomposition at the JAX level.
+    PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER = 2;
+  }
+
   // Denylist for cuDNN convolutions.
   string xla_gpu_algorithm_denylist_path = 128;
 
@@ -502,9 +520,6 @@ message DebugOptions {
   //
   // Pre-existing block-level fusions are left unmodified.
   bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
-
-  // Experimental optimizations for SPMD-based pipeline parallelism on GPU.
-  bool xla_gpu_experimental_enable_pipeline_parallelism_opt = 351;
 
   // When enabled, the PriorityFusion pass will try to make Triton fusions first
   // and foremost where it is possible.

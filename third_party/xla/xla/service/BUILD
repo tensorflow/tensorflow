@@ -284,6 +284,7 @@ cc_library(
     srcs = ["collective_permute_decomposer.cc"],
     hdrs = ["collective_permute_decomposer.h"],
     deps = [
+        ":call_graph",
         ":collective_ops_utils",
         ":source_target_pairs",
         "//xla:shape_util",
