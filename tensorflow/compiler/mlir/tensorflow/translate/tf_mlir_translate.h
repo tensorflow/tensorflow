@@ -17,88 +17,19 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_H_
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_set>
-#include <vector>
 
-#include "absl/base/attributes.h"
-#include "absl/base/macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 
 namespace tensorflow {
-
-using tsl::Status;
-using tsl::StatusOr;
-
-struct GraphdefToMlirOptions {
-  std::string debug_info_file;
-  std::string xla_compile_device_type;
-  bool prune_unused_nodes;
-  bool convert_legacy_fed_inputs;
-  bool graph_as_function;
-  bool upgrade_legacy;
-  bool enable_shape_inference;
-  bool unconditionally_use_set_output_shapes;
-  bool enable_soft_placement;
-  bool set_original_tf_func_name = false;
-};
-
-// TODO(antiagainst): Directly manipulating files in library functions is not
-// a good idea. We should pass in a string/stream here.
-
-// Converts a TensorFlow GraphDef contained in `input` param into a MLIR module.
-// Creates MLIR entities into the given MLIR `context`.
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-GraphdefToMlirTranslateFunction(
-    llvm::StringRef input, const std::vector<std::string>& input_arrays,
-    const std::vector<std::string>& input_dtypes,
-    const std::vector<std::optional<std::vector<int>>>& input_shapes,
-    const std::vector<std::string>& output_arrays,
-    const std::vector<std::string>& control_output_arrays,
-    const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
-
-ABSL_DEPRECATED(
-    "Please use the other overload of this function which accepts structured "
-    "inputs instead of strings")
-// Converts a TensorFlow GraphDef contained in `input` param into a MLIR module.
-// Creates MLIR entities into the given MLIR `context`.
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-GraphdefToMlirTranslateFunction(
-    llvm::StringRef input, absl::string_view input_arrays,
-    absl::string_view input_dtypes, absl::string_view input_shapes,
-    absl::string_view output_arrays, absl::string_view control_output_arrays,
-    const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
-
-// Similar as the above function, but replaces all constant tensors
-// with randomly generated splat values.
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-GraphdefToSplattedMlirTranslateFunction(
-    llvm::StringRef input, const std::vector<std::string>& input_arrays,
-    const std::vector<std::string>& input_dtypes,
-    const std::vector<std::vector<int>>& input_shapes,
-    const std::vector<std::string>& output_arrays,
-    const std::vector<std::string>& control_output_arrays,
-    const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
-
-ABSL_DEPRECATED(
-    "Please use the other overload of this function which accepts structured "
-    "inputs instead of strings")
-// Similar as the above function, but replaces all constant tensors
-// with randomly generated splat values.
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-GraphdefToSplattedMlirTranslateFunction(
-    llvm::StringRef input, absl::string_view input_arrays,
-    absl::string_view input_dtypes, absl::string_view input_shapes,
-    absl::string_view output_arrays, absl::string_view control_output_arrays,
-    const GraphdefToMlirOptions& import_options, mlir::MLIRContext* context);
 
 // Converts a TensorFlow SavedModel stored in the directory with the given
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the

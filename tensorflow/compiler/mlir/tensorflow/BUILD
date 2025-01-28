@@ -1740,3 +1740,9 @@ aliased_targets = [
     )
     for target in aliased_targets
 ]
+
+alias(
+    name = "file_tf_mlir_translate",
+    actual = "//tensorflow/compiler/mlir/tensorflow/translate/tools:file_tf_mlir_translate",
+    visibility = ["//visibility:public"],
+)
