@@ -39,8 +39,7 @@ class HloPjRtInterpreterReferenceMixin
             std::make_unique<HloRunnerPjRt>(
                 std::make_unique<InterpreterClient>(),
                 InterpreterClient::DeviceShapeRepresentation,
-                InterpreterClient::ShapeSizeBytes,
-                /*use_parameter_layout_on_device=*/true),
+                InterpreterClient::ShapeSizeBytes),
             std::forward<BaseArgs>(base_args)...) {}
   ~HloPjRtInterpreterReferenceMixin() override = default;
 };
