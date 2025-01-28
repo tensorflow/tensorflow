@@ -318,6 +318,9 @@ LogicalResult rewriteCustomCallAsMhloOp(stablehlo::CustomCallOp stablehloOp,
   return success();
 }
 
+// TODO(b/392911302): Remove mhlo.backend_config once plugins support StableHLO
+// FFI custom calls.
+//
 // Preserve backward compatibility of typed_ffi custom calls by converting:
 // `stablehlo.custom_call @foo(%arg0) { mhlo.backend_config = {...} }`
 // ==>
