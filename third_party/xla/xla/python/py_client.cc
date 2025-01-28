@@ -206,8 +206,13 @@ absl::Status PyClient::Defragment() {
                        platform_id == SyclId();
 
   if (!is_gpu_client) {
-    return pjrt_client()->Defragment();
+    return absl::UnimplementedError(
+        "Defragmentation is not supported on this runtime.");
   }
+
+  // TODO(b/399879011): This is a GPU-specific implementation of `Defragment`.
+  // Ideally, this would be replaced with some kind of auto-defrag-on-OOM, or at
+  // least would not live in this file.
 
   struct TmpBuffer {
     // Non-empty for buffers found in a PyArray_Storage. Multiple Arrays
