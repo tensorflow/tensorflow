@@ -111,6 +111,29 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
 
   EXPECT_THAT(is_dynamic_dimension,
               ::testing::ElementsAreArray(dims_are_dynamic));
+  EXPECT_EQ(result_buffer->on_device_shape(),
+            ShapeUtil::MakeShape(S32, {2, 3}, {false, true}));
+  EXPECT_EQ(*result_buffer->logical_on_device_shape(),
+            ShapeUtil::MakeShape(S32, {2, 2}, {false, true}));
+}
+
+TEST(PjRtCApiClientTest, OnDeviceShape) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
+  for (PrimitiveType t : {F32, F16, S8, BF16}) {
+    Shape shape = ShapeUtil::MakeShape(t, {3, 2});
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto buffer,
+        client->BufferFromHostBuffer(
+            data.data(), shape.element_type(), shape.dimensions(),
+            /*byte_strides=*/std::nullopt,
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+            client->addressable_devices()[0]));
+    EXPECT_EQ(buffer->on_device_shape(), shape);
+    EXPECT_EQ(*buffer->logical_on_device_shape(), shape);
+  }
 }
 
 TEST(PjRtCApiClientTest, PlatformId) {

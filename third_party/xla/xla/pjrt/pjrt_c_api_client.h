@@ -485,9 +485,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   // PJRT C API doesn't support tuple buffers.
   bool IsTuple() const override { return false; }
 
-  const Shape& on_device_shape() const override {
-    LOG(FATAL) << "PjRtBuffer::on_device_shape() not implemented in PJRT C API";
-  }
+  const Shape& on_device_shape() const override;
 
   bool has_dynamic_dimensions() const override;
 
@@ -495,10 +493,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   absl::StatusOr<std::vector<int64_t>> logical_dimensions() override;
 
-  absl::StatusOr<Shape> logical_on_device_shape() override {
-    LOG(FATAL) << "PjRtBuffer::on_logical_device_shape() not implemented in "
-                  "PJRT C API";
-  }
+  absl::StatusOr<Shape> logical_on_device_shape() override;
 
   PjRtMemorySpace* memory_space() const override;
 
@@ -584,6 +579,8 @@ class PjRtCApiBuffer : public PjRtBuffer {
       is_dynamic_dimension_;
   // Used to synchronize concurrent setting of cached values.
   mutable absl::Mutex mu_;
+  // Cached result of on_device_shape();
+  mutable std::optional<Shape> on_device_shape_;
 };
 
 class PjRtCApiExternalReference : public PjRtBuffer::ExternalReference {
