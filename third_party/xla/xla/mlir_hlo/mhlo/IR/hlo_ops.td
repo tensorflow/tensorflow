@@ -2122,7 +2122,7 @@ def MHLO_BroadcastInDimOp : MHLO_Op<"broadcast_in_dim",
     MHLO_BroadcastDimAttr:$broadcast_dimensions
   );
 
-  let results = (outs MHLO_AnyTensor);
+  let results = (outs MHLO_StaticShapeOrBoundedDimTensor);
 
   let hasFolder = 1;
   let hasCanonicalizer = 1;
@@ -2881,7 +2881,7 @@ def MHLO_ReshapeOp: MHLO_Op<"reshape",
 
   let arguments = (ins MHLO_AnyTensor:$operand);
 
-  let results = (outs MHLO_AnyTensor);
+  let results = (outs MHLO_StaticShapeOrBoundedDimTensor);
   let hasFolder = 1;
   let hasCanonicalizer = 1;
   let hasVerifier = 1;

@@ -117,6 +117,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+        "@stablehlo//:base",
     ],
 )
 

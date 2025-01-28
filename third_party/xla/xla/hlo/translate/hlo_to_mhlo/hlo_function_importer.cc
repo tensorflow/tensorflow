@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -44,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/Base.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -168,6 +171,59 @@ Operation* createReturnOp(mlir::OpBuilder& builder, mlir::Location loc,
     return builder.create<mlir::func::ReturnOp>(loc, operands);
   }
   return builder.create<mlir::mhlo::ReturnOp>(loc, operands);
+}
+
+// Creates an array of zeros like the given MLIR type, if type has bounded
+// dynamism, the constant is padded and set to the dimenison size of the
+// operand.
+//
+// Example ZeroLike([<=5] operand):
+// %c = constant dense<0> : tensor<5xf32>
+// %0 = get_dimension_size %operand
+// %1 = set_dimension_size %c, %0, bounded_dim={0}
+//
+// Note: Currently this only supports a single bounded dimension.
+absl::StatusOr<mlir::Value> createConstantZeroLike(mlir::Value operand,
+                                                   Shape input_shape,
+                                                   mlir::OpBuilder* builder,
+                                                   mlir::Location loc) {
+  TF_ASSIGN_OR_RETURN(
+      mlir::RankedTensorType type,
+      ConvertTensorShapeToType<mlir::RankedTensorType>(input_shape, *builder));
+
+  LLVM_DEBUG(llvm::dbgs() << "CreateConstantZeroLike: " << operand << ", "
+                          << type << '\n');
+  if (type.hasStaticShape())
+    return builder
+        ->create<mlir::mhlo::ConstantOp>(loc, builder->getZeroAttr(type))
+        ->getResult(0);
+
+  // Note: Currently this only supports a single bounded dimension.
+  if (!mlir::hlo::hasSingleBoundedDimension(type))
+    return Internal(
+        "Currently HLO to MHLO only supports a single bounded dimension.");
+
+  auto bounded_dim = std::distance(type.getShape().begin(),
+                                   llvm::find_if(type.getShape(), [](auto dim) {
+                                     return mlir::ShapedType::isDynamic(dim);
+                                   }));
+
+  // Create a constant with no bounded dynamism, drop tensor encoding.
+  ArrayRef<int64_t> padded_dims(input_shape.dimensions().begin(),
+                                input_shape.dimensions().end());
+  auto padded_type =
+      mlir::RankedTensorType::get(padded_dims, type.getElementType());
+  auto padded_constant = builder->create<mlir::mhlo::ConstantOp>(
+      loc, builder->getZeroAttr(padded_type));
+
+  // Get or Set the dimensions size based on the operand type.
+  auto dim_size = builder->create<mlir::mhlo::GetDimensionSizeOp>(
+      loc, operand, builder->getI64IntegerAttr(bounded_dim));
+  std::vector<mlir::Value> operands = {padded_constant->getResult(0), dim_size};
+  std::vector<mlir::NamedAttribute> attributes{builder->getNamedAttr(
+      "dimension", builder->getI64IntegerAttr(bounded_dim))};
+  return builder->create<mlir::mhlo::SetDimensionSizeOp>(loc, type, operands,
+                                                         attributes);
 }
 
 }  // namespace
@@ -1871,13 +1927,16 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 
       // Return type is boolean, let's use `operand != 0` instead of Convert.
       Shape input_shape = instruction->operand(0)->shape();
-      TF_ASSIGN_OR_RETURN(mlir::Type type,
-                          ConvertTensorShapeToType<mlir::RankedTensorType>(
-                              input_shape, *func_builder));
-      auto zero = func_builder->create<mlir::mhlo::ConstantOp>(
-          loc, func_builder->getZeroAttr(type));
+      TF_ASSIGN_OR_RETURN(
+          mlir::Value zero,
+          createConstantZeroLike(operands[0], input_shape, func_builder, loc));
+      std::vector<mlir::Value> compare_operands = {operands[0], zero};
+      std::vector<mlir::NamedAttribute> attributes = {builder_->getNamedAttr(
+          "comparison_direction", mlir::mhlo::ComparisonDirectionAttr::get(
+                                      func_builder->getContext(),
+                                      mlir::mhlo::ComparisonDirection::NE))};
       return {func_builder->create<mlir::mhlo::CompareOp>(
-          loc, operands[0], zero, mlir::mhlo::ComparisonDirection::NE)};
+          loc, result_type, compare_operands, attributes)};
     }
     case HloOpcode::kOptimizationBarrier: {
       llvm::SmallVector<Value> flattened_operands;

@@ -170,6 +170,79 @@ diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.h b/stablehlo/stablehlo/
  }  // namespace hlo
  }  // namespace mlir
  
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -780,5 +780,22 @@
+           numScales == rankedType.getDimSize(quantDim));
+ }
+ 
++bool hasSingleBoundedDimension(Type type) {
++  RankedTensorType rankedType = dyn_cast<RankedTensorType>(type);
++  auto boundedAttr =
++      dyn_cast_or_null<BoundedAttrInterface>(rankedType.getEncoding());
++  if (!boundedAttr) return false;
++
++  // Count if bounded attr size is not kDynamic
++  int64_t numBoundedDims = llvm::count_if(
++      boundedAttr.getBounds(),
++      [](int64_t bound) { return !ShapedType::isDynamic(bound); });
++  // Also check that there are only bounded dims and no unbounded dims.
++  int64_t numDynamicDims = llvm::count_if(
++      rankedType.getShape(),
++      [](int64_t bound) { return ShapedType::isDynamic(bound); });
++  return numBoundedDims == 1 && numDynamicDims == 1;
++}
++
+ }  // namespace hlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -101,6 +101,9 @@
+ // mentioned in the StableHLO specification.
+ bool isValidQuantizedDimension(Type type);
+ 
++// Returns true if the given type has a single bounded dimension.
++bool hasSingleBoundedDimension(Type type);
++
+ // TODO(zhouxin) Move type inference related methods to TypeInference.cpp
+ 
+ std::pair<int64_t, int64_t> inferConcatenatedDimAndBound(int64_t leftSize,
+diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
+--- stablehlo/stablehlo/dialect/Base.td
++++ stablehlo/stablehlo/dialect/Base.td
+@@ -29,6 +29,20 @@
+ def I32RankedTensor : RankedTensorOf<[I32]>;
+ 
+ def UI32RankedTensor : RankedTensorOf<[UI32]>;
++
++//===----------------------------------------------------------------------===//
++// HLO type constraints.
++//===----------------------------------------------------------------------===//
++
++// Note: Bounded dynamisms is largely unspecced and this feature needs more
++// thoguht as it is adopted to modern frameworks. The current support is
++// designed to allow existing TF programs to be representable in StableHLO and
++// is subject to change as a formal design for boudned dynamism is developed.
++def HLO_HasSingleBoundedDimensionPred
++  : CPred<"mlir::hlo::hasSingleBoundedDimension($_self)">;
++
++def HLO_HasStaticOrSingleBoundedShapePred
++  : Or<[HasStaticShapePred, HLO_HasSingleBoundedDimensionPred]>;
+ 
+ //===----------------------------------------------------------------------===//
+ // HLO type definitions.
+@@ -267,6 +281,9 @@
+ def HLO_StaticShapeTensorOrPerAxisQuantizedTensor : RankedTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt],
+     [IsValidQuantizedDimension, HasStaticShapePred], "statically shaped tensor">;
+ 
++def HLO_StaticShapeTensorPerAxisQuantizedTensorOrBoundedTensor : RankedTensorOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt, HLO_PerAxisQuantizedInt],
++    [IsValidQuantizedDimension, HLO_HasStaticOrSingleBoundedShapePred], "statically shaped or single bounded dimension tensor">;
++
+ def HLO_StaticShapeTensorOrPerAxisQuantizedTensorOrToken : AnyTypeOf<[HLO_StaticShapeTensor, HLO_StaticShapeTensorOrPerAxisQuantizedTensor, HLO_Token]>;
+ 
+ def HLO_StaticShapeIntOrFpTensor : StaticShapeTensorOf<[HLO_Int, HLO_Float]>;
 diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
 --- stablehlo/stablehlo/dialect/CMakeLists.txt
 +++ stablehlo/stablehlo/dialect/CMakeLists.txt
@@ -440,11 +513,10 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -327,6 +327,23 @@
-     ```mlir
+@@ -328,6 +328,23 @@
      %result = stablehlo.exponential %operand : tensor<2x2xf64>
      ```
-+  }];
+   }];
 +  let arguments = (ins HLO_FpComplexOrQuantizedIntTensor:$operand,
 +  DefaultValuedOptionalAttr<StableHLO_ResultAccuracyAttr, "::mlir::stablehlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
 +  let results = (outs HLO_FpComplexOrQuantizedIntTensor:$result);
@@ -461,12 +533,57 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
 +
 +  let assemblyFormat = [{
 +    $operand attr-dict `:` custom<SameOperandsAndResultType>(type($operand), type($result))
-   }];
++  }];
  }
  
+ def StableHLO_Expm1Op: StableHLO_UnaryElementwiseOp<"exponential_minus_one",
+@@ -1963,7 +1980,7 @@
+     DenseI64ArrayAttr:$broadcast_dimensions /*broadcast_in_dim_i2*/
+   );
+ 
+-  let results = (outs HLO_StaticShapeTensorOrPerAxisQuantizedTensor);
++  let results = (outs HLO_StaticShapeTensorPerAxisQuantizedTensorOrBoundedTensor);
+ 
+   let hasVerifier = 1;
+ 
+@@ -2715,7 +2732,7 @@
+ 
+   let arguments = (ins HLO_TensorOrPerAxisQuantizedTensor:$operand);
+ 
+-  let results = (outs HLO_StaticShapeTensorOrPerAxisQuantizedTensor);
++  let results = (outs HLO_StaticShapeTensorPerAxisQuantizedTensorOrBoundedTensor);
+   let hasVerifier = 1;
+ 
+   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
 --- stablehlo/stablehlo/dialect/TypeInference.cpp
 +++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -3724,9 +3724,8 @@
+                                      Value operand,
+                                      ArrayRef<int64_t> broadcastDimensions,
+                                      Value result) {
++  // broadcast_in_dim_c1
+   auto operandType = cast<RankedTensorType>(operand.getType());
+-
+-  // broadcast_in_dim_c1
+   if (failed(verifyQPerTensorScaleAndZeroPointConstraints(location, operandType,
+                                                           result.getType())))
+     return failure();
+@@ -4658,11 +4657,12 @@
+                               Value result) {
+   // If the operand type is dynamically shaped there is nothing to verify.
+   auto operandTy = cast<RankedTensorType>(operand.getType());
+-  if (!operandTy.hasStaticShape()) return success();
++  auto resultTy = cast<RankedTensorType>(result.getType());
++  if (!operandTy.hasStaticShape() || !resultTy.hasStaticShape())
++    return success();
+ 
+   // If the operand type is statically shaped (not required) the number of
+   // elements must match that of the result type.
+-  auto resultTy = cast<RankedTensorType>(result.getType());
+   int64_t numResultElements = resultTy.getNumElements();
+   int64_t numOperandElements = operandTy.getNumElements();
+   if (numResultElements != numOperandElements)
 @@ -5057,5 +5057,30 @@
    return success();
  }
@@ -1349,7 +1466,30 @@ diff --ruN a/stablehlo/stablehlo/tests/interpret/chlo/ragged_dot.mlir b/stablehl
 diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
 --- stablehlo/stablehlo/tests/ops_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
-@@ -1775,6 +1775,30 @@
+@@ -1274,6 +1274,22 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @broadcast_in_dim_dynamic_i1
++func.func @broadcast_in_dim_dynamic_i1(%arg0: tensor<?xi32>) -> tensor<1x3xi32> {
++  %0 = stablehlo.broadcast_in_dim %arg0, dims = [1] : (tensor<?xi32>) -> tensor<1x3xi32>
++  return %0 : tensor<1x3xi32>
++}
++
++// -----
++
++func.func @broadcast_in_dim_dynamic_result(%arg0: tensor<3xi32>) -> tensor<?x3xi32> {
++  // expected-error@+1 {{must be statically shaped or single bounded dimension tensor}}
++  %0 = "stablehlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = array<i64: 1>} : (tensor<3xi32>) -> tensor<?x3xi32>
++  func.return %0 : tensor<?x3xi32>
++}
++
++// -----
++
+ // Regression test for b/180052624, where this was improperly marked as an
+ // invalid stablehlo.broadcast_in_dim op.
+ // CHECK-LABEL: func @broadcast_in_dim_dynamic_shaped_operand
+@@ -1775,6 +1791,30 @@
    // expected-error@+1 {{'precision_config' failed to satisfy constraint}}
    %0 = "stablehlo.dot"(%arg0, %arg1) {precision_config = ["FOO", #stablehlo<precision HIGHEST>]} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
    func.return %0: tensor<2x2xi32>
@@ -1380,6 +1520,73 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/
  }
  
  // -----
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo_bounded_dynamism.mlir
+@@ -0,0 +1,63 @@
++// RUN: stablehlo-opt %s -verify-diagnostics -split-input-file -allow-unregistered-dialect | FileCheck %s
++
++// This file captures some quirks to bounded dynamism in StableHLO that are
++// included to allow StableHLO to repersent existing TF programs.
++
++// CHECK-LABEL: reshape_with_single_bounded_dimension
++func.func @reshape_with_single_bounded_dimension(%arg0: tensor<?x2xf32, #stablehlo.bounds<5, ?>>) -> tensor<2x?xf32, #stablehlo.bounds<?, 5>> {
++  %0 = stablehlo.reshape %arg0 : (tensor<?x2xf32, #stablehlo.bounds<5, ?>>) -> tensor<2x?xf32, #stablehlo.bounds<?, 5>>
++  // CHECK: return {{.*}} #stablehlo.bounds<?, 5>
++  return %0 : tensor<2x?xf32, #stablehlo.bounds<?, 5>>
++}
++
++// -----
++
++// CHECK-LABEL: reshape_scalar_with_single_bounded_dimension
++func.func @reshape_scalar_with_single_bounded_dimension(%arg0: tensor<?xf32, #stablehlo.bounds<5>>) -> tensor<1x?xf32, #stablehlo.bounds<?, 5>> {
++  %0 = stablehlo.reshape %arg0 : (tensor<?xf32, #stablehlo.bounds<5>>) -> tensor<1x?xf32, #stablehlo.bounds<?, 5>>
++  // CHECK: return {{.*}} #stablehlo.bounds<?, 5>
++  return %0 : tensor<1x?xf32, #stablehlo.bounds<?, 5>>
++}
++
++// -----
++
++func.func @reshape_with_multiple_bounded_dimensions(%arg0: tensor<?x?xf32, #stablehlo.bounds<5, 5>>) -> tensor<?x?xf32, #stablehlo.bounds<5, 5>> {
++  // expected-error@+1 {{result #0 must be statically shaped or single bounded dimension tensor}}
++  %0 = stablehlo.reshape %arg0 : (tensor<?x?xf32, #stablehlo.bounds<5, 5>>) -> tensor<?x?xf32, #stablehlo.bounds<5, 5>>
++  return %0 : tensor<?x?xf32, #stablehlo.bounds<5, 5>>
++}
++
++// -----
++
++// CHECK-LABEL: broadcast_in_dim_with_single_bounded_dimension
++func.func @broadcast_in_dim_with_single_bounded_dimension(%arg0: tensor<1x?xf32, #stablehlo.bounds<?, 5>>) -> tensor<2x1x?xf32, #stablehlo.bounds<?, ?, 5>> {
++  %0 = stablehlo.broadcast_in_dim %arg0, dims = [0, 1] : (tensor<1x?xf32, #stablehlo.bounds<?, 5>>) -> tensor<2x1x?xf32, #stablehlo.bounds<?, ?, 5>>
++  // CHECK: return {{.*}} #stablehlo.bounds<?, ?, 5>
++  return %0 : tensor<2x1x?xf32, #stablehlo.bounds<?, ?, 5>>
++}
++
++// -----
++
++func.func @broadcast_in_dim_with_multiple_bounded_dimensions(%arg0: tensor<?x?xf32, #stablehlo.bounds<5, 5>>) -> tensor<2x?x?xf32, #stablehlo.bounds<?, 5, 5>> {
++  // expected-error@+1 {{result #0 must be statically shaped or single bounded dimension tensor}}
++  %0 = stablehlo.broadcast_in_dim %arg0, dims = [0, 1] : (tensor<?x?xf32, #stablehlo.bounds<5, 5>>) -> tensor<2x?x?xf32, #stablehlo.bounds<?, 5, 5>>
++  return %0 : tensor<2x?x?xf32, #stablehlo.bounds<?, 5, 5>>
++}
++
++// -----
++
++// CHECK-LABEL: constant_splat_broadcast
++func.func @constant_splat_broadcast() -> tensor<1x?xf32, #stablehlo.bounds<?, 5>> {
++  %0 = stablehlo.constant dense<1.0> : tensor<f32>
++  %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<1x?xf32, #stablehlo.bounds<?, 5>>
++  // CHECK: tensor<1x?xf32, #stablehlo.bounds<?, 5>>
++  return %1 : tensor<1x?xf32, #stablehlo.bounds<?, 5>>
++}
++
++// -----
++
++func.func @constant_with_dynamic_shape() -> tensor<1x?xf32, #stablehlo.bounds<?, 5>> {
++  // expected-error@+2 {{elements literal type must have static shape}}
++  %c = stablehlo.constant dense<1> : tensor<1x?xf32, #stablehlo.bounds<?, 5>>
++  return %c : tensor<1x?xf32, #stablehlo.bounds<?, 5>>
++}
 diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
 --- stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
 +++ stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir

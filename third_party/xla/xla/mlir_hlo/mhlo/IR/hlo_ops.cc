@@ -2549,45 +2549,7 @@ LogicalResult BroadcastOp::reifyReturnTypeShapes(
 // BroadcastInDimOp
 //===----------------------------------------------------------------------===//
 
-namespace {
-LogicalResult verifySingleBoundedDynamicDimension(Operation* op,
-                                                  RankedTensorType type) {
-  auto errFn = [&]() {
-    return op->emitOpError() << "load bearing ops with dynamic dimensions must "
-                                "have a single bounded dimension";
-  };
-
-  // Get bounded dims
-  TypeExtensionsAttr encoding =
-      dyn_cast_or_null<TypeExtensionsAttr>(type.getEncoding());
-  if (!encoding) return errFn();
-
-  // Check that all dynamic dims are bounded
-  ArrayRef<int64_t> bounds = encoding.getBounds();
-  ArrayRef<int64_t> shape = type.getShape();
-  for (auto [dim, bound] : llvm::zip(shape, bounds)) {
-    if (ShapedType::isDynamic(dim) && ShapedType::isDynamic(bound))
-      return errFn();
-  }
-
-  // Check single bounded dimension
-  if (llvm::count_if(bounds, [](int64_t dim) {
-        return !ShapedType::isDynamic(dim);
-      }) > 1) {
-    return errFn();
-  }
-  return success();
-}
-}  // namespace
-
 LogicalResult BroadcastInDimOp::verify() {
-  ShapedType resultType = getResult().getType();
-  if (!resultType.hasStaticShape()) {
-    RankedTensorType rankedResultType = cast<RankedTensorType>(resultType);
-    if (failed(verifySingleBoundedDynamicDimension(getOperation(),
-                                                   rankedResultType)))
-      return failure();
-  }
   return hlo::verifyBroadcastInDimOp(
       getLoc(), getOperand(),
       llvm::to_vector(getBroadcastDimensions().getValues<int64_t>()),
@@ -4628,15 +4590,6 @@ LogicalResult ReshapeOp::verify() {
   auto resultType = cast<ShapedType>(getResult().getType());
   if (!operandType.hasRank() || !resultType.hasRank()) {
     return success();
-  }
-
-  // Verify that dynamic outputs are all bounded
-  // HLO allows this, and it is unclear if MHLO/StableHLO should, but it is
-  // needed to raise some TF programs from HLO to MHLO.
-  if (!resultType.hasStaticShape()) {
-    RankedTensorType resultType = cast<RankedTensorType>(getResult().getType());
-    if (failed(verifySingleBoundedDynamicDimension(getOperation(), resultType)))
-      return failure();
   }
   return hlo::verifyReshapeOp(getLoc(), getOperand(), getResult());
 }
