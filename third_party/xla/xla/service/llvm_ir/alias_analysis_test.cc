@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"

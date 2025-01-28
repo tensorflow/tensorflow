@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
