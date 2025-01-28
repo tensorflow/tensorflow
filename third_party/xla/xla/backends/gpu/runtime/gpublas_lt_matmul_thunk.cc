@@ -65,11 +65,11 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
 absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(auto plan, GetMatmulPlan(params.stream));
 
-  TF_ASSIGN_OR_RETURN(
-      auto algorithm,
-      GetMatmulAlgorithm(plan, workspace_buffer_.has_value()
-                                   ? workspace_buffer_.value().size()
-                                   : 0));
+  TF_ASSIGN_OR_RETURN(auto algorithm,
+                      GetMatmulAlgorithm(params.stream, plan,
+                                         workspace_buffer_.has_value()
+                                             ? workspace_buffer_.value().size()
+                                             : 0));
 
   VLOG(3) << "Running cublas_lt matmul thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
@@ -99,7 +99,7 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
     aux = allocs.GetDeviceAddress(aux_buffer_);
   }
 
-  std::optional<se::DeviceMemoryBase> workspace;
+  se::DeviceMemoryBase workspace;
   if (workspace_buffer_.has_value()) {
     workspace = allocs.GetDeviceAddress(workspace_buffer_.value());
   }
@@ -112,7 +112,7 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
 }
 
 absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
-    const stream_executor::Stream* stream) {
+    const se::Stream* stream) {
   {
     absl::MutexLock lock(&matmul_plans_cache_mutex_);
     auto it = matmul_plans_cache_.find(stream);
@@ -127,7 +127,8 @@ absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
 }
 
 absl::StatusOr<se::gpu::BlasLt::MatmulAlgorithm>
-CublasLtMatmulThunk::GetMatmulAlgorithm(const se::gpu::BlasLt::MatmulPlan* plan,
+CublasLtMatmulThunk::GetMatmulAlgorithm(const se::Stream* stream,
+                                        const se::gpu::BlasLt::MatmulPlan* plan,
                                         int64_t max_workspace) {
   {
     absl::MutexLock lock(&matmul_algorithm_cache_mutex_);
@@ -136,7 +137,8 @@ CublasLtMatmulThunk::GetMatmulAlgorithm(const se::gpu::BlasLt::MatmulPlan* plan,
   }
   TF_ASSIGN_OR_RETURN(
       auto algorithms,
-      plan->GetAlgorithms(/*max_algorithm_count*/ 128,
+      plan->GetAlgorithms(stream,
+                          /*max_algorithm_count*/ 128,
                           /*max_workspace_size*/ max_workspace));
   TF_RET_CHECK(algorithm_idx_ >= 0 && algorithm_idx_ < algorithms.size());
 

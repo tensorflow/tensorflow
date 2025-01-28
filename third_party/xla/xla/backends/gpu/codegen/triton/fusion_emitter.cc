@@ -116,6 +116,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
@@ -1069,7 +1070,7 @@ absl::Status CreateInternalError(absl::string_view message,
   return absl::InternalError(err);
 }
 
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
+absl::StatusOr<TritonModule> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
@@ -1129,9 +1130,13 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
       fusion->backend_config<GpuBackendConfig>()->fusion_backend_config();
   absl::string_view fusion_kind = backend_config.kind();
 
+  // It's okay for tma_metadata to be empty; it's only populated when used
+  // explicitly.
+  std::optional<stream_executor::gpu::TmaMetadata> tma_metadata = std::nullopt;
   if (fusion_kind == kTritonGemmFusionKind) {
-    TF_RETURN_IF_ERROR(EmitMatMul(b, libdevice_path, device_info, fusion, fn,
-                                  block_level_parameters));
+    TF_ASSIGN_OR_RETURN(tma_metadata,
+                        EmitMatMul(b, libdevice_path, device_info, fusion, fn,
+                                   block_level_parameters));
   } else if (fusion_kind == kTritonFusionKind) {
     TF_RETURN_IF_ERROR(EmitGeneric(b, libdevice_path, device_info, fusion, fn,
                                    block_level_parameters));
@@ -1181,7 +1186,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
                          .xla_gpu_unsupported_annotate_with_emitter_loc()));
   }
 
-  return std::move(triton_module);
+  return TritonModule{std::move(triton_module), tma_metadata};
 }
 
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
@@ -1210,10 +1215,14 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
 
   // Compile Triton kernel to LLVM.
   const HloModule* hlo_module = fusion->GetModule();
-  return CompileTritonToLLVM(hlo_module->config(), hlo_module->name(),
-                             device_info, block_level_parameters,
-                             triton_module.get(), llvm_module, mlir_context,
-                             /*is_xla_fusion=*/true);
+  TF_ASSIGN_OR_RETURN(
+      TritonWrapperResult result,
+      CompileTritonToLLVM(hlo_module->config(), hlo_module->name(), device_info,
+                          block_level_parameters, triton_module.module.get(),
+                          llvm_module, mlir_context,
+                          /*is_xla_fusion=*/true));
+  result.tma_metadata = triton_module.tma_metadata;
+  return result;
 }
 
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(

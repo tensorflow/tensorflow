@@ -106,7 +106,7 @@ TEST_F(AnnotationsTest, Annotations) {
                          TestGpuDeviceInfo::RTXA6000DeviceInfo(),
                          block_level_parameters, context));
 
-  std::string annotated_ir = DumpTritonIR(triton_module.get(), true);
+  std::string annotated_ir = DumpTritonIR(triton_module.module.get(), true);
 
   if constexpr (EmitterLocOpBuilder::kSourceLocationSupported) {
     EXPECT_THAT(RunFileCheck(annotated_ir, R"(

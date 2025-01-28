@@ -333,6 +333,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   // initialized the data.
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
+  using PjRtClient::CreateUninitializedBuffer;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device,
       std::shared_ptr<BufferSequencingEvent> definition_event);

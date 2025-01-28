@@ -52,12 +52,12 @@ namespace gpu {
 // KernelThunk
 //===----------------------------------------------------------------------===//
 
-KernelThunk::KernelThunk(const HloInstruction* instr, std::string kernel_name,
-                         absl::Span<const KernelArgument> kernel_arguments,
-                         LaunchDimensions launch_dimensions,
-                         std::optional<se::ClusterDim> cluster_dim,
-                         int64_t shmem_bytes,
-                         stream_executor::gpu::TmaMetadata tma_metadata)
+KernelThunk::KernelThunk(
+    const HloInstruction* instr, std::string kernel_name,
+    absl::Span<const KernelArgument> kernel_arguments,
+    LaunchDimensions launch_dimensions,
+    std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
+    std::optional<stream_executor::gpu::TmaMetadata> tma_metadata)
     : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(instr)),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
@@ -142,12 +142,14 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   VLOG(3) << "Launching " << kernel->name();
   absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
+  stream_executor::gpu::TmaMetadata tma_metadata =
+      tma_metadata_.value_or(stream_executor::gpu::TmaMetadata{});
   for (const auto& [idx, arg] : llvm::enumerate(args_)) {
     se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
     VLOG(3) << "  Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
             << ": " << buf.opaque() << " (" << buf.size() << "B)";
-    auto it = tma_metadata_.arg_index_to_tma_info.find(idx);
-    if (it != tma_metadata_.arg_index_to_tma_info.end()) {
+    auto it = tma_metadata.arg_index_to_tma_info.find(idx);
+    if (it != tma_metadata.arg_index_to_tma_info.end()) {
       stream_executor::gpu::TmaDescriptor tma_desc = it->second;
       TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase tensor_map,
                           executor->CreateTensorMap(tma_desc, buf.opaque()));

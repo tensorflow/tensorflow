@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/rocm/hip_blas_utils.h"
 #include "xla/stream_executor/rocm/hipblaslt_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_blas.h"
@@ -208,15 +209,16 @@ absl::Status BlasLt::Init() {
   return std::move(desc);
 }
 
-auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
+auto BlasLt::MatmulPlan::GetAlgorithms(const Stream* stream,
+                                       size_t max_algorithm_count,
                                        size_t max_workspace_size) const
     -> absl::StatusOr<std::vector<MatmulAlgorithm>> {
   max_algorithm_count = std::min(max_algorithm_count, size_t{INT_MAX});
   std::vector<hipblasLtMatmulHeuristicResult_t> results(max_algorithm_count);
-
   {
-    absl::MutexLock lock(&blas_lt_ref_.mu_);
-    TF_RET_CHECK(blas_lt_ref_.blas_lt_ != nullptr);
+    auto blas_lt = static_cast<BlasLt*>(gpu::BlasLt::Get(stream));
+    absl::MutexLock lock(&blas_lt->mu_);
+    TF_RET_CHECK(blas_lt->blas_lt_ != nullptr);
 
     hipblasLtMatmulPreference_t hip_preference;
     SE_HIPBLAS_RETURN_IF_ERROR(
@@ -230,8 +232,7 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
         hip_preference, HIPBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
         max_workspace_size));
 
-    std::unique_ptr<ActivateContext> activation =
-        blas_lt_ref_.parent_->Activate();
+    std::unique_ptr<ActivateContext> activation = blas_lt->parent_->Activate();
 
     // hipBlasLt requires setting the bias pointer (even a dummy one), otherwise
     // no algorithms can be found for "bias epilogues". This is to be removed
@@ -244,9 +245,9 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
 
     int found_algorithm_count = 0;
     auto error = wrap::hipblasLtMatmulAlgoGetHeuristic(
-        blas_lt_ref_.blas_lt_.get(), op_desc_.get(), a_desc_.get(),
-        b_desc_.get(), c_desc_.get(), d_desc_.get(), preference.get(),
-        max_algorithm_count, results.data(), &found_algorithm_count);
+        blas_lt->blas_lt_.get(), op_desc_.get(), a_desc_.get(), b_desc_.get(),
+        c_desc_.get(), d_desc_.get(), preference.get(), max_algorithm_count,
+        results.data(), &found_algorithm_count);
     if (error != 0) {
       VLOG(0) << "hipblasLtMatmulAlgoGetHeuristic returned " << (int)error;
       SE_HIPBLAS_RETURN_IF_ERROR(error);
@@ -351,62 +352,25 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
   }
 #endif  // TF_ROCM_VERSION >= 60000
 
-  // std::make_unique won't work with brace initialization in C++17 ;(
-  return std::make_unique<MatmulPlan>(*this, std::move(op_desc),
-                                      std::move(a_desc), std::move(b_desc),
-                                      std::move(c_desc), std::move(d_desc),
-                                      cfg.alpha, cfg.beta, must_swap_operands);
-}
-
-absl::Status BlasLt::MatmulPlan::ValidateInputs(
-    blas::DataType scale_type, bool alpha_on_device, bool beta_on_device,
-    blas::DataType A_type, blas::DataType B_type, blas::DataType C_type,
-    blas::DataType D_type) const {
-  if (AsHipblasDataType(scale_type) != op_desc_.scale_type()) {
-    return absl::InvalidArgumentError("mismatched scale types");
-  }
-
-  bool expect_scale_factor_on_device =
-      (op_desc_.pointer_mode() == HIPBLAS_POINTER_MODE_DEVICE);
-
-  if (alpha_on_device != expect_scale_factor_on_device) {
-    return absl::InvalidArgumentError("wrong location for alpha");
-  }
-
-  if (beta_on_device != expect_scale_factor_on_device) {
-    return absl::InvalidArgumentError("wrong location for beta");
-  }
-
-  if (AsHipblasDataType(A_type) != a_desc_.type()) {
-    return absl::InvalidArgumentError("mismatched A matrix types");
-  }
-
-  if (AsHipblasDataType(B_type) != b_desc_.type()) {
-    return absl::InvalidArgumentError("mismatched B matrix types");
-  }
-
-  if (AsHipblasDataType(C_type) != c_desc_.type()) {
-    return absl::InvalidArgumentError("mismatched C matrix types");
-  }
-
-  if (AsHipblasDataType(D_type) != d_desc_.type()) {
-    return absl::InvalidArgumentError("mismatched D matrix types");
-  }
-
-  return absl::OkStatus();
+  return std::make_unique<MatmulPlan>(std::move(op_desc), std::move(a_desc),
+                                      std::move(b_desc), std::move(c_desc),
+                                      std::move(d_desc), cfg.alpha, cfg.beta,
+                                      must_swap_operands);
 }
 
 absl::Status BlasLt::MatmulPlan::DoMatmul(
-    Stream* stream, const void* alpha, DeviceMemoryBase a, DeviceMemoryBase b,
-    const void* beta, DeviceMemoryBase c, DeviceMemoryBase d,
-    const MatmulAlgorithm& algorithm, DeviceMemoryBase bias,
-    DeviceMemoryBase aux, DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-    DeviceMemoryBase c_scale, DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
-    std::optional<DeviceMemoryBase> workspace,
-    std::optional<ScratchAllocator*> scratch_allocator,
+    Stream* stream, const void* alpha, const void* beta,
+    const MatmulAlgorithm& algorithm, const gpu::BlasLt::MemoryArgs& args,
     blas::ProfileResult* profile_result) const {
+  DeviceMemoryBase a = args.a, b = args.b;
+  if (must_swap_operands_) {
+    std::swap(a, b);
+  }
+
+  auto blas_lt = static_cast<BlasLt*>(gpu::BlasLt::Get(stream));
+  TF_RET_CHECK(blas_lt != nullptr);
   absl::Status status =
-      blas_lt_ref_.parent_->RecordApiTrace(StreamExecutor::GemmCallTrace{
+      blas_lt->parent_->RecordApiTrace(StreamExecutor::GemmCallTrace{
           StreamExecutor::GemmCallTrace::GemmType::kBlasLt, 0, a.size(),
           b.size()});
   std::unique_ptr<EventBasedTimer> timer;
@@ -417,72 +381,72 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
   }
 
   void* workspace_addr = nullptr;
-  uint64_t workspace_size = 0;
-  if (workspace.has_value()) {
-    workspace_addr = workspace.value().opaque();
-    workspace_size = workspace.value().size();
-    TF_RET_CHECK(workspace_size >= algorithm.workspace_size);
-  } else if (algorithm.workspace_size > 0) {
-    TF_RET_CHECK(scratch_allocator.has_value());
-    TF_ASSIGN_OR_RETURN(
-        DeviceMemory<uint8_t> alloc,
-        scratch_allocator.value()->AllocateBytes(algorithm.workspace_size));
-    workspace_addr = gpu::GpuMemoryMutable(&alloc);
-    workspace_size = algorithm.workspace_size;
+  uint64_t workspace_size = algorithm.workspace_size;
+  if (workspace_size > 0) {
+    if (args.scratch_allocator != nullptr) {
+      TF_ASSIGN_OR_RETURN(
+          DeviceMemory<uint8_t> alloc,
+          args.scratch_allocator->AllocateBytes(workspace_size));
+      workspace_addr = gpu::GpuMemoryMutable(&alloc);
+    } else {
+      workspace_addr = args.workspace.opaque();
+      size_t new_size = args.workspace.size();
+      TF_RET_CHECK(workspace_addr != nullptr && new_size >= workspace_size);
+      workspace_size = new_size;
+    }
   }
 
   auto palgo = std::any_cast<hipblasLtMatmulAlgo_t>(&algorithm.opaque_algo);
   {
-    absl::MutexLock lock(&blas_lt_ref_.mu_);
-    TF_RET_CHECK(blas_lt_ref_.blas_lt_ != nullptr);
+    absl::MutexLock lock(&blas_lt->mu_);
+    TF_RET_CHECK(blas_lt->blas_lt_ != nullptr);
     // We must set the bias and aux pointers while holding the mutex, to avoid a
     // potential race condition from multiple threads sharing the same plan.
-    if (op_desc_.has_bias_epilogue() && bias != nullptr) {
-      TF_RETURN_IF_ERROR(SetAttr(
-          op_desc_.get(), HIPBLASLT_MATMUL_DESC_BIAS_POINTER, bias.opaque()));
+    if (op_desc_.has_bias_epilogue() && args.bias != nullptr) {
+      TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
+                                 HIPBLASLT_MATMUL_DESC_BIAS_POINTER,
+                                 args.bias.opaque()));
     }
 
 #if TF_ROCM_VERSION >= 60000
-    if (a_scale != nullptr) {
+    if (args.a_scale != nullptr) {
       TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  HIPBLASLT_MATMUL_DESC_A_SCALE_POINTER,
-                                 a_scale.opaque()));
+                                 args.a_scale.opaque()));
     }
-    if (b_scale != nullptr) {
+    if (args.b_scale != nullptr) {
       TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  HIPBLASLT_MATMUL_DESC_B_SCALE_POINTER,
-                                 b_scale.opaque()));
+                                 args.b_scale.opaque()));
     }
-    if (c_scale != nullptr || d_scale != nullptr) {
+    if (args.c_scale != nullptr || args.d_scale != nullptr) {
       return absl::InternalError(
           "hipblaslt does not support c_scale or d_scale.");
     }
 #else
-    if ((a_scale != nullptr) || (b_scale != nullptr) || (c_scale != nullptr) ||
-        (d_scale != nullptr)) {
+    if (!(args.a_scale == nullptr && args.b_scale == nullptr &&
+          args.c_scale == nullptr && args.d_scale == nullptr)) {
       return absl::InternalError("hipblaslt does not support scale");
     }
 #endif
 
-    if (d_amax != nullptr) {
+    if (args.d_amax != nullptr) {
       return absl::InternalError("hipblaslt does not support amax");
     }
 
-    if (aux != nullptr) {
+    if (args.aux != nullptr) {
       return absl::InternalError(
           "hipblaslt does not support auxiliary inputs / outputs");
     }
 
-    std::unique_ptr<ActivateContext> activation =
-        blas_lt_ref_.parent_->Activate();
+    std::unique_ptr<ActivateContext> activation = blas_lt->parent_->Activate();
 
     if (palgo != nullptr) {
       SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmul(
-          blas_lt_ref_.blas_lt_.get(), op_desc_.get(), alpha, a.opaque(),
-          a_desc_.get(), b.opaque(), b_desc_.get(), beta, c.opaque(),
-          c_desc_.get(), d.opaque(), d_desc_.get(), palgo, workspace_addr,
-          workspace_size,
-          static_cast<hipStream_t>(stream->platform_specific_handle().stream)));
+          blas_lt->blas_lt_.get(), op_desc_.get(), alpha, a.opaque(),
+          a_desc_.get(), b.opaque(), b_desc_.get(), beta, args.c.opaque(),
+          c_desc_.get(), args.d.opaque(), d_desc_.get(), palgo, workspace_addr,
+          workspace_size, gpu::AsGpuStreamValue(stream)));
     } else {
       return absl::InternalError("hipblaslt: Invalid algorithm type");
     }
@@ -506,72 +470,29 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
   return absl::OkStatus();
 }
 
-namespace {
-
-template <hipDataType>
-struct HipToNativeT;
-
-#if TF_ROCM_VERSION >= 60000
-template <>
-struct HipToNativeT<HIP_R_8F_E4M3_FNUZ> {
-  using type = tsl::float8_e4m3fnuz;
-};
-template <>
-struct HipToNativeT<HIP_R_8F_E5M2_FNUZ> {
-  using type = tsl::float8_e5m2fnuz;
-};
-#endif  // TF_ROCM_VERSION >= 60000
-
-template <>
-struct HipToNativeT<HIP_R_16BF> {
-  using type = Eigen::bfloat16;
-};
-template <>
-struct HipToNativeT<HIP_R_16F> {
-  using type = Eigen::half;
-};
-template <>
-struct HipToNativeT<HIP_R_32F> {
-  using type = float;
-};
-template <>
-struct HipToNativeT<HIP_R_64F> {
-  using type = double;
-};
-template <>
-struct HipToNativeT<HIP_C_32F> {
-  using type = complex64;
-};
-template <>
-struct HipToNativeT<HIP_C_64F> {
-  using type = complex128;
-};
-
-}  // namespace
-
 absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
-    Stream* stream, DeviceMemoryBase a, DeviceMemoryBase b, DeviceMemoryBase c,
-    DeviceMemoryBase d, DeviceMemoryBase bias, DeviceMemoryBase aux,
-    DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-    DeviceMemoryBase c_scale, DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
-    const MatmulAlgorithm& algorithm, std::optional<DeviceMemoryBase> workspace,
-    std::optional<ScratchAllocator*> scratch_allocator,
+    Stream* stream, const MatmulAlgorithm& algorithm,
+    const gpu::BlasLt::MemoryArgs& args,
     blas::ProfileResult* profile_result) const {
-  if (must_swap_operands_) {
-    std::swap(a, b);
-  }
+  auto wrapped_matmul = [&](auto scale) {
+    using Scale = decltype(scale);
+    Scale salpha;
+    if constexpr (std::is_same_v<Scale, xla::complex64> ||
+                  std::is_same_v<Scale, xla::complex128>) {
+      salpha = static_cast<Scale>(alpha_);
+    } else {
+      salpha = static_cast<Scale>(alpha_.real());
+    }
+    Scale sbeta = static_cast<Scale>(beta_);
+    return DoMatmul(stream, &salpha, &sbeta, algorithm, args, profile_result);
+  };
 
   std::tuple operand_types{a_desc_.type(), b_desc_.type(), c_desc_.type(),
                            d_desc_.type()};
 
-#define TYPED_MATMUL(SCALENTYPE, ATYPE, BTYPE, CTYPE, DTYPE)               \
-  if (operand_types == std::tuple{ATYPE, BTYPE, CTYPE, DTYPE}) {           \
-    return gpu::BlasLt::MatmulPlan::DoMatmul<                              \
-        SCALENTYPE, HipToNativeT<ATYPE>::type, HipToNativeT<BTYPE>::type,  \
-        HipToNativeT<CTYPE>::type, HipToNativeT<DTYPE>::type>(             \
-        stream, alpha_, a, b, beta_, c, d, bias, aux, a_scale, b_scale,    \
-        c_scale, d_scale, d_amax, algorithm, workspace, scratch_allocator, \
-        profile_result);                                                   \
+#define TYPED_MATMUL(Scale, ATYPE, BTYPE, CTYPE, DTYPE)          \
+  if (operand_types == std::tuple{ATYPE, BTYPE, CTYPE, DTYPE}) { \
+    return wrapped_matmul(Scale{});                              \
   }
 
 // FP8 compatible types combinations (Full table in
