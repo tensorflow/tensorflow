@@ -44,6 +44,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop as while_loop_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging  # pylint: disable=unused-import
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import signature_def_utils_impl
