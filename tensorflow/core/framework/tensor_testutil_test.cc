@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_testutil.h"
 
+#include <cmath>
+#include <cstdio>
+#include <iostream>
+#include <ostream>
+
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

@@ -16,9 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_VARIANT_OP_REGISTRY_H_
 #define TENSORFLOW_CORE_FRAMEWORK_VARIANT_OP_REGISTRY_H_
 
+#include <cstddef>
+#include <functional>
 #include <string>
+#include <tuple>
 #include <unordered_set>
+#include <utility>
 #include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 
 #define EIGEN_USE_THREADS
 

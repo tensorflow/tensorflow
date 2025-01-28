@@ -16,8 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_TESTUTIL_H_
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_TESTUTIL_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <initializer_list>
 #include <numeric>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"

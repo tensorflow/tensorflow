@@ -17,6 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_VARIANT_TENSOR_DATA_H_
 
 #include <algorithm>
+#include <cstddef>
+#include <string>
+#include <type_traits>
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
