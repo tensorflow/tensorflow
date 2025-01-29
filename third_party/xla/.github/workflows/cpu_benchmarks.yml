@@ -33,6 +33,10 @@ jobs:
           repository: 'openxla/xla'
           path: openxla
 
+      - name: Create results directory
+        working-directory: openxla
+        run: mkdir results
+
       - name: Print machine specs
         run: |
           lscpu
@@ -40,24 +44,22 @@ jobs:
           df -h    # Disk space information
           uname -a # Kernel information
 
-      - name: Set up Bazel
-        uses: bazelbuild/setup-bazel@v2
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
         with:
-          bazel-version: 'latest'
-
-      - name: Install updates and Python env
-        working-directory: xla/xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
-        run: |
-          sudo apt-get update
-          sudo apt install python3.10-venv
+          python-version: '3.10'
 
       - name: Run setup.sh for E2E benchmarks flax_2b
         working-directory: xla/xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
-        run: bash setup.sh
+        timeout-minutes: 60
+        run: |
+          bash setup.sh
 
       - name: Run run.sh for E2E benchmarks flax_2b
         working-directory: xla/xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
-        run: bash run.sh
+        timeout-minutes: 30
+        run: |
+          bash run.sh > ../../../../../../../results/flax_2b.log
 
       - name: Build run_hlo_module
         working-directory: openxla
@@ -77,10 +79,6 @@ jobs:
             echo "Running benchmark on $file"
             ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU "$file"
           done
-
-      - name: Create results directory
-        working-directory: openxla
-        run: mkdir results
 
       - name: Build CPU Benchmarks
         working-directory: openxla
