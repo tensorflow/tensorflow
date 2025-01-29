@@ -588,7 +588,7 @@ tf_py_strict_test(
     ],
 )
 
-# Placeholder for intenal nest_test comments.
+# Placeholder for internal nest_test comments.
 tf_py_strict_test(
     name = "nest_test",
     size = "small",
