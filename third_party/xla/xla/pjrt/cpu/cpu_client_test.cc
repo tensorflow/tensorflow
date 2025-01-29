@@ -135,7 +135,7 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   auto result = pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}},
                                          /*options=*/{});
@@ -183,14 +183,14 @@ TEST(TfrtCpuClientTest, HloSnapshot) {
           data1.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer2,
       client->BufferFromHostBuffer(
           data2.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   auto result = pjrt_executable->Execute(
       /*argument_handles=*/{{buffer1.get(), buffer2.get()}},
@@ -531,7 +531,7 @@ ENTRY Identity() -> f32[2, 2] {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          memory_space, /*device_layout=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       auto error_buffer,
       client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
@@ -692,13 +692,15 @@ TEST(TfrtCpuClientTest, CopyRawToHost) {
 static void BM_CreateZeroCopyBuffer(benchmark::State& state) {
   auto client = GetTfrtCpuClient({});
   PjRtDevice* device = (*client)->devices().front();
+  PjRtMemorySpace* memory_space = *device->default_memory_space();
 
   alignas(32) float value = 1.0f;
 
   for (auto _ : state) {
     auto buffer = (*client)->BufferFromHostBuffer(
         &value, PrimitiveType::F32, {}, std::nullopt,
-        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr, device);
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+        memory_space, /*device_layout=*/nullptr);
     CHECK_OK(buffer) << "Failed to create a buffer from a host buffer";
   }
 }
