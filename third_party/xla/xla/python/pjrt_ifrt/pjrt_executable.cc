@@ -554,6 +554,13 @@ PjRtLoadedExecutable::Execute(
         client_->runtime_type());
   }
 
+  // When using host callbacks on CPU, we need to use synchronous dispatch to
+  // avoid deadlocks with reentrant callbacks. Note that this option only
+  // affects the CPU runtime.
+  if (!all_loaded_host_callbacks_->empty()) {
+    opts.execution_mode = xla::ExecuteOptions::ExecutionMode::kSynchronous;
+  }
+
   std::unique_ptr<HostCallbackStates> host_callback_states;
   if (!host_send_recv_callbacks_.empty()) {
     host_callback_states = std::make_unique<HostCallbackStates>();
