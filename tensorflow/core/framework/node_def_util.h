@@ -16,10 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_UTIL_H_
 #define TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_UTIL_H_
 
+#include <cstdint>
+#include <initializer_list>
+#include <map>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"

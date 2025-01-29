@@ -19,10 +19,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_OP_DEF_BUILDER_H_
 #define TENSORFLOW_CORE_FRAMEWORK_OP_DEF_BUILDER_H_
 
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"

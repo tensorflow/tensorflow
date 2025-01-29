@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_RENDEZVOUS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_RENDEZVOUS_H_
 
+#include <cstdint>
+#include <functional>
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_base.h"
