@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/internal/compilation_timer.h"
 
+#include <cstdint>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/time/clock.h"
