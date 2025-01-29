@@ -51,6 +51,9 @@ extern "C" {
 // If XNNPACK has been built with Slinky, enable Slinky usage.
 // (Ignored if XNNPACK is built without Slinky.)
 #define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SLINKY 0x00000100
+// If XNNPACK has been built with Slinky, disable schedules.
+// (Ignored if XNNPACK is built without Slinky.)
+#define TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SLINKY_SCHEDULE 0x00000200
 
 struct TfLiteXNNPackDelegateWeightsCache;
 

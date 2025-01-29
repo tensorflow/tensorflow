@@ -623,6 +623,15 @@ class Delegate {
     return (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SLINKY) != 0;
   }
 
+  bool disable_slinky_schedule() const {
+#ifdef XNNPACK_DELEGATE_DISABLE_SLINKY_SCHEDULES
+    return true;
+#else
+    return (options_.flags &
+            TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SLINKY_SCHEDULE) != 0;
+#endif
+  }
+
   bool support_variable_ops() const {
     if (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS) {
       return true;
@@ -1205,6 +1214,11 @@ class Subgraph {
       // TODO: this flag isn't yet part of the public XNNPACK API
       constexpr uint32_t XNN_FLAG_SLINKY_ENABLED = 0x40000000;
       flags |= XNN_FLAG_SLINKY_ENABLED;
+    }
+    if (delegate.disable_slinky_schedule()) {
+      // TODO: this flag isn't yet part of the public XNNPACK API
+      constexpr uint32_t XNN_FLAG_SLINKY_SCHEDULE_DISABLED = 0x20000000;
+      flags |= XNN_FLAG_SLINKY_SCHEDULE_DISABLED;
     }
 
     if (delegate.weight_cache_provider_.IsActive() &&
