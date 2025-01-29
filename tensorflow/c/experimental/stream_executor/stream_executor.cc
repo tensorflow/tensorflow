@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/device/device_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stringpiece.h"
