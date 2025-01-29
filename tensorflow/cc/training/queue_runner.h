@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
 #define TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
 
+#include <atomic>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/cc/training/coordinator.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
