@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_LAYOUT_MODE_H_
 #define XLA_PJRT_LAYOUT_MODE_H_
 
+#include <optional>
 #include <string>
 
 #include "absl/status/statusor.h"

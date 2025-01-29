@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_PJRT_METRICS_H_
 #define XLA_PJRT_METRICS_H_
 
+#include <cstdint>
+
 #include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/monitoring/counter.h"

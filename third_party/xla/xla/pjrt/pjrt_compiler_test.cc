@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_compiler.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -26,11 +27,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/tsl/lib/monitoring/cell_reader.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
 
 namespace xla {

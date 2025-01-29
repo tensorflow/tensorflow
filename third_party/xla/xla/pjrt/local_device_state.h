@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_LOCAL_DEVICE_STATE_H_
 #define XLA_PJRT_LOCAL_DEVICE_STATE_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -23,7 +24,10 @@ limitations under the License.
 #include <stack>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/event_pool.h"

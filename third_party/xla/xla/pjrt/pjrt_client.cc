@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_client.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/utils.h"
