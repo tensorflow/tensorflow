@@ -504,15 +504,12 @@ void DeviceDeallocate(Context* context, void* location) {
 }
 
 // Allocates memory on the host.
-void* HostAllocate(Context* context, uint64_t bytes) {
+absl::StatusOr<void*> HostAllocate(Context* context, uint64_t bytes) {
   ScopedActivateContext activation(context);
   void* host_mem = nullptr;
   // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
-  auto status = cuda::ToStatus(
-      cuMemHostAlloc(&host_mem, bytes, CU_MEMHOSTALLOC_PORTABLE));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to alloc " << bytes << " bytes on host: " << status;
-  }
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuMemHostAlloc(&host_mem, bytes, CU_MEMHOSTALLOC_PORTABLE)));
   return host_mem;
 }
 
@@ -609,6 +606,20 @@ CudaExecutor::CreateMemoryAllocator(MemoryType type) {
                   VLOG(2) << "deallocated collective memory at " << location
                           << " for context " << cuda_context_;
                 }
+              });
+        });
+  } else if (type == MemoryType::kHost) {
+    return std::make_unique<GenericMemoryAllocator>(
+        [this](uint64_t size)
+            -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+          TF_ASSIGN_OR_RETURN(void* ptr, HostAllocate(cuda_context_, size));
+          VLOG(2) << "allocated " << ptr << " for context " << cuda_context_
+                  << " of " << size << " bytes of host memory";
+          return std::make_unique<GenericMemoryAllocation>(
+              ptr, size, [this](void* location, uint64_t size) {
+                HostDeallocate(cuda_context_, location);
+                VLOG(2) << "deallocated collective memory at " << location
+                        << " for context " << cuda_context_;
               });
         });
   }
@@ -923,7 +934,11 @@ DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     return DeviceMemoryBase(result.value(), size);
   } else if (memory_space ==
              static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
-    return DeviceMemoryBase(HostAllocate(cuda_context_, size), size);
+    auto result = HostAllocate(cuda_context_, size);
+    if (!result.ok()) {
+      return DeviceMemoryBase(nullptr, 0);
+    }
+    return DeviceMemoryBase(result.value(), size);
   }
   CHECK_EQ(memory_space, 0);
   return DeviceMemoryBase(DeviceAllocate(cuda_context_, size), size);
@@ -931,11 +946,7 @@ DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
 
 absl::StatusOr<std::unique_ptr<MemoryAllocation>>
 CudaExecutor::HostMemoryAllocate(uint64_t size) {
-  auto* buffer = HostAllocate(cuda_context_, size);
-  if (buffer == nullptr && size > 0) {
-    return absl::InternalError(
-        absl::StrFormat("Failed to allocate HostMemory of size %d", size));
-  }
+  TF_ASSIGN_OR_RETURN(auto buffer, HostAllocate(cuda_context_, size));
   return std::make_unique<HostMemoryAllocation>(buffer, size, this);
 }
 

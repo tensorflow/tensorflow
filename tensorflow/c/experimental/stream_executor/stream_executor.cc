@@ -390,6 +390,19 @@ class CStreamExecutor : public StreamExecutorCommon {
                   stream_executor_->unified_memory_deallocate(&device_, ptr);
                 });
           });
+    } else if (type == MemoryType::kHost) {
+      return std::make_unique<GenericMemoryAllocator>(
+          [this](uint64_t size)
+              -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+            void* ptr = stream_executor_->host_memory_allocate(&device_, size);
+            if (ptr == nullptr) {
+              return absl::InternalError("Failed to allocate host memory");
+            }
+            return std::make_unique<GenericMemoryAllocation>(
+                ptr, size, [this](void* ptr, uint64_t size) {
+                  stream_executor_->host_memory_deallocate(&device_, ptr);
+                });
+          });
     }
     return absl::UnimplementedError(
         absl::StrFormat("Unsupported memory type %d", type));

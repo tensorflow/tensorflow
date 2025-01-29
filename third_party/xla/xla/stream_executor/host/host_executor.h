@@ -1,3 +1,4 @@
+#include "xla/stream_executor/memory_allocator.h"
 /* Copyright 2016 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
 #include "xla/tsl/platform/threadpool.h"
 
@@ -98,6 +100,8 @@ class HostExecutor : public StreamExecutorCommon {
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority) override;
+  absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
+      MemoryType type) override;
 
  private:
   int device_ordinal_;

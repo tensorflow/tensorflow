@@ -108,6 +108,20 @@ TEST(CudaExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
   allocation.reset();
 }
 
+TEST(CudaExecutorTest, CreateHostMemoryAllocatorWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
+                          executor->CreateMemoryAllocator(MemoryType::kHost));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          allocator->Allocate(1024));
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), 1024);
+  allocation.reset();
+}
+
 TEST(CudaExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                           PlatformManager::PlatformWithName("CUDA"));
@@ -123,7 +137,6 @@ TEST(CudaExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
                           PlatformManager::PlatformWithName("CUDA"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
-  EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kHost), Not(IsOk()));
   EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
               Not(IsOk()));
 }

@@ -220,6 +220,29 @@ TEST_F(StreamExecutorTest, HostMemoryAllocate) {
   ASSERT_TRUE(deallocate_called);
 }
 
+TEST_F(StreamExecutorTest, HostMemoryAllocator) {
+  static bool allocate_called = false;
+  static bool deallocate_called = false;
+  se_.host_memory_allocate = [](const SP_Device* const device, uint64_t size) {
+    allocate_called = true;
+    return malloc(size);
+  };
+  se_.host_memory_deallocate = [](const SP_Device* const device, void* mem) {
+    free(mem);
+    deallocate_called = true;
+  };
+  StreamExecutor* executor = GetExecutor(0);
+  ASSERT_FALSE(allocate_called);
+  TF_ASSERT_OK_AND_ASSIGN(auto allocator,
+                          executor->CreateMemoryAllocator(MemoryType::kHost));
+  TF_ASSERT_OK_AND_ASSIGN(auto mem, allocator->Allocate(8));
+  ASSERT_NE(mem->opaque(), nullptr);
+  ASSERT_TRUE(allocate_called);
+  ASSERT_FALSE(deallocate_called);
+  mem.reset();
+  ASSERT_TRUE(deallocate_called);
+}
+
 TEST_F(StreamExecutorTest, UnifiedMemoryAllocate) {
   static bool allocate_called = false;
   static bool deallocate_called = false;
