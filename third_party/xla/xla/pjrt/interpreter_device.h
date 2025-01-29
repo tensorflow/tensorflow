@@ -19,9 +19,21 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/pjrt/local_device_state.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 
 namespace xla {
+
+class InterpreterMemorySpace : public PjRtStreamExecutorMemorySpace {
+ public:
+  static constexpr absl::string_view kKind = "interpreter";
+  static const int kKindId;
+
+  InterpreterMemorySpace(int id, PjRtDevice* device)
+      : PjRtStreamExecutorMemorySpace(id, device, kKind, kKindId) {}
+};
 
 class InterpreterDevice : public PjRtStreamExecutorDevice {
  public:

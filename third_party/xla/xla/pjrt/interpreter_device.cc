@@ -15,18 +15,32 @@ limitations under the License.
 
 #include "xla/pjrt/interpreter_device.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "absl/status/statusor.h"
 #include "xla/client/client_library.h"
+#include "xla/client/local_client.h"
+#include "xla/pjrt/local_device_state.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 
 static const char kInterpreterPlatformName[] = "interpreter";
+
+const int InterpreterMemorySpace::kKindId = []() {
+  uint32_t kind_id = tsl::Fingerprint32(InterpreterMemorySpace::kKind);
+  return static_cast<int>(kind_id);
+}();
 
 InterpreterDevice::InterpreterDevice(
     int id, std::unique_ptr<LocalDeviceState> local_device_state)
@@ -53,6 +67,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient() {
       /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
   auto device = std::make_unique<InterpreterDevice>(0, std::move(device_state));
   devices.push_back(std::move(device));
+
+  std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
+  memory_spaces.push_back(std::make_unique<InterpreterMemorySpace>(0, device));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
       "interpreter", client, std::move(devices),

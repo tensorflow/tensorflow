@@ -69,11 +69,11 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -192,7 +192,8 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   absl::Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
 
-  void AttachMemorySpace(PjRtMemorySpace* memory_space);
+  void AttachMemorySpace(PjRtMemorySpace* memory_space,
+                         bool is_default = false);
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
@@ -219,6 +220,7 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   PjRtClient* client_ = nullptr;
   absl::InlinedVector<PjRtMemorySpace*, 1> memory_spaces_;
   absl::flat_hash_map<int, PjRtMemorySpace*> memory_spaces_by_id_;
+  PjRtMemorySpace* default_memory_space_ = nullptr;
 };
 
 class PjRtStreamExecutorMemorySpace : public PjRtMemorySpace {
@@ -257,7 +259,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
   explicit PjRtStreamExecutorClient(
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-      int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+      int process_index,
+      std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
+      std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tsl::Allocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
