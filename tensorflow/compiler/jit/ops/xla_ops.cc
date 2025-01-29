@@ -33,7 +33,7 @@ REGISTER_OP("XlaLaunch")
     .Attr("function: func")
     // XLA random-number generation ops are stateful.
     // TODO(phawkins): create stateful and non-stateful variants of XlaLaunch.
-    .SetIsStateful()
+    .SetIsState
     .Doc("XLA Launch Op. For use by the XLA JIT only.");
 
 REGISTER_OP("XlaLaunchV2")
