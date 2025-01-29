@@ -192,25 +192,6 @@ class NameUniquifier : public OpOrArgNameMapper {
   const FunctionLibraryDefinition& flib_;
 };
 
-// Preprocesses GraphDef before it can be converted to Graph by,
-// - Adding the default attributes to each node def if they are missing from
-//   the GraphDef.
-// - Replacing LegacyFedInput nodes with Placeholder nodes if
-//   convert_legacy_fed_inputs option is enabled.
-absl::Status PreprocessGraphDef(const GraphImportConfig* specs,
-                                GraphDef* graph_def) {
-  for (auto& node_def : *graph_def->mutable_node()) {
-    const tensorflow::OpRegistrationData* op_reg_data =
-        tensorflow::OpRegistry::Global()->LookUp(node_def.op());
-    if (!op_reg_data) {
-      // This is likely a function call node, so we should continue.
-      continue;
-    }
-    ::tensorflow::AddDefaultsToNodeDef(op_reg_data->op_def, &node_def);
-  }
-  return absl::OkStatus();
-}
-
 // Determines the names used to reference objects in the SavedObjectGraph.
 class ObjectNames {
  public:

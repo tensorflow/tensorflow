@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -105,9 +106,16 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                int64_t replica_count = 1,
                                int64_t num_partitions = 1);
+  // Parses the given string and returns module as a VerifiedHloModule.
+  //
+  // To obtain a HloModuleConfig with a specific replica and partition count and
+  // no further customization, either use the overload above or use
+  // GetModuleConfigForTest. The latter option may be useful if you want to pass
+  // custom HloParserOptions as well.
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
-  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                               const HloModuleConfig& config);
+  ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, const HloModuleConfig& config,
+      const HloParserOptions& parser_options = HloParserOptions());
 
   HloComputation* AddEntryComputationAndUpdateEntryComputationLayout(
       HloModule*, std::unique_ptr<HloComputation> computation);

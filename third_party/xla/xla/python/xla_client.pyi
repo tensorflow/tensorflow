@@ -269,6 +269,12 @@ def batched_device_put(
     host_buffer_semantics: Any = ...,
 ) -> ArrayImpl: ...
 
+def reorder_shards(
+    x: ArrayImpl,
+    dst_sharding: Any,
+    array_copy_semantics: ArrayCopySemantics,
+) -> ArrayImpl: ...
+
 def batched_block_until_ready(x: Sequence[ArrayImpl]) -> None: ...
 
 def check_and_canonicalize_memory_kind(

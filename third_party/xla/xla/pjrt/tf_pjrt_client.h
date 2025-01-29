@@ -316,11 +316,11 @@ class TfPjRtClient : public PjRtClient {
     return WrapBuffer(wrapped_->BufferFromHostLiteral(literal, device));
   }
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
-      void* device_ptr, const Shape& shape, PjRtDevice* device,
+      void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override {
     return WrapBuffer(wrapped_->CreateViewOfDeviceBuffer(
-        device_ptr, shape, device, on_delete_callback, stream));
+        device_ptr, shape, memory_space, on_delete_callback, stream));
   }
   absl::StatusOr<std::uintptr_t> UnsafeBufferPointer(
       PjRtBuffer* buffer) override {

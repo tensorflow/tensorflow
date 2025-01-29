@@ -3,3 +3,6 @@ build --define=xnn_enable_avxvnniint8=false
 
 # Load the TensorFlow bazelrc
 import %workspace%/tensorflow.bazelrc
+import %workspace%/warnings.bazelrc
+
+try-import %workspace%/xla_configure.bazelrc

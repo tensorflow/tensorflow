@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/rocm/hipblaslt_wrapper.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 #include "rocm/rocm_config.h"
 

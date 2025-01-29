@@ -18,9 +18,9 @@ cc_library(
     name = "object_pool",
     hdrs = ["object_pool.h"],
     deps = [
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -33,9 +33,9 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -44,9 +44,9 @@ cc_library(
     srcs = ["parallel_loop_runner.cc"],
     hdrs = ["parallel_loop_runner.h"],
     deps = [
+        "//xla/backends/cpu/runtime:work_queue",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/math:math_util",
-        "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:fixed_array",
@@ -81,10 +81,10 @@ cc_library(
     hdrs = ["xnn_interop.h"],
     deps = [
         "//xla:util",
+        "//xla/tsl/platform:logging",
         "@XNNPACK",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -120,14 +120,15 @@ xla_cc_test(
         ":parallel_loop_runner",
         ":xnn_threadpool",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "@XNNPACK",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
         "@pthreadpool",
     ],
 )
@@ -168,11 +169,13 @@ xla_cc_test(
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_testlib",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -210,7 +213,6 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@pthreadpool",
     ],
@@ -229,6 +231,7 @@ xla_cc_test(
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_testlib",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@XNNPACK",
@@ -236,5 +239,6 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
     ],
 )

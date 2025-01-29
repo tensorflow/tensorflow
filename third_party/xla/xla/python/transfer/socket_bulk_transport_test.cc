@@ -162,12 +162,13 @@ TEST(SocketBulkTransportFactoryTest, SendAndRecvWithFactory) {
                            packet_size);
 
   SocketAddress addr;
+  SocketAddress addrv4 = SocketAddress::Parse("0.0.0.0:0").value();
   auto status_or =
-      CreateSocketBulkTransportFactory({addr, addr}, allocator, uallocator);
+      CreateSocketBulkTransportFactory({addr, addrv4}, allocator, uallocator);
   ASSERT_TRUE(status_or.ok()) << status_or.status();
   auto factory = status_or.value();
   status_or =
-      CreateSocketBulkTransportFactory({addr, addr}, allocator, uallocator);
+      CreateSocketBulkTransportFactory({addr, addrv4}, allocator, uallocator);
   ASSERT_TRUE(status_or.ok()) << status_or.status();
   auto factory2 = status_or.value();
 

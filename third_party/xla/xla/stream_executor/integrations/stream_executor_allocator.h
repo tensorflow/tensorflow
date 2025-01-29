@@ -36,8 +36,8 @@ class StreamExecutorAllocator : public tsl::SubAllocator {
  public:
   StreamExecutorAllocator(std::unique_ptr<MemoryAllocator> memory_allocator,
                           MemoryType memory_type, int index,
-                          const std::vector<Visitor>& alloc_visitors,
-                          const std::vector<Visitor>& free_visitors);
+                          const std::vector<Visitor>& alloc_visitors = {},
+                          const std::vector<Visitor>& free_visitors = {});
 
   ~StreamExecutorAllocator() override = default;
   void* Alloc(size_t alignment, size_t num_bytes,

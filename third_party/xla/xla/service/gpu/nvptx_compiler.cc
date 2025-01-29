@@ -711,5 +711,9 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   return std::move(assembly.cubin);
 }
 
+std::vector<std::string> NVPTXCompiler::GetLLVMCommandLineOptions(
+    const DebugOptions& debug_options) const {
+  return nvptx::GetNVPTXBackendOptions(debug_options);
+}
 }  // namespace gpu
 }  // namespace xla

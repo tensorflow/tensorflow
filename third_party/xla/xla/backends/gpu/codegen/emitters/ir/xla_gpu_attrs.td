@@ -19,7 +19,6 @@ limitations under the License.
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_dialect.td"
-include "xla/codegen/emitters/ir/xla_attrs.td"
 
 class XLAGPU_Attr<string name, list<Trait> traits = []> :
       AttrDef<XlaGpuDialect, name, traits> {

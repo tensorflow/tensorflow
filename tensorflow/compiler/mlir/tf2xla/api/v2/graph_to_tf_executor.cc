@@ -23,6 +23,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <queue>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -106,6 +107,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -186,6 +188,35 @@ class NameUniquifier : public OpOrArgNameMapper {
   const FunctionLibraryDefinition& flib_;
 };
 
+std::string LogGraphImportConfig(const GraphImportConfig& config) {
+  std::ostringstream ss;
+
+  ss << "graph_func_name: " << config.graph_func_name;
+  GraphImportConfig::InputArrays inputs;
+  ss << "\ninputs: ";
+  for (auto& it : inputs) {
+    ss << "\n\t" << it.first << " -> "
+       << DataTypeString(it.second.imported_dtype) << " "
+       << it.second.shape.DebugString();
+  }
+  ss << "\noutputs:";
+  for (auto& output : config.outputs) ss << " " << output;
+  ss << "\ncontrol_outputs:";
+  for (auto& output : config.control_outputs) ss << " " << output;
+  ss << "\nprune_unused_nodes: " << config.prune_unused_nodes;
+  ss << "\nconvert_legacy_fed_inputs: " << config.convert_legacy_fed_inputs;
+  ss << "\ngraph_as_function: " << config.graph_as_function;
+  ss << "\nupgrade_legacy: " << config.upgrade_legacy;
+  ss << "\nrestrict_functionalization_to_compiled_nodes: "
+     << config.restrict_functionalization_to_compiled_nodes;
+  ss << "\nenable_shape_inference: " << config.enable_shape_inference;
+  ss << "\nunconditionally_use_set_output_shapes: "
+     << config.unconditionally_use_set_output_shapes;
+  ss << "\nxla_compile_device_type: " << config.xla_compile_device_type;
+
+  return ss.str();
+}
+
 // Stateful helper class to import a TensorFlow model into an MLIR Module.
 //
 // This is the base class that contains common utilities shared between the
@@ -214,7 +245,7 @@ class ImporterBase {
         error_handler_(module.getContext()) {
     // Log import config.
     if (VLOG_IS_ON(1)) {
-      LOG(INFO) << "Importing with: " << specs.str();
+      LOG(INFO) << "Importing with: " << LogGraphImportConfig(specs);
       for (auto& it : *tf_name_to_mlir_name) {
         LOG(INFO) << "\t" << it.first << " -> " << it.second;
       }

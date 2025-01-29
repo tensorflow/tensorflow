@@ -27,6 +27,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/core/model/buffer_manager.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/litert/test/test_macros.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -99,6 +100,40 @@ TEST(ModelTest, SignatureDNE) {
   LiteRtModelT model;
   auto found_signature = model.FindSignature(kSignatureName);
   EXPECT_FALSE(found_signature);
+}
+
+TEST(ModelTest, AttachExternalBufferToOp) {
+  static constexpr absl::string_view kBufferData = "BUFFER_DATA";
+  static constexpr absl::string_view kOpName = "OP1";
+  static constexpr absl::string_view kOp2Name = "OP2";
+
+  LiteRtModelT model;
+  auto& subgraph = model.EmplaceSubgraph();
+  auto& op = subgraph.EmplaceOp();
+  auto& op2 = subgraph.EmplaceOp();
+
+  OwningBufferRef<uint8_t> external_buf(kBufferData);
+
+  auto buf1_id = model.RegisterExternalBuffer(std::move(external_buf));
+
+  model.AttachExternalBufferToOp(&op, buf1_id, std::string(kOpName));
+  model.AttachExternalBufferToOp(&op2, buf1_id, std::string(kOp2Name));
+
+  auto op_1_res = model.FindExternalBuffer(&op);
+  ASSERT_TRUE(op_1_res);
+  EXPECT_EQ(op_1_res->second, kOpName);
+  EXPECT_EQ(op_1_res->first, buf1_id);
+
+  auto op_2_res = model.FindExternalBuffer(&op2);
+  ASSERT_TRUE(op_2_res);
+  EXPECT_EQ(op_2_res->second, kOp2Name);
+  EXPECT_EQ(op_2_res->first, buf1_id);
+}
+
+TEST(ModelTest, ExternalBufferNotFound) {
+  LiteRtModelT model;
+  LiteRtOpT op;
+  ASSERT_FALSE(model.FindExternalBuffer(&op));
 }
 
 //
@@ -231,12 +266,63 @@ TEST(ModelQuantizationTypeTest, MakePerChannel) {
   EXPECT_THAT(zeros, ElementsAreArray(kZero));
 }
 
-TEST(ModelWeightsTest, WeightsFromBuf) {
+TEST(ModelWeightsTest, EmptyWeights) {
+  LiteRtWeightsT weights;
+  EXPECT_EQ(weights.Buffer().Size(), 0);
+}
+
+TEST(ModelWeightsTest, WeightsWithExternalBufferManager) {
+  static constexpr absl::string_view kData = "some_data";
+  BufferManager manager;
+
+  LiteRtWeightsT weights;
+  weights.SetBufferManager(&manager);
+
+  BufferRef<uint8_t> buf(kData.data(), kData.size());
+  SetWeightsFromUnownedBuffer(weights, buf);
+
+  EXPECT_EQ(manager.GetBuffer(weights.GetBufferId())->StrView(), kData);
+  EXPECT_EQ(weights.Buffer().StrView(), kData);
+}
+
+TEST(ModelWeightsTest, WeightsFromUnownedBuffer) {
   static constexpr absl::string_view kData = "some_data";
 
   LiteRtWeightsT weights;
-  weights.SetFromBuf(BufferRef<uint8_t>(kData.data(), kData.size()));
-  EXPECT_EQ(weights.Buf().StrView(), kData);
+  BufferRef<uint8_t> buf(kData.data(), kData.size());
+  SetWeightsFromUnownedBuffer(weights, buf);
+
+  EXPECT_EQ(weights.Buffer().StrView(), kData);
+}
+
+TEST(ModelWeightsTest, WeightsFromOwnedBuffer) {
+  static constexpr absl::string_view kData = "some_data";
+
+  LiteRtWeightsT weights;
+
+  OwningBufferRef<uint8_t> buf(kData);
+  SetWeightsFromUnownedBuffer(weights, std::move(buf));
+
+  EXPECT_EQ(weights.Buffer().StrView(), kData);
+}
+
+TEST(ModelWeightsTest, OverwriteBuffer) {
+  static constexpr absl::string_view kData = "some_data";
+  static constexpr absl::string_view kData2 = "some_data2";
+
+  LiteRtWeightsT weights;
+
+  {
+    OwningBufferRef<uint8_t> buf(kData);
+    SetWeightsFromOwnedBuffer(weights, std::move(buf));
+  }
+
+  {
+    OwningBufferRef<uint8_t> buf(kData2);
+    SetWeightsFromOwnedBuffer(weights, std::move(buf));
+  }
+
+  EXPECT_EQ(weights.Buffer().StrView(), kData2);
 }
 
 TEST(ModelTensorTest, Name) {

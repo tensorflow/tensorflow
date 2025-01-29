@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <tuple>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -45,12 +49,19 @@ static constexpr int64_t kCostlyAllReduceMultiplier = 4;
 
 // Classifies `hlo` instruction as noop or not.
 bool IsNopInstruction(const HloInstruction& hlo) {
-  HloOpcode op = hlo.opcode();
-  return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
-         op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
-         op == HloOpcode::kTuple || op == HloOpcode::kPartitionId ||
-         op == HloOpcode::kReplicaId || hlo.IsEffectiveBitcast() ||
-         op == HloOpcode::kOptimizationBarrier;
+  switch (hlo.opcode()) {
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kConstant:
+    case HloOpcode::kParameter:
+    case HloOpcode::kTuple:
+    case HloOpcode::kPartitionId:
+    case HloOpcode::kReplicaId:
+    case HloOpcode::kOptimizationBarrier:
+      return true;
+    default:
+      return hlo.IsEffectiveBitcast();
+  }
 }
 
 bool IsAsyncComputeOp(const HloInstruction& hlo) {
@@ -272,13 +283,13 @@ void GpuAsyncTrackerBase::PostProcessScheduleGraph(
     // Schedule partially pipelined send/recv instructions late so that they can
     // overlap with compute. Schedule send/recv late and, when unblocked,
     // schedule send-done/recv-done early.
-    if (debug_options.xla_gpu_enable_experimental_pipeline_parallelism_opt() &&
+    if (debug_options.xla_gpu_experimental_enable_pipeline_parallelism_opt() &&
         IsPartiallyPipelinedSendRecv(inst)) {
       HloGraphNode& node = schedule_graph->GetNode(inst);
       node.SetForceDelay(true);
       VLOG(5) << "Setting force delay for instruction: " << inst->ToString();
     }
-    if (debug_options.xla_gpu_enable_experimental_pipeline_parallelism_opt() &&
+    if (debug_options.xla_gpu_experimental_enable_pipeline_parallelism_opt() &&
         IsPartiallyPipelinedSendRecvDone(inst)) {
       HloGraphNode& node = schedule_graph->GetNode(inst);
       node.SetForceEarly(true);

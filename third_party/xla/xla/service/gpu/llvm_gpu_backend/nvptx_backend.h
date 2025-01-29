@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
@@ -51,6 +52,10 @@ absl::StatusOr<std::string> CompileToPtx(
 stream_executor::SemanticVersion
 DetermineHighestSupportedPtxVersionFromCudaVersion(
     stream_executor::SemanticVersion cuda_version);
+
+// Returns the LLVM command line flags that we use for compilation.
+std::vector<std::string> GetNVPTXBackendOptions(
+    const DebugOptions& debug_options);
 
 }  // namespace xla::gpu::nvptx
 

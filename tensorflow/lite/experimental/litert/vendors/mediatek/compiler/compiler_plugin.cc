@@ -13,14 +13,17 @@
 // limitations under the License.
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -147,25 +150,31 @@ struct LiteRtCompiledResultT {
   std::vector<std::string> graph_names;
 };
 
-LiteRtStatus LiteRtGetCompiledResultByteCode(
-    LiteRtCompiledResult compiled_result, const void** byte_code,
-    size_t* byte_code_size) {
-  if (!compiled_result || !byte_code || !byte_code_size) {
+LiteRtStatus LiteRtCompiledResultNumByteCodeModules(
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_byte_code) {
+  if (!compiled_result || !num_byte_code) {
     return kLiteRtStatusErrorInvalidArgument;
-  } else if (compiled_result->bytecodes.size() > 1) {
-    // TODO: Revisit this struct after we extend the compiler plugin API to
-    // return results with more than one single bytecode.
-    LITERT_LOG(LITERT_ERROR, "CompilerPlugin API supports only 1 NPU bytecode");
-    return kLiteRtStatusErrorIndexOOB;
   }
-  *byte_code = compiled_result->bytecodes[0].data();
-  *byte_code_size = compiled_result->bytecodes[0].size();
+  *num_byte_code = compiled_result->bytecodes.size();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetCompiledResultByteCode(
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex byte_code_idx,
+    const void** byte_code, size_t* byte_code_size) {
+  if (!compiled_result || !byte_code || !byte_code_size ||
+      (byte_code_idx >= compiled_result->bytecodes.size())) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *byte_code = compiled_result->bytecodes[byte_code_idx].data();
+  *byte_code_size = compiled_result->bytecodes[byte_code_idx].size();
   return kLiteRtStatusOk;
 }
 
 LiteRtStatus LiteRtGetCompiledResultCallInfo(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex call_idx,
-    const void** call_info, size_t* call_info_size) {
+    const void** call_info, size_t* call_info_size,
+    LiteRtParamIndex* byte_code_idx) {
   if (!compiled_result || !call_info || !call_info_size) {
     return kLiteRtStatusErrorInvalidArgument;
   } else if (call_idx >= compiled_result->graph_names.size()) {
@@ -175,6 +184,8 @@ LiteRtStatus LiteRtGetCompiledResultCallInfo(
   auto& graph_name = compiled_result->graph_names[call_idx];
   *call_info = graph_name.data();
   *call_info_size = graph_name.size();
+  // MTK should have one byte code per call.
+  *byte_code_idx = call_idx;
 
   return kLiteRtStatusOk;
 }
@@ -234,7 +245,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
       continue;
     }
 
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op.Get()));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
   }
 
   return kLiteRtStatusOk;
@@ -307,7 +318,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
     auto bytecode = CompilePartition(**neuron_adapter, partition, graph_name,
                                      opt_soc_model);
     if (!bytecode) {
-      LITERT_LOG(LITERT_INFO, "%s", bytecode.Error().Message().data());
+      LITERT_LOG(LITERT_INFO, "%s", bytecode.Error().Message().c_str());
       return bytecode.Error().Status();
     }
 

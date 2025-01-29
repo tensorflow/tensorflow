@@ -75,6 +75,8 @@ using DetermineSplitDimensionFunction =
     std::function<std::optional<SplitConfig>(
         const HloValue&,
         absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*)>;
+using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
+    const HloInstruction* instruction, int64_t split_dim)>;
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
 
 // MSA allows for custom post-allocation transformations. When a post-allocation
@@ -186,6 +188,10 @@ struct Options {
   // kAny as the default. Splitting will be disabled if this function is not
   // provided.
   InitSplitTreeFn init_split_tree_fn = nullptr;
+
+  // Determines the appropriate output split for a bitcast given an input split.
+  // Splitting will be disabled if this function is not provided.
+  BitcastSplitFn bitcast_split_fn = nullptr;
 
   // Dimension number indicating no split is present.
   int64_t replicated_split_dimension = -1;

@@ -45,7 +45,7 @@ LiteRtStatus LiteRtGetEventSyncFenceFd(LiteRtEvent event, int* sync_fence_fd) {
 
 LiteRtStatus LiteRtEventWait(LiteRtEvent event, int64_t timeout_in_ms) {
   if (auto status = event->Wait(timeout_in_ms); !status) {
-    LITERT_LOG(LITERT_ERROR, "%s", status.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;

@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -89,6 +90,12 @@ class StreamExecutor {
 
   // Creates and initializes an Event.
   virtual absl::StatusOr<std::unique_ptr<Event>> CreateEvent() = 0;
+
+  // Creates a MemoryAllocator for the given type.
+  virtual absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+  CreateMemoryAllocator(MemoryType type) {
+    return absl::UnimplementedError("Not Implemented");
+  }
 
   // Obtains metadata about the underlying device.
   // The value is cached on first use.
@@ -148,16 +155,6 @@ class StreamExecutor {
   // Deallocates the DeviceMemory previously allocated via this interface.
   // Deallocation of a nullptr-representative value is permitted.
   virtual void Deallocate(DeviceMemoryBase* mem) = 0;
-
-  // Allocates unified memory space of the given size, if supported.
-  // See
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-unified-memory-programming-hd
-  // for more details on unified memory.
-  virtual void* UnifiedMemoryAllocate(uint64_t size) { return nullptr; }
-
-  // Deallocates unified memory space previously allocated with
-  // UnifiedMemoryAllocate.
-  virtual void UnifiedMemoryDeallocate(void* mem) {}
 
   // Allocates collective device memory using ncclMemAlloc.
   // See

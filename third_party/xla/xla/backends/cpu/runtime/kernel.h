@@ -18,14 +18,12 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <type_traits>
 #include <utility>
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -34,15 +32,15 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "tsl/platform/threadpool.h"
+
+namespace Eigen {
+struct ThreadPoolDevice;
+}  // namespace Eigen
 
 namespace xla::cpu {
 
 class Kernel {
  public:
-  using Task = std::function<void()>;
-  using TaskRunner = absl::AnyInvocable<void(Task)>;
-
   // A struct to report completion of the kernel execution.
   using LaunchEvent = tsl::Chain;
 
@@ -85,20 +83,17 @@ class Kernel {
                       absl::Span<const XLA_CPU_KernelArg> args) const;
 
   // Launches the kernel by iterating over all threads in `thread_dims` and
-  // calling `task_runner` to run individual task (implementation might decide
-  // to run some of the tasks in the caller thread to save on scheduling
-  // overheads). It's up to the caller to define where task runner will execute
-  // the task, i.e., a common case is to launch them on a thread pool.
+  // using `device` to parallelize the execution.
   //
   // The returned async value becomes available after all tasks are completed.
   // Async value returned in constructed state and the caller can access it to
   // get the number of tasks that are expected to be completed.
   tsl::AsyncValueRef<LaunchEvent> Launch(
       const ThreadDim& thread_dims, absl::Span<const DeviceMemoryBase> buffers,
-      TaskRunner task_runner) const;
+      const Eigen::ThreadPoolDevice* device) const;
   tsl::AsyncValueRef<LaunchEvent> Launch(
       const ThreadDim& thread_dims, absl::Span<const XLA_CPU_KernelArg> args,
-      TaskRunner task_runner) const;
+      const Eigen::ThreadPoolDevice* device) const;
 
   // For host platform, we assume that a core is a thread, and we can run at
   // most one instance of a kernel on a given thread.
@@ -117,6 +112,10 @@ class Kernel {
   }
 
  private:
+  // A kernel parallel task that is used to parallelize host kernel execution.
+  template <bool thread_dim_x_only>
+  class ParallelTask;
+
   std::unique_ptr<KernelFunction> function_;
   XLA_CPU_Kernel* kernel_;  // pointer to the kernel owned by `function_`
 

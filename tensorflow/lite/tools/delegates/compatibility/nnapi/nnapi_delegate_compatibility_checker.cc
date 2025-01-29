@@ -16,11 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/compatibility/nnapi/nnapi_delegate_compatibility_checker.h"
 
 #include <cctype>
-#include <cstdlib>
 #include <functional>
-#include <limits>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>

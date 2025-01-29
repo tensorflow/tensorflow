@@ -33,21 +33,13 @@ class DeviceMemAllocator : public tsl::SubAllocator {
   // Note: stream_exec cannot be null.
   DeviceMemAllocator(StreamExecutor* stream_exec,
                      tsl::PlatformDeviceId device_id, MemoryType memory_type,
-                     const std::vector<Visitor>& alloc_visitors)
+                     const std::vector<Visitor>& alloc_visitors = {})
       : SubAllocator(alloc_visitors, {}),
         stream_exec_(stream_exec),
         device_id_(device_id),
         memory_type_(memory_type) {
     CHECK(stream_exec_ != nullptr);
-  }
-
-  DeviceMemAllocator(StreamExecutor* stream_exec,
-                     tsl::PlatformDeviceId device_id, MemoryType memory_type)
-      : SubAllocator({}, {}),
-        stream_exec_(stream_exec),
-        device_id_(device_id),
-        memory_type_(memory_type) {
-    CHECK(stream_exec_ != nullptr);
+    CHECK(memory_type_ != MemoryType::kUnified);
   }
 
   ~DeviceMemAllocator() override = default;
@@ -59,9 +51,7 @@ class DeviceMemAllocator : public tsl::SubAllocator {
     void* ptr = nullptr;
     *bytes_received = num_bytes;
     if (num_bytes > 0) {
-      if (memory_type_ == MemoryType::kUnified) {
-        ptr = stream_exec_->UnifiedMemoryAllocate(num_bytes);
-      } else if (memory_type_ == MemoryType::kCollective) {
+      if (memory_type_ == MemoryType::kCollective) {
         auto status_or = stream_exec_->CollectiveMemoryAllocate(num_bytes);
         CHECK(status_or.ok()) << status_or.status().message();
         ptr = status_or.value();
@@ -83,9 +73,7 @@ class DeviceMemAllocator : public tsl::SubAllocator {
 
     if (ptr != nullptr) {
       VisitFree(ptr, device_id_.value(), num_bytes);
-      if (memory_type_ == MemoryType::kUnified) {
-        stream_exec_->UnifiedMemoryDeallocate(ptr);
-      } else if (memory_type_ == MemoryType::kCollective) {
+      if (memory_type_ == MemoryType::kCollective) {
         auto status = stream_exec_->CollectiveMemoryDeallocate(ptr);
         CHECK(status.ok()) << status.message();
       } else if (memory_type_ == MemoryType::kHost) {

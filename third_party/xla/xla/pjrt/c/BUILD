@@ -74,6 +74,30 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_triton_extension_hdrs",
+    hdrs = ["pjrt_c_api_triton_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_triton_internal",
+    srcs = ["pjrt_c_api_triton_internal.cc"],
+    hdrs = ["pjrt_c_api_triton_internal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_triton_extension_hdrs",
+        ":pjrt_c_api_wrapper_impl",
+        "//xla/pjrt:triton",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_gpu_extension_hdrs",
     hdrs = ["pjrt_c_api_gpu_extension.h"],
     visibility = ["//visibility:public"],
@@ -290,8 +314,11 @@ cc_library(
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_layouts_extension_hdrs",
+        ":pjrt_c_api_memory_descriptions_extension_hdrs",
         ":pjrt_c_api_profiler_extension_hdrs",
         ":pjrt_c_api_stream_extension_hdrs",
+        ":pjrt_c_api_triton_extension_hdrs",
+        ":pjrt_c_api_triton_internal",
         ":pjrt_c_api_wrapper_impl",
         "//xla/backends/profiler:profiler_backends",  # To register the Host Tracers for GPU Plugin.
         "//xla/backends/profiler/gpu:device_tracer",  # To register the GPU Tracers with the GPU Plugin.
@@ -315,7 +342,6 @@ cc_library(
         "//xla/python:inspect_sharding",  # To register "InspectSharding" custom partitioning handler.
         "//xla/service:compiler",
         "//xla/service:custom_call_target_registry",
-        "//xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
@@ -403,6 +429,7 @@ xla_test(
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_test_base",
         ":pjrt_c_api_test_common",
+        ":pjrt_c_api_triton_extension_hdrs",
         ":pjrt_c_api_wrapper_impl",
         "//xla:literal",
         "//xla:literal_util",

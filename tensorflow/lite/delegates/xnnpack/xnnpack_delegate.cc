@@ -7271,6 +7271,10 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
               case kTfLiteBuiltinFullyConnected:
               case kTfLiteBuiltinConv2d:
               case kTfLiteBuiltinDepthwiseConv2d:
+                // Don't dequantize input nodes. XNNPack cannot handle them.
+                if (output_node->inputs->data[0] == output_id) {
+                  skip_this_node = false;
+                }
                 break;
               default:
                 skip_this_node = false;

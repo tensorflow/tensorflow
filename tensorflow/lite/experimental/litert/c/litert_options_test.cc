@@ -124,7 +124,7 @@ TEST(GetOpOptionTest, TestGetFullyConnectedOptions) {
   bool asymmetric_quantize_input;
   LITERT_ASSERT_STATUS_OK(LiteRtGetFullyConnectedAsymmetricQuantizeInputOption(
       op, &asymmetric_quantize_input));
-  ASSERT_EQ(asymmetric_quantize_input, true);
+  ASSERT_EQ(asymmetric_quantize_input, false);
 }
 
 TEST(GetOpOptionTest, TestGetMulOptions) {
@@ -233,6 +233,19 @@ TEST(GetOpOptionTest, TestGetSumOptions) {
   bool keepdims;
   LITERT_ASSERT_STATUS_OK(LiteRtGetSumKeepDimsOption(op, &keepdims));
   ASSERT_EQ(keepdims, true);
+}
+
+TEST(GetOpOptionTest, TestGetPackOptions) {
+  auto model = litert::testing::LoadTestFileModel("simple_pack_op.tflite");
+  auto subgraph = model.MainSubgraph();
+  EXPECT_TRUE(subgraph);
+
+  auto ops = subgraph->Ops();
+  auto op = ops.front().Get();
+
+  int32_t axis;
+  LITERT_ASSERT_STATUS_OK(LiteRtGetPackAxisOption(op, &axis));
+  ASSERT_EQ(axis, 0);
 }
 
 }  // namespace

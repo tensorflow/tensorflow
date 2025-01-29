@@ -28,8 +28,8 @@ limitations under the License.
 #else
 #include "rocm/include/hipblaslt.h"
 #endif
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/dso_loader.h"
-#include "tsl/platform/env.h"
 
 namespace stream_executor {
 namespace wrap {

@@ -336,7 +336,6 @@ foreach pair = [
   [MHLO_BitcastConvertOp, TFL_BitcastOp],
   [MHLO_CeilOp, TFL_CeilOp],
   [MHLO_CosineOp, TFL_CosOp],
-  [MHLO_ExpOp, TFL_ExpOp],
   [MHLO_FloorOp, TFL_FloorOp],
   [MHLO_ImagOp, TFL_ImagOp],
   [MHLO_LogOp, TFL_LogOp],
@@ -353,6 +352,18 @@ foreach pair = [
     (pair[0] $input),
     (pair[1] $input)>;
 }
+
+def ConstDefaultResultAccuracyAttr :
+  ConstantAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">;
+
+foreach pair = [
+  [MHLO_ExpOp, TFL_ExpOp],
+] in {
+  def : Pat<
+    (pair[0] $input, ConstDefaultResultAccuracyAttr),
+    (pair[1] $input)>;
+}
+
 
 def : Pat<
   (MHLO_ConvertOp $input),

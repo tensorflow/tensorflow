@@ -89,7 +89,7 @@ bool IsSubtype(const FullTypeDef& lhs, const FullTypeDef& rhs,
 uint64_t Hash(const FullTypeDef& arg);
 
 // Determine if the given fulltype is a host memory type.
-// While it is prefered that Placer (placer.cc and colocation_graph.cc) make
+// While it is preferred that Placer (placer.cc and colocation_graph.cc) make
 // all host memory type placement decisions, any decision made elsewhere
 // should use this function (e.g. instead of assuming that all variants never
 // contain host memory types).

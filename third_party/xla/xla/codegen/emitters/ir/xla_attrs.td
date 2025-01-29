@@ -62,4 +62,19 @@ def XLA_IndexingMapAttr : XLA_Attr<"IndexingMap"> {
   }];
 }
 
+// Note: settle for BackendKind to avoid clashing with the existing
+// xla::Backend and xla::BackendType types.
+def XLA_BackendKind : I32EnumAttr<"BackendKind", "XLA Backend kind (or type)", [
+    I32EnumAttrCase<"kCpu", 0, "cpu">,
+    I32EnumAttrCase<"kGpu", 1, "gpu">,
+    I32EnumAttrCase<"kTpu", 2, "tpu">
+  ]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::xla";
+}
+def XLA_BackendKindAttr :
+    EnumAttr<XlaDialect, XLA_BackendKind, "backend_kind"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
 #endif // XLA_CODEGEN_EMITTERS_IR_XLA_ATTRS

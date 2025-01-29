@@ -54,7 +54,8 @@ TEST(JitCompilation, Qualcomm) {
           /*.value=*/kCompilerPluginLibSearchPath,
       },
   };
-  ASSERT_TRUE(litert::Environment::Create(environment_options));
+  auto env = litert::Environment::Create(environment_options);
+  ASSERT_TRUE(env);
 
   auto model_path = litert::testing::GetTestFilePath(kModelFileName);
   auto model = litert::Model::CreateFromFile(model_path);
@@ -68,8 +69,13 @@ TEST(JitCompilation, Qualcomm) {
                   "Qualcomm HTP";
 #endif
 
-  auto compiled_model =
-      litert::CompiledModel::Create(*model, kLiteRtHwAccelatorNpu);
+  auto compilation_options = litert::CompiledModel::Options::Create();
+  ASSERT_TRUE(compilation_options);
+  ASSERT_TRUE(
+      compilation_options->SetHardwareAccelerators(kLiteRtHwAccelatorNpu));
+
+  auto compiled_model = litert::CompiledModel::Create(
+      *env, *model, std::move(*compilation_options));
   ASSERT_TRUE(compiled_model);
 
   auto input_buffers =
@@ -101,6 +107,4 @@ TEST(JitCompilation, Qualcomm) {
     }
     EXPECT_THAT(output, Pointwise(FloatNear(1e-5), kTestOutputTensor));
   }
-
-  litert::Environment::Destroy();
 }

@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -3129,8 +3130,16 @@ bool AsynchronousCopyOrdering::ViolatesOrdering(int64_t exclusive_start_time,
 
 bool AsynchronousCopyResource::ConsumeResource(
     int64_t exclusive_start_time, int64_t end_time, float resource,
-    absl::flat_hash_map<int64_t, float>* delay_change_map,
+    std::vector<std::pair<int64_t, float>>* delay_changes,
     float resource_to_free) {
+  // Cache the pointers to the arrays to avoid the overhead of `operator[]`
+  // size checks in hardened libc++.
+  //
+  // NOTE: Do not modify the vectors `initial_resources_` or `delay_` in this
+  // function, otherwise the pointers will become dangling.
+  float* initial_resources_ptr = initial_resources_.data();
+  float* delay_ptr = delay_.data();
+
   std::list<AsynchronousCopy>::iterator current_copy = async_copies_.end();
   // In order to propagate the resource to the next scheduled copy, we iterate
   // over the copies in start time order until we either find enough free
@@ -3160,7 +3169,8 @@ bool AsynchronousCopyResource::ConsumeResource(
     // this copy would have to be delayed because of an earlier copy that wasn't
     // finished when this copy starts.
     if (current_copy == async_copies_.end()) {
-      resource += delay_[ExclusiveToInclusiveStartTime(exclusive_start_time)];
+      resource +=
+          delay_ptr[ExclusiveToInclusiveStartTime(exclusive_start_time)];
     }
 
     // Find the copy that is right after this one. If there are leftover
@@ -3186,7 +3196,7 @@ bool AsynchronousCopyResource::ConsumeResource(
          time < end_time && resource != 0; ++time) {
       // Iterate over the logical times that this copy spans. Note that the
       // start and end time ranges are exclusive.
-      float used_resource = std::min(resource, initial_resources_[time]);
+      float used_resource = std::min(resource, initial_resources_ptr[time]);
       if (next_copy != async_copies_.end() &&
           next_copy->exclusive_start_time ==
               InclusiveToExclusiveStartTime(time)) {
@@ -3199,15 +3209,17 @@ bool AsynchronousCopyResource::ConsumeResource(
       if (!delay_for_next_copy.has_value()) {
         // Update the delay_ vector and resource_freed variable with the amount
         // that was freed when removing the copy.
+        float old_delay = delay_ptr[time];
         float old_resource =
-            std::max(0.0f, initial_resources_[time] - delay_[time]);
-        if (delay_change_map) {
-          delay_change_map->emplace(time, delay_[time]);
-        }
-        delay_[time] = std::max(0.0f, resource - resource_to_free);
+            std::max(0.0f, initial_resources_ptr[time] - old_delay);
+        float new_delay = std::max(0.0f, resource - resource_to_free);
         float new_resource =
-            std::max(0.0f, initial_resources_[time] - delay_[time]);
+            std::max(0.0f, initial_resources_ptr[time] - new_delay);
         resource_freed += std::max(0.0f, new_resource - old_resource);
+        delay_ptr[time] = new_delay;
+        if (delay_changes) {
+          delay_changes->emplace_back(time, old_delay);
+        }
       }
       // Update the resource with the used amount in this logical time.
       resource -= used_resource;
@@ -3303,7 +3315,7 @@ void AsynchronousCopyResource::RemoveCopy(
             copy_it->exclusive_start_time);
   CHECK(ConsumeResource(copy_it->exclusive_start_time, copy_it->end_time,
                         /*resource=*/0,
-                        /*delay_change_map=*/nullptr,
+                        /*delay_changes=*/nullptr,
                         /*resource_to_free=*/copy_it->resource));
   // If the copy to be removed is the value pointed by async_copy_time_map_, we
   // make the next copy with the same start time to be pointed by
@@ -3325,24 +3337,36 @@ void AsynchronousCopyResource::RemoveCopy(
 bool AsynchronousCopyResource::HasEnoughResource(int64_t exclusive_start_time,
                                                  int64_t end_time,
                                                  float resource) {
-  absl::flat_hash_map<int64_t, float> delay_changes;
+  std::vector<std::pair<int64_t, float>> delay_changes;
+  delay_changes.reserve(delay_.size());
   bool result =
       ConsumeResource(exclusive_start_time, end_time, resource, &delay_changes);
-  for (const auto& change_pair : delay_changes) {
-    delay_[change_pair.first] = change_pair.second;
+  // Apply the delay changes in reverse order. This ensures that the original
+  // value of each delay is restored.
+  if (!delay_changes.empty()) {
+    for (int64_t i = delay_changes.size() - 1; i >= 0; --i) {
+      const auto& [time, delay] = delay_changes[i];
+      delay_[time] = delay;
+    }
   }
   return result;
 }
 
 bool AsynchronousCopyResource::HasEnoughResourceMultiCheck(
     const std::vector<ResourceSpec>& specs) {
-  absl::flat_hash_map<int64_t, float> delay_changes;
+  std::vector<std::pair<int64_t, float>> delay_changes;
+  delay_changes.reserve(delay_.size());
   bool result = absl::c_all_of(specs, [&](const ResourceSpec& spec) {
     return ConsumeResource(spec.exclusive_start_time, spec.end_time,
                            spec.resource, &delay_changes);
   });
-  for (const auto& change_pair : delay_changes) {
-    delay_[change_pair.first] = change_pair.second;
+  // Apply the delay changes in reverse order. This ensures that the original
+  // value of each delay is restored.
+  if (!delay_changes.empty()) {
+    for (int64_t i = delay_changes.size() - 1; i >= 0; --i) {
+      const auto& [time, delay] = delay_changes[i];
+      delay_[time] = delay;
+    }
   }
   return result;
 }
@@ -5239,7 +5263,6 @@ AllocationResult MsaAlgorithm::WindowPrefetch(
 
     WindowPrefetchedAllocation::Options options;
     options.bytes = window.size();
-    options.uid = window.uid();
     options.alternate_memory_space = options_.alternate_memory_space;
     options.notify_operand_appended_fn = options_.notify_operand_appended_fn;
     AllocationRequest window_prefetch_request = request;

@@ -91,7 +91,6 @@ cc_library(
 
 cc_library(
     name = "mlir_roundtrip_flags",
-    srcs = ["mlir_roundtrip_flags.cc"],
     hdrs = ["mlir_roundtrip_flags.h"],
     visibility = ["//visibility:public"],
     deps = [

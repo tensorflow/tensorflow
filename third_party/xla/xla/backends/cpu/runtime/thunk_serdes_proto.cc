@@ -1246,6 +1246,10 @@ static absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunkFromProto(
     const ThunkProto& proto, const BufferAssignment& buffer_assignment) {
   TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
+  XnnDotThunk::Options options = {
+      proto.xnn_fusion_thunk().options().use_threadpool(),
+  };
+
   TF_ASSIGN_OR_RETURN(
       auto lhs_slice_shape,
       DeserializeSliceShapeFromProto(
@@ -1268,7 +1272,7 @@ static absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunkFromProto(
   const auto& [out_buffer, out_shape] = out_slice_shape;
 
   return XnnDotThunk::Create(
-      std::move(info),
+      std::move(options), std::move(info),
       proto.xnn_fusion_thunk().xnn_dot_thunk().dot_dimensions(), lhs_buffer,
       lhs_shape, rhs_buffer, rhs_shape, out_buffer, out_shape);
 }

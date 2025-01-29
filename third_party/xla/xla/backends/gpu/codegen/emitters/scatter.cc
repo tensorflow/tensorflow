@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/scatter.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <numeric>

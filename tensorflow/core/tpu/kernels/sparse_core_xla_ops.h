@@ -16,8 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_XLA_OPS_H_
 
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/macros.h"
 
 // RAII helper to set the frontend attribute for the target chip to the SC.
 // Automatically restores the frontend attributes on exit.

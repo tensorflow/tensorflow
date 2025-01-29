@@ -50,8 +50,8 @@ limitations under the License.
 #include "xla/service/hlo_proto_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
 

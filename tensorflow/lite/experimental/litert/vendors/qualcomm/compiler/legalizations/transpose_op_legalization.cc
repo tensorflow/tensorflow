@@ -50,24 +50,24 @@ LiteRtStatus TransposeOpLegalization::LegalizeOp(const Op& src,
   }
   DumpLegalization(*src.Get());
   std::string op_name = absl::StrFormat(kTransposeOpFmt, op_counter_++);
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      SetOpInfo(op_name.c_str(), kDefaultQnnOpPackageName.data(),
-                kQnnTransposeOpTypeName.data(), dest));
+  LITERT_RETURN_IF_ERROR(SetOpInfo(op_name.c_str(),
+                                   kDefaultQnnOpPackageName.data(),
+                                   kQnnTransposeOpTypeName.data(), dest));
 
   // QNN transpose op expects 1 input tensor.
   const auto op_ins = src.Inputs();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, kTransposeOpInputSize,
                      QNN_TENSOR_INIT);
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.LookupInScope(op_ins.front().Get(), qnn_op_ins[0]));
 
   // QNN transpose op expects 1 output tensor.
   const auto op_outs = src.Outputs();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs, kTransposeOpOutputSize,
                      QNN_TENSOR_INIT);
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.LegalizeAndRegister(op_outs.front().Get(), qnn_op_outs[0]));
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.PushToScope(op_outs.front().Get(), qnn_op_outs[0]));
 
   // Prepare QNN transpose parameters.

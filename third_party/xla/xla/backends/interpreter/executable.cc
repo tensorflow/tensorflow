@@ -15,12 +15,10 @@ limitations under the License.
 
 #include "xla/backends/interpreter/executable.h"
 
-#include <algorithm>
-#include <cstring>
+#include <cstdint>
 #include <memory>
-#include <string>
+#include <optional>
 #include <utility>
-#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"

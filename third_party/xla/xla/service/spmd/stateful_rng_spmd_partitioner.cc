@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 

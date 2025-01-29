@@ -83,6 +83,11 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
           << consumer->ToString();
 
   constexpr int kFusionThresholdBytes = 16 * 1024;
+  // When we fuse a concatenate we don't take the fast path of simple memcpy /
+  // for-loop; instead we currently emit a tree mapping the input to output idx
+  // with a depth of log2(#args), this can have a large overhead for large
+  // number of arguments.
+  constexpr int64_t kMaxConcatenateArguments = 8;
 
   if (IsLargeConstant(producer)) {
     return FusionDecision::Forbid("Don't fuse large constants.");
@@ -100,6 +105,13 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   if (!CanBeLoopFused(*producer)) {
     return FusionDecision::Forbid("Producer is not loop-fusible.");
+  }
+
+  if ((producer->opcode() == HloOpcode::kConcatenate &&
+       producer->operand_count() > kMaxConcatenateArguments) ||
+      (consumer->opcode() == HloOpcode::kConcatenate &&
+       consumer->operand_count() > kMaxConcatenateArguments)) {
+    return FusionDecision::Forbid("Concatenate fusion is inefficient.");
   }
 
   // Cost condition: not fuse (simple, expensive producers) and (consumers who

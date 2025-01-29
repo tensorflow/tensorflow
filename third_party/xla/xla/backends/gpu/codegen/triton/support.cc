@@ -340,7 +340,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCall:
     case HloOpcode::kCholesky:
-    case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kComplex:

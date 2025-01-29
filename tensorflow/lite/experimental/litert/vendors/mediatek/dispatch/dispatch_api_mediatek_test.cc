@@ -213,14 +213,12 @@ TEST(MediaTek, DispatchApiWithAhwb) {
     ABSL_LOG(INFO) << "Filling inputs with data";
     void* host_mem_addr;
 
-    ASSERT_EQ(LiteRtLockTensorBuffer(input_0_tensor_buffer, &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(input_0_tensor_buffer, &host_mem_addr),
               kLiteRtStatusOk);
     std::memcpy(host_mem_addr, kTestInput0Tensor, sizeof(kTestInput0Tensor));
     ASSERT_EQ(LiteRtUnlockTensorBuffer(input_0_tensor_buffer), kLiteRtStatusOk);
 
-    ASSERT_EQ(LiteRtLockTensorBuffer(input_1_tensor_buffer, &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(input_1_tensor_buffer, &host_mem_addr),
               kLiteRtStatusOk);
     std::memcpy(host_mem_addr, kTestInput1Tensor, sizeof(kTestInput1Tensor));
     ASSERT_EQ(LiteRtUnlockTensorBuffer(input_1_tensor_buffer), kLiteRtStatusOk);
@@ -240,8 +238,7 @@ TEST(MediaTek, DispatchApiWithAhwb) {
   {
     ABSL_LOG(INFO) << "Checking output...";
     void* host_mem_addr;
-    ASSERT_EQ(LiteRtLockTensorBuffer(output_tensor_buffer, &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(output_tensor_buffer, &host_mem_addr),
               kLiteRtStatusOk);
     auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
                                  kTestOutputSize);
@@ -260,15 +257,13 @@ TEST(MediaTek, DispatchApiWithAhwb) {
     ABSL_LOG(INFO) << "Filling inputs with data";
     void* host_mem_addr;
 
-    ASSERT_EQ(LiteRtLockTensorBuffer(input_0_tensor_buffer, &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(input_0_tensor_buffer, &host_mem_addr),
               kLiteRtStatusOk);
     std::memcpy(host_mem_addr, kTestInput0Tensor_2,
                 sizeof(kTestInput0Tensor_2));
     ASSERT_EQ(LiteRtUnlockTensorBuffer(input_0_tensor_buffer), kLiteRtStatusOk);
 
-    ASSERT_EQ(LiteRtLockTensorBuffer(input_1_tensor_buffer, &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(input_1_tensor_buffer, &host_mem_addr),
               kLiteRtStatusOk);
     std::memcpy(host_mem_addr, kTestInput1Tensor_2,
                 sizeof(kTestInput1Tensor_2));
@@ -289,8 +284,7 @@ TEST(MediaTek, DispatchApiWithAhwb) {
   {
     ABSL_LOG(INFO) << "Checking output...";
     void* host_mem_addr;
-    ASSERT_EQ(LiteRtLockTensorBuffer(output_tensor_buffer, &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(output_tensor_buffer, &host_mem_addr),
               kLiteRtStatusOk);
     auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
                                  kTestOutputSize);
@@ -515,14 +509,12 @@ TEST(MediaTek, DispatchApiWithDmaBuf) {
     ABSL_LOG(INFO) << "Filling inputs with data";
     void* host_mem_addr;
 
-    ASSERT_EQ(LiteRtLockTensorBuffer(input_0_tensor_buffer, &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(input_0_tensor_buffer, &host_mem_addr),
               kLiteRtStatusOk);
     std::memcpy(host_mem_addr, kTestInput0Tensor, sizeof(kTestInput0Tensor));
     ASSERT_EQ(LiteRtUnlockTensorBuffer(input_0_tensor_buffer), kLiteRtStatusOk);
 
-    ASSERT_EQ(LiteRtLockTensorBuffer(input_1_tensor_buffer, &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(input_1_tensor_buffer, &host_mem_addr),
               kLiteRtStatusOk);
     std::memcpy(host_mem_addr, kTestInput1Tensor, sizeof(kTestInput1Tensor));
     ASSERT_EQ(LiteRtUnlockTensorBuffer(input_1_tensor_buffer), kLiteRtStatusOk);
@@ -542,8 +534,7 @@ TEST(MediaTek, DispatchApiWithDmaBuf) {
   {
     ABSL_LOG(INFO) << "Checking output...";
     void* host_mem_addr;
-    ASSERT_EQ(LiteRtLockTensorBuffer(output_tensor_buffer, &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(output_tensor_buffer, &host_mem_addr),
               kLiteRtStatusOk);
     auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
                                  kTestOutputSize);
@@ -562,15 +553,13 @@ TEST(MediaTek, DispatchApiWithDmaBuf) {
     ABSL_LOG(INFO) << "Filling inputs with data";
     void* host_mem_addr;
 
-    ASSERT_EQ(LiteRtLockTensorBuffer(input_0_tensor_buffer, &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(input_0_tensor_buffer, &host_mem_addr),
               kLiteRtStatusOk);
     std::memcpy(host_mem_addr, kTestInput0Tensor_2,
                 sizeof(kTestInput0Tensor_2));
     ASSERT_EQ(LiteRtUnlockTensorBuffer(input_0_tensor_buffer), kLiteRtStatusOk);
 
-    ASSERT_EQ(LiteRtLockTensorBuffer(input_1_tensor_buffer, &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(input_1_tensor_buffer, &host_mem_addr),
               kLiteRtStatusOk);
     std::memcpy(host_mem_addr, kTestInput1Tensor_2,
                 sizeof(kTestInput1Tensor_2));
@@ -591,8 +580,7 @@ TEST(MediaTek, DispatchApiWithDmaBuf) {
   {
     ABSL_LOG(INFO) << "Checking output...";
     void* host_mem_addr;
-    ASSERT_EQ(LiteRtLockTensorBuffer(output_tensor_buffer, &host_mem_addr,
-                                     /*event=*/nullptr),
+    ASSERT_EQ(LiteRtLockTensorBuffer(output_tensor_buffer, &host_mem_addr),
               kLiteRtStatusOk);
     auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
                                  kTestOutputSize);

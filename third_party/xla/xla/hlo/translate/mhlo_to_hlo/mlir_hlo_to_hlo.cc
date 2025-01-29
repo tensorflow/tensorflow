@@ -98,10 +98,10 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/types.h"
 
 using ::int64_t;
 using ::tsl::int16;
@@ -127,7 +127,7 @@ constexpr char kApproxTopK[] = "ApproxTopK";
 constexpr char kBackendConfig[] = "backend_config";
 constexpr char kCallTargetName[] = "call_target_name";
 constexpr char kCalledComputations[] = "called_computations";
-constexpr char kChannelHandle[] = "channel_handle";
+constexpr char kChannelId[] = "channel_id";
 constexpr char kHasSideEffect[] = "has_side_effect";
 constexpr char kIsFallback[] = "is_fallback";
 constexpr char kRaggedAllToAll[] = "ragged_all_to_all";
@@ -636,6 +636,39 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
 
   output.set_index_vector_dim(input.getIndexVectorDim());
   return output;
+}
+
+// Converts ResultAccuracyAttr to XLA ResultAccuracy proto.
+static xla::ResultAccuracy Convert_result_accuracy(
+    std::optional<mlir::mhlo::ResultAccuracyAttr>
+        optional_result_accuracy_attr) {
+  if (!optional_result_accuracy_attr.has_value()) return xla::ResultAccuracy();
+
+  auto result_accuracy = xla::ResultAccuracy();
+  if (optional_result_accuracy_attr.value().getMode().getValue() ==
+      mlir::mhlo::ResultAccuracyMode::TOLERANCE) {
+    result_accuracy.mutable_tolerance()->set_atol(
+        optional_result_accuracy_attr.value().getAtol().convertToFloat());
+    result_accuracy.mutable_tolerance()->set_rtol(
+        optional_result_accuracy_attr.value().getRtol().convertToFloat());
+    result_accuracy.mutable_tolerance()->set_ulps(
+        optional_result_accuracy_attr.value().getUlps());
+  } else {
+    xla::ResultAccuracy::Mode mode;
+    auto result_accuracy_mode =
+        ::mlir::mhlo::stringifyResultAccuracyMode(
+            optional_result_accuracy_attr.value().getMode().getValue())
+            .str();
+    if (xla::ResultAccuracy::Mode_Parse(result_accuracy_mode, &mode)) {
+      result_accuracy.set_mode(mode);
+    } else {
+      auto* context = optional_result_accuracy_attr.value().getContext();
+      mlir::emitError(mlir::UnknownLoc::get(context))
+          << "unexpected result accuracy mode " << result_accuracy_mode;
+      return xla::ResultAccuracy();
+    }
+  }
+  return result_accuracy;
 }
 
 // Returns an OpSharding proto from the "sharding" attribute of the op. If the
@@ -2275,7 +2308,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
       auto name = attr.getName();
       return name == kCallTargetName || name == kBackendConfig ||
              name == kApiVersion || name == kCalledComputations ||
-             name == kHasSideEffect;
+             name == kHasSideEffect || name == kMhloSharding;
     };
     for (const auto& attr : op->getAttrs()) {
       if (!isSupportedAttrName(attr))
@@ -2285,12 +2318,10 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     }
     DenseIntElementsAttr replica_groups =
         backend_config.getAs<DenseIntElementsAttr>(kReplicaGroups);
-    mlir::mhlo::ChannelHandleAttr channel_handle_attr =
-        backend_config.getAs<mlir::mhlo::ChannelHandleAttr>(kChannelHandle);
     xla::ChannelHandle channel_handle;
-    if (channel_handle_attr) {
-      channel_handle = Convert_channel_handle(channel_handle_attr);
-    }
+    channel_handle.set_handle(
+        backend_config.getAs<IntegerAttr>(kChannelId).getInt());
+    channel_handle.set_type(xla::ChannelHandle::CHANNEL_TYPE_INVALID);
     xla::XlaOp ragged_all_to_all_op =
         RaggedAllToAll(args[0], args[1], args[2], args[3], args[4], args[5],
                        Convert_replica_groups(replica_groups), channel_handle);

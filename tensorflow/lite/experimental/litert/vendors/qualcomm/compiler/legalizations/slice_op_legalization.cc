@@ -56,31 +56,31 @@ LiteRtStatus SliceOpLegalization::LegalizeOp(const Op& src,
   }
   DumpLegalization(*src.Get());
   std::string op_name = absl::StrFormat(kSliceOpFmt, op_counter_++);
-  LITERT_RETURN_STATUS_IF_NOT_OK(SetOpInfo(op_name.c_str(),
-                                           kDefaultQnnOpPackageName.data(),
-                                           kQnnSliceOpTypeName.data(), dest));
+  LITERT_RETURN_IF_ERROR(SetOpInfo(op_name.c_str(),
+                                   kDefaultQnnOpPackageName.data(),
+                                   kQnnSliceOpTypeName.data(), dest));
 
   // QNN strided slice op expects 1 input tensor.
   const auto op_ins = src.Inputs();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, kSliceOpInputSize,
                      QNN_TENSOR_INIT);
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.LookupInScope(op_ins.front().Get(), qnn_op_ins[0]));
 
   // QNN strided slice op expects 1 output tensor.
   const auto op_outs = src.Outputs();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs, kSliceOpOutputSize,
                      QNN_TENSOR_INIT);
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.LegalizeAndRegister(op_outs.front().Get(), qnn_op_outs[0]));
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.PushToScope(op_outs.front().Get(), qnn_op_outs[0]));
 
   const auto& src_input_tensor = op_ins.front();
   auto src_input_tensor_type = src_input_tensor.RankedTensorType();
   if (!src_input_tensor_type) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               src_input_tensor_type.Error().Message().data());
+               src_input_tensor_type.Error().Message().c_str());
     return src_input_tensor_type.Error().Status();
   }
 

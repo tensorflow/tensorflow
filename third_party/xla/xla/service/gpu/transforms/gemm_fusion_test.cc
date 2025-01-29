@@ -438,15 +438,6 @@ ENTRY e {
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
-class GemmFusionLevel2Test : public GemmFusionTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GemmFusionTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_triton_fusion_level(2);
-    return debug_options;
-  }
-};
-
 TEST_F(GemmFusionTest, ConcatenationDivisibleBy64IsFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
@@ -466,7 +457,7 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
 }
 
-TEST_F(GemmFusionLevel2Test, ReshapeToScalarIsHandled) {
+TEST_F(GemmFusionTest, ReshapeToScalarIsHandled) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -484,7 +475,7 @@ ENTRY e {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
-TEST_F(GemmFusionLevel2Test, DoNotFuseIncompatibleDimensionSplits) {
+TEST_F(GemmFusionTest, DoNotFuseIncompatibleDimensionSplits) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -507,7 +498,7 @@ ENTRY e {
       GmockMatch(m::Fusion(m::Transpose(), m::Parameter(), m::Parameter())));
 }
 
-TEST_F(GemmFusionLevel2Test, DoNotFuseTooManyParameters) {
+TEST_F(GemmFusionTest, DoNotFuseTooManyParameters) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -625,7 +616,7 @@ ENTRY e {
             TritonFusionAnalysis::kMaxParameterPerDotOperand * 2);
 }
 
-TEST_F(GemmFusionLevel2Test,
+TEST_F(GemmFusionTest,
        DoNotFuseTooManyParametersWhenAnInstructionWouldAddMultipleParameters) {
   static_assert(TritonFusionAnalysis::kMaxParameterPerDotOperand == 4,
                 "We have to update this test.");
@@ -655,7 +646,7 @@ ENTRY e {
             TritonFusionAnalysis::kMaxParameterPerDotOperand + 1);
 }
 
-TEST_F(GemmFusionLevel2Test, DoNotFuseTooManyParametersForConcat) {
+TEST_F(GemmFusionTest, DoNotFuseTooManyParametersForConcat) {
   static_assert(TritonFusionAnalysis::kMaxParameterPerDotOperand == 4,
                 "We have to update this test.");
   // The concat shouldn't overgo the allowed parameter limit.
@@ -682,7 +673,7 @@ ENTRY e {
             TritonFusionAnalysis::kMaxParameterPerDotOperand + 1);
 }
 
-TEST_F(GemmFusionLevel2Test,
+TEST_F(GemmFusionTest,
        InstructionsReachableFromMultipleOperandsAreHandledCorrectly) {
   static_assert(TritonFusionAnalysis::kMaxParameterPerDotOperand == 4,
                 "We have to update this test.");
@@ -714,7 +705,7 @@ ENTRY e {
   // ~VerifiedHloModule() will verify the module.
 }
 
-TEST_F(GemmFusionLevel2Test, EachScopeIsFusedToASeparateSubgraph) {
+TEST_F(GemmFusionTest, EachScopeIsFusedToASeparateSubgraph) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -749,7 +740,7 @@ CHECK-SAME: __triton_gemm
 // way, so the same parameter node is reused for them.
 // The reuse happens per "operand fusion", so the add of the LHS and RHS still
 // use different nodes.
-TEST_F(GemmFusionLevel2Test, ParamNodesAreReusedIfTheyHaveTheSameIterSpec) {
+TEST_F(GemmFusionTest, ParamNodesAreReusedIfTheyHaveTheSameIterSpec) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -778,7 +769,7 @@ CHECK-SAME: __triton_gemm
 
 // NEGATE has the same iteration spec at both usages, so the node is reused
 // (implying that P0 is also reused).
-TEST_F(GemmFusionLevel2Test, NonParamNodesAreReusedIfTheyHaveTheSameIterSpec) {
+TEST_F(GemmFusionTest, NonParamNodesAreReusedIfTheyHaveTheSameIterSpec) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -812,7 +803,7 @@ CHECK-SAME: __triton_gemm
 
 // The direct read of the input and the transposed read of the input have
 // different iteration specs, so we don't reuse the node.
-TEST_F(GemmFusionLevel2Test, NodesAreNotReusedIfTheyHaveDifferentIterSpecs) {
+TEST_F(GemmFusionTest, NodesAreNotReusedIfTheyHaveDifferentIterSpecs) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -843,7 +834,7 @@ CHECK-SAME: __triton_gemm
 })");
 }
 
-TEST_F(GemmFusionLevel2Test, OperationsAddingMoreParametersGetMultipleTries) {
+TEST_F(GemmFusionTest, OperationsAddingMoreParametersGetMultipleTries) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 e {
@@ -876,7 +867,7 @@ e {
                                     m::Parameter(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionLevel2Test, GemmFusionBailsOutPreAmpere) {
+TEST_F(GemmFusionTest, GemmFusionBailsOutPreAmpere) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -896,7 +887,7 @@ ENTRY e {
                                "(compute capability 8.0) and up, but got")));
 }
 
-TEST_F(GemmFusionLevel2Test, GemmFusionSucceedsOnNonCudaGpu) {
+TEST_F(GemmFusionTest, GemmFusionSucceedsOnNonCudaGpu) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -910,7 +901,7 @@ ENTRY e {
   EXPECT_TRUE(GemmFusion(se::RocmComputeCapability{}).Run(module.get()).ok());
 }
 
-TEST_F(GemmFusionLevel2Test, ParameterUsedElementwiseTwiceIsFused) {
+TEST_F(GemmFusionTest, ParameterUsedElementwiseTwiceIsFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 HloModule t
@@ -942,8 +933,7 @@ ENTRY e {
             1);
 }
 
-TEST_F(GemmFusionLevel2Test,
-       ParameterUsedNonElementwiseTwiceIsFusedOnBothPaths) {
+TEST_F(GemmFusionTest, ParameterUsedNonElementwiseTwiceIsFusedOnBothPaths) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 HloModule t
@@ -966,7 +956,7 @@ ENTRY e {
       GmockMatch((m::Fusion(m::Parameter(), m::Parameter(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionLevel2Test,
+TEST_F(GemmFusionTest,
        ComputationParameterWithMultipleUsersIsNotTrivialToFuse) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
@@ -991,7 +981,7 @@ ENTRY e {
                    .value());
 }
 
-TEST_F(GemmFusionLevel2Test, NarrowingConversionIsAlwaysBetterToFuse) {
+TEST_F(GemmFusionTest, NarrowingConversionIsAlwaysBetterToFuse) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -1013,7 +1003,7 @@ ENTRY e {
                                  m::Negate()))));
 }
 
-TEST_F(GemmFusionLevel2Test, NestedSlicingIsAnalyzedCorrectly) {
+TEST_F(GemmFusionTest, NestedSlicingIsAnalyzedCorrectly) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 triton_gemm_d_computation {
@@ -1048,7 +1038,7 @@ ENTRY e {
                                     /*subfragments=*/ElementsAre(7))));
 }
 
-TEST_F(GemmFusionLevel2Test, FusedConcatenationIsAnalyzedCorrectly) {
+TEST_F(GemmFusionTest, FusedConcatenationIsAnalyzedCorrectly) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 e {
@@ -1108,7 +1098,7 @@ e {
                                     /*subfragments=*/ElementsAre(256))));
 }
 
-TEST_F(GemmFusionLevel2Test, IndivisibleConcatenationIsNotFused) {
+TEST_F(GemmFusionTest, IndivisibleConcatenationIsNotFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 e {
@@ -1128,7 +1118,7 @@ e {
               GmockMatch((m::Fusion(m::Concatenate(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionLevel2Test, ConcatenationOfContractingIsNotFused) {
+TEST_F(GemmFusionTest, ConcatenationOfContractingIsNotFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 e {
@@ -1148,7 +1138,7 @@ e {
               GmockMatch((m::Fusion(m::Concatenate(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionLevel2Test, ConcatenationOfBatchIsNotFused) {
+TEST_F(GemmFusionTest, ConcatenationOfBatchIsNotFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 e {
@@ -1169,7 +1159,7 @@ e {
               GmockMatch((m::Fusion(m::Concatenate(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionLevel2Test,
+TEST_F(GemmFusionTest,
        DifferentConcatenationOfSameParametersIsFusedViaNodeDuplication) {
   // It means that the same input is passed to the fusion multiple times and
   // it's read differently for each.

@@ -174,8 +174,8 @@ class GradientTape {
   // is set to false.
   absl::Status ComputeGradient(
       const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace,
-      const absl::Span<const int64_t> target_tensor_ids,
-      const absl::Span<const int64_t> source_tensor_ids,
+      absl::Span<const int64_t> target_tensor_ids,
+      absl::Span<const int64_t> source_tensor_ids,
       const std::unordered_map<int64, TapeTensor>& sources_that_are_targets,
       gtl::ArraySlice<Gradient*> output_gradients, absl::Span<Gradient*> result,
       bool build_default_zeros_grads = true);

@@ -1110,6 +1110,21 @@ void LoopOp::getCanonicalizationPatterns(mlir::RewritePatternSet& results,
   results.add<FoldConstantDimensions, SimplifyLoopOfApplyIndexing>(context);
 }
 
+void SetBackendKind(mlir::MLIRContext* context, mlir::func::FuncOp fn,
+                    xla::BackendKind backend_kind) {
+  fn->setAttr(xla::BackendKindAttr::name,
+              xla::BackendKindAttr::get(context, backend_kind));
+}
+
+std::optional<xla::BackendKind> GetBackendKind(mlir::func::FuncOp fn) {
+  auto backend_attr =
+      fn->getAttrOfType<xla::BackendKindAttr>(xla::BackendKindAttr::name);
+  if (!backend_attr) {
+    return std::nullopt;
+  }
+  return backend_attr.getValue();
+}
+
 }  // namespace xla
 
 #define GET_OP_CLASSES

@@ -123,3 +123,11 @@ func.func @atomic_rmw_mismatch_block_arg_vector_type(%in: tensor<16xf32>, %i: in
   }
   return %ret : tensor<16xf32>
 }
+
+// -----
+
+// expected-error @+2 {{expected ::xla::BackendKind to be one of: cpu, gpu, tpu}}
+// expected-error @+1 {{failed to parse XLA_BackendKindAttr parameter 'value' which is to be a `::xla::BackendKind`}}
+func.func @test_backend_kind(%arg0: f32) attributes { xla.backend_kind = #xla.backend_kind<foo> } {
+  func.return
+}

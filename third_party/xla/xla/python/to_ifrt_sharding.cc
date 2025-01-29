@@ -16,13 +16,16 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/status/statusor.h"
 #include "nanobind/nanobind.h"
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/nb_class_ptr.h"
@@ -79,15 +82,44 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::DeviceList>> GetIfrtDeviceList(
   }
 }
 
+// Gets `xla::ifrt::MemoryKind` from a JAX Sharding.
+xla::ifrt::MemoryKind GetMemoryKind(nb::handle sharding) {
+  nb::object py_memory_kind = nb::none();
+
+  // sharding.attr("memory_kind") can crash if sharding was originally created
+  // from C++ and casted into a Python Sharding object. Thus, we cast sharding
+  // to a C++ type and use C++ `memory_kind()` method, which bypasses any Python
+  // attribute access.
+  nb::handle type = sharding.type();
+  if (type.is(jax::NamedSharding::type())) {
+    py_memory_kind =
+        nb::cast<const jax::NamedSharding*>(sharding)->memory_kind();
+  } else if (type.is(jax::SingleDeviceSharding::type())) {
+    py_memory_kind =
+        nb::cast<const jax::SingleDeviceSharding*>(sharding)->memory_kind();
+  } else if (type.is(jax::GSPMDSharding::type())) {
+    py_memory_kind =
+        nb::cast<const jax::GSPMDSharding*>(sharding)->memory_kind();
+  } else {
+    py_memory_kind = sharding.attr("memory_kind");
+  }
+
+  if (py_memory_kind.is_none()) {
+    return xla::ifrt::MemoryKind();
+  }
+  return xla::ifrt::MemoryKind(nb::cast<std::string>(py_memory_kind));
+}
+
 // Converts a JAX Sharding into `xla::ifrt::HloSharding`.
 absl::StatusOr<std::shared_ptr<const xla::ifrt::Sharding>> GetIfrtHloSharding(
     nb::handle sharding, const xla::ifrt::Shape& shape) {
   TF_ASSIGN_OR_RETURN(tsl::RCReference<xla::ifrt::DeviceList> device_list,
                       GetIfrtDeviceList(sharding));
+  xla::ifrt::MemoryKind memory_kind = GetMemoryKind(sharding.ptr());
   xla::HloSharding hlo_sharding =
       GetXlaHloSharding(sharding, shape.dims().size());
   return xla::ifrt::HloSharding::Create(
-      std::move(device_list), xla::ifrt::MemoryKind(), std::move(hlo_sharding));
+      std::move(device_list), std::move(memory_kind), std::move(hlo_sharding));
 }
 
 // Converts a JAX Sharding into `xla::ifrt::ConcreteEvenSharding`.
@@ -96,6 +128,7 @@ GetIfrtConcreteEvenSharding(nb::handle sharding, xla::ifrt::DType dtype,
                             const xla::ifrt::Shape& shape) {
   TF_ASSIGN_OR_RETURN(tsl::RCReference<xla::ifrt::DeviceList> device_list,
                       GetIfrtDeviceList(sharding));
+  xla::ifrt::MemoryKind memory_kind = GetMemoryKind(sharding.ptr());
   TF_ASSIGN_OR_RETURN(xla::PrimitiveType xla_primitive_type,
                       xla::ifrt::ToPrimitiveType(dtype));
   // The XLA shape's layout is irrelevant because we only need to know the
@@ -108,7 +141,7 @@ GetIfrtConcreteEvenSharding(nb::handle sharding, xla::ifrt::DType dtype,
   xla::ifrt::Shape shard_shape(xla::ifrt::Shape::Dimensions(
       tile_shape.dimensions().begin(), tile_shape.dimensions().end()));
   return xla::ifrt::ConcreteEvenSharding::Create(
-      std::move(device_list), xla::ifrt::MemoryKind(), shape,
+      std::move(device_list), std::move(memory_kind), shape,
       /*shard_shape=*/std::move(shard_shape));
 }
 

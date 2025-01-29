@@ -25,12 +25,14 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -38,6 +40,7 @@ using testing::Ge;
 using testing::IsEmpty;
 using testing::Not;
 using testing::VariantWith;
+using ::tsl::testing::IsOk;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
@@ -90,5 +93,31 @@ TEST(CudaExecutorTest, GetCudaKernel) {
   verify_kernel(GetAddI32PtxKernelSpec());
 }
 
+TEST(CudaExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<MemoryAllocator> allocator,
+      executor->CreateMemoryAllocator(MemoryType::kUnified));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          allocator->Allocate(1024));
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), 1024);
+  allocation.reset();
+}
+
+TEST(CudaExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kHost), Not(IsOk()));
+  EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
+              Not(IsOk()));
+  EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kCollective),
+              Not(IsOk()));
+}
 }  // namespace
 }  // namespace stream_executor::gpu

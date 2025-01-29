@@ -49,3 +49,22 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 // CHECK-LABEL:  func private @test_custom_call_for_quant_dequant
 // CHECK: mhlo.uniform_quantize {{.*}} : (tensor<1x3xf32>) ->  tensor<1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK: mhlo.uniform_dequantize {{.*}} : (tensor<1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x3xf32>
+
+// CHECK-LABEL:  func private @test_custom_call_ragged_all_to_all
+// CHECK-SAME: ([[ARG_0:%.*]]: tensor<6xf32>, [[ARG_1:%.*]]: tensor<6xf32>, [[ARG_2:%.*]]: tensor<3xi32>, [[ARG_3:%.*]]: tensor<3xi32>, [[ARG_4:%.*]]: tensor<3xi32>, [[ARG_5:%.*]]: tensor<3xi32>) -> tensor<6xf32>
+// CHECK:       mhlo.custom_call @ragged_all_to_all([[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_3]], [[ARG_4]], [[ARG_5]]) {
+// CHECK-SAME:    api_version = 4 : i32,
+// CHECK-SAME:    backend_config = {
+// CHECK-SAME:      channel_id = 1 : i64,
+// CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2]]> : tensor<1x3xi64>
+// CHECK-SAME:    }
+// CHECK-SAME:  } : (tensor<6xf32>, tensor<6xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<6xf32>
+test_custom_call_ragged_all_to_all {
+  %Arg_0.1 = f32[6] parameter(0)
+  %Arg_1.2 = f32[6] parameter(1)
+  %Arg_2.3 = s32[3] parameter(2)
+  %Arg_3.4 = s32[3] parameter(3)
+  %Arg_4.5 = s32[3] parameter(4)
+  %Arg_5.6 = s32[3] parameter(5)
+  ROOT %custom-call.7 = f32[6] ragged-all-to-all(f32[6] %Arg_0.1, f32[6] %Arg_1.2, s32[3] %Arg_2.3, s32[3] %Arg_3.4, s32[3] %Arg_4.5, /*index=5*/s32[3] %Arg_5.6), channel_id=1, replica_groups={{0,1,2}}
+}

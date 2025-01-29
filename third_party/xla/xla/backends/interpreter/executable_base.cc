@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "xla/backends/interpreter/executable_base.h"
 
-#include <type_traits>
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/log/log.h"

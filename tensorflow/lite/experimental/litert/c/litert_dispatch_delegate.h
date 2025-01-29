@@ -20,6 +20,7 @@
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 
 #ifdef __cplusplus
@@ -35,7 +36,8 @@ extern "C" {
 typedef struct LiteRtDispatchDelegateOptions LiteRtDispatchDelegateOptions;
 
 // Returns DispatchDelegateOptions populated with default values.
-LiteRtDispatchDelegateOptions* LiteRtCreateDefaultDispatchDelegateOptions();
+LiteRtDispatchDelegateOptions* LiteRtCreateDefaultDispatchDelegateOptions(
+    LiteRtEnvironment environment);
 
 TfLiteStatus LiteRtAddDispatchDelegateOption(
     LiteRtDispatchDelegateOptions* options, LiteRtDispatchOption option);
@@ -46,7 +48,7 @@ void LiteRtDestroyDispatchDelegateOptions(
 // Create a delegate that uses the Dispatch API for execution. Takes ownership
 // of the passed `options`. Must outlive the TFL interpreter.
 TfLiteOpaqueDelegate* LiteRtCreateDispatchDelegate(
-    LiteRtDispatchDelegateOptions* options);
+    LiteRtEnvironment environment, LiteRtDispatchDelegateOptions* options);
 
 // Do any needed cleanup and delete 'delegate'.
 void LiteRtDestroyDispatchDelegate(TfLiteOpaqueDelegate* delegate);
@@ -73,10 +75,11 @@ using DispatchDelegateOptionsPtr =
 
 using DispatchDelegatePtr = tflite::TfLiteOpaqueDelegateUniquePtr;
 
-DispatchDelegateOptionsPtr CreateDispatchDelegateOptionsPtr();
+DispatchDelegateOptionsPtr CreateDispatchDelegateOptionsPtr(
+    LiteRtEnvironmentT& environment);
 
 DispatchDelegatePtr CreateDispatchDelegatePtr(
-    DispatchDelegateOptionsPtr&& options);
+    LiteRtEnvironmentT& environment, DispatchDelegateOptionsPtr&& options);
 
 }  // namespace litert
 #endif

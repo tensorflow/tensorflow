@@ -30,7 +30,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/codegen/elemental_kernel_emitter.h"
+#include "xla/backends/cpu/codegen/dot_kernel_emitter.h"
+#include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
@@ -86,10 +87,10 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -820,12 +821,23 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
     case DotImplementationStrategy::kNaiveLlvmIr:
     case DotImplementationStrategy::kTiledLlvmIrGemm:
     case DotImplementationStrategy::kTiledLlvmIrGemv: {
-      TF_ASSIGN_OR_RETURN(auto kernel,
-                          ir_emitter_.EmitDotHostKernel(instruction));
-      TF_ASSIGN_OR_RETURN(auto buffers,
-                          GetHostKernelAllocationSlices(instruction));
+      DotKernelEmitter emitter(instruction, &buffer_assignment_,
+                               &target_machine_features_);
+      TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
+                          emitter.EmitKernelDefinition());
 
-      return MakeKernelThunkSequence(instruction, buffers, kernel);
+      auto [kernel_spec, kernel_source] =
+          std::move(kernel_definition).release();
+      auto llvm_ir_kernel_source = absl::WrapUnique<LlvmIrKernelSource>(
+          tsl::down_cast<LlvmIrKernelSource*>(kernel_source.release()));
+
+      kernels_.push_back(
+          {kernel_spec.name(),
+           std::move(*llvm_ir_kernel_source).thread_safe_module()});
+
+      return MakeKernelThunkSequence(
+          instruction, std::move(kernel_spec),
+          /*min_alignment=*/cpu_function_runtime::MinAlign());
     }
 
     // Emit DotThunk implementing dot instruction as a library call.
@@ -846,9 +858,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       }
 
       if (use_xnn) {
+        XnnDotThunk::Options options = {XnnShouldUseThreadPool(instruction)};
         return ThunkSequence::Of<XnnDotThunk>(
-            ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
-            rhs->shape(), out_slice, instruction->shape());
+            std::move(options), ThunkInfo(instruction), dnums, lhs_slice,
+            lhs->shape(), rhs_slice, rhs->shape(), out_slice,
+            instruction->shape());
       } else {
         return ThunkSequence::Of<DotThunk>(
             ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
@@ -1183,13 +1197,15 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitXnnFusionThunk(
     results.push_back(XnnFusionThunk::Result{slice, indexed.shape});
   }
 
-  // Construct XNNPACK subgraph builder from the fusion computation.
-  TF_ASSIGN_OR_RETURN(
-      auto builder,
-      EmitXnnFusionBuilder(fusion->fused_instructions_computation()));
+  const HloComputation* computation = fusion->fused_instructions_computation();
 
+  // Construct XNNPACK subgraph builder from the fusion computation.
+  TF_ASSIGN_OR_RETURN(auto builder, EmitXnnFusionBuilder(computation));
+
+  XnnFusionThunk::Options options = {XnnShouldUseThreadPool(computation)};
   return ThunkSequence::Of<XnnFusionThunk>(
-      ThunkInfo(instruction), std::move(arguments), std::move(results),
+      std::move(options), ThunkInfo(instruction), std::move(arguments),
+      std::move(results),
       [b = std::move(builder)](auto, auto) mutable { return b(); });
 }
 

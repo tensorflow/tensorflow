@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
 

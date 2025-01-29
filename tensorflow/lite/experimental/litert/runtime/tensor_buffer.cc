@@ -139,7 +139,6 @@ LiteRtTensorBufferT::CreateManagedOnHostMemory(
       absl::MakeSpan(static_cast<uint8_t*>(host_memory_ptr), buffer_size),
       deallocator);
   if (!tensor_buffer) {
-    free(host_memory_ptr);
     return Unexpected(tensor_buffer.Error());
   }
 
@@ -439,12 +438,12 @@ LiteRtTensorBufferT::GetOpenClBuffer() {
   }
   return &std::get<litert::internal::OpenClBuffer>(buffer_);
 }
-Expected<void*> LiteRtTensorBufferT::Lock(LiteRtEvent event) {
-  if (event) {
+Expected<void*> LiteRtTensorBufferT::Lock() {
+  if (event_) {
     // Only AHWB supports waiting on an input sync fence when locking the
     // buffer. For all other buffer types we wait here.
     if (buffer_type() != kLiteRtTensorBufferTypeAhwb) {
-      litert::Event e(event, /*owned=*/false);
+      litert::Event e(*event_, /*owned=*/false);
       if (auto status = e.Wait(/*timeout_in_ms=*/-1); !status) {
         return status.Error();
       }
@@ -455,7 +454,7 @@ Expected<void*> LiteRtTensorBufferT::Lock(LiteRtEvent event) {
     case kLiteRtTensorBufferTypeHostMemory:
       return *GetHostBuffer();
     case kLiteRtTensorBufferTypeAhwb:
-      return litert::internal::AhwbBuffer::Lock(*GetAhwbBuffer(), event);
+      return litert::internal::AhwbBuffer::Lock(*GetAhwbBuffer(), *event_);
     case kLiteRtTensorBufferTypeIon:
       return GetIonBuffer()->first;
     case kLiteRtTensorBufferTypeDmaBuf:

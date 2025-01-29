@@ -25,7 +25,7 @@ limitations under the License.
 #include "pthreadpool.h"
 #include "xla/backends/cpu/runtime/xnnpack/parallel_loop_runner.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {

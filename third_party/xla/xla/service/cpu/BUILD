@@ -58,15 +58,6 @@ cc_library(
     hdrs = ["test_target_triple_helper.h"],
 )
 
-# When using mlir based HloLowering, the following utils will sometimes be needed to define used symbols.
-cc_library(
-    name = "runtime_mlir_utils",
-    visibility = ["//visibility:public"],
-    deps = [
-        "@llvm-project//mlir:mlir_c_runner_utils",
-    ],
-)
-
 filegroup(
     name = "runtime_srcs",
     srcs = [
@@ -856,8 +847,9 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:xnn_emitter",
         "//xla/backends/cpu:xnn_fusion",
-        "//xla/backends/cpu/codegen:elemental_kernel_emitter",
+        "//xla/backends/cpu/codegen:dot_kernel_emitter",
         "//xla/backends/cpu/codegen:target_machine_features",
+        "//xla/backends/cpu/codegen/elemental:elemental_kernel_emitter",
         "//xla/backends/cpu/runtime:all_gather_thunk",
         "//xla/backends/cpu/runtime:all_reduce_thunk",
         "//xla/backends/cpu/runtime:all_to_all_thunk",
@@ -894,6 +886,7 @@ cc_library(
         "//xla/service:pattern_matcher",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -904,7 +897,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:JITLink",
         "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_STATEFUL_RNG_SPMD_PARTITIONER_H_
 #define XLA_SERVICE_SPMD_STATEFUL_RNG_SPMD_PARTITIONER_H_
 
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"

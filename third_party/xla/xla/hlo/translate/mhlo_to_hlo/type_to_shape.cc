@@ -112,7 +112,7 @@ Shape TypeToShape(mlir::Type type) {
 
     llvm::SmallVector<int64_t, 4> strides;
     int64_t offset;
-    if (failed(mlir::getStridesAndOffset(m, strides, offset))) return {};
+    if (failed(m.getStridesAndOffset(strides, offset))) return {};
 
     llvm::SmallVector<std::pair<int64_t, int>, 4> strides_with_indices;
     for (const auto& e : llvm::enumerate(strides)) {

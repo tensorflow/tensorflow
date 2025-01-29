@@ -40,7 +40,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/python/transfer/event_loop.h"
 #include "xla/python/transfer/streaming.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 
 namespace aux {
 
@@ -137,10 +137,13 @@ absl::Status ZeroCopySendAckTable::HandleSocketErrors(int fd) {
     return absl::ErrnoToStatus(errno, "Unknown error while handling acks.");
   }
   for (auto* cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
-    if (cmsg->cmsg_level != SOL_IPV6 || cmsg->cmsg_type != IPV6_RECVERR) {
+    if (cmsg->cmsg_level == SOL_IP && cmsg->cmsg_type == IP_RECVERR) {
+    } else if (cmsg->cmsg_level == SOL_IPV6 &&
+               cmsg->cmsg_type == IPV6_RECVERR) {
+    } else {
       return absl::InternalError(
           absl::StrCat("Unknown cmsg level: ", cmsg->cmsg_level,
-                       " type: ", cmsg->cmsg_type, " ", SOL_IPV6));
+                       " type: ", cmsg->cmsg_type));
     }
     auto* err = reinterpret_cast<struct sock_extended_err*>(CMSG_DATA(cmsg));
     if (err->ee_origin != SO_EE_ORIGIN_ZEROCOPY) {
@@ -759,7 +762,7 @@ class SocketBulkTransportFactory : public BulkTransportFactory {
 
 absl::StatusOr<std::shared_ptr<BulkTransportFactory>>
 CreateSocketBulkTransportFactory(std::vector<SocketAddress> addrs,
-                                 SlabAllocator allocator,
+                                 std::optional<SlabAllocator> allocator,
                                  SlabAllocator unpinned_allocator) {
   size_t num_connections = addrs.size();
 

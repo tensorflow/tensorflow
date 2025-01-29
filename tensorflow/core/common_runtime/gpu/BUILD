@@ -203,6 +203,7 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "@local_xla//xla/stream_executor/gpu:gpu_init_impl",
+        "@local_xla//xla/stream_executor/integrations:stream_executor_allocator",
         "@local_xla//xla/tsl/framework:device_id_utils",
     ] + if_google(
         # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.

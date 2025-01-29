@@ -55,7 +55,8 @@ namespace xla {
 namespace gpu {
 
 #ifdef GOOGLE_CUDA
-class CuptiKernelTracer : public profiler::CuptiTraceCollector {
+class CuptiKernelTracer : public HloOpProfiler::KernelTracer,
+                          public profiler::CuptiTraceCollector {
  public:
   CuptiKernelTracer()
       : profiler::CuptiTraceCollector({}),
@@ -69,7 +70,7 @@ class CuptiKernelTracer : public profiler::CuptiTraceCollector {
     cupti_tracer_->Enable(options, this);
   }
 
-  uint64_t getMedianKernelTimeNs() && {
+  uint64_t getMedianKernelTimeNs() && override {
     cupti_tracer_->Disable();  // Also flushes buffer.
     if (kernel_times_ns_.empty()) {
       LOG(ERROR) << "No kernel events";
@@ -104,13 +105,18 @@ class CuptiKernelTracer : public profiler::CuptiTraceCollector {
   std::vector<uint64_t> kernel_times_ns_;
 };
 #else
-class CuptiKernelTracer {
+class CuptiKernelTracer : public HloOpProfiler::KernelTracer {
  public:
   uint64_t getMedianKernelTimeNs() && {
     LOG(FATAL) << "Not built with --config=cuda";
   }
 };
 #endif
+
+/*static*/ std::unique_ptr<HloOpProfiler::KernelTracer>
+HloOpProfiler::GetKernelTracer() {
+  return std::make_unique<CuptiKernelTracer>();
+}
 
 /*static*/ std::unique_ptr<HloModule> HloOpProfiler::MakeModuleForMeasurements(
     HloOpcode op, PrimitiveType data_type, int chain_length) {

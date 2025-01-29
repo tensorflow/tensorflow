@@ -175,7 +175,7 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->CreateViewOfDeviceBuffer(
-          data_ptr, shape, client->addressable_devices()[0],
+          data_ptr, shape, client->memory_spaces()[0],
           /*on_delete_callback=*/[data = std::move(data)]() mutable {
             (void)data;
           }));

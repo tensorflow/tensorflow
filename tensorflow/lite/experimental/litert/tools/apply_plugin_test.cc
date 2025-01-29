@@ -28,19 +28,16 @@
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
+#include "tensorflow/lite/experimental/litert/core/build_stamp.h"
+#include "tensorflow/lite/experimental/litert/core/dispatch_op_schema.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
 namespace litert::tools {
 namespace {
 
-using ::litert::internal::kByteCodeMetadataKey;
 using ::litert::internal::kLiteRtBuildStampKey;
 using ::litert::internal::ParseBuildStamp;
-using ::litert::internal::ParseByteCodePlaceholder;
-using ::litert::internal::ParseExecInfo;
-using ::litert::internal::Serialization;
 using ::testing::HasSubstr;
 
 static constexpr absl::string_view kPluginSearchPath =
@@ -152,46 +149,8 @@ TEST(TestApplyPluginTool, TestApply) {
   run->outs.push_back(out);
   LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  auto model = Model::CreateFromBuffer(
-      BufferRef<uint8_t>(out.str().data(), out.str().size()));
-  EXPECT_EQ(model->Get()->NumSubgraphs(), 1);
-
-  {
-    auto stamp_buffer = model->Get()->FindMetadata(kLiteRtBuildStampKey);
-    auto stamp = ParseBuildStamp(*stamp_buffer);
-    auto [man, soc_model, serial] = *stamp;
-    EXPECT_EQ(man, kSocManufacturer);
-    EXPECT_EQ(soc_model, kSocModel);
-    EXPECT_EQ(serial, Serialization::kMetadata);
-  }
-
-  {
-    const auto& custom_op = model->Get()->Subgraph(0).Op(0);
-    ASSERT_EQ(custom_op.OpCode(), kLiteRtOpCodeTflCustom);
-    EXPECT_THAT(custom_op.CustomOptions().StrView(), HasSubstr("Partition_0"));
-  }
-
-  {
-    auto byte_code_buffer = model->Get()->FindMetadata(kByteCodeMetadataKey);
-    EXPECT_THAT(byte_code_buffer->StrView(),
-                HasSubstr("Partition_0_with_1_muls"));
-  }
-}
-
-// NOLINTBEGIN
-TEST(TestApplyPluginTool, TestApplyWithAppendSerialization) {
-#ifndef NDEBUG
-  GTEST_SKIP() << "Flatbuffers assertion will fail in append mode\n";
-#endif
-  std::stringstream out;
-  {
-    auto run = MakeBaseRun(ApplyPluginRun::Cmd::APPLY);
-    run->serialization = Serialization::kAppend;
-    run->outs.push_back(out);
-    LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
-  }
-
-  BufferRef<uint8_t> serialized(out.str().data(), out.str().size());
+  const auto out_str = out.str();
+  BufferRef<uint8_t> serialized(out_str.data(), out_str.size());
 
   auto model = Model::CreateFromBuffer(serialized);
   EXPECT_EQ(model->Get()->NumSubgraphs(), 1);
@@ -199,29 +158,22 @@ TEST(TestApplyPluginTool, TestApplyWithAppendSerialization) {
   {
     auto stamp_buffer = model->Get()->FindMetadata(kLiteRtBuildStampKey);
     auto stamp = ParseBuildStamp(*stamp_buffer);
-    auto [man, model, serial] = *stamp;
+    auto [man, soc_model] = *stamp;
     EXPECT_EQ(man, kSocManufacturer);
-    EXPECT_EQ(model, kSocModel);
-    EXPECT_EQ(serial, Serialization::kAppend);
+    EXPECT_EQ(soc_model, kSocModel);
   }
 
-  {
-    const auto& custom_op = model->Get()->Subgraph(0).Op(0);
-    ASSERT_EQ(custom_op.OpCode(), kLiteRtOpCodeTflCustom);
+  auto* op = model->Get()->MainSubgraph()->Ops().front();
+  ASSERT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
 
-    auto options = ParseExecInfo(custom_op.CustomOptions());
-    auto [entry_point, metadata_key] = *options;
-    EXPECT_EQ(entry_point, "Partition_0");
+  const auto options = internal::GetDispatchOpOptions(op->CustomOptions());
+  const auto& [size, offset, name] = options;
+  EXPECT_EQ(name, "Partition_0");
+  ASSERT_LE(offset + size, serialized.Size());
 
-    auto metadata = model->Get()->FindMetadata(metadata_key);
-    auto byte_code_info = ParseByteCodePlaceholder(*metadata);
-    auto [offset, size] = *byte_code_info;
-
-    EXPECT_EQ(serialized.StrView().substr(offset, size),
-              "Partition_0_with_1_muls:");
-  }
+  EXPECT_THAT(serialized.StrView().substr(offset, size),
+              HasSubstr("Partition_0_with_1_muls"));
 }
-// NOLINTEND
 
 }  // namespace
 }  // namespace litert::tools

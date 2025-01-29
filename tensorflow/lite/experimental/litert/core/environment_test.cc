@@ -25,45 +25,20 @@
 namespace litert::internal {
 namespace {
 
-TEST(Environment, CreateWithNoOption) {
-  ASSERT_TRUE(Environment::Instance());
-  Environment::Destroy();
-}
-
-TEST(Environment, CreateWithOptions) {
+TEST(LiteRtEnvironmentT, CreateWithOptions) {
   const std::array<LiteRtEnvOption, 1> environment_options = {
       LiteRtEnvOption{
           kLiteRtEnvOptionTagCompilerPluginLibraryPath,
           *ToLiteRtAny(std::any("sample path")),
       },
   };
-  ASSERT_TRUE(Environment::CreateWithOptions(environment_options));
-
-  auto env = Environment::Instance();
+  auto env = LiteRtEnvironmentT::CreateWithOptions(environment_options);
   ASSERT_TRUE(env);
 
   auto option = (*env)->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryPath);
   ASSERT_TRUE(option.has_value());
   ASSERT_EQ(option->type, kLiteRtAnyTypeString);
   ASSERT_STREQ(option->str_value, "sample path");
-
-  Environment::Destroy();
-}
-
-TEST(Environment, CreateWithOptionsFailure) {
-  // This will create an environment without options.
-  auto env = Environment::Instance();
-  ASSERT_TRUE(env);
-
-  const std::array<LiteRtEnvOption, 1> environment_options = {
-      LiteRtEnvOption{
-          kLiteRtEnvOptionTagCompilerPluginLibraryPath,
-          *ToLiteRtAny(std::any("sample path")),
-      },
-  };
-  ASSERT_FALSE(Environment::CreateWithOptions(environment_options));
-
-  Environment::Destroy();
 }
 
 }  // namespace

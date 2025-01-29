@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PACKED_LITERAL_READER_H_
 #define XLA_PACKED_LITERAL_READER_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/status/statusor.h"

@@ -1008,7 +1008,7 @@ absl::Status IrEmitter::HandleFft(HloInstruction* fft) {
   bool multi_threaded_eigen =
       hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
   const char* fn_name = multi_threaded_eigen
-                            ? runtime::kDuccFftSymbolName
+                            ? runtime::kLegacyDuccFftSymbolName
                             : runtime::kDuccSingleThreadedFftSymbolName;
   auto* fft_lengths =
       EmitGlobalForLiteral(LiteralUtil::CreateR1<int64_t>(fft_length));

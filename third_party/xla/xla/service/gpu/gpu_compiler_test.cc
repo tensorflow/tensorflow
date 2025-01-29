@@ -65,12 +65,15 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/regexp.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -1238,6 +1241,125 @@ ENTRY main {
   EXPECT_FALSE(HasBlockLevelFusionConfig(
       unrewritable_transpose_optimized_module->entry_computation()
           ->root_instruction()));
+}
+
+TEST_F(GpuCompilerTest, NoRaceConditionInParallelCompilation) {
+  // This test will fail under TSAN if there is a race condition somewhere.
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 2);
+
+  // Running two compilations on different threads is enough.
+  // If there is some unsynchronized memory access, TSAN will report it.
+  constexpr int kNumOfParallelCompilations = 2;
+
+  for (int i = 0; i < kNumOfParallelCompilations; ++i) {
+    thread_pool.Schedule([&]() {
+      HloModuleConfig config;
+      DebugOptions debug_options = GetDebugOptionsForTest();
+      config.set_debug_options(debug_options);
+      // The contents on this module don't matter that much, but it should
+      // be something going through the autotuner.
+      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                              ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+triton_gemm_dot {
+  p0 = s8[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  c0 = f32[10,10] convert(p0)
+  ROOT dot.0 = f32[10,10] dot(c0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = s8[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  s = f32[10,10] sqrt(p1)
+  d = f32[10,10] fusion(p0, p1), kind=kCustom, calls=triton_gemm_dot
+  ROOT r = f32[10,10] add(d, s)
+})",
+                                                           config));
+      std::unique_ptr<HloModule> compiled_module =
+          backend()
+              .compiler()
+              ->RunHloPasses(module->Clone(),
+                             backend().default_stream_executor(),
+                             /*device_allocator=*/nullptr)
+              .value();
+      std::unique_ptr<Executable> executable =
+          backend()
+              .compiler()
+              ->RunBackend(std::move(compiled_module),
+                           backend().default_stream_executor(),
+                           {/*device_allocator=*/nullptr,
+                            /*thread_pool=*/nullptr,
+                            /*layout_canonicalization_callback=*/{},
+                            /*is_autotuning_compilation=*/false})
+              .value();
+    });
+  }
+}
+
+MATCHER_P(ThunkKindIs, kind, "") {
+  return ExplainMatchResult(::testing::Eq(kind), arg->kind(), result_listener);
+}
+
+TEST_F(GpuCompilerTest, StreamAnnotationThunkTest) {
+  const absl::string_view hlo_text = R"(
+HloModule composite
+
+async_call {
+  p0 = f32[32,32] parameter(0)
+  p1 = f32[32,32] parameter(1)
+  gemm = (f32[32,32], s8[8192]) custom-call(p0, p1), custom_call_target="__cublas$gemm",
+    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
+      "gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,
+      "dot_dimension_numbers":
+        {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"]},
+      "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+      "lhs_stride":"1024","rhs_stride":"1024"}}
+  ROOT get-tuple-element = f32[32,32] get-tuple-element(gemm), index=0
+}, execution_thread="explicit"
+
+ENTRY main {
+  p0 = f32[32,32] parameter(0)
+  p1 = f32[32,32] parameter(1)
+  call-start = ((f32[32,32], f32[32,32]), f32[32,32]) call-start(p0, p1),
+    async_execution_thread="explicit", to_apply=async_call,
+    frontend_attributes={_xla_stream_annotation="1"}
+  ROOT call-done = f32[32,32]{1,0} call-done(call-start),
+    frontend_attributes={_xla_stream_annotation="1"},
+    backend_config={"operation_queue_id":"0"}
+})";
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*is_autotuning_compilation=*/false})
+          .value();
+  std::unique_ptr<GpuExecutable> gpu_exec(
+      static_cast<GpuExecutable*>(executable.release()));
+
+  EXPECT_EQ(gpu_exec->GetThunk().thunks().size(), 3);
+  EXPECT_THAT(gpu_exec->GetThunk().thunks(),
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kWaitForStreams),
+                                     ThunkKindIs(Thunk::kSequential),
+                                     ThunkKindIs(Thunk::kWaitForStreams)));
+
+  // Within the sequential thunk, there should only be a single gemm
+  // thunk with an explicitly set execution stream id.
+  auto sequential_thunk =
+      static_cast<SequentialThunk*>(gpu_exec->GetThunk().thunks()[1].get());
+  EXPECT_EQ(sequential_thunk->thunks().size(), 1);
+  EXPECT_THAT(sequential_thunk->thunks(),
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kGemm)));
+  // Ensure the gemm is run on the explicitly set stream.
+  EXPECT_EQ(sequential_thunk->thunks()[0]->execution_stream_id(), 1);
 }
 
 using GpuCompilerPassTest = GpuCompilerTest;

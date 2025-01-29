@@ -23,12 +23,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "xla/hlo/builder/lib/broadcast.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/bcast.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 

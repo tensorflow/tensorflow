@@ -75,6 +75,8 @@ RUN /setup.python.sh python3.10 devel.requirements.txt
 RUN /setup.python.sh python3.11 devel.requirements.txt
 RUN /setup.python.sh python3.12 devel.requirements.txt
 RUN /setup.python.sh python3.13 devel.requirements.txt
+# python3.13-nogil is a free-threaded build of python3.13
+RUN /setup.python.sh python3.13-nogil devel.requirements.txt
 
 FROM devel as tf
 # Setup TF Python environment.

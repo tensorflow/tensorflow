@@ -27,16 +27,16 @@ limitations under the License.
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/lib/gtl/inlined_vector.h"
 #include "xla/tsl/lib/random/simple_philox.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/platform/types.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {

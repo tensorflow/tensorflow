@@ -18,7 +18,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/execute_options.pb.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {

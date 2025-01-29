@@ -20,7 +20,10 @@ limitations under the License.
 #define XLA_BACKENDS_INTERPRETER_EXECUTOR_H_
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
+#include <optional>
+#include <variant>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"

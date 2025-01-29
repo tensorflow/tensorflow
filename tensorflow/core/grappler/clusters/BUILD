@@ -151,9 +151,10 @@ tf_cc_test(
     args = ["--heap_check="],  # The GPU tracer leaks memory. TODO(b/185483595): use a dependency instead of a flag
     extra_copts = ["-DTENSORFLOW_USE_ROCM=1"],
     tags = [
-#        "no_cuda_on_cpu_tap",
-#        "no_gpu",
-#        "nomsan",  # TODO(b/160921160): broken by NOAUTOROLLBACK CL
+        "no_cuda_on_cpu_tap",
+        "no_gpu",
+        "nomac",  # TODO(b/392221164)
+        "nomsan",  # TODO(b/160921160): broken by NOAUTOROLLBACK CL
     ],
     deps = [
         ":single_machine",

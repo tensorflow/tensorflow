@@ -22,8 +22,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/regexp.h"
 
 namespace xla {

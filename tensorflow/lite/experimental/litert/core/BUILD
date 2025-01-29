@@ -18,9 +18,9 @@ package(
 )
 
 cc_library(
-    name = "byte_code_util",
-    srcs = ["byte_code_util.cc"],
-    hdrs = ["byte_code_util.h"],
+    name = "build_stamp",
+    srcs = ["build_stamp.cc"],
+    hdrs = ["build_stamp.h"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
@@ -34,13 +34,13 @@ cc_library(
 )
 
 cc_test(
-    name = "byte_code_util_test",
-    srcs = ["byte_code_util_test.cc"],
+    name = "build_stamp_test",
+    srcs = ["build_stamp_test.cc"],
     data = [
         "//tensorflow/lite/experimental/litert/test:tflite_test_data",
     ],
     deps = [
-        ":byte_code_util",
+        ":build_stamp",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
@@ -64,6 +64,23 @@ cc_library(
 )
 
 cc_library(
+    name = "insert_order_map",
+    hdrs = ["insert_order_map.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_test(
+    name = "insert_order_map_test",
+    srcs = ["insert_order_map_test.cc"],
+    deps = [
+        ":insert_order_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "environment",
     srcs = ["environment.cc"],
     hdrs = [
@@ -71,10 +88,10 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_environment.h",
     ],
     deps = [
+        ":accelerator",
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/cc:litert_any",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "@com_google_absl//absl/types:span",
     ],
@@ -89,6 +106,16 @@ cc_test(
         "//tensorflow/lite/experimental/litert/cc:litert_any",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "accelerator",
+    srcs = ["accelerator.cc"],
+    hdrs = ["accelerator.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
     ],
 )
 
@@ -141,11 +168,11 @@ cc_test(
 #     deps = [
 #         ":dynamic_loading",
 #         ":filesystem",
-#         "@com_google_googletest//:gtest_main",
 #         "@com_google_absl//absl/strings:string_view",
 #         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
 #         "//tensorflow/lite/experimental/litert/test:common",
 #         "//tensorflow/lite/experimental/litert/test:test_macros",
+#         "@com_google_googletest//:gtest_main",
 #     ],
 # )
 # copybara:uncomment_end

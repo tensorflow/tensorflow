@@ -166,7 +166,8 @@ void Allocation::AddUse(HloUse use) {
 }
 
 absl::Status Allocation::UpdateUses(HloComputation* computation,
-                                    HloInstruction* producing_instruction) {
+                                    HloInstruction* producing_instruction,
+                                    const BitcastSplitFn& bitcast_split_fn) {
   for (const HloUse& use : uses()) {
     HloInstruction* replacement_instruction = producing_instruction;
     Shape operand_shape = use.instruction->operand(use.operand_number)->shape();
@@ -187,6 +188,21 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
               << "; inserting a bitcast.";
       replacement_instruction = computation->AddInstruction(
           HloInstruction::CreateBitcast(operand_shape, producing_instruction));
+      if (mutable_split_shape().has_value() &&
+          producing_instruction->shape().layout().split_configs_size() != 0) {
+        TF_ASSIGN_OR_RETURN(
+            int64_t split_dim,
+            bitcast_split_fn(
+                replacement_instruction,
+                mutable_split_shape()->layout().split_configs(0).dimension()));
+        SplitConfig split_config(
+            split_dim,
+            {mutable_split_shape()->layout().split_configs(0).split_indices(
+                0)});
+        replacement_instruction->mutable_shape()
+            ->mutable_layout()
+            ->add_split_configs(split_config);
+      }
     }
     TF_RETURN_IF_ERROR(use.instruction->ReplaceOperandWith(
         use.operand_number, replacement_instruction));
@@ -274,7 +290,7 @@ bool PinnedAllocation::operator==(const Allocation& other) const {
   return casted_other != nullptr && (*this) == (*casted_other);
 }
 
-absl::Status PinnedAllocation::Process() {
+absl::Status PinnedAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
   if (is_scoped_allocation()) {
     // Nothing to do here for scoped allocations.
     return absl::OkStatus();
@@ -288,7 +304,7 @@ absl::Status PinnedAllocation::Process() {
         producing_instruction->shape(), mutable_split_shape().value()));
     *producing_instruction->mutable_shape() = mutable_split_shape().value();
   }
-  return UpdateUses(computation, producing_instruction);
+  return UpdateUses(computation, producing_instruction, bitcast_split_fn);
 }
 
 std::string PinnedAllocation::ToString() const {
@@ -338,7 +354,7 @@ int64_t CopyAllocation::earliest_available_time() const {
   return copy_done_schedule_before_;
 }
 
-absl::Status CopyAllocation::Process() {
+absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
   // Copy allocations need to insert asynchronous copy nodes.
   Shape shape = defining_position().shape();
   if (memory_space() == MemorySpace::kAlternate && sync_mem_op_ != nullptr &&
@@ -395,7 +411,7 @@ absl::Status CopyAllocation::Process() {
   // Update the allocation position with the copy complete instruction, so that
   // if there are further copies from it, they can find the correct position.
   set_original_defining_position(HloPosition{copy_done_, {}});
-  return UpdateUses(computation, copy_done_);
+  return UpdateUses(computation, copy_done_, bitcast_split_fn);
 }
 
 void CopyAllocation::MarkIfNeeded(
@@ -509,14 +525,15 @@ SlicedCopyAllocation::SlicedCopyAllocation(
   }
 }
 
-absl::Status SlicedCopyAllocation::Process() {
+absl::Status SlicedCopyAllocation::Process(
+    const BitcastSplitFn& bitcast_split_fn) {
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
 
-  // Calling Process() over the previous allocation might have modified the
-  // defining position, and hence the shape that was used when we computed
-  // the slices. In cases where the shape has changed, we insert a bitcast, so
-  // slice instructions operate on the originally sliced shape.
+  // Calling Process() over the previous allocation might
+  // have modified the defining position, and hence the shape that was used when
+  // we computed the slices. In cases where the shape has changed, we insert a
+  // bitcast, so slice instructions operate on the originally sliced shape.
   //
   // Note, these bitcasts are being inserted in the same cases that
   // UpdateUses() is inserting bitcasts, except we are
@@ -567,7 +584,7 @@ absl::Status SlicedCopyAllocation::Process() {
   // Update the allocation position with the copy complete instruction, so that
   // if there are further copies from it, they can find the correct position.
   set_original_defining_position(HloPosition{concat_, {}});
-  return UpdateUses(computation, concat_);
+  return UpdateUses(computation, concat_, bitcast_split_fn);
 }
 
 void SlicedCopyAllocation::MarkIfNeeded(
@@ -800,7 +817,8 @@ MirroredAllocation::MirroredAllocation(const Allocation& original_allocation,
                  /*cross_program_prefetch_index=*/std::nullopt),
       original_allocation_(original_allocation) {}
 
-absl::Status MirroredAllocation::Process() {
+absl::Status MirroredAllocation::Process(
+    const BitcastSplitFn& bitcast_split_fn) {
   set_original_defining_position(original_allocation_.defining_position());
   if (is_scoped_allocation()) {
     // Nothing to do here for scoped allocations.
@@ -808,7 +826,7 @@ absl::Status MirroredAllocation::Process() {
   }
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
-  return UpdateUses(computation, producing_instruction);
+  return UpdateUses(computation, producing_instruction, bitcast_split_fn);
 }
 
 ParentAllocation::ParentAllocation(const Allocation& original_allocation,
@@ -826,7 +844,7 @@ HloPosition ParentAllocation::defining_position() const {
   return original_defining_position();
 }
 
-absl::Status ParentAllocation::Process() {
+absl::Status ParentAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
   // Add an additional parameter to the while HLO with a reference to the buffer
   // in the default memory space.
   HloInstruction* producing_instruction =
@@ -865,7 +883,7 @@ absl::Status ParentAllocation::Process() {
   }
   HloInstruction* final_instruction = AddGetTupleElements();
   HloComputation* computation = final_instruction->parent();
-  return UpdateUses(computation, final_instruction);
+  return UpdateUses(computation, final_instruction, bitcast_split_fn);
 }
 
 absl::Status ParentAllocation::PostProcess() {
@@ -981,7 +999,8 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
   return absl::OkStatus();
 }
 
-absl::Status WindowPrefetchedAllocation::Process() {
+absl::Status WindowPrefetchedAllocation::Process(
+    const BitcastSplitFn& bitcast_split_fn) {
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
   HloInstruction* use_instruction = use_.instruction;
@@ -993,7 +1012,7 @@ absl::Status WindowPrefetchedAllocation::Process() {
 
   // Notify the backend that an operand has been appended as a window prefetch
   // buffer.
-  options_.notify_operand_appended_fn(use_instruction, options_.uid,
+  options_.notify_operand_appended_fn(use_instruction, use_.operand_number,
                                       use_operand);
 
   // Set the original defining position to the window prefetch instruction.

@@ -45,6 +45,19 @@ namespace {
   if (!hloValue.has_value()) return {};                              \
   return mhlo::Name##Attr::get(attr.getContext(), hloValue.value())
 
+mhlo::ResultAccuracyMode convertResultAccuracyMode(
+    stablehlo::ResultAccuracyMode mode) {
+  switch (mode) {
+    case stablehlo::ResultAccuracyMode::DEFAULT:
+      return mhlo::ResultAccuracyMode::DEFAULT;
+    case stablehlo::ResultAccuracyMode::HIGHEST:
+      return mhlo::ResultAccuracyMode::HIGHEST;
+    case stablehlo::ResultAccuracyMode::TOLERANCE:
+      return mhlo::ResultAccuracyMode::TOLERANCE;
+    default:
+      return {};
+  }
+}
 Attribute convertAttr(Attribute stablehloAttr) {
   // StableHLO uses DenseArray for some attributes, MHLO is in the process
   // of integrating this change. In the meantime, convert DenseArray to
@@ -139,6 +152,20 @@ Attribute convertAttr(Attribute stablehloAttr) {
   }
   if (auto attr = mlir::dyn_cast<stablehlo::TransposeAttr>(stablehloAttr)) {
     RETURN_CONVERTED_ENUM_ATTR(Transpose);
+  }
+  if (auto attr =
+          mlir::dyn_cast<stablehlo::ResultAccuracyModeAttr>(stablehloAttr)) {
+    RETURN_CONVERTED_ENUM_ATTR(ResultAccuracyMode);
+  }
+  if (auto attr =
+          mlir::dyn_cast<stablehlo::ResultAccuracyAttr>(stablehloAttr)) {
+    mhlo::ResultAccuracyModeAttr modeAttr = mhlo::ResultAccuracyModeAttr::get(
+        attr.getContext(),
+        convertResultAccuracyMode(attr.getMode().getValue()));
+
+    return mhlo::ResultAccuracyAttr::get(attr.getContext(), attr.getAtol(),
+                                         attr.getRtol(), attr.getUlps(),
+                                         modeAttr);
   }
   if (stablehloAttr.getDialect().getNamespace() ==
       stablehlo::StablehloDialect::getDialectNamespace()) {

@@ -14,6 +14,7 @@
 
 #include "tensorflow/lite/experimental/litert/core/dispatch_op_schema.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -73,8 +74,8 @@ bool UpdateDispatchOpOptionsInPlace(DispatchOpOptions options,
 DispatchOpOptions GetDispatchOpOptions(BufferRef<uint8_t> buffer) {
   const auto opts = flexbuffers::GetRoot(buffer.Data(), buffer.Size()).AsMap();
 
-  const auto bytecode_size = opts[kBytecodeSizeKey].AsUInt64();
-  const auto bytecode_offset = opts[kBytecodeOffsetKey].AsUInt64();
+  const size_t bytecode_size = opts[kBytecodeSizeKey].AsUInt64();
+  const size_t bytecode_offset = opts[kBytecodeOffsetKey].AsUInt64();
   std::string name(opts[kNameKey].AsString().c_str());
 
   return DispatchOpOptions{

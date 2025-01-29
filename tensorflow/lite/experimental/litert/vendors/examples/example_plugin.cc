@@ -46,7 +46,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
     if (op.Code() != kLiteRtOpCodeTflMul) {
       continue;
     }
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op.Get()));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
   }
   return kLiteRtStatusOk;
 }
@@ -93,8 +93,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   LiteRtCompiledResult result = new LiteRtCompiledResultT;
 
   for (auto i = 0; i < num_partitions; ++i) {
-    LITERT_RETURN_STATUS_IF_NOT_OK(
-        CompileSinglePartition(i, partitions[i], *result));
+    LITERT_RETURN_IF_ERROR(CompileSinglePartition(i, partitions[i], *result));
   }
 
   *compiled_result = result;

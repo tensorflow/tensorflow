@@ -136,9 +136,9 @@ absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
     case S4:
       return b.getI4Type();
     case F8E5M2:
-      return b.getFloat8E5M2Type();
+      return b.getType<mlir::Float8E5M2Type>();
     case F8E4M3FN:
-      return b.getFloat8E4M3FNType();
+      return b.getType<mlir::Float8E4M3FNType>();
     default:
       return absl::UnimplementedError(
           absl::StrCat("This type is not supported yet: ",
@@ -201,8 +201,9 @@ Value OnesLike(EmitterLocOpBuilder b, Value x) {
 }
 
 bool IsFp8Type(Type t) {
-  return t.isFloat8E5M2() || t.isFloat8E4M3FN() || t.isFloat8E5M2FNUZ() ||
-         t.isFloat8E4M3FNUZ() || t.isFloat8E4M3B11FNUZ();
+  return llvm::isa<mlir::Float8E5M2Type, mlir::Float8E4M3FNType,
+                   mlir::Float8E5M2FNUZType, mlir::Float8E4M3FNUZType,
+                   mlir::Float8E4M3B11FNUZType>(t);
 }
 
 Value Cast(EmitterLocOpBuilder b, Value value, Type dst_element_ty) {
@@ -1664,18 +1665,6 @@ bool Is6xBfloat16MatMul(const HloDotInstruction* dot_instr,
   const PrecisionConfig::Algorithm algorithm =
       dot_instr->precision_config().algorithm();
 
-  if (algorithm == PrecisionConfig::ALG_UNSET) {
-    const HloModule* hlo_module = dot_instr->GetModule();
-    Type f32 = b.getF32Type();
-    return hlo_module->config()
-               .debug_options()
-               .xla_gpu_enable_bf16_6way_gemm() &&
-           mlir::cast<ShapedType>(dot_input_lhs.getType()).getElementType() ==
-               f32 &&
-           mlir::cast<ShapedType>(dot_input_rhs.getType()).getElementType() ==
-               f32;
-  }
-
   return algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6;
 }
 
@@ -1685,18 +1674,6 @@ bool Is3xBfloat16MatMul(const HloDotInstruction* dot_instr,
                         const se::DeviceDescription& device_info) {
   const PrecisionConfig::Algorithm algorithm =
       dot_instr->precision_config().algorithm();
-
-  if (algorithm == PrecisionConfig::ALG_UNSET) {
-    const HloModule* hlo_module = dot_instr->GetModule();
-    Type f32 = b.getF32Type();
-    return hlo_module->config()
-               .debug_options()
-               .xla_gpu_enable_bf16_3way_gemm() &&
-           mlir::cast<ShapedType>(dot_input_lhs.getType()).getElementType() ==
-               f32 &&
-           mlir::cast<ShapedType>(dot_input_rhs.getType()).getElementType() ==
-               f32;
-  }
 
   return algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3;
 }
@@ -2103,13 +2080,6 @@ absl::Status EmitMatMul(EmitterLocOpBuilder& b,
           dot_input_lhs, dot_input_rhs, iter_args.back(), dot_input_meta));
       b.create<mlir::scf::YieldOp>(iter_args_next);
       return;
-    }
-
-    const HloModule* hlo_module = dot_instr->GetModule();
-    if (hlo_module->config().debug_options().xla_gpu_enable_bf16_3way_gemm() &&
-        hlo_module->config().debug_options().xla_gpu_enable_bf16_6way_gemm()) {
-      LOG(WARNING) << "Both BF16 6way gemm and 3way gemm are enabled."
-                   << " Fallback to BF16 6way gemm.";
     }
 
     Value accumulator_next;

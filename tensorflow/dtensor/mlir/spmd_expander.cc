@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 
-#include <climits>
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"

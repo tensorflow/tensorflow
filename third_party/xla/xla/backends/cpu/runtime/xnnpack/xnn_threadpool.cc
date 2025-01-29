@@ -154,7 +154,7 @@ static void DestroyCustomPthreadpool(pthreadpool_t threadpool) {  // NOLINT
 
 static size_t GetThreadsCount(pthreadpool_t threadpool) {  // NOLINT
   if (ABSL_PREDICT_FALSE(threadpool == nullptr)) {
-    return 0;
+    return 1;
   }
 
   return Cast(threadpool)->runner()->num_threads();

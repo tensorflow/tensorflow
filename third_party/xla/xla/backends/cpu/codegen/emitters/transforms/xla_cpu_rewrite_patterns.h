@@ -21,11 +21,6 @@ limitations under the License.
 
 namespace xla::cpu {
 
-// Populates type conversion and legality constraints for lowering XLA:CPU
-// types to LLVM types.
-void PopulateXlaCpuTypeConversionAndLegality(mlir::TypeConverter& converter,
-                                             mlir::ConversionTarget& target);
-
 // Populates rewrite patterns for converting XLA:CPU ops to LLVM ops.
 void PopulateXlaCpuConversionPatterns(mlir::RewritePatternSet& patterns);
 

@@ -20,8 +20,8 @@
 
 #include <gtest/gtest.h>
 #include "xla/python/ifrt/dtype.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
