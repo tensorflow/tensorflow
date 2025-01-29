@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/tools/matmul_perf_table_gen.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 
@@ -34,11 +33,11 @@ constexpr absl::string_view kUsageText = R"(
 This tool runs specified matrix shapes and datatypes (HLO dots) on given hardware and
 saves clock cycles for each. Matrix shapes can be specified by defining a search space.
 
-Assume matrix multiplication dims: [n,k] @ [k,m] -> [n,m].
+Assume matrix multiplication dims: [b,n,k] @ [b,k,m] -> [b,n,m].
 
 The specification has a format
 
-{m,n,k}_spec='start=<start>,stop=<stop>,step=<step>'
+{b,m,n,k}_spec='start=<start>,stop=<stop>,step=<step>'
 
 Which means for a particular spec we will generate a set
   {<start> + n * <step> | n * <step> <= <stop> - <start> for every n w/ {0}}
@@ -56,6 +55,7 @@ Usage:
 
 bazel run matmul_perf_table_gen_main --config=cuda -- \
   --alsologtostderr \
+  --b_spec='start=1,stop=1,step=1' \
   --m_spec='start=256,stop=256,step=1' \
   --n_spec='start=256,stop=256,step=1' \
   --k_spec='start=256,stop=256,step=1' \
@@ -99,6 +99,7 @@ entries {
   shape:{8x16x16 and 16x16x16 and 24x16x16} x dtype:{bf16,bf16->bf16} and print to stdout.
 bazel run matmul_perf_table_gen_main --config=cuda -- \
   --alsologtostderr \
+  --b_spec='start=1,stop=1,step=1' \
   --m_spec='start=8,stop=24,step=8' \
   --n_spec='start=16,stop=16,step=1' \
   --k_spec='start=16,stop=16,step=1' \
@@ -243,12 +244,14 @@ std::vector<MatmulPerfTableGen::DataTypeSpec> ParseDataTypes(
 }
 
 MatmulPerfTableGen::Config CreateConfig(
-    absl::string_view m_spec, absl::string_view n_spec,
-    absl::string_view k_spec, absl::string_view dtypes,
-    absl::string_view output, absl::string_view hlo_scan_path, bool dry_run) {
+    absl::string_view b_spec, absl::string_view m_spec,
+    absl::string_view n_spec, absl::string_view k_spec,
+    absl::string_view dtypes, absl::string_view output,
+    absl::string_view hlo_scan_path, bool dry_run) {
   MatmulPerfTableGen::Config cfg;
 
   // Search space.
+  cfg.b_spec = ParseSpec(b_spec);
   cfg.m_spec = ParseSpec(m_spec);
   cfg.n_spec = ParseSpec(n_spec);
   cfg.k_spec = ParseSpec(k_spec);
@@ -263,6 +266,7 @@ MatmulPerfTableGen::Config CreateConfig(
 
 // TODO(b/390097558): Sweep through minor and major dimensions for dots.
 int main(int argc, char* argv[]) {
+  std::string b_spec;
   std::string m_spec;
   std::string n_spec;
   std::string k_spec;
@@ -273,6 +277,9 @@ int main(int argc, char* argv[]) {
   bool dry_run = false;
 
   std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("b_spec", &b_spec,
+                "Spec for 'B' (batch) dimension. Format example: "
+                "start=1,stop=4,step=2 generates {1,2,4}.'"),
       tsl::Flag("m_spec", &m_spec,
                 "Spec for 'M' dimension. Format example: start=1,stop=4,step=2 "
                 "generates {1,2,4}.'"),
@@ -307,8 +314,8 @@ int main(int argc, char* argv[]) {
     LOG(QFATAL) << kUsageString;
   }
 
-  MatmulPerfTableGen::Config cfg =
-      CreateConfig(m_spec, n_spec, k_spec, dtypes, out, hlo_scan_path, dry_run);
+  MatmulPerfTableGen::Config cfg = CreateConfig(
+      b_spec, m_spec, n_spec, k_spec, dtypes, out, hlo_scan_path, dry_run);
   MatmulPerfTableGen table_gen(std::move(cfg));
 
   if (!merge_path.empty()) {

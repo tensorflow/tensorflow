@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_CC_TENSOR_WITH_LAYOUT_H_
 #define TENSORFLOW_DTENSOR_CC_TENSOR_WITH_LAYOUT_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/dtensor/cc/constants.h"

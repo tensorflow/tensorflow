@@ -54,6 +54,7 @@ class MatmulPerfTableGen {
 
     // Search space.
     std::vector<DataTypeSpec> dtypes;
+    StepSpec b_spec;
     StepSpec m_spec;
     StepSpec n_spec;
     StepSpec k_spec;

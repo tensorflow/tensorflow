@@ -75,6 +75,7 @@ template <class... Ts>
 VariantVisitor(Ts...) -> VariantVisitor<Ts...>;
 
 struct StaticSpec {
+  int b;
   int m;
   int n;
   int k;
@@ -125,18 +126,20 @@ void ReportProgress(absl::string_view prefix, int i, int size) {
 
 std::unique_ptr<HloModule> GetModule(absl::string_view lhs_dtype,
                                      absl::string_view rhs_dtype,
-                                     absl::string_view out_dtype, int m, int n,
-                                     int k) {
-  std::string text = absl::Substitute(R"(
+                                     absl::string_view out_dtype, int b, int m,
+                                     int n, int k) {
+  std::string text =
+      absl::Substitute(R"(
     HloModule m
 
     ENTRY e {
-      lhs = $0[$3,$5] parameter(0)
-      rhs = $1[$5,$4] parameter(1)
-      ROOT _ = $2[$3,$4] dot(lhs,rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      lhs = $0[$6,$3,$5] parameter(0)
+      rhs = $1[$6,$5,$4] parameter(1)
+      ROOT _ = $2[$6,$3,$4] dot(lhs,rhs), lhs_contracting_dims={2},
+        rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
     }
   )",
-                                      lhs_dtype, rhs_dtype, out_dtype, m, n, k);
+                       lhs_dtype, rhs_dtype, out_dtype, m, n, k, b);
 
   auto parsed = ParseAndReturnUnverifiedModule(text);
   CHECK_OK(parsed.status());
@@ -162,21 +165,25 @@ void AddDotsFromStaticSpec(const MatmulPerfTableGen::Config& config,
     return i;
   };
 
+  MatmulPerfTableGen::StepSpec b_spec = config.b_spec;
   MatmulPerfTableGen::StepSpec m_spec = config.m_spec;
   MatmulPerfTableGen::StepSpec n_spec = config.n_spec;
   MatmulPerfTableGen::StepSpec k_spec = config.k_spec;
   for (const MatmulPerfTableGen::DataTypeSpec& dtype : config.dtypes) {
-    for (int m = m_spec.start; m <= m_spec.stop; m = inc(m, m_spec)) {
-      for (int n = n_spec.start; n <= n_spec.stop; n = inc(n, n_spec)) {
-        for (int k = k_spec.start; k <= k_spec.stop; k = inc(k, k_spec)) {
-          StaticSpec spec;
-          spec.m = m;
-          spec.k = k;
-          spec.n = n;
-          spec.dtype_lhs = dtype.lhs_dtype;
-          spec.dtype_rhs = dtype.rhs_dtype;
-          spec.dtype_out = dtype.out_dtype;
-          specs.push_back(spec);
+    for (int b = b_spec.start; b <= b_spec.stop; b = inc(b, b_spec)) {
+      for (int m = m_spec.start; m <= m_spec.stop; m = inc(m, m_spec)) {
+        for (int n = n_spec.start; n <= n_spec.stop; n = inc(n, n_spec)) {
+          for (int k = k_spec.start; k <= k_spec.stop; k = inc(k, k_spec)) {
+            StaticSpec spec;
+            spec.b = b;
+            spec.m = m;
+            spec.k = k;
+            spec.n = n;
+            spec.dtype_lhs = dtype.lhs_dtype;
+            spec.dtype_rhs = dtype.rhs_dtype;
+            spec.dtype_out = dtype.out_dtype;
+            specs.push_back(spec);
+          }
         }
       }
     }
@@ -243,28 +250,28 @@ std::vector<ExplicitSpec> GetExplicitSpecs(
   std::vector<ExplicitSpec> specs;
   for (int i = 0; i < entry_specs.size(); i++) {
     const EntrySpec& entry_spec = entry_specs[i];
-    std::visit(VariantVisitor{[&specs](const PathSpec& spec) {
-                                std::string hlo;
-                                CHECK_OK(tsl::ReadFileToString(
-                                    tsl::Env::Default(), spec.filepath, &hlo));
-                                std::unique_ptr<HloModule> model_module =
-                                    GetModule(hlo);
-                                if (model_module == nullptr) {
-                                  return;
-                                }
-                                hlo_query::ForEachInstructionWithOpcode(
-                                    *model_module, HloOpcode::kDot,
-                                    [&specs](HloInstruction* instr) {
-                                      specs.emplace_back(
-                                          ExplicitSpec{CreateDotModule(instr)});
-                                    });
-                              },
-                              [&specs](const StaticSpec spec) {
-                                specs.emplace_back(ExplicitSpec{GetModule(
-                                    spec.dtype_lhs, spec.dtype_rhs,
-                                    spec.dtype_out, spec.m, spec.n, spec.k)});
-                              }},
-               entry_spec);
+    std::visit(
+        VariantVisitor{
+            [&specs](const PathSpec& spec) {
+              std::string hlo;
+              CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), spec.filepath,
+                                             &hlo));
+              std::unique_ptr<HloModule> model_module = GetModule(hlo);
+              if (model_module == nullptr) {
+                return;
+              }
+              hlo_query::ForEachInstructionWithOpcode(
+                  *model_module, HloOpcode::kDot,
+                  [&specs](HloInstruction* instr) {
+                    specs.emplace_back(ExplicitSpec{CreateDotModule(instr)});
+                  });
+            },
+            [&specs](const StaticSpec spec) {
+              specs.emplace_back(ExplicitSpec{
+                  GetModule(spec.dtype_lhs, spec.dtype_rhs, spec.dtype_out,
+                            spec.b, spec.m, spec.n, spec.k)});
+            }},
+        entry_spec);
     ReportProgress("Parsing modules progress", i + 1, entry_specs.size());
   }
   return specs;
@@ -480,7 +487,7 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
     HloInstruction* instr = module->entry_computation()->root_instruction();
     HloInstructionProto instr_proto = instr->ToProto();
 
-    gpu::HloInstructionProfile entry;
+    HloInstructionProfile entry;
     *entry.mutable_fingerprint() = CanonicalKey(*module);
     *entry.mutable_instruction() = instr_proto;
     for (auto* operand : instr->operands()) {
