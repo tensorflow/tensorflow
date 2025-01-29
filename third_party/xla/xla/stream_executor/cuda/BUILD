@@ -1929,9 +1929,12 @@ cc_test(
 
 cc_library(
     name = "cuda_compute_capability",
+    srcs = ["cuda_compute_capability.cc"],
     hdrs = ["cuda_compute_capability.h"],
     deps = [
         ":cuda_compute_capability_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1947,8 +1950,9 @@ xla_cc_test(
     srcs = ["cuda_compute_capability_test.cc"],
     deps = [
         ":cuda_compute_capability",
+        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
     ],
 )

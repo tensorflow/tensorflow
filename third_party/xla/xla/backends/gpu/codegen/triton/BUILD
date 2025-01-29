@@ -138,6 +138,8 @@ cc_library(
     ]),
     hdrs = ["compilation_pipeline.h"],
     deps = [
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@llvm-project//mlir:Pass",
     ] + if_gpu_is_configured([

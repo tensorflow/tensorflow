@@ -15,14 +15,34 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/status_matchers.h"
 
 namespace stream_executor {
 namespace {
+using tsl::testing::IsOkAndHolds;
+using tsl::testing::StatusIs;
 
 TEST(CudaComputeCapabilityTest, ToString) {
-  EXPECT_EQ(CudaComputeCapability(100, 5).ToString(), "100.5");
+  EXPECT_EQ(CudaComputeCapability(100, 52).ToString(), "100.52");
+}
+
+TEST(CudaComputeCapabilityTest, FromString) {
+  EXPECT_THAT(CudaComputeCapability::FromString("100.52"),
+              IsOkAndHolds(CudaComputeCapability(100, 52)));
+  EXPECT_THAT(CudaComputeCapability::FromString("1"),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(CudaComputeCapability::FromString("12"),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(CudaComputeCapability::FromString("x"),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(CudaComputeCapability::FromString("1."),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(CudaComputeCapability::FromString("1.x"),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CudaComputeCapabilityTest, ToProto) {
