@@ -1427,6 +1427,42 @@ struct CtxDecoding<State<T>> {
   }
 };
 
+//===----------------------------------------------------------------------===//
+// RunId
+//===----------------------------------------------------------------------===//
+
+struct RunId {
+  int64_t run_id;
+};
+
+// Context decoding for RunId (unique identifier of a logical execution).
+//
+// Example: Ffi::Bind().Ctx<RunId>()
+//                     .To([](RunId run_id) { ... });
+template <>
+struct CtxDecoding<RunId> {
+  using Type = RunId;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    XLA_FFI_RunId_Get_Args args;
+    args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.ctx = ctx;
+    args.run_id = 0;
+
+    if (XLA_FFI_Error* err = api->XLA_FFI_RunId_Get(&args); err) {
+      diagnostic.Emit("Failed to get run id from execution context: ")
+          << internal::GetErrorMessage(api, err);
+      internal::DestroyError(api, err);
+      return std::nullopt;
+    }
+
+    return RunId{args.run_id};
+  }
+};
+
 }  // namespace xla::ffi
 
 #endif  // XLA_FFI_API_FFI_H_

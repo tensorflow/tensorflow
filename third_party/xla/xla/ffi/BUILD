@@ -171,6 +171,8 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -182,8 +184,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -216,6 +216,7 @@ xla_cc_test(
         ":execution_state",
         ":ffi",
         ":ffi_api",
+        "//xla:executable_run_options",
         "//xla:xla_data_proto_cc",
         "//xla/ffi/api:c_api",
         "//xla/stream_executor:device_memory",
