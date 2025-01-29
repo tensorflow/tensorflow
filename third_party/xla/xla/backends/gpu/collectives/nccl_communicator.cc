@@ -70,6 +70,7 @@ static absl::StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType dtype,
     case F8E4M3FN:
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
+    case F8E8M0FNU:
       return ncclInt8;
     case PRED:
     case U8:
