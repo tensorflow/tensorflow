@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -70,7 +71,11 @@ bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
     return false;
   }
 
-  // Only decompose in loop body to allow for pipelining.
+  // Only decompose collective permutes that may be subject to pipelining.
+  if (!Match(collective_permute.operand(0),
+             match::GetTupleElement(match::Parameter()))) {
+    return false;
+  }
   auto callers = call_graph.GetComputationCallers(collective_permute.parent());
   if (callers.size() != 1 || callers.front()->opcode() != HloOpcode::kWhile) {
     return false;
@@ -203,6 +208,8 @@ CheckCyclePatterns(HloCollectivePermuteInstruction* cp0,
 // deco_post_order is expected to be post order within a computation.
 // TODO b/388072780 add second hueristic to enforce back edge before the forward
 // edge for max performance.
+// TODO(b/392684119): Also add control dependencies to conflicting collectives
+// other than send/recv.
 absl::Status EnforceOrderOfSendRecvChains(
     std::vector<DecomposedCp>& deco_post_order) {
   for (size_t i = 1; i < deco_post_order.size(); ++i) {
