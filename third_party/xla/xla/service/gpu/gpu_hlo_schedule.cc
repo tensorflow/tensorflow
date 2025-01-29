@@ -448,6 +448,11 @@ std::optional<ProfiledInstructionsProto> ReadPGLEProfile(
   return std::nullopt;
 }
 
+bool HasValidPGLEProfile(const HloModule& module,
+                         absl::string_view fingerprint) {
+  return ReadPGLEProfile(module.config(), fingerprint).has_value();
+}
+
 // Runs P2P schedule preparation prior any scheduling.
 absl::Status RunP2PSchedulePreparation(HloModule* module) {
   if (!module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
@@ -650,6 +655,22 @@ int64_t GetSchedulerMemoryLimit(const HloModule& module,
   return limit;
 }
 
+bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint) {
+  bool enable_lhs =
+      module.config()
+          .debug_options()
+          .xla_gpu_enable_latency_hiding_scheduler() ||
+      IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module);
+  if (!enable_lhs && HasValidPGLEProfile(module, fingerprint)) {
+    LOG(WARNING)
+        << "Profile data detected but "
+           "`xla_gpu_enable_latency_hiding_scheduler` unset. To use it "
+           "compiler will run Latency Hiding Scheduler anyway.";
+    enable_lhs = true;
+  }
+  return enable_lhs;
+}
+
 }  // end namespace
 
 absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
@@ -678,11 +699,7 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
       ScheduleGpuModuleWithMemoryScheduler(module, pointer_size));
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
-  bool enable_latency_hiding_scheduler =
-      module->config()
-          .debug_options()
-          .xla_gpu_enable_latency_hiding_scheduler() ||
-      IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(*module);
+  bool enable_latency_hiding_scheduler = IsLHSEnabled(*module, fingerprint);
 
   // Run Latency Hiding Scheduler (LHS). It maximizes the compute-communication
   // overlap, potentially at the cost of memory usage.
