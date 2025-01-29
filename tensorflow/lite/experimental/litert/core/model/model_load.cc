@@ -62,10 +62,11 @@ class FlatbufferContext {
 
   BufferManager* GetBufferManager() { return buffer_manager_; }
 
+  const uint8_t* GetAllocBase() const { return alloc_base_; }
+
  private:
   TflModel& tfl_model_;
   BufferManager* buffer_manager_;
-  // NOLINTNEXTLINE
   const uint8_t* alloc_base_;
 };
 
@@ -133,17 +134,16 @@ LiteRtStatus UnpackTensor(FlatbufferContext& context, TflTensorPtr tfl_tensor,
     const auto& tfl_buffer = **buffer;
 
     if (tfl_buffer.offset != 0) {
-      // TODO: b/365299994 - Support buffer with offset.
-      LITERT_LOG(LITERT_ERROR, "Buffers with offset not yet supported.");
-      return kLiteRtStatusErrorUnsupported;
+      const auto* alloc_base = context.GetAllocBase();
+      BufferRef<uint8_t> weights_buffer(alloc_base + tfl_buffer.offset,
+                                        tfl_buffer.size);
+      SetWeightsFromUnownedBuffer(litert_tensor.Weights(), weights_buffer);
+    } else {
+      OwningBufferRef<uint8_t> weights_buffer(tfl_buffer.data.data(),
+                                              tfl_buffer.data.size());
+      SetWeightsFromOwnedBuffer(litert_tensor.Weights(),
+                                std::move(weights_buffer));
     }
-
-    // TODO we can switch to lower level flatbuffer api here and just pass the
-    // view through w/ no copy.
-    OwningBufferRef<uint8_t> weights_buffer(tfl_buffer.data.data(),
-                                            tfl_buffer.data.size());
-    SetWeightsFromOwnedBuffer(litert_tensor.Weights(),
-                              std::move(weights_buffer));
   }
 
   // TENSOR TYPE
