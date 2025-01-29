@@ -54,9 +54,20 @@ class HloParserOptions {
     return fill_shortform_constants_with_random_values_;
   }
 
+  // Keep module auto layouts, i.e. do not reset unset entry computation layouts
+  // to the default layout.  This is a subset of what fill_missing_layouts=false
+  // does.
+  HloParserOptions& set_keep_module_auto_layouts(bool value) {
+    keep_module_auto_layouts_ = value;
+    return *this;
+  }
+
+  bool keep_module_auto_layouts() const { return keep_module_auto_layouts_; }
+
  private:
   bool fill_missing_layouts_ = true;
   bool fill_shortform_constants_with_random_values_ = true;
+  bool keep_module_auto_layouts_ = true;
 };
 
 // Given a string in the HloModule::ToString() format, parses the string and
