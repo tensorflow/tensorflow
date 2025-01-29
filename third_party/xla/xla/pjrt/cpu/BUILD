@@ -160,6 +160,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:compile_options_proto_cc",
+        "//xla/pjrt:host_callback",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
