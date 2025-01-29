@@ -27,13 +27,11 @@ namespace {
 namespace se = ::stream_executor;
 
 TEST(UtilsTest, TestGetSmName) {
-  se::CudaComputeCapability cc_hopper(9, 0);
-  ASSERT_EQ(nvptx::GetSmName(cc_hopper), "sm_90a");
-  // Do not default to sm90_a after Hopper, because it is not forward
-  // compatible.
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  se::CudaComputeCapability cc_next(10, 0);
-  ASSERT_EQ(nvptx::GetSmName(cc_next), "sm_90");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{9, 0}), "sm_90a");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{10, 0}), "sm_100a");
+  // Do not use the extension for a yet-unknown compute capability.
+  // https://docs.nvidia.com/cuda/parallel-thread-execution/#release-notes-ptx-release-history
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{10, 9}), "sm_100");
 }
 
 using VersionPair = std::pair<se::SemanticVersion, se::SemanticVersion>;

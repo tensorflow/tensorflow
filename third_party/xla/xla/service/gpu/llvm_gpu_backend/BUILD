@@ -99,6 +99,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/cuda:ptx_compiler_helpers",
         "//xla/stream_executor/cuda:subprocess_compilation",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
