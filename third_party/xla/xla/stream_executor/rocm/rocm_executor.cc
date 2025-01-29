@@ -1032,7 +1032,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
 
   {
     TF_ASSIGN_OR_RETURN(std::string device_name, GetDeviceName(device));
-    desc.set_name(device_name);
+    desc.set_name(device_name.empty() ? gcn_arch_name : device_name);
   }
 
   desc.set_platform_version(
