@@ -67,8 +67,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               ([2, 3, 1, 1024], [2, 3, 1024, 3]),
           ),
           'merge_fusion_with_dequantize': (False, True),
-      }])
-  )
+      }]))
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_ptq_model(
       self,
@@ -78,8 +77,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       merge_fusion_with_dequantize: bool,
   ):
     lhs_dim_size, rhs_dim_size = dim_sizes
-    input_shape = (*lhs_dim_size,)
-    filter_shape = (*rhs_dim_size,)
+    input_shape = (*lhs_dim_size, )
+    filter_shape = (*rhs_dim_size, )
     static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
     model = self._create_matmul_model(
         input_shape,
@@ -91,37 +90,31 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     rng = np.random.default_rng(seed=42)
     input_data = ops.convert_to_tensor(
-        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
-            np.float32
-        )
-    )
+        rng.uniform(low=0.0, high=1.0,
+                    size=static_input_shape).astype(np.float32))
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(100):
         yield {
-            'input_tensor': rng.uniform(
-                low=0.0, high=1.0, size=static_input_shape
-            ).astype(np.float32)
+            'input_tensor':
+            rng.uniform(low=0.0, high=1.0,
+                        size=static_input_shape).astype(np.float32)
         }
 
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                )
-            ]
-        ),
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path))
+            ]),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
         pipeline_config=qc.PipelineConfig(
-            merge_fusion_with_dequantize=merge_fusion_with_dequantize
-        ),
+            merge_fusion_with_dequantize=merge_fusion_with_dequantize),
     )
     quantization.quantize_saved_model(
         self._input_saved_model_path,
@@ -135,11 +128,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
 
     new_outputs = root.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
+        input_tensor=ops.convert_to_tensor(input_data))
     module_str = self._extract_first_xla_call_module_op(
-        self._output_saved_model_path
-    )
+        self._output_saved_model_path)
     self.assertTrue(re.search('stablehlo.dot_general.*xi8>', module_str))
     if bias_fn:
       self.assertTrue(re.search('stablehlo.add.*xi32>', module_str))
@@ -151,9 +142,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
-        testing.get_size_ratio(
-            self._output_saved_model_path, self._input_saved_model_path
-        ),
+        testing.get_size_ratio(self._output_saved_model_path,
+                               self._input_saved_model_path),
         0.65,
     )
 
@@ -182,8 +172,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               'slice',
               'transpose',
           ),
-      }])
-  )
+      }]))
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_and_same_scale_ptq_model(
       self,
@@ -202,33 +191,28 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     rng = np.random.default_rng(seed=42)
     input_data = ops.convert_to_tensor(
-        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
-            np.float32
-        )
-    )
+        rng.uniform(low=0.0, high=1.0,
+                    size=static_input_shape).astype(np.float32))
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(100):
         yield {
-            'input_tensor': rng.uniform(
-                low=0.0, high=1.0, size=static_input_shape
-            ).astype(np.float32)
+            'input_tensor':
+            rng.uniform(low=0.0, high=1.0,
+                        size=static_input_shape).astype(np.float32)
         }
 
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                )
-            ]
-        ),
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path))
+            ]),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
     quantization.quantize_saved_model(
@@ -243,17 +227,15 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
 
     new_outputs = root.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
+        input_tensor=ops.convert_to_tensor(input_data))
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
-        testing.get_size_ratio(
-            self._output_saved_model_path, self._input_saved_model_path
-        ),
+        testing.get_size_ratio(self._output_saved_model_path,
+                               self._input_saved_model_path),
         0.65,
     )
 
@@ -264,9 +246,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               'slice',  # This corresponds to stablehlo.dynamic_slice.
               # TODO: b/326242075 - Support other same-scale ops.
           ),
-          'dim_sizes': (([None, 1024], [1024, 3]),),
-      }])
-  )
+          'dim_sizes': (([None, 1024], [1024, 3]), ),
+      }]))
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_and_same_scale_ptq_model_dynamic(
       self,
@@ -274,8 +255,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       dim_sizes: Sequence[int],
   ):
     input_dim_size, filter_dim_size = dim_sizes
-    input_shape = (*input_dim_size,)
-    filter_shape = (*filter_dim_size,)
+    input_shape = (*input_dim_size, )
+    filter_shape = (*filter_dim_size, )
     static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
 
     model = self._create_matmul_and_same_scale_model(
@@ -287,33 +268,28 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     rng = np.random.default_rng(seed=42)
     input_data = ops.convert_to_tensor(
-        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
-            np.float32
-        )
-    )
+        rng.uniform(low=0.0, high=1.0,
+                    size=static_input_shape).astype(np.float32))
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(100):
         yield {
-            'input_tensor': rng.uniform(
-                low=0.0, high=1.0, size=static_input_shape
-            ).astype(np.float32)
+            'input_tensor':
+            rng.uniform(low=0.0, high=1.0,
+                        size=static_input_shape).astype(np.float32)
         }
 
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                )
-            ]
-        ),
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path))
+            ]),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
     quantization.quantize_saved_model(
@@ -328,17 +304,15 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
 
     new_outputs = root.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
+        input_tensor=ops.convert_to_tensor(input_data))
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
-        testing.get_size_ratio(
-            self._output_saved_model_path, self._input_saved_model_path
-        ),
+        testing.get_size_ratio(self._output_saved_model_path,
+                               self._input_saved_model_path),
         0.6,
     )
 
@@ -364,8 +338,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           ),
           'merge_fusion_with_dequantize': (False, True),
           'has_func_alias': (False, True),
-      }])
-  )
+      }]))
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model(
       self,
@@ -406,38 +379,34 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     rng = np.random.default_rng(seed=42)
     static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
     input_data = ops.convert_to_tensor(
-        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
-            np.float32
-        )
-    )
+        rng.uniform(low=0.0, high=1.0,
+                    size=static_input_shape).astype(np.float32))
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(100):
         yield {
-            'input_tensor': rng.uniform(
-                low=0.0, high=1.0, size=static_input_shape
-            ).astype(np.float32)
+            'input_tensor':
+            rng.uniform(low=0.0, high=1.0,
+                        size=static_input_shape).astype(np.float32)
         }
 
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                )
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path))
             ],
-            enable_per_channel_quantized_weight=enable_per_channel_quantized_weight,
+            enable_per_channel_quantized_weight=
+            enable_per_channel_quantized_weight,
         ),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
         pipeline_config=qc.PipelineConfig(
-            merge_fusion_with_dequantize=merge_fusion_with_dequantize
-        ),
+            merge_fusion_with_dequantize=merge_fusion_with_dequantize),
     )
     quantization.quantize_saved_model(
         self._input_saved_model_path,
@@ -451,11 +420,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
 
     new_outputs = root.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
+        input_tensor=ops.convert_to_tensor(input_data))
     module_str = self._extract_first_xla_call_module_op(
-        self._output_saved_model_path
-    )
+        self._output_saved_model_path)
     self.assertTrue(re.search('stablehlo.convolution.*xi8>', module_str))
     if bias_fn:
       self.assertTrue(re.search('stablehlo.add.*xi32>', module_str))
@@ -467,9 +434,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
-        testing.get_size_ratio(
-            self._output_saved_model_path, self._input_saved_model_path
-        ),
+        testing.get_size_ratio(self._output_saved_model_path,
+                               self._input_saved_model_path),
         0.61,
     )
 
@@ -487,12 +453,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       self.assertNotRegex(module_str, r'stablehlo.maximum.*\n.*return')
 
     if has_func_alias:
-      func_aliases = self._get_function_aliases(
-          self._output_saved_model_path, [tag_constants.SERVING]
-      )
-      self.assertCountEqual(
-          func_aliases.values(), [quantize_model_test_base.FUNC_ALIAS]
-      )
+      func_aliases = self._get_function_aliases(self._output_saved_model_path,
+                                                [tag_constants.SERVING])
+      self.assertCountEqual(func_aliases.values(),
+                            [quantize_model_test_base.FUNC_ALIAS])
 
   @parameterized.parameters(
       testing.parameter_combinations([{
@@ -500,15 +464,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               'abc,cde->abde',
               'abc,dce->abde',
           ),
-      }])
-  )
+      }]))
   def test_einsum_ptq_model(
       self,
       equation: str,
   ):
     _, y_shape, bias_shape, x_signature, y_signature = (
-        self._prepare_sample_einsum_datashapes(equation, use_bias=True)
-    )
+        self._prepare_sample_einsum_datashapes(equation, use_bias=True))
 
     model = self._create_einsum_model(
         self._input_saved_model_path,
@@ -522,33 +484,28 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # Generate model input data.
     rng = np.random.default_rng(seed=42)
     input_data = ops.convert_to_tensor(
-        rng.uniform(low=0.0, high=1.0, size=x_signature).astype('f4')
-    )
+        rng.uniform(low=0.0, high=1.0, size=x_signature).astype('f4'))
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(100):
         yield {
-            'x': ops.convert_to_tensor(
-                np.random.uniform(low=0.0, high=1.0, size=x_signature).astype(
-                    'f4'
-                )
-            ),
+            'x':
+            ops.convert_to_tensor(
+                np.random.uniform(low=0.0, high=1.0,
+                                  size=x_signature).astype('f4')),
         }
 
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                )
-            ]
-        ),
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path))
+            ]),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
     quantization.quantize_saved_model(
@@ -563,24 +520,21 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
 
     new_outputs = root.signatures['serving_default'](
-        x=ops.convert_to_tensor(input_data)
-    )
+        x=ops.convert_to_tensor(input_data))
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.02, atol=0.04)
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
-        testing.get_size_ratio(
-            self._output_saved_model_path, self._input_saved_model_path
-        ),
+        testing.get_size_ratio(self._output_saved_model_path,
+                               self._input_saved_model_path),
         0.65,
     )
 
   def test_reuse_calibration_data(self):
     _, y_shape, bias_shape, x_signature, y_signature = (
-        self._prepare_sample_einsum_datashapes('abc,cde->abde', use_bias=True)
-    )
+        self._prepare_sample_einsum_datashapes('abc,cde->abde', use_bias=True))
 
     self._create_einsum_model(
         self._input_saved_model_path,
@@ -594,34 +548,29 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # Generate model input data.
     rng = np.random.default_rng(seed=42)
     input_data = ops.convert_to_tensor(
-        rng.uniform(low=0.0, high=1.0, size=x_signature).astype('f4')
-    )
+        rng.uniform(low=0.0, high=1.0, size=x_signature).astype('f4'))
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(100):
         yield {
-            'x': ops.convert_to_tensor(
-                np.random.uniform(low=0.0, high=1.0, size=x_signature).astype(
-                    'f4'
-                )
-            ),
+            'x':
+            ops.convert_to_tensor(
+                np.random.uniform(low=0.0, high=1.0,
+                                  size=x_signature).astype('f4')),
         }
 
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     calibration_data_dir = self.create_tempdir('calibration_data').full_path
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                )
-            ]
-        ),
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path))
+            ]),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
         calibration_options=qc.CalibrationOptions(
             calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
@@ -640,14 +589,11 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           self._any_log_contains(
               'Calibration step is executed in graph mode.',
               info_logs.records,
-          )
-      )
+          ))
       module_str = self._extract_first_xla_call_module_op(
-          self._output_saved_model_path
-      )
+          self._output_saved_model_path)
       self.assertTrue(
-          re.search('stablehlo.dot_general.*xi8>.*xi8>.*xi32>', module_str)
-      )
+          re.search('stablehlo.dot_general.*xi8>.*xi8>.*xi32>', module_str))
 
     # Run quantization the first time, calibration is expected to be skipped.
     output_saved_model_path_2 = self.create_tempdir('output2').full_path
@@ -661,27 +607,22 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           self._any_log_contains(
               'Calibration step is executed in graph mode.',
               info_logs.records,
-          )
-      )
+          ))
       module_str = self._extract_first_xla_call_module_op(
-          output_saved_model_path_2
-      )
+          output_saved_model_path_2)
       self.assertTrue(
-          re.search('stablehlo.dot_general.*xi8>.*xi8>.*xi32>', module_str)
-      )
+          re.search('stablehlo.dot_general.*xi8>.*xi8>.*xi32>', module_str))
 
     # Expect both quantized model to produce the same results.
     root = load.load(self._output_saved_model_path)
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
     new_outputs_1 = root.signatures['serving_default'](
-        x=ops.convert_to_tensor(input_data)
-    )
+        x=ops.convert_to_tensor(input_data))
 
     root = load.load(output_saved_model_path_2)
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
     new_outputs_2 = root.signatures['serving_default'](
-        x=ops.convert_to_tensor(input_data)
-    )
+        x=ops.convert_to_tensor(input_data))
 
     self.assertAllClose(new_outputs_1, new_outputs_2)
 
@@ -703,25 +644,22 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(100):
         yield {
-            'input_tensor': rng.uniform(
-                low=0.0, high=10, size=static_input_shape
-            ).astype(input_type)
+            'input_tensor':
+            rng.uniform(low=0.0, high=10,
+                        size=static_input_shape).astype(input_type)
         }
 
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                )
-            ]
-        ),
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path))
+            ]),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
     quantization.quantize_saved_model(
@@ -733,15 +671,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     root = load.load(self._output_saved_model_path)
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
     module_str = self._extract_first_xla_call_module_op(
-        self._output_saved_model_path
-    )
+        self._output_saved_model_path)
     self.assertTrue(re.search('stablehlo.gather.*xi8>', module_str))
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
-        testing.get_size_ratio(
-            self._output_saved_model_path, self._input_saved_model_path
-        ),
+        testing.get_size_ratio(self._output_saved_model_path,
+                               self._input_saved_model_path),
         1 / 3,
     )
 
@@ -772,8 +708,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     rng = np.random.default_rng(1230)
     random_tensor_gen_fn = lambda: rng.uniform(
-        low=0.0, high=1.0, size=input_shape
-    ).astype(np.float32)
+        low=0.0, high=1.0, size=input_shape).astype(np.float32)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(50):
@@ -782,32 +717,25 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                )
-            ]
-        ),
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path))
+            ]),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
         # Disable quantization for the quantizable unit (lifted function) whose
         # function name starts with "composite_dot_general".
-        specs=qc.QuantizationSpecs(
-            specs=[
-                qc.QuantizationSpec(
-                    matcher=qc.MatcherSpec(
-                        function_name=qc.FunctionNameMatcherSpec(
-                            regex='composite_dot_general.*'
-                        )
-                    ),
-                    method=qc.Method(no_quantization={}),
-                )
-            ]
-        ),
+        specs=qc.QuantizationSpecs(specs=[
+            qc.QuantizationSpec(
+                matcher=qc.MatcherSpec(
+                    function_name=qc.FunctionNameMatcherSpec(
+                        regex='composite_dot_general.*')),
+                method=qc.Method(no_quantization={}),
+            )
+        ]),
     )
     quantization.quantize_saved_model(
         self._input_saved_model_path,
@@ -822,8 +750,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
 
     new_outputs = root.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
+        input_tensor=ops.convert_to_tensor(input_data))
 
     # Indirectly tests that the model is not quantized by asserting that there
     # are negligible numeric difference.
@@ -831,9 +758,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
-        testing.get_size_ratio(
-            self._output_saved_model_path, self._input_saved_model_path
-        ),
+        testing.get_size_ratio(self._output_saved_model_path,
+                               self._input_saved_model_path),
         0.4,
     )
 
@@ -843,8 +769,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     rng = np.random.default_rng(1230)
     random_tensor_gen_fn = lambda shape: rng.uniform(
-        low=-1.0, high=1.0, size=shape
-    ).astype(np.float32)
+        low=-1.0, high=1.0, size=shape).astype(np.float32)
 
     class TwoMatmulModel(module.Module):
       """A model with two matmul ops."""
@@ -870,10 +795,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         model,
         self._input_saved_model_path,
         signatures=model.matmul.get_concrete_function(
-            tensor_spec.TensorSpec(
-                shape=input_shape, dtype=dtypes.float32, name='input_tensor'
-            )
-        ),
+            tensor_spec.TensorSpec(shape=input_shape,
+                                   dtype=dtypes.float32,
+                                   name='input_tensor')),
     )
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
@@ -883,33 +807,26 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                ),
-            ],
-        ),
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path)),
+            ], ),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
         # Disable quantization for the quantizable unit (lifted function) whose
         # function name matches "composite_dot_general_fn_1".
         # "composite_dot_general_fn_2" will be quantized.
-        specs=qc.QuantizationSpecs(
-            specs=[
-                qc.QuantizationSpec(
-                    matcher=qc.MatcherSpec(
-                        function_name=qc.FunctionNameMatcherSpec(
-                            regex='composite_dot_general_fn_1'
-                        )
-                    ),
-                    method=qc.Method(no_quantization={}),
-                )
-            ]
-        ),
+        specs=qc.QuantizationSpecs(specs=[
+            qc.QuantizationSpec(
+                matcher=qc.MatcherSpec(
+                    function_name=qc.FunctionNameMatcherSpec(
+                        regex='composite_dot_general_fn_1')),
+                method=qc.Method(no_quantization={}),
+            )
+        ]),
     )
 
     quantization.quantize_saved_model(
@@ -925,17 +842,15 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
 
     new_outputs = root.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
+        input_tensor=ops.convert_to_tensor(input_data))
 
     # Indirectly tests that the model is only partially quantized.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.011)
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
-        testing.get_size_ratio(
-            self._output_saved_model_path, self._input_saved_model_path
-        ),
+        testing.get_size_ratio(self._output_saved_model_path,
+                               self._input_saved_model_path),
         0.55,
     )
 
@@ -951,8 +866,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     rng = np.random.default_rng(1230)
     random_tensor_gen_fn = lambda: rng.uniform(
-        low=0.0, high=1.0, size=input_shape
-    ).astype(np.float32)
+        low=0.0, high=1.0, size=input_shape).astype(np.float32)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(50):
@@ -961,17 +875,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                )
-            ]
-        ),
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path))
+            ]),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
         specs=qc.QuantizationSpecs(
             specs=[
@@ -979,13 +890,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                     # Provide a regex that wouldn't match any quantizable units.
                     matcher=qc.MatcherSpec(
                         function_name=qc.FunctionNameMatcherSpec(
-                            regex='.*invalid_function_name.*'
-                        ),
-                    ),
+                            regex='.*invalid_function_name.*'), ),
                     method=qc.Method(no_quantization={}),
                 ),
-            ],
-        ),
+            ], ),
     )
     quantization.quantize_saved_model(
         self._input_saved_model_path,
@@ -1000,8 +908,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
 
     new_outputs = root.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
+        input_tensor=ops.convert_to_tensor(input_data))
 
     # Tests that the quantized graph outputs similar values. They also shouldn't
     # be exactly the same. Indirectly proves that the `FunctionNameMatcherSpec`
@@ -1011,9 +918,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
-        testing.get_size_ratio(
-            self._output_saved_model_path, self._input_saved_model_path
-        ),
+        testing.get_size_ratio(self._output_saved_model_path,
+                               self._input_saved_model_path),
         0.4,
     )
 
@@ -1035,26 +941,22 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(100):
         yield {
-            'input_tensor': rng.uniform(
-                low=0.0, high=1.0, size=input_shape
-            ).astype(np.float32)
+            'input_tensor':
+            rng.uniform(low=0.0, high=1.0, size=input_shape).astype(np.float32)
         }
 
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     report_file_path = self.create_tempfile('report.txtpb').full_path
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                )
-            ]
-        ),
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path))
+            ]),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
         report_file_path=report_file_path,
     )
@@ -1080,7 +982,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           method { static_range_ptq {} }
         }
         """,
-        message=results,
+        validate_message=results,
     )
 
 
@@ -1094,45 +996,49 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.parameters(
       {
-          'calibration_options': qc.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
-          )
+          'calibration_options':
+          qc.CalibrationOptions(
+              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX)
       },
       {
-          'calibration_options': qc.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
+          'calibration_options':
+          qc.CalibrationOptions(calibration_method=_CalibrationMethod.
+                                CALIBRATION_METHOD_AVERAGE_MIN_MAX),
+      },
+      {
+          'calibration_options':
+          qc.CalibrationOptions(
+              calibration_method=_CalibrationMethod.
+              CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
+              calibration_parameters=qc.CalibrationOptions.
+              CalibrationParameters(num_bins=10, ),
           ),
       },
       {
-          'calibration_options': qc.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-              calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
-                  num_bins=10,
-              ),
+          'calibration_options':
+          qc.CalibrationOptions(
+              calibration_method=_CalibrationMethod.
+              CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
+              calibration_parameters=qc.CalibrationOptions.
+              CalibrationParameters(num_bins=10, ),
           ),
       },
       {
-          'calibration_options': qc.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-              calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
-                  num_bins=10,
-              ),
+          'calibration_options':
+          qc.CalibrationOptions(
+              calibration_method=_CalibrationMethod.
+              CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
+              calibration_parameters=qc.CalibrationOptions.
+              CalibrationParameters(num_bins=10, ),
           ),
       },
       {
-          'calibration_options': qc.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
-              calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
-                  num_bins=10,
-              ),
-          ),
-      },
-      {
-          'calibration_options': qc.CalibrationOptions(
-              calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
-              calibration_parameters=qc.CalibrationOptions.CalibrationParameters(
-                  num_bins=10,
-              ),
+          'calibration_options':
+          qc.CalibrationOptions(
+              calibration_method=_CalibrationMethod.
+              CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
+              calibration_parameters=qc.CalibrationOptions.
+              CalibrationParameters(num_bins=10, ),
           ),
       },
   )
@@ -1162,31 +1068,30 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
 
     # Generate model input data.
     input_data = ops.convert_to_tensor(
-        np.random.uniform(low=0.0, high=10, size=input_shape).astype('f4')
-    )
+        np.random.uniform(low=0.0, high=10, size=input_shape).astype('f4'))
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(100):
         yield {
-            'input_tensor': ops.convert_to_tensor(
-                np.random.uniform(low=0, high=10, size=input_shape).astype('f4')
-            ),
+            'input_tensor':
+            ops.convert_to_tensor(
+                np.random.uniform(low=0, high=10,
+                                  size=input_shape).astype('f4')),
         }
 
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                )
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path))
             ],
-            enable_per_channel_quantized_weight=enable_per_channel_quantized_weight,
+            enable_per_channel_quantized_weight=
+            enable_per_channel_quantized_weight,
         ),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
         calibration_options=calibration_options,
@@ -1203,17 +1108,15 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
 
     new_outputs = root.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
+        input_tensor=ops.convert_to_tensor(input_data))
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.02, atol=0.5)
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
-        testing.get_size_ratio(
-            self._output_saved_model_path, self._input_saved_model_path
-        ),
+        testing.get_size_ratio(self._output_saved_model_path,
+                               self._input_saved_model_path),
         0.46,
     )
 
@@ -1239,8 +1142,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               ([10, 1, 1024], [10, 1024, 3]),
               ([2, 3, 1, 1024], [2, 3, 1024, 3]),
           ),
-      }])
-  )
+      }]))
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_weight_only_model(
       self,
@@ -1249,8 +1151,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       dim_sizes: Sequence[int],
   ):
     lhs_dim_size, rhs_dim_size = dim_sizes
-    input_shape = (*lhs_dim_size,)
-    filter_shape = (*rhs_dim_size,)
+    input_shape = (*lhs_dim_size, )
+    filter_shape = (*rhs_dim_size, )
     static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
     model = self._create_matmul_model(
         input_shape,
@@ -1262,10 +1164,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     rng = np.random.default_rng(1234)
     input_data = ops.convert_to_tensor(
-        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
-            np.float32
-        )
-    )
+        rng.uniform(low=0.0, high=1.0,
+                    size=static_input_shape).astype(np.float32))
 
     config = qc.QuantizationConfig(
         weight_only_ptq_preset=qc.WeightOnlyPtqPreset(),
@@ -1283,29 +1183,25 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
 
     new_outputs = root.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
+        input_tensor=ops.convert_to_tensor(input_data))
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
     module_str = self._extract_first_xla_call_module_op(
-        self._output_saved_model_path
-    )
+        self._output_saved_model_path)
 
     # Tests that the output graph contains multiply for symmetric
     # dequantization.
     self.assertTrue(re.search('stablehlo.multiply', module_str))
     # Tests that the output graph contains float dot_general.
     self.assertTrue(
-        re.search('stablehlo.dot_general.*xf32>.*xf32>.*xf32>', module_str)
-    )
+        re.search('stablehlo.dot_general.*xf32>.*xf32>.*xf32>', module_str))
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
-        testing.get_size_ratio(
-            self._output_saved_model_path, self._input_saved_model_path
-        ),
+        testing.get_size_ratio(self._output_saved_model_path,
+                               self._input_saved_model_path),
         0.3,
     )
 
@@ -1320,14 +1216,13 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               nn_ops.relu,
               nn_ops.relu6,
           ),
-          'has_batch_norm': (False,),
+          'has_batch_norm': (False, ),
           'input_shape_dynamic': (
               False,
               True,
           ),
           'has_func_alias': (False, True),
-      }])
-  )
+      }]))
   @test_util.run_in_graph_and_eager_modes
   def test_conv_weight_only_model(
       self,
@@ -1357,10 +1252,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     rng = np.random.default_rng(1234)
     static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
     input_data = ops.convert_to_tensor(
-        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
-            np.float32
-        )
-    )
+        rng.uniform(low=0.0, high=1.0,
+                    size=static_input_shape).astype(np.float32))
 
     config = qc.QuantizationConfig(
         weight_only_ptq_preset=qc.WeightOnlyPtqPreset(),
@@ -1378,37 +1271,31 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(root.signatures.keys(), {'serving_default'})
 
     new_outputs = root.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
-    )
+        input_tensor=ops.convert_to_tensor(input_data))
     # Tests that the quantized graph outputs similar values. The rtol and atol
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
     module_str = self._extract_first_xla_call_module_op(
-        self._output_saved_model_path
-    )
+        self._output_saved_model_path)
 
     # Tests that the output graph contains multiply op for symmetric
     # dequantization.
     self.assertTrue(re.search('stablehlo.multiply', module_str))
     # Tests that the output graph contains float dot_general.
     self.assertTrue(
-        re.search('stablehlo.convolution.*xf32>.*xf32>.*xf32>', module_str)
-    )
+        re.search('stablehlo.convolution.*xf32>.*xf32>.*xf32>', module_str))
 
     if has_func_alias:
-      func_aliases = self._get_function_aliases(
-          self._output_saved_model_path, [tag_constants.SERVING]
-      )
-      self.assertCountEqual(
-          func_aliases.values(), [quantize_model_test_base.FUNC_ALIAS]
-      )
+      func_aliases = self._get_function_aliases(self._output_saved_model_path,
+                                                [tag_constants.SERVING])
+      self.assertCountEqual(func_aliases.values(),
+                            [quantize_model_test_base.FUNC_ALIAS])
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertLess(
-        testing.get_size_ratio(
-            self._output_saved_model_path, self._input_saved_model_path
-        ),
+        testing.get_size_ratio(self._output_saved_model_path,
+                               self._input_saved_model_path),
         0.4,
     )
 
@@ -1418,8 +1305,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               False,
               True,
           ),
-      }])
-  )
+      }]))
   @test_util.run_in_graph_and_eager_modes
   def test_add_ptq_model(
       self,
@@ -1438,25 +1324,22 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(100):
         yield {
-            'input_tensor': rng.uniform(
-                low=0.0, high=1.0, size=static_input_shape
-            ).astype(np.float32)
+            'input_tensor':
+            rng.uniform(low=0.0, high=1.0,
+                        size=static_input_shape).astype(np.float32)
         }
 
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     config = qc.QuantizationConfig(
         static_range_ptq_preset=qc.StaticRangePtqPreset(
             representative_datasets=[
-                qc.RepresentativeDatasetConfig(
-                    tf_record=qc.TfRecordFile(path=dataset_path)
-                )
-            ],
-        ),
+                qc.RepresentativeDatasetConfig(tf_record=qc.TfRecordFile(
+                    path=dataset_path))
+            ], ),
         tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
     quantization.quantize_saved_model(
@@ -1466,11 +1349,9 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
     self.assertEqual(
-        self._get_num_xla_call_module_op(self._output_saved_model_path), 1
-    )
+        self._get_num_xla_call_module_op(self._output_saved_model_path), 1)
     module_str = self._extract_first_xla_call_module_op(
-        self._output_saved_model_path
-    )
+        self._output_saved_model_path)
 
     # Check add is not quantized.
     self.assertTrue(re.search(r'stablehlo.add.*f32>', module_str))
@@ -1481,8 +1362,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               False,
               True,
           ),
-      }])
-  )
+      }]))
   @test_util.run_in_graph_and_eager_modes
   def test_add_weight_only_model(
       self,
@@ -1501,16 +1381,15 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     def data_gen() -> repr_dataset.RepresentativeDataset:
       for _ in range(100):
         yield {
-            'input_tensor': rng.uniform(
-                low=0.0, high=1.0, size=static_input_shape
-            ).astype(np.float32)
+            'input_tensor':
+            rng.uniform(low=0.0, high=1.0,
+                        size=static_input_shape).astype(np.float32)
         }
 
     dataset_path = self.create_tempfile('tfrecord').full_path
     path_map = {'serving_default': dataset_path}
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
-        {'serving_default': data_gen()}
-    )
+        {'serving_default': data_gen()})
 
     config = qc.QuantizationConfig(
         weight_only_ptq_preset=qc.WeightOnlyPtqPreset(),
@@ -1523,11 +1402,9 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
     self.assertEqual(
-        self._get_num_xla_call_module_op(self._output_saved_model_path), 1
-    )
+        self._get_num_xla_call_module_op(self._output_saved_model_path), 1)
     module_str = self._extract_first_xla_call_module_op(
-        self._output_saved_model_path
-    )
+        self._output_saved_model_path)
 
     # Check add is not quantized.
     self.assertTrue(re.search(r'stablehlo.add.*f32>', module_str), module_str)
@@ -1581,7 +1458,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           }
         }
         """,
-        message=results,
+        validate_message=results,
     )
 
 
