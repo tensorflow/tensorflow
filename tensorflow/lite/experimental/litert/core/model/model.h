@@ -110,11 +110,10 @@ void SetTflOpCodes(LiteRtModelT& litert_model, Arg&& arg);
 std::vector<::litert::internal::TflOpCodePtr>&& TakeTflOpCodes(
     LiteRtModelT& litert_model);
 
-// TODO promote the init buf to be an official method.
-void SetTflInitFlatbuffer(LiteRtModelT& litert_model,
-                          ::litert::BufferRef<uint8_t> init_flatbuffer);
+void SetTflFlatbuffer(LiteRtModelT& litert_model,
+                      ::litert::internal::FlatbufferWrapper&& tfl_flatbuffer);
 
-::litert::BufferRef<uint8_t> GetTflInitFlatbuffer(
+const ::litert::internal::FlatbufferWrapper& GetTflFlatbuffer(
     const LiteRtModelT& litert_model);
 
 }  // namespace detail
@@ -678,6 +677,8 @@ class LiteRtModelT {
 
   using MetadataMap = absl::flat_hash_map<std::string, BufferId>;
 
+  using TflFlatbuffer = ::litert::internal::FlatbufferWrapper;
+
   // TODO replace this with the index of the default signature.
   static constexpr const size_t kMainSubgraphIndex = 0;
 
@@ -816,19 +817,20 @@ class LiteRtModelT {
 
   friend TflOpCodes&& detail::TakeTflOpCodes(LiteRtModelT& litert_model);
 
-  friend void detail::SetTflInitFlatbuffer(
-      LiteRtModelT& litert_model, ::litert::BufferRef<uint8_t> init_flatbuffer);
+  friend void detail::SetTflFlatbuffer(LiteRtModelT& litert_model,
+                                       TflFlatbuffer&& tfl_flatbuffer);
 
-  friend ::litert::BufferRef<uint8_t> detail::GetTflInitFlatbuffer(
+  friend const TflFlatbuffer& detail::GetTflFlatbuffer(
       const LiteRtModelT& litert_model);
+
+  explicit LiteRtModelT(TflFlatbuffer&& tfl_flatbuffer)
+      : tfl_flatbuffer_(std::move(tfl_flatbuffer)) {}
 
  private:
   LiteRtSubgraphT::Alloc subgraphs_;
   LiteRtSignatureT::Alloc signatures_;
 
   MetadataMap metadata_;
-  // TODO use the new unified buffer manager for external buffers.
-  std::vector<litert::OwningBufferRef<uint8_t>> external_buffers_;
   OpAssetMap external_buffer_map_;
 
   // Use unique ptr here to keep stable.
@@ -836,7 +838,7 @@ class LiteRtModelT {
 
   // TFLITE
   TflOpCodes tfl_operator_codes_;
-  litert::BufferRef<uint8_t> tfl_init_flatbuffer_;
+  TflFlatbuffer tfl_flatbuffer_;
 };
 
 // Lookup subgraph by signature name.
