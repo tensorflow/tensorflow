@@ -47,6 +47,7 @@ cc_library(
         "dispatch_delegate_kernel.h",
         "dispatch_delegate_options.h",
         "//tensorflow/lite/experimental/litert/c:litert_dispatch_delegate.h",
+        "//tensorflow/lite/experimental/litert/cc:litert_dispatch_delegate.h",
     ],
     deps = [
         "//tensorflow/lite/c:c_api",
@@ -88,6 +89,7 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
+        ":dispatch_delegate",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:common",
@@ -124,6 +126,7 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
+        ":dispatch_delegate",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:common",
@@ -157,6 +160,7 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
+        ":dispatch_delegate",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:common",

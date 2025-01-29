@@ -17,21 +17,10 @@
 
 #include <stddef.h>
 
-#include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
-
-#ifdef __cplusplus
-#include <memory>
-
-#include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
-#endif
-
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
 
 typedef struct LiteRtDispatchDelegateOptions LiteRtDispatchDelegateOptions;
 
@@ -61,27 +50,5 @@ void LiteRtDestroyDispatchDelegate(TfLiteOpaqueDelegate* delegate);
 // is used by ops to find the start of npu byte code appended to the file.
 TfLiteStatus LiteRtDispatchDelegateAddAllocBaseOption(
     LiteRtDispatchDelegateOptions* options, const void* alloc_base);
-
-#ifdef __cplusplus
-}
-#endif  // __cplusplus
-
-#ifdef __cplusplus
-namespace litert {
-
-using DispatchDelegateOptionsPtr =
-    std::unique_ptr<LiteRtDispatchDelegateOptions,
-                    void (*)(LiteRtDispatchDelegateOptions*)>;
-
-using DispatchDelegatePtr = tflite::TfLiteOpaqueDelegateUniquePtr;
-
-DispatchDelegateOptionsPtr CreateDispatchDelegateOptionsPtr(
-    LiteRtEnvironmentT& environment);
-
-DispatchDelegatePtr CreateDispatchDelegatePtr(
-    LiteRtEnvironmentT& environment, DispatchDelegateOptionsPtr&& options);
-
-}  // namespace litert
-#endif
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_DISPATCH_DELEGATE_H_
