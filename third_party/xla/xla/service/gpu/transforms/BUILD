@@ -432,6 +432,45 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "block_scaling_rewriter",
+    srcs = ["block_scaling_rewriter.cc"],
+    hdrs = ["block_scaling_rewriter.h"],
+    deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_creation_utils",
+        "//xla/service:op_expander_pass",
+        "//xla/service:shape_inference",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "block_scaling_rewriter_test",
+    srcs = ["block_scaling_rewriter_test.cc"],
+    deps = [
+        ":block_scaling_rewriter",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "collective_permute_cycle_decomposer",
     srcs = ["collective_permute_cycle_decomposer.cc"],
     hdrs = ["collective_permute_cycle_decomposer.h"],
