@@ -256,6 +256,12 @@ class TfrtCpuClient final : public PjRtClient {
  private:
   friend class TfrtCpuExecutable;
 
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
+      const XlaComputation& computation,
+      const std::vector<const Shape*>& argument_layout_pointers,
+      LayoutCanonicalizationCallback layout_canonicalization_callback,
+      CompileOptions options);
+
   int process_index_;
   // Includes all devices, including non-addressable devices.
   std::vector<std::unique_ptr<TfrtCpuDevice>> owned_devices_;
