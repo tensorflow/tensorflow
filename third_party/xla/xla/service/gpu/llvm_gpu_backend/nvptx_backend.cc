@@ -238,8 +238,8 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
   int sm_version = 30;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  int supported_versions[] = {100, 90, 89, 87, 86, 80, 75, 72, 70, 62,
-                              61,  60, 53, 52, 50, 37, 35, 32, 30};
+  int supported_versions[] = {120, 101, 100, 90, 89, 87, 86, 80, 75, 72, 70,
+                              62,  61,  60,  53, 52, 50, 37, 35, 32, 30};
   for (int v : supported_versions) {
     if (v <= compute_capability_version) {
       sm_version = v;
@@ -261,7 +261,7 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
   // On Hopper, default to sm_90a so that all instructions can be used. But
   // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  // Similarly for sm_100a (Blackwell).
+  // Similarly for sm_100a, sm_101a and sm_120a (Blackwell).
   absl::string_view extension =
       stream_executor::ShouldUsePtxExtension(compute_capability) ? "a" : "";
   return absl::StrCat("sm_", sm_version, extension);
@@ -333,7 +333,7 @@ absl::StatusOr<std::string> CompileToPtx(
 
 namespace {
 constexpr stream_executor::SemanticVersion kFallbackPtxVersion{6, 5, 0};
-constexpr stream_executor::SemanticVersion kMaxPtxVersion{8, 6, 0};
+constexpr stream_executor::SemanticVersion kMaxPtxVersion{8, 7, 0};
 }  // namespace
 
 stream_executor::SemanticVersion
@@ -357,7 +357,8 @@ DetermineHighestSupportedPtxVersionFromCudaVersion(
     return {cuda_version.major() - 4, cuda_version.minor(), 0};
   }
   // CUDA 12.6 -> PTX 8.5
-  if (cuda_version < stream_executor::SemanticVersion{12, 7, 0}) {
+  // CUDA 12.8 -> PTX 8.7
+  if (cuda_version < stream_executor::SemanticVersion{12, 9, 0}) {
     return {cuda_version.major() - 4, cuda_version.minor() - 1, 0};
   }
 
