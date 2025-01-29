@@ -3524,8 +3524,36 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 })";
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
-      ParseAndReturnUnverifiedModule(
-          original, {}, HloParserOptions().set_fill_missing_layouts(false));
+      ParseAndReturnUnverifiedModule(original, {},
+                                     HloParserOptions()
+                                         .set_fill_missing_layouts(false)
+                                         .set_keep_module_auto_layouts(false));
+  TF_ASSERT_OK(module.status());
+  // Do not set the default layout.
+  EXPECT_FALSE(module.value()->entry_computation_layout().AnyLayoutSet());
+}
+
+TEST_F(HloParserTest, EntryComputationLayoutDefinedThroughAutoLayout) {
+  const std::string original = R"(
+HloModule layout_defined, entry_computation_layout={(f32[8,16,256]) -> f32[8,16]}
+
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
+  input = f32[8,16,256]{0,1,2} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{0,1} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(original, {},
+                                     HloParserOptions()
+                                         .set_fill_missing_layouts(true)
+                                         .set_keep_module_auto_layouts(true));
   TF_ASSERT_OK(module.status());
   // Do not set the default layout.
   EXPECT_FALSE(module.value()->entry_computation_layout().AnyLayoutSet());
@@ -3548,8 +3576,10 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 })";
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
-      ParseAndReturnUnverifiedModule(
-          original, {}, HloParserOptions().set_fill_missing_layouts(true));
+      ParseAndReturnUnverifiedModule(original, {},
+                                     HloParserOptions()
+                                         .set_fill_missing_layouts(true)
+                                         .set_keep_module_auto_layouts(false));
   TF_ASSERT_OK(module.status());
   EXPECT_THAT(module.value()
                   ->entry_computation_layout()
@@ -3576,8 +3606,10 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 })";
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
-      ParseAndReturnUnverifiedModule(
-          original, {}, HloParserOptions().set_fill_missing_layouts(true));
+      ParseAndReturnUnverifiedModule(original, {},
+                                     HloParserOptions()
+                                         .set_fill_missing_layouts(true)
+                                         .set_keep_module_auto_layouts(false));
   TF_ASSERT_OK(module.status());
   EXPECT_THAT(module.value()
                   ->entry_computation_layout()
