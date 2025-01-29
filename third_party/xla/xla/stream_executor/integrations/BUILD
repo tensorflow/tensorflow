@@ -26,7 +26,6 @@ package_group(
 filegroup(
     name = "device_mem_allocator_headers",
     srcs = [
-        "device_host_allocator.h",
         "device_mem_allocator.h",
     ],
     visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
@@ -69,7 +68,6 @@ cc_library(
 cc_library(
     name = "device_mem_allocator",
     hdrs = [
-        "device_host_allocator.h",
         "device_mem_allocator.h",
     ],
     deps = [
