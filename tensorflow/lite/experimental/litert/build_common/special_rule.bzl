@@ -20,4 +20,4 @@ def lite_rt_friends():
     Return the package group declaration for internal code locations that need
     visibility to LiteRT APIs"""
 
-    return ["//..."]
+    return []
