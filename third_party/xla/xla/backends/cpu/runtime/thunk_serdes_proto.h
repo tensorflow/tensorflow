@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/serdes_base.h"
@@ -30,8 +31,8 @@ namespace xla::cpu {
 class ThunkSequenceSerDesProtobuf : public SerDesBase<ThunkSequence> {
  public:
   explicit ThunkSequenceSerDesProtobuf(
-      const BufferAssignment* buffer_assignment =
-          nullptr);  // NOTE buffer assignment isn't
+      const std::vector<BufferAllocation>* buffer_allocations =
+          nullptr);  // NOTE buffer allocations aren't
                      // needed for serialization.
 
   absl::StatusOr<std::string> Serialize(
@@ -45,7 +46,7 @@ class ThunkSequenceSerDesProtobuf : public SerDesBase<ThunkSequence> {
       const ThunkSequenceProto& proto) const;
 
  private:
-  const BufferAssignment* buffer_assignment_;
+  const std::vector<BufferAllocation>* buffer_allocations_;
 };
 
 }  // namespace xla::cpu

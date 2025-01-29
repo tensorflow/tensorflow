@@ -71,6 +71,8 @@ class XnnFusionThunk : public Thunk {
 
   BufferUses buffer_uses() const final;
 
+  Options options() const { return options_; }
+
  protected:
   XnnFusionThunk(Options options, Info info, std::vector<Argument> arguments,
                  std::vector<Result> results, Builder builder);
