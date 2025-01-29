@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/while_loop_constant_sinking.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
