@@ -14,10 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <type_traits>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/uniform_quant_ops/math_utils.h"
 #include "tensorflow/core/kernels/uniform_quant_ops/tensor_utils.h"
 

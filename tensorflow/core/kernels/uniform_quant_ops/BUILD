@@ -63,6 +63,9 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/quantization:uniform_quant_ops_params",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -85,6 +88,9 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -98,6 +104,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -111,6 +119,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -124,6 +134,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
@@ -137,6 +148,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
@@ -152,6 +164,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//third_party/protobuf",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -179,6 +192,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
@@ -190,6 +204,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:test",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],

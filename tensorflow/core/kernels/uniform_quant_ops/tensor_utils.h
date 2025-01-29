@@ -15,6 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_UNIFORM_QUANT_OPS_TENSOR_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_UNIFORM_QUANT_OPS_TENSOR_UTILS_H_
 
+#include <cstdint>
+
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
