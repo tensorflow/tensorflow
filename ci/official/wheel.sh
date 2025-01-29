@@ -51,9 +51,12 @@ if [[ -n "$TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES" ]]; then
   # This is done after the rename_and_verify_wheel.sh run above, not to have
   # to contend with extra wheels there.
   for wheel_name in ${TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES}; do
+    # Remove previously created wheel(s)
     echo "Building for additional WHEEL_NAME: ${wheel_name}"
     CURRENT_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=${wheel_name}"
     tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_BASE_ARGS $CURRENT_WHEEL_NAME_ARG
+    ls -t ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" | tail -n +2 | xargs mv -t $TFCI_OUTPUT_DIR
+    tfrun "$TFCI_FIND_BIN" ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $TFCI_OUTPUT_DIR \;
   done
 fi
 
