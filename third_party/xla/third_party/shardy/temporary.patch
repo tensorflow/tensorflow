@@ -1,78 +1,72 @@
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index bdba21a..509398d 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -1,58 +1 @@
- Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/lld/ELF/Config.h b/lld/ELF/Config.h
----- a/lld/ELF/Config.h
--+++ b/lld/ELF/Config.h
--@@ -619,7 +619,6 @@
--   };
--   ElfSym sym{};
--   std::unique_ptr<SymbolTable> symtab;
---  SmallVector<Symbol *, 0> synthesizedSymbols;
-- 
--   SmallVector<std::unique_ptr<MemoryBuffer>> memoryBuffers;
--   SmallVector<ELFFileBase *, 0> objectFiles;
--diff -ruN --strip-trailing-cr a/lld/ELF/Writer.cpp b/lld/ELF/Writer.cpp
----- a/lld/ELF/Writer.cpp
--+++ b/lld/ELF/Writer.cpp
--@@ -149,7 +149,6 @@
--   if (!s || s->isDefined() || s->isCommon())
--     return nullptr;
-- 
---  ctx.synthesizedSymbols.push_back(s);
--   s->resolve(ctx, Defined{ctx, ctx.internalFile, StringRef(), STB_GLOBAL,
--                           stOther, STT_NOTYPE, val,
--                           /*size=*/0, sec});
--@@ -283,7 +282,6 @@
-- static void demoteSymbolsAndComputeIsPreemptible(Ctx &ctx) {
--   llvm::TimeTraceScope timeScope("Demote symbols");
--   DenseMap<InputFile *, DenseMap<SectionBase *, size_t>> sectionIndexMap;
---  bool hasDynSymTab = ctx.arg.hasDynSymTab;
--   for (Symbol *sym : ctx.symtab->getSymbols()) {
--     if (auto *d = dyn_cast<Defined>(sym)) {
--       if (d->section && !d->section->isLive())
--@@ -296,12 +294,11 @@
--                   sym->type)
--             .overwrite(*sym);
--         sym->versionId = VER_NDX_GLOBAL;
---        if (sym->includeInDynsym(ctx))
---          sym->isExported = true;
--       }
--     }
-- 
---    if (hasDynSymTab)
--+    sym->isExported = sym->includeInDynsym(ctx);
--+    if (ctx.arg.hasDynSymTab)
--       sym->isPreemptible = sym->isExported && computeIsPreemptible(ctx, *sym);
--   }
-- }
--@@ -1839,11 +1836,6 @@
--     }
--   }
-- 
---  // If the previous code block defines any non-hidden symbols (e.g.
---  // __global_pointer$), they may be exported.
---  for (Symbol *sym : ctx.synthesizedSymbols)
---    sym->isExported = sym->includeInDynsym(ctx);
---
--   demoteSymbolsAndComputeIsPreemptible(ctx);
-- 
--   if (ctx.arg.copyRelocs && ctx.arg.discard != DiscardPolicy::None)
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 9a336b9..5621d08 100644
+index 5621d08..d3bd614 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "2e5a5237daf82a657561c490845c406e13657311"
--    LLVM_SHA256 = "e0622b7f81a046e1576d8d07c5ba916346c2a1c06528655d3ddd45a1028eac89"
-+    LLVM_COMMIT = "aa65f93b71dee8cacb22be1957673c8be6a3ec24"
-+    LLVM_SHA256 = "0a6046edb6a9834d5b912ec0e705dec91d39ee1b7b2fbb5930955d83d2090ff5"
+-    LLVM_COMMIT = "aa65f93b71dee8cacb22be1957673c8be6a3ec24"
+-    LLVM_SHA256 = "0a6046edb6a9834d5b912ec0e705dec91d39ee1b7b2fbb5930955d83d2090ff5"
++    LLVM_COMMIT = "b108fbe6ea4247e5a3019a4facf611d5a42d465c"
++    LLVM_SHA256 = "fe265e675c0daedeebf7713c89605db939fa039112e50193f56a88e2126cffb7"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index af77e9f..8f46ef3 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -10,6 +10,52 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+      deps = [
+          ":vhlo_ops_td_files",
+      ],
++diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
++--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
+++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
++@@ -16,6 +16,22 @@
++ #include "stablehlo/dialect/StablehloOps.td"
++ 
++ // Helper functions.
+++Rewrite zerosLike(op: Op, type: Type) -> Op [{
+++  auto elementType = llvm::cast<mlir::TensorType>(type).getElementType();
+++  llvm::SmallVector<mlir::Attribute, 4> outputValue;
+++
+++  if (elementType.isF16() || elementType.isF32() || elementType.isBF16()) {
+++    outputValue.push_back(rewriter.getFloatAttr(elementType, 1));
+++  } else {
+++    outputValue.push_back(rewriter.getIntegerAttr(elementType, 1));
+++  }
+++
+++  return rewriter.create<mlir::tosa::ConstOp>(
+++      op->getLoc(), type,
+++      mlir::DenseElementsAttr::get(
+++        llvm::cast<mlir::ShapedType>(type), outputValue));
+++}];
+++
++ Rewrite onesLike(op: Op, type: Type) -> Op [{
++   auto elementType = llvm::cast<mlir::TensorType>(type).getElementType();
++   llvm::SmallVector<mlir::Attribute, 4> outputValue;
++@@ -134,10 +150,15 @@
++   replace op<stablehlo.minimum>(input0 : Value<_: Tosa_Tensor>,
++                            input1 : Value<_: Tosa_Tensor>)
++      with op<tosa.minimum>(input0, input1);
++-Pattern =>
++-  replace op<stablehlo.multiply>(input0 : Value<_: Tosa_Tensor>,
++-                            input1 : Value<_: Tosa_Tensor>)
++-     with op<tosa.mul>(input0, input1) {shift = attr<"0 : i8">};
+++Pattern {
+++  let root = op<stablehlo.multiply>(input0 : Value<inputType: Tosa_Tensor>,
+++                            input1 : Value<_: Tosa_Tensor>);
+++  rewrite root with {
+++    let zeros = zerosLike(root, inputType);
+++    let mulResult = op<tosa.mul>(input0, input1, zeros) -> (inputType);
+++    replace root with mulResult;
+++  };
+++}
++ Pattern =>
++   replace op<stablehlo.or>(input0 : Value<_: Tosa_Tensor>,
++                       input1 : Value<_: Tosa_Tensor>)
+ diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+ --- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+ +++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp
