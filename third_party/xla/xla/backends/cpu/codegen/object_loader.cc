@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/CoreContainers.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/service/cpu/orc_jit_memory_mapper.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -83,9 +86,38 @@ ObjectLoader::ObjectLoader(size_t num_dylibs)
   object_layer_ = CreateObjectLinkingLayer(*execution_session_);
 }
 
+ObjectLoader::ObjectLoader(
+    std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
+    size_t num_dylibs)
+    : execution_session_(std::move(execution_session)),
+      object_layer_(CreateObjectLinkingLayer(*execution_session_)) {
+  // TODO(basioli) avoid code duplication with the other constructor.
+  //  Create at least one dynamic library for the given jit compiler.
+  dylibs_.resize(std::max<size_t>(1, num_dylibs));
+  for (size_t i = 0; i < dylibs_.size(); ++i) {
+    dylibs_[i] = &execution_session_->createBareJITDylib(
+        absl::StrCat("<xla_jit_dylib_", i, ">"));
+    // TODO using target machine might bring some deps we don't need.
+    // as a first attempt fully remove it, consider pruning the reqs
+    // if (definition_generator) {
+    //   dylibs_[i]->addGenerator(definition_generator(target_machine_.get()));
+    // }
+  }
+}
+
 absl::Status ObjectLoader::AddObjFile(const std::string& obj_file,
                                       const std::string& memory_buffer_name,
                                       size_t dylib_index) {
+  llvm::StringRef data(obj_file.data(), obj_file.size());
+
+  auto obj_file_mem_buffer =
+      llvm::MemoryBuffer::getMemBuffer(data, memory_buffer_name);
+
+  return AddObjFile(std::move(obj_file_mem_buffer), dylib_index);
+}
+
+absl::Status ObjectLoader::AddObjFile(
+    std::unique_ptr<llvm::MemoryBuffer> obj_file, size_t dylib_index) {
   if (dylib_index >= dylibs_.size()) {
     return absl::Status(
         absl::StatusCode::kInvalidArgument,
@@ -93,18 +125,13 @@ absl::Status ObjectLoader::AddObjFile(const std::string& obj_file,
                         dylibs_.size()));
   }
 
-  llvm::StringRef data(obj_file.data(), obj_file.size());
-
-  auto obj_file_mem_buffer =
-      llvm::MemoryBuffer::getMemBuffer(data, memory_buffer_name);
-
-  if (!obj_file_mem_buffer) {
+  if (!obj_file) {
     return absl::Status(absl::StatusCode::kInvalidArgument,
                         "Failed to create memory buffer");
   }
 
   llvm::orc::JITDylib* dylib = dylibs_[dylib_index];
-  if (auto err = object_layer_->add(*dylib, std::move(obj_file_mem_buffer))) {
+  if (auto err = object_layer_->add(*dylib, std::move(obj_file))) {
     return absl::Status(
         absl::StatusCode::kInvalidArgument,
         absl::StrFormat("Failed to add object file to dylib %d: %s",
@@ -114,14 +141,21 @@ absl::Status ObjectLoader::AddObjFile(const std::string& obj_file,
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<FunctionLibrary>> ObjectLoader::Load(
-    absl::Span<const Symbol> symbols, const llvm::DataLayout& data_layout) && {
+std::function<std::string(absl::string_view)> ObjectLoader::GetMangler(
+    const llvm::DataLayout& data_layout) {
   // Mangle symbol names for the target machine data layout.
-  auto mangle = [&](absl::string_view name) {
+  auto mangle = [data_layout](absl::string_view name) {
     llvm::SmallVector<char, 40> mangled;
     llvm::Mangler::getNameWithPrefix(mangled, name, data_layout);
     return std::string(mangled.begin(), mangled.end());
   };
+  return mangle;
+}
+
+absl::StatusOr<llvm::orc::SymbolMap> ObjectLoader::LookupSymbols(
+    absl::Span<const Symbol> symbols, const llvm::DataLayout& data_layout) {
+  // Mangle symbol names for the target machine data layout.
+  auto mangle = GetMangler(data_layout);
 
   // Build a symbol lookup set.
   llvm::orc::SymbolLookupSet lookup_set;
@@ -146,13 +180,22 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> ObjectLoader::Load(
                         absl::StrFormat("%s", llvm::toString(std::move(err))));
   }
 
+  return symbol_map.get();
+}
+
+absl::StatusOr<std::unique_ptr<FunctionLibrary>>
+ObjectLoader::CreateFunctionLibrary(absl::Span<const Symbol> symbols,
+                                    const llvm::DataLayout& data_layout,
+                                    llvm::orc::SymbolMap& symbol_map) && {
+  auto mangle = GetMangler(data_layout);
+
   // Resolve type-erased symbol pointers from the symbol map.
   using ResolvedSymbol = CompiledFunctionLibrary::ResolvedSymbol;
   absl::flat_hash_map<std::string, ResolvedSymbol> resolved_map;
 
   for (const auto& symbol : symbols) {
     auto symbol_name = execution_session_->intern(mangle(symbol.name));
-    llvm::orc::ExecutorSymbolDef symbol_def = symbol_map->at(symbol_name);
+    llvm::orc::ExecutorSymbolDef symbol_def = symbol_map.at(symbol_name);
     llvm::orc::ExecutorAddr symbol_addr = symbol_def.getAddress();
     void* ptr = reinterpret_cast<void*>(symbol_addr.getValue());
     resolved_map[symbol.name] = ResolvedSymbol{symbol.type_id, ptr};
@@ -161,6 +204,13 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> ObjectLoader::Load(
   return std::make_unique<CompiledFunctionLibrary>(
       std::move(execution_session_), std::move(object_layer_),
       std::move(resolved_map));
+}
+
+absl::StatusOr<std::unique_ptr<FunctionLibrary>> ObjectLoader::Load(
+    absl::Span<const Symbol> symbols, const llvm::DataLayout& data_layout) && {
+  TF_ASSIGN_OR_RETURN(auto symbol_map, LookupSymbols(symbols, data_layout));
+  return std::move(*this).CreateFunctionLibrary(symbols, data_layout,
+                                                symbol_map);
 }
 
 ObjectLoader::~ObjectLoader() {
