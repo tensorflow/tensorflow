@@ -60,10 +60,6 @@ using ModuleSchedulerAlgorithm = std::function<absl::StatusOr<HloSchedule>(
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     /*peak_memory*/ int64_t*)>;
 
-// A postprocessor that defers constants as close to the users as possible.
-HloInstructionSequence ConstantDeferringPostprocessor(
-    const HloInstructionSequence& sequence);
-
 // Lift a computation scheduler into a module scheduler by calling the
 // computation scheduler on all computations in a module.
 ModuleSchedulerAlgorithm ComputationSchedulerToModuleScheduler(
