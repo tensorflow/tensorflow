@@ -617,9 +617,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":attr_value_proto_cc",
+        ":node_def_proto_cc",
         ":op_def_proto_cc",
+        ":types_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -634,9 +638,12 @@ cc_library(
         ":graph_proto_cc",
         ":node_def_proto_cc",
         ":tensor_testutil",
+        ":types_proto_cc",
         ":versions_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -888,6 +895,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/public:version",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
@@ -929,6 +937,7 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/util:padding",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -941,16 +950,22 @@ cc_library(
         ":shape_inference",
         ":tensor",
         ":tensor_shape",
+        ":types_proto_cc",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/gtl:inlined_vector",
         "//tensorflow/core/util:einsum_op_util",
         "//tensorflow/core/util:padding",
         "//tensorflow/core/util:tensor_format",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -961,8 +976,10 @@ cc_library(
     deps = [
         ":attr_value_proto_text",
         ":tensor",
+        ":tensor_proto_cc",
         ":tensor_shape",
         ":tensor_shape_proto_cc",
+        ":types_proto_cc",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/core:stringpiece",
@@ -973,7 +990,10 @@ cc_library(
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1100,6 +1120,10 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
