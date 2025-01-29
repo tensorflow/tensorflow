@@ -40,6 +40,11 @@ def parse_args():
       required=True,
       help="ManyLinux compliance tag for x86_64",
   )
+  parser.add_argument(
+      "--ppc64le-compliance-tag",
+      required=True,
+      help="ManyLinux compliance tag for ppc64le",
+  )
   return parser.parse_args()
 
 
@@ -84,8 +89,11 @@ def verify_manylinux_compliance(
   Raises:
     RuntimeError: if the wheel is not manyLinux compliant.
   """
-  regex = 'following platform tag: "{}"'.format(compliance_tag)
-  if not re.search(regex, auditwheel_log):
+  regex = 'following platform tag:\s+"{}"'.format(compliance_tag)
+  alt_regex = regex.replace("2014", "_2_17")
+  if not (
+      re.search(regex, auditwheel_log) or re.search(alt_regex, auditwheel_log)
+  ):
     raise RuntimeError(
         ("The wheel is not compliant with the tag {tag}.\n{result}").format(
             tag=compliance_tag, result=auditwheel_log
@@ -95,10 +103,20 @@ def verify_manylinux_compliance(
 
 def test_manylinux_compliance(args):
   machine_type = platform.uname().machine
+  supported_machine_types = ["x86_64", "aarch64", "ppc64le"]
+  if machine_type not in supported_machine_types:
+    raise RuntimeError(
+        "Unsupported machine type {machine_type}. The supported are:"
+        " {supported_types}".format(
+            machine_type=machine_type, supported_types=supported_machine_types
+        )
+    )
   if machine_type == "x86_64":
     compliance_tag = args.x86_64_compliance_tag
-  else:
+  elif machine_type == "aarch64":
     compliance_tag = args.aarch64_compliance_tag
+  else:
+    compliance_tag = args.ppc64le_compliance_tag
   auditwheel_output = get_auditwheel_output(args.wheel_path)
   verify_manylinux_compliance(
       auditwheel_output,
