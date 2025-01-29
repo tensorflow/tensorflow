@@ -84,6 +84,29 @@ def export_lrt_only_linkopt():
         "//conditions:default": [],
     })
 
+_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX = "//tensorflow/lite/experimental/litert/build_common:export_litert_runtime_only_linux.lds"
+_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN = "//tensorflow/lite/experimental/litert/build_common:export_litert_runtime_only_darwin.lds"
+_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX = make_linkopt("--version-script=$(location {})".format(_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX))
+_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN = make_linkopt("-exported_symbols_list,$(location {})".format(_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN))
+
+def export_lrt_runtime_only_script():
+    return select({
+        "//tensorflow:linux_x86_64": [_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX],
+        "//tensorflow:android": [_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX],
+        "//tensorflow:macos": [_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN],
+        "//tensorflow:ios": [_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN],
+        "//conditions:default": [],
+    })
+
+def export_lrt_runtime_only_linkopt():
+    return select({
+        "//tensorflow:linux_x86_64": [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX],
+        "//tensorflow:android": [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX],
+        "//tensorflow:macos": [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN],
+        "//tensorflow:ios": [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN],
+        "//conditions:default": [],
+    })
+
 ####################################################################################################
 # Macros
 
