@@ -50,6 +50,7 @@ filegroup(
         "common.h",
         "operator.h",
         "//tensorflow/compiler/mlir/lite/core/c:lite_headers_filegroup",
+        "//tensorflow/lite/core/async/c:types.h",
     ],
 )
 
