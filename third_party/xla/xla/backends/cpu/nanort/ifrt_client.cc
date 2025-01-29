@@ -1393,7 +1393,7 @@ absl::Span<xla::ifrt::Device* const> NanoIfrtClient::GetAllDevices() const {
 absl::StatusOr<ifrt::DeviceAssignment>
 NanoIfrtClient::GetDefaultDeviceAssignment(int num_replicas,
                                            int num_partitions) const {
-  return ifrt::DeviceAssignment(1, 1);
+  return ifrt::DeviceAssignment(num_replicas, num_partitions);
 }
 
 absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupDevice(
