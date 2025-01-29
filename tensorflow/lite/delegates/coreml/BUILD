@@ -28,7 +28,6 @@ objc_library(
     name = "coreml_executor",
     srcs = ["coreml_executor.mm"],
     hdrs = ["coreml_executor.h"],
-    copts = ["-std=c++17"],
     sdk_frameworks = [
         "CoreML",
         "Foundation",
@@ -47,7 +46,6 @@ objc_library(
     name = "coreml_delegate",
     srcs = ["coreml_delegate.mm"],
     hdrs = ["coreml_delegate.h"],
-    copts = ["-std=c++17"],
     defines = select({
         "//tensorflow/lite/delegates:tflite_debug_delegate": ["TFLITE_DEBUG_DELEGATE"],
         "//conditions:default": [],
@@ -76,7 +74,6 @@ objc_library(
     hdrs = [
         "coreml_delegate_kernel.h",
     ],
-    copts = ["-std=c++17"],
     deps = [
         ":coreml_executor",
         ":mlmodel_proto_cc",
