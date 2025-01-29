@@ -19,7 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tsl/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/platform/logging.h"

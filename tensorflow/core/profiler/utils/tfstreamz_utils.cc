@@ -20,9 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/tfstreamz.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 namespace profiler {

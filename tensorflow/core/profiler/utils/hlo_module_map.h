@@ -30,6 +30,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_HLO_MODULE_MAP_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_HLO_MODULE_MAP_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
