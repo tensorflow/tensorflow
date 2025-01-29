@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/tsl/concurrency/async_value_ref.h"
 
-#include <string_view>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -36,7 +35,7 @@ RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::Status status) {
       internal::AllocateAndConstruct<ErrorAsyncValue>(std::move(status)));
 }
 
-RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(std::string_view message) {
+RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::string_view message) {
   // Converting to `absl::string_view` because implicit conversion is not
   // supported in android builds.
   absl::string_view message_view(message.data(), message.size());

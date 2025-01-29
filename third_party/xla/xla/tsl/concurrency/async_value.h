@@ -380,16 +380,15 @@ class AsyncValue {
   // nullptr.
   struct WaitersAndState {
     // We rely on the fact that all `NotifierListNode` values are aligned at
-    // least to 8 bytes and we can encode state in the lowest 3 bits. We use
+    // least to 4 bytes and we can encode state in the lowest 2 bits. We use
     // the conservative estimation of the minimal alignment of pointers returned
     // from memory allocation functions.
     //
     // See: https://en.cppreference.com/w/cpp/types/max_align_t
-    static_assert(alignof(std::max_align_t) >= 8 &&
-                  sizeof(NotifierListNode*) == 8);
+    static_assert(alignof(std::max_align_t) >= 2);
 
-    static constexpr uint64_t kStateMask = (1ull << 2) - 1;
-    static constexpr uint64_t kPointerMask = ~kStateMask;
+    static constexpr uintptr_t kStateMask = (1ull << 2) - 1;
+    static constexpr uintptr_t kPointerMask = ~kStateMask;
 
     WaitersAndState(NotifierListNode* ptr, State state) {
       value = (reinterpret_cast<uintptr_t>(ptr) & kPointerMask) |
