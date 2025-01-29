@@ -238,6 +238,7 @@ cc_library(
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/backends/cpu/codegen:jit_compiler",
+        "//xla/backends/cpu/codegen:object_loader",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/backends/cpu/runtime:kernel_thunk",
@@ -908,6 +909,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:JITLink",
         "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 

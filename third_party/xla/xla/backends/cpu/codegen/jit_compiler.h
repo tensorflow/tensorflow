@@ -39,6 +39,7 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/object_loader.h"
 #include "xla/backends/cpu/runtime/function_library.h"
@@ -174,12 +175,8 @@ class JitCompiler {
 
   TaskDispatcher* task_dispatcher_;  // owned by `execution_session_`
 
-  std::unique_ptr<ObjectLoader> object_loader_;
+  std::unique_ptr<ExecutionEngine> execution_engine_;
   std::unique_ptr<llvm::orc::IRCompileLayer> compile_layer_;
-
-  // Non owning pointer to JIT event listeners for gdb and perf.
-  llvm::JITEventListener* gdb_;   // not owned
-  llvm::JITEventListener* perf_;  // not owned
 };
 
 }  // namespace xla::cpu
