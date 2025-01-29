@@ -1,78 +1,987 @@
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index bdba21a..509398d 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -1,58 +1 @@
- Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/lld/ELF/Config.h b/lld/ELF/Config.h
----- a/lld/ELF/Config.h
--+++ b/lld/ELF/Config.h
--@@ -619,7 +619,6 @@
--   };
--   ElfSym sym{};
--   std::unique_ptr<SymbolTable> symtab;
---  SmallVector<Symbol *, 0> synthesizedSymbols;
-- 
--   SmallVector<std::unique_ptr<MemoryBuffer>> memoryBuffers;
--   SmallVector<ELFFileBase *, 0> objectFiles;
--diff -ruN --strip-trailing-cr a/lld/ELF/Writer.cpp b/lld/ELF/Writer.cpp
----- a/lld/ELF/Writer.cpp
--+++ b/lld/ELF/Writer.cpp
--@@ -149,7 +149,6 @@
--   if (!s || s->isDefined() || s->isCommon())
--     return nullptr;
-- 
---  ctx.synthesizedSymbols.push_back(s);
--   s->resolve(ctx, Defined{ctx, ctx.internalFile, StringRef(), STB_GLOBAL,
--                           stOther, STT_NOTYPE, val,
--                           /*size=*/0, sec});
--@@ -283,7 +282,6 @@
-- static void demoteSymbolsAndComputeIsPreemptible(Ctx &ctx) {
--   llvm::TimeTraceScope timeScope("Demote symbols");
--   DenseMap<InputFile *, DenseMap<SectionBase *, size_t>> sectionIndexMap;
---  bool hasDynSymTab = ctx.arg.hasDynSymTab;
--   for (Symbol *sym : ctx.symtab->getSymbols()) {
--     if (auto *d = dyn_cast<Defined>(sym)) {
--       if (d->section && !d->section->isLive())
--@@ -296,12 +294,11 @@
--                   sym->type)
--             .overwrite(*sym);
--         sym->versionId = VER_NDX_GLOBAL;
---        if (sym->includeInDynsym(ctx))
---          sym->isExported = true;
--       }
--     }
-- 
---    if (hasDynSymTab)
--+    sym->isExported = sym->includeInDynsym(ctx);
--+    if (ctx.arg.hasDynSymTab)
--       sym->isPreemptible = sym->isExported && computeIsPreemptible(ctx, *sym);
--   }
-- }
--@@ -1839,11 +1836,6 @@
--     }
--   }
-- 
---  // If the previous code block defines any non-hidden symbols (e.g.
---  // __global_pointer$), they may be exported.
---  for (Symbol *sym : ctx.synthesizedSymbols)
---    sym->isExported = sym->includeInDynsym(ctx);
---
--   demoteSymbolsAndComputeIsPreemptible(ctx);
-- 
--   if (ctx.arg.copyRelocs && ctx.arg.discard != DiscardPolicy::None)
+diff --git a/docs/sdy_dialect.md b/docs/sdy_dialect.md
+index 25a74f7..5230ec6 100755
+--- a/docs/sdy_dialect.md
++++ b/docs/sdy_dialect.md
+@@ -10,7 +10,7 @@ representation and additional API components to attach shardings to tensors.
+ 
+ ### `sdy.all_gather` (sdy::AllGatherOp)
+ 
+-_Performs an all-gather communication along axes_
++_Gathers chunks of a tensor along axes_
+ 
+ 
+ Syntax:
+@@ -34,8 +34,8 @@ inferred sharding.
+ 
+ Example:
+ ```mlir
+-%1 = stablehlo.tanh(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", "b", "c"}, {}, {"d"}\]>]>} : tensor<8x8x8xf32>
+-%2 = sdy.all_gather [{"b", "c"}, {}, {"d"}\] %1 out_sharding=<@mesh, [{"a"}, {}, {}\]> : tensor<8x8x8xf32>
++%1 = stablehlo.tanh(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", "b", "c"}, {}, {"d"}\]>]>} : tensor<8x8xf32>
++%2 = sdy.all_gather [{"b", "c"}, {}, {"d"}\] %1 out_sharding=<@mesh, [{"a"}, {}, {}\]> : tensor<8x8xf32>
+ ```
+ 
+ **Constraints:**
+@@ -74,7 +74,7 @@ Interfaces: `InferTypeOpInterface`, `Sdy_CollectiveOpInterface`
+ 
+ ### `sdy.all_slice` (sdy::AllSliceOp)
+ 
+-_Performs a dynamic-slice operation along axes_
++_Slices chunks of a tensor along axes_
+ 
+ 
+ Syntax:
+@@ -99,8 +99,8 @@ inferred sharding.
+ 
+ Example:
+ ```mlir
+-%1 = stablehlo.tanh(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}, {}, {}\]>]>} : tensor<8x8x8xf32>
+-%2 = sdy.all_slice [{"b", "c"}, {}, {"d"}\] %1 out_sharding=<@mesh, [{"a", "b", "c"}, {}, {"d"}\]> : tensor<8x8x8xf32>
++%1 = stablehlo.tanh(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}, {}, {}\]>]>} : tensor<8x8xf32>
++%2 = sdy.all_slice [{"b", "c"}, {}, {"d"}\] %1 out_sharding=<@mesh, [{"a", "b", "c"}, {}, {"d"}\]> : tensor<8x8xf32>
+ ```
+ 
+ **Constraints:**
+@@ -137,81 +137,9 @@ Interfaces: `InferTypeOpInterface`, `Sdy_CollectiveOpInterface`
+ | `result` | tensor of any type values
+ 
+ 
+-### `sdy.all_to_all` (sdy::AllToAllOp)
+-
+-_Performs an all-to-all communication along axes_
+-
+-
+-Syntax:
+-
+-```
+-operation ::= `sdy.all_to_all` $axes $src_dim `` `->` `` $tgt_dim $tensor `out_sharding````=```$out_sharding attr-dict `:` type($result)
+-```
+-
+-Slices chunks of a tensor along dimension `tgt_dim` and axes specified in
+-`axes`, scatteres those chunks along the axes, and concatenates them along
+-dimension `src_dim`.
+-
+-This operation is essentially a combination of an all-gather along `src_dim`
+-and `axes`, followed by an all-slice along `tgt_dim` and `axes`, i.e., a
+-suffix of the axes sharding dimension `src_dim` on the input tensor is
+-appended to the axes sharding dimension `tgt_dim` on the output tensor.
+-
+-The all-to-all will be applied to the sharding of the operand (`tensor`) to
+-obtain the sharding of the result (`out_sharding`).
+-
+-Note that `out_sharding` is not used to determine the sharding of the
+-result. Instead, the sharding of the result is determined by the sharding of
+-the operand, `src_dim`, `tgt_dim`, and `axes`, and `out_sharding` must match
+-this inferred sharding.
+-
+-Example:
+-```mlir
+-%1 = stablehlo.tanh(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", "b", "c"}, {}\]>]>} : tensor<8x8xf32>
+-%2 = sdy.all_to_all {"b", "c"} 0->1 %1 out_sharding=<@mesh, [{"a"}, {"b", "c"}\]> : tensor<8x8xf32>
+-```
+-
+-**Constraints:**
+-- `axes` must satisfy the constraints listed in `AxisRefListAttr`.
+-- `out_sharding` must satisfy the constraints listed in
+-  `TensorShardingAttr`.
+-- The operand must have a sharding.
+-- Both operand and result shardings should be bound to the same `MeshAttr`.
+-- `src_dim` and `tgt_dim` must be valid dimensions (positive and less than
+-  rank of tensor), and different from each other.
+-- Moving `axes` from `src_dim` to `tgt_dim` in the operand sharding gets
+-  `out_sharding`.
+-
+-Traits: `SameOperandsAndResultType`
+-
+-Interfaces: `InferTypeOpInterface`, `Sdy_CollectiveOpInterface`
+-
+-#### Attributes:
+-
+-<table>
+-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+-<tr><td><code>src_dim</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+-<tr><td><code>tgt_dim</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+-<tr><td><code>axes</code></td><td>::mlir::sdy::AxisRefListAttr</td><td>List of axis refs</td></tr>
+-<tr><td><code>out_sharding</code></td><td>::mlir::sdy::TensorShardingAttr</td><td>Tensor sharding</td></tr>
+-</table>
+-
+-#### Operands:
+-
+-| Operand | Description |
+-| :-----: | ----------- |
+-| `tensor` | tensor of any type values
+-
+-#### Results:
+-
+-| Result | Description |
+-| :----: | ----------- |
+-| `result` | tensor of any type values
+-
+-
+ ### `sdy.collective_permute` (sdy::CollectivePermuteOp)
+ 
+-_Performs a collective-permute communication to replace axes_
++_Sends a chunk of a tensor from each device to another along axes_
+ 
+ 
+ Syntax:
+@@ -220,8 +148,8 @@ Syntax:
+ operation ::= `sdy.collective_permute` $tensor `out_sharding````=```$out_sharding attr-dict `:` type($result)
+ ```
+ 
+-Sends a chunk of the input tensor from each device to another to
+-reorder/replace the axes that shard the tensor.
++Sends a chunk of the input tensor from each device to another along the axes
++that shard the tensor.
+ 
+ A collective permute can transform the input sharding such that each
+ dimension must be as sharded as it was before, i.e., it must be sharded
+diff --git a/shardy/dialect/sdy/ir/attrs.td b/shardy/dialect/sdy/ir/attrs.td
+index 577334f..c1dd472 100644
+--- a/shardy/dialect/sdy/ir/attrs.td
++++ b/shardy/dialect/sdy/ir/attrs.td
+@@ -1042,11 +1042,6 @@ def Sdy_AxisRefList : ArrayOfAttr<Sdy_Dialect, "AxisRefList",
+   }];
+ }
+ 
+-def Sdy_EmptyAxisList: AttrConstraint<
+-    CPred<"$_self.isa<AxisRefListAttr>() && "
+-          "$_self.cast<AxisRefListAttr>().empty()">,
+-    "is empty axis list">;
+-
+ def Sdy_ListOfAxisRefLists : ArrayOfAttr<Sdy_Dialect, "ListOfAxisRefLists",
+                                  "list_of_axis_ref_lists", "AxisRefListAttr"> {
+   let summary = "List of axis ref lists";
+diff --git a/shardy/dialect/sdy/ir/axis_list_ref.h b/shardy/dialect/sdy/ir/axis_list_ref.h
+index 224a441..63c9030 100644
+--- a/shardy/dialect/sdy/ir/axis_list_ref.h
++++ b/shardy/dialect/sdy/ir/axis_list_ref.h
+@@ -90,12 +90,9 @@ class AxisListRefIterator {
+ // is also a prefix sub-axis of an axis in the original list.
+ class AxisListRef {
+  public:
+-  AxisListRef(ArrayRef<AxisRefAttr> axisRefs) {
+-    if (!axisRefs.empty()) {
+-      this->axisRefs = axisRefs.drop_back();
+-      this->tailAxisRef = axisRefs.back();
+-    }
+-  }
++  // Assumes that input `axisRefs` is non-empty.
++  AxisListRef(ArrayRef<AxisRefAttr> axisRefs)
++      : axisRefs(axisRefs.drop_back()), tailAxisRef(axisRefs.back()) {}
+ 
+   AxisListRef() = default;
+ 
+diff --git a/shardy/dialect/sdy/ir/axis_list_ref_test.cc b/shardy/dialect/sdy/ir/axis_list_ref_test.cc
+index f791cb2..c7fa8a5 100644
+--- a/shardy/dialect/sdy/ir/axis_list_ref_test.cc
++++ b/shardy/dialect/sdy/ir/axis_list_ref_test.cc
+@@ -44,6 +44,9 @@ class AxisListRefTest : public ::testing::Test {
+   }
+ 
+   AxisListRef createAxisListRef(SmallVector<AxisRefAttr> axisRefs) {
++    if (axisRefs.empty()) {
++      return AxisListRef();
++    }
+     backingData.push_back(axisRefs);
+     return AxisListRef(backingData.back());
+   }
+diff --git a/shardy/dialect/sdy/ir/canonicalization.cc b/shardy/dialect/sdy/ir/canonicalization.cc
+index 373860e..0682c73 100644
+--- a/shardy/dialect/sdy/ir/canonicalization.cc
++++ b/shardy/dialect/sdy/ir/canonicalization.cc
+@@ -175,10 +175,5 @@ void AllSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
+   results.add<AllSliceNoopPattern>(context);
+ }
+ 
+-void AllToAllOp::getCanonicalizationPatterns(RewritePatternSet& results,
+-                                             MLIRContext* context) {
+-  results.add<AllToAllNoopPattern>(context);
+-}
+-
+ }  // namespace sdy
+ }  // namespace mlir
+diff --git a/shardy/dialect/sdy/ir/canonicalization.td b/shardy/dialect/sdy/ir/canonicalization.td
+index 2caf35d..5ef7637 100644
+--- a/shardy/dialect/sdy/ir/canonicalization.td
++++ b/shardy/dialect/sdy/ir/canonicalization.td
+@@ -28,16 +28,12 @@ def ReshardOfReshardPattern :
+ // TODO(b/390759740): Add more patterns for collectives, e.g., all-gather of
+ // all-slice with matching axes.
+ 
+-def AllGatherNoopPattern : Pat<(Sdy_AllGatherOp $tensor, Sdy_EmptyAxesPerDim:$gatheringAxes, $outSharding),
++def AllGatherNoopPattern : Pat<(Sdy_AllGatherOp $tensor, Sdy_EmptyAxesPerDim:$gatheringAxes, $resultSharding),
+                                (replaceWithValue $tensor)>;
+ 
+-def AllSliceNoopPattern : Pat<(Sdy_AllSliceOp $tensor, Sdy_EmptyAxesPerDim:$slicingAxes, $outSharding),
++def AllSliceNoopPattern : Pat<(Sdy_AllSliceOp $tensor, Sdy_EmptyAxesPerDim:$slicingAxes, $resultSharding),
+                                (replaceWithValue $tensor)>;
+ 
+-def AllToAllNoopPattern : Pat<(Sdy_AllToAllOp $tensor, $srcDim, $tgtDim, Sdy_EmptyAxisList:$axes, $outSharding),
+-                               (replaceWithValue $tensor)>;
+-
+-
+ def AllSliceOfAllGatherPattern : Pat<
+   (Sdy_AllSliceOp (Sdy_AllGatherOp $tensor, $gatheringAxes, $_), $slicingAxes, $_),
+   (replaceWithValue $tensor),
+diff --git a/shardy/dialect/sdy/ir/ops.td b/shardy/dialect/sdy/ir/ops.td
+index eec6b7d..c7331be 100644
+--- a/shardy/dialect/sdy/ir/ops.td
++++ b/shardy/dialect/sdy/ir/ops.td
+@@ -454,7 +454,7 @@ def Sdy_NamedComputationOp : Sdy_Op<"named_computation",
+ 
+ def Sdy_AllGatherOp : Sdy_Op<"all_gather",
+     [SameOperandsAndResultType, InferTypeOpInterface, Sdy_CollectiveOpInterface]> {
+-  let summary = "Performs an all-gather communication along axes";
++  let summary = "Gathers chunks of a tensor along axes";
+   let description = [{
+     Gathers chunks of a tensor along axes specified in `gathering_axes`.
+ 
+@@ -471,8 +471,8 @@ def Sdy_AllGatherOp : Sdy_Op<"all_gather",
+ 
+     Example:
+     ```mlir
+-    %1 = stablehlo.tanh(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", "b", "c"}, {}, {"d"}\]>]>} : tensor<8x8x8xf32>
+-    %2 = sdy.all_gather [{"b", "c"}, {}, {"d"}\] %1 out_sharding=<@mesh, [{"a"}, {}, {}\]> : tensor<8x8x8xf32>
++    %1 = stablehlo.tanh(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", "b", "c"}, {}, {"d"}\]>]>} : tensor<8x8xf32>
++    %2 = sdy.all_gather [{"b", "c"}, {}, {"d"}\] %1 out_sharding=<@mesh, [{"a"}, {}, {}\]> : tensor<8x8xf32>
+     ```
+ 
+     **Constraints:**
+@@ -498,7 +498,7 @@ def Sdy_AllGatherOp : Sdy_Op<"all_gather",
+ 
+ def Sdy_AllSliceOp : Sdy_Op<"all_slice",
+     [SameOperandsAndResultType, InferTypeOpInterface, Sdy_CollectiveOpInterface]> {
+-  let summary = "Performs a dynamic-slice operation along axes";
++  let summary = "Slices chunks of a tensor along axes";
+   let description = [{
+     Slices chunks of a tensor along axes specified in `slicing_axes`. There is
+     an algebric duality between `sdy.all_slice` and `sdy.all_gather`.
+@@ -516,8 +516,8 @@ def Sdy_AllSliceOp : Sdy_Op<"all_slice",
+ 
+     Example:
+     ```mlir
+-    %1 = stablehlo.tanh(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}, {}, {}\]>]>} : tensor<8x8x8xf32>
+-    %2 = sdy.all_slice [{"b", "c"}, {}, {"d"}\] %1 out_sharding=<@mesh, [{"a", "b", "c"}, {}, {"d"}\]> : tensor<8x8x8xf32>
++    %1 = stablehlo.tanh(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}, {}, {}\]>]>} : tensor<8x8xf32>
++    %2 = sdy.all_slice [{"b", "c"}, {}, {"d"}\] %1 out_sharding=<@mesh, [{"a", "b", "c"}, {}, {"d"}\]> : tensor<8x8xf32>
+     ```
+ 
+     **Constraints:**
+@@ -541,68 +541,15 @@ def Sdy_AllSliceOp : Sdy_Op<"all_slice",
+   let hasCanonicalizer = 1;
+ }
+ 
+-// TODO(b/380226848): Support multiple src->tgt pairs.
+-def Sdy_AllToAllOp : Sdy_Op<"all_to_all",
+-    [SameOperandsAndResultType, InferTypeOpInterface, Sdy_CollectiveOpInterface]> {
+-  let summary = "Performs an all-to-all communication along axes";
+-  let description = [{
+-    Slices chunks of a tensor along dimension `tgt_dim` and axes specified in
+-    `axes`, scatteres those chunks along the axes, and concatenates them along
+-    dimension `src_dim`.
+-
+-    This operation is essentially a combination of an all-gather along `src_dim`
+-    and `axes`, followed by an all-slice along `tgt_dim` and `axes`, i.e., a
+-    suffix of the axes sharding dimension `src_dim` on the input tensor is
+-    appended to the axes sharding dimension `tgt_dim` on the output tensor.
+-
+-    The all-to-all will be applied to the sharding of the operand (`tensor`) to
+-    obtain the sharding of the result (`out_sharding`).
+-
+-    Note that `out_sharding` is not used to determine the sharding of the
+-    result. Instead, the sharding of the result is determined by the sharding of
+-    the operand, `src_dim`, `tgt_dim`, and `axes`, and `out_sharding` must match
+-    this inferred sharding.
+-
+-    Example:
+-    ```mlir
+-    %1 = stablehlo.tanh(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", "b", "c"}, {}\]>]>} : tensor<8x8xf32>
+-    %2 = sdy.all_to_all {"b", "c"} 0->1 %1 out_sharding=<@mesh, [{"a"}, {"b", "c"}\]> : tensor<8x8xf32>
+-    ```
+-
+-    **Constraints:**
+-    - `axes` must satisfy the constraints listed in `AxisRefListAttr`.
+-    - `out_sharding` must satisfy the constraints listed in
+-      `TensorShardingAttr`.
+-    - The operand must have a sharding.
+-    - Both operand and result shardings should be bound to the same `MeshAttr`.
+-    - `src_dim` and `tgt_dim` must be valid dimensions (positive and less than
+-      rank of tensor), and different from each other.
+-    - Moving `axes` from `src_dim` to `tgt_dim` in the operand sharding gets
+-      `out_sharding`.
+-  }];
+-
+-  let arguments = (ins
+-    AnyTensor:$tensor,
+-    I64Attr:$src_dim,
+-    I64Attr:$tgt_dim,
+-    Sdy_AxisRefList:$axes,
+-    Sdy_TensorSharding:$out_sharding
+-  );
+-  let results = (outs AnyTensor:$result);
+-  let assemblyFormat = "$axes $src_dim `` `->` `` $tgt_dim $tensor `out_sharding````=```$out_sharding attr-dict `:` type($result)";
+-  let hasVerifier = 1;
+-  let hasCanonicalizer = 1;
+-}
+-
+ // TODO(b/392797233): Support using `sdy.collective_permute` to change the
+ // device order between the mesh of the input and output of a reshard.
+ 
+ def Sdy_CollectivePermuteOp : Sdy_Op<"collective_permute",
+     [SameOperandsAndResultType, InferTypeOpInterface, Sdy_CollectiveOpInterface]> {
+-  let summary = "Performs a collective-permute communication to replace axes";
++  let summary = "Sends a chunk of a tensor from each device to another along axes";
+   let description = [{
+-    Sends a chunk of the input tensor from each device to another to
+-    reorder/replace the axes that shard the tensor.
++    Sends a chunk of the input tensor from each device to another along the axes
++    that shard the tensor.
+ 
+     A collective permute can transform the input sharding such that each
+     dimension must be as sharded as it was before, i.e., it must be sharded
+diff --git a/shardy/dialect/sdy/ir/test/collective_canonicalization.mlir b/shardy/dialect/sdy/ir/test/collective_canonicalization.mlir
+index 62cf698..4a6898e 100644
+--- a/shardy/dialect/sdy/ir/test/collective_canonicalization.mlir
++++ b/shardy/dialect/sdy/ir/test/collective_canonicalization.mlir
+@@ -16,13 +16,6 @@ func.func @null_all_slice(%arg0 : tensor<16x2xf32> {sdy.sharding=#sdy.sharding<@
+   return %0 : tensor<16x2xf32>
+ }
+ 
+-// CHECK-LABEL: func @null_all_to_all
+-func.func @null_all_to_all(%arg0 : tensor<16x2xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> tensor<16x2xf32> {
+-  // CHECK-NEXT: return %arg0 : tensor<16x2xf32>
+-  %0 = sdy.all_to_all {} 0->1 %arg0 out_sharding=<@mesh, [{"y"}, {"x"}]> :  tensor<16x2xf32>
+-  return %0 : tensor<16x2xf32>
+-}
+-
+ // CHECK-LABEL: func @all_slice_of_all_gather
+ func.func @all_slice_of_all_gather(%arg0 : tensor<16x2xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> tensor<16x2xf32> {
+   // TODO(kostiantynl): orphaned all_gather should be removed.
+diff --git a/shardy/dialect/sdy/ir/test/collective_parse_print.mlir b/shardy/dialect/sdy/ir/test/collective_parse_print.mlir
+index 9207d1f..1f05fc5 100644
+--- a/shardy/dialect/sdy/ir/test/collective_parse_print.mlir
++++ b/shardy/dialect/sdy/ir/test/collective_parse_print.mlir
+@@ -8,172 +8,116 @@ sdy.mesh @mesh5 = <["x"=2, "y"=2, "z"=4, "w"=4]>
+ 
+ // CHECK-LABEL: func @all_gather1
+ func.func @all_gather1(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh1, [{"y"}, {"x"}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_gather [{}, {"x"}] %arg0 out_sharding=<@mesh1, [{"y"}, {}]>
++  // CHECK-NEXT: sdy.all_gather [{}, {"x"}] %arg0 out_sharding=<@mesh1, [{"y"}, {}]> : tensor<16x8xf32>
+   %0 = sdy.all_gather [{}, {"x"}] %arg0 out_sharding=<@mesh1, [{"y"}, {}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_gather2
+ func.func @all_gather2(%arg0 : tensor<16xf32> {sdy.sharding=#sdy.sharding<@mesh2, [{"y", "x", "z"}]>}) -> tensor<16xf32> {
+-  // CHECK-NEXT: sdy.all_gather [{"x", "z"}] %arg0 out_sharding=<@mesh2, [{"y"}]>
++  // CHECK-NEXT: sdy.all_gather [{"x", "z"}] %arg0 out_sharding=<@mesh2, [{"y"}]> : tensor<16xf32>
+   %0 = sdy.all_gather [{"x", "z"}] %arg0 out_sharding=<@mesh2, [{"y"}]> : tensor<16xf32>
+   return %0 : tensor<16xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_gather3
+ func.func @all_gather3(%arg0 : tensor<16xf32> {sdy.sharding=#sdy.sharding<@mesh2, [{"y", "x", "z"}]>}) -> tensor<16xf32> {
+-  // CHECK-NEXT: sdy.all_gather [{"y", "x", "z"}] %arg0 out_sharding=<@mesh2, [{}]>
++  // CHECK-NEXT: sdy.all_gather [{"y", "x", "z"}] %arg0 out_sharding=<@mesh2, [{}]> : tensor<16xf32>
+   %0 = sdy.all_gather [{"y", "x", "z"}] %arg0 out_sharding=<@mesh2, [{}]> : tensor<16xf32>
+   return %0 : tensor<16xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_gather4
+ func.func @all_gather4(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2, [{"y", "x"}, {"z"}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_gather [{"x"}, {"z"}] %arg0 out_sharding=<@mesh2, [{"y"}, {}]>
++  // CHECK-NEXT: sdy.all_gather [{"x"}, {"z"}] %arg0 out_sharding=<@mesh2, [{"y"}, {}]> : tensor<16x8xf32>
+   %0 = sdy.all_gather [{"x"}, {"z"}] %arg0 out_sharding=<@mesh2, [{"y"}, {}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_gather_subaxis_exact_match
+ func.func @all_gather_subaxis_exact_match(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3, [{"y"}, {"x":(1)2}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_gather [{}, {"x":(1)2}] %arg0 out_sharding=<@mesh3, [{"y"}, {}]>
++  // CHECK-NEXT: sdy.all_gather [{}, {"x":(1)2}] %arg0 out_sharding=<@mesh3, [{"y"}, {}]> : tensor<16x8xf32>
+   %0 = sdy.all_gather [{}, {"x":(1)2}] %arg0 out_sharding=<@mesh3, [{"y"}, {}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_gather_subaxis_ignored
+ func.func @all_gather_subaxis_ignored(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3, [{"y"}, {"x":(1)2}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_gather [{"y"}, {}] %arg0 out_sharding=<@mesh3, [{}, {"x":(1)2}]>
++  // CHECK-NEXT: sdy.all_gather [{"y"}, {}] %arg0 out_sharding=<@mesh3, [{}, {"x":(1)2}]> : tensor<16x8xf32>
+   %0 = sdy.all_gather [{"y"}, {}] %arg0 out_sharding=<@mesh3, [{}, {"x":(1)2}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_gather_subaxis_suffix_of_full
+ func.func @all_gather_subaxis_suffix_of_full(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh4, [{"y"}, {"x", "z"}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_gather [{}, {"x":(4)2, "z"}] %arg0 out_sharding=<@mesh4, [{"y"}, {"x":(1)4}]>
++  // CHECK-NEXT: sdy.all_gather [{}, {"x":(4)2, "z"}] %arg0 out_sharding=<@mesh4, [{"y"}, {"x":(1)4}]> : tensor<16x8xf32>
+   %0 = sdy.all_gather [{}, {"x":(4)2, "z"}] %arg0 out_sharding=<@mesh4, [{"y"}, {"x":(1)4}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_gather_subaxis_suffix_of_subaxis
+ func.func @all_gather_subaxis_suffix_of_subaxis(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh4, [{"y"}, {"z", "x":(1)4}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_gather [{}, {"x":(2)2}] %arg0 out_sharding=<@mesh4, [{"y"}, {"z", "x":(1)2}]>
++  // CHECK-NEXT: sdy.all_gather [{}, {"x":(2)2}] %arg0 out_sharding=<@mesh4, [{"y"}, {"z", "x":(1)2}]> : tensor<16x8xf32>
+   %0 = sdy.all_gather [{}, {"x":(2)2}] %arg0 out_sharding=<@mesh4, [{"y"}, {"z", "x":(1)2}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_slice1
+ func.func @all_slice1(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh1, [{"y"}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_slice [{}, {"x"}] %arg0 out_sharding=<@mesh1, [{"y"}, {"x"}]>
++  // CHECK-NEXT: sdy.all_slice [{}, {"x"}] %arg0 out_sharding=<@mesh1, [{"y"}, {"x"}]> : tensor<16x8xf32>
+   %0 = sdy.all_slice [{}, {"x"}] %arg0 out_sharding=<@mesh1, [{"y"}, {"x"}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_slice2
+ func.func @all_slice2(%arg0 : tensor<16xf32> {sdy.sharding=#sdy.sharding<@mesh2, [{"y"}]>}) -> tensor<16xf32> {
+-  // CHECK-NEXT: sdy.all_slice [{"x", "z"}] %arg0 out_sharding=<@mesh2, [{"y", "x", "z"}]>
++  // CHECK-NEXT: sdy.all_slice [{"x", "z"}] %arg0 out_sharding=<@mesh2, [{"y", "x", "z"}]> : tensor<16xf32>
+   %0 = sdy.all_slice [{"x", "z"}] %arg0 out_sharding=<@mesh2, [{"y", "x", "z"}]> : tensor<16xf32>
+   return %0 : tensor<16xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_slice3
+ func.func @all_slice3(%arg0 : tensor<16xf32> {sdy.sharding=#sdy.sharding<@mesh2, [{}]>}) -> tensor<16xf32> {
+-  // CHECK-NEXT: sdy.all_slice [{"y", "x", "z"}] %arg0 out_sharding=<@mesh2, [{"y", "x", "z"}]>
++  // CHECK-NEXT: sdy.all_slice [{"y", "x", "z"}] %arg0 out_sharding=<@mesh2, [{"y", "x", "z"}]> : tensor<16xf32>
+   %0 = sdy.all_slice [{"y", "x", "z"}] %arg0 out_sharding=<@mesh2, [{"y", "x", "z"}]> : tensor<16xf32>
+   return %0 : tensor<16xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_slice4
+ func.func @all_slice4(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2, [{"y"}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_slice [{"x"}, {"z"}] %arg0 out_sharding=<@mesh2, [{"y", "x"}, {"z"}]>
++  // CHECK-NEXT: sdy.all_slice [{"x"}, {"z"}] %arg0 out_sharding=<@mesh2, [{"y", "x"}, {"z"}]> : tensor<16x8xf32>
+   %0 = sdy.all_slice [{"x"}, {"z"}] %arg0 out_sharding=<@mesh2, [{"y", "x"}, {"z"}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_slice_subaxis_exact_match
+ func.func @all_slice_subaxis_exact_match(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3, [{"y"}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_slice [{}, {"x":(1)2}] %arg0 out_sharding=<@mesh3, [{"y"}, {"x":(1)2}]>
++  // CHECK-NEXT: sdy.all_slice [{}, {"x":(1)2}] %arg0 out_sharding=<@mesh3, [{"y"}, {"x":(1)2}]> : tensor<16x8xf32>
+   %0 = sdy.all_slice [{}, {"x":(1)2}] %arg0 out_sharding=<@mesh3, [{"y"}, {"x":(1)2}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_slice_subaxis_ignored
+ func.func @all_slice_subaxis_ignored(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3, [{}, {"x":(1)2}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_slice [{"y"}, {}] %arg0 out_sharding=<@mesh3, [{"y"}, {"x":(1)2}]>
++  // CHECK-NEXT: sdy.all_slice [{"y"}, {}] %arg0 out_sharding=<@mesh3, [{"y"}, {"x":(1)2}]> : tensor<16x8xf32>
+   %0 = sdy.all_slice [{"y"}, {}] %arg0 out_sharding=<@mesh3, [{"y"}, {"x":(1)2}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_slice_subaxis_suffix_of_full
+ func.func @all_slice_subaxis_suffix_of_full(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh4, [{"y"}, {"x":(1)4}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_slice [{}, {"x":(4)2, "z"}] %arg0 out_sharding=<@mesh4, [{"y"}, {"x", "z"}]>
++  // CHECK-NEXT: sdy.all_slice [{}, {"x":(4)2, "z"}] %arg0 out_sharding=<@mesh4, [{"y"}, {"x", "z"}]> : tensor<16x8xf32>
+   %0 = sdy.all_slice [{}, {"x":(4)2, "z"}] %arg0 out_sharding=<@mesh4, [{"y"}, {"x", "z"}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @all_slice_subaxis_suffix_of_subaxis
+ func.func @all_slice_subaxis_suffix_of_subaxis(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh4, [{"y"}, {"z", "x":(1)2}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_slice [{}, {"x":(2)2}] %arg0 out_sharding=<@mesh4, [{"y"}, {"z", "x":(1)4}]>
++  // CHECK-NEXT: sdy.all_slice [{}, {"x":(2)2}] %arg0 out_sharding=<@mesh4, [{"y"}, {"z", "x":(1)4}]> : tensor<16x8xf32>
+   %0 = sdy.all_slice [{}, {"x":(2)2}] %arg0 out_sharding=<@mesh4, [{"y"}, {"z", "x":(1)4}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @all_to_all_target_dim_empty
+-func.func @all_to_all_target_dim_empty(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh1, [{"x"}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_to_all {"x"} 0->1 %arg0 out_sharding=<@mesh1, [{}, {"x"}]>
+-  %0 = sdy.all_to_all {"x"} 0->1 %arg0 out_sharding=<@mesh1, [{}, {"x"}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_target_dim_not_empty
+-func.func @all_to_all_target_dim_not_empty(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh1, [{"x"}, {"y"}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_to_all {"y"} 1->0 %arg0 out_sharding=<@mesh1, [{"x", "y"}, {}]>
+-  %0 = sdy.all_to_all {"y"} 1->0 %arg0 out_sharding=<@mesh1, [{"x", "y"}, {}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_multiple_axes
+-func.func @all_to_all_multiple_axes(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2, [{"z", "y", "x"}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_to_all {"y", "x"} 0->1 %arg0 out_sharding=<@mesh2, [{"z"}, {"y", "x"}]>
+-  %0 = sdy.all_to_all {"y", "x"} 0->1 %arg0 out_sharding=<@mesh2, [{"z"}, {"y", "x"}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_not_all_dims_involved
+-func.func @all_to_all_not_all_dims_involved(%arg0 : tensor<16x8x4x4xf32> {sdy.sharding=#sdy.sharding<@mesh5, [{"x"}, {"y", "z"}, {"w"}, {}]>}) -> tensor<16x8x4x4xf32> {
+-  // CHECK-NEXT: dy.all_to_all {"w"} 2->0 %arg0 out_sharding=<@mesh5, [{"x", "w"}, {"y", "z"}, {}, {}]>
+-  %0 = sdy.all_to_all {"w"} 2->0 %arg0 out_sharding=<@mesh5, [{"x", "w"}, {"y", "z"}, {}, {}]> : tensor<16x8x4x4xf32>
+-  return %0 : tensor<16x8x4x4xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_subaxis_exact_match
+-func.func @all_to_all_subaxis_exact_match(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3, [{"y"}, {"x":(1)2}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_to_all {"x":(1)2} 1->0 %arg0 out_sharding=<@mesh3, [{"y", "x":(1)2}, {}]>
+-  %0 = sdy.all_to_all {"x":(1)2} 1->0 %arg0 out_sharding=<@mesh3, [{"y", "x":(1)2}, {}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_subaxis_ignored
+-func.func @all_to_all_subaxis_ignored(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3, [{"y"}, {"x":(1)2}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_to_all {"y"} 0->1 %arg0 out_sharding=<@mesh3, [{}, {"x":(1)2, "y"}]>
+-  %0 = sdy.all_to_all {"y"} 0->1 %arg0 out_sharding=<@mesh3, [{}, {"x":(1)2, "y"}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_subaxis_suffix_of_full
+-func.func @all_to_all_subaxis_suffix_of_full(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh4, [{"y"}, {"x", "z"}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_to_all {"x":(4)2, "z"} 1->0 %arg0 out_sharding=<@mesh4, [{"y", "x":(4)2, "z"}, {"x":(1)4}]>
+-  %0 = sdy.all_to_all {"x":(4)2, "z"} 1->0 %arg0 out_sharding=<@mesh4, [{"y", "x":(4)2, "z"}, {"x":(1)4}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_subaxis_suffix_of_subaxis
+-func.func @all_to_all_subaxis_suffix_of_subaxis(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh4, [{"y"}, {"z", "x":(1)4}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_to_all {"x":(2)2} 1->0 %arg0 out_sharding=<@mesh4, [{"y", "x":(2)2}, {"z", "x":(1)2}]>
+-  %0 = sdy.all_to_all {"x":(2)2} 1->0 %arg0 out_sharding=<@mesh4, [{"y", "x":(2)2}, {"z", "x":(1)2}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+ // CHECK-LABEL: func @collective_permute_reorder_axes_single_dim
+ func.func @collective_permute_reorder_axes_single_dim(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2, [{"x", "y", "z"}, {}]>}) -> tensor<16x8xf32> {
+   // CHECK-NEXT: sdy.collective_permute %arg0 out_sharding=<@mesh2, [{"z", "x", "y", ?}, {}]>
+diff --git a/shardy/dialect/sdy/ir/test/collective_verification.mlir b/shardy/dialect/sdy/ir/test/collective_verification.mlir
+index ad26cbf..70f865e 100644
+--- a/shardy/dialect/sdy/ir/test/collective_verification.mlir
++++ b/shardy/dialect/sdy/ir/test/collective_verification.mlir
+@@ -264,138 +264,6 @@ func.func @all_slice_with_incompatible_result_sharding_subaxis(%arg0 : tensor<16
+ 
+ // -----
+ 
+-sdy.mesh @mesh = <["x"=2, "y"=2]>
+-
+-func.func @all_to_all_on_operand_without_sharding(%arg0 : tensor<16x8xf32>) -> tensor<16x8xf32> {
+-  // expected-error @+1 {{collective on operand without sharding}}
+-  %0 = sdy.all_to_all {"x"} 1->0 %arg0 out_sharding=<@mesh, [{"y"}, {}]> :  tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh1 = <["x"=2, "y"=2]>
+-sdy.mesh @mesh2 = <["a"=2, "b"=2]>
+-
+-// expected-note @+1 {{operand mesh: #sdy.mesh<["a"=2, "b"=2]>}}
+-func.func @all_to_all_with_incompatible_meshes(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2, [{"a"}, {"b"}]>}) -> tensor<16x8xf32> {
+-  // expected-error @+1 {{result mesh does not match operand mesh}}
+-  %0 = sdy.all_to_all {"b"} 1->0 %arg0 out_sharding=<@mesh1, [{"y"}, {"x"}]> :  tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["x"=2, "y"=2]>
+-
+-func.func @all_to_all_invalid_out_sharding(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> tensor<16x8xf32> {
+-  // expected-error @+1 {{duplicate axis ref: "x"}}
+-  %0 = sdy.all_to_all {"y"} 0->1 %arg0 out_sharding=<@mesh, [{}, {"x", "x"}]> :  tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["x"=4, "y"=2]>
+-
+-func.func @all_to_all_axes_can_be_merged(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> tensor<16x8xf32> {
+-  // expected-error @+1 {{two consecutive sub-axes can be merged: "x":(1)2, "x":(2)2}}
+-  %0 = sdy.all_to_all {"x":(1)2, "x":(2)2} 1->0 %arg0 out_sharding=<@mesh, [{"y", "x"}, {}]> :  tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["x"=2, "y"=2]>
+-
+-func.func @all_to_all_src_dim_out_of_range(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{}, {"y"}]>}) -> tensor<16x8xf32> {
+-  // expected-error @+1 {{source dimension 2 is out of range [0, 2}}
+-  %0 = sdy.all_to_all {"y"} 2->1 %arg0 out_sharding=<@mesh, [{"y"}, {}]> :  tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["x"=2, "y"=2]>
+-
+-func.func @all_to_all_tgt_dim_out_of_range(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"y"}, {}]>}) -> tensor<16x8xf32> {
+-  // expected-error @+1 {{target dimension -1 is out of range [0, 2}}
+-  %0 = sdy.all_to_all {"y"} 0->-1 %arg0 out_sharding=<@mesh, [{}, {"y"}]> :  tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["x"=2, "y"=2]>
+-
+-func.func @all_to_all_src_and_tgt_dim_equal(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"y"}, {}]>}) -> tensor<16x8xf32> {
+-  // expected-error @+1 {{source and target dimensions must be different}}
+-  %0 = sdy.all_to_all {"y"} 0->0 %arg0 out_sharding=<@mesh, [{"y"}, {}]> :  tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["x"=2, "y"=2]>
+-
+-func.func @all_to_all_with_too_many_axes_to_move(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"y"}, {}]>}) -> tensor<16x8xf32> {
+-  // expected-error @+1 {{can't apply all-to-all axis "x" to operand sharding on dimension 0}}
+-  %0 = sdy.all_to_all {"x", "y"} 0->1 %arg0 out_sharding=<@mesh, [{}, {"x", "y"}]> :  tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["x"=4, "y"=2]>
+-
+-func.func @all_to_all_with_incomatible_operand_subaxis(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"y"}, {"x":(1)2}]>}) -> tensor<16x8xf32> {
+-  // expected-error @+1 {{can't apply all-to-all axis "x" to operand sharding on dimension 1}}
+-  %0 = sdy.all_to_all {"x"} 1->0 %arg0 out_sharding=<@mesh, [{"y", "x"}, {}]> :  tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["x"=8, "y"=2]>
+-
+-func.func @all_to_all_with_incomatible_subaxis_to_move(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> tensor<16x8xf32> {
+-  // expected-error @+1 {{can't apply all-to-all axis "x":(2)2 to operand sharding on dimension 1}}
+-  %0 = sdy.all_to_all {"x":(2)2} 1->0 %arg0 out_sharding=<@mesh, [{"y", "x":(2)2}, {}]> :  tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["x"=2, "y"=2]>
+-
+-func.func @all_to_all_with_incompatible_result_sharding(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> tensor<16x8xf32> {
+-  // expected-error @+1 {{result sharding doesn't match expected sharding ["y", "x"] on dimension 0}}
+-  %0 = sdy.all_to_all {"x"} 1->0 %arg0 out_sharding=<@mesh, [{"y"}, {"x"}]> :  tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["x"=8, "y"=2]>
+-
+-func.func @all_to_all_with_incompatible_result_sharding_subaxis(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> tensor<16x8xf32> {
+-  // expected-error @+1 {{result sharding doesn't match expected sharding ["x":(1)2] on dimension 1}}
+-  %0 = sdy.all_to_all {"x":(2)4} 1->0 %arg0 out_sharding=<@mesh, [{"y", "x":(2)4}, {}]> :  tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// -----
+-
+-sdy.mesh @mesh = <["x"=2, "y"=2]>
+-
+-func.func @all_to_all_incompatible_result_sharding_non_moved_dim(%arg0 : tensor<16x8x4xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"y"}, {"x"}, {}]>}) -> tensor<16x8x4xf32> {
+-  // expected-error @+1 {{result sharding doesn't match expected sharding ["x"] on dimension 1}}
+-  %0 = sdy.all_to_all {"y"} 0->2 %arg0 out_sharding=<@mesh, [{}, {}, {"y"}]> :  tensor<16x8x4xf32>
+-  return %0 : tensor<16x8x4xf32>
+-}
+-
+-// -----
+-
+ sdy.mesh @mesh1 = <["x"=2, "y"=2]>
+ sdy.mesh @mesh2 = <["a"=2, "b"=2]>
+ 
+diff --git a/shardy/dialect/sdy/ir/verifiers.cc b/shardy/dialect/sdy/ir/verifiers.cc
+index f127e92..6432fcc 100644
+--- a/shardy/dialect/sdy/ir/verifiers.cc
++++ b/shardy/dialect/sdy/ir/verifiers.cc
+@@ -1126,42 +1126,6 @@ LogicalResult verifyCollectiveWithAxesPerDim(
+   return success();
+ }
+ 
+-// Removes `gatheringAxes` from the suffix of axes in `dimSharding` and returns
+-// the result, or emits an error if `gatheringAxes` are not a suffix.
+-FailureOr<SmallVector<AxisRefAttr>> gatherAxesAlongDim(
+-    DimensionShardingAttr dimSharding, ArrayRef<AxisRefAttr> gatheringAxes,
+-    int64_t dim, MeshAttr mesh, StringRef axisType, EmitErrorFn emitError) {
+-  SmallVector<AxisRefAttr> expectedDimSharding =
+-      llvm::to_vector(dimSharding.getAxes());
+-  for (auto gatheringAxis : llvm::reverse(gatheringAxes)) {
+-    if (expectedDimSharding.empty() ||
+-        !gatheringAxis.suffixOf(expectedDimSharding.back(), mesh)) {
+-      return emitError("can't apply ")
+-             << axisType << " axis " << gatheringAxis.toString()
+-             << " to operand sharding on dimension " << dim;
+-    }
+-    AxisRefAttr shardingAxis = expectedDimSharding.back();
+-    expectedDimSharding.pop_back();
+-    if (std::optional<AxisRefAttr> prefixAxis =
+-            shardingAxis.getPrefixWithoutOverlap(gatheringAxis)) {
+-      expectedDimSharding.push_back(*prefixAxis);
+-    }
+-  }
+-  return expectedDimSharding;
+-}
+-
+-// Appends `slicingAxes` to the axes in `dimSharding` and returns the result.
+-SmallVector<AxisRefAttr> sliceAxesAlongDim(DimensionShardingAttr dimSharding,
+-                                           ArrayRef<AxisRefAttr> slicingAxes,
+-                                           MeshAttr mesh) {
+-  SmallVector<AxisRefAttr> expectedDimSharding =
+-      llvm::to_vector(dimSharding.getAxes());
+-  for (auto slicingAxis : slicingAxes) {
+-    addAxisOrMerge(expectedDimSharding, slicingAxis, mesh);
+-  }
+-  return expectedDimSharding;
+-}
+-
+ }  // namespace
+ 
+ LogicalResult AllGatherOp::verify() {
+@@ -1170,8 +1134,23 @@ LogicalResult AllGatherOp::verify() {
+       [this](DimensionShardingAttr operandDimSharding,
+              ArrayRef<AxisRefAttr> dimGatheringAxes, int64_t dim,
+              MeshAttr mesh) -> FailureOr<SmallVector<AxisRefAttr>> {
+-        return gatherAxesAlongDim(operandDimSharding, dimGatheringAxes, dim,
+-                                  mesh, "gathering", getEmitErrorFn(*this));
++        SmallVector<AxisRefAttr> expectedDimSharding =
++            llvm::to_vector(operandDimSharding.getAxes());
++        for (auto gatheringAxis : llvm::reverse(dimGatheringAxes)) {
++          if (expectedDimSharding.empty() ||
++              !gatheringAxis.suffixOf(expectedDimSharding.back(), mesh)) {
++            return emitOpError("can't apply gathering axis ")
++                   << gatheringAxis.toString()
++                   << " to operand sharding on dimension " << dim;
++          }
++          AxisRefAttr shardingAxis = expectedDimSharding.back();
++          expectedDimSharding.pop_back();
++          if (std::optional<AxisRefAttr> prefixAxis =
++                  shardingAxis.getPrefixWithoutOverlap(gatheringAxis)) {
++            expectedDimSharding.push_back(*prefixAxis);
++          }
++        }
++        return expectedDimSharding;
+       });
+ }
+ 
+@@ -1181,116 +1160,15 @@ LogicalResult AllSliceOp::verify() {
+       [](DimensionShardingAttr operandDimSharding,
+          ArrayRef<AxisRefAttr> dimSlicingAxes, int64_t dim,
+          MeshAttr mesh) -> FailureOr<SmallVector<AxisRefAttr>> {
+-        return sliceAxesAlongDim(operandDimSharding, dimSlicingAxes, mesh);
++        SmallVector<AxisRefAttr> expectedDimSharding =
++            llvm::to_vector(operandDimSharding.getAxes());
++        for (auto slicingAxis : dimSlicingAxes) {
++          addAxisOrMerge(expectedDimSharding, slicingAxis, mesh);
++        }
++        return expectedDimSharding;
+       });
+ }
+ 
+-LogicalResult AllToAllOp::verify() {
+-  // TODO(b/391574176): CollectiveOpInterface should verify 1-3.
+-
+-  // 1. Verify operand has a sharding.
+-  TensorShardingAttr operandSharding = getSharding(getOperand());
+-  if (!operandSharding) {
+-    return emitOpError("collective on operand without sharding");
+-  }
+-
+-  // 2. Verify result sharding is valid w.r.t the corresponding type.
+-  TensorShardingAttr resultSharding = getOutSharding();
+-  if (failed(verifyTensorShardingAttr(resultSharding, getType(), *this,
+-                                      getEmitErrorFn(*this)))) {
+-    return failure();
+-  }
+-
+-  // 3. Verify MeshAttr of result and operand is the same.
+-  MeshAttr mesh = resultSharding.getMesh(*this);
+-  MeshAttr operandMesh = operandSharding.getMesh(*this);
+-
+-  if (mesh != operandMesh) {
+-    return emitOpError("result mesh does not match operand mesh")
+-               .attachNote(getOperand().getLoc())
+-           << "operand mesh: " << operandMesh;
+-  }
+-
+-  // 4. Verify `axes` is a valid list of axes.
+-  SmallDenseSet<AxisRefAttr> seenAxisRefs;
+-  SmallDenseMap<StringRef, SmallVector<AxisRefAttr>> axisNameToSubAxes;
+-  SmallDenseMap<StringRef, int64_t> axisNameToSize = mesh.getAxisNameToSize();
+-  if (failed(verifyAxisRefList(getAxes(), axisNameToSize, seenAxisRefs,
+-                               axisNameToSubAxes, getEmitErrorFn(*this)))) {
+-    return failure();
+-  }
+-
+-  // 5. Verify `src_dim` and `tgt_dim`.
+-  int64_t rank = getTensorRank(getResult());
+-  auto verifyDim = [this, rank](int64_t dim,
+-                                StringRef dimName) -> LogicalResult {
+-    if (dim < 0 || dim >= rank) {
+-      return emitOpError(dimName)
+-             << " dimension " << dim << " is out of range [0, " << rank << ")";
+-    }
+-    return success();
+-  };
+-  if (failed(verifyDim(getSrcDim(), "source"))) {
+-    return failure();
+-  }
+-  if (failed(verifyDim(getTgtDim(), "target"))) {
+-    return failure();
+-  }
+-  if (getSrcDim() == getTgtDim()) {
+-    return emitOpError("source and target dimensions must be different");
+-  }
+-
+-  // TODO(b/391574176): should also be verified by CollectiveOpInterface.
+-  // Verify same rank of the result sharding and operand sharding.
+-  ArrayRef<DimensionShardingAttr> resultDimShardings =
+-      resultSharding.getDimShardings();
+-  ArrayRef<DimensionShardingAttr> operandDimShardings =
+-      operandSharding.getDimShardings();
+-  if (resultDimShardings.size() != operandDimShardings.size()) {
+-    return emitOpError("result sharding has rank ")
+-           << resultDimShardings.size() << " but operand sharding has rank "
+-           << operandDimShardings.size();
+-  }
+-
+-  // 6. Verify that moving `axes` from `src_dim` to `tgt_dim` in the operand
+-  // sharding gets `out_sharding`.
+-  for (auto [dim, dimShardings] : llvm::enumerate(
+-           llvm::zip_equal(operandDimShardings, resultDimShardings))) {
+-    auto [operandDimSharding, resultDimSharding] = dimShardings;
+-    LogicalResult logicalResult = success();
+-    auto verifyDimSharding =
+-        [&, this](ArrayRef<AxisRefAttr> expectedDimSharding) -> LogicalResult {
+-      if (expectedDimSharding != resultDimSharding.getAxes()) {
+-        return emitOpError("result sharding doesn't match expected sharding ")
+-               << strippedAttrsString(ArrayRef(expectedDimSharding),
+-                                      /*stripMnemonic=*/true)
+-               << " on dimension " << dim;
+-      }
+-      return success();
+-    };
+-    if (dim == getSrcDim()) {
+-      auto expectedDimShardingOrFailure =
+-          gatherAxesAlongDim(operandDimSharding, getAxes(), getSrcDim(), mesh,
+-                             "all-to-all", getEmitErrorFn(*this));
+-      logicalResult =
+-          succeeded(expectedDimShardingOrFailure)
+-              ? verifyDimSharding(expectedDimShardingOrFailure.value())
+-              : failure();
+-    } else if (dim == getTgtDim()) {
+-      logicalResult = verifyDimSharding(
+-          sliceAxesAlongDim(operandDimShardings[getTgtDim()], getAxes(), mesh));
+-    } else {
+-      logicalResult = verifyDimSharding(operandDimSharding.getAxes());
+-    }
+-
+-    if (failed(logicalResult)) {
+-      return failure();
+-    }
+-  }
+-
+-  return success();
+-}
+-
+ LogicalResult CollectivePermuteOp::verify() {
+   // TODO(b/391574176): CollectiveOpInterface should verify 1-3.
+ 
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 9a336b9..5621d08 100644
+index 5621d08..23f488c 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "2e5a5237daf82a657561c490845c406e13657311"
--    LLVM_SHA256 = "e0622b7f81a046e1576d8d07c5ba916346c2a1c06528655d3ddd45a1028eac89"
-+    LLVM_COMMIT = "aa65f93b71dee8cacb22be1957673c8be6a3ec24"
-+    LLVM_SHA256 = "0a6046edb6a9834d5b912ec0e705dec91d39ee1b7b2fbb5930955d83d2090ff5"
+-    LLVM_COMMIT = "aa65f93b71dee8cacb22be1957673c8be6a3ec24"
+-    LLVM_SHA256 = "0a6046edb6a9834d5b912ec0e705dec91d39ee1b7b2fbb5930955d83d2090ff5"
++    LLVM_COMMIT = "d0052ebbe2e2f691ec42cad3c8613ef387abc53f"
++    LLVM_SHA256 = "b77aac71294fc08e10fb97c2b64745712886d4f2fb32631abc87eb944934e00e"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index af77e9f..90d4d84 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -10,6 +10,75 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+      deps = [
+          ":vhlo_ops_td_files",
+      ],
++diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
++--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
+++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
++@@ -16,6 +16,32 @@
++ #include "stablehlo/dialect/StablehloOps.td"
++ 
++ // Helper functions.
+++Rewrite changeElementTypeToI1(type: Type) -> Type [{
+++  auto tensorType = llvm::cast<mlir::RankedTensorType>(type);
+++  return RankedTensorType::get(tensorType.getShape(), rewriter.getI1Type());
+++}];
+++
+++Rewrite changeElementTypeToI8(type: Type) -> Type [{
+++  auto tensorType = llvm::cast<mlir::RankedTensorType>(type);
+++  return RankedTensorType::get(tensorType.getShape(), rewriter.getI8Type());
+++}];
+++
+++Rewrite zerosLike(op: Op, type: Type) -> Op [{
+++  auto elementType = llvm::cast<mlir::TensorType>(type).getElementType();
+++  llvm::SmallVector<mlir::Attribute, 4> outputValue;
+++
+++  if (elementType.isF16() || elementType.isF32() || elementType.isBF16()) {
+++    outputValue.push_back(rewriter.getFloatAttr(elementType, 0));
+++  } else {
+++    outputValue.push_back(rewriter.getIntegerAttr(elementType, 0));
+++  }
+++
+++  return rewriter.create<mlir::tosa::ConstOp>(
+++      op->getLoc(), type,
+++      mlir::DenseElementsAttr::get(
+++        llvm::cast<mlir::ShapedType>(type), outputValue));
+++}];
+++
++ Rewrite onesLike(op: Op, type: Type) -> Op [{
++   auto elementType = llvm::cast<mlir::TensorType>(type).getElementType();
++   llvm::SmallVector<mlir::Attribute, 4> outputValue;
++@@ -45,11 +71,6 @@
++       op->getLoc(), type,
++       mlir::DenseElementsAttr::get(
++         llvm::cast<mlir::ShapedType>(type), outputValue));
++-}];
++-
++-Rewrite changeElementTypeToI1(type: Type) -> Type [{
++-  auto tensorType = llvm::cast<mlir::RankedTensorType>(type);
++-  return RankedTensorType::get(tensorType.getShape(), rewriter.getI1Type());
++ }];
++ 
++ // Nullary ops.
++@@ -134,10 +155,16 @@
++   replace op<stablehlo.minimum>(input0 : Value<_: Tosa_Tensor>,
++                            input1 : Value<_: Tosa_Tensor>)
++      with op<tosa.minimum>(input0, input1);
++-Pattern =>
++-  replace op<stablehlo.multiply>(input0 : Value<_: Tosa_Tensor>,
++-                            input1 : Value<_: Tosa_Tensor>)
++-     with op<tosa.mul>(input0, input1) {shift = attr<"0 : i8">};
+++Pattern {
+++  let root = op<stablehlo.multiply>(input0 : Value<inputType: Tosa_Tensor>,
+++                            input1 : Value<_: Tosa_Tensor>);
+++  rewrite root with {
+++    let typei8 = changeElementTypeToI8(inputType);
+++    let zeros = zerosLike(root, typei8);
+++    let mulResult = op<tosa.mul>(input0, input1, zeros) -> (inputType);
+++    replace root with mulResult;
+++  };
+++}
++ Pattern =>
++   replace op<stablehlo.or>(input0 : Value<_: Tosa_Tensor>,
++                       input1 : Value<_: Tosa_Tensor>)
+ diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+ --- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+ +++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp

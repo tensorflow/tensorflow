@@ -10,6 +10,75 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      deps = [
          ":vhlo_ops_td_files",
      ],
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
+@@ -16,6 +16,32 @@
+ #include "stablehlo/dialect/StablehloOps.td"
+ 
+ // Helper functions.
++Rewrite changeElementTypeToI1(type: Type) -> Type [{
++  auto tensorType = llvm::cast<mlir::RankedTensorType>(type);
++  return RankedTensorType::get(tensorType.getShape(), rewriter.getI1Type());
++}];
++
++Rewrite changeElementTypeToI8(type: Type) -> Type [{
++  auto tensorType = llvm::cast<mlir::RankedTensorType>(type);
++  return RankedTensorType::get(tensorType.getShape(), rewriter.getI8Type());
++}];
++
++Rewrite zerosLike(op: Op, type: Type) -> Op [{
++  auto elementType = llvm::cast<mlir::TensorType>(type).getElementType();
++  llvm::SmallVector<mlir::Attribute, 4> outputValue;
++
++  if (elementType.isF16() || elementType.isF32() || elementType.isBF16()) {
++    outputValue.push_back(rewriter.getFloatAttr(elementType, 0));
++  } else {
++    outputValue.push_back(rewriter.getIntegerAttr(elementType, 0));
++  }
++
++  return rewriter.create<mlir::tosa::ConstOp>(
++      op->getLoc(), type,
++      mlir::DenseElementsAttr::get(
++        llvm::cast<mlir::ShapedType>(type), outputValue));
++}];
++
+ Rewrite onesLike(op: Op, type: Type) -> Op [{
+   auto elementType = llvm::cast<mlir::TensorType>(type).getElementType();
+   llvm::SmallVector<mlir::Attribute, 4> outputValue;
+@@ -45,11 +71,6 @@
+       op->getLoc(), type,
+       mlir::DenseElementsAttr::get(
+         llvm::cast<mlir::ShapedType>(type), outputValue));
+-}];
+-
+-Rewrite changeElementTypeToI1(type: Type) -> Type [{
+-  auto tensorType = llvm::cast<mlir::RankedTensorType>(type);
+-  return RankedTensorType::get(tensorType.getShape(), rewriter.getI1Type());
+ }];
+ 
+ // Nullary ops.
+@@ -134,10 +155,16 @@
+   replace op<stablehlo.minimum>(input0 : Value<_: Tosa_Tensor>,
+                            input1 : Value<_: Tosa_Tensor>)
+      with op<tosa.minimum>(input0, input1);
+-Pattern =>
+-  replace op<stablehlo.multiply>(input0 : Value<_: Tosa_Tensor>,
+-                            input1 : Value<_: Tosa_Tensor>)
+-     with op<tosa.mul>(input0, input1) {shift = attr<"0 : i8">};
++Pattern {
++  let root = op<stablehlo.multiply>(input0 : Value<inputType: Tosa_Tensor>,
++                            input1 : Value<_: Tosa_Tensor>);
++  rewrite root with {
++    let typei8 = changeElementTypeToI8(inputType);
++    let zeros = zerosLike(root, typei8);
++    let mulResult = op<tosa.mul>(input0, input1, zeros) -> (inputType);
++    replace root with mulResult;
++  };
++}
+ Pattern =>
+   replace op<stablehlo.or>(input0 : Value<_: Tosa_Tensor>,
+                       input1 : Value<_: Tosa_Tensor>)
 diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
 --- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
 +++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp
