@@ -36,6 +36,7 @@ cc_library(
         "//xla/tsl/framework:allocator",
         "//xla/tsl/framework:bfc_allocator",
         "//xla/tsl/framework:device_id_impl",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/log",

@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/integrations/device_host_allocator.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/integrations/stream_executor_allocator.h"
 #include "xla/stream_executor/platform.h"
@@ -43,6 +42,7 @@ limitations under the License.
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/bfc_allocator.h"
 #include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
@@ -195,37 +195,30 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
 // preallocated, and the preallocated size is controlled by
 // XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB environment variable, which defaults to
 // 16GB in this case.
-std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
     se::StreamExecutor* executor) {
+  TF_ASSIGN_OR_RETURN(
+      auto host_memory_allocator,
+      executor->CreateMemoryAllocator(stream_executor::MemoryType::kHost));
   std::unique_ptr<tsl::SubAllocator> sub_allocator(
-      new se::DeviceHostAllocator(executor, /*numa_node=*/0,
-                                  /*alloc_visitors=*/{},
-                                  /*free_visitors=*/{}));
+      new se::StreamExecutorAllocator(std::move(host_memory_allocator),
+                                      stream_executor::MemoryType::kHost,
+                                      /*index=*/0,
+                                      /*alloc_visitors=*/{},
+                                      /*free_visitors=*/{}));
   bool xla_pjrt_gpu_host_memory_preallocate;
-  {
-    absl::Status status =
-        tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE", false,
-                                &xla_pjrt_gpu_host_memory_preallocate);
-    if (!status.ok()) {
-      LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE: "
-                 << status.message();
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE", false,
+                              &xla_pjrt_gpu_host_memory_preallocate));
 
   const int64_t default_xla_pjrt_gpu_host_memory_limit_gb =
       xla_pjrt_gpu_host_memory_preallocate ? 16 : 64;
 
   int64_t xla_pjrt_gpu_host_memory_limit_gb;
-  {
-    absl::Status status =
-        tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB",
-                                 default_xla_pjrt_gpu_host_memory_limit_gb,
-                                 &xla_pjrt_gpu_host_memory_limit_gb);
-    if (!status.ok()) {
-      LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB: "
-                 << status.message();
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB",
+                               default_xla_pjrt_gpu_host_memory_limit_gb,
+                               &xla_pjrt_gpu_host_memory_limit_gb));
 
   const int64_t kGpuHostMemoryLimitBytes =
       xla_pjrt_gpu_host_memory_limit_gb * (1LL << 30);

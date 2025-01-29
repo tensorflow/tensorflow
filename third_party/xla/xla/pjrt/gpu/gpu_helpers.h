@@ -40,7 +40,7 @@ absl::StatusOr<LocalClient*> GetGpuXlaClient(
 // Enables peer access between all pairs of GPUs where possible.
 void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors);
 
-std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
     se::StreamExecutor* executor);
 
 // Builds a BFCAllocator for all local GPUs.
