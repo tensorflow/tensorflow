@@ -51,6 +51,7 @@ cc_library(
         "//xla/service:algorithm_util",
         "//xla/service:executable",
         "//xla/service:shaped_buffer",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:stream_executor_util",

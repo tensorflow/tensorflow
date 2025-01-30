@@ -246,8 +246,8 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf:master_proto_cc",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:retrying_utils",
+        "@local_xla//xla/tsl/platform:env",
     ],
     alwayslink = 1,
 )
