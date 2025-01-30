@@ -20,8 +20,8 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "xla/service/cpu/runtime_matmul.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/types.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"

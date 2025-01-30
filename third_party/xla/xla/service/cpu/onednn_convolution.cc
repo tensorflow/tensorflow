@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/service/cpu/onednn_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/onednn_threadpool.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace cpu {

@@ -15,8 +15,6 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 #define EIGEN_USE_THREADS
-#include "xla/service/cpu/cpu_runtime.h"
-
 #include <memory>
 #include <string>
 #include <tuple>
@@ -26,15 +24,16 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
+#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/runtime_custom_call_status.h"
 #include "xla/service/cpu/runtime_matmul.h"
 #include "xla/service/cpu/runtime_matmul_acl.h"
 #include "xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "xla/service/custom_call_status_internal.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/types.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {

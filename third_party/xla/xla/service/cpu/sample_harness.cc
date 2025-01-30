@@ -26,10 +26,10 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
 
 int main(int argc, char** argv) {
   tsl::port::InitMain(argv[0], &argc, &argv);
