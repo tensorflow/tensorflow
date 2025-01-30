@@ -202,8 +202,7 @@ Status PlanAndAlgorithms::ExecuteOnStream(
                                se::DeviceMemoryBase{},  // d_scale_buffer
                                se::DeviceMemoryBase{},  // d_amax_buffer
                                algorithms[algorithm_idx],
-                               std::nullopt,  // workspace
-                               &scratch_allocator, profile_result);
+                               scratch_allocator, profile_result);
 }
 
 }  // namespace tensorflow
