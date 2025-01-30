@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_XLA_CALL_MODULE_LOADER_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_XLA_CALL_MODULE_LOADER_H_
 
+#include <stdbool.h>
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -79,6 +81,9 @@ class XlaCallModuleLoader {
   // arguments.
   absl::Status RefineDynamicShapes(llvm::ArrayRef<xla::Shape> input_shapes);
 
+  // Returns true iff the output types are refined by RefineDynamicShapes.
+  bool IsOutputTypeRefined() { return output_types_refined_; };
+
   // Validates that the module only contains ops from valid dialects.
   absl::Status ValidateDialect();
 
@@ -123,6 +128,8 @@ class XlaCallModuleLoader {
   // disabled_checks attribute and the TF_XLA_FLAGS environment variable.
   std::vector<std::string> loading_disabled_checks_;
   mlir::func::FuncOp main_;
+  // Keeps track of whether the output types are refined by RefineDynamicShapes.
+  bool output_types_refined_ = false;
 };
 
 }  // namespace tensorflow

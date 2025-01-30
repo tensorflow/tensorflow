@@ -54,14 +54,12 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:framework",
         "//tensorflow/core/transforms/toposort:Pass",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -766,6 +764,7 @@ cc_library(
     ],
     deps = [
         ":tf_device_pass_inc_gen",
+        ":tf_pass_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
@@ -843,6 +842,8 @@ cc_library(
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@local_xla//xla/service:shape_inference",
         "@local_xla//xla/tsl/util:env_var",
+        "@stablehlo//:stablehlo_serialization",
+        "@stablehlo//:version",
     ],
 )
 

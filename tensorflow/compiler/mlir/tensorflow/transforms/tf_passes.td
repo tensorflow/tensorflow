@@ -334,6 +334,8 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
            "Maximum shape inference iterations">,
     Option<"input_arg_shapes_", "input-arg-shapes", "std::string", /*default=*/"",
            "Input tensor shapes. Shapes for different tensors are separated by ':', and dimension sizes for the same tensor are separated by ','">,
+    Option<"enable_stablehlo_propagation_", "enable-stablehlo-propagation", "bool", /*default=*/"false",
+           "Enables refined shape propagation to the StableHLO module inside XlaCallModule ops.">,
   ];
 }
 

@@ -101,7 +101,8 @@ CreateReplicateTensorListInitOpsPass();
 
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass(
-    ArrayRef<ArrayRef<int64_t>> input_shapes = {});
+    ArrayRef<ArrayRef<int64_t>> input_shapes = {},
+    bool enable_stablehlo_propagation = false);
 
 // Performs TF.data optimizations.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTFDataOptimizationPass();

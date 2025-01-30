@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -340,6 +341,9 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
       (version_ >= kVersionStartSupportShapeAssertions &&
        !IsShapeAssertionsCheckDisabled(loading_disabled_checks_));
 
+  // Store the original output types before shape refinement.
+  mlir::TypeRange original_output_types = OutputTypes();
+
   // RefinePolymorphicShapes will refine using the new static types and clean up
   // the shape_refinement_operand_wrapper custom calls.
   TF_RETURN_IF_ERROR(
@@ -347,6 +351,12 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
 
   if (VLOG_IS_ON(3)) {
     DumpMlirOpToFile("xla_call_module.after_shape_refinement", *module_);
+  }
+
+  // Mark the output types as refined if they are different from the original
+  // output types.
+  if (OutputTypes() != original_output_types) {
+    output_types_refined_ = true;
   }
 
   return absl::OkStatus();
