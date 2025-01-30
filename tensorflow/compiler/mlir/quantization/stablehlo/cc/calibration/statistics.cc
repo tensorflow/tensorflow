@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/statusor.h"
 
 namespace stablehlo::quantization {
 namespace {
