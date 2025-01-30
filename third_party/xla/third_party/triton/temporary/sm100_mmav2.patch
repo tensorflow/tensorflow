@@ -1,0 +1,13 @@
+diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+index 89e854108..0bd46f022 100644
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+@@ -26,7 +26,7 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
+   SmallVector<int> versionsSupported;
+   if (computeCapability < 75) {
+     versionsSupported = {1};
+-  } else if (computeCapability < 90) {
++  } else if (computeCapability < 90 || computeCapability >= 100) {
+     versionsSupported = {2};
+   } else if (computeCapability < 100) {
+     versionsSupported = {3, 2};
