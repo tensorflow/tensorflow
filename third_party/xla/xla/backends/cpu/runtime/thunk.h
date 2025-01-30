@@ -89,7 +89,11 @@ class Thunk {
     kTopK,
     kWhile,
     kXnnFusion,
+    NUMBER_OF_KINDS  // Must be the last enum value.
   };
+
+  constexpr static int64_t kNumKinds =
+      static_cast<int64_t>(Kind::NUMBER_OF_KINDS) - 1;  // Exclude kUnknown.
 
   struct Info {
     std::string op_name;

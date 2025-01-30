@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/runtime/thunk_serdes_proto.h"
+#include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 
 #include <cstddef>
 #include <cstdint>
