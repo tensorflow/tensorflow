@@ -1056,19 +1056,22 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorClient::CreateUninitializedBuffer(const Shape& shape,
-                                                    PjRtDevice* device) {
-  return CreateUninitializedBuffer(shape, device, nullptr);
+PjRtStreamExecutorClient::CreateUninitializedBuffer(
+    const Shape& shape, PjRtMemorySpace* memory_space) {
+  return CreateUninitializedBuffer(shape, memory_space, nullptr);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::CreateUninitializedBuffer(
-    const Shape& shape, PjRtDevice* device,
+    const Shape& shape, PjRtMemorySpace* memory_space,
     std::shared_ptr<BufferSequencingEvent> definition_event) {
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::CreateUninitializedBuffer");
   VLOG(1) << "PjRtStreamExecutorClient::CreateUninitializedBuffer: shape: "
-          << shape.ToString() << " device: " << device->DebugString();
+          << shape.ToString()
+          << " memory_space: " << memory_space->DebugString();
+  CHECK_EQ(memory_space->devices().size(), 1);
+  PjRtDevice* device = memory_space->devices().front();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                           ->GetLocalDeviceState());
@@ -1084,14 +1087,6 @@ PjRtStreamExecutorClient::CreateUninitializedBuffer(
                                 /*is_uninitialized_create=*/true, this,
                                 definition_event));
   return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
-}
-
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorClient::CreateUninitializedBuffer(
-    const Shape& shape, PjRtMemorySpace* memory_space) {
-  CHECK_EQ(memory_space->devices().size(), 1);
-  return CreateUninitializedBuffer(shape, memory_space->devices().front(),
-                                   nullptr);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>

@@ -386,7 +386,7 @@ TEST(TfrtCpuClientTest, CreateErrorBuffer) {
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer, client->CreateErrorBuffer(Internal("foobar"), shape,
-                                             client->addressable_devices()[0]));
+                                             client->memory_spaces()[0]));
   EXPECT_THAT(
       buffer->ToLiteralSync(),
       tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));

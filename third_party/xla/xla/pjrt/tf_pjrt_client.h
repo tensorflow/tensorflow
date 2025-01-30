@@ -275,7 +275,7 @@ class TfPjRtClient : public PjRtClient {
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtDevice* device) override {
+      const Shape& shape, PjRtMemorySpace* memory_space) override {
     return Unimplemented(
         "CreateUninitializedBuffer not supported for TfPjRtClient.");
   }
