@@ -46,6 +46,7 @@ limitations under the License.
 #include "llvm/TargetParser/Host.h"
 #include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/object_loader.h"
 #include "xla/backends/cpu/runtime/function_library.h"
@@ -148,15 +149,6 @@ absl::StatusOr<JitCompiler> JitCompiler::Create(
       options.num_dylibs, std::move(options.definition_generator));
 }
 
-static std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer>
-CreateObjectLinkingLayer(llvm::orc::ExecutionSession& execution_session) {
-  return std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
-      execution_session, [] {
-        return std::make_unique<ContiguousSectionMemoryManager>(
-            orc_jit_memory_mapper::GetInstance());
-      });
-}
-
 static std::unique_ptr<llvm::orc::IRCompileLayer> CreateCompileLayer(
     llvm::orc::ExecutionSession& execution_session,
     llvm::orc::RTDyldObjectLinkingLayer& object_layer,
@@ -175,34 +167,23 @@ JitCompiler::JitCompiler(
     : target_machine_builder_(std::move(target_machine_builder)),
       target_machine_(std::move(target_machine)),
       task_dispatcher_(task_dispatcher),
-      object_loader_(std::make_unique<ObjectLoader>(
-          std::move(execution_session), num_dylibs)),
-      compile_layer_(CreateCompileLayer(*object_loader_->execution_session(),
-                                        *object_loader_->object_layer(),
-                                        std::move(ir_compiler))),
-      gdb_(llvm::JITEventListener::createGDBRegistrationListener()),
-      perf_(llvm::JITEventListener::createPerfJITEventListener()) {
-  // TODO(basioli) the definition generator should be passed to the object
-  // loader, not the jit compiler, this is currently not done to avoid
-  // dependency on the target machine.
-  // This exists so that tests can pass.
+      execution_engine_(
+          std::make_unique<ExecutionEngine>(std::move(execution_session))),
+      compile_layer_(CreateCompileLayer(*execution_engine_->execution_session(),
+                                        *execution_engine_->object_layer(),
+                                        std::move(ir_compiler))) {
+  execution_engine_->AllocateDylibs(num_dylibs);
   if (definition_generator) {
-    for (size_t i = 0; i < object_loader_->num_dylibs(); ++i) {
-      object_loader_->dylib(i).value()->addGenerator(
+    for (size_t i = 0; i < execution_engine_->num_dylibs(); ++i) {
+      execution_engine_->dylib(i).value()->addGenerator(
           definition_generator(target_machine_.get()));
     }
   }
 
-  // Register GDB and perf event listeners with the object linking layer.
-  if (gdb_) object_loader_->object_layer()->registerJITEventListener(*gdb_);
-  if (perf_) object_loader_->object_layer()->registerJITEventListener(*perf_);
+  execution_engine_->RegisterJITEventListeners();
 
-  // Copied from LLJIT, required to find symbols on Windows.
   if (target_machine_->getTargetTriple().isOSBinFormatCOFF()) {
-    object_loader_->object_layer()
-        ->setOverrideObjectFlagsWithResponsibilityFlags(true);
-    object_loader_->object_layer()->setAutoClaimResponsibilityForObjectSymbols(
-        true);
+    execution_engine_->SetObjectLayerFlags();
   }
 }
 
@@ -218,7 +199,7 @@ absl::Status JitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
 
   // Add module to the selected dynamic library.
   TF_ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
-                      object_loader_->dylib(dylib_index));
+                      execution_engine_->dylib(dylib_index));
   if (auto err = compile_layer_->add(*dylib, std::move(module))) {
     return Internal("Failed to add module to dylib %d: %s", dylib_index,
                     llvm::toString(std::move(err)));
@@ -227,23 +208,19 @@ absl::Status JitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
   return absl::OkStatus();
 }
 
-absl::Status JitCompiler::AddObjFile(
-    std::unique_ptr<llvm::MemoryBuffer> obj_file, size_t dylib_index) {
-  return object_loader_->AddObjFile(std::move(obj_file), dylib_index);
-}
-
 absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
     absl::Span<const Symbol> symbols) && {
   TraceMe trace([&] {
     return TraceMeEncode("JitCompiler::Compile",
                          {{"num_symbols", symbols.size()}});
   });
+  ObjectLoader object_loader(std::move(execution_engine_));
   llvm::DataLayout data_layout = target_machine_->createDataLayout();
   TF_ASSIGN_OR_RETURN(auto symbol_map,
-                      object_loader_->LookupSymbols(symbols, data_layout));
+                      object_loader.LookupSymbols(symbols, data_layout));
   // Wait for all compilation tasks to finish.
   task_dispatcher_->shutdown();
-  return std::move(*object_loader_)
+  return std::move(object_loader)
       .CreateFunctionLibrary(std::move(symbols), data_layout, symbol_map);
 }
 

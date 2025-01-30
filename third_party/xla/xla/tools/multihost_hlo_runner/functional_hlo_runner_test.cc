@@ -91,6 +91,23 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHlo) {
       running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
 }
 
+TEST_F(FunctionalHloRunnerTest, SingleDeviceHloThroughStableHlo) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  preproc_options.compile_as_stablehlo = true;
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 1;
+  FunctionalHloRunner::RunningOptions running_options;
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
 TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithExecutionProfile) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
                           GetPjRtClient());

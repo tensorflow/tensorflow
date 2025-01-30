@@ -44,13 +44,6 @@ namespace tensorflow {
 
 inline constexpr absl::string_view kImportModelDefaultGraphFuncName = "main";
 
-// Given a GraphDef, returns a MLIR module containing the graph, expressed with
-// tf_executor dialect.
-ABSL_DEPRECATED("Use tensorflow::tf2xla::v2::ConvertGraphToTfExecutor instead.")
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
-    const GraphDef& graphdef, const GraphDebugInfo& debug_info,
-    const GraphImportConfig& specs, mlir::MLIRContext* context);
-
 // Given a SavedModel, returns a MLIR module containing the functions, expressed
 // with tf_executor dialect.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(
