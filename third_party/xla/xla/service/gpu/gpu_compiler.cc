@@ -943,33 +943,33 @@ absl::Status RunCollectiveOptimizationPasses(
 
   collectives_pipeline.AddPass<ReduceScatterCreator>();
 
-  collectives_pipeline.AddPass<CollectivePermuteCycleDecomposer>(
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_collective_permute_decomposer_threshold());
+  DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level =
+      debug_options.xla_gpu_experimental_pipeline_parallelism_opt_level();
+  if (pipeline_parallelism_opt_level ==
+          DebugOptions::
+              PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER ||
+      debug_options.xla_gpu_enable_pipelined_p2p()) {
+    collectives_pipeline.AddPass<CollectivePermuteCycleDecomposer>(
+        debug_options.xla_gpu_collective_permute_decomposer_threshold());
+  }
 
-  if (hlo_module->config()
-              .debug_options()
-              .xla_gpu_experimental_pipeline_parallelism_opt_level() !=
-          DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE ||
-      hlo_module->config().debug_options().xla_gpu_enable_pipelined_p2p()) {
+  if (pipeline_parallelism_opt_level ==
+      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER) {
     collectives_pipeline.AddPass<CollectiveSelectFolder>();
   }
 
-  collectives_pipeline.AddPass<CollectivePermuteDecomposer>(
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_collective_permute_decomposer_threshold());
+  if (pipeline_parallelism_opt_level !=
+          DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE ||
+      debug_options.xla_gpu_enable_pipelined_p2p()) {
+    collectives_pipeline.AddPass<CollectivePermuteDecomposer>(
+        debug_options.xla_gpu_collective_permute_decomposer_threshold());
+  }
 
   bool enable_partial_send_recv_pipelining =
-      hlo_module->config()
-          .debug_options()
-          .xla_gpu_experimental_pipeline_parallelism_opt_level() !=
+      pipeline_parallelism_opt_level !=
       DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE;
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_enable_pipelined_collectives() ||
-      hlo_module->config().debug_options().xla_gpu_enable_pipelined_p2p() ||
+  if (debug_options.xla_gpu_enable_pipelined_collectives() ||
+      debug_options.xla_gpu_enable_pipelined_p2p() ||
       enable_partial_send_recv_pipelining) {
     AddP2PPipeliner(collectives_pipeline, enable_partial_send_recv_pipelining);
   }
