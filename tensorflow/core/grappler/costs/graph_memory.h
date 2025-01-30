@@ -16,11 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_MEMORY_H_
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_MEMORY_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <unordered_map>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 
 namespace tensorflow {
 namespace grappler {

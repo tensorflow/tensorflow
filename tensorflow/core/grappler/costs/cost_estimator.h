@@ -16,13 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 
+#include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <limits>
+#include <ostream>
 #include <string>
 #include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
