@@ -17,11 +17,11 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_NCCL_ALL_TO_ALL_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -82,9 +82,12 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
   int64_t device_count_ = 1;
   bool p2p_memcpy_enabled_ = false;
   absl::Mutex pointer_maps_mutex_;
-  absl::node_hash_map<int64_t, absl::flat_hash_map<int64_t, uint64_t>>
-      send_pointer_maps_ ABSL_GUARDED_BY(pointer_maps_mutex_);
-  absl::node_hash_map<int64_t, absl::flat_hash_map<int64_t, uint64_t>>
+  // Maps from a device_ordinal to an array of size num_devices. The array is
+  // set and used in each call to RunNcclCollective(), but is preallocated
+  // and registered as CUDA host memory in Initialize().
+  absl::flat_hash_map<int64_t, std::unique_ptr<uint64_t[]>> send_pointer_maps_
+      ABSL_GUARDED_BY(pointer_maps_mutex_);
+  absl::flat_hash_map<int64_t, std::unique_ptr<uint64_t[]>>
       receive_pointer_maps_ ABSL_GUARDED_BY(pointer_maps_mutex_);
 };
 
@@ -92,12 +95,12 @@ absl::Status RunAllToAll(GpuCollectives* collectives, bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
                          se::Stream& stream, Communicator* comm);
 
-absl::Status RunMemCpyAllToAll(
-    GpuCollectives* collectives, bool has_split_dimension,
-    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    Communicator* comm,
-    absl::flat_hash_map<int64_t, uint64_t>& send_pointer_map,
-    absl::flat_hash_map<int64_t, uint64_t>& receive_pointer_map);
+absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
+                               bool has_split_dimension,
+                               std::vector<DeviceBufferPair>& buffers,
+                               se::Stream& stream, Communicator* comm,
+                               uint64_t send_pointer_map[],
+                               uint64_t receive_pointer_map[]);
 
 }  // namespace gpu
 }  // namespace xla
