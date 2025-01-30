@@ -4938,6 +4938,34 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
       sliding window size.
     data_format: An optional string from: "NWC", "NCW". Defaults to "NWC".
     name: A name for the operation (optional).
+    
+  Example Usage:
+
+  ```python
+  import tensorflow as tf
+
+
+  input_tensor = tf.constant(
+    [
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]], 
+        [[13, 14, 15], [16, 17, 18], [19, 20, 21], [22, 23, 24]],
+    ],
+   dtype=tf.float32)
+   print("Input Tensor Shape:", input_tensor.shape) 
+
+   ksize = 2  
+   strides = 2  
+   padding = 'VALID'  
+
+   output_tensor = tf.nn.max_pool1d(
+   input=input_tensor,
+   ksize=ksize,
+   strides=strides,
+   padding=padding,
+   data_format='NWC',)
+   print("Output Tensor Shape:", output_tensor.shape) # Output will vary based on padding
+   print("Output Tensor:\n", output_tensor.numpy())
+  ```
 
   Returns:
     A `Tensor` of format specified by `data_format`.
