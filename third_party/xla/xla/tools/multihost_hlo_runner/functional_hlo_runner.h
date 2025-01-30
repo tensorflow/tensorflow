@@ -180,6 +180,10 @@ class FunctionalHloRunner {
     // If set, used as default predicate value for predicated conditional ops.
     bool conditional_value = false;
 
+    // If set, convert the module to StableHLO before passing to PjRt for
+    // compilation.
+    bool compile_as_stablehlo = false;
+
     // Should we flatten all while loops?
     bool flatten_while_loop() const {
       return while_execution_count.has_value();

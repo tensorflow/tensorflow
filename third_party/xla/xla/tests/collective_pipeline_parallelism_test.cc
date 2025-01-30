@@ -43,7 +43,8 @@ namespace {
 // within Google, see go/multi-gpu-unit-test.
 class CollectivePipelineParallelismTest
     : public HloTestBase,
-      public ::testing::WithParamInterface<bool> {
+      public ::testing::WithParamInterface<
+          DebugOptions::PipelineParallelismOptLevel> {
  public:
   CollectivePipelineParallelismTest() {
     VLOG(1) << "Running with " << num_devices() << " devices";
@@ -56,7 +57,7 @@ class CollectivePipelineParallelismTest
 
     // Set debug options.
     DebugOptions debug_options = GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_pipeline_parallelism_opt(
+    debug_options.set_xla_gpu_experimental_pipeline_parallelism_opt_level(
         GetParam());
     config.set_debug_options(debug_options);
 
@@ -1675,9 +1676,14 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
       ErrorSpec{/*abs_error=*/1e-5, /*rel_error=*/1e-5}));
 }
 
-INSTANTIATE_TEST_SUITE_P(CollectivePipelineParallelismTestWithAndWithoutOpts,
-                         CollectivePipelineParallelismTest, ::testing::Bool(),
-                         ::testing::PrintToStringParamName());
+INSTANTIATE_TEST_SUITE_P(
+    CollectivePipelineParallelismTestWithAndWithoutOpts,
+    CollectivePipelineParallelismTest,
+    ::testing::ValuesIn(
+        {DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE,
+         DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE,
+         DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER}),
+    ::testing::PrintToStringParamName());
 
 }  // namespace
 }  // namespace xla
