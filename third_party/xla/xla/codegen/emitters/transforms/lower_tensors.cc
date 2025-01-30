@@ -296,9 +296,10 @@ Value GetLinearIndex(ValueRange indices, mlir::ImplicitLocOpBuilder& b) {
 
 std::tuple<Value, Value> GetI4IndexAndNibble(Value linear_index,
                                              mlir::ImplicitLocOpBuilder& b) {
+  Value zero = b.create<mlir::arith::ConstantIntOp>(0, linear_index.getType());
   Value one = b.create<mlir::arith::ConstantIntOp>(1, linear_index.getType());
   Value is_low_nibble = b.create<mlir::arith::CmpIOp>(
-      mlir::arith::CmpIPredicate::eq, one,
+      mlir::arith::CmpIPredicate::eq, zero,
       b.create<mlir::arith::AndIOp>(linear_index, one));
   Value i8_index = b.create<mlir::arith::ShRUIOp>(linear_index, one);
   return {i8_index, is_low_nibble};
@@ -362,22 +363,6 @@ struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
   }
 };
 
-// Swaps pairs of values in the vector: [0, 1, 2, 3] -> [1, 0, 3, 2].
-Value PermutePairsInVector(Value vector, mlir::ImplicitLocOpBuilder& b) {
-  // There is a `vector.extract_strided_slice` op that would be useful here, but
-  // it actually requires the strides to be 1.
-  auto ty = mlir::cast<mlir::VectorType>(vector.getType());
-  int size = ty.getNumElements();
-  Value result = vector;
-  for (int i = 0; i < size; i += 2) {
-    auto v0 = b.create<vector::ExtractOp>(vector, i);
-    auto v1 = b.create<vector::ExtractOp>(vector, i + 1);
-    result = b.create<vector::InsertOp>(v1, result, i);
-    result = b.create<vector::InsertOp>(v0, result, i + 1);
-  }
-  return result;
-}
-
 struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -414,11 +399,6 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
       Value zero = b.create<mlir::arith::ConstantOp>(
           mlir::DenseElementsAttr::get(vector_type, b.getI8IntegerAttr(0)));
       loaded = b.create<arith::CmpIOp>(arith::CmpIPredicate::ne, loaded, zero);
-    } else if (source_element_type.isIntOrFloat() &&
-               source_element_type.getIntOrFloatBitWidth() == 4) {
-      // LLVM and XLA pack i4s in opposite order, so we have to reshuffle the
-      // elements.
-      loaded = PermutePairsInVector(loaded, b);
     }
 
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
@@ -537,9 +517,6 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
       linear_index = b.create<arith::ShRUIOp>(
           linear_index,
           b.create<arith::ConstantIntOp>(1, linear_index.getType()));
-      // LLVM and XLA pack i4s in opposite order, so we have to reshuffle the
-      // elements.
-      vector_value = PermutePairsInVector(vector_value, b);
     }
     auto gep = CreateGep(tensor_dest, linear_index, b);
 
