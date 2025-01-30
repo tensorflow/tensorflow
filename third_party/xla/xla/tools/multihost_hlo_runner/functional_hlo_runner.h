@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -82,6 +83,51 @@ class ProfilerInterface {
 class XSpaceProfilerInterface : public ProfilerInterface {
  public:
   virtual const tensorflow::profiler::XSpace* GetXSpace() = 0;
+};
+
+// GPURunnerProfiler is a profiler plugin that using tsl::ProfilerSession to
+// profile GPU execution and allows programmable control of
+// profiling sessions for the MultihostHloRunner. It needs to be created after
+// PJRT client is initialized. Example usage:
+//
+//   TF_ASSIGN_OR_RETURN(
+//       env, xla::GetPjRtEnvironmentForGpu(...)));
+//   if (env.client != nullptr) {
+//     TF_ASSIGN_OR_RETURN(auto profiler, GPURunnerProfiler::Create());
+//   }
+//   profiler.CreateSession();
+//   ...
+//   profiler.UploadSession();
+class GPURunnerProfiler : public XSpaceProfilerInterface {
+ public:
+  // Factory method to create a GPURunnerProfiler with profile result dump path.
+  // If keep_xspace is true, the XSpace proto can be retrieved
+  // by GetXSpace() after UploadSession() is called, which can be used by
+  // caller to get a programmatic handler of the profile data and create XProf.
+  static absl::StatusOr<std::unique_ptr<GPURunnerProfiler>> Create(
+      absl::string_view dump_path, bool keep_xspace = false);
+
+  // Default ctor.
+  explicit GPURunnerProfiler(absl::string_view dump_path, bool keep_xspace);
+
+  // Start a new profiling session.
+  void CreateSession() override;
+
+  // Stop the current profiling session.
+  void UploadSession() override;
+
+  // Returns the XSpace proto.
+  const tensorflow::profiler::XSpace* GetXSpace() override;
+
+ private:
+  // The file path to dump the profiling result.
+  std::string dump_path_;
+  // Whether to keep the XSpace proto after UploadSession() is called.
+  bool keep_xspace_;
+  // The profiler session.
+  std::unique_ptr<tsl::ProfilerSession> session_;
+  // The XSpace proto to be returned by GetXSpace().
+  std::unique_ptr<tensorflow::profiler::XSpace> xspace_;
 };
 
 bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
@@ -216,6 +262,8 @@ class FunctionalHloRunner {
     std::string xla_dump_to = "";
     XlaTextDumpMode xla_text_dump_mode = XlaTextDumpMode::kNotDumpAsText;
     XlaProtoDumpMode xla_proto_dump_mode = XlaProtoDumpMode::kNotDumpAsProto;
+    // A directory to dump xspace data to (GPU profiler only).
+    std::string xla_gpu_dump_xspace_to = "";
   };
 
   // The options controlling the execution of the HLO module.

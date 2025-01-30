@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/init_main.h"
@@ -103,6 +104,7 @@ struct HloRunnerConfig {
   int64_t gpu_client_initialization_timeout_sec = 300;
   float gpu_client_mem_fraction = xla::GpuAllocatorConfig{}.memory_fraction;
   bool profile_execution = false;
+  std::string xla_gpu_dump_xspace_to = "";
 };
 
 }  // namespace
@@ -201,6 +203,7 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
       opts.xla_dump_as_proto
           ? FunctionalHloRunner::XlaProtoDumpMode::kDumpAsProto
           : FunctionalHloRunner::XlaProtoDumpMode::kNotDumpAsProto;
+  out.xla_gpu_dump_xspace_to = opts.xla_gpu_dump_xspace_to;
   return out;
 }
 
@@ -242,6 +245,14 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
         env, xla::GetPjRtEnvironmentForGpu(
                  opts.address_str, gpu_options,
                  absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
+    // Create a GPURunnerProfiler to profile GPU executions to save xspace data
+    // to disk.
+    if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
+      TF_ASSIGN_OR_RETURN(auto profiler,
+                          GPURunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
+                                                    /*keep_xspace=*/false));
+      running_options.profiler = profiler.get();
+    }
   } else if (opts.device_type_str == "host") {
     TF_ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
   } else {
@@ -354,9 +365,10 @@ int main(int argc, char** argv) {
                 "The maximum fraction of available memory to allocate in range "
                 "of (0.0, 1.0). Same as XLA_CLIENT_MEM_FRACTION in the Python "
                 "client. Only used with the BFC allocator."),
-      tsl::Flag(
-          "profile_execution", &opts.profile_execution,
-          "If set, we will profile the execution and print the results.")};
+      tsl::Flag("profile_execution", &opts.profile_execution,
+                "If set, we will profile the execution and print the results."),
+      tsl::Flag("xla_gpu_dump_xspace_to", &opts.xla_gpu_dump_xspace_to,
+                "A directory to dump xspace data for GPU profiling.")};
 
   xla::AppendDebugOptionsFlags(&flag_list);
 

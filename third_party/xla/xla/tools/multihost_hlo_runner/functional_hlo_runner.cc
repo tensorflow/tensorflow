@@ -66,14 +66,14 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_control_flow_flattening.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/profiler_session.h"
 
 namespace xla {
 
@@ -1593,6 +1593,44 @@ FunctionalHloRunner::FetchAndLogOutput(
     }
   }
   return outputs;
+}
+
+GPURunnerProfiler::GPURunnerProfiler(absl::string_view dump_path,
+                                     bool keep_xspace)
+    : dump_path_(dump_path), keep_xspace_(keep_xspace) {}
+
+absl::StatusOr<std::unique_ptr<GPURunnerProfiler>> GPURunnerProfiler::Create(
+    absl::string_view dump_path, bool keep_xspace) {
+  if (dump_path.empty()) {
+    return absl::InvalidArgumentError(
+        "Please provide a valid dump path to save XSpace results to disk.");
+  }
+  return std::make_unique<GPURunnerProfiler>(dump_path, keep_xspace);
+}
+
+void GPURunnerProfiler::CreateSession() {
+  auto options = tsl::ProfilerSession::DefaultOptions();
+  options.set_device_type(tensorflow::ProfileOptions::GPU);
+  session_ = tsl::ProfilerSession::Create(options);
+}
+
+void GPURunnerProfiler::UploadSession() {
+  xspace_ = std::make_unique<tensorflow::profiler::XSpace>();
+  // Stops the ProfilerSession
+  TF_CHECK_OK(session_->CollectData(xspace_.get()));
+
+  CHECK(!dump_path_.empty());
+
+  LOG(INFO) << "Saving xspace result to " << dump_path_;
+  // Save in binary format to create xprof sessions and extract device stats.
+  CHECK_OK(WriteBinaryProto(tsl::Env::Default(), dump_path_, *xspace_.get()));
+  if (!keep_xspace_) {
+    xspace_ = nullptr;
+  }
+}
+
+const tensorflow::profiler::XSpace* GPURunnerProfiler::GetXSpace() {
+  return xspace_.get();
 }
 
 }  // namespace xla
