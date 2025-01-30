@@ -42,7 +42,7 @@ fi
 tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_BASE_ARGS $TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG
 
 tfrun "$TFCI_FIND_BIN" ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $TFCI_OUTPUT_DIR \;
-tfrun mkdir ./dist
+tfrun mkdir -p ./dist
 tfrun cp $TFCI_OUTPUT_DIR/*.whl ./dist
 tfrun bash ./ci/official/utilities/rename_and_verify_wheels.sh
 
