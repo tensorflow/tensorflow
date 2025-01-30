@@ -211,6 +211,8 @@ CheckCyclePatterns(HloCollectivePermuteInstruction* cp0,
 // deco_post_order is expected to be post order within a computation.
 // TODO b/388072780 add second hueristic to enforce back edge before the forward
 // edge for max performance.
+// TODO(b/392684119): Also add control dependencies to conflicting collectives
+// other than send/recv.
 absl::Status EnforceOrderOfSendRecvChains(
     std::vector<DecomposedCp>& deco_post_order) {
   for (size_t i = 1; i < deco_post_order.size(); ++i) {
