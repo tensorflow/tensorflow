@@ -36,11 +36,10 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
-
 using CycleType = SourceTargetPairs::CycleType;
-
 // Finds and returns the non-constant operand in instr.
 // CHECK-fails if instr doesn't have exactly one unique non-constant operand.
 static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
@@ -96,23 +95,15 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
         continue;
       }
 
-      if (inst->frontend_attributes().map().find(kSendRecvValidationAttr) !=
-          inst->frontend_attributes().map().end()) {
+      if (inst->frontend_attributes().map().contains(kSendRecvValidationAttr)) {
         continue;
       }
-      auto sourceTargetPairs = inst->source_target_pairs();
-      if (GetCycleTypeAndIndices(sourceTargetPairs).first ==
-          CycleType::kUnknown) {
+      SourceTargetPairs::CycleType cycleType =
+          GetCycleTypeAndIndices(inst->source_target_pairs()).first;
+
+      if (cycleType == CycleType::kUnknown) {
         continue;
       }
-
-      VLOG(2) << "Collective permute with cycle: " << inst->ToString();
-
-      int64_t max_device_num = -1;
-      for (auto [source, target] : sourceTargetPairs) {
-        max_device_num = std::max(std::max(source, target), max_device_num);
-      }
-      int64_t num_devices = max_device_num + 1;
 
       HloInstruction* whileOp = inst->parent()->WhileCallInstruction();
       if (whileOp == nullptr) {
@@ -120,8 +111,10 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
         continue;
       }
       if (!whileOp->frontend_attributes().map().contains(
-              "is_pipelined_while_loop"))
+              "is_pipelined_while_loop")) {
         continue;
+      }
+
       TF_ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
                           whileOp->backend_config<WhileLoopBackendConfig>());
       if (!config.has_known_trip_count()) {
@@ -148,33 +141,21 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
       // where offset is `number of microbatches * CR - 1`. We know that
       // `trip_count = number_of_microbatches * CR + num_devices - 1` So, offset
       // = number_of_microbatches * CR - 1 = trip_count - num_devices.
+      SourceTargetPairs sourceTargetPairs(inst->source_target_pairs());
+      int64_t num_devices = sourceTargetPairs.GetMaxDeviceNum() + 1;
       int64_t offset = trip_count - num_devices;
-
-      std::vector<std::pair<int64_t, int64_t>> sendRecvValidation(
-          sourceTargetPairs.size());
-
-      for (size_t currIdx = 0; currIdx < sourceTargetPairs.size(); currIdx++) {
-        sendRecvValidation[currIdx] = {currIdx, currIdx + offset};
+      SourceTargetPairs sendRecvValidation;
+      for (int64_t currIdx = 0; currIdx < sourceTargetPairs.size(); currIdx++) {
+        sendRecvValidation.emplace_back(currIdx, currIdx + offset);
       }
 
-      if (GetCycleTypeAndIndices(sourceTargetPairs).first ==
-          CycleType::kBackward) {
-        std::reverse(sendRecvValidation.begin(), sendRecvValidation.end());
+      if (cycleType == CycleType::kBackward) {
+        std::reverse(sendRecvValidation.data().begin(),
+                     sendRecvValidation.data().end());
       }
-
-      std::string iteration_instances =
-          "{" +
-          absl::StrJoin(sendRecvValidation, ",",
-                        [](std::string* out, std::pair<int64_t, int64_t> item) {
-                          absl::StrAppend(out, "{", item.first, ",",
-                                          item.second, "}");
-                        }) +
-          "}";
 
       inst->set_frontend_attribute(kSendRecvValidationAttr,
-                                   iteration_instances);
-      VLOG(1) << "Adding " << kSendRecvValidationAttr << " to " << inst->name()
-              << ": " << iteration_instances;
+                                   sendRecvValidation.ToString());
       changed = true;
     }
   }

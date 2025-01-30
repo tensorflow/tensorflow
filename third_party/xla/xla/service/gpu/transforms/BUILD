@@ -593,6 +593,7 @@ cc_library(
     hdrs = ["collective_permute_valid_iteration_annotator.h"],
     deps = [
         "//xla:literal_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:while_loop_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",

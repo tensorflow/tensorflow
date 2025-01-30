@@ -39,20 +39,25 @@ class SourceTargetPairs {
   struct SourceTargetPair {
     int64_t source;
     int64_t target;
+    SourceTargetPair() = default;
+    SourceTargetPair(int64_t s, int64_t t) : source(s), target(t) {}
     bool operator==(const SourceTargetPair& other) const {
       return source == other.source && target == other.target;
     }
   };
 
+  // TODO: b/388623407 - rename kUnknown to kNone
   enum class CycleType { kUnknown, kForward, kBackward };
+
   using STVector = absl::InlinedVector<SourceTargetPair, kInlineFactor>;
 
   SourceTargetPairs() = default;
+  explicit SourceTargetPairs(size_t size) : pairs_(size) {};
 
   explicit SourceTargetPairs(
       const std::vector<std::pair<int64_t, int64_t>>& pairs) {
     for (const auto& pair : pairs) {
-      pairs_.push_back({.source = pair.first, .target = pair.second});
+      emplace_back(pair.first, pair.second);
     }
   }
 
@@ -84,8 +89,8 @@ class SourceTargetPairs {
   }
 
   int64_t size() const { return pairs_.size(); }
-  void push_back(int64_t source, int64_t target) {
-    pairs_.push_back({.source = source, .target = target});
+  void emplace_back(int64_t source, int64_t target) {
+    pairs_.emplace_back(source, target);
   }
   void push_back(const SourceTargetPair& pair) { pairs_.push_back(pair); }
 
@@ -98,14 +103,26 @@ class SourceTargetPairs {
     return data;
   }
 
-  // Returns true if the (source, target) relationship has a cycle.
-  bool HasCycles();
-
   // Splits input into backward (first) and forwards (second) edges.
   // In backward cycle, backwards edge is the first element and in forwards
   // cycle, backward edge is the last element.
   std::pair<SourceTargetPairs, SourceTargetPairs> SplitEdges(
       CycleType cycle_type) const;
+
+  // Returns the cycle type of this source-target pairs.
+  // TODO: b/388623407 - remove assumptions that pairs are ordered and 0 based.
+  CycleType GetCycleType() const;
+  bool IsForwardCycle() const;
+  bool IsBackwardCycle() const;
+  bool HasCycles() const { return GetCycleType() != CycleType::kUnknown; }
+
+  int64_t GetMaxDeviceNum() const {
+    int64_t max_device_num = -1;
+    for (auto [source, target] : pairs_) {
+      max_device_num = std::max(std::max(source, target), max_device_num);
+    }
+    return max_device_num;
+  }
 
   // Returns true if the (source, target) pairs form a forward cycle with all
   // participants in the cycle, such as {{0,1},{1,2},{2,3},{3,0}}. We assume

@@ -53,35 +53,11 @@ absl::StatusOr<SourceTargetPairs> SourceTargetPairs::FromString(
     if (group.replica_ids_size() != 2) {
       return Internal("Incorrect element size : %s", str);
     }
-    res.push_back(group.replica_ids(0), group.replica_ids(1));
+    res.emplace_back(group.replica_ids(0), group.replica_ids(1));
   }
   return res;
 }
 
-namespace {
-int32_t GetNodeId(int64_t replica, GraphCycles& graph,
-                  absl::flat_hash_map<int64_t, int32_t>& map) {
-  if (!map.contains(replica)) {
-    map.emplace(replica, graph.NewNode());
-  }
-  return map.at(replica);
-}
-}  // namespace
-
-bool SourceTargetPairs::HasCycles() {
-  GraphCycles graph;
-  absl::flat_hash_map<int64_t, int32_t> replica_to_node_id;
-  for (const SourceTargetPair& pair : pairs_) {
-    const int source = GetNodeId(pair.source, graph, replica_to_node_id);
-    const int target = GetNodeId(pair.target, graph, replica_to_node_id);
-    if (!graph.InsertEdge(source, target)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-// TODO: b/388623407 - remove assumptions that pairs are ordered and 0 based.
 bool SourceTargetPairs::IsForwardCycle(const SourceTargetPairs& backedge,
                                        const SourceTargetPairs& others) {
   if (backedge.size() != 1) {
@@ -130,6 +106,54 @@ std::pair<SourceTargetPairs, SourceTargetPairs> SourceTargetPairs::SplitEdges(
     }
   }
   return {back, fwd};
+}
+
+// cannonical forward: {{0,1},{1,2},{2,3},{3,0}}
+bool SourceTargetPairs::IsForwardCycle() const {
+  size_t size = pairs_.size();
+  if (size <= 1) return false;
+  if (pairs_[size - 1].target != pairs_[0].source) {
+    return false;
+  }
+  for (int64_t i = 0; i < size - 1; ++i) {
+    int64_t expected_next = pairs_[i].source + 1;
+    if (pairs_[i].target != expected_next ||
+        pairs_[i + 1].source != expected_next) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// cannonical backward: {{0,3},{1,0},{2,1},{3,2}}
+bool SourceTargetPairs::IsBackwardCycle() const {
+  size_t size = pairs_.size();
+  if (size <= 1) return false;
+  if (pairs_[0].target != pairs_[size - 1].source) {
+    return false;
+  }
+  for (int64_t i = size - 1; i > 0; --i) {
+    int64_t expected_next = pairs_[i].source - 1;
+    if (pairs_[i].target != expected_next ||
+        pairs_[i - 1].source != expected_next) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Assumptions: pairs are ordered and 0 based; there is only cycle type and all
+// elements participating in it.
+SourceTargetPairs::CycleType SourceTargetPairs::GetCycleType() const {
+  if (this->size() > 1) {
+    if (IsForwardCycle()) {
+      return CycleType::kForward;
+    }
+    if (IsBackwardCycle()) {
+      return CycleType::kBackward;
+    }
+  }
+  return CycleType::kUnknown;
 }
 
 }  // namespace xla
