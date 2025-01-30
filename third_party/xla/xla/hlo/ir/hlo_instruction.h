@@ -2114,6 +2114,16 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       const std::string& suffix, HloCloneContext* context = nullptr) const;
 
+  // Implementation for non-common logic of CloneWithNewOperands.
+  // CloneWithNewOperands forwards to this method for some of the intstruction
+  // types.
+  virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const {
+    // TODO(b/80131774): This should be pure virtual.
+    LOG(FATAL) << "Unimplemented method.";
+  }
+
   // Returns the computations this instruction directly calls (if any).
   const PtrVec<HloComputation*>& called_computations() const {
     return rare()->called_computations;
@@ -2243,6 +2253,7 @@ class HloInstruction {
     backend_config_ = BackendConfigWrapper(other->backend_config_);
   }
 
+  // Replaces the frontend attributes with the provided argument.
   void set_frontend_attributes(FrontendAttributes frontend_attributes) {
     if (!has_rare() && frontend_attributes.map().empty()) {
       return;
@@ -2250,14 +2261,28 @@ class HloInstruction {
     mutable_rare()->frontend_attributes = std::move(frontend_attributes);
   }
 
-  // Appends the given frontend attributes to the existing ones. If existing
-  // frontend attributes are empty, then create it and set it to the provided
-  // one.
+  // Adds attributes only if they not already present in the HloInstruction.
+  // Skips all atributes already present in the HloInstruction.
   void add_frontend_attributes(FrontendAttributes frontend_attributes) {
     if (!frontend_attributes.map().empty()) {
       mutable_rare()->frontend_attributes.mutable_map()->insert(
           frontend_attributes.map().begin(), frontend_attributes.map().end());
     }
+  }
+
+  // Adds a single attribute only if it not already present in the
+  // HloInstruction. Returns false if the attribute was already present.
+  bool add_frontend_attribute(const std::string& key,
+                              const std::string& value) {
+    auto it =
+        mutable_rare()->frontend_attributes.mutable_map()->insert({key, value});
+    return it.second;
+  }
+
+  // Adds or overrides a single attribute in the HloInstruction.
+  void set_frontend_attribute(const std::string& key,
+                              const std::string& value) {
+    (*mutable_rare()->frontend_attributes.mutable_map())[key] = value;
   }
 
   bool has_frontend_attributes() const {
@@ -2266,6 +2291,15 @@ class HloInstruction {
 
   const FrontendAttributes& frontend_attributes() const {
     return rare()->frontend_attributes;
+  }
+
+  std::optional<std::string> get_frontend_attribute(
+      const std::string& key) const {
+    auto it = rare()->frontend_attributes.map().find(key);
+    if (it == rare()->frontend_attributes.map().end()) {
+      return std::nullopt;
+    }
+    return it->second;
   }
 
   void set_is_composite(bool is_composite) {
@@ -2797,14 +2831,6 @@ class HloInstruction {
       bool layout_sensitive, bool sharding_sensitive,
       bool ignore_channel_id_values,
       bool ignore_commutative_operand_order) const;
-
-  // Implementation for non-common logic of CloneWithNewOperands.
-  virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
-      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-      HloCloneContext* context) const {
-    // TODO(b/80131774): This should be pure virtual.
-    LOG(FATAL) << "Unimplemented method.";
-  }
 
   // Implementation for non-common logic of PrintExtraAttributes.
   virtual void PrintExtraAttributesImpl(AttributePrinter& printer,

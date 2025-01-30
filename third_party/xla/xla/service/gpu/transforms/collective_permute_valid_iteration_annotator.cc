@@ -143,7 +143,6 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
         std::reverse(sendRecvValidation.begin(), sendRecvValidation.end());
       }
 
-      xla::FrontendAttributes attributes;
       std::string iteration_instances =
           "{" +
           absl::StrJoin(sendRecvValidation, ",",
@@ -152,10 +151,9 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
                                           item.second, "}");
                         }) +
           "}";
-      (*attributes.mutable_map())[kSendRecvValidationAttr] =
-          iteration_instances;
 
-      inst->add_frontend_attributes(attributes);
+      inst->set_frontend_attribute(kSendRecvValidationAttr,
+                                   iteration_instances);
       VLOG(1) << "Adding " << kSendRecvValidationAttr << " to " << inst->name()
               << ": " << iteration_instances;
       changed = true;
