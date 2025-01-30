@@ -302,7 +302,9 @@ class PyArray : public nanobind::object {
  private:
   absl::StatusOr<PyArray> AssertUnsharded(absl::string_view api);
 
-  void CheckAndRearrange();
+  nanobind::object CheckAndRearrange(absl::Span<const PyArray> py_arrays,
+                                     nanobind::object sharding,
+                                     nanobind::object aval);
 
   void SetIfrtArray(tsl::RCReference<ifrt::Array> ifrt_array);
 
