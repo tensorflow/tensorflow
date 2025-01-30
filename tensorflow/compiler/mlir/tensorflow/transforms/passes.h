@@ -176,6 +176,11 @@ struct StandardPipelineOptions
   Option<bool> form_clusters{*this, "form-clusters",
                              llvm::cl::desc("Enable Cluster Formation pass."),
                              llvm::cl::init(false)};
+  Option<bool> enable_stablehlo_shape_propagation{
+      *this, "enable-stablehlo-shape-propagation",
+      llvm::cl::desc(
+          "Enable StableHLO shape propagation in the TF shape inference pass."),
+      llvm::cl::init(false)};
 };
 
 // Propagates the pass manager with the passes involved in transforming or

@@ -1,5 +1,7 @@
 // RUN: tf-opt %s -tf-xla-call-module-serialization -tf-shape-inference='enable-stablehlo-propagation=true' -tf-xla-call-module-deserialization | FileCheck %s --check-prefixes=COMMON,ENABLED
 // RUN: tf-opt %s -tf-xla-call-module-serialization -tf-shape-inference='enable-stablehlo-propagation=false' -tf-xla-call-module-deserialization | FileCheck %s --check-prefixes=COMMON,DISABLED
+// RUN: tf-opt %s -tf-xla-call-module-serialization -tf-standard-pipeline='enable-stablehlo-shape-propagation=true' -tf-xla-call-module-deserialization | FileCheck %s --check-prefixes=COMMON,ENABLED
+// RUN: tf-opt %s -tf-xla-call-module-serialization -tf-standard-pipeline='enable-stablehlo-shape-propagation=false' -tf-xla-call-module-deserialization | FileCheck %s --check-prefixes=COMMON,DISABLED
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
 
