@@ -24,6 +24,7 @@ limitations under the License.
 #endif  // _WIN32
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 using ::testing::ElementsAre;

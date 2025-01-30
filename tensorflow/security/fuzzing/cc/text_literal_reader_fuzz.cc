@@ -20,7 +20,7 @@ limitations under the License.
 #include "fuzztest/fuzztest.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/text_literal_reader.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 
 namespace xla {
 namespace {
