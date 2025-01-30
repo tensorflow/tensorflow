@@ -89,6 +89,14 @@ _EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN = "//tensorflow/lite/experimental/litert/
 _EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX = make_linkopt("--version-script=$(location {})".format(_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX))
 _EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN = make_linkopt("-exported_symbols_list,$(location {})".format(_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN))
 
+# TODO b/391390553: Add "-Wl,--no-undefined" to make sure all symbols are defined.
+_EXPORT_LRT_COMMON_LINKOPTS_LINUX = [
+    "-Wl,-s",  # Omit symbol table, for all non debug builds
+    "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
+    "-Wl,--gc-sections",  # Eliminate unused code and data.
+    "-Wl,--as-needed",  # Don't link unused libs.a
+]
+
 def export_lrt_runtime_only_script():
     return select({
         "//tensorflow:linux_x86_64": [_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX],
@@ -100,8 +108,11 @@ def export_lrt_runtime_only_script():
 
 def export_lrt_runtime_only_linkopt():
     return select({
-        "//tensorflow:linux_x86_64": [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX],
-        "//tensorflow:android": [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX],
+        "//tensorflow:linux_x86_64": _EXPORT_LRT_COMMON_LINKOPTS_LINUX + [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX],
+        "//tensorflow:android": _EXPORT_LRT_COMMON_LINKOPTS_LINUX + [
+            "-Wl,-z,max-page-size=16384",
+            _EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX,
+        ],
         "//tensorflow:macos": [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN],
         "//tensorflow:ios": [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN],
         "//conditions:default": [],
