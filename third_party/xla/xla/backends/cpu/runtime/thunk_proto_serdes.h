@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_RUNTIME_THUNK_SERDES_PROTO_H_
-#define XLA_BACKENDS_CPU_RUNTIME_THUNK_SERDES_PROTO_H_
+#ifndef XLA_BACKENDS_CPU_RUNTIME_THUNK_PROTO_SERDES_H_
+#define XLA_BACKENDS_CPU_RUNTIME_THUNK_PROTO_SERDES_H_
 
 #include <memory>
 #include <string>
@@ -51,4 +51,4 @@ class ThunkSequenceSerDesProtobuf : public SerDesBase<ThunkSequence> {
 
 }  // namespace xla::cpu
 
-#endif  // XLA_BACKENDS_CPU_RUNTIME_THUNK_SERDES_PROTO_H_
+#endif  // XLA_BACKENDS_CPU_RUNTIME_THUNK_PROTO_SERDES_H_

@@ -243,7 +243,7 @@ cc_library(
         "//xla/backends/cpu/runtime:kernel_thunk",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_proto_cc_impl",
-        "//xla/backends/cpu/runtime:thunk_serdes_proto",
+        "//xla/backends/cpu/runtime:thunk_proto_serdes",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/analysis:indexed_array_analysis",
         "//xla/hlo/ir:hlo",
@@ -908,6 +908,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:JITLink",
         "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 

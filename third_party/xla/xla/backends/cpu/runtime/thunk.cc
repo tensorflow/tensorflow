@@ -85,6 +85,7 @@ absl::string_view Thunk::KindToString(Kind kind) {
     case Kind::kXnnFusion:
       return "xnn-fusion";
     case Kind::kUnknown:
+    case Kind::NUMBER_OF_KINDS:
       return "unknown";
   }
 }
