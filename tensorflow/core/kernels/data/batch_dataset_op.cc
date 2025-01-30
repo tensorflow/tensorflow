@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/batch_util.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
