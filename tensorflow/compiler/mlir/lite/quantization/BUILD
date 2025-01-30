@@ -74,8 +74,8 @@ tf_native_cc_binary(
         "@llvm-project//llvm:TableGen",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TableGen",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:regexp",
+        "@local_xla//xla/tsl/platform:logging",
     ],
 )
 
