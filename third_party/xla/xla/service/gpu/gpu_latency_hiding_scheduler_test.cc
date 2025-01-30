@@ -80,12 +80,13 @@ class GpuLatencyHidingSchedulerBaseTest : public HloTestBase {
 
   HloModuleConfig GetModuleConfig(
       absl::string_view fdo_profile,
-      bool enable_experimental_pipeline_parallelism_opt = false) {
+      DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level =
+          DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
-    debug_options.set_xla_gpu_experimental_enable_pipeline_parallelism_opt(
-        enable_experimental_pipeline_parallelism_opt);
+    debug_options.set_xla_gpu_experimental_pipeline_parallelism_opt_level(
+        pipeline_parallelism_opt_level);
     config.set_debug_options(debug_options);
     config.set_fdo_profile(fdo_profile);
     return config;
@@ -523,7 +524,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, SchedulePipelinedSendRecvsLate) {
 
   absl::string_view kFdoProfile = "";
   auto config = GetModuleConfig(
-      kFdoProfile, /*enable_experimental_pipeline_parallelism_opt=*/true);
+      kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
+          PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
