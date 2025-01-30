@@ -533,15 +533,7 @@ static int64_t SharedMemoryUsageNoCache(
       return 32 * (kMaxVectorSize * 32 + 1) * primitive_size_sum;
     }
   } else if (auto tr = GetDescriptionForTiledTransposeEmitter(instr)) {
-    // Tile size for transposition.
-    int64_t primitive_size =
-        ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
-    int64_t bytes_required = 32 * 33 * primitive_size;
-    // If the last dimension is not changed, it becomes part of the tile.
-    if (tr->permutation.back() == tr->permutation.size() - 1) {
-      bytes_required *= tr->dimensions.back();
-    }
-    return bytes_required;
+    return tr->shmem_usage;
   }
   // Other fused expressions for now don't need the shared memory budget.
   return 0;
