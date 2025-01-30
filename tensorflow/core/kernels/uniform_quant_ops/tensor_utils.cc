@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/uniform_quant_ops/tensor_utils.h"
 
+#include <cstdint>
+
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+
 namespace tensorflow {
 
 using tensorflow::errors::InvalidArgument;
