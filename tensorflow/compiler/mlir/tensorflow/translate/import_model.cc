@@ -1665,20 +1665,6 @@ absl::Status SavedModelSignatureDefImporter::LiftVariables(
 
 SavedModelMLIRImportInput::~SavedModelMLIRImportInput() = default;
 
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
-    const GraphDef& graphdef, const GraphDebugInfo& debug_info,
-    const GraphImportConfig& specs, mlir::MLIRContext* context) {
-  GraphConstructorOptions options;
-  options.allow_internal_ops = true;
-  options.add_default_attributes = true;
-  options.upgrade_legacy = specs.upgrade_legacy;
-  Graph graph(OpRegistry::Global());
-
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(options, std::move(graphdef), &graph));
-  return tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
-      graph, debug_info, graph.flib_def(), specs, context);
-}
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
