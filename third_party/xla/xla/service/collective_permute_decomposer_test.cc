@@ -57,13 +57,22 @@ class DecomposerTest : public HloHardwareIndependentTestBase {
   // TODO: b/393126411 - Eliminate these heper functions effectively wrapping
   // the entire test.
   void AssertNoTranform(absl::string_view hlo, int64_t threshold = 0) {
-    TF_ASSERT_OK(RunAndCheckHloRewrite(hlo, Pass(threshold), false));
+    TF_ASSERT_OK(RunAndCheckHloRewrite(
+        hlo,
+        Pass(threshold, DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+        false));
   };
   auto Transform(absl::string_view hlo, int64_t threshold = 0) {
-    return RunAndCheckHloRewrite(hlo, Pass(threshold), true);
+    return RunAndCheckHloRewrite(
+        hlo,
+        Pass(threshold, DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+        true);
   };
   void AssertTransform(absl::string_view hlo, int64_t threshold = 0) {
-    TF_ASSERT_OK(RunAndCheckHloRewrite(hlo, Pass(threshold), true));
+    TF_ASSERT_OK(RunAndCheckHloRewrite(
+        hlo,
+        Pass(threshold, DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+        true));
   };
   Decomposed FindComponents(HloModule* module, absl::string_view cp_name) {
     Decomposed result;
@@ -217,8 +226,6 @@ TEST_F(DecomposerTest, ControlDependency_IndependentCPs) {
   EXPECT_THAT(cp1.recv->control_predecessors(), ElementsAre(cp3.send));
 }
 
-// Negative test to assure that the decomposer does not create cyclic
-// instructions when there is dependency from one cp to another.
 TEST_F(DecomposerTest, ControlDependency_BasicDependency) {
   const std::string kHlo = GetSimpleHloWhileLoopStr(R"(
     body {
@@ -233,9 +240,7 @@ TEST_F(DecomposerTest, ControlDependency_BasicDependency) {
   )");
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(kHlo));
   Decomposed cp_a = FindComponents(module.get(), "cp-a");
-  Decomposed cp_b = FindComponents(module.get(), "cp-b");
-  EXPECT_THAT(cp_b.recv->control_predecessors(), ElementsAre(cp_a.send))
-      << "Recv-start from cp1 should depend on send start from cp2";
+  EXPECT_NE(FindInstruction(module.get(), "cp-b"), nullptr);
 }
 
 TEST_F(DecomposerTest, ControlDependency_MoreDependencies) {
@@ -254,10 +259,8 @@ TEST_F(DecomposerTest, ControlDependency_MoreDependencies) {
     })");
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(kHlo));
   Decomposed cp1 = FindComponents(module.get(), "cp1");
-  Decomposed cp2 = FindComponents(module.get(), "cp2");
-  Decomposed cp3 = FindComponents(module.get(), "cp3");
-  EXPECT_THAT(cp2.recv->control_predecessors(), ElementsAre(cp1.send));
-  EXPECT_THAT(cp3.recv->control_predecessors(), ElementsAre(cp2.send));
+  EXPECT_NE(FindInstruction(module.get(), "cp2"), nullptr);
+  EXPECT_NE(FindInstruction(module.get(), "cp3"), nullptr);
 }
 
 void EnsurePreservedInfo(const HloInstruction* instr) {

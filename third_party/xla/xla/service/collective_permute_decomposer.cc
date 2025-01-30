@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -50,8 +51,10 @@ namespace {
 // to Send/Recv. We currently limit the transformation to CollectivePermute
 // operations without any cycle in their (source, target) relationship,
 // with only one input and without any context data.
-bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
-                     int64_t threshold_in_bytes, const CallGraph& call_graph) {
+bool ShouldDecompose(
+    const HloCollectivePermuteInstruction& collective_permute,
+    int64_t threshold_in_bytes, const CallGraph& call_graph,
+    DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level) {
   const Shape& result_shape = collective_permute.shape();
 
   // Skip the transformation if result is not an array, such as containing
@@ -70,7 +73,14 @@ bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
     return false;
   }
 
-  // Only decompose in loop body to allow for pipelining.
+  // Only decompose collective permutes that may be subject to pipelining.
+  if (pipeline_parallelism_opt_level !=
+      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
+    if (!Match(collective_permute.operand(0),
+               match::GetTupleElement(match::Parameter()))) {
+      return false;
+    }
+  }
   auto callers = call_graph.GetComputationCallers(collective_permute.parent());
   if (callers.size() != 1 || callers.front()->opcode() != HloOpcode::kWhile) {
     return false;
@@ -256,7 +266,8 @@ absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
 
       HloCollectivePermuteInstruction* cp =
           Cast<HloCollectivePermuteInstruction>(instr);
-      if (!ShouldDecompose(*cp, threshold_in_bytes_, *call_graph)) {
+      if (!ShouldDecompose(*cp, threshold_in_bytes_, *call_graph,
+                           pipeline_parallelism_opt_level_)) {
         continue;
       }
       // Record collective-permute to be decomposed.

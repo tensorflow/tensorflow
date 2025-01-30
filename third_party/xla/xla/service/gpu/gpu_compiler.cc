@@ -962,7 +962,8 @@ absl::Status RunCollectiveOptimizationPasses(
           DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE ||
       debug_options.xla_gpu_enable_pipelined_p2p()) {
     collectives_pipeline.AddPass<CollectivePermuteDecomposer>(
-        debug_options.xla_gpu_collective_permute_decomposer_threshold());
+        debug_options.xla_gpu_collective_permute_decomposer_threshold(),
+        pipeline_parallelism_opt_level);
   }
 
   bool enable_partial_send_recv_pipelining =
