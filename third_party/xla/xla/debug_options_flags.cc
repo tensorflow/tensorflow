@@ -2193,37 +2193,30 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
 
 // Allocates flag_values and flag_objects; this function must not be called more
 // than once - its call done via call_once.
-static void AllocateFlags(DebugOptions* defaults, bool parse_xla_flags) {
+static void AllocateFlags(DebugOptions* defaults) {
   if (defaults == nullptr) {
     defaults = new DebugOptions(DefaultDebugOptionsIgnoringFlags());
   }
   flag_values = defaults;
   flag_objects = new std::vector<tsl::Flag>();
   MakeDebugOptionsFlags(flag_objects, flag_values);
-  if (parse_xla_flags) {
-    ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
-  }
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
 
 void AppendDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                              DebugOptions* debug_options) {
-  absl::call_once(flags_init, &AllocateFlags, debug_options,
-                  /*parse_xla_flags =*/true);
+  absl::call_once(flags_init, &AllocateFlags, debug_options);
   flag_list->insert(flag_list->end(), flag_objects->begin(),
                     flag_objects->end());
 }
 
 xla::DebugOptions GetDebugOptionsFromFlags() {
-  absl::call_once(flags_init, &AllocateFlags, nullptr,
-                  /*parse_xla_flags =*/false);
-  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects,
-                                   /*reset_envvar=*/true);
+  absl::call_once(flags_init, &AllocateFlags, nullptr);
   return *flag_values;
 }
 
 void ResetThreadLocalFuel() {
-  absl::call_once(flags_init, &AllocateFlags, nullptr,
-                  /*parse_xla_flags =*/true);
+  absl::call_once(flags_init, &AllocateFlags, nullptr);
 
   thread_fuel = std::make_unique<
       absl::node_hash_map<std::string, std::atomic<int64_t>>>();
@@ -2234,8 +2227,7 @@ void ResetThreadLocalFuel() {
 }
 
 bool ConsumeFuel(absl::string_view pass, bool* just_ran_out) {
-  absl::call_once(flags_init, &AllocateFlags, nullptr,
-                  /*parse_xla_flags =*/true);
+  absl::call_once(flags_init, &AllocateFlags, nullptr);
   if (just_ran_out != nullptr) {
     *just_ran_out = false;
   }

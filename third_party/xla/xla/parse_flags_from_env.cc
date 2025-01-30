@@ -193,19 +193,14 @@ static absl::Mutex env_argv_mu(absl::kConstInit);
 static void DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar);
 
 void ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
-                                      const std::vector<tsl::Flag>& flag_list,
-                                      const bool reset_envvar) {
-  ParseFlagsFromEnvAndIgnoreUnknown(envvar, flag_list, reset_envvar);
+                                      const std::vector<tsl::Flag>& flag_list) {
+  ParseFlagsFromEnvAndIgnoreUnknown(envvar, flag_list);
   DieIfEnvHasUnknownFlagsLeft(envvar);
 }
 
-void ParseFlagsFromEnvAndIgnoreUnknown(absl::string_view envvar,
-                                       const std::vector<tsl::Flag>& flag_list,
-                                       const bool reset_envvar) {
+void ParseFlagsFromEnvAndIgnoreUnknown(
+    absl::string_view envvar, const std::vector<tsl::Flag>& flag_list) {
   absl::MutexLock lock(&env_argv_mu);
-  if (reset_envvar) {
-    EnvArgvs().erase(envvar);
-  }
   auto* env_argv = &EnvArgvs()[envvar];
   SetArgvFromEnv(envvar, env_argv);  // a no-op if already initialized
 
