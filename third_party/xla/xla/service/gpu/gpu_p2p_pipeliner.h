@@ -23,7 +23,7 @@ namespace gpu {
 
 // Adds a collective-pipeliner pass for pipelining P2P Send-Recv chains.
 void AddP2PPipeliner(HloPassPipeline& pipeline,
-                     bool enable_experimental_pipeline_parallelism_opt);
+                     bool enable_partial_send_recv_pipelining);
 
 }  // namespace gpu
 }  // namespace xla
