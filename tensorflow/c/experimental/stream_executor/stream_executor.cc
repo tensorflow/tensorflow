@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/generic_memory_allocation.h"
 #include "xla/stream_executor/generic_memory_allocator.h"
-#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/platform.h"
@@ -188,6 +187,22 @@ void HostCallbackTrampoline(void* ctx, TF_Status* status) {
   delete host_ctx;
 }
 
+namespace {
+
+// Creates a MemoryAllocation that wraps a heap-allocated buffer.
+absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
+    SP_StreamExecutor* stream_executor, SP_Device* device, uint64_t size) {
+  void* ptr = stream_executor->host_memory_allocate(device, size);
+  if (ptr == nullptr && size > 0) {
+    return absl::InternalError("Failed to allocate host memory");
+  }
+  return std::make_unique<GenericMemoryAllocation>(
+      ptr, size, [stream_executor, device](void* ptr, uint64_t size) {
+        stream_executor->host_memory_deallocate(device, ptr);
+      });
+}
+}  // namespace
+
 class CStreamExecutor : public StreamExecutorCommon {
  public:
   explicit CStreamExecutor(Platform* se_platform, SP_Device device,
@@ -229,12 +244,7 @@ class CStreamExecutor : public StreamExecutorCommon {
 
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override {
-    auto* buffer = stream_executor_->host_memory_allocate(&device_, size);
-    if (buffer == nullptr && size > 0) {
-      return absl::InternalError(
-          absl::StrFormat("Failed to allocate HostMemory of size %d", size));
-    }
-    return std::make_unique<HostMemoryAllocation>(buffer, size, this);
+    return AllocateHostMemory(stream_executor_, &device_, size);
   }
 
   void HostMemoryDeallocate(void* mem) override {
@@ -394,14 +404,7 @@ class CStreamExecutor : public StreamExecutorCommon {
       return std::make_unique<GenericMemoryAllocator>(
           [this](uint64_t size)
               -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
-            void* ptr = stream_executor_->host_memory_allocate(&device_, size);
-            if (ptr == nullptr) {
-              return absl::InternalError("Failed to allocate host memory");
-            }
-            return std::make_unique<GenericMemoryAllocation>(
-                ptr, size, [this](void* ptr, uint64_t size) {
-                  stream_executor_->host_memory_deallocate(&device_, ptr);
-                });
+            return AllocateHostMemory(stream_executor_, &device_, size);
           });
     }
     return absl::UnimplementedError(

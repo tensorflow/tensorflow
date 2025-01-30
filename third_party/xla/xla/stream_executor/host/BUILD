@@ -111,7 +111,6 @@ cc_library(
         "//xla/stream_executor:event",
         "//xla/stream_executor:generic_memory_allocation",
         "//xla/stream_executor:generic_memory_allocator",
-        "//xla/stream_executor:host_memory_allocation",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:memory_allocation",

@@ -57,7 +57,6 @@ cc_library(
         "@local_xla//xla/stream_executor:executor_cache",
         "@local_xla//xla/stream_executor:generic_memory_allocation",
         "@local_xla//xla/stream_executor:generic_memory_allocator",
-        "@local_xla//xla/stream_executor:host_memory_allocation",
         "@local_xla//xla/stream_executor:memory_allocation",
         "@local_xla//xla/stream_executor:memory_allocator",
         "@local_xla//xla/stream_executor:platform",

@@ -1,6 +1,3 @@
-#include "xla/stream_executor/generic_memory_allocation.h"
-#include "xla/stream_executor/generic_memory_allocator.h"
-#include "xla/stream_executor/memory_allocator.h"
 /* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,18 +28,14 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
-#include "xla/shape.h"
-#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/generic_memory_allocation.h"
+#include "xla/stream_executor/generic_memory_allocator.h"
 #include "xla/stream_executor/host/host_stream.h"
-#include "xla/stream_executor/host_memory_allocation.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -71,7 +64,7 @@ class InterpreterStream : public host::HostStream {
                       uint64_t size) override {
     void *src_mem = const_cast<void *>(gpu_src.opaque());
     EnqueueTask(
-        [this, host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
+        [host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
     return BlockUntilDone();
   }
 
@@ -79,7 +72,7 @@ class InterpreterStream : public host::HostStream {
                       uint64_t size) override {
     void *dst_mem = gpu_dst->opaque();
     EnqueueTask(
-        [this, dst_mem, host_src, size]() { memcpy(dst_mem, host_src, size); });
+        [dst_mem, host_src, size]() { memcpy(dst_mem, host_src, size); });
     return BlockUntilDone();
   }
 };
@@ -98,7 +91,10 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
 
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override {
-    return std::make_unique<HostMemoryAllocation>(new char[size], size, this);
+    void *ptr = new char[size];
+    return std::make_unique<GenericMemoryAllocation>(
+        ptr, size,
+        [](void *ptr, uint64_t size) { delete[] static_cast<char *>(ptr); });
   }
   void HostMemoryDeallocate(void *mem) override {
     delete[] static_cast<char *>(mem);

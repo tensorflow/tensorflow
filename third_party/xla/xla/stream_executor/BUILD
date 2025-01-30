@@ -254,16 +254,6 @@ cc_library(
 )
 
 cc_library(
-    name = "host_memory_allocation",
-    srcs = ["host_memory_allocation.cc"],
-    hdrs = ["host_memory_allocation.h"],
-    deps = [
-        ":memory_allocation",
-        ":stream_executor_h",
-    ],
-)
-
-cc_library(
     name = "host_or_device_scalar",
     hdrs = ["host_or_device_scalar.h"],
     deps = [
@@ -712,7 +702,6 @@ cc_library(
         ":dnn",
         ":executor_cache",
         ":fft",
-        ":host_memory_allocation",  # build_cleaner: keep
         ":kernel",
         ":kernel_spec",
         ":launch_dim",
