@@ -85,6 +85,7 @@ limitations under the License.
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
+#include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
@@ -128,6 +129,23 @@ limitations under the License.
 namespace xla {
 namespace {
 
+// Converts the shape used to represent the host buffer to the shape used to
+// represent the on-device buffer.
+Shape HostShapeToOnDeviceShape(const Shape& shape) {
+  // AbstractTfrtCpuBuffer packs sub-byte non-pred types. The on-device shape
+  // should reflect this so that our memory allocation and overflow checks are
+  // correct.
+  if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+    Shape on_device_shape = shape;
+    on_device_shape.mutable_layout()->set_element_size_in_bits(
+        primitive_util::BitWidth(shape.element_type()));
+    return on_device_shape;
+  }
+
+  // Otherwise, return the shape as-is.
+  return shape;
+}
+
 absl::StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBuffer(
     const Shape& on_device_shape,
     absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
@@ -142,15 +160,16 @@ absl::StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBuffer(
 }
 
 absl::StatusOr<std::unique_ptr<TfrtCpuBuffer>> AllocateDestinationBufferAndAvs(
-    const Shape& shape,
+    const Shape& on_device_shape,
     absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
     TfrtCpuDevice* device, TfrtCpuClient* client) {
   // Add a placeholder definition event for each leaf buffer when creating the
   // buffer.
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events;
-  AbstractTfrtCpuBuffer::AllocateAvsAndEvents(shape, avs, &definition_events);
+  AbstractTfrtCpuBuffer::AllocateAvsAndEvents(on_device_shape, avs,
+                                              &definition_events);
   return AllocateDestinationBuffer(
-      shape, std::move(definition_events),
+      on_device_shape, std::move(definition_events),
       tensorflow::down_cast<TfrtCpuDevice*>(device), client);
 }
 
@@ -212,7 +231,8 @@ class TfrtCpuAsyncHostToDeviceTransferManager
       }
       absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> local_avs;
       TF_ASSIGN_OR_RETURN(auto buffer, AllocateDestinationBufferAndAvs(
-                                           shape, &local_avs, device, client));
+                                           HostShapeToOnDeviceShape(shape),
+                                           &local_avs, device, client));
       CHECK_EQ(local_avs.size(), 1);
       avs.push_back(std::move(local_avs[0]));
       buffers.push_back(std::move(buffer));
@@ -923,7 +943,7 @@ TfrtCpuClient::CreateUninitializedBuffer(const Shape& shape,
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices().front();
   return AllocateDestinationBuffer(
-      shape, /*definition_events=*/{},
+      HostShapeToOnDeviceShape(shape), /*definition_events=*/{},
       tensorflow::down_cast<TfrtCpuDevice*>(device), this);
 }
 
@@ -1054,10 +1074,10 @@ TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   const Shape& shape = literal.shape();
 
   absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4> avs;
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<TfrtCpuBuffer> output_buffer,
-      AllocateDestinationBufferAndAvs(
-          shape, &avs, tensorflow::down_cast<TfrtCpuDevice*>(device), this));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<TfrtCpuBuffer> output_buffer,
+                      AllocateDestinationBufferAndAvs(
+                          HostShapeToOnDeviceShape(shape), &avs,
+                          tensorflow::down_cast<TfrtCpuDevice*>(device), this));
 
   output_buffer->CopyFromLiteral(literal, shape, &avs, async_work_runner());
 
