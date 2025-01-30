@@ -34,6 +34,8 @@ from tensorflow.python.util.tf_export import tf_export
 def get_include():
   """Get the directory containing the TensorFlow C++ header files.
 
+  >>> print(tf.sysconfig.get_include())
+
   Returns:
     The directory as string.
   """
@@ -48,6 +50,8 @@ def get_include():
 @tf_export('sysconfig.get_lib')
 def get_lib():
   """Get the directory containing the TensorFlow framework library.
+
+  >>> print(tf.sysconfig.get_lib())
 
   Returns:
     The directory as string.
@@ -137,6 +141,8 @@ def get_build_info():
 
   Note that the actual keys and values returned by this function is subject to
   change across different versions of TensorFlow or across platforms.
+
+  >>> print(tf.sysconfig.get_build_info())
 
   Returns:
     A Dictionary describing TensorFlow's build environment.
