@@ -97,6 +97,7 @@ struct HloRunnerConfig {
   std::string hlo_argument_mode = "use_random_inputs";
   int32_t while_execution_count = -1;
   bool remove_infeed_outfeed = true;
+  bool compile_as_stablehlo = false;
   int32_t num_repeats = 1;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
@@ -337,6 +338,9 @@ int main(int argc, char** argv) {
                 "a certain number of iterations."),
       tsl::Flag("remove_infeed_outfeed", &opts.remove_infeed_outfeed,
                 "If set, we will remove all infeed and outfeed operations."),
+      tsl::Flag("compile_as_stablehlo", &opts.compile_as_stablehlo,
+                "If set, convert the module to StableHLO before passing to "
+                "PjRt for compilation."),
       tsl::Flag("num_repeats", &opts.num_repeats,
                 "Repeatedly execute the HLO for this many times."),
       tsl::Flag("execution_options_path", &opts.execution_options_path,

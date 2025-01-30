@@ -42,6 +42,23 @@ bool HloComputationDeduplicator::ContainsLargeConstants(HloComputation* comp) {
   return false;
 }
 
+bool ShouldPrintBackendConfig(HloModule* module) {
+  // If any computation in the module is a custom call computation, we need to
+  // include backend_config to properly distinguish between different custom
+  // calls.
+  // TODO(b/393183679): Remove this once we confirm whether we can always print
+  // backend_config and can avoid this walk.
+  for (HloComputation* comp : module->computations()) {
+    for (HloInstruction* inst : comp->instructions()) {
+      if (inst->IsCustomCall("xla_ffi_python_cpu_callback") ||
+          inst->IsCustomCall("xla_ffi_python_gpu_callback")) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 absl::StatusOr<bool> HloComputationDeduplicator::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -59,6 +76,7 @@ absl::StatusOr<bool> HloComputationDeduplicator::Run(
   options.set_print_operand_shape(true);
   options.set_print_ids(false);
   options.set_canonicalize_computations(true);
+  options.set_print_backend_config(ShouldPrintBackendConfig(module));
 
   // This comparison function will be used to compare called subcomputations.
   // Since computations in the for-loop below are called in "PostOrder" format
