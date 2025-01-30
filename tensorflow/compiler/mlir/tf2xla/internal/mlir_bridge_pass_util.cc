@@ -32,10 +32,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
