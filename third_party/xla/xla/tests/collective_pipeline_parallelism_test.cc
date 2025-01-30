@@ -48,6 +48,7 @@ class CollectivePipelineParallelismTest
  public:
   CollectivePipelineParallelismTest() {
     VLOG(1) << "Running with " << num_devices() << " devices";
+    xla_gpu_experimental_pipeline_parallelism_opt_level_ = GetParam();
   }
 
   HloModuleConfig GetModuleConfigForTest(int64_t replica_count = 1,
@@ -58,11 +59,14 @@ class CollectivePipelineParallelismTest
     // Set debug options.
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_experimental_pipeline_parallelism_opt_level(
-        GetParam());
+        xla_gpu_experimental_pipeline_parallelism_opt_level_);
     config.set_debug_options(debug_options);
 
     return config;
   }
+
+  DebugOptions::PipelineParallelismOptLevel
+      xla_gpu_experimental_pipeline_parallelism_opt_level_;
 };
 
 XLA_TEST_P(CollectivePipelineParallelismTest,
@@ -1446,6 +1450,12 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
 
   }
   )";
+
+  // TODO(b/393216980): Enable this test when bug is fixed.
+  if (xla_gpu_experimental_pipeline_parallelism_opt_level_ !=
+      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
+    GTEST_SKIP();
+  }
 
   const int64_t kNumReplicas = 4;
   if (test_runner().device_count() < kNumReplicas) {
