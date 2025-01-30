@@ -156,6 +156,15 @@ message XnnDotThunkProto {
   ShapeBufferAllocationSliceProto out_buffer_shape = 4;
 }
 
+message XnnConvolutionThunkProto {
+  ConvolutionDimensionNumbers dimension_numbers = 1;
+  Window window = 2;
+  int64 feature_group_count = 3;
+  ShapeBufferAllocationSliceProto input_buffer_shape = 4;
+  ShapeBufferAllocationSliceProto kernel_buffer_shape = 5;
+  ShapeBufferAllocationSliceProto output_buffer_shape = 6;
+}
+
 message XnnFusionThunkProto {
   message Options {
     bool use_threadpool = 1;
@@ -165,6 +174,7 @@ message XnnFusionThunkProto {
 
   oneof impl {
     XnnDotThunkProto xnn_dot_thunk = 2;
+    XnnConvolutionThunkProto xnn_convolution_thunk = 3;
   }
 }
 

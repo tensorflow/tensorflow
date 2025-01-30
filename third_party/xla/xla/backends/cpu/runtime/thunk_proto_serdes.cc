@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/topk_thunk.h"
 #include "xla/backends/cpu/runtime/while_thunk.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_convolution_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
@@ -62,6 +63,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla::cpu {
 
@@ -88,8 +90,8 @@ static Thunk::Kind ProtoThunkToThunkKind(const ThunkProto& proto) {
       [](const XnnFusionThunkProto::ImplCase& proto_kind) {
         switch (proto_kind) {
           case XnnFusionThunkProto::ImplCase::kXnnDotThunk:
-            // NOTE(basioli) follow up CL should add XnnDotThunk, we should
-            // abide by the same inheritance pattern as the other thunks.
+            return Thunk::Kind::kXnnFusion;
+          case XnnFusionThunkProto::ImplCase::kXnnConvolutionThunk:
             return Thunk::Kind::kXnnFusion;
           default:
             return Thunk::Kind::kUnknown;
@@ -703,6 +705,40 @@ static absl::Status ToProto(const XnnDotThunk& thunk, ThunkProto& proto) {
   return absl::OkStatus();
 }
 
+static absl::Status ToProto(const XnnConvolutionThunk& thunk,
+                            ThunkProto& proto) {
+  XnnConvolutionThunkProto* convolution_thunk_proto =
+      proto.mutable_xnn_fusion_thunk()->mutable_xnn_convolution_thunk();
+
+  const std::string dnums_as_str = thunk.dnums().SerializeAsString();
+  convolution_thunk_proto->mutable_dimension_numbers()->ParseFromString(
+      dnums_as_str);
+
+  const std::string window_as_str = thunk.window().SerializeAsString();
+  convolution_thunk_proto->mutable_window()->ParseFromString(window_as_str);
+
+  convolution_thunk_proto->set_feature_group_count(thunk.feature_group_count());
+
+  const ConvolutionSlices& convolution_slices = thunk.convolution_slices();
+
+  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+      convolution_slices.input_buffer, convolution_slices.input_shape,
+      convolution_thunk_proto->mutable_input_buffer_shape()));
+
+  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+      convolution_slices.output_buffer, convolution_slices.output_shape,
+      convolution_thunk_proto->mutable_output_buffer_shape()));
+
+  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
+      convolution_slices.kernel_buffer, convolution_slices.kernel_shape,
+      convolution_thunk_proto->mutable_kernel_buffer_shape()));
+
+  proto.mutable_xnn_fusion_thunk()->mutable_options()->set_use_threadpool(
+      thunk.options().use_threadpool);
+
+  return absl::OkStatus();
+}
+
 static absl::Status ToProto(const FftThunk& thunk, ThunkProto& proto) {
   FftThunkProto* fft_thunk_proto = proto.mutable_fft_thunk();
 
@@ -871,13 +907,16 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
       TF_RETURN_IF_ERROR(
           ::xla::cpu::ToProto(static_cast<const WhileThunk&>(thunk), proto));
       break;
-    case Thunk::Kind::kXnnFusion:
-      // TODO(basioli) follow up CL
-      // should add XnnDotThunk, we should abide by the same inheritance
-      // pattern as the other thunks.
-      TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(static_cast<const XnnDotThunk&>(thunk), proto));
-      break;
+    case Thunk::Kind::kXnnFusion: {
+      if (auto* xnn_dot = dynamic_cast<const XnnDotThunk*>(&thunk)) {
+        TF_RETURN_IF_ERROR(::xla::cpu::ToProto(*xnn_dot, proto));
+      } else if (auto* xnn_convolution =
+                     dynamic_cast<const XnnConvolutionThunk*>(&thunk)) {
+        TF_RETURN_IF_ERROR(::xla::cpu::ToProto(*xnn_convolution, proto));
+      } else {
+        return Unimplemented("Unsupported XnnFusion thunk type");
+      }
+    } break;
     case Thunk::Kind::kPartitionId:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
           static_cast<const PartitionIdThunk&>(thunk), proto));
@@ -1440,6 +1479,49 @@ static absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunkFromProto(
       lhs_shape, rhs_buffer, rhs_shape, out_buffer, out_shape);
 }
 
+static absl::StatusOr<std::unique_ptr<XnnConvolutionThunk>>
+XnnConvolutionThunkFromProto(
+    const ThunkProto& proto,
+    const std::vector<BufferAllocation>& buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
+
+  XnnConvolutionThunk::Options options = {
+      proto.xnn_fusion_thunk().options().use_threadpool(),
+  };
+
+  const auto& conv_proto = proto.xnn_fusion_thunk().xnn_convolution_thunk();
+
+  // Dimension numbers.
+  ConvolutionDimensionNumbers dnums = conv_proto.dimension_numbers();
+
+  // Window.
+  Window window = conv_proto.window();
+
+  // Feature group count.
+  int64_t feature_group_count = conv_proto.feature_group_count();
+
+  TF_ASSIGN_OR_RETURN(auto input_slice_shape,
+                      DeserializeSliceShapeFromProto(
+                          conv_proto.input_buffer_shape(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      auto kernel_slice_shape,
+      DeserializeSliceShapeFromProto(conv_proto.kernel_buffer_shape(),
+                                     buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      auto output_slice_shape,
+      DeserializeSliceShapeFromProto(conv_proto.output_buffer_shape(),
+                                     buffer_allocations));
+
+  const auto& [input_buffer, input_shape] = input_slice_shape;
+  const auto& [kernel_buffer, kernel_shape] = kernel_slice_shape;
+  const auto& [output_buffer, output_shape] = output_slice_shape;
+
+  return XnnConvolutionThunk::Create(
+      std::move(options), std::move(info), std::move(input_buffer), input_shape,
+      std::move(kernel_buffer), kernel_shape, std::move(output_buffer),
+      output_shape, dnums, window, feature_group_count);
+}
+
 static absl::StatusOr<std::unique_ptr<Thunk>> PartitionIdThunkFromProto(
     const ThunkProto& proto,
     const std::vector<BufferAllocation>& buffer_allocations) {
@@ -1521,9 +1603,13 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
     case Thunk::Kind::kWhile:
       return WhileThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kXnnFusion:
-      // TODO(basioli) follow up CL should add XnnDotThunk, we should
-      // abide by the same inheritance pattern as the other thunks.
-      return XnnDotThunkFromProto(proto, *buffer_allocations_);
+      if (proto.xnn_fusion_thunk().has_xnn_dot_thunk()) {
+        return XnnDotThunkFromProto(proto, *buffer_allocations_);
+      } else if (proto.xnn_fusion_thunk().has_xnn_convolution_thunk()) {
+        return XnnConvolutionThunkFromProto(proto, *buffer_allocations_);
+      } else {
+        return InvalidArgument("Unsupported XNN fusion thunk type.");
+      }
     case Thunk::Kind::kPartitionId:
       return PartitionIdThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kReplicaId:

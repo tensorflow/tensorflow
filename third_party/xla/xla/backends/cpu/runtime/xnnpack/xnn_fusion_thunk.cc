@@ -17,13 +17,15 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "xnnpack.h"
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -74,7 +76,9 @@ struct XnnFusionThunk::XnnRuntime {
   tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> Invoke(
       const Eigen::ThreadPoolDevice* device,
       absl::Span<se::DeviceMemoryBase> arguments,
-      absl::Span<se::DeviceMemoryBase> results);
+      absl::Span<se::DeviceMemoryBase> results,
+      absl::FunctionRef<bool(size_t)> is_by_value_argument,
+      absl::FunctionRef<bool(size_t)> is_by_value_result);
 
   void Destroy();
 
@@ -108,9 +112,12 @@ auto XnnFusionThunk::XnnRuntime::operator=(XnnRuntime&& other) -> XnnRuntime& {
 }
 
 tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent>
-XnnFusionThunk::XnnRuntime::Invoke(const Eigen::ThreadPoolDevice* device,
-                                   absl::Span<se::DeviceMemoryBase> arguments,
-                                   absl::Span<se::DeviceMemoryBase> results) {
+XnnFusionThunk::XnnRuntime::Invoke(
+    const Eigen::ThreadPoolDevice* device,
+    absl::Span<se::DeviceMemoryBase> arguments,
+    absl::Span<se::DeviceMemoryBase> results,
+    absl::FunctionRef<bool(size_t)> is_by_value_argument,
+    absl::FunctionRef<bool(size_t)> is_by_value_result) {
   // Create external values for all arguments and results.
   absl::InlinedVector<xnn_external_value, 8> external_values;
   external_values.reserve(arguments.size() + results.size());
@@ -118,12 +125,14 @@ XnnFusionThunk::XnnRuntime::Invoke(const Eigen::ThreadPoolDevice* device,
   // External tensor id for arguments and results.
   uint32_t id = 0;
 
-  for (auto& argument : arguments) {
-    external_values.push_back(xnn_external_value{id++, argument.opaque()});
+  for (const se::DeviceMemoryBase& argument : arguments) {
+    xnn_external_value value{id++, argument.opaque()};
+    if (!is_by_value_argument(value.id)) external_values.push_back(value);
   }
 
-  for (auto& result : results) {
-    external_values.push_back(xnn_external_value{id++, result.opaque()});
+  for (const se::DeviceMemoryBase& result : results) {
+    xnn_external_value value{id++, result.opaque()};
+    if (!is_by_value_result(value.id)) external_values.push_back(value);
   }
 
   XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(runtime, external_values.size(),
@@ -151,7 +160,8 @@ void XnnFusionThunk::XnnRuntime::Destroy() {
 }
 
 absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
-    const Eigen::ThreadPoolDevice* device) {
+    const Eigen::ThreadPoolDevice* device, bool one_use,
+    absl::FunctionRef<absl::StatusOr<xnn_subgraph_t>()> builder) {
   ParallelizationMode parallelization_mode =
       options_.use_threadpool ? (device && IsCustomPthreadpoolEnabled()
                                      ? ParallelizationMode::kParallelLoopRunner
@@ -159,14 +169,17 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
                               : ParallelizationMode::kInline;
 
   VLOG(3) << absl::StreamFormat(
-      "Create XNN runtime for `%s` operation: num_created=%d, "
+      "Create %s XNN runtime for `%s` operation: num_created=%d, "
       "parallelization_mode=%v",
-      info().op_name, xnn_runtime_pool_.num_created(), parallelization_mode);
+      one_use ? "one-use" : "pooled", info().op_name,
+      one_use ? num_one_use_created_.fetch_add(1)
+              : xnn_runtime_pool_.num_created(),
+      parallelization_mode);
 
   XnnRuntime runtime;
 
   // Construct XNNPACK subgraph using user-provided builder function.
-  TF_ASSIGN_OR_RETURN(runtime.subgraph, builder_(arguments_, results_));
+  TF_ASSIGN_OR_RETURN(runtime.subgraph, builder());
 
   // Configure XNNPACK runtime thread pool if parallelization is enabled.
   if (parallelization_mode == ParallelizationMode::kParallelLoopRunner) {
@@ -198,6 +211,19 @@ absl::StatusOr<std::unique_ptr<XnnFusionThunk>> XnnFusionThunk::Create(
       std::move(results), std::move(builder)));
 }
 
+absl::StatusOr<std::unique_ptr<XnnFusionThunk>> XnnFusionThunk::Create(
+    Options options, Info info, std::vector<Argument> arguments,
+    std::vector<Result> results, OneUseBuilder one_use_builder,
+    absl::Span<const int64_t> value_arguments,
+    absl::Span<const int64_t> value_results) {
+  TF_RETURN_IF_ERROR(InitializeXnnPack());
+
+  return absl::WrapUnique(new XnnFusionThunk(
+      std::move(options), std::move(info), std::move(arguments),
+      std::move(results), std::move(one_use_builder), value_arguments,
+      value_results));
+}
+
 XnnFusionThunk::XnnFusionThunk(Options options, Info info,
                                std::vector<Argument> arguments,
                                std::vector<Result> results, Builder builder)
@@ -206,8 +232,26 @@ XnnFusionThunk::XnnFusionThunk(Options options, Info info,
       arguments_(std::move(arguments)),
       results_(std::move(results)),
       builder_(std::move(builder)),
-      xnn_runtime_pool_(std::bind(&XnnFusionThunk::CreateXnnRuntime, this,
-                                  std::placeholders::_1)) {}
+      xnn_runtime_pool_([this](const Eigen::ThreadPoolDevice* device) {
+        return CreateXnnRuntime(device, /*one_use=*/false, [this] {
+          return builder_(arguments_, results_);
+        });
+      }) {}
+
+XnnFusionThunk::XnnFusionThunk(Options options, Info info,
+                               std::vector<Argument> arguments,
+                               std::vector<Result> results,
+                               OneUseBuilder one_use_builder,
+                               absl::Span<const int64_t> by_value_arguments,
+                               absl::Span<const int64_t> by_value_results)
+    : Thunk(Kind::kXnnFusion, std::move(info)),
+      options_(std::move(options)),
+      arguments_(std::move(arguments)),
+      results_(std::move(results)),
+      one_use_builder_(std::move(one_use_builder)),
+      by_value_arguments_(by_value_arguments.begin(), by_value_arguments.end()),
+      by_value_results_(by_value_results.begin(), by_value_results.end()),
+      xnn_runtime_pool_(nullptr) {}
 
 XnnFusionThunk::~XnnFusionThunk() = default;
 
@@ -263,17 +307,37 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
                                   results_buffers[i].opaque());
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto runtime, xnn_runtime_pool_.GetOrCreate(params.intra_op_threadpool));
+  DCHECK(builder_ || one_use_builder_) << "One of the builders must be set.";
 
-  tsl::AsyncValueRef<ExecuteEvent> executed = runtime->Invoke(
-      params.intra_op_threadpool, absl::MakeSpan(arguments_buffers),
-      absl::MakeSpan(results_buffers));
+  auto invoke = [&](XnnRuntime& runtime) {
+    tsl::AsyncValueRef<ExecuteEvent> executed = runtime.Invoke(
+        params.intra_op_threadpool, absl::MakeSpan(arguments_buffers),
+        absl::MakeSpan(results_buffers),
+        [&](size_t id) { return by_value_arguments_.contains(id); },
+        [&](size_t id) { return by_value_results_.contains(id); });
 
-  // Do not return runtime to the pool until the execution is done.
-  executed.AndThen([runtime = std::move(runtime)] {});
+    // Do not return runtime to the pool until the execution is done.
+    executed.AndThen([runtime = std::move(runtime)] {});
 
-  return executed;
+    return executed;
+  };
+
+  const Eigen::ThreadPoolDevice* device = params.intra_op_threadpool;
+
+  if (ABSL_PREDICT_TRUE(builder_)) {
+    // Borrow XNNPACK runtime from the pool.
+    TF_ASSIGN_OR_RETURN(auto runtime, xnn_runtime_pool_.GetOrCreate(device));
+    return invoke(*runtime);
+
+  } else {
+    // Create XNNPACK runtime for one-use only.
+    TF_ASSIGN_OR_RETURN(
+        auto runtime, CreateXnnRuntime(device, /*one_use=*/true, [&, this] {
+          return one_use_builder_(arguments_, results_, arguments_buffers,
+                                  results_buffers);
+        }));
+    return invoke(runtime);
+  }
 }
 
 }  // namespace xla::cpu
