@@ -153,20 +153,18 @@ class HeapSimulator {
       const LogicalBuffer::SizeFunction& size_function);
 
   static absl::StatusOr<int64_t> MinimumMemoryForComputation(
-      const HloComputation& computation, const HloInstructionSequence& sequence,
-      const HloAliasAnalysis& alias_analysis,
+      const HloComputation& computation, const HloAliasAnalysis& alias_analysis,
       const LogicalBuffer::SizeFunction& size_function,
       const HloSchedule* schedule);
 
-  // Run the heap simulation with the given algorithm, assuming the given
-  // schedule, which must contain a topologically-consistent total
-  // ordering of all instructions within each computation. The result is invalid
-  // if instructions are not run in exactly this sequence.
+  // Run the heap simulation with the given `algorithm`, assuming the given
+  // `schedule`, which must contain a topologically-consistent total
+  // ordering of all instructions within each computation of `module`. The
+  // result is invalid if instructions are not run in exactly this sequence.
   //
   // Running heap simulation on the whole module tends to save memory, compared
   // to running on a per-computation basis, since we can re-use buffer space for
   // called sub-computations.
-  //
   static absl::StatusOr<Result<HloValue>> Run(
       std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
       const HloModule& module, const HloSchedule& schedule,
@@ -174,7 +172,7 @@ class HeapSimulator {
       const BufferValue::SizeFunction& size_fn,
       const Options& options = Options());
 
-  // Same as above, but runs on a single computation. The 'instruction_sequence'
+  // Same as above, but runs on a single computation. The `instruction_sequence`
   // must contain a topologically-consistent total ordering of all instructions
   // in the computation. The result is invalid if instructions are not run in
   // exactly this sequence.
@@ -191,7 +189,6 @@ class HeapSimulator {
   static absl::StatusOr<Result<HloValue>> Run(
       std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
       const HloComputation& computation,
-      const HloInstructionSequence& instruction_sequence,
       const HloAliasAnalysis& alias_analysis,
       const BufferValue::SizeFunction& size_fn, const HloSchedule* schedule,
       const Options& options = Options());
@@ -205,16 +202,30 @@ class HeapSimulator {
                 const Options& options, const HloSchedule* schedule = nullptr);
   ~HeapSimulator();
 
-  absl::Status RunComputation(
-      const HloComputation& computation,
-      const HloInstructionSequence& instruction_sequence,
-      const HloAliasAnalysis& alias_analysis, HloLiveRange* live_range);
+  // Runs a heap simulation for the computation for which `alias_analysis` and
+  // `live_range` were performed.
+  absl::Status RunComputation(const HloAliasAnalysis& alias_analysis,
+                              HloLiveRange* live_range);
 
+  // TODO(michaelcw): comment
+  const HloValue* GetSharedOperandValue(
+      const HloValue* value, int64_t time, const HloBuffer* hlo_buffer,
+      const std::vector<std::vector<const HloValue*>>& buffers_freed,
+      const absl::flat_hash_map<const HloValue*, HloLiveRange::TimeBound>&
+          buffer_live_ranges,
+      const HloAliasAnalysis& alias_analysis);
+
+  // Returns whether `buffer` should be ignored during the heap simulation.
   bool IgnoreBuffer(const HloValue* buffer) const;
+
+  // Simulates an allocation of `buffer`.
   void Alloc(const HloValue* buffer, const HloInstruction* instruction);
+
+  // Simulate a free of `buffer`.
   void Free(const HloValue* buffer, const HloInstruction* instruction);
-  // ShareBuffer indicates that a new buffer is defined and it has to be the
-  // same address as the shared one.
+
+  // Indicates that a new `buffer` is defined and it has to be located at the
+  // same address as the `shared` one.
   void ShareBuffer(const HloValue* buffer, const HloValue* shared,
                    const HloInstruction* instruction);
 
@@ -226,8 +237,11 @@ class HeapSimulator {
   //  Two buffers belong to the same shared group.
   //  Eight of the buffer has no shared group assigned.
   bool InSameSharedGroup(const HloValue* left, const HloValue* right);
+
+  // Finishes the heap simulation, including post-processing of the results.
   absl::StatusOr<Result<HloValue>> Finish();
 
+  // Records debug information throughout the heap simulation.
   void FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
                       const HloValue* buffer, const HloInstruction* instruction,
                       const HloValue* share_with_canonical);
@@ -1009,7 +1023,7 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
  public:
   using Result = HeapSimulator::Result<BufferType>;
 
-  ChooseBestHeapAlgorithm(
+  explicit ChooseBestHeapAlgorithm(
       std::unique_ptr<std::vector<std::unique_ptr<HeapAlgorithm<BufferType>>>>
           algorithms)
       : algorithms_(std::move(*algorithms)) {}
