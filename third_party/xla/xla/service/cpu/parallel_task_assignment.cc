@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -37,10 +38,10 @@ limitations under the License.
 #include "xla/service/cpu/shape_partition.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace cpu {
@@ -50,7 +51,7 @@ class SimpleCostModel : public ParallelCostModel {
   SimpleCostModel(const int64_t max_parallelism,
                   const HloCostAnalysis::ShapeSizeFunction& shape_size)
       : max_parallelism_(max_parallelism), shape_size_(shape_size) {}
-  ~SimpleCostModel() override {}
+  ~SimpleCostModel() override = default;
 
   int64_t GetParallelTaskCount(HloInstruction* instruction) override {
     // Simple cost model based on hlo size and typical L2 cache size.
@@ -75,7 +76,7 @@ class DefaultCostModel : public ParallelCostModel {
       : max_parallelism_(max_parallelism),
         shape_size_(shape_size),
         cost_analysis_(std::move(cost_analysis)) {}
-  ~DefaultCostModel() override {}
+  ~DefaultCostModel() override = default;
 
   int64_t GetParallelTaskCount(HloInstruction* instruction) override {
     // Parameters for parallel task count computation.
@@ -257,7 +258,7 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
 
     // Set assigned dimension partitioning to 'instruction'.
     auto* new_root = call->to_apply()->root_instruction();
-    BackendConfig backend_config;
+    BackendConfig backend_config = *new_root->backend_config<BackendConfig>();
     absl::c_copy(dim_partition_counts,
                  tsl::protobuf::RepeatedFieldBackInserter(
                      backend_config.mutable_outer_dimension_partitions()));
