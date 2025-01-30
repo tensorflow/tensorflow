@@ -21,10 +21,15 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'main' }}
 
 jobs:
   Tests:
     strategy:
+      # Don't fail fast - want to see results for all builds even if one fails.
+      fail-fast: false
       matrix:
         job_info: [
           {
@@ -32,6 +37,12 @@ jobs:
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
             kokoro_job_name: "xla-linux-x86-cpu",
             pretty_name: "XLA Linux x86 CPU",
+          },
+          {
+            pool: "linux-arm64-c4a-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
+            kokoro_job_name: "xla-linux-arm64-cpu",
+            pretty_name: "XLA Linux ARM64 CPU",
           }
         ]
     name: ${{ matrix.job_info.pretty_name }}

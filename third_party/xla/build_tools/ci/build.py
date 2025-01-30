@@ -89,6 +89,7 @@ class BuildType(enum.Enum):
   """Enum representing all types of builds."""
   CPU_X86_SELF_HOSTED = enum.auto()
   CPU_ARM64 = enum.auto()
+  CPU_ARM64_SELF_HOSTED = enum.auto()
   GPU = enum.auto()
   GPU_CONTINUOUS = enum.auto()
 
@@ -312,6 +313,16 @@ _CPU_ARM64_BUILD = Build(
     build_tag_filters=cpu_arm_tag_filter,
     test_tag_filters=cpu_arm_tag_filter,
 )
+_CPU_ARM64_SELF_HOSTED_BUILD = Build(
+    type_=BuildType.CPU_ARM64_SELF_HOSTED,
+    repo="openxla/xla",
+    image_url=None,
+    configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+    options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
+    build_tag_filters=cpu_arm_tag_filter,
+    test_tag_filters=cpu_arm_tag_filter,
+)
 # TODO(ddunleavy): Setup additional build for a100 tests once L4 RBE is ready.
 _GPU_BUILD = nvidia_gpu_build_with_compute_capability(
     type_=BuildType.GPU,
@@ -464,6 +475,7 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/tensorflow/cpu/build_cpu": _TENSORFLOW_CPU_BUILD,
     "tensorflow/xla/tensorflow/gpu/build_gpu": _TENSORFLOW_GPU_BUILD,
     "xla-linux-x86-cpu": _CPU_X86_SELF_HOSTED_BUILD,
+    "xla-linux-arm64-cpu": _CPU_ARM64_SELF_HOSTED_BUILD,
 }
 
 
