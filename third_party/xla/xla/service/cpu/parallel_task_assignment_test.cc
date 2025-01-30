@@ -19,17 +19,19 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -243,6 +245,47 @@ TEST_F(ParallelTaskAssignmentTest, ConstantNotParallelized) {
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(ParallelTaskAssignmentTest, FusedComputationRetainsOtherBackendConfigs) {
+  const std::string hlo_string = R"(
+    HloModule eltwise_f32
+
+    custom_fusion {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      add0 = f32[1024,1024] add(p0, p1)
+      mul0 = f32[1024,1024] multiply(add0, add0)
+      ROOT sub = f32[1024,1024] subtract(mul0, p0)
+    }
+
+    ENTRY e {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT %result = f32[1024,1024] fusion(%p0, %p1), kind=kCustom,
+        calls=custom_fusion,
+        backend_config={"fusion_config": {kind: "__existing_kind"}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(module.get()));
+  EXPECT_TRUE(changed);
+
+  // Check that the existing `fusion_config` is preserved.
+  HloComputation* parallel_computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  HloInstruction* fusion =
+      hlo_query::FindInstruction(parallel_computation, HloOpcode::kFusion);
+  ASSERT_NE(fusion, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(cpu::BackendConfig backend_config,
+                          fusion->backend_config<cpu::BackendConfig>());
+  EXPECT_TRUE(backend_config.has_fusion_config());
+  EXPECT_EQ(backend_config.fusion_config().kind(), "__existing_kind");
+
+  // Also check that the task is parallelized.
+  EXPECT_GE(backend_config.outer_dimension_partitions()[0], 1LL);
 }
 
 }  // namespace
