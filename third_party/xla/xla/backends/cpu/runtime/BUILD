@@ -1175,9 +1175,9 @@ cc_library(
 )
 
 cc_library(
-    name = "thunk_serdes_proto",
-    srcs = ["thunk_serdes_proto.cc"],
-    hdrs = ["thunk_serdes_proto.h"],
+    name = "thunk_proto_serdes",
+    srcs = ["thunk_proto_serdes.cc"],
+    hdrs = ["thunk_proto_serdes.h"],
     deps = [
         ":all_gather_thunk",
         ":all_reduce_thunk",
@@ -1287,7 +1287,7 @@ xla_cc_test(
         ":sort_thunk",
         ":thunk",
         ":thunk_executor",
-        ":thunk_serdes_proto",
+        ":thunk_proto_serdes",
         ":thunk_testlib",
         ":topk_thunk",
         ":while_thunk",
