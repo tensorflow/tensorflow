@@ -64,6 +64,7 @@ class WhileThunk : public Thunk {
                        ResourceRequestsInterface& resource_requests) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Cleanup(const CleanupParams& params) override;
 
   SequentialThunk* condition_thunk_sequence() const {
     return condition_thunk_sequence_.get();

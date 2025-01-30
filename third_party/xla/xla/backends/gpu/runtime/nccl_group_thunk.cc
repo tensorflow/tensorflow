@@ -84,5 +84,12 @@ absl::Status NcclGroupThunk::ExecuteOnStream(
   return absl::OkStatus();
 }
 
+absl::Status NcclGroupThunk::Cleanup(const CleanupParams& params) {
+  for (auto& thunk : thunks_) {
+    TF_RETURN_IF_ERROR(thunk->Cleanup(params));
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace xla

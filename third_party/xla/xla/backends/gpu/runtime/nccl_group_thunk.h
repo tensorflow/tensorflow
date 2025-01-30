@@ -41,6 +41,7 @@ class NcclGroupThunk : public Thunk {
                        ResourceRequestsInterface& resource_requests) override;
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
+  absl::Status Cleanup(const CleanupParams& params) override;
   std::shared_ptr<NcclCollectiveThunk::AsyncEvents> async_events() const {
     return async_events_;
   }

@@ -149,6 +149,12 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
+absl::Status WhileThunk::Cleanup(const CleanupParams& params) {
+  TF_RETURN_IF_ERROR(condition_thunk_sequence_->Cleanup(params));
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Cleanup(params));
+  return absl::OkStatus();
+}
+
 void WhileThunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
   fn(this);
   condition_thunk_sequence_->ForAllThunks(fn);

@@ -266,6 +266,14 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   return cmd_buffer->command_buffer->Submit(params.stream);
 }
 
+absl::Status CommandBufferThunk::Cleanup(const CleanupParams& params) {
+  if (thunks_) {
+    TF_RETURN_IF_ERROR(thunks_->Cleanup(params));
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::shared_ptr<CommandBufferThunk::ExecutorCommandBuffer>>
 CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
   absl::MutexLock lock(&state_->mutex);
