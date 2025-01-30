@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("//tensorflow/lite/experimental/litert/vendors/mediatek:mediatek_build_defs.bzl", "litert_cc_lib_with_mtk")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
 )
 
-cc_library(
+litert_cc_lib_with_mtk(
     name = "neuron_adapter_api",
     srcs = [
         "neuron_adapter_api.cc",
