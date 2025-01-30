@@ -103,8 +103,8 @@ _test_size_override = {
         "@com_googlesource_code_re2//:re2",
     ] + select({
         "//conditions:default": [
-            "@local_tsl//tsl/platform:env",
-            "@local_tsl//tsl/platform:status",
+            "@local_xla//xla/tsl/platform:env",
+            "@local_xla//xla/tsl/platform:status",
             "@local_xla//xla/tsl/platform:subprocess",
             "@local_xla//xla/tsl/util:command_line_flags",
         ],
@@ -403,7 +403,7 @@ cc_library(
         "//tensorflow/lite:error_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
-        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:logging",
     ],
 )
 
