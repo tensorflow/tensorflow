@@ -611,9 +611,8 @@ PyArray::PyArray(nb::object aval, bool weak_type, nb_dtype dtype,
             std::move(result_status));
 
   if (!skip_checks) {
-    this->attr("_arrays") = CheckAndRearrange(
-        nb::cast<absl::Span<const PyArray>>(this->attr("_arrays")),
-        this->attr("_sharding"), this->attr("aval"));
+    this->attr("_arrays") = this->attr("_check_and_rearrange")(
+        this->attr("_arrays"), this->attr("_sharding"), this->attr("aval"));
   }
 }
 
