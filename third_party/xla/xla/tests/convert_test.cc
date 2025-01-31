@@ -31,7 +31,8 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -43,7 +44,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class ConvertTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
+class ConvertTest : public ClientLibraryTestRunnerMixin<
+                        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  public:
   explicit ConvertTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
