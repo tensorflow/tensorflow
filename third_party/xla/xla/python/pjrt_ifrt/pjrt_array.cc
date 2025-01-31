@@ -274,7 +274,7 @@ absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   DCHECK(this);
   return DisassembleIntoSingleDeviceArrays(
-      semantics, SingleDeviceShardSemantics::kAddressableShards);
+      semantics, SingleDeviceShardSemantics::kAllShards);
 }
 
 absl::StatusOr<std::vector<tsl::RCReference<Array>>>

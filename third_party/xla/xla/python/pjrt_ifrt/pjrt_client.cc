@@ -967,7 +967,7 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
   DCHECK(this);
   return AssembleArrayFromSingleDeviceArrays(
       std::move(shape), std::move(sharding), arrays, semantics,
-      SingleDeviceShardSemantics::kAddressableShards);
+      SingleDeviceShardSemantics::kAllShards);
 }
 
 absl::StatusOr<tsl::RCReference<Array>>
