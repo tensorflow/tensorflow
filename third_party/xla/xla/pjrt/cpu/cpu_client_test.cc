@@ -691,11 +691,13 @@ TEST(TfrtCpuClientTest, SubByteLiteralToBufferRoundtrip) {
       << "No addressable devices available.";
   PjRtDevice* const device = client->addressable_devices().front();
   ASSERT_NE(device, nullptr) << "Found device but it is null.";
+  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
+                          device->default_memory_space());
 
   const Literal literal =
       LiteralUtil::CreateR1<s4>({s4(0), s4(1), s4(2), s4(-8)});
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> buffer,
-                          client->BufferFromHostLiteral(literal, device));
+                          client->BufferFromHostLiteral(literal, memory_space));
   TF_ASSERT_OK(buffer->GetReadyFuture().Await());
   TF_ASSERT_OK_AND_ASSIGN(const size_t on_device_size,
                           buffer->GetOnDeviceSizeInBytes());

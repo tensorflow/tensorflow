@@ -1122,7 +1122,10 @@ PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                                PjRtDevice* device) {
+                                                PjRtMemorySpace* memory_space) {
+  CHECK_EQ(memory_space->devices().size(), 1);
+  PjRtDevice* device = memory_space->devices().front();
+
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostLiteral");
   VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostLiteral: shape: "
@@ -1181,18 +1184,6 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
   };
   thread_pool()->Schedule(transfer_h2d);
   return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
-}
-
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                                PjRtMemorySpace* memory_space) {
-  if (memory_space->devices().size() == 1) {
-    return BufferFromHostLiteral(literal, memory_space->devices()[0]);
-  }
-  return absl::UnimplementedError(absl::StrCat(
-      "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "
-      "platform: ",
-      platform_name()));
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>

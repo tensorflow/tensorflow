@@ -186,9 +186,6 @@ class TfrtCpuClient final : public PjRtClient {
       PjRtMemorySpace* memory_space, const Layout* device_layout) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>

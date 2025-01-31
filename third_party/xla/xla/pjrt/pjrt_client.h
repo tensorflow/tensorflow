@@ -898,9 +898,11 @@ class PjRtClient {
   // Note that literal must remain in scope until the transfer has completed, so
   // the caller should, for example, wait for GetReadyFuture().Await()
   // completes on the return value before letting literal go out of scope.
+  ABSL_DEPRECATED("Use BufferFromHostLiteral with a PjRtMemorySpace instead")
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) {
-    return Unimplemented("BufferFromHostLiteral is not implemented.");
+    TF_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
+    return BufferFromHostLiteral(literal, memory_space);
   }
 
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
