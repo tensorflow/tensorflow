@@ -72,6 +72,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient() {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   devices.push_back(std::move(device));
 
+  std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
+  memory_spaces.push_back(std::make_unique<InterpreterMemorySpace>(0, device));
+
   return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
       "interpreter", client, std::move(devices),
       /*process_index=*/0, std::move(memory_spaces), /*allocator=*/nullptr,
