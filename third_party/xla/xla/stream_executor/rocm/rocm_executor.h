@@ -109,7 +109,6 @@ class RocmExecutor : public GpuExecutor {
   }
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
-  void HostMemoryDeallocate(void* location) override;
 
   absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override;
 

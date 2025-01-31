@@ -748,15 +748,6 @@ RocmExecutor::HostMemoryAllocate(uint64_t size) {
   return AllocateHostMemory(rocm_context_, size);
 }
 
-void RocmExecutor::HostMemoryDeallocate(void* location) {
-  std::unique_ptr<ActivateContext> activation = Activate();
-  hipError_t res = wrap::hipHostFree(location);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "error deallocating host memory at " << location << ": "
-               << ToString(res);
-  }
-}
-
 void RocmExecutor::Deallocate(DeviceMemoryBase* mem) {
   DeviceDeallocate(rocm_context_, mem->opaque());
 }

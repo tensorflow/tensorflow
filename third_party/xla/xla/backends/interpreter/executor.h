@@ -96,9 +96,6 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
         ptr, size,
         [](void *ptr, uint64_t size) { delete[] static_cast<char *>(ptr); });
   }
-  void HostMemoryDeallocate(void *mem) override {
-    delete[] static_cast<char *>(mem);
-  }
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }

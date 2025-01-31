@@ -247,10 +247,6 @@ class CStreamExecutor : public StreamExecutorCommon {
     return AllocateHostMemory(stream_executor_, &device_, size);
   }
 
-  void HostMemoryDeallocate(void* mem) override {
-    stream_executor_->host_memory_deallocate(&device_, mem);
-  }
-
   absl::optional<AllocatorStats> GetAllocatorStats() override {
     SP_AllocatorStats c_stats{SP_ALLOCATORSTATS_STRUCT_SIZE};
     TF_Bool has_stats =

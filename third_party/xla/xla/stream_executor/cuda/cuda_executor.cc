@@ -965,10 +965,6 @@ void CudaExecutor::Deallocate(DeviceMemoryBase* mem) {
   }
 }
 
-void CudaExecutor::HostMemoryDeallocate(void* location) {
-  return HostDeallocate(cuda_context_, location);
-}
-
 bool CudaExecutor::SynchronizeAllActivity() {
   return cuda_context_->Synchronize().ok();
 }

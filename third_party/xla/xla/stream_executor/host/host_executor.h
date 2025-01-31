@@ -66,9 +66,6 @@ class HostExecutor : public StreamExecutorCommon {
         ptr, size,
         [](void* ptr, uint64_t size) { delete[] static_cast<char*>(ptr); });
   }
-  void HostMemoryDeallocate(void* mem) override {
-    delete[] static_cast<char*>(mem);
-  }
 
   bool SynchronizeAllActivity() override { return true; }
   absl::Status SynchronousMemZero(DeviceMemoryBase* location,
