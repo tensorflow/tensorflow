@@ -950,8 +950,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla/tsl/platform:statusor",
         "@local_xla//xla/tsl/profiler/utils:file_system_utils",
     ],
 )
@@ -1105,12 +1105,12 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:regexp",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:side_effect_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/tsl/platform:statusor",
         "@local_xla//xla/tsl/profiler/utils:math_utils",
         "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
         "@local_xla//xla/tsl/profiler/utils:timespan",
@@ -1147,8 +1147,8 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -1168,8 +1168,8 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -1190,8 +1190,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla/tsl/platform:logging",
         "@local_xla//xla/tsl/profiler/utils:device_utils",
         "@local_xla//xla/tsl/profiler/utils:group_events",
         "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
@@ -1260,7 +1260,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:statusor",
         "@local_xla//xla/tsl/profiler/utils:device_utils",
         "@local_xla//xla/tsl/profiler/utils:group_events",
         "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
@@ -1335,7 +1335,7 @@ cc_library(
     visibility = ["@local_xla//xla/tsl/profiler:friends"],
     deps = [
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:macros",
     ],
 )
 

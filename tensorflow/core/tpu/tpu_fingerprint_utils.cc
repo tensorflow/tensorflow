@@ -19,12 +19,12 @@ limitations under the License.
 #include <string>
 
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/tpu_compile_interface.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 

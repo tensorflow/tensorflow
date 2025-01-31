@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/profiler/utils/device_utils.h"
 #include "xla/tsl/profiler/utils/group_events.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
