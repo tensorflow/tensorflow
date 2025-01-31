@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 

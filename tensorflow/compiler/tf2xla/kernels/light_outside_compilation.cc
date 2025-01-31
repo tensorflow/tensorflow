@@ -59,6 +59,8 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_finder.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/process_state.h"
@@ -76,9 +78,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"

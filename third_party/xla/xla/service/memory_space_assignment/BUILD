@@ -56,6 +56,10 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
         "//xla/service/heap_simulator",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -67,10 +71,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -128,7 +128,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -151,6 +150,8 @@ cc_library(
         "//xla:comparison_util",
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -160,8 +161,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -187,10 +186,10 @@ cc_library(
         "//xla/service:hlo_value",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -206,6 +205,7 @@ cc_library(
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:hlo_value",
         "//xla/service/heap_simulator",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -213,7 +213,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_googlesource_code_re2//:re2",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -267,6 +266,8 @@ cc_library(
         "//xla/service:tuple_util",
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -277,8 +278,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -293,9 +292,9 @@ xla_cc_test(
         "//xla/service/heap_simulator",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -355,13 +354,13 @@ cc_library(
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_value",
         "//xla/service/heap_simulator",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -375,12 +374,12 @@ xla_cc_test(
         "//xla/service:hlo_cost_analysis",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -421,13 +420,13 @@ xla_cc_test(
         "//xla/service/heap_simulator",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -446,12 +445,12 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
         "//xla/service/heap_simulator",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -467,10 +466,10 @@ cc_library(
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:call_graph",
         "//xla/service:hlo_cost_analysis",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -495,6 +494,7 @@ cc_library(
         "//xla/service:hlo_value",
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -506,7 +506,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -535,6 +534,9 @@ xla_cc_test(
         "//xla/service:hlo_value",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -544,9 +546,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@com_googlesource_code_re2//:re2",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -584,6 +583,9 @@ cc_library(
         "//xla/service:time_utils",
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -651,10 +653,10 @@ xla_cc_test(
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_value",
         "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -667,9 +669,9 @@ xla_cc_test(
         "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:test",
     ],
 )
