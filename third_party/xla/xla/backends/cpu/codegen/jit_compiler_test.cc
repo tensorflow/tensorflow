@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/SourceMgr.h"
@@ -179,7 +180,7 @@ TEST(JitCompilerTest, ExternalDefinitionGenerator) {
   llvm::orc::ThreadSafeContext tsc(std::move(context));
 
   JitCompiler::Options options;
-  options.definition_generator = [](llvm::TargetMachine*) {
+  options.definition_generator = [](const llvm::DataLayout& data_layout) {
     return std::make_unique<ExternalDefinitionGenerator>();
   };
 

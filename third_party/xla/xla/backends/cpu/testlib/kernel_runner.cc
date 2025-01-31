@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -96,9 +97,8 @@ absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(int opt_level) {
   // Needed to resolve symbols such as built in intrinsics (sin, cos etc).
   JitCompiler::Options jit_compiler_options;
   jit_compiler_options.definition_generator =
-      [](llvm::TargetMachine* target_machine) {
-        return std::make_unique<RuntimeSymbolGenerator>(
-            target_machine->createDataLayout());
+      [](const llvm::DataLayout& data_layout) {
+        return std::make_unique<RuntimeSymbolGenerator>(data_layout);
       };
 
   auto& ir_compiler_options = jit_compiler_options.ir_compiler_options;

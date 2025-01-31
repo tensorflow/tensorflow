@@ -78,8 +78,10 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/codegen/object_loader.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -1377,10 +1379,9 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
   };
 
   // Definition generator to link with XLA:CPU host runtime symbols.
-  JitCompiler::DefinitionGenerator definition_generator =
-      [](llvm::TargetMachine* target_machine) {
-        return std::make_unique<RuntimeSymbolGenerator>(
-            target_machine->createDataLayout());
+  ExecutionEngine::DefinitionGenerator definition_generator =
+      [](const llvm::DataLayout& data_layout) {
+        return std::make_unique<RuntimeSymbolGenerator>(data_layout);
       };
 
   // Options for orchestrating the JIT compilation process.
@@ -2122,39 +2123,29 @@ CpuExecutableAotCompilationResult::LoadExecutable(
   VlogMaxIsa(debug_options.xla_cpu_max_isa());
   const HloModuleConfig& config = module->config();
 
-  // Options for compiling LLVM IR to machine code.
-  IrCompiler::Options ir_compiler_options{
-      /*optimization_level=*/CodeGenOptLevel(config),
-      /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
-      /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
-      /*disable_expensive_passes=*/
-      debug_options.xla_llvm_disable_expensive_passes(),
-      /*slp_vectorizer_disabled=*/options::SlpVectorizerDisabled(config),
-  };
-
-  // We don't need any hooks when loading AOT compilation result.
-  IrCompiler::CompilationHooks ir_compiler_hooks = {};
+  // Infer target machine from the current host CPU.
+  IrCompiler::TargetMachineBuilder target_machine_builder =
+      JitCompiler::InferTargetMachineBuilder(
+          std::move(CompilerTargetOptions(module->config())),
+          CodeGenOptLevel(config),
+          CpuFeatureFromString(debug_options.xla_cpu_max_isa()));
+  TF_ASSIGN_OR_RETURN(auto target_machine, target_machine_builder());
 
   // Definition generator to link with XLA:CPU host runtime symbols.
-  JitCompiler::DefinitionGenerator definition_generator =
-      [](llvm::TargetMachine* target_machine) {
-        return std::make_unique<RuntimeSymbolGenerator>(
-            target_machine->createDataLayout());
+  ExecutionEngine::DefinitionGenerator definition_generator =
+      [](const llvm::DataLayout& data_layout) {
+        return std::make_unique<RuntimeSymbolGenerator>(data_layout);
       };
 
-  // Options for orchestrating the JIT compilation process.
-  JitCompiler::Options jit_compiler_options{
-      std::move(ir_compiler_options),
-      std::move(ir_compiler_hooks),
-      /*num_dylibs=*/1,
-      /*definition_generator=*/std::move(definition_generator),
-      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
-  };
+  ObjectLoader object_loader(/*num_dylibs=*/1,
+                             target_machine->createDataLayout(),
+                             definition_generator);
 
-  TF_ASSIGN_OR_RETURN(
-      JitCompiler jit_compiler,
-      JitCompiler::Create(CompilerTargetOptions(module->config()),
-                          std::move(jit_compiler_options)));
+  for (size_t i = 0; i < object_loader.num_dylibs(); ++i) {
+    object_loader.dylib(i).value()->addGenerator(
+        std::make_unique<RuntimeSymbolGenerator>(
+            target_machine->createDataLayout()));
+  }
 
   // We might have an XLA:CPU executable that has only runtime thunks and
   // doesn't have any corresponding object files, and it's absolutely fine.
@@ -2165,9 +2156,10 @@ CpuExecutableAotCompilationResult::LoadExecutable(
   size_t obj_file_index = 0;
   for (auto& obj_file : proto_.obj_files()) {
     llvm::StringRef data(obj_file.data(), obj_file.size());
-    TF_RETURN_IF_ERROR(jit_compiler.AddObjFile(llvm::MemoryBuffer::getMemBuffer(
-        data,
-        absl::StrCat(proto_.entry_function_name(), "_", obj_file_index++))));
+    TF_RETURN_IF_ERROR(
+        object_loader.AddObjFile(llvm::MemoryBuffer::getMemBuffer(
+            data, absl::StrCat(proto_.entry_function_name(), "_",
+                               obj_file_index++))));
   }
 
   std::unique_ptr<CpuExecutable> cpu_executable;
@@ -2204,7 +2196,7 @@ CpuExecutableAotCompilationResult::LoadExecutable(
 
     VLOG(3) << "Collected " << compiled_symbols.size() << " compiled symbols";
     TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> function_library,
-                        std::move(jit_compiler).Compile(compiled_symbols));
+                        std::move(object_loader).Load(compiled_symbols));
 
     // Create constant allocations from the buffer assignment.
     TF_ASSIGN_OR_RETURN(
@@ -2222,8 +2214,8 @@ CpuExecutableAotCompilationResult::LoadExecutable(
     // Create a "classic" CPU executable.
     using ComputeFn = std::remove_pointer_t<CpuExecutable::ComputeFunctionType>;
     TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> function_library,
-                        std::move(jit_compiler)
-                            .Compile({FunctionLibrary::Sym<ComputeFn>(
+                        std::move(object_loader)
+                            .Load({FunctionLibrary::Sym<ComputeFn>(
                                 proto_.entry_function_name())}));
 
     TF_ASSIGN_OR_RETURN(
