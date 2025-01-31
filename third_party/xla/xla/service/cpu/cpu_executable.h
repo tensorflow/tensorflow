@@ -24,6 +24,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
@@ -102,8 +104,40 @@ class CpuExecutable : public Executable {
 
   absl::Span<const std::string> obj_files() const { return obj_files_; }
 
+  std::vector<SymbolProto> get_compiled_symbols_proto() const {
+    std::vector<SymbolProto> symbols;
+    for (const auto& symbol : compiled_symbols_) {
+      SymbolProto symbol_proto;
+      symbol_proto.set_name(symbol.name);
+      symbol_proto.set_function_type_id(GetFunctionTypeId(symbol.type_id));
+      symbols.push_back(std::move(symbol_proto));
+    }
+    return symbols;
+  }
+
   void set_obj_files(std::vector<std::string> obj_files) {
     obj_files_ = std::move(obj_files);
+  }
+
+  void set_compiled_symbols(
+      std::vector<FunctionLibrary::Symbol> compiled_symbols) {
+    compiled_symbols_ = std::move(compiled_symbols);
+  }
+
+  void set_symbol_type_id_to_function_type_id(
+      absl::flat_hash_map<FunctionLibrary::TypeId, SymbolProto::FunctionTypeId>
+          symbol_type_id_to_function_type_id) {
+    symbol_type_id_to_function_type_id_ =
+        std::move(symbol_type_id_to_function_type_id);
+  }
+
+  SymbolProto::FunctionTypeId GetFunctionTypeId(
+      const FunctionLibrary::TypeId type_id) const {
+    auto it = symbol_type_id_to_function_type_id_.find(type_id);
+    if (it == symbol_type_id_to_function_type_id_.end()) {
+      return SymbolProto::UNKNOWN;
+    }
+    return it->second;
   }
 
   // This should be called after set_ir_module_string.
@@ -182,6 +216,13 @@ class CpuExecutable : public Executable {
   // compiler. We capture all object files created by JitCompiler so we can
   // export them to AOT compilation result.
   std::vector<std::string> obj_files_;
+
+  // Generate compiled symbols. We capture all compiled symbols so we can export
+  // them to AOT compilation result.
+  std::vector<FunctionLibrary::Symbol> compiled_symbols_;
+
+  absl::flat_hash_map<FunctionLibrary::TypeId, SymbolProto::FunctionTypeId>
+      symbol_type_id_to_function_type_id_;
 
   // Buffer assignment for the buffers we need to allocate.
   const std::unique_ptr<const BufferAssignment> assignment_;

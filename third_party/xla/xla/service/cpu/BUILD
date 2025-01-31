@@ -580,6 +580,7 @@ cc_library(
     hdrs = ["cpu_executable.h"],
     deps = [
         ":cpu_runtime",
+        ":executable_proto_cc",
         "//xla:executable_run_options",
         "//xla:literal",
         "//xla:shape_tree",
@@ -609,6 +610,7 @@ cc_library(
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

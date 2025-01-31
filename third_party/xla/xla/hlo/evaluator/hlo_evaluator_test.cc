@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/base/internal/endian.h"
 #include "absl/container/flat_hash_set.h"
