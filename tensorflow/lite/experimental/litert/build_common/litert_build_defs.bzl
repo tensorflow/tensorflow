@@ -89,9 +89,18 @@ _EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN = "//tensorflow/lite/experimental/litert/
 _EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX = make_linkopt("--version-script=$(location {})".format(_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX))
 _EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN = make_linkopt("-exported_symbols_list,$(location {})".format(_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN))
 
+def symbol_opts():
+    """Defines linker flags whether to include symbols or not."""
+    return select({
+        "//tensorflow:debug": [],
+        "//conditions:default": [
+            # Omit symbol table, for all non debug builds
+            "-Wl,-s",
+        ],
+    })
+
 # TODO b/391390553: Add "-Wl,--no-undefined" to make sure all symbols are defined.
 _EXPORT_LRT_COMMON_LINKOPTS_LINUX = [
-    "-Wl,-s",  # Omit symbol table, for all non debug builds
     "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
     "-Wl,--gc-sections",  # Eliminate unused code and data.
     "-Wl,--as-needed",  # Don't link unused libs.a
@@ -116,7 +125,7 @@ def export_lrt_runtime_only_linkopt():
         "//tensorflow:macos": [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN],
         "//tensorflow:ios": [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN],
         "//conditions:default": [],
-    })
+    }) + symbol_opts()
 
 ####################################################################################################
 # Macros
