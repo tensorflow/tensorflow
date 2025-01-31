@@ -7,7 +7,7 @@ ARG ROCM_DEB_REPO=https://repo.radeon.com/rocm/apt/6.2/
 ARG ROCM_BUILD_NAME=ubuntu
 ARG ROCM_BUILD_NUM=main
 ARG ROCM_PATH=/opt/rocm/
-ARG GPU_DEVICE_TARGETS="gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030 gfx1100 gfx1102 gfx1200 gfx1201"
+ARG GPU_DEVICE_TARGETS="gfx908 gfx90a gfx940 gfx941 gfx942 gfx1030 gfx1100 gfx1101 gfx1102 gfx1200 gfx1201"
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TF_NEED_ROCM 1
