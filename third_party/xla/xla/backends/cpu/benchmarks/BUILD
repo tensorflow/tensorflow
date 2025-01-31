@@ -371,3 +371,21 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
     ],
 )
+
+xla_cc_test(
+    name = "xnn_fusion_benchmark_test",
+    srcs = ["xnn_fusion_benchmark_test.cc"],
+    deps = [
+        ":hlo_benchmark_runner",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)

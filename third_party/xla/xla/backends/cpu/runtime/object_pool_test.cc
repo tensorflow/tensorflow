@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/runtime/xnnpack/object_pool.h"
+#include "xla/backends/cpu/runtime/object_pool.h"
 
 #include <atomic>
 #include <cstddef>

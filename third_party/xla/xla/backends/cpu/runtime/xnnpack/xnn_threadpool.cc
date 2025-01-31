@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/base/optimization.h"
 #include "pthreadpool.h"
-#include "xla/backends/cpu/runtime/xnnpack/parallel_loop_runner.h"
+#include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"

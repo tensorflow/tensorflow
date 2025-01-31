@@ -23,7 +23,7 @@ limitations under the License.
 #include "xnnpack.h"
 #include "absl/algorithm/container.h"
 #include "pthreadpool.h"
-#include "xla/backends/cpu/runtime/xnnpack/parallel_loop_runner.h"
+#include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/test.h"
 
