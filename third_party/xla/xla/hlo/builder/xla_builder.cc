@@ -63,12 +63,12 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/sharding_op_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 

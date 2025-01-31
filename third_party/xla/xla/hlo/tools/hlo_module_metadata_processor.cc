@@ -39,11 +39,11 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/service/hlo.pb.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace tools {

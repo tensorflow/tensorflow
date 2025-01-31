@@ -16,7 +16,7 @@ limitations under the License.
 // Usage: convert_computation <txt2bin|bin2txt> serialized_computation_proto
 //
 // bin2txt spits out the result to stdout. txt2bin modifies the file in place.
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -25,9 +25,9 @@ limitations under the License.
 #include <string>
 
 #include "xla/service/hlo.pb.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {

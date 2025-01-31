@@ -36,13 +36,13 @@ xla_cc_binary(
     deps = [
         "//xla/tsl/lib/io:buffered_inputstream",
         "//xla/tsl/lib/io:random_inputstream",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -60,10 +60,10 @@ xla_cc_binary(
         "//xla:literal",
         "//xla:types",
         "//xla:xla_data_proto_cc",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -79,11 +79,11 @@ xla_cc_binary(
     srcs = ["convert_computation.cc"],
     deps = [
         "//xla/service:hlo_proto_cc",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -99,14 +99,14 @@ xla_cc_binary(
     srcs = ["hlo_module_metadata_processor.cc"],
     deps = [
         "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -125,8 +125,8 @@ xla_cc_binary(
         "//xla:text_literal_reader",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:protobuf",
     ],
@@ -145,12 +145,12 @@ xla_cc_binary(
     deps = [
         "//xla:util",
         "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 

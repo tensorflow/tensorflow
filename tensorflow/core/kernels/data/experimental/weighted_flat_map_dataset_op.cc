@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -42,8 +44,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
