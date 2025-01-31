@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -40,7 +39,6 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
-namespace op = xla::testing::opcode_matchers;
 using Pass = CollectivePermuteDecomposer;
 
 struct Decomposed {
@@ -54,26 +52,6 @@ struct Decomposed {
 
 class DecomposerTest : public HloHardwareIndependentTestBase {
  protected:
-  // TODO: b/393126411 - Eliminate these heper functions effectively wrapping
-  // the entire test.
-  void AssertNoTranform(absl::string_view hlo, int64_t threshold = 0) {
-    TF_ASSERT_OK(RunAndCheckHloRewrite(
-        hlo,
-        Pass(threshold, DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
-        false));
-  };
-  auto Transform(absl::string_view hlo, int64_t threshold = 0) {
-    return RunAndCheckHloRewrite(
-        hlo,
-        Pass(threshold, DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
-        true);
-  };
-  void AssertTransform(absl::string_view hlo, int64_t threshold = 0) {
-    TF_ASSERT_OK(RunAndCheckHloRewrite(
-        hlo,
-        Pass(threshold, DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
-        true));
-  };
   Decomposed FindComponents(HloModule* module, absl::string_view cp_name) {
     Decomposed result;
     result.cp_name = cp_name;
@@ -123,7 +101,7 @@ static std::string GetSimpleHloWhileLoopStr(absl::string_view hlo_while_body) {
 }
 
 TEST_F(DecomposerTest, WithCycleNotTransformed) {
-  AssertNoTranform(GetSimpleHloWhileLoopStr(R"(
+  std::string hlo = GetSimpleHloWhileLoopStr(R"(
   body {
     param = (u32[], f32[64]) parameter(0)
     i = get-tuple-element(param), index=0
@@ -132,12 +110,17 @@ TEST_F(DecomposerTest, WithCycleNotTransformed) {
         source_target_pairs={{0,1}, {1,0}}
     ROOT result = tuple(i, cp)
   }
-  )"));
+  )");
+  TF_ASSERT_OK(RunAndCheckHloRewrite(
+      hlo,
+      Pass(/*threshold_in_bytes=*/0,
+           DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+      false));
 }
 
 TEST_F(DecomposerTest, ThresholdNotTransformed) {
   const int64_t kThreshold = 64 * 8;
-  AssertNoTranform(GetSimpleHloWhileLoopStr(R"(
+  std::string hlo = GetSimpleHloWhileLoopStr(R"(
   body {
     param = (u32[], f32[64]) parameter(0)
     i = get-tuple-element(param), index=0
@@ -146,12 +129,16 @@ TEST_F(DecomposerTest, ThresholdNotTransformed) {
         source_target_pairs={{0,1}, {1,2}, {2,3}}
     ROOT result = tuple(i, cp)
   }
-  )"),
-                   kThreshold);
+  )");
+  TF_ASSERT_OK(RunAndCheckHloRewrite(
+      hlo,
+      Pass(/*threshold_in_bytes=*/kThreshold,
+           DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+      false));
 }
 
 TEST_F(DecomposerTest, Basic) {
-  AssertTransform(GetSimpleHloWhileLoopStr(R"(
+  std::string hlo = GetSimpleHloWhileLoopStr(R"(
   body {
     param = (u32[], f32[64]) parameter(0)
     i = get-tuple-element(param), index=0
@@ -160,11 +147,16 @@ TEST_F(DecomposerTest, Basic) {
         source_target_pairs={{0,1}, {1,2}}
     ROOT result = tuple(i, cp)
   }
-  )"));
+  )");
+  TF_ASSERT_OK(RunAndCheckHloRewrite(
+      hlo,
+      Pass(/*threshold_in_bytes=*/0,
+           DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+      true));
 }
 
 TEST_F(DecomposerTest, NoChannelId) {
-  AssertTransform(GetSimpleHloWhileLoopStr(R"(
+  std::string hlo = GetSimpleHloWhileLoopStr(R"(
   body {
     param = (u32[], f32[64]) parameter(0)
     i = get-tuple-element(param), index=0
@@ -172,16 +164,26 @@ TEST_F(DecomposerTest, NoChannelId) {
     cp = f32[64] collective-permute(data), source_target_pairs={{0,1}, {1,2}}
     ROOT result = tuple(i, cp)
   }
-  )"));
+  )");
+  TF_ASSERT_OK(RunAndCheckHloRewrite(
+      hlo,
+      Pass(/*threshold_in_bytes=*/0,
+           DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+      true));
 }
 
 TEST_F(DecomposerTest, OutsideOfWhileLoop) {
-  AssertNoTranform(R"(HloModule test
+  std::string hlo = R"(HloModule test
     ENTRY test_computation {
       data = u32[] parameter(0)
       ROOT cp = u32[] collective-permute(data), channel_id=1,
           source_target_pairs={{0,1}, {1,2}}
-    })");
+    })";
+  TF_ASSERT_OK(RunAndCheckHloRewrite(
+      hlo,
+      Pass(/*threshold_in_bytes=*/0,
+           DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+      false));
 }
 
 TEST_F(DecomposerTest, ControlDependency_IndependentCPs) {
@@ -216,7 +218,13 @@ TEST_F(DecomposerTest, ControlDependency_IndependentCPs) {
       ROOT while_result = (u32[], f32[64], f32[64], f32[64]) while(while_init),
           body=body, condition=cond
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          hlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
   Decomposed cp1 = FindComponents(module.get(), "cp1");
   Decomposed cp2 = FindComponents(module.get(), "cp2");
   Decomposed cp3 = FindComponents(module.get(), "cp3");
@@ -238,7 +246,13 @@ TEST_F(DecomposerTest, ControlDependency_BasicDependency) {
       ROOT result = (u32[], f32[64]) tuple(i, cp-b)
     }
   )");
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(kHlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          kHlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
   Decomposed cp_a = FindComponents(module.get(), "cp-a");
   EXPECT_NE(FindInstruction(module.get(), "cp-b"), nullptr);
 }
@@ -257,7 +271,13 @@ TEST_F(DecomposerTest, ControlDependency_MoreDependencies) {
       cp3 = f32[64] collective-permute(cp2), source_target_pairs={{6,7}}
       ROOT out = (u32[], f32[64]) tuple(i, cp3)
     })");
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(kHlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          kHlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
   Decomposed cp1 = FindComponents(module.get(), "cp1");
   EXPECT_NE(FindInstruction(module.get(), "cp2"), nullptr);
   EXPECT_NE(FindInstruction(module.get(), "cp3"), nullptr);
@@ -321,7 +341,13 @@ TEST_F(DecomposerTest, StructureAndMetadata) {
         source_line=35}
       ROOT result = (u32[], f32[64]) tuple(i, cp)
     })");
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(kHlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          kHlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
   Decomposed cp = FindComponents(module.get(), "cp");
   EnsurePreservedInfo(cp.send);
   EnsurePreservedInfo(cp.recv);
@@ -369,7 +395,13 @@ TEST_F(DecomposerTest, Pipeline1) {
       ROOT result = u32[2] get-tuple-element(while_result), index=1
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          hlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
   Decomposed cp = FindComponents(module.get(), "cp");
   EnsurePipelineAttr(cp, "0");
   EXPECT_EQ(OtherAttr(cp.recv), "xyz") << "Preseving other attributes";
@@ -424,7 +456,13 @@ TEST_F(DecomposerTest, ForwardPipeline2) {
     ROOT result = u32[2] get-tuple-element(while_result), index=1
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          hlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
 
   Decomposed cp_back = FindComponents(module.get(), "cp_back");
   Decomposed cp_fwd = FindComponents(module.get(), "cp_fwd");
@@ -492,7 +530,13 @@ TEST_F(DecomposerTest, ForwardPipelineWithMatmul) {
     ROOT data_out = f32[2,2] get-tuple-element(while_result), index=1
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          hlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
   Decomposed cp_back = FindComponents(module.get(), "cp_back");
   Decomposed cp_fwd = FindComponents(module.get(), "cp_fwd");
   EXPECT_EQ(cp_back.recv->channel_id().value(), 1);
@@ -551,7 +595,13 @@ TEST_F(DecomposerTest, BackwardPipeline2) {
     ROOT result = u32[2] get-tuple-element(while_result), index=1
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, Transform(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      RunAndCheckHloRewrite(
+          hlo,
+          Pass(/*threshold_in_bytes=*/0,
+               DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE),
+          true));
   Decomposed cp_back = FindComponents(module.get(), "cp_back");
   Decomposed cp_fwd = FindComponents(module.get(), "cp_fwd");
   EXPECT_EQ(cp_back.recv->channel_id().value(), 2);
