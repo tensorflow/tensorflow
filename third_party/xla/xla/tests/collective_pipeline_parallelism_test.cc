@@ -1317,6 +1317,7 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
     after_all_fwd = token[] after-all()
     fwd_send = (f32[16], u32[], token[]) send(next_stage_slice, after_all_fwd),
       frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+    fwd_send_done = token[] send-done(fwd_send)
 
     // Select compute argument from previous stage or from input and perform
     // compute.
@@ -1337,28 +1338,26 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
     buffer_ = f32[5,16] call(buffer, prev_iteration_compute_res, c4, i),
         to_apply=update_buffer_mb5
 
-    fwd_recv = (f32[16], u32[], token[]) recv(after_all_fwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
-    fwd_recv_done = (f32[16], token[]) recv-done(fwd_recv),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}},
-      control-predecessors={fwd_send}
 
     after_all_bwd = token[] after-all()
-    bwd_send = (f32[16], u32[], token[]) send(next_stage_slice, after_all_bwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}
     bwd_recv = (f32[16], u32[], token[]) recv(after_all_bwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}
+      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}, control-predecessors={fwd_send_done}
     bwd_recv_done = (f32[16], token[]) recv-done(bwd_recv),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}},
-      control-predecessors={bwd_send}
+      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}
+    bwd_send = (f32[16], u32[], token[]) send(next_stage_slice, after_all_bwd),
+      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}, control-predecessors={bwd_recv_done}
+    bwd_send_done = token[] send-done(bwd_send)
+
+    fwd_recv = (f32[16], u32[], token[]) recv(after_all_fwd),
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, control-predecessors={bwd_send_done}
+    fwd_recv_done = (f32[16], token[]) recv-done(fwd_recv),
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
 
     i_ = add(i, c1)
 
     ROOT tuple_ = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[],
       (f32[16], token[]), (f32[16], token[])) tuple(weights, input, output_,
       buffer_, compute_res, i_, fwd_recv_done, bwd_recv_done)
-    fwd_send_done = token[] send-done(fwd_send)
-    bwd_send_done = token[] send-done(bwd_send)
   }
 
   ENTRY main {
@@ -1372,11 +1371,6 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
     c0 = u32[] constant(0)
     input_slice = f32[16] call(input, c0, c0), to_apply=read_buffer_mb5
 
-    after_all_fwd = token[] after-all()
-    fwd_recv = (f32[16], u32[], token[]) recv(after_all_fwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
-    fwd_recv_done = (f32[16], token[]) recv-done(fwd_recv),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
 
     after_all_bwd = token[] after-all()
     bwd_recv = (f32[16], u32[], token[]) recv(after_all_bwd),
@@ -1384,9 +1378,14 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
     bwd_recv_done = (f32[16], token[]) recv-done(bwd_recv),
       frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}
     bwd_send = (f32[16], u32[], token[]) send(input_slice, after_all_bwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}
+      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}, control-predecessors={bwd_recv_done}
     bwd_send_done = token[] send-done(bwd_send)
 
+    after_all_fwd = token[] after-all()
+    fwd_recv = (f32[16], u32[], token[]) recv(after_all_fwd),
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, control-predecessors={bwd_send_done}
+    fwd_recv_done = (f32[16], token[]) recv-done(fwd_recv),
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
 
     // Iterate through pipeline stages.
     tuple = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[],
