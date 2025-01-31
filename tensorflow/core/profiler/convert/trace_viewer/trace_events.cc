@@ -31,6 +31,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "third_party/openmpi/opal/mca/event/libevent2022/libevent/include/event2/event_struct.h"
+#include "third_party/pgext/pg_repack/bin/pgut/pgut-fe.h"
 #include "xla/tsl/lib/io/iterator.h"
 #include "xla/tsl/lib/io/table.h"
 #include "xla/tsl/lib/io/table_builder.h"
@@ -290,7 +292,8 @@ absl::Status DoLoadFromLevelDbTable(
     int64_t filter_by_visibility_threshold, Trace& trace,
     bool& filter_by_visibility,
     const std::function<TraceEvent*(const TraceEvent&)>& copy_event_to_arena,
-    const std::function<void(TraceEvent*)>& add_arena_event) {
+    const std::function<void(TraceEvent*)>& add_arena_event,
+    std::optional<int> host_id = std::nullopt) {
   uint64_t file_size;
   TF_RETURN_IF_ERROR(tsl::Env::Default()->GetFileSize(filename, &file_size));
 
@@ -315,6 +318,17 @@ absl::Status DoLoadFromLevelDbTable(
   if (!ReadTraceMetadata(iterator.get(), kTraceMetadataKey, &trace)) {
     return absl::UnknownError(
         "Could not parse Trace proto to read trace metadata");
+  }
+
+  if (host_id.has_value()) {
+    int device_count = 0;
+    for (const auto& [id, device] : trace.devices()) {
+      int device_id = host_id.value() * 1000 + device_count;
+      trace.mutable_devices()->at(id).set_device_id(device_id);
+      trace.mutable_devices()->at(device_id) = device;
+      trace.mutable_devices()->erase(id);
+      device_count++;
+    }
   }
 
   if (filter) filter->SetUp(trace);

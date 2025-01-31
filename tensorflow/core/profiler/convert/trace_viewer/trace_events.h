@@ -35,6 +35,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "third_party/pgext/pg_repack/bin/pgut/pgut-fe.h"
+#include "third_party/suricata/src/src/host.h"
 #include "xla/tsl/lib/io/table.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_filter_interface.h"
@@ -292,12 +294,14 @@ class TraceEventsContainerBase {
       const std::string& filename,
       std::unique_ptr<TraceEventsFilterInterface> filter = nullptr,
       std::unique_ptr<TraceVisibilityFilter> visibility = nullptr,
-      int64_t filter_by_visibility_threshold = -1LL) {
+      int64_t filter_by_visibility_threshold = -1LL,
+      std::optional<int> host_id = std::nullopt) {
     return DoLoadFromLevelDbTable(
         filename, std::move(filter), std::move(visibility),
         filter_by_visibility_threshold, trace_, filter_by_visibility_,
         absl::bind_front(&TraceEventsContainerBase::CopyEventToArena, this),
-        absl::bind_front(&TraceEventsContainerBase::AddArenaEvent, this));
+        absl::bind_front(&TraceEventsContainerBase::AddArenaEvent, this),
+        host_id);
   }
 
   // Calls 'callback' with all events stored in this container.
