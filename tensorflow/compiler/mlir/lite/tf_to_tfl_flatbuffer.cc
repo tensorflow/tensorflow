@@ -465,11 +465,7 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   AddPostVariableFreezingTFToTFLConversionPasses(
       saved_model_dir, converter_flags, pass_config, pass_manager.get());
   if (failed(pass_manager->run(module.get()))) {
-    return status_handler->Combine(absl::InvalidArgumentError(
-        "Variable constant folding is failed. Please consider using "
-        "enabling `experimental_enable_resource_variables` flag in the "
-        "TFLite converter object. For example, "
-        "converter.experimental_enable_resource_variables = True"));
+    return status_handler->ConsumeStatus();
   }
 
   if (failed(GraphContainsStatefulPartitionedOp(module.get()))) {
