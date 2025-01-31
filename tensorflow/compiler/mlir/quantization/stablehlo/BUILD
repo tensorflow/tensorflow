@@ -543,6 +543,7 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:UBDialect",
         "@local_tsl//tsl/platform:protobuf",
         "@local_xla//xla/mlir_hlo",
         "@stablehlo//:chlo_ops",
