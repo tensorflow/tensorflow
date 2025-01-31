@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
 
+#include <cassert>
+#include <cstddef>
+#include <functional>
 #include <optional>
+#include <string>
+#include <utility>
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
