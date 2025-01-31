@@ -60,6 +60,8 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
     bool disable_expensive_passes = false;
     bool disable_slp_vectorizer = false;
 
+    bool enable_loop_unrolling = false;
+
     bool dfsan_enabled = false;
     std::vector<std::string> dfsan_abi_list_files;
   };

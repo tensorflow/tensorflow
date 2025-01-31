@@ -106,7 +106,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
   pto.LoopVectorization = !options_.optimize_for_size;
   pto.SLPVectorization =
       !options_.optimize_for_size && !options_.disable_slp_vectorizer;
-  pto.LoopUnrolling = false;
+  pto.LoopUnrolling = options_.enable_loop_unrolling;
 
   llvm::LoopAnalysisManager lam;
   llvm::FunctionAnalysisManager fam;
