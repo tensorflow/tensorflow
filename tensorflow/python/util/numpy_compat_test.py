@@ -27,23 +27,24 @@ class NumpyCompatCopyBehaviorTest(test.TestCase):
     # Define old_np_asarray to replicate the old code that used .astype(dtype) 
     # WITHOUT passing `copy=copy`.
     def old_np_asarray(values, dtype=None, order=None, copy=None):
-        if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
-            if dtype is not None and np.issubdtype(dtype, np.number):
-                return np.asarray(values, order=order, copy=copy).astype(dtype)
-            else:
-                return np.asarray(values, dtype=dtype, order=order, copy=copy)
+      if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
+        if dtype is not None and np.issubdtype(dtype, np.number):
+          return np.asarray(values, order=order, copy=copy).astype(dtype)
         else:
-            return np.asarray(values, dtype=dtype, order=order)
+          return np.asarray(values, dtype=dtype, order=order, copy=copy)
+      else:
+        return np.asarray(values, dtype=dtype, order=order)
 
     # Test array
     x = np.array([1, 2, 3], dtype=np.float32)
 
-    # Expect old code to always copy even when copy=None
+    # Expect old numpy 2.x code to always copy even when copy=None
     y_old = old_np_asarray(x, dtype=np.float32, copy=None)
-    self.assertIsNot(
-        y_old, x,
-        msg='Old code unexpectedly did NOT copy, but we expect it to always copy.'
-    )
+    if np.lib.NumpyVersion(np.__version__) >= '2.0.0.dev0':
+      self.assertIsNot(
+          y_old, x,
+          msg='Old code did NOT copy, but we expect it to always copy.'
+      )
 
     # Expect new code to reuse the array if copy=None
     y_new = numpy_compat.np_asarray(x, dtype=np.float32, copy=None)
