@@ -65,9 +65,7 @@ using litert::Unexpected;
 using litert::internal::ExternalLiteRtBufferContext;
 
 Expected<void> LiteRtCompiledModelT::Initialize() {
-  // Use BuiltinOpResolverWithoutDefaultDelegates to avoid auto applying of
-  // Xnnpack delegate with GetSignatureRunner() API.
-  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  tflite::ops::builtin::BuiltinOpResolver resolver;
   tflite::InterpreterBuilder(*fb_model_, resolver)(&interp_);
   if (interp_ == nullptr) {
     return Unexpected(kLiteRtStatusErrorRuntimeFailure);
