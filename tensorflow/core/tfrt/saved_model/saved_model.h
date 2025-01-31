@@ -206,6 +206,11 @@ class SavedModel {
 using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
 using ::tensorflow::StatusOr;
 
+enum class InferredModelType {
+  kUncategorized = 0,
+  kJax,
+};
+
 class SavedModelImpl final : public SavedModel {
  public:
   struct JoinedSignature;
@@ -236,7 +241,8 @@ class SavedModelImpl final : public SavedModel {
       absl::flat_hash_map<std::string, internal::Signature> signatures,
       std::unique_ptr<OpKernelRunnerTable> runner_table,
       std::unique_ptr<tfd::FallbackResourceArray> resource_array,
-      std::unique_ptr<GraphExecutor> graph_executor);
+      std::unique_ptr<GraphExecutor> graph_executor,
+      InferredModelType inferred_model_type);
 
   ~SavedModelImpl() override = default;
 
@@ -310,6 +316,8 @@ class SavedModelImpl final : public SavedModel {
                            absl::Span<const std::string> names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
 
+  void IncrementInferredModelTypePerRequestCount();
+
   SymbolUids symbol_uids_;
   // `meta_graph_def_` only contains metadata of the model. The graph_def field
   // is removed.
@@ -334,6 +342,8 @@ class SavedModelImpl final : public SavedModel {
   absl::flat_hash_map<std::string /*joined_name*/,
                       std::unique_ptr<LoadingResult>>
       loading_result_cache_ TF_GUARDED_BY(loading_result_cache_mu_);
+
+  InferredModelType inferred_model_type_ = InferredModelType::kUncategorized;
 };
 
 class SavedModelMiraImpl;
