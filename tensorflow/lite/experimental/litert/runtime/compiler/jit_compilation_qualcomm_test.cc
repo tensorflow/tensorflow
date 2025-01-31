@@ -13,8 +13,6 @@
 // limitations under the License.
 
 #include <array>
-#include <cstring>
-#include <memory>
 #include <utility>
 #include <vector>
 
