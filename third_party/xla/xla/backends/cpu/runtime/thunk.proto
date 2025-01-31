@@ -130,7 +130,6 @@ message ConditionalThunkProto {
 message ConvolutionThunkProto {
   message Options {
     bool multi_threaded = 1;
-    bool use_acl = 2;
   }
   ConvolutionDimensionNumbers dimension_numbers = 1;
   Window window = 2;

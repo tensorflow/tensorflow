@@ -531,8 +531,6 @@ static absl::Status ToProto(const ConvolutionThunk& thunk, ThunkProto& proto) {
 
   convolution_thunk_proto->mutable_options()->set_multi_threaded(
       thunk.options().multi_threaded);
-  convolution_thunk_proto->mutable_options()->set_use_acl(
-      thunk.options().use_acl);
 
   return absl::OkStatus();
 }
@@ -1067,7 +1065,6 @@ ConvolutionThunkFromProto(
   // Parse options.
   ConvolutionThunk::Options options;
   options.multi_threaded = proto.convolution_thunk().options().multi_threaded();
-  options.use_acl = proto.convolution_thunk().options().use_acl();
 
   // Dimension numbers.
   ConvolutionDimensionNumbers dnums =

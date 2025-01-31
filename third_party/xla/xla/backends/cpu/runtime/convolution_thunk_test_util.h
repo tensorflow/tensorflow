@@ -89,7 +89,6 @@ static std::vector<ElementType> MakeDataVector(
 static ConvolutionThunk::Options MakeConvolutionOptions() {
   ConvolutionThunk::Options options;
   options.multi_threaded = false;
-  options.use_acl = false;
   return options;
 }
 

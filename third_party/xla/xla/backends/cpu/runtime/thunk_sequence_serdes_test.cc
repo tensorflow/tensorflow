@@ -1158,8 +1158,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         });
 
     const bool are_options_equal =
-        thunk_1.options().multi_threaded == thunk_2.options().multi_threaded &&
-        thunk_1.options().use_acl == thunk_2.options().use_acl;
+        thunk_1.options().multi_threaded == thunk_2.options().multi_threaded;
 
     return are_dnums_equal && are_windows_equal && are_options_equal &&
            thunk_1.feature_group_count() == thunk_2.feature_group_count() &&

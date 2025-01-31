@@ -426,7 +426,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
-        "//xla/service/cpu:runtime_conv2d_acl",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",

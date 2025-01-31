@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/runtime_conv2d_acl.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -40,12 +39,6 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
-
-static bool CanUseACL(const ConvolutionThunk::Options& options,
-                      PrimitiveType primitive_type, int64_t convolution_rank) {
-  return options.use_acl && primitive_type == PrimitiveType::F32 &&
-         convolution_rank == 2;
-}
 
 auto MakeRunOptions(const Eigen::ThreadPoolDevice* threadpool) {
   ExecutableRunOptions run_options;
@@ -65,11 +58,6 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
   TF_ASSIGN_OR_RETURN(
       ConvolutionCanonicalDims canonical_dims,
       GetConvolutionCanonicalDims(slices, dnums, window, feature_group_count));
-
-  // Turn off ACL if not supported for given primitive type and convolution
-  // rank.
-  options.use_acl = CanUseACL(options, slices.input_shape.element_type(),
-                              canonical_dims.convolution_rank());
 
   return absl::WrapUnique(new ConvolutionThunk(std::move(info), options, slices,
                                                canonical_dims, dnums, window));
@@ -121,11 +109,6 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
         "multi-threaded mode.");
   }
 
-  if (options_.use_acl) {
-    HandleACLConvolution(params, input_data, kernel_data, output_data);
-    return OkExecuteEvent();
-  }
-
   // Eigen convolution
   if (convolution_canonical_dims_.convolution_rank() == 2) {
     return HandleEigen2DConvolution(params, input_data, kernel_data,
@@ -134,40 +117,6 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
     return HandleEigen3DConvolution(params, input_data, kernel_data,
                                     output_data);
   }
-}
-
-void ConvolutionThunk::HandleACLConvolution(const ExecuteParams& params,
-                                            se::DeviceMemoryBase input,
-                                            se::DeviceMemoryBase kernel,
-                                            se::DeviceMemoryBase output) {
-  // NOTE: This is the basic support for ACL. Performance was not
-  // benchmarked and is likely not good, the design could be improved
-  // (e.g. creating run_options is a hack).
-  auto run_options = MakeRunOptions(params.intra_op_threadpool);
-  __xla_cpu_runtime_ACLConv2DF32(
-      &run_options, static_cast<float*>(output.opaque()),
-      static_cast<float*>(input.opaque()), static_cast<float*>(kernel.opaque()),
-      convolution_canonical_dims_.input_batch,
-      convolution_canonical_dims_.input_dims.x,
-      convolution_canonical_dims_.input_dims.y,
-      convolution_canonical_dims_.input_channels,
-      convolution_canonical_dims_.kernel_dims.x,
-      convolution_canonical_dims_.kernel_dims.y,
-      convolution_canonical_dims_.kernel_channels,
-      convolution_canonical_dims_.kernel_filters,
-      convolution_canonical_dims_.output_dims.x,
-      convolution_canonical_dims_.output_dims.y,
-      convolution_canonical_dims_.strides.x,
-      convolution_canonical_dims_.strides.y,
-      convolution_canonical_dims_.padding_before.x,
-      convolution_canonical_dims_.padding_after.x,
-      convolution_canonical_dims_.padding_before.y,
-      convolution_canonical_dims_.padding_after.y,
-      convolution_canonical_dims_.base_dilation.x,
-      convolution_canonical_dims_.base_dilation.y,
-      convolution_canonical_dims_.window_dilation.x,
-      convolution_canonical_dims_.window_dilation.y,
-      convolution_canonical_dims_.feature_group_count);
 }
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent>
