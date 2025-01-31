@@ -96,6 +96,20 @@ cc_library(
 )
 
 cc_library(
+    name = "host_stream_factory",
+    srcs = [
+        "host_stream_factory.cc",
+    ],
+    hdrs = [
+        "host_stream_factory.h",
+    ],
+    deps = [
+        ":host_stream",
+        "@local_tsl//tsl/platform:mutex",
+    ],
+)
+
+cc_library(
     name = "host_executor",
     srcs = [
         "host_executor.cc",
@@ -106,6 +120,7 @@ cc_library(
     deps = [
         ":host_event",
         ":host_stream",
+        ":host_stream_factory",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:event",
