@@ -52,6 +52,7 @@ xla_cc_test(
     srcs = ["tracked_tfrt_cpu_device_buffer_test.cc"],
     deps = [
         ":tracked_tfrt_cpu_device_buffer",
+        "//xla:util",
         "//xla/service/cpu:cpu_event",
         "//xla/tsl/concurrency:async_value",
         "@com_google_googletest//:gtest_main",

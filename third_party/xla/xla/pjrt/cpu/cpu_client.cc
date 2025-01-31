@@ -1760,7 +1760,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
 
           for (const auto& av : input_deps_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
-              execute_event.SetError(absl::StrCat(
+              execute_event.SetError(Internal(
                   "Error dispatching computation: %s", error->message()));
               return;
             }
@@ -1778,8 +1778,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
             CHECK(buffer_info.buffer.IsAvailable());
             if (buffer_info.buffer.IsError()) {
               execute_event.SetError(
-                  absl::StrCat("Error preparing computation: %s",
-                               buffer_info.buffer.GetError().message()));
+                  Internal("Error preparing computation: %s",
+                           buffer_info.buffer.GetError().message()));
               return;
             }
             buffer_pointers.push_back(buffer_info.buffer->data());
