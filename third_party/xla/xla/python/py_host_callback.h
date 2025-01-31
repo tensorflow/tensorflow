@@ -54,6 +54,8 @@ class PyCpuLoadedHostCallback final
       ifrt::Client* ifrt_client, nanobind::callable callable,
       absl::Span<const Shape> operand_shapes,
       absl::Span<const Shape> result_shapes);
+  static absl::StatusOr<tsl::RCReference<PyCpuLoadedHostCallback>> Create(
+      ifrt::Client* ifrt_client, nanobind::callable callable);
 
   // Returns the descriptor of `CpuCallback`.
   uint64_t descriptor() const {

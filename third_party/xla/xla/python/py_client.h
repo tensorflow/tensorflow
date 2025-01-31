@@ -197,6 +197,15 @@ class PyClient {
                                   absl::Span<Shape const> operand_shapes,
                                   absl::Span<Shape const> result_shapes);
 
+  // `GetEmitPythonCallback` takes in an input Python callable. It returns a
+  // Python object whose reference will keep the Python callback alive.
+  //
+  // The callable receives as arguments NumPy arrays for arguments with array
+  // types, and None for Token argument. The callable must return a tuple of
+  // either arrays or None values.
+  absl::StatusOr<nanobind::object> GetEmitPythonCallback(
+      nanobind::callable callable);
+
   // `MakePythonCallbackUsingHostSendAndRecv` takes in an input Python callable
   // that takes in arguments of shapes `operand_shapes` and returns results of
   // shapes `result_shapes`. The arguments correspond to Send ops in the HLO

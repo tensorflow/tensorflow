@@ -16,16 +16,17 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/types/span.h"
-#include "xla/service/custom_call_status.h"
 #if TENSORFLOW_USE_ROCM
 #include "rocm/include/hip/hip_runtime.h"
 #else
@@ -33,15 +34,24 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #endif
+#include "llvm/Support/Casting.h"
 #include "nanobind/nanobind.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/primitive_util.h"
 #include "xla/python/callback.h"
+#include "xla/python/ifrt/host_callback.h"
 #include "xla/python/nb_numpy.h"
+#include "xla/python/py_host_callback.h"
+#include "xla/python/types.h"
+#include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/platform_util.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/statusor.h"
 #if TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
 #define gpuStreamHandle hipStream_t
@@ -173,4 +183,113 @@ XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
     "xla_python_gpu_callback", &XlaPythonGpuCallback,
     absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
 
+absl::Status XlaFfiPythonGpuCallbackImpl(
+    gpuStreamHandle stream,
+    std::vector<tsl::RCReference<ifrt::LoadedHostCallback>>* callbacks,
+    uint64_t index, ffi::RemainingArgs args, ffi::RemainingRets rets) {
+  auto host_callback = callbacks->at(index).get();
+  auto py_host_callback =
+      llvm::dyn_cast_or_null<PyCpuLoadedHostCallback>(host_callback);
+
+  if (py_host_callback == nullptr) {
+    return absl::InternalError(
+        "Expected a PyCpuLoadedHostCallback, got something else.");
+  }
+  // TODO(dsuo): We could skip this indirection if we could access the
+  // CpuCallback directly.
+  auto descriptor = py_host_callback->descriptor();
+  CpuCallback* callback =
+      absl::bit_cast<CpuCallback*>(static_cast<uintptr_t>(descriptor));
+  size_t arity = args.size();
+  std::vector<void*> host_input_buffers(arity);
+  // Copy input GPU buffers to host
+  for (size_t i = 0; i < arity; ++i) {
+    auto arg = args.get<ffi::AnyBuffer>(i);
+    auto dtype = arg->element_type();
+    if (dtype == TOKEN) {
+      host_input_buffers[i] = nullptr;
+      continue;
+    }
+    void* buf = new char[arg->size_bytes()];
+    host_input_buffers[i] = buf;
+    // TODO(b/238441608): Use pinned memory here to speed up the transfer.
+    auto gpu_res =
+        gpuMemcpyAsync(buf, args.get<ffi::AnyBuffer>(i).value().untyped_data(),
+                       arg->size_bytes(), gpuMemcpyDeviceToHost, stream);
+    CHECK_EQ(gpu_res, gpuSuccess) << "Failed to gpuMemcpyAsync";
+  }
+  CHECK_EQ(gpuStreamSynchronize(stream), gpuSuccess)
+      << "Failed to gpuStreamSynchronize";
+  nb::gil_scoped_acquire gil;
+  nb::tuple host_input_arrays = nb::steal<nb::tuple>(PyTuple_New(arity));
+  for (size_t i = 0; i < arity; ++i) {
+    auto arg = args.get<ffi::AnyBuffer>(i);
+    auto dtype = arg->element_type();
+    if (dtype == TOKEN) {
+      PyTuple_SET_ITEM(host_input_arrays.ptr(), i, nb::none().inc_ref().ptr());
+      continue;
+    }
+    nb::capsule base(host_input_buffers[i], [](void* ptr) noexcept {
+      delete[] static_cast<char*>(ptr);
+    });
+    auto dims = absl::Span<const int64_t>(arg->dimensions().begin(),
+                                          arg->dimensions().size());
+    TF_ASSIGN_OR_RETURN(auto nb_dtype, PrimitiveTypeToNbDtype(dtype));
+    auto array = nb_numpy_ndarray(nb_dtype, dims, std::nullopt,
+                                  const_cast<void*>(host_input_buffers[i]),
+                                  /*base=*/base);
+    array.attr("flags").attr("writeable") = nb::bool_(false);
+    PyTuple_SET_ITEM(host_input_arrays.ptr(), i, array.inc_ref().ptr());
+  }
+  EnterHostCallback();
+  absl::StatusOr<nb::tuple> maybe_result_tuple =
+      callback->FfiCall(rets, host_input_arrays);
+  LeaveHostCallback();
+  if (!maybe_result_tuple.ok()) {
+    absl::string_view msg = maybe_result_tuple.status().message();
+    return absl::InternalError({msg.data(), msg.size()});
+  }
+  nb::tuple result_tuple = maybe_result_tuple.value();
+  std::vector<void*> temp_buffers;
+  for (size_t i = 0; i < rets.size(); ++i) {
+    auto ret = rets.get<ffi::AnyBuffer>(i);
+    auto dtype = ret.value()->element_type();
+    if (dtype == TOKEN) {
+      continue;
+    }
+    nb::object output =
+        nb::borrow<nb::object>(PyTuple_GetItem(result_tuple.ptr(), i));
+    nb_numpy_ndarray array = nb_numpy_ndarray::ensure(std::move(output));
+    absl::Span<int64_t const> dims(
+        reinterpret_cast<const int64_t*>(array.shape()), array.ndim());
+    absl::Span<int64_t const> strides(
+        reinterpret_cast<const int64_t*>(array.strides()), array.ndim());
+    // TODO(dsuo): What if we don't get the expected stride?
+    auto gpu_res = gpuMemcpyAsync(
+        rets.get<ffi::AnyBuffer>(i).value()->untyped_data(), array.data(),
+        ret.value()->size_bytes(), gpuMemcpyHostToDevice, stream);
+    CHECK_EQ(gpu_res, gpuSuccess) << "Failed to gpuMemcpyAsync";
+  }
+  nb::gil_scoped_release release;
+  CHECK_EQ(gpuStreamSynchronize(stream), gpuSuccess)
+      << "Failed to gpuStreamSynchronize";
+  for (int i = 0; i < temp_buffers.size(); ++i) {
+    delete[] static_cast<char*>(temp_buffers[i]);
+  }
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(
+    XlaFfiPythonGpuCallback, XlaFfiPythonGpuCallbackImpl,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::PlatformStream<gpuStreamHandle>>()
+        .Ctx<ffi::UserData<
+            std::vector<tsl::RCReference<ifrt::LoadedHostCallback>>>>()
+        .Attr<uint64_t>("index")
+        .RemainingArgs()
+        .RemainingRets());
+XLA_FFI_REGISTER_HANDLER(
+    ffi::GetXlaFfiApi(), "xla_ffi_python_gpu_callback",
+    absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()),
+    XlaFfiPythonGpuCallback);
 }  // namespace xla
