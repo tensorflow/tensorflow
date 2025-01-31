@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/runtime/xnnpack/parallel_loop_runner.h"
+#include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 
 #include <algorithm>
 #include <atomic>

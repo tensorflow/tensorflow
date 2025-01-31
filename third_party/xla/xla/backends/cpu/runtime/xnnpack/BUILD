@@ -15,67 +15,6 @@ package_group(
 )
 
 cc_library(
-    name = "object_pool",
-    hdrs = ["object_pool.h"],
-    deps = [
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "object_pool_test",
-    srcs = ["object_pool_test.cc"],
-    deps = [
-        ":object_pool",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-cc_library(
-    name = "parallel_loop_runner",
-    srcs = ["parallel_loop_runner.cc"],
-    hdrs = ["parallel_loop_runner.h"],
-    deps = [
-        "//xla/backends/cpu/runtime:work_queue",
-        "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/lib/math:math_util",
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/time",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-xla_cc_test(
-    name = "parallel_loop_runner_test",
-    srcs = ["parallel_loop_runner_test.cc"],
-    deps = [
-        ":parallel_loop_runner",
-        "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:span",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-cc_library(
     name = "xnn_interop",
     srcs = ["xnn_interop.cc"],
     hdrs = ["xnn_interop.h"],
@@ -101,7 +40,7 @@ cc_library(
     # }),
     # copybara:uncomment_end
     deps = [
-        ":parallel_loop_runner",
+        "//xla/backends/cpu/runtime:parallel_loop_runner",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
@@ -117,8 +56,8 @@ xla_cc_test(
     name = "xnn_threadpool_test",
     srcs = ["xnn_threadpool_test.cc"],
     deps = [
-        ":parallel_loop_runner",
         ":xnn_threadpool",
+        "//xla/backends/cpu/runtime:parallel_loop_runner",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
@@ -245,8 +184,6 @@ cc_library(
     srcs = ["xnn_fusion_thunk.cc"],
     hdrs = ["xnn_fusion_thunk.h"],
     deps = [
-        ":object_pool",
-        ":parallel_loop_runner",
         ":xnn_interop",
         ":xnn_threadpool",
         "//xla:shape_util",
@@ -254,6 +191,8 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/runtime:dot_lib",
+        "//xla/backends/cpu/runtime:object_pool",
+        "//xla/backends/cpu/runtime:parallel_loop_runner",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",

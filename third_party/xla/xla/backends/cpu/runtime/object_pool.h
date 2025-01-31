@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_RUNTIME_XNNPACK_OBJECT_POOL_H_
-#define XLA_BACKENDS_CPU_RUNTIME_XNNPACK_OBJECT_POOL_H_
+#ifndef XLA_BACKENDS_CPU_RUNTIME_OBJECT_POOL_H_
+#define XLA_BACKENDS_CPU_RUNTIME_OBJECT_POOL_H_
 
 #include <atomic>
 #include <cstddef>
@@ -137,4 +137,4 @@ auto ObjectPool<T, Args...>::GetOrCreate(Args... args)
 
 }  // namespace xla::cpu
 
-#endif  // XLA_BACKENDS_CPU_RUNTIME_XNNPACK_OBJECT_POOL_H_
+#endif  // XLA_BACKENDS_CPU_RUNTIME_OBJECT_POOL_H_
