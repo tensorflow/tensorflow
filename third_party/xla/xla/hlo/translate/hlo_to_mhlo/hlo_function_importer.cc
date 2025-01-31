@@ -338,7 +338,7 @@ absl::Status HloFunctionImporter::ImportAsRegion(
 absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     const HloComputation& computation, bool is_main) {
   std::string computation_name =
-      is_main ? "main" : SanitizeFunctionName(computation.name());
+      is_main ? "main" : SanitizeFunctionName(ToStringRef(computation.name()));
 
   FuncOp* imported(nullptr);
   if (function_map_) {
@@ -471,8 +471,9 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     }
   }
   if (computation.execution_thread() != "main") {
-    function->setAttr("execution_thread",
-                      builder_->getStringAttr(computation.execution_thread()));
+    function->setAttr(
+        "execution_thread",
+        builder_->getStringAttr(ToStringRef(computation.execution_thread())));
   }
 
   symbol_table_.insert(function);
@@ -721,7 +722,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "called_computation",
           mlir::FlatSymbolRefAttr::get(builder_->getContext(),
                                        function.getName())));
-      auto execution_thread = async_op->async_execution_thread();
+      auto execution_thread = ToStringRef(async_op->async_execution_thread());
       attributes.push_back(builder_->getNamedAttr(
           "execution_thread", builder_->getStringAttr(execution_thread)));
       function->setAttr("execution_thread",
@@ -928,7 +929,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             frontend_attributes_map.find("composite.attributes")->second,
             builder_->getContext());
         mlir::FlatSymbolRefAttr decomposition = mlir::SymbolRefAttr::get(
-            builder_->getContext(), instruction->to_apply()->name());
+            builder_->getContext(),
+            ToStringRef(instruction->to_apply()->name()));
         mlir::IntegerAttr version = builder_->getIntegerAttr(
             builder_->getI32Type(),
             std::stoi(
@@ -1952,7 +1954,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kDomain: {
       auto domain_kind = mlir::mhlo::symbolizeDomainKind(
-          instruction->user_side_metadata().Kind());
+          ToStringRef(instruction->user_side_metadata().Kind()));
       if (!domain_kind || *domain_kind != mlir::mhlo::DomainKind::sharding) {
         return InvalidArgument(
             "Invalid domain kind in hlo -> mhlo import. Only 'sharding' is "
@@ -2060,8 +2062,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       llvm::SmallVector<Type> flattened_ret_types;
       FlattenTupleType(result_type, flattened_ret_types);
 
-      auto fusion_kind =
-          mlir::mhlo::symbolizeFusionKind(ToString(instruction->fusion_kind()));
+      auto fusion_kind = mlir::mhlo::symbolizeFusionKind(
+          ToStringRef(ToString(instruction->fusion_kind())));
       attributes.push_back(builder_->getNamedAttr(
           "fusion_kind", mlir::mhlo::FusionKindAttr::get(
                              func_builder->getContext(), fusion_kind.value())));
