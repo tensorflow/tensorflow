@@ -135,6 +135,7 @@ XnnFusionThunk::XnnRuntime::Invoke(
     if (!is_by_value_result(value.id)) external_values.push_back(value);
   }
 
+  DCHECK_NE(runtime, nullptr) << "XNNPACK runtime is not initialized";
   XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(runtime, external_values.size(),
                                            external_values.data()));
 
@@ -310,16 +311,11 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
   DCHECK(builder_ || one_use_builder_) << "One of the builders must be set.";
 
   auto invoke = [&](XnnRuntime& runtime) {
-    tsl::AsyncValueRef<ExecuteEvent> executed = runtime.Invoke(
+    return runtime.Invoke(
         params.intra_op_threadpool, absl::MakeSpan(arguments_buffers),
         absl::MakeSpan(results_buffers),
         [&](size_t id) { return by_value_arguments_.contains(id); },
         [&](size_t id) { return by_value_results_.contains(id); });
-
-    // Do not return runtime to the pool until the execution is done.
-    executed.AndThen([runtime = std::move(runtime)] {});
-
-    return executed;
   };
 
   const Eigen::ThreadPoolDevice* device = params.intra_op_threadpool;
@@ -327,7 +323,11 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
   if (ABSL_PREDICT_TRUE(builder_)) {
     // Borrow XNNPACK runtime from the pool.
     TF_ASSIGN_OR_RETURN(auto runtime, xnn_runtime_pool_.GetOrCreate(device));
-    return invoke(*runtime);
+    auto executed = invoke(*runtime);
+
+    // Do not return runtime to the pool until the execution is done.
+    executed.AndThen([runtime = std::move(runtime)] {});
+    return executed;
 
   } else {
     // Create XNNPACK runtime for one-use only.
