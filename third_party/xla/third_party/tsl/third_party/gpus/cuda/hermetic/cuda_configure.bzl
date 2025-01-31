@@ -171,9 +171,12 @@ def _compute_capabilities(repository_ctx):
         for prefix in ["compute_", "sm_"]:
             if not capability.startswith(prefix):
                 continue
-            if len(capability) == len(prefix) + 2 and capability[-2:].isdigit():
-                continue
-            if len(capability) == len(prefix) + 3 and capability.endswith("90a"):
+            version = capability[len(prefix):]
+
+            # Allow PTX accelerated features: sm_90a, sm_100a, etc.
+            if version.endswith("a"):
+                version = version[:-1]
+            if version.isdigit() and len(version) in (2, 3):
                 continue
             _auto_configure_fail("Invalid compute capability: %s" % capability)
 
