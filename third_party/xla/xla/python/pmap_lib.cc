@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/python/pytree.h"
 #include "xla/python/sharded_device_array.h"
 #include "xla/python/sharding.h"
+#include "xla/python/to_ifrt_sharding.h"
 #include "xla/python/traceback.h"
 #include "xla/python/types.h"
 #include "xla/status_macros.h"
@@ -114,7 +115,7 @@ struct ShardArgResult {
   nb::object owning_sda;
 };
 
-// Shars a single argument over devices.
+// Shards a single argument over devices.
 //
 // We currently only support fully in C++, C++ Array. For all
 // other usages, we call a Python function returning C++ Array
@@ -233,23 +234,25 @@ absl::StatusOr<ShardArgResult> ShardArg(
       }
     }
 
+    if (per_device_arrays.empty()) {
+      return xla::InvalidArgument("Per-device arrays must not be empty.");
+    }
     // TODO(hyeontaek): The logical shape here is inaccurate. We
     // may want to avoid creating a new Array or specialize Array
     // to disallow access to the logical shape.
     xla::ifrt::Shape shape = per_device_arrays.front()->shape();
-    // pmap does not support memory_kind for now.
-    auto ifrt_sharding = xla::ifrt::ConcreteSharding::Create(
-        xla::ifrt::BasicDeviceList::Create(std::move(devices)),
-        xla::ifrt::MemoryKind(),
-        /*shape=*/shape,
-        /*shard_shapes=*/std::move(shapes));
-    TF_ASSIGN_OR_RETURN(result.ifrt_array,
-                        per_device_arrays.front()
-                            ->client()
-                            ->AssembleArrayFromSingleDeviceArrays(
-                                std::move(shape), std::move(ifrt_sharding),
-                                absl::MakeSpan(per_device_arrays),
-                                xla::ifrt::ArrayCopySemantics::kReuseInput));
+    TF_ASSIGN_OR_RETURN(
+        auto ifrt_sharding,
+        xla::GetIfrtConcreteSharding(input_spec.array_sharding, shape, shapes));
+    TF_ASSIGN_OR_RETURN(
+        result.ifrt_array,
+        per_device_arrays.front()
+            ->client()
+            ->AssembleArrayFromSingleDeviceArrays(
+                std::move(shape), std::move(ifrt_sharding),
+                absl::MakeSpan(per_device_arrays),
+                xla::ifrt::ArrayCopySemantics::kReuseInput,
+                xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
     return result;
   }
   tsl::profiler::TraceMe traceme("pmap_lib_shard_arg_python_fallback");
