@@ -138,8 +138,11 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     return std::max(index_length - first_equal_index, max_width);
   }
 
-  absl::Status CalculateOutputSize(INDEX_TYPE first_dim, OpKernelContext* c,
+absl::Status CalculateOutputSize(INDEX_TYPE first_dim, OpKernelContext* c,
                                    vector<INDEX_TYPE>* result) {
+    if (c->input(kValueInputIndex).NumElements() == 0) {
+        return errors::InvalidArgument("Invalid row_splits for empty values");
+    }
     TensorShapeProto value_shape_proto;
     c->input(kValueInputIndex).shape().AsProto(&value_shape_proto);
 
@@ -154,10 +157,10 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
 
     TensorShapeProto shape_proto;
     {
-      PartialTensorShape partial_tensor_shape;
-      TF_RETURN_IF_ERROR(TensorShapeFromTensor(c->input(kShapeInputIndex),
-                                               &partial_tensor_shape));
-      partial_tensor_shape.AsProto(&shape_proto);
+        PartialTensorShape partial_tensor_shape;
+        TF_RETURN_IF_ERROR(TensorShapeFromTensor(c->input(kShapeInputIndex),
+                                                &partial_tensor_shape));
+        partial_tensor_shape.AsProto(&shape_proto);
     }
 
     TF_RETURN_IF_ERROR(CombineRaggedTensorToTensorShapes(
@@ -166,19 +169,25 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     result->reserve(output_shape_proto.dim_size());
     for (const TensorShapeProto::Dim& dim : output_shape_proto.dim()) {
       // Note that this may be -1 (if dimension size is unknown).
-      result->push_back(dim.size());
+        INDEX_TYPE dim_size = dim.size();
+        if (dim_size < 0) {
+            if (dim_size == -1) {
+                dim_size = (&dim == &output_shape_proto.dim(0)) ? first_dim : 0;
+            } else {
+                return errors::InvalidArgument(
+                    "Invalid dimension size: ", dim_size);
+            }
+        }
+        result->push_back(dim_size);
     }
 
-    if ((*result)[0] < 0) {
-      (*result)[0] = first_dim;
-    }
     for (int i = 1; i <= ragged_rank_; ++i) {
-      if ((*result)[i] < 0) {
-        TF_RETURN_IF_ERROR(GetMaxWidth(c, i, &(*result)[i]));
-      }
+        if ((*result)[i] < 0) {
+            TF_RETURN_IF_ERROR(GetMaxWidth(c, i, &(*result)[i]));
+        }
     }
     return absl::OkStatus();
-  }
+}
 
   /**
    * The output_index represents the index in the output tensor
@@ -372,6 +381,15 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    const Tensor& values_tensor = context->input(kValueInputIndex);
+    if (values_tensor.NumElements() == 0) {
+        const Tensor& row_splits_tensor = 
+            context->input(kFirstPartitionInputIndex);
+        if (row_splits_tensor.dim_size(0) > 1) {
+            OP_REQUIRES(context, false, 
+                errors::InvalidArgument("Invalid row_splits for empty values"));
+        }
+    }
     INDEX_TYPE first_dimension;
     const Tensor first_partition_tensor =
         context->input(kFirstPartitionInputIndex);
@@ -381,13 +399,13 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     OP_REQUIRES_OK(context, GetFirstDimensionSize(context, &first_dimension));
     vector<INDEX_TYPE> output_size;
     OP_REQUIRES_OK(context,
-                   CalculateOutputSize(first_dimension, context, &output_size));
+                   CalculateOutputSize(first_dimension, context, &output_size)); 
     vector<INDEX_TYPE> multiplier;
     multiplier.resize(ragged_rank_ + 1);
 
     multiplier[multiplier.size() - 1] = 1;
     for (int i = multiplier.size() - 2; i >= 0; --i) {
-      multiplier[i] = multiplier[i + 1] * output_size[i + 1];
+        multiplier[i] = multiplier[i + 1] * output_size[i + 1];
     }
     // Full size of the tensor.
     TensorShape output_shape;
@@ -399,24 +417,24 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
                    context->allocate_output(0, output_shape, &output_tensor));
     const INDEX_TYPE full_size = multiplier[0] * output_size[0];
     if (full_size > 0) {
-      vector<INDEX_TYPE> output_index, new_output_index;
-      int nvals = context->input(kValueInputIndex).shape().dim_size(0);
-      output_index.reserve(nvals);
-      new_output_index.reserve(nvals);
+        vector<INDEX_TYPE> output_index, new_output_index;
+        int nvals = context->input(kValueInputIndex).shape().dim_size(0);
+        output_index.reserve(nvals);
+        new_output_index.reserve(nvals);
 
-      CalculateFirstParentOutputIndex(first_dimension, multiplier[0],
-                                      output_size[0], &output_index);
-      for (int i = 1; i <= ragged_rank_; ++i) {
-        OP_REQUIRES_OK(context, CalculateOutputIndex(
-                                    context, i - 1, output_index, multiplier[i],
-                                    output_size[i], &new_output_index));
-        output_index.swap(new_output_index);
-        new_output_index.clear();
-      }
+        CalculateFirstParentOutputIndex(first_dimension, multiplier[0],
+                                        output_size[0], &output_index);
+        for (int i = 1; i <= ragged_rank_; ++i) {
+            OP_REQUIRES_OK(context, CalculateOutputIndex(
+                                        context, i - 1, output_index, multiplier[i],
+                                        output_size[i], &new_output_index));
+            output_index.swap(new_output_index);
+            new_output_index.clear();
+        }
 
-      SetOutput(context, ragged_rank_, output_index, output_tensor);
+        SetOutput(context, ragged_rank_, output_index, output_tensor);
     }
-  }
+}
   virtual void SetOutput(OpKernelContext* context, int ragged_rank,
                          const vector<INDEX_TYPE>& output_index,
                          Tensor* output_tensor) = 0;
