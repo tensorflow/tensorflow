@@ -24,6 +24,7 @@ limitations under the License.
 #include <optional>
 #include <queue>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -1235,39 +1236,8 @@ class MatMulEmitterHelper {
     ConcatParams concat_params;
 
     if (hlo->opcode() == HloOpcode::kConcatenate) {
-      // For now only non-contracting dimension can be concatenated.
-      concat_params.dim_idx = (side.scope == TritonFusionAnalysis::Scope::LHS)
-                                  ? dims_.lhs_noncontracting_dim_idx
-                                  : dims_.rhs_noncontracting_dim_idx;
-      const DimProperties& properties = [&] {
-        for (const DimProperties& dim : side.tiled_dims) {
-          if (dim.index == concat_params.dim_idx) {
-            return dim;
-          }
-        }
-        LOG(FATAL) << "Missing dimension.";
-      }();
-      TF_RET_CHECK(bases.size() == hlo->operand_count());
-
-      concat_params.boundaries.reserve(hlo->operand_count() - 1);
-      for (int i = 0; i < hlo->operand_count() - 1; ++i) {
-        const TensorIterationSpec::IterationSpecFragment& fragment =
-            analysis_
-                .IterSpec(side.scope, hlo->operand(i), concat_params.dim_idx)
-                ->at(0);
-        if (fragment.sliced_count % properties.block_size != 0) {
-          return UncompilableMatmul(
-              "Operand is not divisible by the block size.");
-        }
-        concat_params.boundaries.push_back(
-            Cst32(-fragment.slice_start + fragment.sliced_count));
-      }
-
-      concat_params.dim_pid_offset =
-          b_.create<ma::MulIOp>(properties.pid, Cst32(properties.block_size));
-      TF_ASSIGN_OR_RETURN(base,
-                          EmitMultiSelect(b_, concat_params.dim_pid_offset,
-                                          concat_params.boundaries, bases));
+      TF_ASSIGN_OR_RETURN(std::tie(concat_params, base),
+                          CalculateConcatParamsAndUpdateBase(hlo, side, bases));
     } else {
       concat_params.dim_idx = -1;
       base = bases[0];
@@ -1281,49 +1251,12 @@ class MatMulEmitterHelper {
                                               tensor_params));
     }
 
-    int64_t offset_batch = 0;
-    bool has_batch_offset = false;
-    Value batch_stride;
-
-    if (hlo->opcode() == HloOpcode::kConcatenate) {
-      std::vector<Value> batch_strides;
-      batch_strides.reserve(hlo->operands().size());
-      for (const HloInstruction* operand : hlo->operands()) {
-        TF_ASSIGN_OR_RETURN(
-            Value op_stride,
-            GetBatchStride(side, operand, offset_batch, has_batch_offset));
-        batch_strides.push_back(op_stride);
-      }
-      TF_ASSIGN_OR_RETURN(
-          batch_stride,
-          EmitMultiSelect(b_, concat_params.dim_pid_offset,
-                          concat_params.boundaries, batch_strides));
-    } else {
-      TF_ASSIGN_OR_RETURN(batch_stride, GetBatchStride(side, hlo, offset_batch,
-                                                       has_batch_offset));
-    }
-
-    // Avoid generating logic to compute batch offset if unnecessary.
-    if (has_batch_offset) {
-      Value pid_batch =
-          b_.create<mt::GetProgramIdOp>(launch_config_.batch_program_id_dim);
-
-      Value pid_offset_batch = b_.create<ma::MulIOp>(
-          b_.create<ma::AddIOp>(Cst(offset_batch), ConvertScalar(pid_batch)),
-          batch_stride);
-
-      base = AddPtr(b_, base, pid_offset_batch);
-    }
+    TF_ASSIGN_OR_RETURN(base, UpddateBaseForBatchAndConcatCases(
+                                  hlo, concat_params, side, base));
 
     if (dims_.out_split_k_dim_idx.has_value()) {
-      const TensorIterationSpec::DimIterationSpec* spec = analysis_.IterSpec(
-          TritonFusionAnalysis::Scope::OUTPUT, hlo, *dims_.out_split_k_dim_idx);
-      if (spec != nullptr && spec->at(0).count > 1) {
-        TF_RET_CHECK(pid_k != nullptr);
-        base = AddPtr(b_, base,
-                      b_.create<ma::MulIOp>(ConvertScalar(pid_k),
-                                            Cst(spec->at(0).stride)));
-      }
+      TF_ASSIGN_OR_RETURN(base,
+                          UpdateBaseForSplitKCase(hlo, side, base, pid_k));
     }
 
     if (tensor_params.block_dims.empty()) {
@@ -1492,6 +1425,99 @@ class MatMulEmitterHelper {
     tensor_params.dim_order.emplace(tensor_params.dim_order.begin(),
                                     tensor_params.dim_order.size());
     return absl::OkStatus();
+  }
+
+  absl::StatusOr<Value> UpddateBaseForBatchAndConcatCases(
+      const HloInstruction* hlo, const ConcatParams& concat_params,
+      const Side& side, Value base) {
+    int64_t offset_batch = 0;
+    bool has_batch_offset = false;
+    Value batch_stride;
+
+    if (hlo->opcode() == HloOpcode::kConcatenate) {
+      std::vector<Value> batch_strides;
+      batch_strides.reserve(hlo->operands().size());
+      for (const HloInstruction* operand : hlo->operands()) {
+        TF_ASSIGN_OR_RETURN(
+            Value op_stride,
+            GetBatchStride(side, operand, offset_batch, has_batch_offset));
+        batch_strides.push_back(op_stride);
+      }
+      TF_ASSIGN_OR_RETURN(
+          batch_stride,
+          EmitMultiSelect(b_, concat_params.dim_pid_offset,
+                          concat_params.boundaries, batch_strides));
+    } else {
+      TF_ASSIGN_OR_RETURN(batch_stride, GetBatchStride(side, hlo, offset_batch,
+                                                       has_batch_offset));
+    }
+
+    // Avoid generating logic to compute batch offset if unnecessary.
+    if (has_batch_offset) {
+      Value pid_batch =
+          b_.create<mt::GetProgramIdOp>(launch_config_.batch_program_id_dim);
+
+      Value pid_offset_batch = b_.create<ma::MulIOp>(
+          b_.create<ma::AddIOp>(Cst(offset_batch), ConvertScalar(pid_batch)),
+          batch_stride);
+
+      base = AddPtr(b_, base, pid_offset_batch);
+    }
+    return base;
+  }
+
+  absl::StatusOr<Value> UpdateBaseForSplitKCase(const HloInstruction* hlo,
+                                                const Side& side, Value base,
+                                                Value pid_k) {
+    const TensorIterationSpec::DimIterationSpec* spec = analysis_.IterSpec(
+        TritonFusionAnalysis::Scope::OUTPUT, hlo, *dims_.out_split_k_dim_idx);
+    if (spec != nullptr && spec->at(0).count > 1) {
+      TF_RET_CHECK(pid_k != nullptr);
+      base = AddPtr(
+          b_, base,
+          b_.create<ma::MulIOp>(ConvertScalar(pid_k), Cst(spec->at(0).stride)));
+    }
+    return base;
+  }
+
+  absl::StatusOr<std::pair<ConcatParams, Value>>
+  CalculateConcatParamsAndUpdateBase(const HloInstruction* hlo,
+                                     const Side& side, ValueRange bases) {
+    ConcatParams concat_params;
+    // For now only non-contracting dimension can be concatenated.
+    concat_params.dim_idx = (side.scope == TritonFusionAnalysis::Scope::LHS)
+                                ? dims_.lhs_noncontracting_dim_idx
+                                : dims_.rhs_noncontracting_dim_idx;
+    const DimProperties& properties = [&] {
+      for (const DimProperties& dim : side.tiled_dims) {
+        if (dim.index == concat_params.dim_idx) {
+          return dim;
+        }
+      }
+      LOG(FATAL) << "Missing dimension.";
+    }();
+    TF_RET_CHECK(bases.size() == hlo->operand_count());
+
+    concat_params.boundaries.reserve(hlo->operand_count() - 1);
+    for (int i = 0; i < hlo->operand_count() - 1; ++i) {
+      const TensorIterationSpec::IterationSpecFragment& fragment =
+          analysis_
+              .IterSpec(side.scope, hlo->operand(i), concat_params.dim_idx)
+              ->at(0);
+      if (fragment.sliced_count % properties.block_size != 0) {
+        return UncompilableMatmul(
+            "Operand is not divisible by the block size.");
+      }
+      concat_params.boundaries.push_back(
+          Cst32(-fragment.slice_start + fragment.sliced_count));
+    }
+
+    concat_params.dim_pid_offset =
+        b_.create<ma::MulIOp>(properties.pid, Cst32(properties.block_size));
+    TF_ASSIGN_OR_RETURN(Value base,
+                        EmitMultiSelect(b_, concat_params.dim_pid_offset,
+                                        concat_params.boundaries, bases));
+    return std::make_pair(concat_params, base);
   }
 
   // Extend int32 indexes to int64, if necessary.
