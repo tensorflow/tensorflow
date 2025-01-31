@@ -1323,107 +1323,139 @@ class MatMulEmitterHelper {
                         concat_params.boundaries, input_strides));
     tensor_params.strides.push_back(select_value);
     if (properties.index == concat_params.dim_idx) {
-      TF_ASSIGN_OR_RETURN(
-          select_value,
-          EmitMultiSelect(b_, pid_offset, concat_params.boundaries,
-                          input_offsets));
-      tensor_params.block_offsets.push_back(select_value);
-      TF_ASSIGN_OR_RETURN(
-          select_value,
-          EmitMultiSelect(b_, pid_offset, concat_params.boundaries,
-                          input_bounds));
-      tensor_params.bounds.push_back(select_value);
-      tensor_params.tensor_offsets.push_back(
-          Cst32(specs.front()->at(0).slice_start));
+      TF_RETURN_IF_ERROR(AddConcatDimToTensorParams(
+          hlo, side, properties, concat_params, pid_offset, specs,
+          input_offsets, input_bounds, tensor_params));
     } else if (hlo->opcode() == HloOpcode::kDynamicSlice &&
                (side.scope == TritonFusionAnalysis::Scope::LHS ||
                 side.scope == TritonFusionAnalysis::Scope::RHS) &&
                properties.index ==
                    GetNonContractingDimIdxForOperandScope(side.scope)) {
-      // Here we compute the offset of where we should read the slice from.
-      // TODO(b/323255699): Add support for slices of the contracting dim.
-      // Dynamic slices are guaranteed to only be offset along the majormost
-      // dimension.
-
-      // The only fragment of the non-contracting dim of the dot's input in
-      // the current scope:
-      TF_RET_CHECK(specs.back()->size() == 1);
-      const TensorIterationSpec::IterationSpecFragment only_fragment_of_nc_dim =
-          specs.back()->at(0);
-      // The majormost dim index in the dynamic slice's output.
-      const int majormost_dim = hlo->shape().layout().minor_to_major().back();
-
-      // dynamic slice operands are (input, start_index0, start_index1, ...)
-      // so the start index corresponding to the ith dimension is bases[i+1].
-      Value majormost_dim_start_index_ptr_val = bases[majormost_dim + 1];
-      Value majormost_dim_start_index_val = b_.create<mt::LoadOp>(
-          majormost_dim_start_index_ptr_val, mt::CacheModifier::NONE,
-          mt::EvictionPolicy::NORMAL,
-          /*isVolatile=*/false);
-      int64_t majormost_dim_start_index_upper_limit =
-          hlo->operand(0)->shape().dimensions(majormost_dim) -
-          hlo->dynamic_slice_sizes().at(majormost_dim);
-      // We don't want to cast S64 indices to S32, because that could result
-      // in an incorrect value.
-      if (majormost_dim_start_index_val.getType().isInteger() &&
-          majormost_dim_start_index_val.getType().getIntOrFloatBitWidth() ==
-              64) {
-        return UncompilableMatmul(
-            "64 bit dynamic-slice indices are not supported yet.");
-      }
-      majormost_dim_start_index_val =
-          Cast(b_, majormost_dim_start_index_val, b_.getI32Type());
-      majormost_dim_start_index_val =
-          b_.create<ma::MaxSIOp>(majormost_dim_start_index_val, Cst32(0));
-      majormost_dim_start_index_val =
-          b_.create<ma::MinSIOp>(majormost_dim_start_index_val,
-                                 Cst32(majormost_dim_start_index_upper_limit));
-
-      // How many "rows" (non-contracting dim values) are there in a slice of
-      // size 1?
-      int64_t rows_per_majormost_dim = 1;
-      for (int i = 0; i < hlo->shape().dimensions().size() - 1; ++i) {
-        rows_per_majormost_dim *= hlo->shape().dimensions_minor(i);
-      }
-      rows_per_majormost_dim =
-          rows_per_majormost_dim / only_fragment_of_nc_dim.stride;
-      Value rows_per_majormost_dim_val = Cst32(rows_per_majormost_dim);
-
-      Value tensor_offset_val_i32 = b_.create<ma::MulIOp>(
-          majormost_dim_start_index_val, rows_per_majormost_dim_val);
-      tensor_params.tensor_offsets.push_back(tensor_offset_val_i32);
-
-      // tt.make_tensor_ptr expects an i64 for shape and size, but expects
-      // i32 for offsets. We extend the offset to calculate the upper bound.
-      Value tensor_offset_val_i64 =
-          b_.create<ma::ExtSIOp>(i64_ty_, tensor_offset_val_i32);
-      Value sliced_count_val = Cst64(only_fragment_of_nc_dim.sliced_count);
-      Value upper_bound_val =
-          b_.create<ma::AddIOp>(tensor_offset_val_i64, sliced_count_val);
-      tensor_params.bounds.push_back(upper_bound_val);
-
-      tensor_params.block_offsets.push_back(pid_offset);
+      TF_RETURN_IF_ERROR(AddDynamicSliceDimToTensorParams(
+          hlo, side, properties, pid_offset, specs, bases, tensor_params));
     } else {
-      tensor_params.tensor_offsets.push_back(
-          Cst32(specs.front()->at(0).slice_start));
-      tensor_params.block_offsets.push_back(pid_offset);
-      int64_t dim_bound = specs.front()->at(0).count;
-      if (side.scope == TritonFusionAnalysis::Scope::OUTPUT &&
-          properties.index == dims_.out_lhs_noncontracting_dim_idx &&
-          specs.front()->size() == 1 &&
-          dims_.lhs_noncontracting_split.has_value()) {
-        // Dimension of the output produced by the non-contracting LHS one
-        // is logically split, major part is addressed using pid_batch.
-        dim_bound /= *dims_.lhs_noncontracting_split;
-      }
-      tensor_params.bounds.push_back(Cst64(dim_bound));
-      if (dim_bound % (properties.block_size * properties.split_value) != 0) {
-        boundary_checks.push_back(tensor_params.bounds.size() - 1);
-      }
+      TF_RETURN_IF_ERROR(AddStandaloneDimToTensorParams(
+          side, properties, pid_offset, specs, bases, tensor_params,
+          boundary_checks));
     }
     tensor_params.block_dims.push_back(properties.block_size);
     tensor_params.dim_order.emplace(tensor_params.dim_order.begin(),
                                     tensor_params.dim_order.size());
+    return absl::OkStatus();
+  }
+
+  absl::Status AddStandaloneDimToTensorParams(
+      const Side& side, const DimProperties& properties, Value pid_offset,
+      std::vector<const TensorIterationSpec::DimIterationSpec*>& specs,
+      ValueRange bases, TensorParams& tensor_params,
+      std::vector<int32_t>& boundary_checks) {
+    tensor_params.tensor_offsets.push_back(
+        Cst32(specs.front()->at(0).slice_start));
+    tensor_params.block_offsets.push_back(pid_offset);
+    int64_t dim_bound = specs.front()->at(0).count;
+    if (side.scope == TritonFusionAnalysis::Scope::OUTPUT &&
+        properties.index == dims_.out_lhs_noncontracting_dim_idx &&
+        specs.front()->size() == 1 &&
+        dims_.lhs_noncontracting_split.has_value()) {
+      // Dimension of the output produced by the non-contracting LHS one
+      // is logically split, major part is addressed using pid_batch.
+      dim_bound /= *dims_.lhs_noncontracting_split;
+    }
+    tensor_params.bounds.push_back(Cst64(dim_bound));
+    if (dim_bound % (properties.block_size * properties.split_value) != 0) {
+      boundary_checks.push_back(tensor_params.bounds.size() - 1);
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status AddDynamicSliceDimToTensorParams(
+      const HloInstruction* hlo, const Side& side,
+      const DimProperties& properties, const Value pid_offset,
+      const std::vector<const TensorIterationSpec::DimIterationSpec*>& specs,
+      const ValueRange bases, TensorParams& tensor_params) {
+    // Here we compute the offset of where we should read the slice from.
+    // TODO(b/323255699): Add support for slices of the contracting dim.
+    // Dynamic slices are guaranteed to only be offset along the majormost
+    // dimension.
+
+    // The only fragment of the non-contracting dim of the dot's input in
+    // the current scope:
+    TF_RET_CHECK(specs.back()->size() == 1);
+    const TensorIterationSpec::IterationSpecFragment only_fragment_of_nc_dim =
+        specs.back()->at(0);
+    // The majormost dim index in the dynamic slice's output.
+    const int majormost_dim = hlo->shape().layout().minor_to_major().back();
+
+    // dynamic slice operands are (input, start_index0, start_index1, ...)
+    // so the start index corresponding to the ith dimension is bases[i+1].
+    Value majormost_dim_start_index_ptr_val = bases[majormost_dim + 1];
+    Value majormost_dim_start_index_val = b_.create<mt::LoadOp>(
+        majormost_dim_start_index_ptr_val, mt::CacheModifier::NONE,
+        mt::EvictionPolicy::NORMAL,
+        /*isVolatile=*/false);
+    int64_t majormost_dim_start_index_upper_limit =
+        hlo->operand(0)->shape().dimensions(majormost_dim) -
+        hlo->dynamic_slice_sizes().at(majormost_dim);
+    // We don't want to cast S64 indices to S32, because that could result
+    // in an incorrect value.
+    if (majormost_dim_start_index_val.getType().isInteger() &&
+        majormost_dim_start_index_val.getType().getIntOrFloatBitWidth() == 64) {
+      return UncompilableMatmul(
+          "64 bit dynamic-slice indices are not supported yet.");
+    }
+    majormost_dim_start_index_val =
+        Cast(b_, majormost_dim_start_index_val, b_.getI32Type());
+    majormost_dim_start_index_val =
+        b_.create<ma::MaxSIOp>(majormost_dim_start_index_val, Cst32(0));
+    majormost_dim_start_index_val =
+        b_.create<ma::MinSIOp>(majormost_dim_start_index_val,
+                               Cst32(majormost_dim_start_index_upper_limit));
+
+    // How many "rows" (non-contracting dim values) are there in a slice of
+    // size 1?
+    int64_t rows_per_majormost_dim = 1;
+    for (int i = 0; i < hlo->shape().dimensions().size() - 1; ++i) {
+      rows_per_majormost_dim *= hlo->shape().dimensions_minor(i);
+    }
+    rows_per_majormost_dim =
+        rows_per_majormost_dim / only_fragment_of_nc_dim.stride;
+    Value rows_per_majormost_dim_val = Cst32(rows_per_majormost_dim);
+
+    Value tensor_offset_val_i32 = b_.create<ma::MulIOp>(
+        majormost_dim_start_index_val, rows_per_majormost_dim_val);
+    tensor_params.tensor_offsets.push_back(tensor_offset_val_i32);
+
+    // tt.make_tensor_ptr expects an i64 for shape and size, but expects
+    // i32 for offsets. We extend the offset to calculate the upper bound.
+    Value tensor_offset_val_i64 =
+        b_.create<ma::ExtSIOp>(i64_ty_, tensor_offset_val_i32);
+    Value sliced_count_val = Cst64(only_fragment_of_nc_dim.sliced_count);
+    Value upper_bound_val =
+        b_.create<ma::AddIOp>(tensor_offset_val_i64, sliced_count_val);
+    tensor_params.bounds.push_back(upper_bound_val);
+
+    tensor_params.block_offsets.push_back(pid_offset);
+    return absl::OkStatus();
+  }
+
+  absl::Status AddConcatDimToTensorParams(
+      const HloInstruction* hlo, const Side& side,
+      const DimProperties& properties, const ConcatParams& concat_params,
+      const Value pid_offset,
+      const std::vector<const TensorIterationSpec::DimIterationSpec*>& specs,
+      const std::vector<Value>& input_offsets, std::vector<Value>& input_bounds,
+      TensorParams& tensor_params) {
+    TF_ASSIGN_OR_RETURN(
+        Value select_value,
+        EmitMultiSelect(b_, pid_offset, concat_params.boundaries,
+                        input_offsets));
+    tensor_params.block_offsets.push_back(select_value);
+    TF_ASSIGN_OR_RETURN(
+        select_value, EmitMultiSelect(b_, pid_offset, concat_params.boundaries,
+                                      input_bounds));
+    tensor_params.bounds.push_back(select_value);
+    tensor_params.tensor_offsets.push_back(
+        Cst32(specs.front()->at(0).slice_start));
     return absl::OkStatus();
   }
 
