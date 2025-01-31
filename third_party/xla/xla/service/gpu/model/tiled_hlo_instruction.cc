@@ -33,8 +33,8 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {

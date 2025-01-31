@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {

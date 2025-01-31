@@ -35,9 +35,9 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {

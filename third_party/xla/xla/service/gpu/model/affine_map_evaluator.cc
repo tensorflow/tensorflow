@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/Support/LLVM.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace gpu {

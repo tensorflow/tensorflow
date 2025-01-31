@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

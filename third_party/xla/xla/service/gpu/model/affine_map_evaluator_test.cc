@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
