@@ -344,6 +344,8 @@ class AbstractAsyncHostToHostMemoryTransferManager
       int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
       bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) override;
 
+  void MarkBufferCompletion(int buffer_index) override;
+
   void SetBufferError(int buffer_index, absl::Status error) override;
 
   void AddTransferMetadata(const TransferMetadata& meta) override {

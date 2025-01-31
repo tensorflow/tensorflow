@@ -780,6 +780,8 @@ class PjRtCApiAsyncHostToDeviceTransferManager
     return absl::OkStatus();
   }
 
+  void MarkBufferCompletion(int buffer_index) override {}
+
   void SetBufferError(int buffer_index, absl::Status error) override {
     PJRT_AsyncHostToDeviceTransferManager_SetBufferError_Args args;
     args.struct_size =
