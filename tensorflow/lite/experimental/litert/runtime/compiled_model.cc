@@ -364,23 +364,6 @@ Expected<void> LiteRtCompiledModelT::Run(
     }
   }
 
-  // TODO: If input buffers have events, we wait on them before we launch the
-  // inference. This is inefficient when using HW acceleration, since in that
-  // case it would be best to make the HW accelerator wait for those events as
-  // opposed to blocking the CPU here.
-  for (auto input_buffer : input_buffers) {
-    if (input_buffer->HasEvent()) {
-      auto litert_event = input_buffer->GetEvent();
-      if (!litert_event) {
-        return litert_event.Error();
-      }
-      litert::Event event(*litert_event, /*owned=*/false);
-      if (auto status = event.Wait(/*timeout_in_ms=*/-1); !status) {
-        return status.Error();
-      }
-    }
-  }
-
   // The collection of locked buffers. It is used to unlock the buffers after
   // the inference is done.
   std::vector<LiteRtTensorBuffer> locked_buffers;
