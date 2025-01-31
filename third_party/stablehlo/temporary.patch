@@ -1,3 +1,39 @@
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
+@@ -79,7 +79,9 @@
+ 
+ // CHECK-LABEL: @slice
+ func.func @slice(%arg : tensor<4x3xf32>) -> tensor<2x2xf32> {
+-  // CHECK: tosa.slice %arg0 {size = array<i64: 2, 2>, start = array<i64: 2, 1>}
++  // CHECK: %[[SIZE:.*]] = tosa.const_shape {value = dense<[2, 1]> : tensor<2xindex>} : () -> !tosa.shape<2>
++  // CHECK: %[[START:.*]] = tosa.const_shape {value = dense<2> : tensor<2xindex>} : () -> !tosa.shape<2>
++  // CHECK: tosa.slice %arg0, %[[SIZE]], %[[START]]
+   %0 = "stablehlo.slice"(%arg) {
+     start_indices = array<i64: 2, 1>,
+     limit_indices = array<i64: 4, 3>,
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
+@@ -23,6 +23,7 @@
+ #include "mlir/Dialect/PDL/IR/PDL.h"
+ #include "mlir/Dialect/PDLInterp/IR/PDLInterp.h"
+ #include "mlir/Dialect/Tosa/IR/TosaOps.h"
++#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Block.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+@@ -435,8 +436,8 @@
+ 
+     rewriter.replaceOpWithNewOp<tosa::SliceOp>(
+         op, op.getType(), op.getOperand(),
+-        rewriter.getDenseI64ArrayAttr(startIndicesI64),
+-        rewriter.getDenseI64ArrayAttr(size));
++        getTosaConstShape(rewriter, op.getLoc(), startIndicesI64),
++        getTosaConstShape(rewriter, op.getLoc(), size));
+     return success();
+   }
+ };
 diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
 --- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
 +++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
