@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s -split-input-file -xla-gpu-simplify-arith -cse \
+// RUN: emitters_opt %s -split-input-file -xla-simplify-arith -cse \
 // RUN:   -canonicalize | FileCheck %s
 
 module {

@@ -18,6 +18,21 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def EraseDeadFunctionsPass : Pass<"xla-erase-dead-functions", "mlir::ModuleOp"> {
+  let summary = "Deletes unused functions";
+
+  let description = [{
+      Deletes functions that are not called.
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "xla::XlaDialect",
+  ];
+
+  let constructor = "CreateEraseDeadFunctionsPass()";
+}
+
 def FlattenTensorsPass : Pass<"xla-flatten-tensors", "mlir::ModuleOp"> {
   let summary = "Flatten tensors.";
 
@@ -100,6 +115,33 @@ def LowerToLLVMPass :
            "Whether the pass targets a 'cpu' or 'gpu'. If 'cpu', gpu_device_info_ must be empty.">,
   ];
   let constructor = "CreateLowerToLLVMPass()";
+}
+
+def PeelLoopsPass : Pass<"xla-peel-loops", "mlir::func::FuncOp"> {
+  let summary = "Peels xla.loop.";
+  let description = [{
+      Attempts to split each loop dimension [0, NUM_ITERATIONS)
+      as [0, NUM_ITERATIONS - 1) and [NUM_ITERATIONS - 1, NUM_ITERATIONS)
+      if it removes a constraint.
+  }];
+  let dependentDialects = ["xla::XlaDialect"];
+  let constructor = "CreatePeelLoopsPass()";
+}
+
+def SimplifyArithPass : Pass<"xla-simplify-arith", "mlir::func::FuncOp"> {
+  let summary = "Simplifies arith using XLA's range-aware simplifier.";
+
+  let description = [{
+      We often emit bounds checks that are statically known to be satisfied.
+      This pass removes them.
+  }];
+
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::func::FuncDialect",
+  ];
+
+  let constructor = "CreateSimplifyArithPass()";
 }
 
 #endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_PASSES_TD_
