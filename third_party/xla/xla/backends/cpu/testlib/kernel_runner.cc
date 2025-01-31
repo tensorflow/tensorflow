@@ -23,8 +23,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel.h"
@@ -87,7 +89,7 @@ absl::Status KernelRunner::Call(absl::Span<const Argument> arguments) {
   return kernel_.Launch(thread_dim_, kernel_args);
 }
 
-absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler() {
+absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(int opt_level) {
   llvm::TargetOptions target_options;
   target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
 
@@ -98,6 +100,24 @@ absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler() {
         return std::make_unique<RuntimeSymbolGenerator>(
             target_machine->createDataLayout());
       };
+
+  auto& ir_compiler_options = jit_compiler_options.ir_compiler_options;
+  switch (opt_level) {
+    case 0:
+      ir_compiler_options.opt_level = llvm::CodeGenOptLevel::None;
+      break;
+    case 1:
+      ir_compiler_options.opt_level = llvm::CodeGenOptLevel::Less;
+      break;
+    case 2:
+      ir_compiler_options.opt_level = llvm::CodeGenOptLevel::Default;
+      break;
+    case 3:
+      ir_compiler_options.opt_level = llvm::CodeGenOptLevel::Aggressive;
+      break;
+    default:
+      return absl::InvalidArgumentError("Invalid optimization level");
+  }
 
   return JitCompiler::Create(target_options, jit_compiler_options);
 }

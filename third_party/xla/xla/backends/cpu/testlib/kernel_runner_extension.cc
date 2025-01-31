@@ -138,17 +138,19 @@ NB_MODULE(_extension, kernel_runner_module) {
            nb::keep_alive<1, 4>());
 
   nb::class_<JitCompiler>(kernel_runner_module, "JitCompiler")
-      .def(nb::new_([]() {
-        absl::StatusOr<JitCompiler> compiler =
-            KernelRunner::CreateJitCompiler();
+      .def(nb::new_([](int opt_level) {
+             absl::StatusOr<JitCompiler> compiler =
+                 KernelRunner::CreateJitCompiler(opt_level);
 
-        if (!compiler.ok()) {
-          throw std::runtime_error(std::string(compiler.status().message()));
-        }
+             if (!compiler.ok()) {
+               throw std::runtime_error(
+                   std::string(compiler.status().message()));
+             }
 
-        return std::make_unique<JitCompiler>(
-            JitCompiler(std::move(compiler).value()));
-      }))
+             return std::make_unique<JitCompiler>(
+                 JitCompiler(std::move(compiler).value()));
+           }),
+           nb::arg("opt_level") = 3)
       .def(
           "get_target_machine",
           [](JitCompiler* self) {

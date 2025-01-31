@@ -45,7 +45,7 @@ class KernelRunner final : public xla::KernelRunner {
 
   absl::Status Call(absl::Span<const Argument> arguments) final;
 
-  static absl::StatusOr<JitCompiler> CreateJitCompiler();
+  static absl::StatusOr<JitCompiler> CreateJitCompiler(int opt_level = 3);
 
  private:
   static absl::StatusOr<KernelRunner> Create(
