@@ -61,6 +61,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/dialect/Version.h"
 #include "stablehlo/transforms/Passes.h"
+#include "stablehlo/transforms/optimization/Passes.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/mlir/utils/error_util.h"
@@ -85,6 +86,8 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
     // Expand stablehlo complex math functions such as log_plus_one, etc.
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::stablehlo::createStablehloComplexMathExpanderPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createChloLegalizeToHloPass());
