@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"

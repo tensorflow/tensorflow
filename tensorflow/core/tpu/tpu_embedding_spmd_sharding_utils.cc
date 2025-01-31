@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {

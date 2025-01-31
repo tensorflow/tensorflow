@@ -42,6 +42,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
     ],
@@ -91,6 +92,7 @@ cc_library(
         "//tensorflow/core/framework:tensor_shape_proto_cc",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -102,6 +104,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:logging",
         "@local_xla//xla:shape_util",
@@ -153,6 +156,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -187,6 +191,7 @@ cc_library(
     hdrs = ["tpu_init_mode.h"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -224,7 +229,14 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -248,6 +260,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -285,6 +298,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/profiler/lib:traceme",
         "@local_xla//xla:executable_run_options",
         "@local_xla//xla:shape_layout",
         "@local_xla//xla:shape_tree",
@@ -336,6 +350,7 @@ cc_library(
         "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/lib/strings:proto_serialization",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:logging",
         "@local_xla//xla:status_macros",
     ],
@@ -380,6 +395,7 @@ cc_library(
         "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_rewrite_helpers",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:logging",
