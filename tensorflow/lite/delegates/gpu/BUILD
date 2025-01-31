@@ -5,6 +5,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load("//tensorflow/lite:build_def.bzl", "CXX17_BAZEL_ONLY_COPTS")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 
@@ -131,7 +132,7 @@ objc_library(
     name = "metal_delegate",
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
-    copts = ["-std=c++17"],
+    copts = CXX17_BAZEL_ONLY_COPTS,
     module_name = "TensorFlowLiteCMetal",
     sdk_frameworks = ["Metal"],
     deps = [
@@ -161,7 +162,7 @@ objc_library(
 objc_library(
     name = "metal_delegate_internal",
     hdrs = ["metal_delegate_internal.h"],
-    copts = ["-std=c++17"],
+    copts = CXX17_BAZEL_ONLY_COPTS,
     sdk_frameworks = ["Metal"],
     deps = ["//tensorflow/lite/delegates/gpu:metal_delegate"],
 )
