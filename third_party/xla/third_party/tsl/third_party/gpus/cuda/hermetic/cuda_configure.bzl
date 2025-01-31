@@ -29,6 +29,7 @@ load(
     "//third_party/remote_config:common.bzl",
     "get_cpu_value",
     "get_host_environ",
+    "realpath",
     "which",
 )
 
@@ -47,7 +48,7 @@ def _find_cc(repository_ctx):
         print(("Cannot find {}, either correct your path," +
                " or set the CLANG_CUDA_COMPILER_PATH or CC" +
                " environment variables").format(cc_name))  # buildifier: disable=print
-    return cc
+    return None if not cc else realpath(repository_ctx, cc)
 
 def _auto_configure_fail(msg):
     """Output failure message when cuda configuration fails."""
