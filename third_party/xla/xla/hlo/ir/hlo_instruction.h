@@ -521,7 +521,7 @@ class HloInstructionInfo {
   HloOpcode opcode() const { return opcode_; }
   HloInstruction* inst() const { return inst_; }
 
- private:  // TODO: Make private and provide accessors?
+ private:
   friend class HloComputation;
   HloOpcode opcode_;
   HloInstruction* inst_;
