@@ -1,29 +1,29 @@
+Utility.h defined a bunch of helper macros like `shl`, which (surprise!
+surprise!) get wrongly expanded in LLVM's own headers.
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.cpp	2024-11-07 04:49:10.000000000 -0800
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/BufferOpsEmitter.cpp	2025-01-23 08:33:43.000000000 -0800
-@@ -1,10 +1,10 @@
+@@ -1,8 +1,8 @@
 -#include "PatternTritonGPUOpToLLVM.h"
 -#include "TargetInfo.h"
 -#include "Utility.h"
  #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
  #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
- #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
  #include "mlir/IR/PatternMatch.h"
 +#include "PatternTritonGPUOpToLLVM.h"
 +#include "TargetInfo.h"
 +#include "Utility.h"
  #include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
- #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
  #include "triton/Dialect/Triton/IR/Dialect.h"
 
 --- a/third_party/nvidia/BUILD	2025-01-23 03:06:03.000000000 -0800
 +++ b/third_party/nvidia/BUILD	2025-01-23 08:24:44.000000000 -0800
-@@ -84,6 +84,7 @@
+@@ -83,6 +83,7 @@
          "@llvm-project//mlir:Support",
          "@llvm-project//mlir:TransformUtils",
          "@llvm-project//mlir:Transforms",
-+        "//:TritonAnalysis",
          "//:TritonDialects",
++        "//:TritonGPUToLLVM",
      ],
  )
 

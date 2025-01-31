@@ -20,5 +20,6 @@ temporary_patch_list = [
     "//third_party/triton:temporary/header.patch",
     # Force MMA v2 layout for Blackwell until MMA v5 support is integrated.
     "//third_party/triton:temporary/sm100_mmav2.patch",
+    "//third_party/triton:temporary/fix_smem_vec_length.patch",
     # Add new patches just above this line
 ]
