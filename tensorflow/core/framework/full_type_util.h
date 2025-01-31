@@ -19,12 +19,14 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

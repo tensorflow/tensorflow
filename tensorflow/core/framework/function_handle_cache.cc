@@ -14,9 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/function_handle_cache.h"
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

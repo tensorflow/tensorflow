@@ -17,9 +17,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/status/statusor.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

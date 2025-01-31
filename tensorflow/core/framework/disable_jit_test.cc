@@ -17,29 +17,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/framework/allocator.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_kernel_test_base.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/core/public/version.h"
-#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace {
