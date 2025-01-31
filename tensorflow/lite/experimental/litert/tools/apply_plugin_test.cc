@@ -32,6 +32,7 @@
 #include "tensorflow/lite/experimental/litert/core/dispatch_op_schema.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 
 namespace litert::tools {
 namespace {
@@ -39,6 +40,7 @@ namespace {
 using ::litert::internal::kLiteRtBuildStampKey;
 using ::litert::internal::ParseBuildStamp;
 using ::testing::HasSubstr;
+using ::testing::litert::IsError;
 
 static constexpr absl::string_view kPluginSearchPath =
     "third_party/tensorflow/lite/experimental/litert/vendors/examples";
@@ -72,15 +74,15 @@ ApplyPluginRun::Ptr MakeBaseRun(ApplyPluginRun::Cmd cmd) {
 TEST(TestApplyPluginTool, TestInfoBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::INFO);
   run->lib_search_paths.clear();
-  LITERT_ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                                kLiteRtStatusErrorInvalidToolConfig);
+  EXPECT_THAT(ApplyPlugin(std::move(run)),
+              IsError(kLiteRtStatusErrorInvalidToolConfig));
 }
 
 TEST(TestApplyPluginTool, TestInfo) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::INFO);
   std::stringstream out;
   run->outs.push_back(out);
-  LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
+  LITERT_ASSERT_OK(ApplyPlugin(std::move(run)));
   EXPECT_THAT(out.str(),
               ::testing::HasSubstr(
                   "< LiteRtCompilerPlugin > \"ExampleSocManufacturer\" | "
@@ -90,15 +92,15 @@ TEST(TestApplyPluginTool, TestInfo) {
 TEST(TestApplyPluginTool, TestNoopBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::NOOP);
   run->model.reset();
-  LITERT_ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                                kLiteRtStatusErrorInvalidToolConfig);
+  EXPECT_THAT(ApplyPlugin(std::move(run)),
+              IsError(kLiteRtStatusErrorInvalidToolConfig));
 }
 
 TEST(TestApplyPluginTool, TestNoop) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::NOOP);
   std::stringstream out;
   run->outs.push_back(out);
-  LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
+  LITERT_ASSERT_OK(ApplyPlugin(std::move(run)));
 
   auto model = Model::CreateFromBuffer(
       BufferRef<uint8_t>(out.view().data(), out.view().size()));
@@ -108,30 +110,30 @@ TEST(TestApplyPluginTool, TestNoop) {
 TEST(TestApplyPluginTool, TestPartitionBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::PARTITION);
   run->model.reset();
-  LITERT_ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                                kLiteRtStatusErrorInvalidToolConfig);
+  EXPECT_THAT(ApplyPlugin(std::move(run)),
+              IsError(kLiteRtStatusErrorInvalidToolConfig));
 }
 
 TEST(TestApplyPluginTool, TestPartition) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::PARTITION);
   std::stringstream out;
   run->outs.push_back(out);
-  LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
+  LITERT_ASSERT_OK(ApplyPlugin(std::move(run)));
   EXPECT_FALSE(out.str().empty());
 }
 
 TEST(TestApplyPluginTool, TestCompileBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::COMPILE);
   run->model.reset();
-  LITERT_ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                                kLiteRtStatusErrorInvalidToolConfig);
+  EXPECT_THAT(ApplyPlugin(std::move(run)),
+              IsError(kLiteRtStatusErrorInvalidToolConfig));
 }
 
 TEST(TestApplyPluginTool, TestCompile) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::COMPILE);
   std::stringstream out;
   run->outs.push_back(out);
-  LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
+  LITERT_ASSERT_OK(ApplyPlugin(std::move(run)));
   EXPECT_FALSE(out.str().empty());
   EXPECT_THAT(out.str(), HasSubstr("Partition_0_with_1_muls"));
 }
@@ -139,15 +141,15 @@ TEST(TestApplyPluginTool, TestCompile) {
 TEST(TestApplyPluginTool, TestApplyBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::APPLY);
   run->model.reset();
-  LITERT_ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                                kLiteRtStatusErrorInvalidToolConfig);
+  EXPECT_THAT(ApplyPlugin(std::move(run)),
+              IsError(kLiteRtStatusErrorInvalidToolConfig));
 }
 
 TEST(TestApplyPluginTool, TestApply) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::APPLY);
   std::stringstream out;
   run->outs.push_back(out);
-  LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
+  LITERT_ASSERT_OK(ApplyPlugin(std::move(run)));
 
   const auto out_str = out.str();
   BufferRef<uint8_t> serialized(out_str.data(), out_str.size());

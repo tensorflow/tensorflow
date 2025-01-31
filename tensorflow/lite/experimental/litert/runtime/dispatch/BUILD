@@ -92,6 +92,7 @@ cc_test(
     }),
     deps = [
         ":dispatch_delegate",
+        "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings:string_view",
@@ -115,7 +116,6 @@ cc_test(
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:simple_model_npu",
         "//tensorflow/lite/kernels:builtin_ops",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

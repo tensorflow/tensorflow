@@ -21,7 +21,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
-#include "tensorflow/lite/experimental/litert/test/test_macros.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/test/test_models.h"
 
 namespace {
@@ -97,8 +97,7 @@ TEST(TestLegalizeTensor, SimpleSupportedTensorSubgraphInput) {
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
   const auto& output_tensor = outputs.front();
-  LITERT_ASSERT_STATUS_OK(
-      litert::qnn::LegalizeTensor(output_tensor, qnn_tensor));
+  LITERT_ASSERT_OK(litert::qnn::LegalizeTensor(output_tensor, qnn_tensor));
 
   ASSERT_EQ(qnn_tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_FLOAT_32);
@@ -122,7 +121,7 @@ TEST(TestLegalizeTensor, SimpleSupportedTensor) {
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
   const auto& op_out = op_outs.front();
-  LITERT_ASSERT_STATUS_OK(litert::qnn::LegalizeTensor(op_out, qnn_tensor));
+  LITERT_ASSERT_OK(litert::qnn::LegalizeTensor(op_out, qnn_tensor));
 
   ASSERT_EQ(qnn_tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_FLOAT_32);
@@ -146,7 +145,7 @@ TEST(TestLegalizeTensor, SimpleQuantizedTensor) {
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
   const auto& op_out = op_outs.front();
-  LITERT_ASSERT_STATUS_OK(litert::qnn::LegalizeTensor(op_out, qnn_tensor));
+  LITERT_ASSERT_OK(litert::qnn::LegalizeTensor(op_out, qnn_tensor));
 
   ASSERT_EQ(qnn_tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_INT_16);
@@ -172,7 +171,7 @@ TEST(TestLegalizeTensor, PerChannelQuantizedTensor) {
 
   auto qnn_tensor = litert::qnn::BuildDefaultTensor();
   const auto& per_channel_quant_tensor = op_ins[1];
-  LITERT_ASSERT_STATUS_OK(
+  LITERT_ASSERT_OK(
       litert::qnn::LegalizeTensor(per_channel_quant_tensor, qnn_tensor));
 
   EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_INT_8);

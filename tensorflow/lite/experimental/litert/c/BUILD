@@ -107,7 +107,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/core/util:flatbuffer_tools",
-        "//tensorflow/lite/experimental/litert/test:test_macros",
+        "//tensorflow/lite/experimental/litert/test:matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -143,9 +143,10 @@ cc_test(
     ],
     tags = ["no_oss"],
     deps = [
+        ":litert_common",
         ":litert_options",
         "//tensorflow/lite/experimental/litert/test:common",
-        "//tensorflow/lite/experimental/litert/test:test_macros",
+        "//tensorflow/lite/experimental/litert/test:matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

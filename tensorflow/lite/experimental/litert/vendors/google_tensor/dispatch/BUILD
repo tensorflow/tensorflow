@@ -113,6 +113,7 @@ cc_test(
         "no_oss",
     ],
     deps = [
+        "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/types:span",
@@ -124,6 +125,5 @@ cc_test(
         "//tensorflow/lite/experimental/litert/test:common",
         "//tensorflow/lite/experimental/litert/test:simple_model_npu",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
-        "@com_google_googletest//:gtest_main",
     ],
 )

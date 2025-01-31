@@ -23,7 +23,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
-#include "tensorflow/lite/experimental/litert/test/test_macros.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/cc/litert_compiler_plugin.h"
 
@@ -39,13 +39,13 @@ TEST(ExamplePluginWithConvertTypesTest, GetConfigInfo) {
   auto plugin = CreatePlugin();
 
   LiteRtParamIndex num_supported_soc_models;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetNumCompilerPluginSupportedSocModels(
+  LITERT_ASSERT_OK(LiteRtGetNumCompilerPluginSupportedSocModels(
       plugin.get(), &num_supported_soc_models));
   ASSERT_EQ(num_supported_soc_models, 1);
 
   const char* soc_model_name;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetCompilerPluginSupportedSocModel(
-      plugin.get(), 0, &soc_model_name));
+  LITERT_ASSERT_OK(LiteRtGetCompilerPluginSupportedSocModel(plugin.get(), 0,
+                                                            &soc_model_name));
   ASSERT_STREQ(soc_model_name, "ExampleSocModel");
 }
 
@@ -54,7 +54,7 @@ TEST(ExamplePluginWithConvertTypesTest, PartitionSimpleMultiAdd) {
   auto model = litert::testing::LoadTestFileModel("simple_multi_op.tflite");
 
   LiteRtOpListT selected_op_list;
-  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginPartition(
+  LITERT_ASSERT_OK(LiteRtCompilerPluginPartition(
       plugin.get(), model.Get()->MainSubgraph(), &selected_op_list));
   const auto selected_ops = selected_op_list.Vec();
 
@@ -73,14 +73,14 @@ TEST(ExamplePluginWithConvertTypesTest, CompileMulSubgraph) {
   LiteRtSubgraph litert_subgraph = main_subgraph->Get();
 
   LiteRtCompiledResult compiled;
-  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(
+  LITERT_ASSERT_OK(LiteRtCompilerPluginCompile(
       plugin.get(), /*soc_model=*/nullptr, &litert_subgraph,
       /*num_partitions*/ 1, &compiled));
 
   const void* byte_code;
   size_t byte_code_size;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetCompiledResultByteCode(
-      compiled, 0, &byte_code, &byte_code_size));
+  LITERT_ASSERT_OK(LiteRtGetCompiledResultByteCode(
+      compiled, /*byte_code_idx=*/0, &byte_code, &byte_code_size));
   absl::string_view byte_code_str(reinterpret_cast<const char*>(byte_code),
                                   byte_code_size);
 
@@ -92,8 +92,7 @@ TEST(ExamplePluginWithConvertTypesTest, CompileMulSubgraph) {
   EXPECT_THAT(byte_code_str, HasSubstr("FINALIZED"));
 
   LiteRtParamIndex num_call_infos;
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetNumCompiledResultCalls(compiled, &num_call_infos));
+  LITERT_ASSERT_OK(LiteRtGetNumCompiledResultCalls(compiled, &num_call_infos));
 
   ASSERT_EQ(num_call_infos, 1);
 
@@ -101,7 +100,7 @@ TEST(ExamplePluginWithConvertTypesTest, CompileMulSubgraph) {
   size_t op_data_size;
   LiteRtParamIndex byte_code_idx;
 
-  LITERT_ASSERT_STATUS_OK(LiteRtGetCompiledResultCallInfo(
+  LITERT_ASSERT_OK(LiteRtGetCompiledResultCallInfo(
       compiled, 0, &op_data, &op_data_size, &byte_code_idx));
 
   absl::string_view op_data_str(reinterpret_cast<const char*>(op_data),

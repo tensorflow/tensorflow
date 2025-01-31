@@ -25,7 +25,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
-#include "tensorflow/lite/experimental/litert/test/test_macros.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/test/test_models.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/cc/litert_compiler_plugin.h"
@@ -48,12 +48,12 @@ TEST(TestQnnPlugin, GetConfigInfo) {
   auto plugin = CreatePlugin();
 
   LiteRtParamIndex num_supported_soc_models;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetNumCompilerPluginSupportedSocModels(
+  LITERT_ASSERT_OK(LiteRtGetNumCompilerPluginSupportedSocModels(
       plugin.get(), &num_supported_soc_models));
   ASSERT_EQ(num_supported_soc_models, 12);
 
   const char* config_id;
-  LITERT_CHECK_STATUS_OK(
+  LITERT_ASSERT_OK(
       LiteRtGetCompilerPluginSupportedSocModel(plugin.get(), 0, &config_id));
   EXPECT_STREQ(config_id, "mt6853");
 }
@@ -63,7 +63,7 @@ TEST(TestQnnPlugin, PartitionAdd) {
   auto model = testing::LoadTestFileModel("add_simple.tflite");
 
   LiteRtOpListT selected_op_list;
-  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginPartition(
+  LITERT_ASSERT_OK(LiteRtCompilerPluginPartition(
       plugin.get(), model.Subgraph(0)->Get(), &selected_op_list));
   const auto selected_ops = selected_op_list.Vec();
 
@@ -85,19 +85,19 @@ TEST_P(MtkPluginOpCompatibilityTest, SupportedOpsTest) {
   LiteRtSubgraph litert_subgraph = subgraph->Get();
 
   LiteRtCompiledResult compiled;
-  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(
+  LITERT_ASSERT_OK(LiteRtCompilerPluginCompile(
       plugin.get(), /*soc_model=*/nullptr, &litert_subgraph, 1, &compiled));
 
   LiteRtParamIndex num_byte_code;
-  LITERT_ASSERT_STATUS_OK(
+  LITERT_ASSERT_OK(
       LiteRtCompiledResultNumByteCodeModules(compiled, &num_byte_code));
   ASSERT_EQ(num_byte_code, 1);
 
   const void* byte_code;
   size_t byte_code_size;
 
-  LITERT_ASSERT_STATUS_OK(LiteRtGetCompiledResultByteCode(
-      compiled, 0, &byte_code, &byte_code_size));
+  LITERT_ASSERT_OK(LiteRtGetCompiledResultByteCode(
+      compiled, /*byte_code_idx=*/0, &byte_code, &byte_code_size));
 
   absl::string_view byte_code_string(reinterpret_cast<const char*>(byte_code),
                                      byte_code_size);
@@ -107,14 +107,14 @@ TEST_P(MtkPluginOpCompatibilityTest, SupportedOpsTest) {
   size_t op_data_size;
   LiteRtParamIndex byte_code_idx;
 
-  LITERT_ASSERT_STATUS_OK(LiteRtGetCompiledResultCallInfo(
-      compiled, 0, &op_data, &op_data_size, &byte_code_idx));
+  LITERT_ASSERT_OK(LiteRtGetCompiledResultCallInfo(
+      compiled, /*call_idx=*/0, &op_data, &op_data_size, &byte_code_idx));
 
   EXPECT_EQ(byte_code_idx, 0);
 
   absl::string_view op_data_string(reinterpret_cast<const char*>(op_data),
                                    op_data_size);
-  ASSERT_EQ("Partition_0", op_data_string);
+  EXPECT_EQ(op_data_string, "Partition_0");
 
   LiteRtDestroyCompiledResult(compiled);
 }

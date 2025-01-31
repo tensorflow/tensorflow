@@ -21,7 +21,7 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
-#include "tensorflow/lite/experimental/litert/test/test_macros.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 
 namespace litert::internal {
 namespace {
@@ -44,7 +44,7 @@ TEST(FlatbufferToolsTest, Metadata) {
   ASSERT_NE(flatbuffer, nullptr);
   auto tfl_model = flatbuffer->Unpack();
 
-  LITERT_ASSERT_STATUS_OK(PushMetadata(
+  LITERT_ASSERT_OK(PushMetadata(
       kKey, *tfl_model, BufferRef<uint8_t>(kData.data(), kData.size())));
 
   auto metadata = GetMetadata(kKey, *tfl_model);

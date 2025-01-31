@@ -45,7 +45,7 @@
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
-#include "tensorflow/lite/experimental/litert/test/test_macros.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/test/test_models.h"
 #include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -58,6 +58,7 @@ using ::testing::Each;
 using ::testing::ElementsAreArray;
 using ::testing::FloatEq;
 using ::testing::Values;
+using ::testing::litert::IsError;
 
 using ModelFactory = std::function<Expected<Model>()>;
 
@@ -120,8 +121,8 @@ class TestWithModelFactory : public ::testing::TestWithParam<ModelFactory> {
 
 TEST(ModelLoadTest, BadFilepath) {
   LiteRtModel model = nullptr;
-  LITERT_ASSERT_STATUS_HAS_CODE(LiteRtCreateModelFromFile("bad_path", &model),
-                                kLiteRtStatusErrorFileIO);
+  EXPECT_THAT(LiteRtCreateModelFromFile("bad_path", &model),
+              IsError(kLiteRtStatusErrorFileIO));
 }
 
 TEST(ModelLoadTest, BadFileData) {
@@ -140,9 +141,8 @@ TEST(ModelLoadTest, BadFileData) {
   bad_file.close();
 
   LiteRtModel model = nullptr;
-  LITERT_ASSERT_STATUS_HAS_CODE(
-      LiteRtCreateModelFromFile(test_file_path.c_str(), &model),
-      kLiteRtStatusErrorInvalidFlatbuffer);
+  EXPECT_THAT(LiteRtCreateModelFromFile(test_file_path.c_str(), &model),
+              IsError(kLiteRtStatusErrorInvalidFlatbuffer));
   // NOLINTEND
 }
 
@@ -171,7 +171,7 @@ TEST(ModelSerializeTest, WithMetadata) {
   constexpr static absl::string_view kMetadataName = "an_soc_manufacturer";
   constexpr static absl::string_view kMetadataData = "My_Meta_Data";
 
-  LITERT_ASSERT_STATUS_OK(model.Get()->PushMetadata(
+  LITERT_ASSERT_OK(model.Get()->PushMetadata(
       kMetadataName, OwningBufferRef<uint8_t>(kMetadataData)));
 
   auto serialized = SerializeModel(std::move(*model.Get()));
