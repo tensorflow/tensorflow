@@ -48,7 +48,6 @@ class CommandBufferThunk : public Thunk {
                        ResourceRequestsInterface& resource_requests) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-  absl::Status Cleanup(const CleanupParams& params) override;
 
   // Return the allocation address that was lazilly allocated inside command
   // buffer. This API is required when the buffers are allocated inside command
