@@ -105,6 +105,7 @@ xla_cc_test(
     deps = [
         ":constants",
         ":shardy_xla_pass",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:verified_hlo_module",
