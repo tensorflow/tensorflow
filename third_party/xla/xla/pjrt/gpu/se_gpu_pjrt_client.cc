@@ -304,8 +304,7 @@ class AsyncHostToDeviceTransferManager
       // Call cleanup once the transfer has finished on the stream.
       auto cleanup = [this, buffer_index, stream, on_done = std::move(on_done),
                       event = std::move(event).value()]() mutable {
-        CleanUp(buffer_index, std::move(event), stream,
-                /*is_last_transfer=*/true, std::move(on_done));
+        CleanUp(buffer_index, std::move(event), stream, std::move(on_done));
       };
       auto status = stream->DoHostCallback(std::move(cleanup));
       if (!status.ok()) {
@@ -325,13 +324,12 @@ class AsyncHostToDeviceTransferManager
       absl::AnyInvocable<void() &&> on_done) override {
     return TransferRawDataToSubBuffer(buffer_index, data.data(),
                                       /*offset=*/0, data.size(),
-                                      /*is_last_transfer=*/true,
                                       std::move(on_done));
   }
 
   absl::Status TransferRawDataToSubBuffer(
       int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
-      bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) override {
+      absl::AnyInvocable<void() &&> on_done) override {
     auto* stream = device_->local_device_state()->host_to_device_stream();
 
     auto* client =
@@ -362,9 +360,6 @@ class AsyncHostToDeviceTransferManager
           "TransferRawData requested for buffer index %d which has "
           "already been fully transferred",
           buffer_index);
-    }
-    if (is_last_transfer) {
-      last_transfer_started_[buffer_index] = true;
     }
     DCHECK(buffer_ptrs_[buffer_index]);
     if (buffer_ptrs_[buffer_index]->device_memory().empty()) {
@@ -418,12 +413,16 @@ class AsyncHostToDeviceTransferManager
                                                                 event.value());
 
     auto cleanup = [this, buffer_index, event = std::move(event).value(),
-                    stream, is_last_transfer, on_done = std::move(on_done),
+                    stream, on_done = std::move(on_done),
                     staging_buffer = std::move(staging_buffer)]() mutable {
-      CleanUp(buffer_index, std::move(event), stream, is_last_transfer,
-              std::move(on_done));
+      CleanUp(buffer_index, std::move(event), stream, std::move(on_done));
     };
     return stream->DoHostCallback(std::move(cleanup));
+  }
+
+  void MarkBufferCompletion(int buffer_index) override {
+    absl::MutexLock l(&mu_);
+    last_transfer_started_[buffer_index] = true;
   }
 
   void SetBufferError(int buffer_index, absl::Status error) override {
@@ -471,24 +470,11 @@ class AsyncHostToDeviceTransferManager
   PjRtStreamExecutorDevice* device_;  // not owned.
 
   void CleanUp(int buffer_index, EventPool::Handle event, se::Stream* stream,
-               bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) {
+               absl::AnyInvocable<void() &&> on_done) {
     {
       absl::MutexLock l(&mu_);
-
       CHECK_GT(transfers_in_flight_, 0);
       --transfers_in_flight_;
-      if (is_last_transfer) {
-        // Drop our reference to the TrackedDeviceBuffer for this buffer.
-        CHECK(buffer_ptrs_[buffer_index]);
-        buffer_ptrs_[buffer_index] = nullptr;
-        CHECK_GT(remaining_buffer_count_, 0);
-        --remaining_buffer_count_;
-        definition_events_[buffer_index]->SetSequencingEvent(std::move(event),
-                                                             stream);
-        if (remaining_buffer_count_ == 0) {
-          VLOG(1) << "TransferLiteralToBuffer for all buffers is done.";
-        }
-      }
     }
 
     // Call on_done after finishing all housekeeping and releasing the lock.

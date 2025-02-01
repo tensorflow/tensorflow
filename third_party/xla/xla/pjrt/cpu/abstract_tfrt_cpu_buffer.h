@@ -342,7 +342,9 @@ class AbstractAsyncHostToHostMemoryTransferManager
 
   absl::Status TransferRawDataToSubBuffer(
       int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
-      bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) override;
+      absl::AnyInvocable<void() &&> on_done) override;
+
+  void MarkBufferCompletion(int buffer_index) override;
 
   void SetBufferError(int buffer_index, absl::Status error) override;
 
@@ -373,7 +375,7 @@ class AbstractAsyncHostToHostMemoryTransferManager
   absl::Status FillRawDataToSubBuffer(
       int buffer_index,
       absl::AnyInvocable<void(void* data, int64_t size)> fill_fn,
-      bool is_last_transfer, absl::AnyInvocable<void() &&> on_done);
+      absl::AnyInvocable<void() &&> on_done);
 
   mutable absl::Mutex mu_;
   // The number of transfers that are currently in flight.

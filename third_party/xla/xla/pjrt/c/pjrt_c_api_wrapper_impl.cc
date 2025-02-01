@@ -662,7 +662,7 @@ PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferData(
   PJRT_RETURN_IF_ERROR(
       args->transfer_manager->transfer_manager->TransferRawDataToSubBuffer(
           args->buffer_index, args->data, args->offset, args->transfer_size,
-          args->is_last_transfer, std::move(on_done_with_d2h_transfer)));
+          std::move(on_done_with_d2h_transfer)));
   args->done_with_h2d_transfer =
       new PJRT_Event{xla::PjRtFuture<>(std::move(promise))};
   return nullptr;

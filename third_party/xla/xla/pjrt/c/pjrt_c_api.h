@@ -674,7 +674,6 @@ struct PJRT_AsyncHostToDeviceTransferManager_TransferData_Args {
   const void* data;
   int64_t offset;
   int64_t transfer_size;
-  bool is_last_transfer;
   PJRT_Event* done_with_h2d_transfer;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(

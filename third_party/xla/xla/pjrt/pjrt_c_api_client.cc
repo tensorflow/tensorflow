@@ -752,13 +752,12 @@ class PjRtCApiAsyncHostToDeviceTransferManager
       int buffer_index, absl::string_view data,
       absl::AnyInvocable<void() &&> on_done) override {
     return TransferRawDataToSubBuffer(buffer_index, data.data(), 0, data.size(),
-                                      /*is_last_transfer=*/true,
                                       std::move(on_done));
   }
 
   absl::Status TransferRawDataToSubBuffer(
       int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
-      bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) override {
+      absl::AnyInvocable<void() &&> on_done) override {
     PJRT_AsyncHostToDeviceTransferManager_TransferData_Args args;
     args.struct_size =
         PJRT_AsyncHostToDeviceTransferManager_TransferData_Args_STRUCT_SIZE;
@@ -768,7 +767,6 @@ class PjRtCApiAsyncHostToDeviceTransferManager
     args.data = data;
     args.offset = offset;
     args.transfer_size = transfer_size;
-    args.is_last_transfer = is_last_transfer;
     const PJRT_Api* api = c_client_->pjrt_c_api();
     RETURN_STATUS_IF_PJRT_ERROR(
         api->PJRT_AsyncHostToDeviceTransferManager_TransferData(&args), api);
@@ -779,6 +777,8 @@ class PjRtCApiAsyncHostToDeviceTransferManager
         api);
     return absl::OkStatus();
   }
+
+  void MarkBufferCompletion(int buffer_index) override {}
 
   void SetBufferError(int buffer_index, absl::Status error) override {
     PJRT_AsyncHostToDeviceTransferManager_SetBufferError_Args args;
