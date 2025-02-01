@@ -1,3 +1,7 @@
+# copybara:uncomment_begin(google-only)
+# load("//devtools/deps/check:deps_check.bzl", "check_dependencies")
+#
+# copybara:uncomment_end
 load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "export_lrt_runtime_only_linkopt", "export_lrt_runtime_only_script")
 
 package(
@@ -467,5 +471,13 @@ cc_library(
     linkstatic = 1,
     deps = ["@opencl_headers"],
 )
+
+# copybara:uncomment_begin(google-only)
+# # Check that litert runtime doesn't depend on MLIR.
+# check_dependencies(
+#     of = [":litert_runtime_c_api_shared_lib"],
+#     dont_match_regexp = "^//third_party/llvm/llvm-project/mlir",
+# )
+# copybara:uncomment_end
 
 exports_files(srcs = glob(["litert_*.h"]))
