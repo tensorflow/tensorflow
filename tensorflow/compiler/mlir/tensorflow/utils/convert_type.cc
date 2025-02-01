@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 
+#include <cstdint>
 #include <limits>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -25,6 +28,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"

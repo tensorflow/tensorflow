@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <set>
 #include <string>
@@ -24,7 +25,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"

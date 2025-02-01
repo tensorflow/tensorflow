@@ -15,10 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
-#include <tuple>
-#include <utility>
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
