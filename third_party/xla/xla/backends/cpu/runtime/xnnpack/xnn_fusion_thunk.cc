@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "pthreadpool.h"
 #include "xla/backends/cpu/runtime/parallel_loop_runner.h"
@@ -184,8 +183,7 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
 
   // Configure XNNPACK runtime thread pool if parallelization is enabled.
   if (parallelization_mode == ParallelizationMode::kParallelLoopRunner) {
-    runtime.runner = std::make_unique<ParallelLoopRunner>(
-        device, /*worker_timeslice=*/absl::Microseconds(100));
+    runtime.runner = std::make_unique<ParallelLoopRunner>(device);
     runtime.threadpool = CreateCustomPthreadpool(runtime.runner.get());
   } else if (parallelization_mode == ParallelizationMode::kPThreadPool) {
     runtime.threadpool = DefaultPthreadpool();

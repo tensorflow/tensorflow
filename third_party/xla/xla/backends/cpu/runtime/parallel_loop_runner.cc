@@ -21,13 +21,11 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
-#include <optional>
 #include <utility>
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
-#include "absl/time/time.h"
 #include "xla/backends/cpu/runtime/work_queue.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
@@ -54,12 +52,8 @@ static tsl::AsyncValueRef<tsl::Chain> OkDoneEventSingleton() {
   return singleton->AsRef();
 }
 
-ParallelLoopRunner::ParallelLoopRunner(
-    const Eigen::ThreadPoolDevice* device,
-    std::optional<absl::Duration> worker_timeslice)
-    : done_event_(OkDoneEventSingleton()),
-      device_(device),
-      worker_timeslice_(worker_timeslice) {}
+ParallelLoopRunner::ParallelLoopRunner(const Eigen::ThreadPoolDevice* device)
+    : done_event_(OkDoneEventSingleton()), device_(device) {}
 
 tsl::AsyncValueRef<tsl::Chain> ParallelLoopRunner::ResetDoneEvent() {
   auto done_event = std::move(done_event_);

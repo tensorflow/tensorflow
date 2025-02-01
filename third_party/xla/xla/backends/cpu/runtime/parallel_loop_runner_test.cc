@@ -17,12 +17,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
@@ -36,14 +34,11 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-class ParallelLoopRunnerTest
-    : public testing::TestWithParam<std::optional<absl::Duration>> {};
-
-TEST_P(ParallelLoopRunnerTest, Parallelize1D) {
+TEST(ParallelLoopRunnerTest, Parallelize1D) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
-  ParallelLoopRunner runner(&device, GetParam());
+  ParallelLoopRunner runner(&device);
 
   constexpr int32_t d0 = 128;
 
@@ -63,11 +58,11 @@ TEST_P(ParallelLoopRunnerTest, Parallelize1D) {
                              [](int32_t value) { return value == 5; }));
 }
 
-TEST_P(ParallelLoopRunnerTest, Parallelize1DTile1D) {
+TEST(ParallelLoopRunnerTest, Parallelize1DTile1D) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
-  ParallelLoopRunner runner(&device, GetParam());
+  ParallelLoopRunner runner(&device);
 
   constexpr int32_t d0 = 128;
 
@@ -91,11 +86,11 @@ TEST_P(ParallelLoopRunnerTest, Parallelize1DTile1D) {
                              [](int32_t value) { return value == 5; }));
 }
 
-TEST_P(ParallelLoopRunnerTest, Parallelize2DTile1D) {
+TEST(ParallelLoopRunnerTest, Parallelize2DTile1D) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
-  ParallelLoopRunner runner(&device, GetParam());
+  ParallelLoopRunner runner(&device);
 
   constexpr int32_t d0 = 4;
   constexpr int32_t d1 = 39;
@@ -120,11 +115,11 @@ TEST_P(ParallelLoopRunnerTest, Parallelize2DTile1D) {
                              [](int32_t value) { return value == 5; }));
 }
 
-TEST_P(ParallelLoopRunnerTest, Parallelize3DTile2D) {
+TEST(ParallelLoopRunnerTest, Parallelize3DTile2D) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
-  ParallelLoopRunner runner(&device, GetParam());
+  ParallelLoopRunner runner(&device);
 
   constexpr int32_t d0 = 4;
   constexpr int32_t d1 = 39;
@@ -153,13 +148,6 @@ TEST_P(ParallelLoopRunnerTest, Parallelize3DTile2D) {
                              [](int32_t value) { return value == 5; }));
 }
 
-INSTANTIATE_TEST_SUITE_P(ParallelLoopRunner, ParallelLoopRunnerTest,
-                         testing::Values(std::nullopt, absl::Nanoseconds(100),
-                                         absl::Nanoseconds(500),
-                                         absl::Microseconds(1),
-                                         absl::Microseconds(10),
-                                         absl::Milliseconds(1)));
-
 //===----------------------------------------------------------------------===//
 // Performance benchmarks.
 //===----------------------------------------------------------------------===//
@@ -183,10 +171,7 @@ static void BM_Parallelize2DTile1D(benchmark::State& state) {
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
 
-  size_t timeslice = state.range(0);
-  ParallelLoopRunner runner(
-      &device, timeslice ? std::make_optional(absl::Nanoseconds(timeslice))
-                         : std::nullopt);
+  ParallelLoopRunner runner(&device);
 
   size_t range = 4;
   size_t tile = 1;
@@ -204,10 +189,7 @@ static void BM_Parallelize3DTile2D(benchmark::State& state) {
   Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
                                  threads.NumThreads());
 
-  size_t timeslice = state.range(0);
-  ParallelLoopRunner runner(
-      &device, timeslice ? std::make_optional(absl::Nanoseconds(timeslice))
-                         : std::nullopt);
+  ParallelLoopRunner runner(&device);
 
   size_t range = 4;
   size_t tile = 1;
@@ -219,7 +201,7 @@ static void BM_Parallelize3DTile2D(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_Parallelize3DTile2D)->Arg(0)->Arg(100)->Arg(10000);
+BENCHMARK(BM_Parallelize3DTile2D);
 
 }  // namespace
 }  // namespace xla::cpu
