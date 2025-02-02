@@ -15,12 +15,15 @@ limitations under the License.
 #include "tensorflow/core/util/quantization/uniform_quant_ops_params.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_join.h"
+#include "third_party/protobuf/repeated_field.h"
 
 namespace tensorflow {
 namespace {
