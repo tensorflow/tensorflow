@@ -154,7 +154,7 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
     return kTfLiteOk;
   }
 
-  tensorflow::StringPiece t_data = t.tensor_data();
+  absl::string_view t_data = t.tensor_data();
 
   if (output->bytes != t_data.size()) {
     TF_LITE_KERNEL_LOG(context,
