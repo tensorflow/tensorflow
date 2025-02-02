@@ -251,7 +251,7 @@ absl::Status ShapeInferenceTestutil::MakeShapeFromString(
       int64_t dim_size = 0;
 
       if (!scanner.GetResult(nullptr, &match) ||
-          !strings::safe_strto64(match, &dim_size)) {
+          !absl::SimpleAtoi(match, &dim_size)) {
         return errors::InvalidArgument("Could not parse number in ", spec);
       }
 

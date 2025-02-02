@@ -87,7 +87,7 @@ absl::Status TensorSlice::Parse(const string& str, TensorSlice* slice) {
       l = kFullExtent;
     } else {
       std::vector<string> sl = str_util::Split(x, ',', str_util::SkipEmpty());
-      if (sl.size() != 2 || !strings::safe_strto64(sl[0], &s) ||
+      if (sl.size() != 2 || !absl::SimpleAtoi(sl[0], &s) ||
           !absl::SimpleAtoi(sl[1], &l)) {
         return errors::InvalidArgument(
             "Expected a pair of numbers or '-' "
