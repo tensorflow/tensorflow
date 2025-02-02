@@ -27,10 +27,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 
 namespace xla {
-namespace gpu {
+namespace emitters {
 
 #define GEN_PASS_DEF_MERGEPOINTERSTOSAMESLICEPASS
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+#include "xla/codegen/emitters/transforms/passes.h.inc"
 
 namespace {
 
@@ -113,5 +113,5 @@ CreateMergePointersToSameSlicePass() {
   return std::make_unique<MergePointersToSameSlicePass>();
 }
 
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla

@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s -xla-gpu-lower-xla-gpu-loops-to-scf  \
+// RUN: emitters_opt %s -xla-lower-xla-loops-to-scf  \
 // RUN: --split-input-file | FileCheck %s
 
 #map = #xla.indexing_map<"(d0)[s0, s1] -> (s0 + 1, s1 - 1),"

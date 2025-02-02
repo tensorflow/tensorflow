@@ -37,18 +37,8 @@ std::unique_ptr<mlir::Pass> CreateConvertFloatNvidiaPass();
 std::optional<std::unique_ptr<mlir::Pass>> MaybeCreateConvertFloatNvidiaPass(
     const se::DeviceDescription& device_description);
 std::unique_ptr<mlir::Pass> CreateConvertIndexTypePass();
-std::unique_ptr<mlir::Pass> CreateConvertPureCallOpsPass();
-std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();
-std::unique_ptr<mlir::Pass> CreateLowerXlaGpuToScfPass(int64_t warp_size = 32);
-std::unique_ptr<mlir::Pass> CreateLowerXlaGpuLoopsToScfPass();
-std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
 std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass();
 std::unique_ptr<mlir::Pass> CreateFuseLoopsPass();
-std::unique_ptr<mlir::Pass> CreatePeelLoopsPass();
-std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
-std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();
-std::unique_ptr<mlir::Pass> CreateSimplifyArithPass();
-std::unique_ptr<mlir::Pass> CreateUnswitchLoopsPass();
 std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
     const std::string& gpu_device_info = "");
 std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(

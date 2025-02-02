@@ -200,6 +200,7 @@ cc_library(
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/transforms:passes",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",

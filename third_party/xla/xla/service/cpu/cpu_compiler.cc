@@ -472,6 +472,13 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool is_aot_compile,
     TargetMachineFeatures* target_machine_features) {
   const int64_t num_partitions = module->config().num_partitions();
+  const bool is_thunk_runtime =
+      module->config().debug_options().xla_cpu_use_thunk_runtime();
+  const bool is_fusion_emitters =
+      module->config().debug_options().xla_cpu_use_fusion_emitters();
+  if (is_fusion_emitters) {
+    CHECK(is_thunk_runtime) << "fusion emitters only work with thunk runtime.";
+  }
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
       return InvalidArgument(
@@ -555,8 +562,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Rewrite to custom calls with target as oneDNN library calls.
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
-  bool is_thunk_runtime =
-      module->config().debug_options().xla_cpu_use_thunk_runtime();
   if (!is_aot_compile && !is_thunk_runtime) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
