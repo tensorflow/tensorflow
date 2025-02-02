@@ -32,16 +32,16 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"  // IWYU pragma: keep
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
+#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_map.h"
 
 namespace xla {
-namespace gpu {
+namespace emitters {
 namespace {
 
 #define GEN_PASS_DEF_SIMPLIFYARITHPASS
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+#include "xla/codegen/emitters/transforms/passes.h.inc"
 
 using mlir::LogicalResult;
 using mlir::OpRewritePattern;
@@ -383,5 +383,5 @@ std::unique_ptr<mlir::Pass> CreateSimplifyArithPass() {
   return std::make_unique<SimplifyArithPass>();
 }
 
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla

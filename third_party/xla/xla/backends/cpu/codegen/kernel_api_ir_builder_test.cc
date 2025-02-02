@@ -19,11 +19,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
@@ -73,6 +76,10 @@ class KernelApiIrBuilderTest : public HloTestBase {
         &hlo, std::make_unique<DependencyHloOrdering>(&hlo),
         backend().compiler()->BufferSizeBytesFunction(),
         [](LogicalBuffer::Color) { return /*alignment=*/1; });
+  }
+
+  void SetKernelFunctionAttributes(llvm::Function* function) {
+    kernel_api_ir_builder_.SetKernelFunctionAttributes(function);
   }
 
   llvm::LLVMContext& context() { return context_; }
@@ -292,6 +299,47 @@ TEST_F(KernelApiIrBuilderTest, MixedBuffers) {
   // the output.
   EXPECT_EQ(prototype.invariant_arguments.size(), 1);
   EXPECT_TRUE(prototype.invariant_arguments.contains(0));
+}
+
+TEST_F(KernelApiIrBuilderTest, GetKernelParams) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+  constexpr absl::string_view hlo_text = R"(
+    HloModule m
+    ENTRY main {
+      p0 = f32[2,2] parameter(0)
+      p1 = f32[2,2] parameter(1)
+      ROOT add.0 = f32[2,2] add(p0, p1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
+  const auto* root = hlo->entry_computation()->root_instruction();
+  TF_ASSERT_OK_AND_ASSIGN(auto args,
+                          KernelApiIrBuilder::GetKernelArgumentsParameters(
+                              root, buffer_assignment.get()));
+  EXPECT_EQ(args.size(), 2);
+  EXPECT_THAT(args[0].shape.dimensions(), ::testing::ElementsAre(2, 2));
+  EXPECT_THAT(args[1].shape.dimensions(), ::testing::ElementsAre(2, 2));
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          KernelApiIrBuilder::GetKernelResultsParameters(
+                              root, buffer_assignment.get()));
+  EXPECT_EQ(results.size(), 1);
+  EXPECT_THAT(results[0].shape.dimensions(), ::testing::ElementsAre(2, 2));
+}
+
+TEST_F(KernelApiIrBuilderTest, SetKernelFunctionAttributes) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+  llvm::FunctionType* function_ty =
+      llvm::FunctionType::get(llvm::PointerType::getUnqual(context),
+                              llvm::PointerType::getUnqual(context),
+                              /*isVarArg=*/false);
+  llvm::Function* function = llvm::Function::Create(
+      function_ty, llvm::GlobalValue::ExternalLinkage, "foo", *module);
+  EXPECT_FALSE(function->hasFnAttribute("prefer-vector-width"));
+  SetKernelFunctionAttributes(function);
+  EXPECT_TRUE(function->hasFnAttribute("prefer-vector-width"));
 }
 
 }  // namespace
