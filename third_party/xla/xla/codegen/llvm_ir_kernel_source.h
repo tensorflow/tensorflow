@@ -38,7 +38,7 @@ class LlvmIrKernelSource final : public KernelSource {
       : module_(std::move(module), std::move(context)) {}
 
   LlvmIrKernelSource(LlvmIrKernelSource&& other) = default;
-  LlvmIrKernelSource& operator=(LlvmIrKernelSource&& other) = default;
+  LlvmIrKernelSource& operator=(LlvmIrKernelSource&& other) noexcept = default;
 
   llvm::orc::ThreadSafeModule thread_safe_module() && {
     return std::move(module_);
