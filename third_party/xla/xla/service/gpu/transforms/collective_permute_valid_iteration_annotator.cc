@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/source_target_pairs.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -96,7 +95,7 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
         continue;
       }
       CycleType cycleType =
-          GetCycleTypeAndIndices(inst->source_target_pairs()).first;
+          GetCycleTypeAndIndices(inst->source_target_pairs().expand()).first;
 
       if (cycleType == CycleType::kNone) {
         continue;

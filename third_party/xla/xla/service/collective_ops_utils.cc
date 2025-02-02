@@ -800,6 +800,7 @@ HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
 using SourceTargetPairType = std::pair<int64_t, int64_t>;
 using SourceTargetPairsType = std::vector<SourceTargetPairType>;
 
+// TODO(b/395737527): replace with SourceTargetPairs
 std::pair<CycleType, std::set<int>> GetCycleTypeAndIndices(
     const SourceTargetPairsType& pairs) {
   std::set<int> seen_replica_ids;

@@ -409,8 +409,8 @@ absl::StatusOr<mlir::Operation*> ImportCollectivePermuteStart(
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
     mlir::Type result_type, mlir::OpBuilder* builder,
     mlir::SymbolTable& symbol_table) {
-  attributes.push_back(
-      ConvertSourceTargetPairs(instruction->source_target_pairs(), builder));
+  attributes.push_back(ConvertSourceTargetPairs(
+      instruction->source_target_pairs().expand(), builder));
   if (!llvm::isa<mlir::TupleType>(result_type)) {
     // Async CollectivePermute's output type is bundle<input_type,output_type>
     // There are some instances where the output type is not a tuple, this seems

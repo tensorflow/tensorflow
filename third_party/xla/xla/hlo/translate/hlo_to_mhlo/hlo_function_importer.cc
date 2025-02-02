@@ -1014,7 +1014,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kCollectivePermute: {
       auto collective_permute = Cast<HloChannelInstruction>(instruction);
       attributes.push_back(ConvertSourceTargetPairs(
-          collective_permute->source_target_pairs(), builder_));
+          collective_permute->source_target_pairs().expand(), builder_));
       if (collective_permute->channel_id().has_value())
         attributes.push_back(ConvertChannelHandle(
             collective_permute->channel_id().value(), builder_));

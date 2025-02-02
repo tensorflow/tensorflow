@@ -77,11 +77,17 @@ cc_library(
     srcs = ["hlo_matchers.cc"],
     hdrs = ["hlo_matchers.h"],
     deps = [
+        "//testing/base/public:gunit_for_library_testonly",
+        "//xla:comparison_util",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:source_target_pairs",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -90,10 +96,16 @@ xla_cc_test(
     srcs = ["hlo_matchers_test.cc"],
     deps = [
         ":hlo_matchers",
+        "//xla:array",
+        "//xla:comparison_util",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/hlo/ir:source_target_pairs",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

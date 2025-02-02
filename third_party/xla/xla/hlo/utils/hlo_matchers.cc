@@ -15,24 +15,33 @@ limitations under the License.
 
 #include "xla/hlo/utils/hlo_matchers.h"
 
+#include <cstdint>
 #include <ostream>
 #include <sstream>
 #include <string>
-#include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace testing {
 
-bool HloMatcher::MatchAndExplain(
-    const HloInstruction* instruction,
-    ::testing::MatchResultListener* listener) const {
+using ::testing::MatchResultListener;
+
+bool HloMatcher::MatchAndExplain(const HloInstruction* instruction,
+                                 MatchResultListener* listener) const {
   // These cases are self-explanatory from the printed value.
   if (!instruction) {
     return false;
@@ -361,35 +370,20 @@ void HloReplicaGroupsMatcher::DescribeTo(std::ostream* os) const {
 }
 
 bool HloSourceTargetPairsMatcher::MatchAndExplain(
-    const HloInstruction* instruction,
-    ::testing::MatchResultListener* listener) const {
-  const auto* collective_permute =
-      DynCast<HloCollectivePermuteInstruction>(instruction);
-
-  if (!collective_permute) {
-    *listener << instruction->ToString() << " not a collective permute";
+    const HloInstruction* instr, MatchResultListener* listener) const {
+  if (instr->opcode() != HloOpcode::kCollectivePermute) {
+    *listener << instr->ToString() << " not a collective permute";
     return false;
   }
-
-  if (collective_permute->source_target_pairs() == source_target_pairs_) {
-    return true;
+  if (instr->source_target_pairs() != source_target_pairs_) {
+    *listener << absl::StrFormat(
+        "%s has incorrect source_target_pairs (expected: %s)",
+        instr->ToString(), source_target_pairs_.ToString());
+    return false;
   }
-
-  std::ostringstream desc_stream;
-  DescribeTo(&desc_stream);
-  *listener << instruction->ToString()
-            << " has incorrect source_target_pairs (expected: "
-            << desc_stream.str() << ")";
-  return false;
+  return true;
 }
 
-void HloSourceTargetPairsMatcher::DescribeTo(std::ostream* os) const {
-  const auto pair_formatter = [](std::string* out,
-                                 const std::pair<int64_t, int64_t>& pair) {
-    absl::StrAppend(out, "{", pair.first, ",", pair.second, "}");
-  };
-  *os << '{' << absl::StrJoin(source_target_pairs_, ",", pair_formatter) << "}";
-}
 bool HloMetadataMatcher::MatchAndExplain(
     const HloInstruction* instruction,
     ::testing::MatchResultListener* listener) const {

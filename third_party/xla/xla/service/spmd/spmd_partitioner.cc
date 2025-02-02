@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
@@ -4993,7 +4994,8 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
             return operand;
           } else {
             return b->AddInstruction(HloInstruction::CreateCollectivePermute(
-                operand->shape(), operand, src_dst_pairs, channel_id));
+                operand->shape(), operand, SourceTargetPairs(src_dst_pairs),
+                channel_id));
           }
         }
       },

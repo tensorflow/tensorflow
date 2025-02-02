@@ -62,6 +62,7 @@ cc_library(
         ":hlo_op_metadata",
         ":hlo_sharding",
         ":ptrvec",
+        ":source_target_pairs",
         ":tile_assignment",
         "//xla:array",
         "//xla:comparison_util",
@@ -325,6 +326,34 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/log:globals",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "source_target_pairs",
+    hdrs = ["source_target_pairs.h"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+xla_cc_test(
+    name = "source_target_pairs_test",
+    srcs = ["source_target_pairs_test.cc"],
+    deps = [
+        ":hlo",
+        ":source_target_pairs",
+        "//xla:shape_util",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

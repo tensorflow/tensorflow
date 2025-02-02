@@ -777,7 +777,7 @@ std::vector<ReplicaGroup> GetLoopReplicaGroups(HloInstruction* while_loop) {
   for (auto inst : while_loop->while_body()->instructions()) {
     if (inst->opcode() == HloOpcode::kCollectivePermute) {
       std::vector<std::pair<int64_t, int64_t>> st_pairs =
-          inst->source_target_pairs();
+          inst->source_target_pairs().expand();
       std::vector<int64_t> source_index(st_pairs.size());
       for (int64_t i = 0; i < st_pairs.size(); ++i) {
         source_index[st_pairs[i].first] = i;

@@ -19,7 +19,7 @@ limitations under the License.
 // Cycle manipulation on SourceTargetPairs in collective permute instructions.
 #include <utility>
 
-#include "xla/service/source_target_pairs.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 
 namespace xla {
 namespace collective_permute_cycle {

@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/sharding_format_picker.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -13610,13 +13611,10 @@ bool IsTrivialCollectivePermute(HloInstruction* hlo) {
   if (hlo->opcode() != HloOpcode::kCollectivePermute) {
     return false;
   }
-  if (hlo->source_target_pairs().empty()) {
+  if (hlo->source_target_pairs().data().empty()) {
     return true;
   }
-  return absl::c_all_of(hlo->source_target_pairs(),
-                        [](const std::pair<int64_t, int64_t>& pair) {
-                          return pair.first == pair.second;
-                        });
+  return hlo->source_target_pairs().IsSelfIdentity();
 }
 
 TEST_P(SpmdPartitioningTest, CollectivePermuteSimplifyIdentity) {
@@ -15002,7 +15000,7 @@ HloModule pjit
 
 ENTRY %main.21 {
   p0 = s32[8,64] parameter(0), sharding={devices=[4,1]<=[4]}
-  ROOT scatter = s32[8,64] scatter(p0, p0, p0), update_window_dims={}, 
+  ROOT scatter = s32[8,64] scatter(p0, p0, p0), update_window_dims={},
     input_batching_dims={0}, scatter_indices_batching_dims={0},
     inserted_window_dims={1}, scatter_dims_to_operand_dims={1},
     index_vector_dim=2, to_apply=s32_add, sharding={devices=[4,1]<=[4]}

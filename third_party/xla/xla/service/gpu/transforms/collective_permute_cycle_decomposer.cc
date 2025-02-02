@@ -20,7 +20,6 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -34,12 +33,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/source_target_pairs.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -73,13 +73,12 @@ std::pair<CycleType, std::set<int>> GetCycleTypeAndIndicesArray(
     return std::make_pair(CycleType::kNone, std::set<int>{});
   }
 
-  const std::vector<std::pair<int64_t, int64_t>>& pairs =
-      collective_permute.source_target_pairs();
-  if (pairs.size() == 1) {
+  if (collective_permute.source_target_pairs().size() == 1) {
     return std::make_pair(CycleType::kNone, std::set<int>{});
   }
 
-  return GetCycleTypeAndIndices(pairs);
+  return GetCycleTypeAndIndices(
+      collective_permute.source_target_pairs().expand());
 }
 
 // Copies the frontend attributes from the original CP and splits the
@@ -94,7 +93,7 @@ DecomposeFrontendAttributes(const FrontendAttributes& orig,
   }
 
   TF_ASSIGN_OR_RETURN(SourceTargetPairs bounds,
-                      SourceTargetPairs::FromString(it->second));
+                      ParseSourceTargetPairsOnly(it->second));
   int64_t num_pairs = bounds.size();
   if (num_pairs < 2) {
     return Internal("Invalid number of replica groups");
@@ -111,7 +110,7 @@ DecomposeFrontendAttributes(const FrontendAttributes& orig,
 // Adds a CollectivePermute instruction based on the original CP.
 HloInstruction* AddCP(HloCollectivePermuteInstruction* orig,
                       HloComputation* computation,
-                      const std::vector<std::pair<int64_t, int64_t>>& pairs,
+                      const SourceTargetPairs& pairs,
                       absl::string_view name_suffix,
                       const FrontendAttributes& attrs,
                       const std::optional<int64_t> channel_id) {
@@ -149,10 +148,9 @@ absl::Status DecomposeCollectivePermuteCycle(
     HloCollectivePermuteInstruction* cp, HloComputation* computation,
     HloModule* module, int64_t next_channel_id, CycleType cycle_type,
     std::set<int> indices_to_break_out) {
-  const std::vector<std::pair<int64_t, int64_t>>& pairs =
-      cp->source_target_pairs();
+  const SourceTargetPairs& pairs = cp->source_target_pairs();
   absl::string_view cp_name = cp->name();
-  std::vector<std::pair<int64_t, int64_t>> back_pairs, fwd_pairs;
+  SourceTargetPairs back_pairs, fwd_pairs;
   for (int i = 0; i < pairs.size(); ++i) {
     if (indices_to_break_out.find(i) != indices_to_break_out.end()) {
       back_pairs.push_back(pairs[i]);
@@ -187,7 +185,7 @@ absl::Status DecomposeCollectivePermuteCycle(
   // `replica = u32[] replica-id()`.
   TF_ASSIGN_OR_RETURN(HloInstruction * partition_or_replica,
                       CreatePartitionOrReplicaId(computation, mode, cp_name));
-  int64_t bwd_recv_id = back_pairs.back().second;
+  int64_t bwd_recv_id = back_pairs.data().back().target;
   HloInstruction* constant = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0(U32, bwd_recv_id)),
       absl::StrCat(cp_name, "-bwd-recv-id"));

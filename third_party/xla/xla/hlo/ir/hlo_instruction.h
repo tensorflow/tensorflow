@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/ptrvec.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/printer.h"
@@ -751,17 +752,18 @@ class HloInstruction {
   // consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* operand,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const SourceTargetPairs& source_target_pairs,
       const std::optional<int64_t>& channel_id);
+  // Multiple operands.
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const SourceTargetPairs& source_target_pairs,
       const std::optional<int64_t>& channel_id);
 
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* input, HloInstruction* output,
       HloInstruction* input_start_indices, HloInstruction* output_start_indices,
-      absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+      const SourceTargetPairs& source_target_pairs,
       absl::Span<const std::vector<int64_t>> slice_sizes,
       const std::optional<int64_t>& channel_id);
 
@@ -769,17 +771,18 @@ class HloInstruction {
   // CollectivePermute.
   static std::unique_ptr<HloInstruction> CreateCollectivePermuteStart(
       const Shape& shape, HloInstruction* operand,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const SourceTargetPairs& source_target_pairs,
       const std::optional<int64_t>& channel_id);
+  // Multiple operands.
   static std::unique_ptr<HloInstruction> CreateCollectivePermuteStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const SourceTargetPairs& source_target_pairs,
       const std::optional<int64_t>& channel_id);
 
   static std::unique_ptr<HloInstruction> CreateCollectivePermuteStart(
       const Shape& shape, HloInstruction* input, HloInstruction* output,
       HloInstruction* input_start_indices, HloInstruction* output_start_indices,
-      absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+      const SourceTargetPairs& source_target_pairs,
       absl::Span<const std::vector<int64_t>> slice_sizes,
       const std::optional<int64_t>& channel_id);
 
@@ -2213,7 +2216,7 @@ class HloInstruction {
   const CollectiveDeviceList& device_list() const;
 
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
-  const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs() const;
+  const SourceTargetPairs& source_target_pairs() const;
 
   // Returns data on the window in a windowed operation such as
   // convolution.

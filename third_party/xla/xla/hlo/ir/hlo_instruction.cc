@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/ir/ptrvec.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -778,15 +779,11 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     }
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart: {
-      std::vector<std::pair<int64_t, int64_t>> source_target_pairs(
-          proto.source_target_pairs_size());
+      SourceTargetPairs source_target_pairs =
+          SourceTargetPairs::FromProto(proto);
       std::optional<int64_t> channel_id;
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
-      }
-      for (int i = 0; i < source_target_pairs.size(); ++i) {
-        source_target_pairs[i].first = proto.source_target_pairs(i).source();
-        source_target_pairs[i].second = proto.source_target_pairs(i).target();
       }
       if (proto.dynamic_slice_sizes_size() == 0) {
         if (opcode == HloOpcode::kCollectivePermute) {
@@ -1782,7 +1779,7 @@ HloInstruction::CreateCollectiveBroadcast(
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectivePermute(
     const Shape& shape, HloInstruction* operand,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const SourceTargetPairs& source_target_pairs,
     const std::optional<int64_t>& channel_id) {
   return std::make_unique<HloCollectivePermuteInstruction>(
       HloOpcode::kCollectivePermute, shape,
@@ -1793,7 +1790,7 @@ HloInstruction::CreateCollectivePermute(
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectivePermute(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const SourceTargetPairs& source_target_pairs,
     const std::optional<int64_t>& channel_id) {
   return std::make_unique<HloCollectivePermuteInstruction>(
       HloOpcode::kCollectivePermute, shape, operands, source_target_pairs,
@@ -1804,7 +1801,7 @@ HloInstruction::CreateCollectivePermute(
 HloInstruction::CreateCollectivePermute(
     const Shape& shape, HloInstruction* input, HloInstruction* output,
     HloInstruction* input_start_indices, HloInstruction* output_start_indices,
-    absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+    const SourceTargetPairs& source_target_pairs,
     absl::Span<const std::vector<int64_t>> slice_sizes,
     const std::optional<int64_t>& channel_id) {
   return std::make_unique<HloCollectivePermuteInstruction>(
@@ -1815,7 +1812,7 @@ HloInstruction::CreateCollectivePermute(
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectivePermuteStart(
     const Shape& shape, HloInstruction* operand,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const SourceTargetPairs& source_target_pairs,
     const std::optional<int64_t>& channel_id) {
   return std::make_unique<HloCollectivePermuteInstruction>(
       HloOpcode::kCollectivePermuteStart, shape,
@@ -1827,7 +1824,7 @@ HloInstruction::CreateCollectivePermuteStart(
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectivePermuteStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const SourceTargetPairs& source_target_pairs,
     const std::optional<int64_t>& channel_id) {
   return std::make_unique<HloCollectivePermuteInstruction>(
       HloOpcode::kCollectivePermuteStart, shape, operands, source_target_pairs,
@@ -1838,7 +1835,7 @@ HloInstruction::CreateCollectivePermuteStart(
 HloInstruction::CreateCollectivePermuteStart(
     const Shape& shape, HloInstruction* input, HloInstruction* output,
     HloInstruction* input_start_indices, HloInstruction* output_start_indices,
-    absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs,
+    const SourceTargetPairs& source_target_pairs,
     absl::Span<const std::vector<int64_t>> slice_sizes,
     const std::optional<int64_t>& channel_id) {
   return std::make_unique<HloCollectivePermuteInstruction>(
@@ -5691,8 +5688,7 @@ const CollectiveDeviceList& HloInstruction::device_list() const {
   return Cast<HloCollectiveInstruction>(this)->device_list();
 }
 
-const std::vector<std::pair<int64_t, int64_t>>&
-HloInstruction::source_target_pairs() const {
+const SourceTargetPairs& HloInstruction::source_target_pairs() const {
   return Cast<HloCollectivePermuteInstruction>(this)->source_target_pairs();
 }
 

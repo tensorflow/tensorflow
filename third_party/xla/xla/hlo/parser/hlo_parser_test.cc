@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -4175,6 +4176,20 @@ TEST_F(HloParserTest, ParseReplicaGroups) {
   TF_ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups,
                           ParseReplicaGroupsOnly(original));
   EXPECT_EQ(original, ReplicaGroupsToString(replica_groups));
+}
+
+TEST_F(HloParserTest, ParseSourceTargetPairs) {
+  const std::string fwd2_str = "{{0,1},{1,0}}";
+  TF_ASSERT_OK_AND_ASSIGN(SourceTargetPairs fwd2,
+                          ParseSourceTargetPairsOnly(fwd2_str));
+  EXPECT_EQ(fwd2.ToString(), fwd2_str);
+
+  const std::string fwd4_str = "{{0,1},{1,2},{2,3},{3,0}}";
+  TF_ASSERT_OK_AND_ASSIGN(SourceTargetPairs fwd4,
+                          ParseSourceTargetPairsOnly(fwd4_str));
+  EXPECT_EQ(fwd4.ToString(), fwd4_str);
+  EXPECT_THAT(ParseSourceTargetPairsOnly("{{0,1},{1}}"),
+              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(HloParserTest, ParsePaddingConfigNoInteriorPadding) {

@@ -20,11 +20,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/layout.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -122,6 +124,12 @@ absl::StatusOr<Layout> ParseLayout(absl::string_view str);
 // contain a list of the replica groups, i.e. just the rhs of the
 // "replica_groups={...}" attribute string, e.g., "{{0,1}, {2,3}}".
 absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
+    absl::string_view str);
+
+// Parses and returns a SourceTargetPairs from str. str is supposed to contain
+// a list of the source-target pairs, i.e. just the rhs of the
+// "source_target_pairs={...}" attribute string, e.g., "{{0,1}, {2,3}}".
+absl::StatusOr<SourceTargetPairs> ParseSourceTargetPairsOnly(
     absl::string_view str);
 
 // Parses and returns a `CollectiveDeviceList` from a `str`.

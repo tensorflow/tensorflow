@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/collective_ops_utils.h"
 
@@ -82,8 +83,8 @@ void GetAbstractReplicaGroups(HloInstruction* instr,
   // groups.
   if (instr->opcode() == HloOpcode::kCollectivePermute) {
     auto* cp = Cast<HloCollectivePermuteInstruction>(instr);
-    for (auto& [i, j] : cp->source_target_pairs()) {
-      groups.merge_groups(i, j);
+    for (const SourceTargetPair& pair : cp->source_target_pairs().data()) {
+      groups.merge_groups(pair.source, pair.target);
     }
     return;
   }

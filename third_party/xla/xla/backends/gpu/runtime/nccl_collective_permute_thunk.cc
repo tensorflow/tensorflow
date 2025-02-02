@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/source_target_pairs.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
@@ -126,17 +127,11 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
     replica_group.add_replica_ids(i);
   }
 
-  const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs =
-      instr->source_target_pairs();
-
-  for (const std::pair<int64_t, int64_t>& source_target : source_target_pairs) {
-    int64_t source = source_target.first;
-    int64_t target = source_target.second;
-
-    collective_permute_config.id_to_source_target.insert({target, {}})
-        .first->second.source = source;
-    collective_permute_config.id_to_source_target.insert({source, {}})
-        .first->second.target = target;
+  for (const SourceTargetPair& pair : instr->source_target_pairs().data()) {
+    collective_permute_config.id_to_source_target.insert({pair.target, {}})
+        .first->second.source = pair.source;
+    collective_permute_config.id_to_source_target.insert({pair.source, {}})
+        .first->second.target = pair.target;
   }
 
   return collective_permute_config;
@@ -147,18 +142,13 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
     int64_t partition_count) {
   // The collective permute is degenerate if all source-target pairs are
   // identity, and all the IDs appear in the list.
-  const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs =
-      instr->source_target_pairs();
   // Each ID can appear only once as a source and as a target. So if all pairs
   // are identity, all IDs must appear in the list is the size == number of
   // replicas/partitions.
   const int64_t expected_size =
       instr->channel_id().has_value() ? partition_count : replica_count;
-  return source_target_pairs.size() == expected_size &&
-         absl::c_all_of(source_target_pairs,
-                        [](const std::pair<int64_t, int64_t>& source_target) {
-                          return source_target.first == source_target.second;
-                        });
+  return instr->source_target_pairs().size() == expected_size &&
+         instr->source_target_pairs().IsSelfIdentity();
 }
 
 /*static*/ CollectiveOpGroupMode NcclCollectivePermuteStartThunk::GetGroupMode(
