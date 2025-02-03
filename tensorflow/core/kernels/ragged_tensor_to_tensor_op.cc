@@ -399,7 +399,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     OP_REQUIRES_OK(context, GetFirstDimensionSize(context, &first_dimension));
     vector<INDEX_TYPE> output_size;
     OP_REQUIRES_OK(context,
-                   CalculateOutputSize(first_dimension, context, &output_size)); 
+                   CalculateOutputSize(first_dimension, context, &output_size));
     vector<INDEX_TYPE> multiplier;
     multiplier.resize(ragged_rank_ + 1);
 
