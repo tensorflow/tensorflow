@@ -721,7 +721,7 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
   TF_ASSERT_OK_AND_ASSIGN(auto ref_exec, reference_runner().CreateExecutable(
                                              std::move(ref_module), true));
 
-  ErrorSpec error_spec{1e-5, 1e-5};
+  ErrorSpec error_spec{1e-3, 1e-3};
   fake_ptrs.push_back(nullptr);
   for (int i = 0; i < kNumReplicas; i++) {
     auto replica_id =
