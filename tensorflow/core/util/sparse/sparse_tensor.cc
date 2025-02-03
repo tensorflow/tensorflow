@@ -15,7 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 namespace sparse {
