@@ -158,6 +158,7 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:computation_layout",
         "//xla/service:computation_placer_hdr",
+        "//xla/service:dump",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:test_utils",
@@ -180,6 +181,7 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
@@ -242,5 +244,6 @@ xla_test(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:test",
     ],
 )

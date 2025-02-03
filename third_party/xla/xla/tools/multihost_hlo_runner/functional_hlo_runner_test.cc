@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -151,9 +152,9 @@ TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
 
   FunctionalHloRunner::RunningOptions running_options;
   TF_ASSERT_OK_AND_ASSIGN(
-      auto profiler,
+      std::unique_ptr<GPURunnerProfiler> profiler,
       GPURunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/true));
-  running_options.profiler = profiler.get();
+  running_options.profiler = std::move(profiler);
 
   profiler->CreateSession();
   profiler->UploadSession();
@@ -187,9 +188,9 @@ TEST_F(FunctionalHloRunnerTest,
       GetPjRtEnvironmentForGpu("", gpu_options, absl::Seconds(120)));
   FunctionalHloRunner::RunningOptions running_options;
   TF_ASSERT_OK_AND_ASSIGN(
-      auto profiler,
+      std::unique_ptr<GPURunnerProfiler> profiler,
       GPURunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/false));
-  running_options.profiler = profiler.get();
+  running_options.profiler = std::move(profiler);
 
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
       *pjrt_env.client,
@@ -197,6 +198,47 @@ TEST_F(FunctionalHloRunnerTest,
       running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
   EXPECT_EQ(profiler->GetXSpace(), nullptr);
   TF_EXPECT_OK(env->FileExists(profile_dump_path));
+}
+
+TEST_F(FunctionalHloRunnerTest,
+       SingleDeviceHloWithNonExistingDirectorySavesXSpaceToDisk) {
+  if (IsTestingCpu()) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+
+  GpuClientOptions gpu_options;
+  gpu_options.node_id = 0;
+  gpu_options.num_nodes = 16;
+  gpu_options.enable_mock_nccl = true;
+
+  std::string non_existing_directory = "non_existing_directory";
+  std::string profile_dump_path =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), non_existing_directory);
+
+  tsl::Env* env = tsl::Env::Default();
+  tsl::FileSystem* fs = nullptr;
+  TF_ASSERT_OK(env->GetFileSystemForFile(profile_dump_path, &fs));
+  EXPECT_THAT(fs->IsDirectory(profile_dump_path),
+              tsl::testing::StatusIs(tsl::error::NOT_FOUND));
+
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.xla_gpu_dump_xspace_to = profile_dump_path;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::PjRtEnvironment pjrt_env,
+      GetPjRtEnvironmentForGpu("", gpu_options, absl::Seconds(120)));
+  FunctionalHloRunner::RunningOptions running_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto profiler,
+      GPURunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/false));
+  running_options.profiler = std::move(profiler);
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *pjrt_env.client,
+      /* debug_options= */ {}, /* preproc_options= */ {}, raw_compile_options,
+      running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
+  EXPECT_THAT(fs->IsDirectory(profile_dump_path),
+              tsl::testing::StatusIs(tsl::error::OK));
 }
 
 TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {

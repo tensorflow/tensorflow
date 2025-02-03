@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/dump.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
@@ -73,6 +74,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 #include "tsl/profiler/lib/profiler_session.h"
 
 namespace xla {
@@ -1147,7 +1149,7 @@ FunctionalHloRunner::RunInternal(
     }
     if (repeat == running_options.num_repeats - 1) {
       execute_options.untuple_result = default_untuple_result;
-      if (running_options.profiler != nullptr) {
+      if (running_options.profiler) {
         running_options.profiler->CreateSession();
       }
     }
@@ -1190,7 +1192,7 @@ FunctionalHloRunner::RunInternal(
                       FetchAndLogOutput(client, output_buffers,
                                         running_options.module_output_mode,
                                         running_options.log_input_output()));
-  if (running_options.profiler != nullptr) {
+  if (running_options.profiler) {
     running_options.profiler->UploadSession();
   }
   return results;
@@ -1624,9 +1626,12 @@ void GPURunnerProfiler::UploadSession() {
 
   CHECK(!dump_path_.empty());
 
-  LOG(INFO) << "Saving xspace result to " << dump_path_;
-  // Save in binary format to create xprof sessions and extract device stats.
-  CHECK_OK(WriteBinaryProto(tsl::Env::Default(), dump_path_, *xspace_.get()));
+  std::string file_path =
+      tsl::io::JoinPath(dump_path_, SanitizeFileName("xspace")) + ".pb";
+  LOG(INFO) << "Dumped HLO text to " << file_path;
+  std::string path;
+  TF_CHECK_OK(
+      DumpProtoToDirectory(*xspace_.get(), dump_path_, file_path, &path));
   if (!keep_xspace_) {
     xspace_ = nullptr;
   }

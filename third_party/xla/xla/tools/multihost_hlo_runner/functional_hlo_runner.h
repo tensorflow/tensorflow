@@ -281,7 +281,7 @@ class FunctionalHloRunner {
     // This indicates whether we log the inputs and outputs to stderr.
     LogOutputMode log_input_output_mode = LogOutputMode::kNotLogOutput;
     const MultiSliceConfig* multi_slice_config = nullptr;
-    ProfilerInterface* profiler = nullptr;
+    std::unique_ptr<ProfilerInterface> profiler;
     // Whether to untuple the result of running HLO module into a vector of
     // arrays. If unprovided, use the default in ExecuteOptions.
     std::optional<bool> untuple_result = std::nullopt;
