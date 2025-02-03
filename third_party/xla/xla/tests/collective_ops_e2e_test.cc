@@ -178,9 +178,10 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
 
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_string, config));
-    return HloTestBase::CreateExecutable(std::move(module),
-                                         /*run_hlo_passes=*/true);
+    return CreateExecutable(std::move(module), /*run_hlo_passes=*/true);
   }
+
+  using CollectiveOpsTestE2E::CreateExecutable;
 
   bool IsAsync(const HloInstruction* inst) {
     return !inst->backend_config<gpu::GpuBackendConfig>()
@@ -601,6 +602,82 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({40, 60, 44, 64}, results[1]);
+}
+
+XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2] broadcast(id), dimensions={}
+    a0 = u32[2] constant({10, 20})
+    a1 = u32[2] add(id2, a0)
+    ROOT a2a = u32[2] all-to-all(u32[2] a1), dimensions={0}, replica_groups={{0,3},{1,2}}
+  }
+  )";
+  const int64_t kNumReplicas = 4;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  for (bool use_memcpy : {true, false}) {
+    HloModuleConfig config =
+        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+    config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(use_memcpy);
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(kModuleStr, config));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto executable,
+        CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                            ExecuteReplicated(executable.get(), kNumReplicas));
+    ASSERT_EQ(results.size(), kNumReplicas);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 13}, results[0]);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 12}, results[1]);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({21, 22}, results[2]);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 23}, results[3]);
+  }
+}
+
+XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllDegenerate) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2] broadcast(id), dimensions={}
+    a0 = u32[2] constant({10, 20})
+    a1 = u32[2] add(id2, a0)
+    ROOT a2a = u32[2] all-to-all(u32[2] a1), dimensions={0}, replica_groups={{0},{1}}
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  for (bool use_memcpy : {true, false}) {
+    HloModuleConfig config =
+        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+    config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(use_memcpy);
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(kModuleStr, config));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto executable,
+        CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                            ExecuteReplicated(executable.get(), kNumReplicas));
+    ASSERT_EQ(results.size(), kNumReplicas);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 20}, results[0]);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 21}, results[1]);
+  }
 }
 
 TEST_F(CollectiveOpsTestE2E, AllToAll8Gpus) {

@@ -119,20 +119,21 @@ absl::Status NcclAllToAllStartThunk::Initialize(
                     *params.collective_cliques, config().replica_groups,
                     config().group_mode, stream_id, stream_kind));
     TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
-    int local_id = params.stream->parent()->device_ordinal() % num_ranks;
+    int device_ordinal = params.stream->parent()->device_ordinal();
     {
       absl::MutexLock lock(&pointer_maps_mutex_);
-      if (!send_pointer_maps_.count(local_id)) {
-        send_pointer_maps_[local_id] = std::make_unique<uint64_t[]>(num_ranks);
-        receive_pointer_maps_[local_id] =
+      if (!send_pointer_maps_.count(device_ordinal)) {
+        send_pointer_maps_[device_ordinal] =
+            std::make_unique<uint64_t[]>(num_ranks);
+        receive_pointer_maps_[device_ordinal] =
             std::make_unique<uint64_t[]>(num_ranks);
         if (!params.stream->parent()->HostMemoryRegister(
-                send_pointer_maps_[local_id].get(),
+                send_pointer_maps_[device_ordinal].get(),
                 num_ranks * sizeof(uint64_t))) {
           VLOG(5) << "Registering host send pointer for memcpy failed.";
         }
         if (!params.stream->parent()->HostMemoryRegister(
-                receive_pointer_maps_[local_id].get(),
+                receive_pointer_maps_[device_ordinal].get(),
                 num_ranks * sizeof(uint64_t))) {
           VLOG(5) << "Registering host recv pointer for memcpy failed.";
         }
@@ -143,34 +144,23 @@ absl::Status NcclAllToAllStartThunk::Initialize(
 }
 
 absl::Status NcclAllToAllStartThunk::Cleanup(const CleanupParams& params) {
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
-
   if (p2p_memcpy_enabled_) {
-    const CollectiveStreamId stream_id = nccl_stream_id();
-    AsyncStreamKind stream_kind = GetAsyncStreamKind();
-    TF_ASSIGN_OR_RETURN(
-        CommunicatorHandle comm_handle,
-        GetNcclComm(collectives, *params.collective_params,
-                    *params.collective_cliques, config().replica_groups,
-                    config().group_mode, stream_id, stream_kind));
-    TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
-
-    int local_id = params.executor->device_ordinal() % num_ranks;
+    int device_ordinal = params.executor->device_ordinal();
     {
       absl::MutexLock lock(&pointer_maps_mutex_);
-      if (send_pointer_maps_.count(local_id)) {
+      if (send_pointer_maps_.count(device_ordinal)) {
         if (!params.executor->HostMemoryUnregister(
-                send_pointer_maps_[local_id].get())) {
+                send_pointer_maps_[device_ordinal].get())) {
           VLOG(5) << "Unregistering host send pointer for memcpy failed.";
         }
-        send_pointer_maps_.erase(local_id);
+        send_pointer_maps_.erase(device_ordinal);
       }
-      if (receive_pointer_maps_.count(local_id)) {
+      if (receive_pointer_maps_.count(device_ordinal)) {
         if (!params.executor->HostMemoryUnregister(
-                receive_pointer_maps_[local_id].get())) {
+                receive_pointer_maps_[device_ordinal].get())) {
           VLOG(5) << "Unregistering host recv pointer for memcpy failed.";
         }
-        receive_pointer_maps_.erase(local_id);
+        receive_pointer_maps_.erase(device_ordinal);
       }
     }
   }
@@ -184,18 +174,17 @@ absl::Status NcclAllToAllStartThunk::RunNcclCollective(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
 
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
 
   if (is_local() && p2p_memcpy_enabled_) {
-    int local_id = stream.parent()->device_ordinal() % num_ranks;
+    int device_ordinal = stream.parent()->device_ordinal();
     uint64_t* send_pointer_map = nullptr;
     uint64_t* receive_pointer_map = nullptr;
     {
       absl::MutexLock lock(&pointer_maps_mutex_);
-      send_pointer_map = send_pointer_maps_[local_id].get();
-      receive_pointer_map = receive_pointer_maps_[local_id].get();
+      send_pointer_map = send_pointer_maps_[device_ordinal].get();
+      receive_pointer_map = receive_pointer_maps_[device_ordinal].get();
     }
     return xla::gpu::RunMemCpyAllToAll(collectives, config_.has_split_dimension,
                                        device_buffers, stream, comm_handle.comm,
