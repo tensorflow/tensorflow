@@ -47,7 +47,6 @@ namespace profiler {
 using tensorflow::ProfileOptions;
 using tsl::mutex;
 using tsl::mutex_lock;
-using tsl::Status;
 using tsl::profiler::Annotation;
 using tsl::profiler::AnnotationStack;
 using tsl::profiler::FindOrAddMutablePlaneWithName;

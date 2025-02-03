@@ -72,7 +72,9 @@ cc_library(
     deps = [
         ":tsl_status_internal",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

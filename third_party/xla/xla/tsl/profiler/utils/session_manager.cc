@@ -20,6 +20,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/strings/str_split.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"

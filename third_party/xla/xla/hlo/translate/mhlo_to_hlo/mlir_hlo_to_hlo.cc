@@ -107,7 +107,6 @@ using ::int64_t;
 using ::tsl::int16;
 using ::tsl::int32;
 using ::tsl::int8;
-using ::tsl::StatusOr;  // TENSORFLOW_STATUS_OK
 using ::tsl::uint16;
 using ::tsl::uint32;
 using ::tsl::uint64;
