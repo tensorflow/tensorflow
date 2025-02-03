@@ -68,7 +68,7 @@ std::string GpuCodegenTest::MakePlatformSpecificLlvm(absl::string_view input) {
   return absl::StrReplaceAll(
       input,
       {{"KERNEL_ANNOTATION",
-        is_built_with_rocm_ ? "amdgpu_kernel void" : "void"},
+        is_built_with_rocm_ ? "amdgpu_kernel void" : "ptx_kernel void"},
        {"BARRIER",
         is_built_with_rocm_ ? "@llvm.amdgcn.s.barrier" : "@llvm.nvvm.barrier0"},
        {"SHUFFLE", is_built_with_rocm_ ? "i32 @llvm.amdgcn.ds.swizzle"
