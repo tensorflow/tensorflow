@@ -57,7 +57,7 @@ Loads data and train the model for test classification.
     <tr>
       <td>
   <ul>
-    <li><a href="https://www.tensorflow.org/lite/models/modify/model_maker/text_classification">Text classification with TensorFlow Lite Model Maker</a></li>
+    <li><a href="https://ai.google.dev/edge/litert/libraries/modify/text_classification">Text classification with TensorFlow Lite Model Maker</a></li>
   </ul>
 </td>
     </tr>
