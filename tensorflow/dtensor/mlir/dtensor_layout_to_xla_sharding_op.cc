@@ -29,6 +29,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/xla_spmd/layout_to_xla_sharding.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 
