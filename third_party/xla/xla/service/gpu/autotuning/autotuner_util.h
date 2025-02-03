@@ -277,12 +277,14 @@ struct AutotunerUtil {
   //
   // Warning: The results are only loaded to the in-memory cache.
   static absl::Status LoadAutotuneResults(absl::string_view data,
-                                          bool as_textproto = false);
+                                          bool as_textproto = false,
+                                          bool allow_override = false);
 
   // Loads autotune results from the given proto.
   //
   // Warning: The results are only loaded to the in-memory cache.
-  static absl::Status LoadAutotuneResults(const AutotuneResults& results);
+  static absl::Status LoadAutotuneResults(const AutotuneResults& results,
+                                          bool allow_override = false);
 
   // Serializes autotune results into a file.
   //
@@ -344,6 +346,8 @@ absl::StatusOr<std::string> AutotuneResultsToString(
 // Git is also transitioning to SHA-256. This is probably better than
 // tsl::Fingerprint128.
 absl::StatusOr<std::string> GetBase64EncodedSha256Hash(absl::string_view s);
+
+std::string ToCanonicalString(const HloInstruction* instr);
 
 }  // namespace gpu
 }  // namespace xla
