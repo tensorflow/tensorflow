@@ -173,7 +173,7 @@ diff -ruN --strip-trailing-cr a/llvm/lib/AsmParser/LLParser.cpp b/llvm/lib/AsmPa
 diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/MemProfContextDisambiguation.cpp b/llvm/lib/Transforms/IPO/MemProfContextDisambiguation.cpp
 --- a/llvm/lib/Transforms/IPO/MemProfContextDisambiguation.cpp
 +++ b/llvm/lib/Transforms/IPO/MemProfContextDisambiguation.cpp
-@@ -4203,7 +4203,8 @@
+@@ -4205,7 +4205,8 @@
  // Locate the summary for F. This is complicated by the fact that it might
  // have been internalized or promoted.
  static ValueInfo findValueInfoForFunc(const Function &F, const Module &M,
@@ -183,7 +183,7 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/MemProfContextDisambigua
    // FIXME: Ideally we would retain the original GUID in some fashion on the
    // function (e.g. as metadata), but for now do our best to locate the
    // summary without that information.
-@@ -4218,20 +4219,48 @@
+@@ -4220,20 +4221,48 @@
    // Now query with the original name before any promotion was performed.
    StringRef OrigName =
        ModuleSummaryIndex::getOriginalNameBeforePromote(F.getName());
@@ -244,7 +244,7 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/MemProfContextDisambigua
    return TheFnVI;
  }
  
-@@ -4590,7 +4619,7 @@
+@@ -4592,7 +4621,7 @@
            // Locate the synthesized callsite info for the callee VI, if any was
            // created, and use that for cloning.
            ValueInfo CalleeVI =
