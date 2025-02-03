@@ -93,9 +93,8 @@ bool ShouldDecompose(
 // currently only pipeline a collective-permute with a loop input as its send
 // data.
 bool MayPipeline(const HloCollectivePermuteInstruction& collective_permute) {
-  const HloInstruction* data = collective_permute.operand(0);
-  return (data->opcode() == HloOpcode::kGetTupleElement &&
-          data->operand(0)->opcode() == HloOpcode::kParameter);
+  return Match(collective_permute.operand(0),
+               match::GetTupleElement(match::Parameter()));
 }
 
 // Contains source-target pairs from the permute operation and send and recv
