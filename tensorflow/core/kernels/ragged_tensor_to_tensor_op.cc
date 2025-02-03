@@ -187,7 +187,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
       }
     }
     return absl::OkStatus();
-}
+  }
 
   /**
    * The output_index represents the index in the output tensor
