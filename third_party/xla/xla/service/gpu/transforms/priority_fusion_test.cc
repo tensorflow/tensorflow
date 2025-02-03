@@ -94,6 +94,39 @@ TEST_F(PriorityFusionTest, FuseWithSharedArgument) {
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
 }
 
+TEST_F(PriorityFusionTest, FusionOnStreamAnnotatedComputation) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    stream {
+      %p0 = f32[] parameter(0)
+      %p1 = f32[] parameter(1)
+      %subtract = f32[] subtract(%p0, %p1)
+      %compare = pred[] compare(%subtract, %subtract), direction=NE
+      %add = f32[] add(%p0, %p1)
+      %abs = f32[] abs(%subtract)
+      ROOT %select = f32[] select(%compare, %add, %abs)
+    }
+    ENTRY main {
+      %a = f32[] parameter(0)
+      %b = f32[] parameter(1)
+      ROOT %called = f32[] call(a, b), to_apply=stream,
+        frontend_attributes={_xla_stream_annotation="1"}
+    })")
+                    .value();
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+
+  // The call should still be there.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Call()));
+
+  // Instructions within the call are fused.
+  HloInstruction* called_root =
+      root->called_computations()[0]->root_instruction();
+  EXPECT_THAT(called_root, GmockMatch(m::Fusion()));
+  EXPECT_EQ(called_root->fusion_kind(), HloInstruction::FusionKind::kLoop);
+}
+
 TEST_F(PriorityFusionTest, FusionFusionWithDuplication) {
   absl::string_view kHlo = R"(
     HloModule test_module

@@ -2565,6 +2565,7 @@ cc_library(
         ":reduction_utils",
         "//xla:permutation_util",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:util",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",

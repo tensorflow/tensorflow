@@ -1510,9 +1510,16 @@ TEST_F(GpuFusibleTest, GetFusibleComputations) {
       c0 = f32[] constant(0)
       ROOT bc = f32[128] broadcast(c0), dimensions={}
     }
+    body_c {
+      p0 = f32[128,1024] parameter(0)
+      c0 = f32[] constant(0)
+      ROOT bc = f32[128] broadcast(c0), dimensions={}
+    }
     ENTRY main {
       p0 = s32[] parameter(0)
       p1 = f32[128,1024] parameter(1)
+      called = f32[128] call(p1), to_apply=body_c,
+        frontend_attributes={_xla_stream_annotation="1"}
       ROOT conditional = f32[128] conditional(p0, p1, p1),
         branch_computations={body_a, body_b}
     })"))
@@ -1520,7 +1527,9 @@ TEST_F(GpuFusibleTest, GetFusibleComputations) {
 
   // fused_reduce is already fused, scalar_add is not fusible.
   auto fusible = GetFusibleComputations(*module, {});
-  EXPECT_THAT(fusible, ElementsAre(module->GetComputationWithName("body_a"),
+  EXPECT_THAT(fusible, ElementsAre(module->GetComputationWithName("body_c"),
+                                   // From the conditional
+                                   module->GetComputationWithName("body_a"),
                                    module->GetComputationWithName("body_b"),
                                    module->entry_computation()));
 }
