@@ -60,11 +60,13 @@ cc_library(
     deps = [
         ":filecheck",
         ":verified_hlo_module",
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla:debug_options_flags",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/pass:hlo_pass",
