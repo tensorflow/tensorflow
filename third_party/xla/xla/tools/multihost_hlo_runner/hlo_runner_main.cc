@@ -270,13 +270,14 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   for (int c = 1; c < argc; c++) {
     const char* filename = argv[c];
     execution_profiles.clear();
-    std::cout << "\n** Running " << filename << " **\n";
     if (opts.should_run) {
+      std::cout << "\n** Running " << filename << " **\n";
       TF_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, running_options, filename, opts.input_format,
           opts.dump_output_literal_to, opts.task_id));
     } else {
+      std::cout << "\n** Compiling " << filename << " **\n";
       TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, argv[c], opts.input_format, opts.task_id));
