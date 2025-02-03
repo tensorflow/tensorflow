@@ -136,7 +136,20 @@ const string& DeviceNameOrUnspecified(Device* device) {
   static string* unspecified_string = new string("<unspecified>");
   return (device == nullptr) ? *unspecified_string : device->name();
 }
+model = ResNet50(weights='imagenet', include_top=False, pooling='avg')
 
+for i in range(100000):
+    img_path = 'my_image.jpg'
+    img = image.load_img(img_path, target_size=(224, 224))
+    x = image.img_to_array(img)
+    x = np.expand_dims(x, axis=0)
+    x = preprocess_input(x)
+    
+    # Directly call the model to avoid the extra wrapping of predict().
+    embedding = model(x, training=False)
+    
+    if i % 1000 == 0:
+        print(f"Iteration {i}")
 // This function expects *handle to point to an existing tensor handle that is
 // currently on "handle_device", but where the operation expects that input to
 // reside on "expected_input_device".  The function will arrange for this
