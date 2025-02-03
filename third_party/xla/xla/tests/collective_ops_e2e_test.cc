@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
@@ -110,16 +111,18 @@ class CollectiveOpsTestE2E : public HloTestBase {
     TF_ASSERT_OK_AND_ASSIGN(auto executable,
                             CreateExecutable(std::move(module),
                                              /*run_hlo_passes=*/true));
-    EXPECT_TRUE(executable->has_module());
+    TF_ASSERT_OK_AND_ASSIGN(
+        const HloModule* const hlo_module,
+        test_runner().HloModuleFromWrapped(executable.get()));
     std::vector<HloInstruction*> gemm_ops =
-        FindInstructions(&executable->module(), HloOpcode::kCustomCall);
+        FindInstructions(hlo_module, HloOpcode::kCustomCall);
     for (HloInstruction* gemm_op : gemm_ops) {
       EXPECT_EQ(gemm_op->custom_call_target(), "__cublas$lt$matmul$f8");
     }
   }
 
-  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(Executable* executable,
-                                                         int64_t num_replicas) {
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
+      OpaqueExecutable* executable, int64_t num_replicas) {
     DeviceAssignment device_assignment = MakeDeviceAssn(num_replicas);
     return HloTestBase::ExecuteReplicated(
         /*executable_provider*/ [&](int64_t) { return executable; },
@@ -171,7 +174,7 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
     return debug_options;
   }
 
-  absl::StatusOr<std::unique_ptr<Executable>> CreateExecutable(
+  absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       absl::string_view hlo_string, int64_t num_replicas) {
     HloModuleConfig config =
         GetModuleConfigForTest(/*replica_count=*/num_replicas);
@@ -216,12 +219,13 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
   const bool enable_async_all_reduce = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
-  EXPECT_TRUE(executable->has_module());
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
 
   HloInstruction* all_reduce_start =
-      FindInstruction(&executable->module(), HloOpcode::kAllReduceStart);
+      FindInstruction(hlo_module, HloOpcode::kAllReduceStart);
   HloInstruction* all_reduce_done =
-      FindInstruction(&executable->module(), HloOpcode::kAllReduceDone);
+      FindInstruction(hlo_module, HloOpcode::kAllReduceDone);
   EXPECT_THAT(all_reduce_start, NotNull());
   EXPECT_THAT(all_reduce_done, NotNull());
   EXPECT_EQ(IsAsync(all_reduce_start), enable_async_all_reduce);
@@ -257,12 +261,13 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGather) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
 
-  EXPECT_TRUE(executable->has_module());
   HloInstruction* all_gather_start =
-      FindInstruction(&executable->module(), HloOpcode::kAllGatherStart);
+      FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
   HloInstruction* all_gather_done =
-      FindInstruction(&executable->module(), HloOpcode::kAllGatherDone);
+      FindInstruction(hlo_module, HloOpcode::kAllGatherDone);
   EXPECT_THAT(all_gather_start, NotNull());
   EXPECT_THAT(all_gather_done, NotNull());
   EXPECT_EQ(IsAsync(all_gather_start), enable_async_all_gather);
@@ -302,11 +307,13 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
-  EXPECT_TRUE(executable->has_module());
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+
   HloInstruction* all_gather_start =
-      FindInstruction(&executable->module(), HloOpcode::kAllGatherStart);
+      FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
   HloInstruction* all_gather_done =
-      FindInstruction(&executable->module(), HloOpcode::kAllGatherDone);
+      FindInstruction(hlo_module, HloOpcode::kAllGatherDone);
   EXPECT_THAT(all_gather_start, NotNull());
   EXPECT_THAT(all_gather_done, NotNull());
   EXPECT_EQ(IsAsync(all_gather_start), enable_async_all_gather);
@@ -342,11 +349,12 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   const bool enable_async_collective_broadcast = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
-  EXPECT_TRUE(executable->has_module());
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+
   HloInstruction* cb_start =
-      FindInstruction(&executable->module(), HloOpcode::kAsyncStart);
-  HloInstruction* cb_done =
-      FindInstruction(&executable->module(), HloOpcode::kAsyncDone);
+      FindInstruction(hlo_module, HloOpcode::kAsyncStart);
+  HloInstruction* cb_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
   EXPECT_THAT(cb_start, NotNull());
   EXPECT_THAT(cb_done, NotNull());
   EXPECT_EQ(IsAsync(cb_start), enable_async_collective_broadcast);
@@ -378,11 +386,13 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
   const bool enable_async_collective_permute = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
-  EXPECT_TRUE(executable->has_module());
-  HloInstruction* cp_start = FindInstruction(
-      &executable->module(), HloOpcode::kCollectivePermuteStart);
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+
+  HloInstruction* cp_start =
+      FindInstruction(hlo_module, HloOpcode::kCollectivePermuteStart);
   HloInstruction* cp_done =
-      FindInstruction(&executable->module(), HloOpcode::kCollectivePermuteDone);
+      FindInstruction(hlo_module, HloOpcode::kCollectivePermuteDone);
   EXPECT_THAT(cp_start, NotNull());
   EXPECT_THAT(cp_done, NotNull());
   EXPECT_EQ(IsAsync(cp_start), enable_async_collective_permute);
@@ -413,11 +423,13 @@ XLA_TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
   const bool enable_async_collective_permute = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
-  EXPECT_TRUE(executable->has_module());
-  HloInstruction* cp_start = FindInstruction(
-      &executable->module(), HloOpcode::kCollectivePermuteStart);
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+
+  HloInstruction* cp_start =
+      FindInstruction(hlo_module, HloOpcode::kCollectivePermuteStart);
   HloInstruction* cp_done =
-      FindInstruction(&executable->module(), HloOpcode::kCollectivePermuteDone);
+      FindInstruction(hlo_module, HloOpcode::kCollectivePermuteDone);
   EXPECT_THAT(cp_start, NotNull());
   EXPECT_THAT(cp_done, NotNull());
   EXPECT_EQ(IsAsync(cp_start), enable_async_collective_permute);
@@ -460,11 +472,12 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
   const bool enable_async_reduce_scatter = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
-  EXPECT_TRUE(executable->has_module());
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+
   HloInstruction* rs_start =
-      FindInstruction(&executable->module(), HloOpcode::kAsyncStart);
-  HloInstruction* rs_done =
-      FindInstruction(&executable->module(), HloOpcode::kAsyncDone);
+      FindInstruction(hlo_module, HloOpcode::kAsyncStart);
+  HloInstruction* rs_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
   ASSERT_THAT(rs_start, NotNull());
   ASSERT_THAT(rs_done, NotNull());
   HloAsyncInstruction* rs_start_async = Cast<HloAsyncInstruction>(rs_start);
@@ -497,12 +510,12 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
   const bool enable_async_all_to_all = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
-  EXPECT_TRUE(executable->has_module());
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
 
   HloInstruction* a2a_start =
-      FindInstruction(&executable->module(), HloOpcode::kAsyncStart);
-  HloInstruction* a2a_done =
-      FindInstruction(&executable->module(), HloOpcode::kAsyncDone);
+      FindInstruction(hlo_module, HloOpcode::kAsyncStart);
+  HloInstruction* a2a_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
   ASSERT_THAT(a2a_start, NotNull());
   ASSERT_THAT(a2a_done, NotNull());
   HloAsyncInstruction* a2a_start_async = Cast<HloAsyncInstruction>(a2a_start);
@@ -541,8 +554,8 @@ TEST_F(CollectiveOpsTestE2E, AsyncAllToAllMemCpy) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
       CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-  ASSERT_TRUE(executable->has_module());
-  HloModule* executable_module = &executable->module();
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
 
   // Verify that the all-to-all is not decomposed into a tuple all-to-all.
   const HloInstruction* all_to_all =
@@ -585,11 +598,12 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   const bool enable_async_all_to_all = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
-  EXPECT_TRUE(executable->has_module());
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+
   HloInstruction* a2a_start =
-      FindInstruction(&executable->module(), HloOpcode::kAsyncStart);
-  HloInstruction* a2a_done =
-      FindInstruction(&executable->module(), HloOpcode::kAsyncDone);
+      FindInstruction(hlo_module, HloOpcode::kAsyncStart);
+  HloInstruction* a2a_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
   ASSERT_THAT(a2a_start, NotNull());
   ASSERT_THAT(a2a_done, NotNull());
   HloAsyncInstruction* a2a_start_async = Cast<HloAsyncInstruction>(a2a_start);
@@ -825,8 +839,8 @@ TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
       CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-  ASSERT_TRUE(executable->has_module());
-  HloModule* executable_module = &executable->module();
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
 
   // Verify that the reduce-scatter get hoisted out of the while loop.
   const HloInstruction* while_loop =
@@ -879,8 +893,8 @@ TEST_F(CollectiveOpsTestE2E, NoAllToAllDecomposition) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
       CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-  ASSERT_TRUE(executable->has_module());
-  HloModule* executable_module = &executable->module();
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
 
   // Verify that the all-to-all is not decomposed into a tuple all-to-all.
   const HloInstruction* all_to_all =
@@ -1522,9 +1536,10 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(std::move(module),
                                            /*run_hlo_passes=*/true));
-  EXPECT_TRUE(executable->has_module());
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
   HloInstruction* all_to_all =
-      FindInstruction(&executable->module(), HloOpcode::kAllToAll);
+      FindInstruction(hlo_module, HloOpcode::kAllToAll);
   EXPECT_THAT(all_to_all, NotNull());
   EXPECT_EQ(all_to_all->shape().element_type(), BF16);
 
@@ -1580,9 +1595,10 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(std::move(module),
                                            /*run_hlo_passes=*/true));
-  EXPECT_TRUE(executable->has_module());
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
   HloInstruction* all_to_all =
-      FindInstruction(&executable->module(), HloOpcode::kAllToAll);
+      FindInstruction(hlo_module, HloOpcode::kAllToAll);
   EXPECT_THAT(all_to_all, NotNull());
   EXPECT_EQ(all_to_all->shape().element_type(), BF16);
 
@@ -1642,9 +1658,10 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(std::move(module),
                                            /*run_hlo_passes=*/true));
-  EXPECT_TRUE(executable->has_module());
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
   HloInstruction* all_gather =
-      FindInstruction(&executable->module(), HloOpcode::kAllGatherStart);
+      FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
 
   EXPECT_THAT(all_gather, NotNull());
   EXPECT_EQ(all_gather->shape().tuple_shapes(0).element_type(), BF16);
@@ -1683,7 +1700,10 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(std::move(module),
                                            /*run_hlo_passes=*/true));
-  EXPECT_TRUE(executable->has_module());
+
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+  EXPECT_NE(hlo_module, nullptr);
 }
 
 class RaggedAllToAllTest : public AsyncCollectiveOps {

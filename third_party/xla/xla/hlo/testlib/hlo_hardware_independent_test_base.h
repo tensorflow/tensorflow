@@ -64,12 +64,13 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   // inspect a particular computation or instruction.
   static HloComputation* FindComputation(HloModule* module,
                                          absl::string_view name);
-  static HloInstruction* FindInstruction(HloModule* module,
+  static HloInstruction* FindInstruction(const HloModule* module,
                                          absl::string_view name);
   // Gets the instruction from the given module with the given opcode.
-  static HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
+  static HloInstruction* FindInstruction(const HloModule* module,
+                                         HloOpcode opcode);
   // Gets all the instructions from the given module with the given opcode.
-  static std::vector<HloInstruction*> FindInstructions(HloModule* module,
+  static std::vector<HloInstruction*> FindInstructions(const HloModule* module,
                                                        HloOpcode opcode);
 
  protected:

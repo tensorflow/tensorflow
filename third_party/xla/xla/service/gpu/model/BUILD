@@ -861,6 +861,7 @@ cc_library(
         "//xla/service:gpu_plugin",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner",
+        "//xla/service:hlo_runner_interface",
         "//xla/service:hlo_verifier",
         "//xla/service:interpreter_plugin",
         "//xla/stream_executor:device_description",

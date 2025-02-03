@@ -322,7 +322,7 @@ HloComputation* HloHardwareIndependentTestBase::FindComputation(
 
 /* static */
 HloInstruction* HloHardwareIndependentTestBase::FindInstruction(
-    HloModule* module, absl::string_view name) {
+    const HloModule* module, absl::string_view name) {
   for (const HloComputation* computation : module->computations()) {
     if (HloInstruction* instruction =
             hlo_query::FindInstruction(computation, name)) {
@@ -334,7 +334,7 @@ HloInstruction* HloHardwareIndependentTestBase::FindInstruction(
 
 /* static */
 HloInstruction* HloHardwareIndependentTestBase::FindInstruction(
-    HloModule* module, HloOpcode opcode) {
+    const HloModule* module, HloOpcode opcode) {
   for (const HloComputation* computation : module->computations()) {
     if (HloInstruction* instruction =
             hlo_query::FindInstruction(computation, opcode)) {
@@ -346,7 +346,7 @@ HloInstruction* HloHardwareIndependentTestBase::FindInstruction(
 
 /* static */
 std::vector<HloInstruction*> HloHardwareIndependentTestBase::FindInstructions(
-    HloModule* module, HloOpcode opcode) {
+    const HloModule* module, HloOpcode opcode) {
   std::vector<HloInstruction*> instructions;
   for (const HloComputation* c : module->computations()) {
     absl::c_copy_if(c->instructions(), std::back_inserter(instructions),

@@ -180,13 +180,13 @@ absl::StatusOr<absl::Nonnull<PjRtMemorySpace*>> GetMemorySpaceFromLayout(
 }  // namespace
 
 // TODO(b/245550554): Remove the use of PjRtWrappedExecutable.
-class PjRtWrappedExecutable : public Executable {
+class PjRtWrappedExecutable : public OpaqueExecutable {
  public:
   // Takes ownership of the provided executable.
   explicit PjRtWrappedExecutable(
       std::shared_ptr<HloModule> hlo_module,
       std::unique_ptr<PjRtLoadedExecutable> pjrt_loaded_executable)
-      : Executable(hlo_module),
+      : OpaqueExecutable(hlo_module),
         pjrt_loaded_executable_(std::move(pjrt_loaded_executable)) {}
 
   absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
@@ -373,7 +373,7 @@ HloRunnerPjRt::ExecuteWithDeviceBuffers(
 }
 
 absl::StatusOr<Literal> HloRunnerPjRt::ExecuteWithExecutable(
-    Executable* executable, absl::Span<const Literal* const> arguments,
+    OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
     ExecutionProfile* profile) {
   PjRtWrappedExecutable* wrapped_executable =
       static_cast<PjRtWrappedExecutable*>(executable);
@@ -387,7 +387,7 @@ absl::StatusOr<Literal> HloRunnerPjRt::ExecuteWithExecutable(
   TF_ASSIGN_OR_RETURN(ExecuteOptions execute_options,
                       GenerateExecuteOptions(module));
   TF_ASSIGN_OR_RETURN(
-      auto argument_handles,
+      std::vector<std::unique_ptr<PjRtBuffer>> argument_handles,
       TransferLiteralsToDevice(module.entry_computation_layout(), arguments));
 
   TF_ASSIGN_OR_RETURN(
@@ -440,14 +440,14 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
   module->mutable_config().set_replica_count(options.num_replicas);
 
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
+      std::unique_ptr<OpaqueExecutable> executable,
       CreateExecutable(std::move(module), options.run_hlo_passes));
 
   return ExecuteReplicated(executable.get(), options, device_assignment);
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
-    Executable* executable,
+    OpaqueExecutable* executable,
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment, ExecutionProfile* profile) {
   return ExecuteReplicatedImpl(
@@ -477,7 +477,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
-    std::function<Executable*(int64_t)> executable_provider,
+    std::function<OpaqueExecutable*(int64_t)> executable_provider,
     std::function<int64_t(int64_t)> argument_count_provider,
     std::function<const Literal*(int64_t, int64_t)> argument_provider,
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
@@ -681,6 +681,19 @@ bool HloRunnerPjRt::HasProperty(const HloRunnerPropertyTag::Type tag) const {
     return pjrt_client_->platform_name() == xla::CpuName();
   }
   return false;
+}
+
+absl::StatusOr<absl::Nonnull<const HloModule*>>
+HloRunnerPjRt::HloModuleFromWrapped(const OpaqueExecutable* wrapped) const {
+  const PjRtLoadedExecutable* const executable =
+      static_cast<const PjRtWrappedExecutable*>(wrapped)
+          ->GetPjRtLoadedExecutable();
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> modules,
+                      executable->GetHloModules());
+  if (!modules.empty()) {
+    return modules.front().get();
+  }
+  return absl::NotFoundError("PjRtLoadedExecutable has no modules.");
 }
 
 }  // namespace xla

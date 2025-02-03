@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
@@ -3244,10 +3245,13 @@ TEST_F(DynamicSliceFusionTest,
 
   // Check that the offset value in the thunk is an evaluated constant even if
   // no simplification passes are executed.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> wrapped_executable,
                           CreateExecutable(/*module=*/module_opt->Clone(),
                                            /*run_hlo_passes=*/false));
-  GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
+  TF_ASSERT_OK_AND_ASSIGN(Executable* const exec,
+                          test_runner_as_hlo_runner().ExecutableFromWrapped(
+                              wrapped_executable.get()));
+  GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec);
   ASSERT_NE(gpu_exec, nullptr);
   const SequentialThunk& thunk = gpu_exec->GetThunk();
   auto dynamic_slice_thunk =
