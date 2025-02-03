@@ -441,6 +441,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_test_utils",
         "//tensorflow/core/profiler/utils:xplane_visitor",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
         "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
@@ -1370,6 +1371,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest",
         "@local_xla//xla/tsl/profiler/utils:timespan",
     ],
 )
@@ -1392,6 +1394,7 @@ tf_cc_test(
         ":duty_cycle_tracker",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_googletest//:gtest",
         "@local_xla//xla/tsl/profiler/utils:timespan",
     ],
 )
