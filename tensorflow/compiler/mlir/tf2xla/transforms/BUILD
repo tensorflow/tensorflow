@@ -325,7 +325,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
-        "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
         "//tensorflow/compiler/mlir/tensorflow:tpu_embedding_ops_registry",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
