@@ -37,12 +37,21 @@ jobs:
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
             kokoro_job_name: "xla-linux-x86-cpu",
             pretty_name: "XLA Linux x86 CPU",
+            repo: "openxla/xla",
           },
           {
             pool: "linux-arm64-c4a-16",
             container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
             kokoro_job_name: "xla-linux-arm64-cpu",
             pretty_name: "XLA Linux ARM64 CPU",
+            repo: "openxla/xla",
+          },
+          {
+            pool: "linux-x86-n2-16",
+            container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
+            kokoro_job_name: "jax-linux-x86-cpu",
+            pretty_name: "JAX Linux x86 CPU",
+            repo: "jax-ml/jax",
           }
         ]
     name: ${{ matrix.job_info.pretty_name }}
@@ -53,10 +62,19 @@ jobs:
         shell: bash
     timeout-minutes: 30
     steps:
-      - name: "Checking out repository"
+      - name: "Checking out openxla/xla"
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          path: "openxla/xla"
+      - name: Checking out ${{ matrix.job_info.repo }}
+        if: ${{ matrix.job_info.repo != 'openxla/xla' }}
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          repository: ${{ matrix.job_info.repo }}
+          path: ${{ matrix.job_info.repo }}
       - name: "Run build.py"
+        working-directory: ${{ matrix.job_info.repo }}
         env:
           # TODO(ddunleavy): refactor build.py to not depend on this env var
           KOKORO_JOB_NAME: ${{ matrix.job_info.kokoro_job_name }}
-        run: build_tools/ci/build.py
+        run: $GITHUB_WORKSPACE/openxla/xla/build_tools/ci/build.py
