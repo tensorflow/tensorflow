@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/compiler/fuse_inline.h"
 
-#include <algorithm>
 #include <any>
-#include <iterator>
 #include <string>
 #include <vector>
 

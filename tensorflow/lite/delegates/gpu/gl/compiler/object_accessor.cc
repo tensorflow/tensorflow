@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/compiler/object_accessor.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
