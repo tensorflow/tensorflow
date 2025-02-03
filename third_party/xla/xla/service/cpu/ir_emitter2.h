@@ -81,6 +81,13 @@ class IrEmitter2 {
     explicit KernelInfo(KernelPrototype prototype,
                         const se::BlockDim& block_dims,
                         const se::ThreadDim& thread_dims);
+    explicit KernelInfo(const std::string& name, const se::BlockDim& block_dims,
+                        const se::ThreadDim& thread_dims,
+                        const absl::flat_hash_set<int64_t>& invariant_arguments)
+        : name(name),
+          block_dims(block_dims),
+          thread_dims(thread_dims),
+          invariant_arguments(invariant_arguments) {}
 
     std::string name;
     se::BlockDim block_dims;
@@ -129,6 +136,10 @@ class IrEmitter2 {
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       const HloInstruction* instr);
 
+  // Emits a host fusion using fusion emitters.
+  absl::StatusOr<IrEmitter2::KernelInfo> EmitFusionWithFusionEmitters(
+      const HloFusionInstruction* fusion);
+
   // Parallel partition bounds for parallelized outer dimensions:
   //   vector<[i64 lower_bound, i64 upper_bound]>
   using ParallelPartitionBounds =
@@ -161,6 +172,8 @@ class IrEmitter2 {
       const llvm_ir::ElementGenerator& element_generator);
 
   bool fast_min_max() const;
+
+  bool IsSupportedByFusionEmitter(const HloFusionInstruction* fusion) const;
 
   // Returns the number of bytes within the shape.
   int64_t ByteSizeOf(const Shape& shape) const;
