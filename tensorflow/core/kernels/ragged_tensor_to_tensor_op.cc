@@ -157,10 +157,10 @@ absl::Status CalculateOutputSize(INDEX_TYPE first_dim, OpKernelContext* c,
 
     TensorShapeProto shape_proto;
     {
-        PartialTensorShape partial_tensor_shape;
-        TF_RETURN_IF_ERROR(TensorShapeFromTensor(c->input(kShapeInputIndex),
-                                                &partial_tensor_shape));
-        partial_tensor_shape.AsProto(&shape_proto);
+      PartialTensorShape partial_tensor_shape;
+      TF_RETURN_IF_ERROR(TensorShapeFromTensor(c->input(kShapeInputIndex),
+                                               &partial_tensor_shape));
+      partial_tensor_shape.AsProto(&shape_proto);
     }
 
     TF_RETURN_IF_ERROR(CombineRaggedTensorToTensorShapes(
