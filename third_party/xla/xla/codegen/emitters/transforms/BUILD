@@ -1,4 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -29,6 +31,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -47,10 +50,19 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "convert_pure_call_ops.cc",
+        "erase_dead_functions.cc",
         "expand_float_ops.cc",
         "flatten_tensors.cc",
         "lower_tensors.cc",
         "lower_to_llvm.cc",
+        "lower_xla_to_scf.cc",
+        "merge_pointers_to_same_slice.cc",
+        "peel_loops.cc",
+        "propagate_slice_indices.cc",
+        "simplify_affine.cc",
+        "simplify_arith.cc",
+        "unswitch_loops.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
@@ -62,20 +74,29 @@ cc_library(
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/codegen:device_spec",
+        "//xla/codegen/emitters:elemental_hlo_to_mlir",
+        "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
+        "@llvm-project//mlir:AffineUtils",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithToLLVM",
         "@llvm-project//mlir:ArithTransforms",
+        "@llvm-project//mlir:CallOpInterfaces",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ComplexToLLVM",
         "@llvm-project//mlir:ControlFlowToLLVM",

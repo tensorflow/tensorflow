@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s -split-input-file -xla-lower-tensors -xla-gpu-merge-pointers | FileCheck %s
+// RUN: emitters_opt %s -split-input-file -xla-lower-tensors -xla-merge-pointers | FileCheck %s
 
 module {
   func.func private @tensorargs(%arg0: tensor<43xf32> {xla.slice_index = 0},

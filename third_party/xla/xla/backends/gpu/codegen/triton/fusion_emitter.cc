@@ -91,6 +91,7 @@ limitations under the License.
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -1290,7 +1291,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   pm.addPass(mlir::createLowerAffinePass());
 
   // Lower xla_gpu.apply_indexing into arithmetic ops.
-  pm.addPass(CreateSimplifyAffinePass());
+  pm.addPass(emitters::CreateSimplifyAffinePass());
   pm.addPass(CreateConvertIndexTypePass());
 
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;

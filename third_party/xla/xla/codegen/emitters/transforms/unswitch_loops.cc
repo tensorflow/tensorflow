@@ -27,10 +27,10 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace xla {
-namespace gpu {
+namespace emitters {
 
 #define GEN_PASS_DEF_UNSWITCHLOOPSPASS
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+#include "xla/codegen/emitters/transforms/passes.h.inc"
 
 namespace {
 
@@ -102,5 +102,5 @@ CreateUnswitchLoopsPass() {
   return std::make_unique<UnswitchLoopsPass>();
 }
 
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla
