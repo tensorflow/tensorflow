@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/mhlo_round_trip/export_callback_custom_calls.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/export_callback_custom_calls.h"
 
 #include <memory>
 
@@ -67,12 +67,12 @@ void replaceCallbackWithTupleVersion(CustomCallOp customCall,
   rewriter.replaceOp(customCall, getTupleElement);
 }
 
-class MhloRoundTripExportCallbackCustomCallsPass
-    : public PassWrapper<MhloRoundTripExportCallbackCustomCallsPass,
+class StablehloRoundTripExportCallbackCustomCallsPass
+    : public PassWrapper<StablehloRoundTripExportCallbackCustomCallsPass,
                          OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      MhloRoundTripExportCallbackCustomCallsPass)
+      StablehloRoundTripExportCallbackCustomCallsPass)
 
   void runOnOperation() final {
     getOperation().walk([&](CustomCallOp customCall) {
@@ -93,7 +93,7 @@ class MhloRoundTripExportCallbackCustomCallsPass
   }
 
   StringRef getArgument() const override {
-    return "xla-sdy-mhlo-round-trip-export-callback-custom-calls";
+    return "xla-sdy-stablehlo-round-trip-export-callback-custom-calls";
   }
 
   StringRef getDescription() const override {
@@ -108,12 +108,13 @@ class MhloRoundTripExportCallbackCustomCallsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createMhloRoundTripExportCallbackCustomCallsPass() {
-  return std::make_unique<MhloRoundTripExportCallbackCustomCallsPass>();
+std::unique_ptr<mlir::Pass>
+createStablehloRoundTripExportCallbackCustomCallsPass() {
+  return std::make_unique<StablehloRoundTripExportCallbackCustomCallsPass>();
 }
 
-void registerMhloRoundTripExportCallbackCustomCallsPass() {
-  mlir::registerPass(createMhloRoundTripExportCallbackCustomCallsPass);
+void registerStablehloRoundTripExportCallbackCustomCallsPass() {
+  mlir::registerPass(createStablehloRoundTripExportCallbackCustomCallsPass);
 }
 
 }  // namespace sdy

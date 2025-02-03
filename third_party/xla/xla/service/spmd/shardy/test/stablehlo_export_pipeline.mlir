@@ -1,4 +1,4 @@
-// RUN: sdy_opt %s -xla-sdy-mhlo-export-pipeline 2>&1 | FileCheck %s
+// RUN: sdy_opt %s -xla-sdy-stablehlo-export-pipeline 2>&1 | FileCheck %s
 
 sdy.mesh @mesh_0 = <["axis_0"=2, "axis_1"=4, "axis_2"=4]>
 sdy.mesh @mesh_1 = <["axis_0"=16]>

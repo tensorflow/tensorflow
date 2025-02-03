@@ -13,23 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDY_SDY_ROUND_TRIP_TEST_UTILS_MHLO_TO_HLO_TO_MHLO_H_
-#define XLA_SERVICE_SPMD_SHARDY_SDY_ROUND_TRIP_TEST_UTILS_MHLO_TO_HLO_TO_MHLO_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_EXPORT_OPS_H_
+#define XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_EXPORT_OPS_H_
 
 #include <memory>
 
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassRegistry.h"
 
 namespace xla {
 namespace sdy {
 
-// Creates the pass that round trips from MHLO -> HLO -> MHLO.
-std::unique_ptr<mlir::Pass> createSdyRoundTripMhloToHloToMhloPass();
+// Creates a pass that converts Shardy ops to StableHLO ops (except
+// sdy::ManualComputationOp).
+std::unique_ptr<mlir::Pass> createExportOpsPass();
 
-// Register the xla-sdy-round-trip-mhlo-to-hlo-to-mhlo pass.
-void registerSdyRoundTripMhloToHloToMhloPass();
+// Register the xla-sdy-export-ops pass.
+void registerExportOpsPass();
 
 }  // namespace sdy
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDY_SDY_ROUND_TRIP_TEST_UTILS_MHLO_TO_HLO_TO_MHLO_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_EXPORT_OPS_H_

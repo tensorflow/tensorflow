@@ -183,7 +183,6 @@ bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key) {
 void loadAllRequiredDialects(mlir::MLIRContext* context) {
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
-  registry.insert<mlir::mhlo::MhloDialect>();
   mlir::sdy::registerAllDialects(registry);
   context->appendDialectRegistry(registry);
   context->loadAllAvailableDialects();

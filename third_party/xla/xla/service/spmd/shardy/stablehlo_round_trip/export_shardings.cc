@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/mhlo_round_trip/export_shardings.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 
 #include <algorithm>
 #include <cassert>
@@ -61,7 +61,6 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -194,10 +193,11 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
   return success();
 }
 
-class ExportMhloShardingsPass
-    : public PassWrapper<ExportMhloShardingsPass, OperationPass<ModuleOp>> {
+class ExportStablehloShardingsPass
+    : public PassWrapper<ExportStablehloShardingsPass,
+                         OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ExportMhloShardingsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ExportStablehloShardingsPass)
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
@@ -244,7 +244,7 @@ class ExportMhloShardingsPass
   }
 
   StringRef getArgument() const override {
-    return "xla-sdy-mhlo-export-shardings";
+    return "xla-sdy-stablehlo-export-shardings";
   }
 
   StringRef getDescription() const override {
@@ -376,12 +376,12 @@ StringAttr convertToHloShardingAttr(
       HloSharding::Tuple(xla::ShapeUtil::MakeTupleShape(shapes), newShardings));
 }
 
-std::unique_ptr<Pass> createExportMhloShardingsPass() {
-  return std::make_unique<ExportMhloShardingsPass>();
+std::unique_ptr<Pass> createExportStablehloShardingsPass() {
+  return std::make_unique<ExportStablehloShardingsPass>();
 }
 
-void registerMhloExportShardingsPass() {
-  mlir::registerPass(createExportMhloShardingsPass);
+void registerStablehloExportShardingsPass() {
+  mlir::registerPass(createExportStablehloShardingsPass);
 }
 
 }  // namespace sdy

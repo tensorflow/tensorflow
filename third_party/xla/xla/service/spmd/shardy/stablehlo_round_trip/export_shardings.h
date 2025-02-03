@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_EXPORT_SHARDINGS_H_
-#define XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_EXPORT_SHARDINGS_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_EXPORT_SHARDINGS_H_
+#define XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_EXPORT_SHARDINGS_H_
 
 #include <functional>
 #include <memory>
@@ -50,12 +50,12 @@ mlir::StringAttr convertToHloShardingAttr(
 // Creates a pass that converts the shardings from `kShardingAttr` to
 // `kXlaShardingAttr` and removes mesh symbols. Fully or partially manual
 // shardings are processed in `ShardMapExportPass`.
-std::unique_ptr<mlir::Pass> createExportMhloShardingsPass();
+std::unique_ptr<mlir::Pass> createExportStablehloShardingsPass();
 
-// Register the xla-sdy-mhlo-export-shardings pass.
-void registerMhloExportShardingsPass();
+// Register the xla-sdy-stablehlo-export-shardings pass.
+void registerStablehloExportShardingsPass();
 
 }  // namespace sdy
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_EXPORT_SHARDINGS_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_EXPORT_SHARDINGS_H_

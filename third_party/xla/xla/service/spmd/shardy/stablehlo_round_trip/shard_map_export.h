@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_SHARD_MAP_EXPORT_H_
-#define XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_SHARD_MAP_EXPORT_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_SHARD_MAP_EXPORT_H_
+#define XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_SHARD_MAP_EXPORT_H_
 
 #include <memory>
 
@@ -26,13 +26,14 @@ namespace sdy {
 
 // Creates a pass that converts the `ManualComputationOp` into the pattern that
 // the XLA compiler recognizes. This pass also exports fully or partially manual
-// shardings, while other shardings are processed in `ExportMhloShardingsPass`.
-std::unique_ptr<mlir::Pass> createMhloRoundTripShardMapExportPass();
+// shardings, while other shardings are processed in
+// `ExportStablehloShardingsPass`.
+std::unique_ptr<mlir::Pass> createStablehloRoundTripShardMapExportPass();
 
-// Registers the xla-sdy-mhlo-round-trip-shard-map-export pass.
-void registerMhloRoundTripShardMapExportPass();
+// Registers the xla-sdy-stablehlo-round-trip-shard-map-export pass.
+void registerStablehloRoundTripShardMapExportPass();
 
 }  // namespace sdy
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_SHARD_MAP_EXPORT_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_SHARD_MAP_EXPORT_H_

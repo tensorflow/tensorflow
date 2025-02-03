@@ -1,4 +1,4 @@
-// RUN: sdy_opt %s -xla-mhlo-round-trip-shard-map-import -split-input-file -verify-diagnostics
+// RUN: sdy_opt %s -xla-stablehlo-round-trip-shard-map-import -split-input-file -verify-diagnostics
 
 sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
 sdy.mesh @mesh_2 = <["a"=4, "b"=2, "c"=3]>

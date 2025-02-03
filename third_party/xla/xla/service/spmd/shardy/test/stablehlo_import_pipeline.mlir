@@ -1,4 +1,4 @@
-// RUN: sdy_opt %s -xla-sdy-mhlo-import-pipeline -split-input-file 2>&1 | FileCheck %s
+// RUN: sdy_opt %s -xla-sdy-stablehlo-import-pipeline -split-input-file 2>&1 | FileCheck %s
 
 // CHECK-LABEL: sdy.mesh @mesh = <["axis_0"=8, "axis_1"=4]>
 

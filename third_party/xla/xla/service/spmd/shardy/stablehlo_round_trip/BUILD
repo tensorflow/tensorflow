@@ -29,7 +29,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
-        "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
@@ -71,7 +70,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
-        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
@@ -102,9 +100,9 @@ cc_library(
 )
 
 cc_library(
-    name = "mhlo_export",
-    srcs = ["mhlo_export.cc"],
-    hdrs = ["mhlo_export.h"],
+    name = "stablehlo_export",
+    srcs = ["stablehlo_export.cc"],
+    hdrs = ["stablehlo_export.h"],
     deps = [
         ":export_callback_custom_calls",
         ":export_ops",
@@ -117,9 +115,9 @@ cc_library(
 )
 
 cc_library(
-    name = "mhlo_import",
-    srcs = ["mhlo_import.cc"],
-    hdrs = ["mhlo_import.h"],
+    name = "stablehlo_import",
+    srcs = ["stablehlo_import.cc"],
+    hdrs = ["stablehlo_import.h"],
     deps = [
         ":shard_map_import",
         "//xla:util",
@@ -127,8 +125,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/translate/mhlo_to_hlo:attribute_exporter",
-        "//xla/mlir_hlo",
-        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy/round_trip_common:pipeline_passes",
         "@com_google_absl//absl/algorithm:container",
@@ -146,11 +142,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "mhlo_import_test",
-    srcs = ["mhlo_import_test.cc"],
+    name = "stablehlo_import_test",
+    srcs = ["stablehlo_import_test.cc"],
     deps = [
-        ":export_shardings",
-        ":mhlo_import",
+        ":stablehlo_import",
         "//xla/hlo/ir:hlo",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -169,9 +164,7 @@ cc_library(
     hdrs = ["shard_map_import.h"],
     deps = [
         "//xla:xla_data_proto_cc",
-        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service/spmd/shardy:constants",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

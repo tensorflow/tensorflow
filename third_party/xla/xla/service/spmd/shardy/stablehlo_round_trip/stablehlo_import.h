@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_MHLO_IMPORT_H_
-#define XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_MHLO_IMPORT_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_STABLEHLO_IMPORT_H_
+#define XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_STABLEHLO_IMPORT_H_
 
 #include <cstdint>
 
@@ -44,13 +44,14 @@ mlir::sdy::TensorShardingAttr convertToSdySharding(
     int64_t rank, bool openDims = false);
 
 // Register the xla-sdy-import-shardings pass.
-void registerMhloImportShardingsPass();
+void registerStablehloImportShardingsPass();
 
-// Register the xla-sdy-mhlo-import-pipeline.
-void registerMhloImportPipeline();
+// Register the xla-sdy-stablehlo-import-pipeline.
+void registerStablehloImportPipeline();
 
-// Add the xla-sdy-mhlo-import-pipeline in `pm`. The pipeline, including a
-// sequence of passes, imports a MHLO module into the SDY (Shardonnay) dialect.
+// Add the xla-sdy-stablehlo-import-pipeline in `pm`. The pipeline, including a
+// sequence of passes, imports a StableHLO module into the SDY (Shardonnay)
+// dialect.
 //
 // `allowPropagationToArgs` and `allowPropagationToResults` indicate for each
 // argument and result of the main function respectively, whether their existing
@@ -59,11 +60,11 @@ void registerMhloImportPipeline();
 // - be empty, in which case the default is false for all args/results.
 // - have a single element, in which case the value applies to all args/results.
 // - have the same number of elements as the number of args/results.
-void addMhloImportPipeline(mlir::OpPassManager& pm,
-                           mlir::ArrayRef<bool> allowPropagationToArgs,
-                           mlir::ArrayRef<bool> allowPropagationToResults);
+void addStablehloImportPipeline(mlir::OpPassManager& pm,
+                                mlir::ArrayRef<bool> allowPropagationToArgs,
+                                mlir::ArrayRef<bool> allowPropagationToResults);
 
 }  // namespace sdy
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_MHLO_IMPORT_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_STABLEHLO_IMPORT_H_

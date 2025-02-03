@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/mhlo_round_trip/mhlo_import.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 
 #include <cstdint>
 
@@ -33,7 +33,7 @@ namespace mlir::sdy {
 
 namespace {
 
-TEST(MhloImportTest, SkipFirstAxisOfSize1) {
+TEST(StablehloImportTest, SkipFirstAxisOfSize1) {
   MLIRContext context;
   loadAllRequiredDialects(&context);
   SmallVector<sdy::MeshAxisAttr> axes;
@@ -53,7 +53,7 @@ TEST(MhloImportTest, SkipFirstAxisOfSize1) {
 }
 
 // As above, but the middle axis is the one with size 1.
-TEST(MhloImportTest, SkipSecondAxisOfSize1) {
+TEST(StablehloImportTest, SkipSecondAxisOfSize1) {
   MLIRContext context;
   loadAllRequiredDialects(&context);
   SmallVector<sdy::MeshAxisAttr> axes;

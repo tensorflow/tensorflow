@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/mhlo_round_trip/shard_map_export.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_export.h"
 
 #include <cassert>
 #include <functional>
@@ -54,9 +54,8 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/mhlo_round_trip/export_shardings.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -117,8 +116,9 @@ TensorShardingAttr getFirstSharding(ManualComputationOp op) {
   return *inOutShardings.begin();
 }
 
-// Converts the shardings of all operations in `op`'s body to MHLO shardings.
-void convertShardingsToMhloShardings(
+// Converts the shardings of all operations in `op`'s body to StableHLO
+// shardings.
+void convertShardingsToStablehloShardings(
     ManualComputationOp op,
     const ManualComputationToParentManualAxes& parentManualCompAxes,
     const mlir::SymbolTable& symbolTable) {
@@ -307,7 +307,8 @@ class ShardMapExportPass
         parentAxes.insert(parentAxes.end(), parentOp.getManualAxes().begin(),
                           parentOp.getManualAxes().end());
       }
-      convertShardingsToMhloShardings(op, parentManualCompAxes, symbolTable);
+      convertShardingsToStablehloShardings(op, parentManualCompAxes,
+                                           symbolTable);
     });
 
     // Need to do a separate post order walk to inline the
@@ -320,7 +321,7 @@ class ShardMapExportPass
   }
 
   StringRef getArgument() const override {
-    return "xla-sdy-mhlo-round-trip-shard-map-export";
+    return "xla-sdy-stablehlo-round-trip-shard-map-export";
   }
 
   StringRef getDescription() const override {
@@ -335,12 +336,12 @@ class ShardMapExportPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createMhloRoundTripShardMapExportPass() {
+std::unique_ptr<mlir::Pass> createStablehloRoundTripShardMapExportPass() {
   return std::make_unique<ShardMapExportPass>();
 }
 
-void registerMhloRoundTripShardMapExportPass() {
-  mlir::registerPass(createMhloRoundTripShardMapExportPass);
+void registerStablehloRoundTripShardMapExportPass() {
+  mlir::registerPass(createStablehloRoundTripShardMapExportPass);
 }
 
 }  // namespace sdy

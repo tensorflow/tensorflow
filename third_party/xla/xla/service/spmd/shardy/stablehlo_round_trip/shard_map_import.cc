@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/mhlo_round_trip/shard_map_import.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_import.h"
 
 #include <cstdint>
 #include <memory>
@@ -53,7 +53,6 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/xla_data.pb.h"
 
@@ -220,7 +219,7 @@ absl::StatusOr<ShardMapArgumentsResults> getJaxShardMapPatternOps(CallOp op) {
   return ShardMapArgumentsResults{argumentOps, resultOps};
 }
 
-// When calling `jax.shard_map`, we have the following pattern in the MHLO.
+// When calling `jax.shard_map`, we have the following pattern in the StableHLO.
 // ```
 // %shard_arg0_0 = custom_call @Sharding(%0)
 // %shard_arg0_1 = custom_call @SPMDFullToShardShape(%shard_arg0_0)
@@ -462,7 +461,7 @@ class ShardMapImportPass
   }
 
   StringRef getArgument() const override {
-    return "xla-mhlo-round-trip-shard-map-import";
+    return "xla-stablehlo-round-trip-shard-map-import";
   }
 
   StringRef getDescription() const override {
@@ -477,12 +476,12 @@ class ShardMapImportPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createMhloRoundTripShardMapImportPass() {
+std::unique_ptr<mlir::Pass> createStablehloRoundTripShardMapImportPass() {
   return std::make_unique<ShardMapImportPass>();
 }
 
-void registerMhloRoundTripShardMapImportPass() {
-  mlir::registerPass(createMhloRoundTripShardMapImportPass);
+void registerStablehloRoundTripShardMapImportPass() {
+  mlir::registerPass(createStablehloRoundTripShardMapImportPass);
 }
 
 }  // namespace sdy

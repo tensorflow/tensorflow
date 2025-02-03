@@ -13,25 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_EXPORT_OPS_H_
-#define XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_EXPORT_OPS_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_STABLEHLO_EXPORT_H_
+#define XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_STABLEHLO_EXPORT_H_
 
-#include <memory>
-
-#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 
 namespace xla {
 namespace sdy {
 
-// Creates a pass that converts Shardy ops to MHLO ops (except
-// sdy::ManualComputationOp).
-std::unique_ptr<mlir::Pass> createExportOpsPass();
+// Register the xla-sdy-stablehlo-export-pipeline.
+void registerStablehloExportPipeline();
 
-// Register the xla-sdy-export-ops pass.
-void registerExportOpsPass();
+// Add the xla-sdy-stablehlo-export-pipeline in `pm`. The pipeline, including a
+// sequence of passes, exports the Shardy dialect into an StableHLO module meant
+// for the XLA compiler with HLO shardings.
+void addStablehloExportPipeline(mlir::OpPassManager& pm);
 
 }  // namespace sdy
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_EXPORT_OPS_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_STABLEHLO_EXPORT_H_

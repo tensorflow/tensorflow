@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/mhlo_round_trip/export_ops.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/export_ops.h"
 
 #include <cstdint>
 #include <memory>
@@ -139,7 +139,7 @@ class ExportOpsPass
     target.addIllegalOp<ConstantOp, ReshardOp, ShardingConstraintOp>();
     target.addLegalOp<stablehlo::ConstantOp, mhlo::CopyOp>();
     mlir::RewritePatternSet patterns(&context);
-    // After converting `sdy.constant` into `mhlo.constant`, the constants
+    // After converting `sdy.constant` into `stablehlo.constant`, the constants
     // should not be deduped via folding. Fortunately, folding only happens in
     // greedy pattern rewriters. ExportHloShardingsPass does a simple walk,
     // which keeps the constants as is.
@@ -153,7 +153,7 @@ class ExportOpsPass
   StringRef getArgument() const override { return "xla-sdy-export-ops"; }
 
   StringRef getDescription() const override {
-    return "Exports Shardy ops to MHLO ops. Processes sdy::ReshardOp and "
+    return "Exports Shardy ops to StableHLO ops. Processes sdy::ReshardOp and "
            "sdy::ConstantOp.";
   }
 

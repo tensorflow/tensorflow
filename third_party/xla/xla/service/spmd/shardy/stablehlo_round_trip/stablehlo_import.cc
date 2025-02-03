@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/mhlo_round_trip/mhlo_import.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -60,11 +60,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/mhlo_round_trip/shard_map_import.h"
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_import.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -640,28 +638,28 @@ std::unique_ptr<mlir::Pass> createImportShardingsPass(
 
 }  // namespace
 
-void registerMhloImportShardingsPass() {
+void registerStablehloImportShardingsPass() {
   mlir::registerPass(
       std::bind(createImportShardingsPass, ArrayRef<bool>(), ArrayRef<bool>()));
 }
 
-void addMhloImportPipeline(mlir::OpPassManager& pm,
-                           ArrayRef<bool> allowPropagationToArgs,
-                           ArrayRef<bool> allowPropagationToResults) {
+void addStablehloImportPipeline(mlir::OpPassManager& pm,
+                                ArrayRef<bool> allowPropagationToArgs,
+                                ArrayRef<bool> allowPropagationToResults) {
   addCommonPreImportPasses(pm);
   pm.addPass(createImportShardingsPass(allowPropagationToArgs,
                                        allowPropagationToResults));
-  pm.addPass(createMhloRoundTripShardMapImportPass());
+  pm.addPass(createStablehloRoundTripShardMapImportPass());
   addCommonPostImportPasses(pm);
 }
 
-void registerMhloImportPipeline() {
+void registerStablehloImportPipeline() {
   mlir::PassPipelineRegistration<> importPipeline(
-      "xla-sdy-mhlo-import-pipeline",
+      "xla-sdy-stablehlo-import-pipeline",
       "Run passes to import a StableHLO module with `mhlo.shardings` into the "
       "SDY (Shardy) dialect.",
-      std::bind(addMhloImportPipeline, std::placeholders::_1, ArrayRef<bool>(),
-                ArrayRef<bool>()));
+      std::bind(addStablehloImportPipeline, std::placeholders::_1,
+                ArrayRef<bool>(), ArrayRef<bool>()));
 }
 
 }  // namespace sdy

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_EXPORT_CALLBACK_CUSTOM_CALLS_H_
-#define XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_EXPORT_CALLBACK_CUSTOM_CALLS_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_EXPORT_CALLBACK_CUSTOM_CALLS_H_
+#define XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_EXPORT_CALLBACK_CUSTOM_CALLS_H_
 
 #include <memory>
 
@@ -31,12 +31,13 @@ namespace sdy {
 // a tuple with a get_tuple_element or no results (which we changed due to
 // shardy shardings expecting at least one result, and needing to attach a
 // maximal sharding to the callbacks).
-std::unique_ptr<mlir::Pass> createMhloRoundTripExportCallbackCustomCallsPass();
+std::unique_ptr<mlir::Pass>
+createStablehloRoundTripExportCallbackCustomCallsPass();
 
-// Registers the xla-sdy-mhlo-round-trip-export-callback-custom-calls pass.
-void registerMhloRoundTripExportCallbackCustomCallsPass();
+// Registers the xla-sdy-stablehlo-round-trip-export-callback-custom-calls pass.
+void registerStablehloRoundTripExportCallbackCustomCallsPass();
 
 }  // namespace sdy
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDY_MHLO_ROUND_TRIP_EXPORT_CALLBACK_CUSTOM_CALLS_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_EXPORT_CALLBACK_CUSTOM_CALLS_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/sdy_round_trip/test_utils/mhlo_to_hlo_to_mhlo.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/test_utils/stablehlo_to_hlo_to_stablehlo.h"
 
 #include <memory>
 #include <utility>
@@ -32,9 +32,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/TypeID.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/hlo/translate/stablehlo.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "tsl/platform/statusor.h"
@@ -66,11 +64,12 @@ absl::Status toStablehlo(std::unique_ptr<HloModule> hloModule,
   return absl::OkStatus();
 }
 
-class SdyRoundTripMhloToHloToMhloPass
-    : public mlir::PassWrapper<SdyRoundTripMhloToHloToMhloPass,
+class SdyRoundTripStablehloToHloToStablehloPass
+    : public mlir::PassWrapper<SdyRoundTripStablehloToHloToStablehloPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SdyRoundTripMhloToHloToMhloPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      SdyRoundTripStablehloToHloToStablehloPass)
 
  private:
   void runOnOperation() final {
@@ -93,11 +92,11 @@ class SdyRoundTripMhloToHloToMhloPass
   }
 
   StringRef getArgument() const override {
-    return "xla-sdy-round-trip-mhlo-to-hlo-to-mhlo";
+    return "xla-sdy-round-trip-stablehlo-to-hlo-to-stablehlo";
   }
 
   StringRef getDescription() const override {
-    return "Round trips from MHLO -> StableHLO -> MHLO.";
+    return "Round trips from StableHLO -> HLO -> StableHLO.";
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
@@ -107,12 +106,12 @@ class SdyRoundTripMhloToHloToMhloPass
 
 }  // namespace
 
-void registerSdyRoundTripMhloToHloToMhloPass() {
-  mlir::registerPass(createSdyRoundTripMhloToHloToMhloPass);
+void registerSdyRoundTripStablehloToHloToStablehloPass() {
+  mlir::registerPass(createSdyRoundTripStablehloToHloToStablehloPass);
 }
 
-std::unique_ptr<mlir::Pass> createSdyRoundTripMhloToHloToMhloPass() {
-  return std::make_unique<SdyRoundTripMhloToHloToMhloPass>();
+std::unique_ptr<mlir::Pass> createSdyRoundTripStablehloToHloToStablehloPass() {
+  return std::make_unique<SdyRoundTripStablehloToHloToStablehloPass>();
 }
 
 }  // namespace sdy
