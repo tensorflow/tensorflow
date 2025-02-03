@@ -15,6 +15,9 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
