@@ -147,7 +147,7 @@ absl::StatusOr<Shape> MakeShapeWithLayoutInternal(
 
 template <typename T>
 const T& Deref(const T* ptr) {
-  DCHECK(ptr != nullptr);
+  CHECK_NE(ptr, nullptr);
   return *ptr;
 }
 

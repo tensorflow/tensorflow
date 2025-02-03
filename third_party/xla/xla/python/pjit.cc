@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -532,7 +533,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
     // PyArray inputs should have already been checked in
     // `xla::PyArgSignatureOfValue()` called by
     // `PjitFunction::ComputeCallSignature()`.
-    DCHECK(ifrt_array != nullptr) << "PyArray has been unexpectedly deleted.";
+    CHECK_NE(ifrt_array, nullptr) << "PyArray has been unexpectedly deleted.";
 
     const auto& ifrt_sharding = ifrt_array->sharding();
     if (sharding_num_devices == 1 &&
