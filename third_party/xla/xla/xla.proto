@@ -376,8 +376,6 @@ message DebugOptions {
   // Whether to use cuBLASLt for GEMMs on GPUs.
   bool xla_gpu_enable_cublaslt = 166;
 
-  bool xla_gpu_enable_cudnn_fmha = 218;
-
   // Whether to use the cuDNN frontend API for convolutions when possible.
   bool xla_gpu_enable_cudnn_frontend = 160;
 
@@ -1155,8 +1153,9 @@ message DebugOptions {
   // xla_gpu_triton_fusion_level
   // xla_gpu_enable_bf16_3way_gemm
   // xla_gpu_enable_bf16_6way_gemm
+  // xla_gpu_enable_cudnn_fmha
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332, 361, 270, 229, 271, 279;
+      325, 326, 332, 361, 270, 229, 271, 279, 218;
 }
 
 // Contains flags which affects the GPU compilation result.

@@ -1812,8 +1812,6 @@ cc_library(
         "//xla/service/gpu/transforms:cublas_pad_for_gemms",
         "//xla/service/gpu/transforms:cudnn_custom_call_compiler",
         "//xla/service/gpu/transforms:cudnn_fused_conv_rewriter",
-        "//xla/service/gpu/transforms:cudnn_fused_mha_rewriter",
-        "//xla/service/gpu/transforms:cudnn_fused_mha_transpose_fusion",
         "//xla/service/gpu/transforms:cudnn_fusion_compiler",
         "//xla/service/gpu/transforms:cudnn_norm_rewriter",
         "//xla/service/gpu/transforms:cudnn_pad_for_convolutions",
