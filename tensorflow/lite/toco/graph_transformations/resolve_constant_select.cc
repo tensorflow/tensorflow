@@ -31,9 +31,8 @@ namespace toco {
 // This implementation is looking strictly for all-or-nothing on the select
 // condition. It's possible to enhance this by looking per-element and possibly
 // producing a Mul op.
-::tensorflow::Status ResolveConstantSelect::Run(Model* model,
-                                                std::size_t op_index,
-                                                bool* modified) {
+absl::Status ResolveConstantSelect::Run(Model* model, std::size_t op_index,
+                                        bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
