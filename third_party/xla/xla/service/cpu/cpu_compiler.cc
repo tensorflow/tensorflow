@@ -890,21 +890,6 @@ llvm::TargetOptions CompilerTargetOptions(
   return target_options;
 }
 
-llvm::CodeGenOptLevel CodeGenOptLevel(const HloModuleConfig& module_config) {
-  VLOG(2) << "backend_optimization_level: "
-          << module_config.debug_options().xla_backend_optimization_level();
-  switch (module_config.debug_options().xla_backend_optimization_level()) {
-    case 1:
-      return llvm::CodeGenOptLevel::Less;
-    case 2:
-      return llvm::CodeGenOptLevel::Default;
-    case 3:
-      return llvm::CodeGenOptLevel::Aggressive;
-    default:
-      return llvm::CodeGenOptLevel::None;
-  }
-}
-
 std::pair<LLVMCompiler::ModuleHook, LLVMCompiler::ModuleHook> GetIRModuleHooks(
     const HloModule& hlo_module,
     const LLVMCompiler::ModuleHook& user_pre_optimization_hook,
@@ -999,7 +984,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::TargetMachine> jit_target_machine,
       JitCompiler::InferTargetMachine(
-          CompilerTargetOptions(config), CodeGenOptLevel(config),
+          CompilerTargetOptions(config), IrCompiler::GetCodeGenOptLevel(config),
           CpuFeatureFromString(config.debug_options().xla_cpu_max_isa())));
 
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
@@ -1363,7 +1348,7 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
 
   // Options for compiling LLVM IR to machine code.
   IrCompiler::Options ir_compiler_options{
-      /*optimization_level=*/CodeGenOptLevel(config),
+      /*optimization_level=*/IrCompiler::GetCodeGenOptLevel(config),
       /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
       /*disable_expensive_passes=*/
@@ -1825,7 +1810,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       pie_level = llvm::PIELevel::Large;
       break;
   }
-  llvm::CodeGenOptLevel opt_level = CodeGenOptLevel(modules[0]->config());
+  llvm::CodeGenOptLevel opt_level =
+      IrCompiler::GetCodeGenOptLevel(modules[0]->config());
   std::shared_ptr<llvm::TargetMachine> target_machine =
       absl::WrapUnique(target->createTargetMachine(
           triple.getTriple(), options.cpu_name(), options.features(),
@@ -2130,7 +2116,7 @@ CpuExecutableAotCompilationResult::LoadExecutable(
   IrCompiler::TargetMachineBuilder target_machine_builder =
       JitCompiler::InferTargetMachineBuilder(
           std::move(CompilerTargetOptions(module->config())),
-          CodeGenOptLevel(config),
+          IrCompiler::GetCodeGenOptLevel(config),
           CpuFeatureFromString(debug_options.xla_cpu_max_isa()));
   TF_ASSIGN_OR_RETURN(auto target_machine, target_machine_builder());
 

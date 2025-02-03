@@ -151,7 +151,7 @@ class ElementalKernelRunnerTest(parameterized.TestCase):
     hlo_module, buffer_assignment = utilities.build_hlo_module(
         hlo_op, *hlo_parameters
     )
-    jit_compiler = testlib_cpu.JitCompiler()
+    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
     emitter = testlib_cpu.ElementalKernelEmitter(
         hlo_module.get_root_instruction(),
@@ -226,7 +226,7 @@ class ElementalComparisonKernelRunnerTest(parameterized.TestCase):
     hlo_module, buffer_assignment = utilities.build_hlo_module(
         hlo_op, lhs_param, rhs_param
     )
-    jit_compiler = testlib_cpu.JitCompiler()
+    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
     emitter = testlib_cpu.ElementalKernelEmitter(
         hlo_module.get_root_instruction(),
@@ -285,7 +285,7 @@ class HloModuleKernelRunnerTest(parameterized.TestCase):
     """.format(scalar_shape=scalar_shape, shape=shape)
 
     hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
-    jit_compiler = testlib_cpu.JitCompiler()
+    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
     emitter = testlib_cpu.ElementalKernelEmitter(
         hlo_module.get_root_instruction(),
@@ -356,7 +356,7 @@ class HloModuleKernelRunnerTest(parameterized.TestCase):
       )
 
       hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
-      jit_compiler = testlib_cpu.JitCompiler()
+      jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
       emitter = testlib_cpu.ElementalKernelEmitter(
           hlo_module.get_root_instruction(),

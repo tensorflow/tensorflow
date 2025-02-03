@@ -60,8 +60,11 @@ cc_library(
     deps = [
         ":polynomial_approximations",
         "//xla:util",
+        "//xla/service:hlo_module_config",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -75,7 +78,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 

@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Target/TargetMachine.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace xla::cpu {
 
@@ -80,6 +81,9 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   // Compiles a `module` to an ObjectFile.
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> operator()(
       llvm::Module& module) final;
+
+  static llvm::CodeGenOptLevel GetCodeGenOptLevel(
+      const HloModuleConfig& module_config);
 
  private:
   TargetMachineBuilder target_machine_builder_;
