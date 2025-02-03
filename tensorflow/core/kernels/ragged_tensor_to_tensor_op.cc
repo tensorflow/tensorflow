@@ -182,9 +182,9 @@ absl::Status CalculateOutputSize(INDEX_TYPE first_dim, OpKernelContext* c,
     }
 
     for (int i = 1; i <= ragged_rank_; ++i) {
-        if ((*result)[i] < 0) {
-            TF_RETURN_IF_ERROR(GetMaxWidth(c, i, &(*result)[i]));
-        }
+      if ((*result)[i] < 0) {
+        TF_RETURN_IF_ERROR(GetMaxWidth(c, i, &(*result)[i]));
+      }
     }
     return absl::OkStatus();
 }
