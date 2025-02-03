@@ -42,7 +42,7 @@ inline void LogDlError() {
 // one is found. Returns kLiteRtStatusErrorDynamicLoading if none of the shared
 // libraries are found.
 LiteRtStatus OpenLib(const std::vector<std::string>& so_paths,
-                     void** lib_handle);
+                     void** lib_handle, bool log_failure = false);
 
 // Loads shared library at given path. Logging can be disabled to probe for
 // shared libraries.

@@ -30,14 +30,14 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/core/filesystem.h"
 
 namespace litert::internal {
 
 LiteRtStatus OpenLib(const std::vector<std::string>& so_paths,
-                     void** lib_handle) {
+                     void** lib_handle, bool log_failure) {
   for (const auto& so_path : so_paths) {
-    if (OpenLib(so_path, lib_handle, /*log_failure=*/false) ==
-        kLiteRtStatusOk) {
+    if (OpenLib(so_path, lib_handle, log_failure) == kLiteRtStatusOk) {
       return kLiteRtStatusOk;
     }
   }
@@ -46,6 +46,7 @@ LiteRtStatus OpenLib(const std::vector<std::string>& so_paths,
 
 LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle,
                      bool log_failure) {
+  LITERT_LOG(LITERT_VERBOSE, "Loading shared library: %s\n", so_path.data());
 #ifdef RTLD_DEEPBIND
   void* res = ::dlopen(so_path.data(), RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND);
 #else
@@ -54,13 +55,15 @@ LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle,
 
   if (res == nullptr) {
     if (log_failure) {
-      LITERT_LOG(LITERT_ERROR, "Failed to load .so at path: %s\n",
+      LITERT_LOG(LITERT_WARNING, "Failed to load .so at path: %s\n",
                  so_path.data());
       LogDlError();
     }
     return kLiteRtStatusErrorDynamicLoading;
   }
   *lib_handle = res;
+  LITERT_LOG(LITERT_INFO, "Successfully loaded shared library: %s\n",
+             so_path.data());
   return kLiteRtStatusOk;
 }
 
@@ -74,20 +77,28 @@ LiteRtStatus CloseLib(void* lib_handle) {
 
 namespace {
 
+static constexpr absl::string_view kCompilerPluginLibPatternFmt =
+    "%sCompilerPlugin";
+
+static constexpr absl::string_view kSo = ".so";
+
 LiteRtStatus FindLiteRtSharedLibsHelper(const std::string& search_path,
                                         std::vector<std::string>& results) {
-  if (!std::filesystem::exists(search_path)) {
+  if (!Exists(search_path)) {
     return kLiteRtStatusErrorInvalidArgument;
   }
 
   const std::string compiler_plugin_lib_pattern =
-      absl::StrFormat("%s%s", kLiteRtSharedLibPrefix, "CompilerPlugin");
+      absl::StrFormat(kCompilerPluginLibPatternFmt, kLiteRtSharedLibPrefix);
+  // TODO implement path glob in core/filesystem.h and remove filesystem
+  // incldue from this file.
   for (const auto& entry : std::filesystem::directory_iterator(search_path)) {
     const auto& path = entry.path();
     if (entry.is_regular_file()) {
-      auto stem = path.stem().string();
-      auto ext = path.extension().string();
-      if (stem.find(compiler_plugin_lib_pattern) == 0 && ext == ".so") {
+      const auto stem = path.stem().string();
+      const auto ext = path.extension().string();
+      if (stem.find(compiler_plugin_lib_pattern) == 0 && kSo == ext) {
+        LITERT_LOG(LITERT_VERBOSE, "Found shared library: %s\n", path.c_str());
         results.push_back(path);
       }
     } else if (entry.is_directory()) {

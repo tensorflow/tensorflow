@@ -56,6 +56,7 @@ cc_library(
     hdrs = ["dynamic_loading.h"],
     linkopts = ["-ldl"],
     deps = [
+        ":filesystem",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
         "@com_google_absl//absl/strings:str_format",
