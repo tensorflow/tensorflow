@@ -405,7 +405,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
 
     multiplier[multiplier.size() - 1] = 1;
     for (int i = multiplier.size() - 2; i >= 0; --i) {
-        multiplier[i] = multiplier[i + 1] * output_size[i + 1];
+      multiplier[i] = multiplier[i + 1] * output_size[i + 1];
     }
     // Full size of the tensor.
     TensorShape output_shape;
