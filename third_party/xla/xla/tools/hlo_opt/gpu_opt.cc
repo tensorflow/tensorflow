@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dot_normalizer.h"
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
 #include "xla/service/gpu/transforms/gemm_broadcast_folding_rewriter.h"
+#include "xla/service/gpu/transforms/gemm_fusion.h"
 #include "xla/service/gpu/transforms/gemv_rewriter.h"
 #include "xla/service/gpu/transforms/pipelined_p2p_rewriter.h"
 #include "xla/service/gpu/transforms/reduce_scatter_creator.h"
@@ -51,9 +53,10 @@ limitations under the License.
 #include "xla/service/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_opt/compiled_opt_lib.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -114,6 +117,16 @@ class GpuOptProvider : public CompiledOptProvider {
 
   // Register only GPU specific passes here.
   void RegisterProviderPasses(HloModule& module) override {
+    auto device_description = GetDeviceDescription(&module);
+    se::GpuComputeCapability gpu_compute_capability;
+    if (device_description.ok()) {
+      gpu_compute_capability = device_description->gpu_compute_capability();
+    } else {
+      LOG(WARNING)
+          << "No compute capability specified, defaulting to Hopper. Use "
+             "--xla_gpu_target_config_filename= to specify a target config.";
+      gpu_compute_capability = stream_executor::CudaComputeCapability::Hopper();
+    }
     // go/keep-sorted start
     RegisterPass<gpu::AllGatherOptimizer>();
     RegisterPass<gpu::CuDnnCustomCallConverter>();
@@ -122,6 +135,7 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::DotNormalizer>();
     RegisterPass<gpu::DotOperandConverter>();
     RegisterPass<gpu::GemmBroadcastFoldingRewriter>();
+    RegisterPass<gpu::GemmFusion>(gpu_compute_capability);
     RegisterPass<gpu::GemvRewriter>();
     RegisterPass<gpu::PipelinedP2PRewriter>();
     RegisterPass<gpu::ReduceScatterCreator>();
@@ -137,15 +151,20 @@ class GpuOptProvider : public CompiledOptProvider {
   }
 
  private:
-  absl::StatusOr<std::string> LlvmIrBeforeOptimizations(
-      HloModule* optimized_module) {
+  absl::StatusOr<se::DeviceDescription> GetDeviceDescription(
+      const HloModule* module) {
     Compiler::CompileOptions opts;
-    TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
     TF_ASSIGN_OR_RETURN(
         Compiler::TargetConfig target_config,
         gpu::GpuCompiler::GetTargetConfig(
-            opts, optimized_module->config().debug_options(), executor));
+            opts, module->config().debug_options(), /*executor=*/nullptr));
+    return target_config.device_description;
+  }
 
+  absl::StatusOr<std::string> LlvmIrBeforeOptimizations(
+      HloModule* optimized_module) {
+    TF_ASSIGN_OR_RETURN(se::DeviceDescription device_description,
+                        GetDeviceDescription(optimized_module));
     TF_ASSIGN_OR_RETURN(se::Platform * platform,
                         PlatformUtil::GetPlatform(GetPlatformName()));
     TF_ASSIGN_OR_RETURN(Compiler * compiler,
@@ -154,12 +173,12 @@ class GpuOptProvider : public CompiledOptProvider {
     auto* gpu_compiler = static_cast<gpu::GpuCompiler*>(compiler);
     if (!optimized_module->has_schedule()) {
       TF_ASSIGN_OR_RETURN(gpu::ScheduleMetadata schedule_metadata,
-                          gpu::ScheduleGpuModule(
-                              optimized_module, gpu_compiler->GetPointerSize(),
-                              target_config.device_description));
+                          gpu::ScheduleGpuModule(optimized_module,
+                                                 gpu_compiler->GetPointerSize(),
+                                                 device_description));
       TF_RETURN_IF_ERROR(gpu_compiler->RunPostSchedulingPipelines(
           optimized_module, schedule_metadata.scheduler_mem_limit,
-          target_config.device_description));
+          device_description));
     }
 
     llvm::LLVMContext llvm_context;
@@ -168,8 +187,8 @@ class GpuOptProvider : public CompiledOptProvider {
         xla::gpu::CompileModuleToLlvmIr(
             optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),
             gpu_compiler->GetDataLayout(), platform->Name(), platform->id(),
-            target_config.device_description,
-            gpu_compiler->GetCanShareBuffer(target_config.device_description),
+            device_description,
+            gpu_compiler->GetCanShareBuffer(device_description),
             gpu_compiler->BufferSizeBytesFunction()));
     return llvm_ir::DumpToString(results.llvm_module.get());
   }
