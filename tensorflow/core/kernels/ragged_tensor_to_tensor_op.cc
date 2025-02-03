@@ -434,7 +434,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
 
       SetOutput(context, ragged_rank_, output_index, output_tensor);
     }
-}
+  }
   virtual void SetOutput(OpKernelContext* context, int ragged_rank,
                          const vector<INDEX_TYPE>& output_index,
                          Tensor* output_tensor) = 0;
