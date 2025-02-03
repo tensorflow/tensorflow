@@ -107,6 +107,15 @@ std::optional<HeapSimulator::Chunk> GetSlicedCopyAllocationChunk(
 
 }  // namespace
 
+std::string MemorySpaceToString(MemorySpace memory_space) {
+  switch (memory_space) {
+    case MemorySpace::kDefault:
+      return "def";
+    case MemorySpace::kAlternate:
+      return "alt";
+  }
+}
+
 std::optional<int64_t> Allocation::cross_program_prefetch_index() const {
   return cross_program_prefetch_index_;
 }
@@ -308,8 +317,7 @@ absl::Status PinnedAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
 }
 
 std::string PinnedAllocation::ToString() const {
-  std::string memory_space_str =
-      memory_space() == MemorySpace::kDefault ? "def" : "alt";
+  std::string memory_space_str = MemorySpaceToString(memory_space());
   std::optional<HeapSimulator::Chunk> chunk = maybe_chunk();
   if (chunk) {
     absl::StrAppend(&memory_space_str, " (off: ", chunk->offset,
@@ -426,8 +434,7 @@ void CopyAllocation::MarkNeeded(
 }
 
 std::string CopyAllocation::ToString() const {
-  std::string memory_space_str =
-      memory_space() == MemorySpace::kDefault ? "def" : "alt";
+  std::string memory_space_str = MemorySpaceToString(memory_space());
   std::optional<HeapSimulator::Chunk> chunk = maybe_chunk();
   if (chunk) {
     absl::StrAppend(&memory_space_str, " (off: ", chunk->offset,
@@ -692,9 +699,9 @@ bool SlicedCopyAllocation::operator==(const SlicedCopyAllocation& other) const {
 }
 
 std::string SlicedCopyAllocation::ToString() const {
-  std::string memory_space_str = "def";
+  std::string memory_space_str = MemorySpaceToString(memory_space());
   if (memory_space() == MemorySpace::kAlternate) {
-    memory_space_str = absl::StrCat("alt (off: ", maybe_chunk()->offset, ")");
+    absl::StrAppend(&memory_space_str, " (off: ", maybe_chunk()->offset, ")");
   }
   return absl::StrCat(
       "Sliced Copy Allocation in ", memory_space_str,
