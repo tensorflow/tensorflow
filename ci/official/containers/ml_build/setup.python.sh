@@ -24,7 +24,11 @@ VERSION=$1
 REQUIREMENTS=$2
 
 # Install Python packages for this container's version
-if [[ ${VERSION} == "python3.13" || ${VERSION} == "python3.12" ]]; then
+if [[ ${VERSION} == "python3.13-nogil" ]]; then
+  cat >pythons.txt <<EOF
+$VERSION
+EOF
+elif [[ ${VERSION} == "python3.13" || ${VERSION} == "python3.12" ]]; then
   cat >pythons.txt <<EOF
 $VERSION
 $VERSION-dev
