@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/buffer_value.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
@@ -58,6 +57,7 @@ limitations under the License.
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
 #include "xla/service/gpu/model/sol_latency_estimator.h"
 #include "xla/service/gpu/transforms/async_collective_annotator.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/transforms/pgle_accuracy_checker.h"
 #include "xla/service/gpu/transforms/schedule_postprocessing.h"
 #include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
@@ -88,7 +88,7 @@ bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCollectivePermuteStart:
-      return !IsSyncCollective(&instr);
+      return !IsGPUSyncCollective(instr);
     case HloOpcode::kAsyncStart:
       // Start async ops as early as possible to allow more concurrency.
       return true;
@@ -234,7 +234,7 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
   auto is_sync_start = [](const HloInstruction* instr) {
     return hlo_query::IsAsyncCollectiveStartOp(instr,
                                                /*include_send_recv=*/true) &&
-           IsSyncCollective(instr);
+           IsGPUSyncCollective(*instr);
   };
 
   for (HloInstruction* instr : input.instructions()) {
@@ -502,7 +502,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
         config, std::move(gpu_latency_estimator), profile.value(),
         std::move(aggregator));
     LOG(INFO) << "Found profile, using profile guided latency estimator";
-    LOG(INFO) << "Profile:\n" << profile->DebugString();
+    VLOG(1) << "Profile:\n" << profile->DebugString();
     return pg_latency_estimator;
   }
 
