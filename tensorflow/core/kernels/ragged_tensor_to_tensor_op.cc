@@ -432,7 +432,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
         new_output_index.clear();
       }
 
-        SetOutput(context, ragged_rank_, output_index, output_tensor);
+      SetOutput(context, ragged_rank_, output_index, output_tensor);
     }
 }
   virtual void SetOutput(OpKernelContext* context, int ragged_rank,
