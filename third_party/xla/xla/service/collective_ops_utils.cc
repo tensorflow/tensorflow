@@ -757,6 +757,9 @@ bool IsNonFusionCollective(const HloInstruction* instruction) {
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncDone:
       return IsNonFusionCollective(instruction->async_wrapped_instruction());
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
+      return !Cast<HloSendRecvInstruction>(instruction)->is_host_transfer();
     default:
       return false;
   }
