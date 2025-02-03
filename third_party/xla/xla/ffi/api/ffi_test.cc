@@ -352,6 +352,61 @@ TEST(FfiTest, FutureRace) {
   }
 }
 
+TEST(FfiTest, CountDownSuccess) {
+  CountDownPromise counter(2);
+  Future future(counter);
+  EXPECT_FALSE(counter.CountDown());
+  EXPECT_TRUE(counter.CountDown());
+  future.OnReady([](const std::optional<Error>& error) {
+    EXPECT_FALSE(error.has_value());
+  });
+}
+
+TEST(FfiTest, CountDownError) {
+  CountDownPromise counter(3);
+  Future future(counter);
+  EXPECT_FALSE(counter.CountDown());
+  EXPECT_FALSE(counter.CountDown(Error(ErrorCode::kInternal, "Test error")));
+  EXPECT_TRUE(counter.CountDown());
+  future.OnReady([](const std::optional<Error>& error) {
+    EXPECT_TRUE(error.has_value());
+    EXPECT_THAT(error->message(), HasSubstr("Test error"));
+  });
+}
+
+TEST(FfiTest, CountDownSuccessFromThreadPool) {
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "ffi-test", 2);
+
+  CountDownPromise counter(2);
+  Future future(counter);
+
+  future.OnReady([](const std::optional<Error>& error) {
+    EXPECT_FALSE(error.has_value());
+  });
+
+  for (int64_t i = 0; i < 2; ++i) {
+    pool.Schedule([counter]() mutable { counter.CountDown(); });
+  }
+}
+
+TEST(FfiTest, CountDownErrorFromThreadPool) {
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "ffi-test", 2);
+
+  CountDownPromise counter(3);
+  Future future(counter);
+
+  future.OnReady([](const std::optional<Error>& error) {
+    EXPECT_TRUE(error.has_value());
+    EXPECT_THAT(error->message(), HasSubstr("Test error"));
+  });
+
+  pool.Schedule([counter]() mutable { counter.CountDown(); });
+  pool.Schedule([counter]() mutable {
+    counter.CountDown(Error(ErrorCode::kInternal, "Test error"));
+  });
+  pool.Schedule([counter]() mutable { counter.CountDown(); });
+}
+
 TEST(FfiTest, ReturnError) {
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
