@@ -138,7 +138,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     return std::max(index_length - first_equal_index, max_width);
   }
 
-absl::Status CalculateOutputSize(INDEX_TYPE first_dim, OpKernelContext* c,
+ absl::Status CalculateOutputSize(INDEX_TYPE first_dim, OpKernelContext* c,
                                    vector<INDEX_TYPE>* result) {
     if (c->input(kValueInputIndex).NumElements() == 0) {
         return errors::InvalidArgument("Invalid row_splits for empty values");
