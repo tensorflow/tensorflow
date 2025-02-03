@@ -18,6 +18,8 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 
+#include <iostream>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -73,6 +75,9 @@ inline static LiteRtStatus ResolveLibSymbol(void* lib_handle,
 // prefixed with "libLiteRtCompilerPlugin".
 LiteRtStatus FindLiteRtSharedLibs(absl::string_view search_path,
                                   std::vector<std::string>& results);
+
+// Get details about the dynamic library including its .so dependencies.
+void DLLInfo(void* lib_handle, std::ostream& out = std::cerr);
 
 }  // namespace litert::internal
 
