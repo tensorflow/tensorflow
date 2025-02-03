@@ -16,13 +16,17 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_READ_NUMA_NODE_H_
 #define XLA_STREAM_EXECUTOR_GPU_READ_NUMA_NODE_H_
 
-#include <string>
+#include <optional>
+
+#include "absl/strings/string_view.h"
 
 namespace stream_executor::gpu {
 
 // Attempts to read the NUMA node corresponding to the GPU device's PCI bus out
-// of SysFS. Returns -1 if it cannot.
-int ReadNumaNode(const std::string& pci_bus_id, int device_ordinal);
+// of SysFS. Returns an empty optional if no value could be determined, returns
+// tsl::port::kNUMANoAffinity if the kernel reports a negative value.
+std::optional<int> ReadNumaNode(absl::string_view pci_bus_id,
+                                int device_ordinal);
 
 }  // namespace stream_executor::gpu
 
