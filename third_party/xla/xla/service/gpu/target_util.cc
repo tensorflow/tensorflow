@@ -462,15 +462,8 @@ void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
                                  llvm::IRBuilderBase* b) {
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   if (target_triple.isNVPTX()) {
-    // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
-    // treats function as a CUDA kernel.
-    llvm::LLVMContext& context = module->getContext();
-    llvm::NamedMDNode* nvvm_annotations_node =
-        module->getOrInsertNamedMetadata("nvvm.annotations");
-    nvvm_annotations_node->addOperand(llvm::MDNode::get(
-        context, {llvm::ConstantAsMetadata::get(func),
-                  llvm::MDString::get(context, "kernel"),
-                  llvm::ConstantAsMetadata::get(b->getInt32(1))}));
+    // Attach information so NVPTX can recognize function as a CUDA kernel.
+    func->setCallingConv(llvm::CallingConv::PTX_Kernel);
 
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
     // Attach information so AMDGPU can recognize function as a AMDGPU kernel.
