@@ -122,12 +122,6 @@ cc_library(
 )
 
 cc_library(
-    name = "test_macros",
-    hdrs = ["test_macros.h"],
-    deps = ["//tensorflow/lite/experimental/litert/c:litert_common"],
-)
-
-cc_library(
     name = "matchers",
     testonly = True,
     hdrs = ["matchers.h"],
