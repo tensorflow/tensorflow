@@ -177,7 +177,8 @@ TF::StatefulPartitionedCallOp MakeFuncCaller(
       mlir::SymbolRefAttr::get(builder.getContext(), func.getSymName());
   auto result_types = func.getResultTypes();
   auto caller = builder.create<TF::StatefulPartitionedCallOp>(
-      loc, result_types, operands.getArrayRef(), symbol,
+      loc, result_types, operands.getArrayRef(), /*args_attrs=*/nullptr,
+      /*res_attrs=*/nullptr, symbol,
       /*config=*/builder.getStringAttr(""),
       /*config_proto=*/builder.getStringAttr(""),
       /*executor_type=*/builder.getStringAttr(""));
