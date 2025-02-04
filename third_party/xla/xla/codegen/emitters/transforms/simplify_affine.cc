@@ -46,13 +46,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_map.h"
 
 namespace xla {
-namespace gpu {
+namespace emitters {
 namespace {
 
 using mlir::AffineBinaryOpExpr;
@@ -78,7 +77,7 @@ using mlir::affine::AffineApplyOp;
 namespace arith = mlir::arith;
 
 #define GEN_PASS_DEF_SIMPLIFYAFFINEPASS
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+#include "xla/codegen/emitters/transforms/passes.h.inc"
 
 int Distance(ImplicitLocOpBuilder& builder, Value a) {
   auto* block = builder.getInsertionBlock();
@@ -326,5 +325,5 @@ std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass() {
   return std::make_unique<SimplifyAffinePass>();
 }
 
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla

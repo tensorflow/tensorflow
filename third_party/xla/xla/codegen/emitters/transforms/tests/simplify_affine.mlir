@@ -1,4 +1,4 @@
-// RUN: emitters_opt --allow-unregistered-dialect %s -split-input-file -xla-gpu-simplify-affine | FileCheck %s
+// RUN: emitters_opt --allow-unregistered-dialect %s -split-input-file -xla-simplify-affine | FileCheck %s
 
 func.func @op_and_for_ranges(%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: !llvm.ptr) {
   %c0 = arith.constant 0 : index
