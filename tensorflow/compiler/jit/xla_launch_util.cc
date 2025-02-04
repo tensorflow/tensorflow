@@ -45,6 +45,8 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/framework/device_id_utils.h"
 #include "xla/tsl/framework/serving_device_selector_policies.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_serving_device_selector.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
@@ -61,8 +63,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

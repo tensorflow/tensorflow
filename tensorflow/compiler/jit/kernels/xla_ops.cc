@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -80,7 +81,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "tsl/platform/statusor.h"
 
 // OP_REQUIRES_OK_RETURN is the same as OP_REQUIRES_OK except that
 // in error case, it returns RET instead of void.

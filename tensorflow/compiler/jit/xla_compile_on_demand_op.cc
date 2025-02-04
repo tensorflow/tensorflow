@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/pjrt/tf_pjrt_client.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -57,7 +58,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {

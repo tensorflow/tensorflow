@@ -21,11 +21,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 

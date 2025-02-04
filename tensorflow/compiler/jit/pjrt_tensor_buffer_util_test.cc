@@ -24,13 +24,13 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

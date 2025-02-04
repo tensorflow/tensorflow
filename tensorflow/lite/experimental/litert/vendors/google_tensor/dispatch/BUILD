@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "litert_dynamic_lib")
+load("//tensorflow/lite/experimental/litert/build_common:litert_build_defs.bzl", "copy_file", "litert_dynamic_lib")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -62,6 +62,13 @@ litert_dynamic_lib(
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/strings:string_view",
     ],
+)
+
+# Copies the shared library so that it is available for use in test data as libLiteRtDispatch.so.
+copy_file(
+    name = "copy_dispatch_api_so",
+    src = "//tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch:dispatch_api_so",
+    target = "libLiteRtDispatch.so",
 )
 
 cc_test(
