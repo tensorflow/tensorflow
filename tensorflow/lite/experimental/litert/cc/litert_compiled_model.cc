@@ -212,9 +212,28 @@ Expected<std::vector<TensorBuffer>> CompiledModel::CreateInputOutputBuffers(
   return tensor_buffers;
 }
 
-Expected<void> CompiledModel::Run(
+Expected<void> CompiledModel::RunCApiHelper(LiteRtParamIndex signature_index,
+                                            size_t num_input_buffers,
+                                            LiteRtTensorBuffer* input_buffers,
+                                            size_t num_output_buffers,
+                                            LiteRtTensorBuffer* output_buffers,
+                                            bool& async) const {
+  LiteRtStatus status =
+      async ? LiteRtRunCompiledModelAsync(
+                  Get(), signature_index, num_input_buffers, input_buffers,
+                  num_output_buffers, output_buffers, &async)
+            : LiteRtRunCompiledModel(Get(), signature_index, num_input_buffers,
+                                     input_buffers, num_output_buffers,
+                                     output_buffers);
+  if (status != kLiteRtStatusOk) {
+    return Unexpected(status, "Failed to invoke the compiled model");
+  }
+  return {};
+}
+
+Expected<void> CompiledModel::RunHelper(
     size_t signature_index, const std::vector<TensorBuffer>& input_buffers,
-    const std::vector<TensorBuffer>& output_buffers) const {
+    const std::vector<TensorBuffer>& output_buffers, bool& async) const {
   auto input_buffers_ptr =
       std::make_unique<LiteRtTensorBuffer[]>(input_buffers.size());
   for (int i = 0; i < input_buffers.size(); ++i) {
@@ -225,20 +244,16 @@ Expected<void> CompiledModel::Run(
   for (int i = 0; i < output_buffers.size(); ++i) {
     output_buffers_ptr[i] = output_buffers[i].Get();
   }
-  if (auto status = LiteRtRunCompiledModel(
-          Get(), signature_index, input_buffers.size(), input_buffers_ptr.get(),
-          output_buffers.size(), output_buffers_ptr.get());
-      status != kLiteRtStatusOk) {
-    return Unexpected(status, "Failed to invoke the compiled model");
-  }
-  return {};
+  return RunCApiHelper(signature_index, input_buffers.size(),
+                       input_buffers_ptr.get(), output_buffers.size(),
+                       output_buffers_ptr.get(), async);
 }
 
-Expected<void> CompiledModel::Run(
+Expected<void> CompiledModel::RunHelper(
     absl::string_view signature_key,
     const absl::flat_hash_map<absl::string_view, TensorBuffer>& input_map,
-    const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map)
-    const {
+    const absl::flat_hash_map<absl::string_view, TensorBuffer>& output_map,
+    bool& async) const {
   auto signature_index = model_.GetSignatureIndex(signature_key);
   if (!signature_index) {
     return Unexpected(kLiteRtStatusErrorNotFound,
@@ -272,13 +287,8 @@ Expected<void> CompiledModel::Run(
     }
     output_buffers_ptr[i] = it->second.Get();
   }
-  if (auto status = LiteRtRunCompiledModel(Get(), *signature_index, num_inputs,
-                                           input_buffers_ptr.get(), num_outputs,
-                                           output_buffers_ptr.get());
-      status != kLiteRtStatusOk) {
-    return Unexpected(status, "Failed to invoke the compiled model");
-  }
-  return {};
+  return RunCApiHelper(*signature_index, num_inputs, input_buffers_ptr.get(),
+                       num_outputs, output_buffers_ptr.get(), async);
 }
 
 }  // namespace litert

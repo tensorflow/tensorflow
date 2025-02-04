@@ -362,7 +362,10 @@ TEST(DispatchDelegate, CompiledModelAsync) {
   input_buffers[1].SetEvent(std::move(*input_event_1));
 
   // Start the model asynchronously.
-  compiled_model.Run(signature_index, input_buffers, output_buffers);
+  bool async;
+  compiled_model.RunAsync(signature_index, input_buffers, output_buffers,
+                          async);
+  ASSERT_TRUE(async);
   ASSERT_TRUE(output_buffers[0].HasEvent());
 
   // Set input values.

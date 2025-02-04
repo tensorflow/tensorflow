@@ -338,7 +338,7 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
 Expected<void> LiteRtCompiledModelT::Run(
     absl::string_view signature_key,
     const std::vector<LiteRtTensorBuffer>& input_buffers,
-    const std::vector<LiteRtTensorBuffer>& output_buffers) {
+    const std::vector<LiteRtTensorBuffer>& output_buffers, bool& async) {
   auto runner = GetSignatureRunner(signature_key);
   if (runner == nullptr) {
     return Unexpected(kLiteRtStatusErrorNotFound,
@@ -409,13 +409,35 @@ Expected<void> LiteRtCompiledModelT::Run(
     return Unexpected(kLiteRtStatusErrorRuntimeFailure, "Failed to invoke");
   }
 
+  if (async) {
+    // If the caller requested async execution, then set async to true if any of
+    // the output buffers have been assigned a synchronization event.
+    async = false;
+    for (auto& tb : output_buffers) {
+      async |= tb->HasEvent();
+    }
+  } else {
+    // If the caller has not requested async execution, then wait on
+    // synchronization events that have been attached to the outputs.
+    for (auto& tb : output_buffers) {
+      if (tb->HasEvent()) {
+        auto event = tb->GetEvent();
+        if (auto status = litert::Event(*event, /*owned=*/false)
+                              .Wait(/*timeout_in_ms=*/-1);
+            !status) {
+          return status;
+        }
+      }
+    }
+  }
+
   return {};
 }
 
 litert::Expected<void> LiteRtCompiledModelT::RunCApi(
     size_t signature_index, size_t num_input_buffers,
     LiteRtTensorBuffer* input_buffers, size_t num_output_buffers,
-    LiteRtTensorBuffer* output_buffers) {
+    LiteRtTensorBuffer* output_buffers, bool* async) {
   if (signature_index >= signature_keys_.size()) {
     return litert::Unexpected(
         kLiteRtStatusErrorIndexOOB,
@@ -431,6 +453,11 @@ litert::Expected<void> LiteRtCompiledModelT::RunCApi(
   for (int i = 0; i < num_output_buffers; ++i) {
     output_buffers_vec.push_back(std::move(output_buffers[i]));
   }
-  return Run(*signature_keys_[signature_index], input_buffers_vec,
-             output_buffers_vec);
+  bool async_ = async ? *async : false;
+  auto result = Run(*signature_keys_[signature_index], input_buffers_vec,
+                    output_buffers_vec, async_);
+  if (async) {
+    *async = async_;
+  }
+  return result;
 }
