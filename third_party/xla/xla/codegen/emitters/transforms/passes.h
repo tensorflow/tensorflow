@@ -44,6 +44,7 @@ std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(
 std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
 std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();
 std::unique_ptr<mlir::Pass> CreateSimplifyArithPass();
+std::unique_ptr<mlir::Pass> CreateUnswitchLoopsPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/codegen/emitters/transforms/passes.h.inc"

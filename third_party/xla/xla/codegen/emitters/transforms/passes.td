@@ -183,4 +183,52 @@ def SimplifyArithPass : Pass<"xla-simplify-arith", "mlir::func::FuncOp"> {
   let constructor = "CreateSimplifyArithPass()";
 }
 
+def UnswitchLoopsPass :
+   Pass<"xla-unswitch-loops", "mlir::func::FuncOp"> {
+  let summary = "Swaps scf.if and scf.for.";
+
+  let description = [{
+      Extracts `scf.if` ops with conditions that are independent of the loop
+      variable from `scf.for` by doing the following rewrite:
+
+      Before:
+
+      %cond = some_cond() : i1
+      %results = scf.for {
+        %some_val = scf.if %cond  {
+        } else {
+        }
+        scf.yield %some_val
+      }
+
+      After:
+
+      %cond = some_cond() : i1
+      %results = scf.if %cond {
+         %results = scf.for {
+            %some_val = scf.if %true  {
+            } else {
+            }
+         }
+         yield %results
+      } else {
+         %results = scf.for {
+            %some_val = scf.if %false  {
+            } else {
+            }
+         }
+         yield %results
+      }
+
+      This only triggers if there is a single `scf.if` op in the loop body (and
+      nothing else).
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect", "mlir::scf::SCFDialect"
+  ];
+
+  let constructor = "CreateUnswitchLoopsPass()";
+}
+
 #endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_PASSES_TD_

@@ -45,7 +45,6 @@ cc_library(
         "merge_pointers_to_same_slice.cc",
         "optimize_loops.cc",
         "peel_loops.cc",
-        "unswitch_loops.cc",
         "vectorize_loads_stores.cc",
     ],
     hdrs = ["passes.h"],

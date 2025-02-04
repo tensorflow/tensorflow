@@ -600,7 +600,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   // We need LICM before unswitching loops, because our loop unswitcher only
   // detects for loops with a single if inside them.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm.addNestedPass<FuncOp>(CreateUnswitchLoopsPass());
+  pm.addNestedPass<FuncOp>(emitters::CreateUnswitchLoopsPass());
   // We need LICM again after unswitching, because that can introduce new
   // opportunities for LICM. This would not be necessary if LICM also moved
   // instructions over ifs.
