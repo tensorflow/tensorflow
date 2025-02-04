@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/test_helpers.h"
 
 namespace xla {
 namespace {

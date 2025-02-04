@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/side_effect_util.h"
-#include "xla/test_helpers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
