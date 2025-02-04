@@ -132,6 +132,7 @@ cc_library(
     deps = [
         ":litert_detail",
         ":litert_event",
+        ":litert_expected",
         ":litert_handle",
         ":litert_model",
         "//tensorflow/lite/c:c_api_types",
@@ -139,8 +140,8 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_event",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
-        "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "@com_google_absl//absl/types:span",
+        "@opencl_headers",
     ],
 )
 

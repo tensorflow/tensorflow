@@ -63,6 +63,10 @@ cc_library(
     hdrs = [
         "opencl_wrapper.h",
     ],
+    visibility = [
+        "//tensorflow/lite/experimental/litert:__subpackages__",
+        "//third_party/odml/infra:__subpackages__",
+    ],
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

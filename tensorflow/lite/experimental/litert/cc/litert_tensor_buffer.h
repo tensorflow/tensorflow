@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "absl/types/span.h"
+#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -154,6 +155,22 @@ class TensorBuffer
 #else
     return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
                               "DMA-BUF is not supported on this platform");
+#endif
+  }
+
+  Expected<cl_mem> GetOpenClBuffer() const {
+#if LITERT_HAS_OPENCL_SUPPORT
+    cl_mem cl_mem;
+    if (LiteRtGetTensorBufferOpenClBuffer(Get(), &cl_mem) == kLiteRtStatusOk) {
+      return cl_mem;
+    } else {
+      return litert::Unexpected(
+          kLiteRtStatusErrorRuntimeFailure,
+          "Failed to get OpenCL buffer from tensor buffer");
+    }
+#else
+    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
+                              "OpenCL is not supported on this platform");
 #endif
   }
 
