@@ -41,6 +41,7 @@ std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(
     const std::string& gpu_device_info = "");
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(
     const stream_executor::DeviceDescription& device_description);
+std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
 std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
 std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();
 std::unique_ptr<mlir::Pass> CreateSimplifyArithPass();

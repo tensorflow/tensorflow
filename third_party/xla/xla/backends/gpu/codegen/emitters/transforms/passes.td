@@ -18,22 +18,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def MergePointersToSameSlicePass :
-   Pass<"xla-gpu-merge-pointers", "mlir::ModuleOp"> {
-  let summary = "Merges pointers that share slices.";
-
-  let description = [{
-      When a function has multiple pointer arguments with the same slice index,
-      merges them.
-  }];
-
-  let dependentDialects = [
-    "mlir::func::FuncDialect"
-  ];
-
-  let constructor = "CreateMergePointersToSameSlicePass()";
-}
-
 def ConvertIndexTypePass : Pass<"xla-gpu-convert-index-type", "mlir::ModuleOp"> {
   let summary = "Converts index types to module data layout index type.";
 

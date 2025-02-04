@@ -64,6 +64,24 @@ def FlattenTensorsPass : Pass<"xla-flatten-tensors", "mlir::ModuleOp"> {
   let constructor = "CreateFlattenTensorsPass()";
 }
 
+def ExpandFloatOpsPass : Pass<"xla-expand-float-ops", "mlir::ModuleOp"> {
+  let summary = "Expands float ops that are not natively supported.";
+
+  let description = [{
+     Not all float ops are natively supported, either because they don't exist
+     in hardware or they are too inaccurate.
+
+     This pass replaces these ops with alternative implementations.
+  }];
+
+  let dependentDialects = [
+    "mlir::arith::ArithDialect", "mlir::math::MathDialect",
+    "mlir::mhlo::MhloDialect"
+  ];
+
+  let constructor = "CreateExpandFloatOpsPass()";
+}
+
 def LowerTensorsPass : Pass<"xla-lower-tensors", "mlir::ModuleOp"> {
   let summary = "Lowers tensors to llvm pointers and loads/stores.";
 
@@ -91,24 +109,6 @@ def LowerTensorsPass : Pass<"xla-lower-tensors", "mlir::ModuleOp"> {
   let constructor = "CreateLowerTensorsPass()";
 }
 
-def ExpandFloatOpsPass : Pass<"xla-expand-float-ops", "mlir::ModuleOp"> {
-  let summary = "Expands float ops that are not natively supported.";
-
-  let description = [{
-     Not all float ops are natively supported, either because they don't exist
-     in hardware or they are too inaccurate.
-
-     This pass replaces these ops with alternative implementations.
-  }];
-
-  let dependentDialects = [
-    "mlir::arith::ArithDialect", "mlir::math::MathDialect",
-    "mlir::mhlo::MhloDialect"
-  ];
-
-  let constructor = "CreateExpandFloatOpsPass()";
-}
-
 def LowerToLLVMPass :
    Pass<"xla-lower-to-llvm", "mlir::ModuleOp"> {
   let summary = "Lowers to LLVM.";
@@ -130,6 +130,22 @@ def LowerToLLVMPass :
            "Whether the pass targets a 'cpu' or 'gpu'. If 'cpu', gpu_device_info_ must be empty.">,
   ];
   let constructor = "CreateLowerToLLVMPass()";
+}
+
+def MergePointersToSameSlicePass :
+   Pass<"xla-merge-pointers", "mlir::ModuleOp"> {
+  let summary = "Merges pointers that share slices.";
+
+  let description = [{
+      When a function has multiple pointer arguments with the same slice index,
+      merges them.
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect"
+  ];
+
+  let constructor = "CreateMergePointersToSameSlicePass()";
 }
 
 def PropagateSliceIndicesPass :
