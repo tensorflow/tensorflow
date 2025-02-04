@@ -21,18 +21,18 @@ limitations under the License.
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 
 namespace xla {
-namespace gpu {
+namespace emitters {
 
 #define GEN_PASS_DEF_ERASEDEADFUNCTIONSPASS
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+#include "xla/codegen/emitters/transforms/passes.h.inc"
 
 namespace {
 
 struct CallInfo {
-  PureCallOp call;
+  xla::PureCallOp call;
   int count;
 };
 
@@ -82,5 +82,5 @@ CreateEraseDeadFunctionsPass() {
   return std::make_unique<EraseDeadFunctionsPass>();
 }
 
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla

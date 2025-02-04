@@ -577,7 +577,7 @@ void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(CreateSimplifyArithPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(CreateEraseDeadFunctionsPass());
+  pm.addPass(emitters::CreateEraseDeadFunctionsPass());
   pm.addPass(mlir::createCSEPass());
 }
 

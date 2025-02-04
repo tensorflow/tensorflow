@@ -459,6 +459,10 @@ constexpr bool IsIntegralType(PrimitiveType type) {
   return IsUnsignedIntegralType(type) || IsSignedIntegralType(type);
 }
 
+constexpr bool Is8BitIntegralType(PrimitiveType type) {
+  return type == S8 || type == U8;
+}
+
 template <typename R, typename F>
 constexpr R IntegralTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsIntegralType(type))) {

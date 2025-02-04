@@ -811,8 +811,11 @@ GemmFusionAutotunerImpl::GenerateConfigs(const HloFusionInstruction& fusion) {
 
   if (!debug_options_.xla_gpu_experimental_disable_binary_libraries()) {
     // Add cuBLAS reference config, if available.
+    TF_ASSIGN_OR_RETURN(int64_t rhs_contracting_index,
+                        ContractingDimensionIndex(*dot, /*operand_number=*/1));
     if (algorithm_util::IsSupportedByCublasOrCublasLt(
-            dot->precision_config().algorithm(), GetComputeCapability()) &&
+            dot->precision_config().algorithm(), GetComputeCapability(), dot,
+            rhs_contracting_index) &&
         !dot->sparse_operands() && IsAutotuningEnabled()) {
       configs.push_back(CuBlasConfig{});
     }

@@ -1001,10 +1001,8 @@ class MatMulEmitterHelper {
         dims_(dims),
         launch_config_(launch_config) {}
 
-  // TODO(b/266862493): Accumulator can be integer too.
-  // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
-  absl::StatusOr<mlir::FloatType> GetDotAccumulatorType(
-      EmitterLocOpBuilder& b) {
+  // TODO(b/266862493): Add support for more types as needed.
+  absl::StatusOr<mlir::Type> GetDotAccumulatorType(EmitterLocOpBuilder& b) {
     const PrecisionConfig::Algorithm algorithm =
         dot_instr_->precision_config().algorithm();
 
@@ -1028,8 +1026,11 @@ class MatMulEmitterHelper {
           TritonType(b, dot_instr_->operand(1)->shape().element_type()));
       TF_RET_CHECK(lhs_ty == rhs_ty);
       Type dot_input_ty = lhs_ty;
-      // TODO(b/266862493): Accumulator can be integer too.
-      // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
+
+      // Currently allowing 8x8-bit ints -> i32.
+      if (dot_input_ty == b.getIntegerType(8) && dot_output_ty.isInteger(32)) {
+        return b.getI32Type();
+      }
       return (dot_output_ty.isF64() && dot_input_ty.isF64()) ? b.getF64Type()
                                                              : b.getF32Type();
     }
@@ -2193,7 +2194,7 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
   MatMulEmitterHelper emitter(libdevice_path, device_info, dot_instr, index_ty,
                               dims, launch_config, analysis);
 
-  TF_ASSIGN_OR_RETURN(mlir::FloatType acc_ty, emitter.GetDotAccumulatorType(b));
+  TF_ASSIGN_OR_RETURN(mlir::Type acc_ty, emitter.GetDotAccumulatorType(b));
 
   ma::ConstantOp accumulator_init =
       CreateConst(b, acc_ty, 0, {block_m, block_n});
