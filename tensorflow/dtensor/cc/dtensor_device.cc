@@ -16,25 +16,30 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dtensor_device.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
+#include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -69,6 +74,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
