@@ -35,11 +35,13 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/window_util.h"
@@ -48,17 +50,12 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class ConvolutionTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
+class ConvolutionTest : public ClientLibraryTestRunnerMixin<
+                            HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  public:
   // Returns true if the test is running on ROCm.
   bool IsRocm() {
-    return std::holds_alternative<se::RocmComputeCapability>(
-        backend()
-            .platform()
-            ->ExecutorForDevice(0)
-            .value()
-            ->GetDeviceDescription()
-            .gpu_compute_capability());
+    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
   }
 
  protected:
@@ -1660,15 +1657,12 @@ XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
   ComputeAndCompare(&builder, {&input_data_literal}, error_spec_);
 }
 
-class ConvolutionHloTest : public HloTestBase {
+class ConvolutionHloTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  public:
   // Returns true if the test is running on ROCm.
   bool IsRocm() {
-    return std::holds_alternative<se::RocmComputeCapability>(
-        backend()
-            .default_stream_executor()
-            ->GetDeviceDescription()
-            .gpu_compute_capability());
+    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
   }
 };
 

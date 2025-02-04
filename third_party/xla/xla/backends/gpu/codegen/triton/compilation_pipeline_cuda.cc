@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
-#include <utility>
 
 #include "nvidia/include/NVGPUToLLVM/NVGPUToLLVMPass.h"
 #include "nvidia/include/TritonNVIDIAGPUToLLVM/Passes.h"
@@ -28,7 +27,9 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/xla_triton_passes.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
@@ -46,7 +47,9 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
                                   int num_ctas, int num_stages,
                                   mt::nvidia_gpu::ClusterInfo& out_cluster_info,
                                   bool is_xla_fusion) {
-  auto cc = se::CudaComputeCapability(std::move(arch_name));
+  TF_ASSIGN_OR_RETURN(
+      const stream_executor::CudaComputeCapability cc,
+      stream_executor::CudaComputeCapability::FromString(arch_name));
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
 

@@ -635,6 +635,33 @@ typedef XLA_FFI_Error* XLA_FFI_ThreadPool_NumThreads(
     XLA_FFI_ThreadPool_NumThreads_Args* args);
 
 //===----------------------------------------------------------------------===//
+// RunId
+//===----------------------------------------------------------------------===//
+
+// RunId is a unique identifier for a particular "logical execution" of an XLA
+// model.
+//
+// A logical execution might encompass multiple executions of one or more
+// HloModules. Runs that are part of the same logical execution can communicate
+// via collective ops, whereas runs that are part of different logical
+// executions are isolated.
+//
+// Corresponds to `::xla::RunId` (see `xla/executable_run_options.h`).
+
+struct XLA_FFI_RunId_Get_Args {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+
+  XLA_FFI_ExecutionContext* ctx;
+  int64_t run_id;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_RunId_Get_Args, run_id);
+
+// Returns a unique identifier for the current logical execution.
+typedef XLA_FFI_Error* XLA_FFI_RunId_Get(XLA_FFI_RunId_Get_Args* args);
+
+//===----------------------------------------------------------------------===//
 // Metadata extension
 //===----------------------------------------------------------------------===//
 
@@ -682,6 +709,7 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_Create);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetAvailable);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetError);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_RunId_Get);
 };
 
 #undef _XLA_FFI_API_STRUCT_FIELD

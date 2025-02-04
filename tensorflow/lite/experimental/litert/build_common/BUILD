@@ -20,4 +20,6 @@ package(
 exports_files(srcs = [
     "export_litert_only_darwin.lds",
     "export_litert_only_linux.lds",
+    "export_litert_runtime_only_darwin.lds",
+    "export_litert_runtime_only_linux.lds",
 ])

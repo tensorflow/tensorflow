@@ -101,7 +101,7 @@ void LoadOpenCLFunctions(HMODULE libopencl);
 void LoadOpenCLFunctions(void* libopencl, bool use_wrapper);
 #endif
 
-absl::Status LoadOpenCL() {
+absl::Status LoadOpenCLOnce() {
 #ifdef __WINDOWS__
   HMODULE libopencl = LoadLibraryA("OpenCL.dll");
   if (libopencl) {
@@ -166,6 +166,11 @@ absl::Status LoadOpenCL() {
   return absl::UnknownError(
       absl::StrCat("Can not open OpenCL library on this device - ", error));
 #endif
+}
+
+absl::Status LoadOpenCL() {
+  static auto* status = new absl::Status(LoadOpenCLOnce());
+  return *status;
 }
 
 void LoadOpenCLFunctionExtensions(cl_platform_id platform_id) {

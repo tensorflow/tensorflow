@@ -142,7 +142,7 @@ class CompiledModel
 
   static Expected<CompiledModel> Create(
       litert::Environment& env, litert::Model& model,
-      LiteRtHwAccelerators hardware_accelerator) {
+      LiteRtHwAccelerators hardware_accelerator = kLiteRtHwAcceleratorCpu) {
     LITERT_ASSIGN_OR_RETURN(auto options, Options::Create());
     options.SetHardwareAccelerators(hardware_accelerator);
     return Create(env, model, std::move(options));

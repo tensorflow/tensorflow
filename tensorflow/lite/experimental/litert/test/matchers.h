@@ -75,26 +75,48 @@ class IsOkMatcher {
   template <class V>
   class Impl : public ::testing::MatcherInterface<V> {
     template <class T>
-    bool MatchAndExplainImpl(const ::litert::Expected<T>& value) const {
-      return value.HasValue();
+    bool MatchAndExplainImpl(const ::litert::Expected<T>& value,
+                             testing::MatchResultListener* listener) const {
+      if (!value.HasValue()) {
+        if (listener) {
+          *listener << "error is " << value.Error();
+        }
+        return false;
+      }
+      return true;
     }
 
-    bool MatchAndExplainImpl(const ::litert::Unexpected&) const {
+    bool MatchAndExplainImpl(const ::litert::Unexpected& unexpected,
+                             testing::MatchResultListener* listener) const {
+      if (listener) {
+        *listener << "error is " << unexpected.Error();
+      }
       return false;
     }
 
-    bool MatchAndExplainImpl(const ::litert::Error&) const { return false; }
+    bool MatchAndExplainImpl(const ::litert::Error& e,
+                             testing::MatchResultListener* listener) const {
+      if (listener) {
+        *listener << "error is " << e;
+      }
+      return false;
+    }
 
-    bool MatchAndExplainImpl(const LiteRtStatus& status) const {
-      return status == kLiteRtStatusOk;
+    bool MatchAndExplainImpl(const LiteRtStatus& status,
+                             testing::MatchResultListener* listener) const {
+      if (status != kLiteRtStatusOk) {
+        *listener << "status is " << LiteRtGetStatusString(status);
+        return false;
+      }
+      return true;
     }
 
    public:
     using is_gtest_matcher = void;
 
-    bool MatchAndExplain(V value,
-                         testing::MatchResultListener*) const override {
-      return MatchAndExplainImpl(value);
+    bool MatchAndExplain(
+        V value, testing::MatchResultListener* listener) const override {
+      return MatchAndExplainImpl(value, listener);
     }
 
     void DescribeTo(std::ostream* os) const override {
@@ -173,7 +195,7 @@ class IsErrorMatcher {
       if (status == kLiteRtStatusOk ||
           (status_.has_value() && status != status_.value())) {
         if (listener) {
-          *listener << "status doesn't match";
+          *listener << "status is " << LiteRtGetStatusString(status);
         }
         return false;
       }
@@ -189,8 +211,11 @@ class IsErrorMatcher {
     template <class T>
     bool MatchAndExplainImpl(const ::litert::Expected<T>& value,
                              testing::MatchResultListener* listener) const {
-      return value.HasValue() ? false
-                              : MatchAndExplainImpl(value.Error(), listener);
+      if (value.HasValue()) {
+        *listener << "expected holds a value";
+        return false;
+      }
+      return MatchAndExplainImpl(value.Error(), listener);
     }
 
     bool MatchAndExplainImpl(const ::litert::Unexpected& e,
@@ -214,7 +239,7 @@ class IsErrorMatcher {
         *os << "is" << (negation ? " not" : "") << " an error";
         const char* sep = " with ";
         if (status_.has_value()) {
-          *os << sep << "status code " << status_.value();
+          *os << sep << "status " << LiteRtGetStatusString(status_.value());
           sep = " and ";
         }
         if (msg_.has_value()) {

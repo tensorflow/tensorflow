@@ -4507,11 +4507,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleMaximum(
   if (primitive_util::IsIntegralType(ty) ||
       (primitive_util::IsFloatingPointType(ty) &&
        options_.minmax_propagate_nan())) {
-    Literal min_val = LiteralUtil::MinValue(ty);
-    if (IsAll(lhs, min_val)) {
+    // Note that `lhs` and `rhs` can have a different element type than
+    // `maximum` if we are dealing with floating point types.
+    PrimitiveType lhs_ty = lhs->shape().element_type();
+    PrimitiveType rhs_ty = rhs->shape().element_type();
+    Literal min_val_lhs = LiteralUtil::MinValue(lhs_ty);
+    if (rhs_ty == ty && IsAll(lhs, min_val_lhs)) {
       return ReplaceInstruction(maximum, rhs);
     }
-    if (IsAll(rhs, min_val)) {
+    Literal min_val_rhs = LiteralUtil::MinValue(rhs_ty);
+    if (lhs_ty == ty && IsAll(rhs, min_val_rhs)) {
       return ReplaceInstruction(maximum, lhs);
     }
   }
@@ -4612,11 +4617,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleMinimum(
   if (primitive_util::IsIntegralType(ty) ||
       (primitive_util::IsFloatingPointType(ty) &&
        options_.minmax_propagate_nan())) {
-    Literal max_val = LiteralUtil::MaxValue(ty);
-    if (IsAll(lhs, max_val)) {
+    // Note that `lhs` and `rhs` can have a different element type than
+    // `minimum` if we are dealing with floating point types.
+    PrimitiveType lhs_ty = lhs->shape().element_type();
+    PrimitiveType rhs_ty = rhs->shape().element_type();
+    Literal max_val_lhs = LiteralUtil::MaxValue(lhs_ty);
+    if (rhs_ty == ty && IsAll(lhs, max_val_lhs)) {
       return ReplaceInstruction(minimum, rhs);
     }
-    if (IsAll(rhs, max_val)) {
+    Literal max_val_rhs = LiteralUtil::MaxValue(rhs_ty);
+    if (lhs_ty == ty && IsAll(rhs, max_val_rhs)) {
       return ReplaceInstruction(minimum, lhs);
     }
   }

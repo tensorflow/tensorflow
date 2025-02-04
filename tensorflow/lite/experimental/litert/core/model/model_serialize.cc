@@ -14,6 +14,8 @@
 
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
 
+#include <sys/types.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -33,6 +35,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/dispatch_op_schema.h"
+#include "tensorflow/lite/experimental/litert/core/insert_order_map.h"
 #include "tensorflow/lite/experimental/litert/core/model/litert_to_flatbuffer.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
@@ -57,11 +60,13 @@ TflOpCodePtr MakeCustomOpCode(std::string custom_code_name) {
 // Utility for accessing flatbuffer state and other relevant state.
 class SerializationContext {
  public:
-  struct TflExternalBufferRef {
-    size_t subgraph_ind;
-    size_t op_ind;
-    LiteRtModelT::ExternalBufferId buf_id;
-  };
+  // Subgraph and op index pair.
+  using TflOpInd = std::pair<size_t, size_t>;
+  using TflOpAssetMap =
+      absl::flat_hash_map<TflOpInd, LiteRtModelT::OpAssetReference>;
+  using TflBufferInd = uint32_t;
+  using TflOffsetTensorMap =
+      absl::flat_hash_map<TflBufferInd, LiteRtModelT::BufferId>;
 
   explicit SerializationContext(uint32_t dispatch_op_code_ind,
                                 LiteRtModelT& litert_model)
@@ -78,17 +83,47 @@ class SerializationContext {
 
   LiteRtModelT& LitertModel() { return litert_model_; }
 
-  // Move given buffer into tfl model and get its index.
-  uint32_t SubmitBuffer(TflBufferPtr tfl_buffer) {
-    tfl_model_->buffers.push_back(std::move(tfl_buffer));
-    return tfl_model_->buffers.size() - 1;
+  LiteRtStatus HandleTensorBuffer(TflTensor& tfl_tensor,
+                                  const LiteRtTensorT& litert_tensor) {
+    const auto litert_buf_id = litert_tensor.Weights().GetBufferId();
+    auto* buffer_manager = litert_tensor.Weights().GetBufferManager();
+
+    auto litert_buf_ctx = buffer_manager->GetContext(litert_buf_id);
+    if (!litert_buf_ctx) {
+      LITERT_LOG(LITERT_ERROR, "Failed to get buffer context");
+      return litert_buf_ctx.Error().Status();
+    }
+
+    auto litert_buf = buffer_manager->GetBuffer(litert_buf_id);
+    if (!litert_buf) {
+      LITERT_LOG(LITERT_ERROR, "Failed to get buffer");
+      return litert_buf.Error().Status();
+    }
+
+    auto& tfl_buffer =
+        tfl_model_->buffers.emplace_back(std::make_unique<TflBuffer>());
+    const auto tfl_buffer_ind = tfl_model_->buffers.size() - 1;
+
+    if (litert_buf_ctx->get().should_append) {
+      tfl_buffer->offset = 1;
+      tfl_buffer->size = 1;
+      offset_tensor_map_.emplace(tfl_buffer_ind, litert_buf_id);
+    } else {
+      tfl_buffer->data.assign(litert_buf->Data(),
+                              litert_buf->Data() + litert_buf->Size());
+    }
+
+    tfl_tensor.buffer = tfl_buffer_ind;
+
+    return kLiteRtStatusOk;
   }
 
   // Add to tfl model metadata.
   void PushMetadata(std::string key, BufferRef<uint8_t> data) {
-    auto tfl_buffer = std::make_unique<TflBuffer>();
+    auto& tfl_buffer =
+        tfl_model_->buffers.emplace_back(std::make_unique<TflBuffer>());
+    const auto tfl_buffer_ind = tfl_model_->buffers.size() - 1;
     tfl_buffer->data.assign(data.Data(), data.Data() + data.Size());
-    auto tfl_buffer_ind = SubmitBuffer(std::move(tfl_buffer));
     tfl_model_->metadata_buffer.push_back(tfl_buffer_ind);
     auto tfl_metadata = std::make_unique<TflMetadata>();
     tfl_metadata->name = key;
@@ -96,17 +131,19 @@ class SerializationContext {
     tfl_model_->metadata.push_back(std::move(tfl_metadata));
   }
 
-  // Keep track of the given ops index as having a particular external buffer.
+  // Keep track of the given ops index as having a particular asset.
   // These will be used to update the ops with the correct offset and size
-  // after the model is fully packed. Call this in "sorted" op order.
-  void MarkOpWithExternalBuffer(size_t subgraph_ind, size_t op_ind,
-                                LiteRtModelT::ExternalBufferId buf_id) {
-    external_buffer_refs_.push_back(
-        TflExternalBufferRef{subgraph_ind, op_ind, buf_id});
+  // after the model is fully packed.
+  void AttachAssetToOp(size_t subgraph_ind, size_t op_ind,
+                       LiteRtModelT::OpAssetReference asset) {
+    TflOpInd tfl_op_ind = {subgraph_ind, op_ind};
+    op_asset_map_.emplace(tfl_op_ind, asset);
   }
 
-  const std::vector<TflExternalBufferRef>& ExternalBufferRefs() {
-    return external_buffer_refs_;
+  const TflOpAssetMap& OpAssetMap() const { return op_asset_map_; }
+
+  const TflOffsetTensorMap& OffsetTensorMap() const {
+    return offset_tensor_map_;
   }
 
   // Get the index in the tfl op codes for the dispatch custom code.
@@ -118,8 +155,9 @@ class SerializationContext {
   TflModelPtr tfl_model_;
   uint32_t dispatch_op_code_ind_;
   LiteRtModelT& litert_model_;
-  // Expected to be sorted at all times, with respect to subgraph/op indices.
-  std::vector<TflExternalBufferRef> external_buffer_refs_;
+
+  TflOpAssetMap op_asset_map_;
+  TflOffsetTensorMap offset_tensor_map_;
 };
 
 void SetOptions(const LiteRtOpT& litert_op, TflOp& tfl_op) {
@@ -176,28 +214,7 @@ LiteRtStatus PackTensor(SerializationContext& builder,
   }
   tfl_tensor.quantization = std::move(*tfl_quantization);
 
-  const auto litert_buf_id = litert_tensor.Weights().GetBufferId();
-  auto* buffer_manager = litert_tensor.Weights().GetBufferManager();
-
-  auto litert_buf_ctx = buffer_manager->GetContext(litert_buf_id);
-  if (!litert_buf_ctx) {
-    return litert_buf_ctx.Error().Status();
-  }
-
-  if (litert_buf_ctx->get().should_append) {
-    // TODO support this.
-    LITERT_LOG(LITERT_ERROR,
-               "Tensors with offset not yet supported in model serialize");
-    return kLiteRtStatusErrorUnsupported;
-  }
-
-  auto litert_buf = buffer_manager->GetBuffer(litert_buf_id);
-
-  auto tfl_buffer = std::make_unique<TflBuffer>();
-  tfl_buffer->data.assign(litert_buf->Data(),
-                          litert_buf->Data() + litert_buf->Size());
-  const auto tfl_buffer_ind = builder.SubmitBuffer(std::move(tfl_buffer));
-  tfl_tensor.buffer = tfl_buffer_ind;
+  LITERT_RETURN_IF_ERROR(builder.HandleTensorBuffer(tfl_tensor, litert_tensor));
 
   tfl_tensor.name = std::string(litert_tensor.Name());
 
@@ -223,20 +240,20 @@ LiteRtStatus PackSubgraph(SerializationContext& builder,
     LITERT_RETURN_IF_ERROR(PackOp(builder, *op, tfl_op, tensor_map));
 
     // Set custom options.
-    if (auto external_buffer = builder.LitertModel().FindExternalBuffer(op)) {
+    if (auto op_asset = builder.LitertModel().FindOpAsset(op)) {
       // This mechanism is currently only used for dispatch ops to store
       // location of bytecode. Here we update the name and placeholder values
       // for offset and size. These will be updated when the model is fully
       // packed.
       auto dispatch_opts = MakeDispatchOpOptions({
-          0,
-          0,
-          std::string(external_buffer->second),
+          1,
+          1,
+          std::string(op_asset->second),
       });
       tfl_op.custom_options = dispatch_opts.ToVec();
 
-      // Save the "location" of the external buffer in the model.
-      builder.MarkOpWithExternalBuffer(subgraph_ind, i, external_buffer->first);
+      // Save the "location" of the op and its asset.
+      builder.AttachAssetToOp(subgraph_ind, i, *op_asset);
 
     } else if (op->CustomOptions().Size() != 0) {
       tfl_op.custom_options = op->CustomOptions().ToVec();
@@ -308,7 +325,13 @@ Expected<TflModelPtr> PackAsTflite(SerializationContext& builder) {
   // Serialize metadata.
   for (auto it = litert_model.MetadataBegin(); it != litert_model.MetadataEnd();
        ++it) {
-    builder.PushMetadata(it->first, it->second);
+    const auto& [key, buf_id] = *it;
+    auto buf = litert_model.Buffers()->GetBuffer(buf_id);
+    if (!buf) {
+      LITERT_LOG(LITERT_ERROR, "Failed to find metadata buffer");
+      return buf.Error();
+    }
+    builder.PushMetadata(key, *buf);
   }
 
   builder.Model().version = 3;
@@ -318,88 +341,155 @@ Expected<TflModelPtr> PackAsTflite(SerializationContext& builder) {
 
 // Appends external buffers to the back of the serialized tflite model. Updates
 // the ops that references them with the correct offset and size in-place.
-Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedExternalBuffers(
+Expected<OwningBufferRef<uint8_t>> SerializeWithAppendedBuffers(
     SerializationContext& builder, OwningBufferRef<uint8_t> serialized_tfl,
     LiteRtModelT& litert_model) {
-  // The final offset/size of the external buffers in the serialized tflite
-  // model.
-  std::vector<std::pair<size_t, size_t>> external_buffer_offsets;
+  if (builder.OpAssetMap().empty() && builder.OffsetTensorMap().empty()) {
+    return serialized_tfl;
+  }
+
   size_t cur_offset = serialized_tfl.Size();
-  for (auto i = 0; i < litert_model.NumExternalBuffers(); ++i) {
-    auto external_buf = litert_model.GetExternalBuffer(i);
-    if (!external_buf) {
-      return external_buf.Error();
+
+  // Calculate the offset and size of each op asset.
+  InsertOrderMap<LiteRtModelT::BufferId, std::pair<size_t, size_t>>
+      asset_buffer_offsets;
+  for (auto it = builder.OpAssetMap().cbegin();
+       it != builder.OpAssetMap().cend(); ++it) {
+    const auto& [buf_id, name] = it->second;
+    auto asset_buf = litert_model.Buffers()->GetBuffer(buf_id);
+    if (!asset_buf) {
+      return asset_buf.Error();
     }
-    external_buffer_offsets.push_back({cur_offset, external_buf->Size()});
-    cur_offset += external_buf->Size();
+    if (asset_buffer_offsets.Contains(buf_id)) {
+      continue;
+    }
+    asset_buffer_offsets.InsertOrAssign(buf_id,
+                                        {cur_offset, asset_buf->Size()});
+    cur_offset += asset_buf->Size();
+  }
+
+  // Calculate the offset and size of each offset tensor.
+  InsertOrderMap<SerializationContext::TflBufferInd, std::pair<size_t, size_t>>
+      offset_tensor_offsets;
+  for (auto it = builder.OffsetTensorMap().cbegin();
+       it != builder.OffsetTensorMap().cend(); ++it) {
+    const auto& [tfl_buffer_ind, litert_buf_id] = *it;
+    auto litert_buf = litert_model.Buffers()->GetBuffer(litert_buf_id);
+    if (!litert_buf) {
+      LITERT_LOG(LITERT_ERROR, "Failed to find offset tensor buffer");
+      return litert_buf.Error();
+    }
+    if (offset_tensor_offsets.Contains(tfl_buffer_ind)) {
+      continue;
+    }
+    offset_tensor_offsets.InsertOrAssign(tfl_buffer_ind,
+                                         {cur_offset, litert_buf->Size()});
+    cur_offset += litert_buf->Size();
   }
 
   // Read serialized tflite in packed form.
   auto* tfl_model = tflite::GetMutableModel(serialized_tfl.Data());
 
-  // Get "sorted" locations of ops that use external buffers.
-  auto external_buf_it = builder.ExternalBufferRefs().cbegin();
-
-  // Iterate in the same order that ops were packed, upating with the correct
-  // offset and size.
+  // Find the ops that have external buffers and mark them with the future size
+  // and offset.
   for (auto sg_ind = 0; sg_ind < tfl_model->mutable_subgraphs()->size();
        ++sg_ind) {
     auto* sg = tfl_model->mutable_subgraphs()->GetMutableObject(sg_ind);
 
-    if (external_buf_it == builder.ExternalBufferRefs().cend()) {
-      break;
-    }
-
-    if (external_buf_it->subgraph_ind != sg_ind) {
-      ++external_buf_it;
-      continue;
-    }
-
     for (auto op_ind = 0; op_ind < sg->mutable_operators()->size(); ++op_ind) {
-      auto* op = sg->mutable_operators()->GetMutableObject(op_ind);
+      SerializationContext::TflOpInd ind = {sg_ind, op_ind};
 
-      if (external_buf_it == builder.ExternalBufferRefs().cend()) {
-        break;
-      }
-
-      if (external_buf_it->op_ind != op_ind) {
-        ++external_buf_it;
+      auto asset_buffer = builder.OpAssetMap().find(ind);
+      if (asset_buffer == builder.OpAssetMap().end()) {
+        // No external buffer for this op.
         continue;
       }
 
-      // If we are here than this op has an external buffer. Update with
-      // the appropriate offset and size.
-      const auto buf_id = external_buf_it->buf_id;
-      const auto [real_offset, real_size] = external_buffer_offsets.at(buf_id);
+      auto* op = sg->mutable_operators()->GetMutableObject(op_ind);
 
+      // The id of the buffer in the litert model.
+      const auto buf_id = asset_buffer->second.first;
+
+      // The real offset and size of the buffer in the serialized tflite model.
+      const auto offset_and_size = asset_buffer_offsets.Find(buf_id);
+      if (!offset_and_size) {
+        LITERT_LOG(LITERT_ERROR, "Failed to find offset and size for buffer");
+        return Error(kLiteRtStatusErrorInvalidFlatbuffer);
+      }
+      const auto [offset, size] = offset_and_size->get().second;
+
+      // The custom options should have already been set with the name and
+      // placeholder values for size and offset.
       MutableBufferRef<uint8_t> old_raw_opts(
           op->mutable_custom_options()->data(),
           op->mutable_custom_options()->size());
+
+      // Update with real size and offset.
       DispatchOpOptions dispach_opts(GetDispatchOpOptions(old_raw_opts));
-      dispach_opts.bytecode_offset = real_offset;
-      dispach_opts.bytecode_size = real_size;
+      dispach_opts.bytecode_offset = offset;
+      dispach_opts.bytecode_size = size;
 
       if (!UpdateDispatchOpOptionsInPlace(dispach_opts, old_raw_opts)) {
+        LITERT_LOG(LITERT_ERROR, "Failed to update dispatch op options");
         return Error(kLiteRtStatusErrorInvalidFlatbuffer);
       }
+    }
+  }
 
-      ++external_buf_it;
+  // Find the buffers that are offset buffers and mark them with the future
+  // size and offset.
+  for (auto i = 0; i < tfl_model->mutable_buffers()->size(); ++i) {
+    auto* tfl_buffer = tfl_model->mutable_buffers()->GetMutableObject(i);
+    auto offset_size = offset_tensor_offsets.Find(i);
+    if (!offset_size) {
+      // Not offset buffer.
+      continue;
+    }
+    const auto [offset, size] = offset_size->get().second;
+    const auto offset_ok = tfl_buffer->mutate_offset(offset);
+    const auto size_ok = tfl_buffer->mutate_size(size);
+    if (!offset_ok || !size_ok) {
+      LITERT_LOG(LITERT_ERROR, "Failed to update offset and size for buffer");
+      return Error(kLiteRtStatusErrorInvalidFlatbuffer);
     }
   }
 
   // Allocate buffer enough for original model and appendd buffers and copy.
   OwningBufferRef<uint8_t> final_model(cur_offset);
 
+  // Copy serialized tflite model.
   uint8_t* start = final_model.Data();
   std::memcpy(start, serialized_tfl.Data(), serialized_tfl.Size());
   start += serialized_tfl.Size();
-  for (auto i = 0; i < litert_model.NumExternalBuffers(); ++i) {
-    auto external_buf = litert_model.GetExternalBuffer(i);
-    if (!external_buf) {
-      return external_buf.Error();
+
+  // Copy asset buffers.
+  for (auto it = asset_buffer_offsets.Begin(); it != asset_buffer_offsets.End();
+       ++it) {
+    const auto buf_id = it->first;
+
+    auto asset_buf = litert_model.Buffers()->GetBuffer(buf_id);
+    if (!asset_buf) {
+      LITERT_LOG(LITERT_ERROR, "Failed to find asset buffer");
+      return asset_buf.Error();
     }
-    std::memcpy(start, external_buf->Data(), external_buf->Size());
-    start += external_buf->Size();
+
+    std::memcpy(start, asset_buf->Data(), asset_buf->Size());
+    start += asset_buf->Size();
+  }
+
+  // Copy offset buffers.
+  for (auto it = offset_tensor_offsets.Begin();
+       it != offset_tensor_offsets.End(); ++it) {
+    const auto buf_id = it->first;
+
+    auto offset_buf = litert_model.Buffers()->GetBuffer(buf_id);
+    if (!offset_buf) {
+      LITERT_LOG(LITERT_ERROR, "Failed to find offset tensor buffer");
+      return offset_buf.Error();
+    }
+
+    std::memcpy(start, offset_buf->Data(), offset_buf->Size());
+    start += offset_buf->Size();
   }
 
   return final_model;
@@ -419,20 +509,18 @@ Expected<OwningBufferRef<uint8_t>> SerializeModel(LiteRtModelT&& model) {
 
   auto tfl_model = PackAsTflite(builder);
   if (!tfl_model) {
+    LITERT_LOG(LITERT_ERROR, "Failed to pack as tflite");
     return tfl_model.Error();
   }
 
   auto serialized_tfl = SerializeFlatbuffer(**tfl_model);
   if (!VerifyFlatbuffer(serialized_tfl.Span())) {
+    LITERT_LOG(LITERT_ERROR, "Failed to verify flatbuffer");
     return Error(kLiteRtStatusErrorInvalidFlatbuffer);
   }
 
-  if (model.NumExternalBuffers() > 0) {
-    return SerializeWithAppendedExternalBuffers(
-        builder, std::move(serialized_tfl), model);
-  }
-
-  return serialized_tfl;
+  return SerializeWithAppendedBuffers(builder, std::move(serialized_tfl),
+                                      model);
 }
 
 }  // namespace litert::internal

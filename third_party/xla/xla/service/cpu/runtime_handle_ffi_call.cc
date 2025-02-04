@@ -141,7 +141,7 @@ static absl::Status BuildAndCallFfi(
 
   // Forward executable run options to the FFI handlers via the call options.
   ffi::CallOptions call_options = {
-      run_options->device_ordinal(),
+      run_options->run_id(), run_options->device_ordinal(),
       ffi::CallOptions::CpuOptions{run_options->intra_op_thread_pool()},
       /*called_computation=*/nullptr, run_options->ffi_execution_context()};
 

@@ -32,7 +32,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/core/model",
-        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -53,7 +53,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/core/model",
-        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/codegen/dot_kernel_emitter.h"
+#include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
@@ -91,6 +92,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla::cpu {
 
@@ -116,6 +118,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
   if (!module.has_schedule()) {
     return absl::InternalError("HLO module must be scheduled to emit thunks");
   }
+  tsl::profiler::TraceMe trace("ThunkEmitter::EmitEntryComputation");
   return EmitHloComputation(module.entry_computation());
 }
 
@@ -528,20 +531,20 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(
     const HloInstruction* instruction) {
-  if (absl::Status status = ir_emitter_.CanDoFastConcatenate(instruction);
-      !status.ok()) {
-    VLOG(1) << "Could not emit fast concatenate for " << instruction->ToString()
-            << ": " << status.message();
-    return EmitElementalKernelThunk(instruction);
-  }
+  ConcatenateKernelEmitter emitter(instruction, &buffer_assignment_,
+                                   &target_machine_features_);
+  TF_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
+                      emitter.EmitKernelDefinition());
 
-  auto* concatenate = Cast<HloConcatenateInstruction>(instruction);
-  TF_ASSIGN_OR_RETURN(auto kernel,
-                      ir_emitter_.EmitConcatenateHostKernel(concatenate));
-  TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
+  auto [kernel_spec, kernel_source] = std::move(kernel_definition).release();
+  auto& llvm_ir_kernel_source =
+      tsl::down_cast<LlvmIrKernelSource&>(*kernel_source);
+
+  kernels_.push_back({kernel_spec.name(),
+                      std::move(llvm_ir_kernel_source).thread_safe_module()});
 
   return MakeKernelThunkSequence(
-      instruction, buffers, kernel,
+      instruction, std::move(kernel_spec),
       /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
@@ -598,7 +601,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
       ConvolutionThunk::Options options;
       options.multi_threaded =
           hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
-      options.use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
       return ThunkSequence::Of<ConvolutionThunk>(
           ThunkInfo(instruction), options, input_buffer, input_shape,
           kernel_buffer, kernel_shape, output_buffer, output_shape,

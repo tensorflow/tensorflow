@@ -1,4 +1,4 @@
-# RUN: xla-translate -hlo-to-mlir-hlo %s | FileCheck %s
+# RUN: hlo-translate -hlo-to-mlir -emit-mhlo %s | FileCheck %s
 hlo_module       {
   name: "main"
   entry_computation_name: "main.4"
@@ -95,4 +95,4 @@ hlo_module       {
   entry_computation_id: 4
 }
 
-# CHECK: func.func @main(%arg0: tensor<i32>, %arg1: tensor<?xf32, #mhlo.type_extensions<bounds = [2]>>) -> tuple<> {
+# CHECK: func.func @main(%arg0: tensor<i32>, %arg1: tensor<?xf32, #mhlo.type_extensions<bounds = [2]>>) {

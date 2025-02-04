@@ -14,14 +14,17 @@
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_op.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 
 namespace {
+
+using testing::litert::IsError;
 
 TEST(TestInitQnnOp, BuildDefaultOp) {
   Qnn_OpConfig_t op = litert::qnn::BuildDefaultOp();
@@ -35,7 +38,7 @@ TEST(TestLegalizeOp, SimpleSupportedOp) {
   auto ops = subgraph->Ops();
 
   Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
-  LITERT_ASSERT_STATUS_OK(litert::qnn::LegalizeOp(ops.front().Get(), qnn_op));
+  LITERT_ASSERT_OK(litert::qnn::LegalizeOp(ops.front().Get(), qnn_op));
 
   EXPECT_TRUE(absl::StrContains(qnn_op.v1.name, "mul"));
   EXPECT_STREQ(qnn_op.v1.packageName, "qti.aisw");
@@ -55,9 +58,8 @@ TEST(TestLegalizeOp, UnsupportedOp) {
   auto ops = subgraph->Ops();
 
   Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
-  LITERT_ASSERT_STATUS_HAS_CODE(
-      litert::qnn::LegalizeOp(ops.front().Get(), qnn_op),
-      kLiteRtStatusErrorUnsupported);
+  EXPECT_THAT(litert::qnn::LegalizeOp(ops.front().Get(), qnn_op),
+              IsError(kLiteRtStatusErrorUnsupported));
 
   litert::qnn::ResetOp(qnn_op);
 }

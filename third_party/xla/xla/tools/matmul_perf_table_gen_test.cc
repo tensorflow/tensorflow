@@ -18,6 +18,7 @@ limitations under the License.
 #include <variant>
 
 #include <gtest/gtest.h>
+#include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 
@@ -43,6 +44,9 @@ class MatmulPerfTableGenTest : public HloTestBase {
 
 TEST_F(MatmulPerfTableGenTest, DryRunsSpecifiedSweepSpace) {
   MatmulPerfTableGen::Config cfg;
+  cfg.b_spec.start = 1;
+  cfg.b_spec.stop = 1;
+  cfg.b_spec.step = 1;
   cfg.k_spec.start = 1;
   cfg.k_spec.stop = 1;
   cfg.k_spec.step = 1;
@@ -65,6 +69,9 @@ TEST_F(MatmulPerfTableGenTest, DryRunsSpecifiedSweepSpace) {
 
 TEST_F(MatmulPerfTableGenTest, DryRunsFactorSweepSpace) {
   MatmulPerfTableGen::Config cfg;
+  cfg.b_spec.start = 1;
+  cfg.b_spec.stop = 1;
+  cfg.b_spec.step = 1;
   cfg.k_spec.start = 1;
   cfg.k_spec.stop = 1;
   cfg.k_spec.step = 1;
@@ -83,6 +90,60 @@ TEST_F(MatmulPerfTableGenTest, DryRunsFactorSweepSpace) {
 
   EXPECT_EQ(profiles.entries_size(), 1);
   EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 3);
+}
+
+TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesOperands) {
+  MatmulPerfTableGen::Config cfg;
+  cfg.b_spec.start = 1;
+  cfg.b_spec.stop = 1;
+  cfg.b_spec.step = 1;
+  cfg.k_spec.start = 1;
+  cfg.k_spec.stop = 1;
+  cfg.k_spec.step = 1;
+  cfg.m_spec.start = 1;
+  cfg.m_spec.stop = 1;
+  cfg.m_spec.step = 1;
+  cfg.n_spec.start = 1;
+  cfg.n_spec.stop = 1;
+  cfg.n_spec.step = 1;
+  cfg.dry_run = true;
+  cfg.dtypes.emplace_back(
+      MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
+
+  MatmulPerfTableGen gen(cfg);
+  DeviceHloInstructionProfiles profiles = gen.ComputeTable();
+
+  EXPECT_EQ(profiles.entries_size(), 1);
+  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 1);
+  EXPECT_EQ(profiles.entries().begin()->second.entries(0).operands_size(), 2);
+}
+
+TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesFlops) {
+  MatmulPerfTableGen::Config cfg;
+  cfg.b_spec.start = 1;
+  cfg.b_spec.stop = 1;
+  cfg.b_spec.step = 1;
+  cfg.k_spec.start = 8;
+  cfg.k_spec.stop = 8;
+  cfg.k_spec.step = 1;
+  cfg.m_spec.start = 3;
+  cfg.m_spec.stop = 3;
+  cfg.m_spec.step = 1;
+  cfg.n_spec.start = 7;
+  cfg.n_spec.stop = 7;
+  cfg.n_spec.step = 1;
+  cfg.dry_run = true;
+  cfg.dtypes.emplace_back(
+      MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
+
+  MatmulPerfTableGen gen(cfg);
+  DeviceHloInstructionProfiles profiles = gen.ComputeTable();
+
+  EXPECT_EQ(profiles.entries_size(), 1);
+  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 1);
+  // m = 8, n = 3, k = 7 => # flops = 2 * 8 * 3 * 7 = 336.
+  // with a dry run on, t = 42ns, gflops = 336 / 42 = 8 => flops/s = 8 * 1e9.
+  EXPECT_EQ(profiles.entries().begin()->second.entries(0).flops(), 8 * 1e9);
 }
 
 }  // namespace

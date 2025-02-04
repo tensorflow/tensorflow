@@ -374,6 +374,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:ops_util",
         "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
+        "@local_xla//xla/stream_executor/integrations:stream_executor_allocator",
     ],
 )
 

@@ -49,7 +49,7 @@ litert_dynamic_lib(
         "//tensorflow/lite/experimental/litert/core:dynamic_loading",
         "//tensorflow/lite/experimental/litert/core/util:tensor_type_util",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
-        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_set",

@@ -1702,5 +1702,45 @@ TEST_F(GpuHloScheduleTest, CopyStartDoneScheduled) {
 )"));
 }
 
+// This test verifies that the GPU scheduler doesn't count CPU memory usage
+// in the GPU peak memory usage.
+TEST_F(GpuHloScheduleTest, DiscountCPUMemoryFromGPUPeakMemoryUsage) {
+  constexpr absl::string_view kPeakMemoryUsageWithCpuOffload = R"(
+  HloModule offloading, input_output_alias= { {0}: (1, {}, must-alias) }
+
+  ENTRY main {
+    param.0 = f32[1024]{0:S(5)} parameter(0)
+    param.1 = f32[1024]{0} parameter(1)
+    copy-start.h2d = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start(param.0)
+    copy-done.h2d = f32[1024]{0} copy-done(copy-start.h2d)
+    copy-start.d2h = (f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) copy-start(param.1)
+    copy-done.d2h = f32[1024]{0:S(5)} copy-done(copy-start.d2h)
+    ROOT t = (f32[1024]{0}, f32[1024]{0:S(5)}) tuple(copy-done.h2d, copy-done.d2h)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kPeakMemoryUsageWithCpuOffload,
+                                                GetModuleConfig({})));
+  int64_t pointer_size =
+      dynamic_cast<GpuCompiler*>(backend().compiler())->GetPointerSize();
+  int64_t peak_memory_bytes = -1;
+  TF_ASSERT_OK_AND_ASSIGN(auto schedule,
+                          ScheduleGpuModuleWithMemoryScheduler(
+                              module.get(), pointer_size, &peak_memory_bytes));
+  TF_CHECK_OK(module->set_schedule(std::move(schedule)));
+  // Expected size = 4096 (buffer size) + 24 (tuple size) + 4 (prefetch index)
+  EXPECT_LT(peak_memory_bytes, 4200);
+
+  // Let's verify that we store one parameter on the CPU first before loading
+  // another parameter from the CPU to minimize peak memory usage.
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+// CHECK: ENTRY
+// CHECK: copy-start.d2h = (f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) copy-start
+// CHECK: copy-done.d2h = f32[1024]{0:S(5)} copy-done
+// CHECK: copy-start.h2d = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start
+// CHECK: copy-done.h2d = f32[1024]{0} copy-done
+)"));
+}
+
 }  // namespace gpu
 }  // namespace xla

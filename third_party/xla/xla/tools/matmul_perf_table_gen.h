@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_TOOLS_MATMUL_PERF_TABLE_GEN_H_
 #define XLA_TOOLS_MATMUL_PERF_TABLE_GEN_H_
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -55,6 +54,7 @@ class MatmulPerfTableGen {
 
     // Search space.
     std::vector<DataTypeSpec> dtypes;
+    StepSpec b_spec;
     StepSpec m_spec;
     StepSpec n_spec;
     StepSpec k_spec;
@@ -75,6 +75,11 @@ class MatmulPerfTableGen {
 
   // Dumps a performance `table` to a given `output_file` from `Config`.
   absl::Status Dump(const DeviceHloInstructionProfiles& table);
+
+  // Reads, deduplicates and merges multiple `xla.gpu.DeviceInstructionProfiles`
+  // residing in a given `filepath`.
+  absl::StatusOr<DeviceHloInstructionProfiles> Merge(
+      absl::string_view filepath);
 
  private:
   std::unique_ptr<Executable> Compile(std::unique_ptr<HloModule> module);

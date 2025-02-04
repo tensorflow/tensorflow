@@ -18,6 +18,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/SmallVector.h"
@@ -44,9 +47,9 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
 
 namespace xla::cpu {
 
@@ -106,7 +109,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
   pto.LoopVectorization = !options_.optimize_for_size;
   pto.SLPVectorization =
       !options_.optimize_for_size && !options_.disable_slp_vectorizer;
-  pto.LoopUnrolling = false;
+  pto.LoopUnrolling = options_.enable_loop_unrolling;
 
   llvm::LoopAnalysisManager lam;
   llvm::FunctionAnalysisManager fam;
@@ -193,6 +196,20 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
   }
 
   return std::move(mc_memory_buffer);
+}
+
+llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(
+    const HloModuleConfig& module_config) {
+  switch (module_config.debug_options().xla_backend_optimization_level()) {
+    case 1:
+      return llvm::CodeGenOptLevel::Less;
+    case 2:
+      return llvm::CodeGenOptLevel::Default;
+    case 3:
+      return llvm::CodeGenOptLevel::Aggressive;
+    default:
+      return llvm::CodeGenOptLevel::None;
+  }
 }
 
 }  // namespace xla::cpu

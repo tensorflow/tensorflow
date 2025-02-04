@@ -165,7 +165,7 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   CHECK(info_log_buffer_size() <= kInfoLogBufferSize);
   info_log_buffer.resize(info_log_buffer_size());
 
-  absl::string_view extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
+  absl::string_view extension = ShouldUsePtxExtension(cc) ? "a" : "";
   std::string architecture = absl::StrCat("sm_", cc.major, cc.minor, extension);
 
   if (result != CUDA_SUCCESS) {

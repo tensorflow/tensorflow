@@ -558,30 +558,6 @@ PjRtCApiClient::BufferFromHostBuffer(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtCApiClient::BufferFromHostBuffer(
-    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-    std::optional<absl::Span<int64_t const>> byte_strides,
-    HostBufferSemantics host_buffer_semantics,
-    absl::AnyInvocable<void() &&> on_done_with_host_buffer, PjRtDevice* device,
-    const Layout* device_layout) {
-  return BufferFromHostBufferInternalImpl(
-      data, type, dims, byte_strides, host_buffer_semantics,
-      std::move(on_done_with_host_buffer), device, device_layout);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtCApiClient::BufferFromHostBuffer(
-    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-    std::optional<absl::Span<int64_t const>> byte_strides,
-    HostBufferSemantics host_buffer_semantics,
-    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-    PjRtDevice* device) {
-  return BufferFromHostBufferInternalImpl(
-      data, type, dims, byte_strides, host_buffer_semantics,
-      std::move(on_done_with_host_buffer), device, /*device_layout=*/nullptr);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtCApiClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
     std::function<void()> on_delete_callback,
@@ -708,7 +684,10 @@ class PjRtCApiAsyncHostToDeviceTransferManager
   PjRtCApiAsyncHostToDeviceTransferManager(
       PjRtCApiClient* client,
       PJRT_AsyncHostToDeviceTransferManager* c_transfer_manager)
-      : c_client_(client), c_transfer_manager_(std::move(c_transfer_manager)) {}
+      : c_client_(client),
+        c_transfer_manager_(c_transfer_manager,
+                            ::pjrt::MakeAsyncHostToDeviceTransferManagerDeleter(
+                                client->pjrt_c_api())) {}
 
   size_t buffer_count() const override {
     PJRT_AsyncHostToDeviceTransferManager_BufferCount_Args args;
@@ -2161,6 +2140,28 @@ std::shared_ptr<const PjRtLayout> PjRtCApiBuffer::layout() const {
   return layout_;
 }
 
+const Shape& PjRtCApiBuffer::on_device_shape() const {
+  if (!on_device_shape_.has_value()) {
+    Shape shape(element_type(), dimensions(), is_dynamic_dimension(),
+                /*tuple_shapes=*/{});
+    *shape.mutable_layout() = layout()->xla_layout();
+    absl::MutexLock lock(&mu_);
+    on_device_shape_ = shape;
+  }
+  return *on_device_shape_;
+}
+
+absl::StatusOr<Shape> PjRtCApiBuffer::logical_on_device_shape() {
+  absl::StatusOr<std::vector<int64_t>> dims = logical_dimensions();
+  if (!dims.ok()) {
+    return dims.status();
+  }
+  Shape result(element_type(), *dims, is_dynamic_dimension(),
+               /*tuple_shapes=*/{});
+  *result.mutable_layout() = layout()->xla_layout();
+  return result;
+}
+
 bool PjRtCApiBuffer::has_dynamic_dimensions() const {
   PJRT_Buffer_DynamicDimensionIndices_Args args;
   args.struct_size = PJRT_Buffer_DynamicDimensionIndices_Args_STRUCT_SIZE;
@@ -2356,6 +2357,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
         std::make_unique<PjRtCApiBuffer>(client_, args.dst_buffer));
   } else {
     // Copy across PjRtClients by copying through host
+    TF_ASSIGN_OR_RETURN(PjRtMemorySpace * dst_memory_space,
+                        dst_device->default_memory_space());
     TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
     absl::InlinedVector<int64_t, 4> byte_strides(
         literal->shape().dimensions_size());
@@ -2368,7 +2371,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
         literal_pointer->shape().element_type(),
         literal_pointer->shape().dimensions(), byte_strides,
         PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
-        [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
+        [literal{std::move(literal)}]() { /* frees literal */ },
+        dst_memory_space, /*device_layout=*/nullptr);
   }
 }
 

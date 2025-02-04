@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -135,7 +136,7 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   auto result = pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}},
                                          /*options=*/{});
@@ -183,14 +184,14 @@ TEST(TfrtCpuClientTest, HloSnapshot) {
           data1.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer2,
       client->BufferFromHostBuffer(
           data2.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   auto result = pjrt_executable->Execute(
       /*argument_handles=*/{{buffer1.get(), buffer2.get()}},
@@ -224,6 +225,27 @@ TEST(TfrtCpuClientTest, AsyncTransferRawData) {
   TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
                           client->CreateBuffersForAsyncHostToDevice(
                               {shape}, client->addressable_devices()[0]));
+  auto buffer = transfer_manager->RetrieveBuffer(0);
+  auto ready_future = buffer->GetReadyFuture();
+  EXPECT_THAT(ready_future.IsReady(), IsFalse());
+  constexpr size_t raw_data_size = 3 * 2 * 4;
+  char raw_data[raw_data_size];
+  std::fill(raw_data, raw_data + raw_data_size, 0x42);
+  absl::string_view raw_data_view(raw_data, raw_data_size);
+  TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
+      0, absl::string_view(raw_data, raw_data_size), []() {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  ASSERT_EQ(literal->element_count(), 3 * 2);
+  EXPECT_THAT(literal->data<uint32_t>(), Each(0x42424242));
+}
+
+TEST(TfrtCpuClientTest, AsyncTransferWithSpecs) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
+  PjRtClient::ShapeSpec shape_spec{U32, {3, 2}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice(
+          {shape_spec}, std::nullopt, client->addressable_devices()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
   auto ready_future = buffer->GetReadyFuture();
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
@@ -276,7 +298,7 @@ TEST(TfrtCpuClientTest, BufferFromLiteralInt4) {
   TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
-      client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
   TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
   EXPECT_THAT(received_literal->data<s4>(),
               ElementsAreArray(literal.data<s4>()));
@@ -365,7 +387,7 @@ TEST(TfrtCpuClientTest, CreateErrorBuffer) {
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer, client->CreateErrorBuffer(Internal("foobar"), shape,
-                                             client->addressable_devices()[0]));
+                                             client->memory_spaces()[0]));
   EXPECT_THAT(
       buffer->ToLiteralSync(),
       tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
@@ -510,7 +532,7 @@ ENTRY Identity() -> f32[2, 2] {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          memory_space, /*device_layout=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       auto error_buffer,
       client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
@@ -662,6 +684,31 @@ TEST(TfrtCpuClientTest, CopyRawToHost) {
             absl::string_view(raw_data_result, raw_data_size));
 }
 
+TEST(TfrtCpuClientTest, SubByteLiteralToBufferRoundtrip) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtCpuClient(CpuClientOptions()));
+  ASSERT_NE(client->addressable_device_count(), 0)
+      << "No addressable devices available.";
+  PjRtDevice* const device = client->addressable_devices().front();
+  ASSERT_NE(device, nullptr) << "Found device but it is null.";
+  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
+                          device->default_memory_space());
+
+  const Literal literal =
+      LiteralUtil::CreateR1<s4>({s4(0), s4(1), s4(2), s4(-8)});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> buffer,
+                          client->BufferFromHostLiteral(literal, memory_space));
+  TF_ASSERT_OK(buffer->GetReadyFuture().Await());
+  TF_ASSERT_OK_AND_ASSIGN(const size_t on_device_size,
+                          buffer->GetOnDeviceSizeInBytes());
+  EXPECT_EQ(on_device_size, 2);
+
+  Literal literal_result(literal.shape());
+  TF_ASSERT_OK(buffer->ToLiteralSync(&literal_result));
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal, literal_result));
+}
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//
@@ -671,13 +718,15 @@ TEST(TfrtCpuClientTest, CopyRawToHost) {
 static void BM_CreateZeroCopyBuffer(benchmark::State& state) {
   auto client = GetTfrtCpuClient({});
   PjRtDevice* device = (*client)->devices().front();
+  PjRtMemorySpace* memory_space = *device->default_memory_space();
 
   alignas(32) float value = 1.0f;
 
   for (auto _ : state) {
     auto buffer = (*client)->BufferFromHostBuffer(
         &value, PrimitiveType::F32, {}, std::nullopt,
-        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr, device);
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+        memory_space, /*device_layout=*/nullptr);
     CHECK_OK(buffer) << "Failed to create a buffer from a host buffer";
   }
 }

@@ -136,9 +136,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
       uint64_t size) override {
     LOG(FATAL) << "not yet implemented";
   }
-  void HostMemoryDeallocate(void* mem) override {
-    LOG(FATAL) << "not yet implemented";
-  }
   absl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                   uint64_t size) override {
     LOG(FATAL) << "not yet implemented";

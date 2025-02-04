@@ -24,6 +24,17 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 
+// socket.h in conda sysroot include directory does not define
+// SO_ZEROCOPY and SO_EE_ORIGIN_ZEROCOPY that were introduced in a
+// newer kernel version compared to one used by the conda sysroot, see
+// openxla/xla#22083.
+#ifndef SO_ZEROCOPY
+#define SO_ZEROCOPY 60
+#endif
+#ifndef SO_EE_ORIGIN_ZEROCOPY
+#define SO_EE_ORIGIN_ZEROCOPY 5
+#endif
+
 namespace aux {
 
 // Basic event loop using poll().

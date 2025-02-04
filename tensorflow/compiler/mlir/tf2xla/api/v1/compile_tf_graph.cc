@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/framework/device_type.h"
 #include "xla/tsl/lib/monitoring/sampler.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -67,7 +68,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/tpu_compile.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tf2xla {

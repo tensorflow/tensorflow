@@ -63,9 +63,6 @@ void DumpOptions(const LiteRtOpT& op, std::ostream& out = std::cerr);
 // Dumps details about the loaded LiteRtCompilerPlugin library.
 void Dump(const CompilerPlugin& plugin, std::ostream& out = std::cerr);
 
-// Dumps details about the dynamic library (see "dlinfo").
-void DumpDLL(void* lib_handle, std::ostream& out = std::cerr);
-
 }  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TOOLS_DUMP_H_

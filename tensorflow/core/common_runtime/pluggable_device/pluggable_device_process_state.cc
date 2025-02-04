@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/tsl/framework/device_id_utils.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
-#include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
@@ -133,7 +132,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
     } else {
       sub_allocator = new DeviceMemAllocator(
           platform->ExecutorForDevice(platform_device_id.value()).value(),
-          platform_device_id, stream_executor::MemoryType::kDevice);
+          platform_device_id);
     }
     Allocator* device_allocator = nullptr;
     auto cplatform = dynamic_cast<se::CPlatform*>(platform);
@@ -196,8 +195,11 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
 
   while (static_cast<int>(pluggable_device_host_allocators_.size()) <=
          numa_node) {
-    SubAllocator* sub_allocator = new DeviceHostAllocator(
-        se, numa_node, /*alloc_visitors=*/{}, /*free_visitors=*/{});
+    auto host_memory_allocator =
+        se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+    tsl::SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
+        std::move(host_memory_allocator), stream_executor::MemoryType::kHost,
+        numa_node);
     int64_t pluggable_device_host_mem_limit_in_mb = -1;
     absl::Status status = ReadInt64FromEnvVar(
         "TF_GPU_HOST_MEM_LIMIT_IN_MB", 1LL << 17 /*128GB max by default*/,

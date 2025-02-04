@@ -58,10 +58,12 @@ class DispatchDelegateKernel
  private:
   DispatchDelegateKernel(const LiteRtDispatchDelegateOptions& options,
                          std::string&& graph_name,
-                         LiteRtDispatchDeviceContext device_context)
+                         LiteRtDispatchDeviceContext device_context,
+                         bool async_dispatch)
       : options_(options),
         graph_name_(std::move(graph_name)),
-        device_context_(device_context) {}
+        device_context_(device_context),
+        async_dispatch_(async_dispatch) {}
 
   Expected<TensorBufferRequirements> GetBufferRequirements(
       const RankedTensorType& tensor_type, int io_tensor_index,
@@ -91,6 +93,7 @@ class DispatchDelegateKernel
   std::string graph_name_;
   LiteRtDispatchDeviceContext device_context_;
   LiteRtDispatchInvocationContext invocation_context_ = nullptr;
+  const bool async_dispatch_;
 
   // Indicates whether the input tensor buffer requires a CPU sync before
   // invoking the Dispatch API.

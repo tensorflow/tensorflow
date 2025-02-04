@@ -40,14 +40,10 @@ TEST(CompiledModelTest, Basic) {
   auto model = testing::LoadTestFileModel(kModelFileName);
   ASSERT_TRUE(model);
 
-  auto options = CompiledModel::Options::Create();
-  ASSERT_TRUE(options);
-  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAccelatorCpu));
-
   auto env = litert::Environment::Create({});
   ASSERT_TRUE(env);
-  auto res_compiled_model =
-      CompiledModel::Create(*env, model, std::move(*options));
+
+  auto res_compiled_model = CompiledModel::Create(*env, model);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
 
   auto& compiled_model = *res_compiled_model;
@@ -99,14 +95,10 @@ TEST(CompiledModelTest, RunWithInputOutputMap) {
   auto model = testing::LoadTestFileModel(kModelFileName);
   ASSERT_TRUE(model);
 
-  auto options = CompiledModel::Options::Create();
-  ASSERT_TRUE(options);
-  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAccelatorCpu));
-
   auto env = litert::Environment::Create({});
   ASSERT_TRUE(env);
-  auto res_compiled_model =
-      CompiledModel::Create(*env, model, std::move(*options));
+
+  auto res_compiled_model = CompiledModel::Create(*env, model);
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
 
   auto& compiled_model = *res_compiled_model;

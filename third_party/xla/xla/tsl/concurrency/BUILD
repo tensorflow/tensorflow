@@ -8,6 +8,25 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "xla_cpu_runtime_hdrs",
+    srcs = [
+        "async_value.h",
+        "async_value_ref.h",
+        "chain.h",
+        "concurrent_vector.h",
+        "ref_count.h",
+    ],
+)
+
+filegroup(
+    name = "xla_cpu_runtime_srcs",
+    srcs = [
+        "async_value.cc",
+        "async_value_ref.cc",
+    ],
+)
+
 cc_library(
     name = "async_value",
     srcs = [
@@ -29,6 +48,7 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],

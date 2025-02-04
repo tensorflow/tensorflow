@@ -33,7 +33,7 @@ class InsertOrderMap {
   using Values = std::vector<Pair>;
   using ValRef = std::reference_wrapper<Pair>;
   using Map = absl::flat_hash_map<Key, size_t>;
-  using Iterator = Values::iterator;
+  using Iterator = typename Values::iterator;
 
   InsertOrderMap() = default;
 

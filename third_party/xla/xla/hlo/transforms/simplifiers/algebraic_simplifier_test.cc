@@ -2934,6 +2934,70 @@ ENTRY test {
   }
 }
 
+TEST_F(AlgebraicSimplifierTest, MinimumWithInfinityLhs) {
+  const char* const kHloString = R"(
+HloModule test
+
+ENTRY main {
+  x = f16[] constant(inf)
+  y = f32[] parameter(0)
+  ROOT min = f32[] minimum(x, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHloString));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, MinimumWithInfinityLhsAndRhsF16Type) {
+  const char* const kHloString = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] constant(inf)
+  y = f16[] parameter(0)
+  ROOT min = f32[] minimum(x, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHloString));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, MinimumWithInfinityRhs) {
+  const char* const kHloString = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f16[] constant(inf)
+  ROOT min = f32[] minimum(x, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHloString));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, MinimumWithInfinityRhsAndLhsF16Type) {
+  const char* const kHloString = R"(
+HloModule test
+
+ENTRY main {
+  x = f16[] parameter(0)
+  y = f32[] constant(inf)
+  ROOT min = f32[] minimum(x, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHloString));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, MinimumOfMinimum1) {
   const char* const hlo_string = R"(
 HloModule test
@@ -3004,6 +3068,70 @@ ENTRY main {
   ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Minimum(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaximumWithNegativeInfinityLhs) {
+  const char* const kHloString = R"(
+HloModule test
+
+ENTRY main {
+  x = f16[] constant(-inf)
+  y = f32[] parameter(0)
+  ROOT max = f32[] maximum(x, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHloString));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaximumWithNegativeInfinityLhsAndRhsF16Type) {
+  const char* const kHloString = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] constant(-inf)
+  y = f16[] parameter(0)
+  ROOT max = f32[] maximum(x, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHloString));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, MaximumWithNegativeInfinityRhs) {
+  const char* const kHloString = R"(
+HloModule test
+
+ENTRY main {
+  x = f32[] parameter(0)
+  y = f16[] constant(-inf)
+  ROOT max = f32[] maximum(x, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHloString));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaximumWithNegativeInfinityRhsAndLhsF16Type) {
+  const char* const kHloString = R"(
+HloModule test
+
+ENTRY main {
+  x = f16[] parameter(0)
+  y = f32[] constant(-inf)
+  ROOT max = f32[] maximum(x, y)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHloString));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, MaximumOfMaximum1) {

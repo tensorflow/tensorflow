@@ -19,10 +19,10 @@ limitations under the License.
 #include <cassert>
 #include <string>
 #include <utility>
-#include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
 
 namespace stream_executor {
@@ -46,13 +46,10 @@ struct CudaComputeCapability {
     this->major = major;
     this->minor = minor;
   }
-  // cuda arch format "major.minor", example: "8.6".
-  explicit CudaComputeCapability(const std::string &cuda_arch_name) {
-    std::vector<std::string> split = absl::StrSplit(cuda_arch_name, '.');
-    assert(split.size() == 2);
-    this->major = std::stoi(split[0]);
-    this->minor = std::stoi(split[1]);
-  }
+
+  // Parses the architecture name in the format "major.minor", example: "8.6".
+  static absl::StatusOr<CudaComputeCapability> FromString(
+      absl::string_view cuda_arch_name);
 
   explicit CudaComputeCapability(const CudaComputeCapabilityProto &proto) {
     this->major = proto.major();

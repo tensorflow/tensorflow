@@ -6,7 +6,7 @@ load("@build_bazel_apple_support//lib:repositories.bzl", "apple_support_dependen
 load("@build_bazel_rules_apple//apple:repositories.bzl", "apple_rules_dependencies")
 load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
 load("@com_google_benchmark//:bazel/benchmark_deps.bzl", "benchmark_deps")
-load("@local_tsl//:workspace0.bzl", "tsl_workspace0")
+load("//:tsl_workspace0.bzl", "tsl_workspace0")
 
 def _tf_bind():
     """Bind targets for some external repositories"""

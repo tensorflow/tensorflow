@@ -28,9 +28,11 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -42,7 +44,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class ConvertTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
+class ConvertTest : public ClientLibraryTestRunnerMixin<
+                        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  public:
   explicit ConvertTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
@@ -720,7 +723,7 @@ XLA_TEST_F(ConvertTest, ConvertF32BF16) {
       // NaNs may not be preserved, any NaN will do.
       ASSERT_TRUE(std::isnan(absl::bit_cast<bfloat16>(correct)));
       EXPECT_TRUE(std::isnan(absl::bit_cast<bfloat16>(result)));
-      if (backend().platform()->Name() == "Host") {
+      if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
         // The sign bits must match.
         EXPECT_EQ(result >> 15, correct >> 15);
       }
@@ -2144,7 +2147,7 @@ XLA_TYPED_TEST(ConvertTestT,
 
 XLA_TYPED_TEST(ConvertTestT,
                DISABLED_ON_TPU(ConvertF8e8m0fnuRoundtripExhaustive2)) {
-  if (this->backend().platform()->Name() == "Host") {
+  if (this->test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     // This test is disabled on CPU, as converting 0x1p-127 from double to float
     // using CVTSD2SS on x64 results in an underflow (even though the result is
     // representable as denormalized float32).

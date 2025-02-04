@@ -53,6 +53,7 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
 _KOKORO_ARTIFACTS_DIR = os.environ.get(
     "KOKORO_ARTIFACTS_DIR", "$KOKORO_ARTIFACTS_DIR"
 )
+_GITHUB_WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "$GITHUB_WORKSPACE")
 
 
 def retry(
@@ -87,15 +88,15 @@ def _write_to_sponge_config(key, value) -> None:
 
 class BuildType(enum.Enum):
   """Enum representing all types of builds."""
-  CPU_X86 = enum.auto()
   CPU_X86_SELF_HOSTED = enum.auto()
-  CPU_ARM64 = enum.auto()
+  CPU_ARM64_SELF_HOSTED = enum.auto()
   GPU = enum.auto()
   GPU_CONTINUOUS = enum.auto()
 
   MACOS_CPU_X86 = enum.auto()
 
   JAX_CPU = enum.auto()
+  JAX_CPU_SELF_HOSTED = enum.auto()
   JAX_GPU = enum.auto()
 
   TENSORFLOW_CPU = enum.auto()
@@ -167,10 +168,14 @@ class Build:
     if self.repo != "openxla/xla":
       _, repo_name = self.repo.split("/")
 
-      # pyformat:disable
-      cmds.append(["git", "clone", "--depth=1",
-                   f"https://github.com/{self.repo}", f"./github/{repo_name}"])
-      # pyformat:enable
+      if "self_hosted" not in self.type_.name.lower():
+        cmds.append([
+            "git",
+            "clone",
+            "--depth=1",
+            f"https://github.com/{self.repo}",
+            f"./github/{repo_name}",
+        ])
 
     cmds.extend(self.extra_setup_commands)
 
@@ -178,11 +183,7 @@ class Build:
 
     # pyformat:disable
 
-    if self.type_ == BuildType.CPU_ARM64 and using_docker:
-      # We would need to install parallel, but `apt` hangs regularly on Kokoro
-      # VMs due to yaqs/eng/q/4506961933928235008
-      cmds.append(["docker", "pull", self.image_url])
-    elif using_docker:
+    if using_docker:
       cmds.append(retry(["docker", "pull", self.image_url]))
 
     container_name = "xla_ci"
@@ -285,16 +286,6 @@ cpu_x86_tag_filter = (
     "-requires-gpu-nvidia",
     "-requires-gpu-amd",
 )
-_CPU_X86_BUILD = Build(
-    type_=BuildType.CPU_X86,
-    repo="openxla/xla",
-    image_url=_ML_BUILD_IMAGE,
-    configs=("warnings", "nonccl", "rbe_linux_cpu"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
-    build_tag_filters=cpu_x86_tag_filter,
-    test_tag_filters=cpu_x86_tag_filter,
-    options=_DEFAULT_BAZEL_OPTIONS,
-)
 _CPU_X86_SELF_HOSTED_BUILD = Build(
     type_=BuildType.CPU_X86_SELF_HOSTED,
     repo="openxla/xla",
@@ -313,10 +304,10 @@ cpu_arm_tag_filter = (
     "-requires-gpu-amd",
     "-not_run:arm",
 )
-_CPU_ARM64_BUILD = Build(
-    type_=BuildType.CPU_ARM64,
+_CPU_ARM64_SELF_HOSTED_BUILD = Build(
+    type_=BuildType.CPU_ARM64_SELF_HOSTED,
     repo="openxla/xla",
-    image_url=_ML_BUILD_ARM64_IMAGE,
+    image_url=None,
     configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     options={**_DEFAULT_BAZEL_OPTIONS, "build_tests_only": True},
@@ -388,6 +379,23 @@ _JAX_CPU_BUILD = Build(
     options=dict(
         **_DEFAULT_BAZEL_OPTIONS,
         override_repository="xla=/github/xla",
+        repo_env="HERMETIC_PYTHON_VERSION=3.12",
+    ),
+)
+
+_JAX_CPU_SELF_HOSTED_BUILD = Build(
+    type_=BuildType.JAX_CPU_SELF_HOSTED,
+    repo="google/jax",
+    image_url=None,
+    configs=("rbe_linux_x86_64",),
+    target_patterns=("//tests:cpu_tests", "//tests:backend_independent_tests"),
+    test_env=dict(
+        JAX_NUM_GENERATED_CASES=25,
+        JAX_SKIP_SLOW_TESTS=1,
+    ),
+    options=dict(
+        **_DEFAULT_BAZEL_OPTIONS,
+        override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
         repo_env="HERMETIC_PYTHON_VERSION=3.12",
     ),
 )
@@ -465,18 +473,16 @@ _TENSORFLOW_GPU_BUILD = Build(
 )
 
 _KOKORO_JOB_NAME_TO_BUILD_MAP = {
-    "tensorflow/xla/linux/arm64/build_cpu": _CPU_ARM64_BUILD,
-    "tensorflow/xla/linux/cpu/build_cpu": _CPU_X86_BUILD,
     "tensorflow/xla/linux/gpu/build_gpu": _GPU_BUILD,
-    "tensorflow/xla/linux/github_continuous/arm64/build_cpu": _CPU_ARM64_BUILD,
     "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_BUILD,
-    "tensorflow/xla/linux/github_continuous/build_cpu": _CPU_X86_BUILD,
     "tensorflow/xla/macos/github_continuous/cpu_py39_full": _MACOS_X86_BUILD,
     "tensorflow/xla/jax/cpu/build_cpu": _JAX_CPU_BUILD,
     "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
     "tensorflow/xla/tensorflow/cpu/build_cpu": _TENSORFLOW_CPU_BUILD,
     "tensorflow/xla/tensorflow/gpu/build_gpu": _TENSORFLOW_GPU_BUILD,
     "xla-linux-x86-cpu": _CPU_X86_SELF_HOSTED_BUILD,
+    "xla-linux-arm64-cpu": _CPU_ARM64_SELF_HOSTED_BUILD,
+    "jax-linux-x86-cpu": _JAX_CPU_SELF_HOSTED_BUILD,
 }
 
 

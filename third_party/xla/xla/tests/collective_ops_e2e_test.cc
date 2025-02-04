@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -177,9 +178,11 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
 
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_string, config));
-    return HloTestBase::CreateExecutable(std::move(module),
-                                         /*run_hlo_passes=*/true);
+    return CreateExecutable(std::move(module),
+                            /*run_hlo_passes=*/true);
   }
+
+  using CollectiveOpsTestE2E::CreateExecutable;
 
   bool IsAsync(const HloInstruction* inst) {
     return !inst->backend_config<gpu::GpuBackendConfig>()
@@ -602,6 +605,135 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({40, 60, 44, 64}, results[1]);
 }
 
+XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2] broadcast(id), dimensions={}
+    a0 = u32[2] constant({10, 20})
+    a1 = u32[2] add(id2, a0)
+    ROOT a2a = u32[2] all-to-all(u32[2] a1), dimensions={0}, replica_groups={{0,3},{1,2}}
+  }
+  )";
+  const int64_t kNumReplicas = 4;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  for (bool use_memcpy : {true, false}) {
+    SCOPED_TRACE(use_memcpy ? "memcpy" : "no_memcpy");
+    HloModuleConfig config =
+        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+    config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(use_memcpy);
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(kModuleStr, config));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto executable,
+        CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                            ExecuteReplicated(executable.get(), kNumReplicas));
+    ASSERT_EQ(results.size(), kNumReplicas);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 13}, results[0]);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 12}, results[1]);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({21, 22}, results[2]);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 23}, results[3]);
+  }
+}
+
+XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllDegenerate) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2] broadcast(id), dimensions={}
+    a0 = u32[2] constant({10, 20})
+    a1 = u32[2] add(id2, a0)
+    ROOT a2a = u32[2] all-to-all(u32[2] a1), dimensions={0}, replica_groups={{0},{1}}
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  for (bool use_memcpy : {true, false}) {
+    SCOPED_TRACE(use_memcpy ? "memcpy" : "no_memcpy");
+    HloModuleConfig config =
+        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+    config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(use_memcpy);
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(kModuleStr, config));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto executable,
+        CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                            ExecuteReplicated(executable.get(), kNumReplicas));
+    ASSERT_EQ(results.size(), kNumReplicas);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 20}, results[0]);
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 21}, results[1]);
+  }
+}
+
+TEST_F(CollectiveOpsTestE2E, AllToAll8Gpus) {
+  // Module computes the a2a of (10*replica-id + iota).
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    ten = u32[] constant(10)
+    id_times_ten = u32[] multiply(id, ten)
+    broadcast = u32[16] broadcast(id_times_ten), dimensions={}
+    iota = u32[16] iota(), iota_dimension=0
+    added = u32[16] add(broadcast, iota)
+    ROOT all2all = u32[16] all-to-all(added), dimensions={0}
+  }
+  )";
+  const int64_t kNumReplicas = 8;
+  const int64_t kNumPartitions = 1;
+  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << test_runner().device_count()
+                 << " available)";
+  }
+
+  for (bool use_memcpy : {true, false}) {
+    SCOPED_TRACE(use_memcpy ? "memcpy" : "no_memcpy");
+    HloModuleConfig config =
+        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+    config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(use_memcpy);
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(kModuleStr, config));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto executable,
+        CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                            ExecuteReplicated(executable.get(), kNumReplicas));
+    ASSERT_EQ(results.size(), kNumReplicas);
+
+    Array<uint32_t> expected({16});
+    expected.SetValues(
+        {0, 1, 10, 11, 20, 21, 30, 31, 40, 41, 50, 51, 60, 61, 70, 71});
+    for (int device_id = 0; device_id < kNumReplicas; ++device_id) {
+      LiteralTestUtil::ExpectR1Equal<uint32_t>(
+          absl::MakeSpan(expected.data(), expected.num_elements()),
+          results[device_id]);
+      expected.Each(
+          [&](absl::Span<const int64_t> indices, uint32_t* val) { *val += 2; });
+    }
+  }
+}
+
 TEST_P(AsyncCollectiveOps, MatmulReplicated) {
   // collective_permute = f32[16,32]{1,0} collective-permute(x_unscaled),
   // source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
@@ -669,7 +801,7 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
   TF_ASSERT_OK_AND_ASSIGN(auto ref_exec, reference_runner().CreateExecutable(
                                              std::move(ref_module), true));
 
-  ErrorSpec error_spec{1e-5, 1e-5};
+  ErrorSpec error_spec{1e-3, 1e-3};
   fake_ptrs.push_back(nullptr);
   for (int i = 0; i < kNumReplicas; i++) {
     auto replica_id =

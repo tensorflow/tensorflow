@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/status_matchers.h"
 
 namespace mlir::quant::stablehlo {
 namespace {

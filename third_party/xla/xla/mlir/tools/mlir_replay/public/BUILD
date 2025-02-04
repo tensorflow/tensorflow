@@ -15,13 +15,13 @@ cc_library(
         ":compiler_trace_proto_cc",
         ":compiler_trace_proto_cc_impl",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
     ],
@@ -38,6 +38,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/mlir/tools/mlir_interpreter/framework",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -45,7 +46,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -57,10 +57,10 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla/mlir/tools/mlir_interpreter/framework",
+        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

@@ -39,7 +39,9 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
+#include "xla/backends/cpu/codegen/object_loader.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "tsl/platform/cpu_info.h"
 
@@ -59,13 +61,6 @@ class JitCompiler {
   // Task and a TaskRunner are used to run compilation tasks in parallel.
   using Task = std::function<void()>;  // NOLINT (must be copyable)
   using TaskRunner = absl::AnyInvocable<void(Task)>;
-
-  // A callback that returns a definition generator that will be added to all
-  // dynamic libraries created by the jit compiler. Definition generator enables
-  // linking host runtime symbols into the jit-compiled function library.
-  using DefinitionGenerator =
-      std::function<std::unique_ptr<llvm::orc::DefinitionGenerator>(
-          llvm::TargetMachine*)>;
 
   JitCompiler(JitCompiler&&) = default;
   JitCompiler& operator=(JitCompiler&&) = default;
@@ -101,7 +96,7 @@ class JitCompiler {
 
     // Optional definition generator to inject host runtime symbols into the
     // jit-compiled function library.
-    DefinitionGenerator definition_generator;
+    ExecutionEngine::DefinitionGenerator definition_generator;
 
     // Maximum CPU instruction set for wich the compiler should generate code.
     // If instruction set is empty, compiler will generate code for all ISA
@@ -164,7 +159,7 @@ class JitCompiler {
               TaskDispatcher* task_dispatcher,
               std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
               std::unique_ptr<IrCompiler> ir_compiler, size_t num_dylibs,
-              DefinitionGenerator definition_generator);
+              ExecutionEngine::DefinitionGenerator definition_generator);
 
   // Target machine builder that is used to construct target machines for this
   // instance of `JitCompiler` (when compiling LLVM modules in parallel).
@@ -173,16 +168,8 @@ class JitCompiler {
 
   TaskDispatcher* task_dispatcher_;  // owned by `execution_session_`
 
-  std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;
-  std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer> object_layer_;
+  std::unique_ptr<ExecutionEngine> execution_engine_;
   std::unique_ptr<llvm::orc::IRCompileLayer> compile_layer_;
-
-  // Non-owning pointers to dynamic libraries created for the execution session.
-  std::vector<llvm::orc::JITDylib*> dylibs_;
-
-  // Non owning pointer to JIT event listeners for gdb and perf.
-  llvm::JITEventListener* gdb_;   // not owned
-  llvm::JITEventListener* perf_;  // not owned
 };
 
 }  // namespace xla::cpu

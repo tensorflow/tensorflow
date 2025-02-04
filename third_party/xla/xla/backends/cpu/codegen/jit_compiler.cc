@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -24,12 +23,9 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -39,8 +35,6 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
-#include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
-#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/ExecutionEngine/Orc/TaskDispatch.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/Mangler.h"
@@ -50,12 +44,14 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
-#include "xla/backends/cpu/codegen/compiled_function_library.h"
 #include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
+#include "xla/backends/cpu/codegen/object_loader.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/service/cpu/orc_jit_memory_mapper.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/statusor.h"
@@ -153,15 +149,6 @@ absl::StatusOr<JitCompiler> JitCompiler::Create(
       options.num_dylibs, std::move(options.definition_generator));
 }
 
-static std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer>
-CreateObjectLinkingLayer(llvm::orc::ExecutionSession& execution_session) {
-  return std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
-      execution_session, [] {
-        return std::make_unique<ContiguousSectionMemoryManager>(
-            orc_jit_memory_mapper::GetInstance());
-      });
-}
-
 static std::unique_ptr<llvm::orc::IRCompileLayer> CreateCompileLayer(
     llvm::orc::ExecutionSession& execution_session,
     llvm::orc::RTDyldObjectLinkingLayer& object_layer,
@@ -176,52 +163,28 @@ JitCompiler::JitCompiler(
     TaskDispatcher* task_dispatcher,
     std::unique_ptr<llvm::orc::ExecutionSession> execution_session,
     std::unique_ptr<IrCompiler> ir_compiler, size_t num_dylibs,
-    DefinitionGenerator definition_generator)
+    ExecutionEngine::DefinitionGenerator definition_generator)
     : target_machine_builder_(std::move(target_machine_builder)),
       target_machine_(std::move(target_machine)),
       task_dispatcher_(task_dispatcher),
-      execution_session_(std::move(execution_session)),
-      object_layer_(CreateObjectLinkingLayer(*execution_session_)),
-      compile_layer_(CreateCompileLayer(*execution_session_, *object_layer_,
-                                        std::move(ir_compiler))),
-      gdb_(llvm::JITEventListener::createGDBRegistrationListener()),
-      perf_(llvm::JITEventListener::createPerfJITEventListener()) {
-  // Create at least one dynamic library for the given jit compiler.
-  dylibs_.resize(std::max<size_t>(1, num_dylibs));
-  for (size_t i = 0; i < dylibs_.size(); ++i) {
-    dylibs_[i] = &execution_session_->createBareJITDylib(
-        absl::StrCat("<xla_jit_dylib_", i, ">"));
-    if (definition_generator) {
-      dylibs_[i]->addGenerator(definition_generator(target_machine_.get()));
-    }
-  }
+      execution_engine_(std::make_unique<ExecutionEngine>(
+          std::move(execution_session), target_machine_->createDataLayout(),
+          definition_generator)),
+      compile_layer_(CreateCompileLayer(*execution_engine_->execution_session(),
+                                        *execution_engine_->object_layer(),
+                                        std::move(ir_compiler))) {
+  execution_engine_->AllocateDylibs(num_dylibs);
+  execution_engine_->RegisterJITEventListeners();
 
-  // Register GDB and perf event listeners with the object linking layer.
-  if (gdb_) object_layer_->registerJITEventListener(*gdb_);
-  if (perf_) object_layer_->registerJITEventListener(*perf_);
-
-  // Copied from LLJIT, required to find symbols on Windows.
   if (target_machine_->getTargetTriple().isOSBinFormatCOFF()) {
-    object_layer_->setOverrideObjectFlagsWithResponsibilityFlags(true);
-    object_layer_->setAutoClaimResponsibilityForObjectSymbols(true);
+    execution_engine_->SetObjectLayerFlags();
   }
 }
 
-JitCompiler::~JitCompiler() {
-  if (execution_session_) {
-    if (auto err = execution_session_->endSession()) {
-      execution_session_->reportError(std::move(err));
-    }
-  }
-}
+JitCompiler::~JitCompiler() = default;
 
 absl::Status JitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
                                     size_t dylib_index) {
-  if (dylib_index >= dylibs_.size()) {
-    return Internal("Invalid dylib index %d (num dylibs: %d))", dylib_index,
-                    dylibs_.size());
-  }
-
   // Set up module for codegen for the target machine at hand.
   module.withModuleDo([&](llvm::Module& m) {
     m.setDataLayout(target_machine_->createDataLayout());
@@ -229,25 +192,10 @@ absl::Status JitCompiler::AddModule(llvm::orc::ThreadSafeModule module,
   });
 
   // Add module to the selected dynamic library.
-  llvm::orc::JITDylib* dylib = dylibs_[dylib_index];
+  TF_ASSIGN_OR_RETURN(llvm::orc::JITDylib * dylib,
+                      execution_engine_->dylib(dylib_index));
   if (auto err = compile_layer_->add(*dylib, std::move(module))) {
     return Internal("Failed to add module to dylib %d: %s", dylib_index,
-                    llvm::toString(std::move(err)));
-  }
-
-  return absl::OkStatus();
-}
-
-absl::Status JitCompiler::AddObjFile(
-    std::unique_ptr<llvm::MemoryBuffer> obj_file, size_t dylib_index) {
-  if (dylib_index >= dylibs_.size()) {
-    return Internal("Invalid dylib index %d (num dylibs: %d))", dylib_index,
-                    dylibs_.size());
-  }
-
-  llvm::orc::JITDylib* dylib = dylibs_[dylib_index];
-  if (auto err = object_layer_->add(*dylib, std::move(obj_file))) {
-    return Internal("Failed to add object file to dylib %d: %s", dylib_index,
                     llvm::toString(std::move(err)));
   }
 
@@ -260,55 +208,13 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> JitCompiler::Compile(
     return TraceMeEncode("JitCompiler::Compile",
                          {{"num_symbols", symbols.size()}});
   });
-
-  // Mangle symbol names for the target machine data layout.
+  ObjectLoader object_loader(std::move(execution_engine_));
   llvm::DataLayout data_layout = target_machine_->createDataLayout();
-  auto mangle = [&](absl::string_view name) {
-    llvm::SmallVector<char, 40> mangled;
-    llvm::Mangler::getNameWithPrefix(mangled, name, data_layout);
-    return std::string(mangled.begin(), mangled.end());
-  };
-
-  // Build a symbol lookup set.
-  llvm::orc::SymbolLookupSet lookup_set;
-  for (const auto& symbol : symbols) {
-    VLOG(5) << absl::StreamFormat(" - look up symbol: %s", symbol.name);
-    lookup_set.add(execution_session_->intern(mangle(symbol.name)));
-  }
-
-  // Build a search order for the dynamic libraries.
-  llvm::orc::JITDylibSearchOrder search_order(dylibs_.size());
-  for (size_t i = 0; i < dylibs_.size(); ++i) {
-    search_order[i] = std::make_pair(
-        dylibs_[i], llvm::orc::JITDylibLookupFlags::MatchExportedSymbolsOnly);
-  }
-
-  // Look up all requested symbols in the execution session.
-  auto symbol_map = execution_session_->lookup(std::move(search_order),
-                                               std::move(lookup_set));
-
+  TF_ASSIGN_OR_RETURN(auto symbol_map, object_loader.LookupSymbols(symbols));
   // Wait for all compilation tasks to finish.
   task_dispatcher_->shutdown();
-
-  if (auto err = symbol_map.takeError()) {
-    return Internal("%s", llvm::toString(std::move(err)));
-  }
-
-  // Resolve type-erased symbol pointers from the symbol map.
-  using ResolvedSymbol = CompiledFunctionLibrary::ResolvedSymbol;
-  absl::flat_hash_map<std::string, ResolvedSymbol> resolved_map;
-
-  for (const auto& symbol : symbols) {
-    auto symbol_name = execution_session_->intern(mangle(symbol.name));
-    llvm::orc::ExecutorSymbolDef symbol_def = symbol_map->at(symbol_name);
-    llvm::orc::ExecutorAddr symbol_addr = symbol_def.getAddress();
-    void* ptr = reinterpret_cast<void*>(symbol_addr.getValue());
-    resolved_map[symbol.name] = ResolvedSymbol{symbol.type_id, ptr};
-  }
-
-  return std::make_unique<CompiledFunctionLibrary>(
-      std::move(execution_session_), std::move(object_layer_),
-      std::move(resolved_map));
+  return std::move(object_loader)
+      .CreateFunctionLibrary(std::move(symbols), symbol_map);
 }
 
 JitCompiler::TaskDispatcher::TaskDispatcher(TaskRunner task_runner)

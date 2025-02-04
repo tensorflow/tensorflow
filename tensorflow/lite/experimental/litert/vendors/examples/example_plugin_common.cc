@@ -53,7 +53,7 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedHardware(
   if (!compiler_plugin || !supported_hardware) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *supported_hardware = kLiteRtHwAccelatorCpu;
+  *supported_hardware = kLiteRtHwAcceleratorCpu;
   return kLiteRtStatusOk;
 }
 

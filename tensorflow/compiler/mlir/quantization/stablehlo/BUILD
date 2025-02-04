@@ -407,8 +407,6 @@ tf_cc_test(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:error_spec",
         "@local_xla//xla:literal",
         "@local_xla//xla:literal_util",
@@ -419,6 +417,8 @@ tf_cc_test(
         "@local_xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "@local_xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "@local_xla//xla/tests:literal_test_util",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
         "@stablehlo//:chlo_ops",
     ],
 )
@@ -466,7 +466,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -543,6 +543,7 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:UBDialect",
         "@local_tsl//tsl/platform:protobuf",
         "@local_xla//xla/mlir_hlo",
         "@stablehlo//:chlo_ops",

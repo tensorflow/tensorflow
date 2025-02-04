@@ -1047,6 +1047,49 @@ CHECK:     tt.store
       RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
+TEST_F(TritonEmitterTest,
+       BitcastInBetweenReductionAndSlicedBroadcastIsLoweredCorrectly) {
+  // Regression test for b/392099316
+  constexpr absl::string_view kHloText = R"(
+triton_computation {
+  p0 = bf16[2048,4,256]{2,1,0} parameter(0)
+  c0 = bf16[] constant(0)
+  reduce = bf16[2048,4]{1,0} reduce(p0, c0), dimensions={2}, to_apply={
+    a = bf16[] parameter(0)
+    b = bf16[] parameter(1)
+    ROOT maximum = bf16[] maximum(a, b)
+  }
+  add_unnecessary_dim = bf16[1,2048,4]{2,1,0} bitcast(reduce)
+  upcast = f32[1,2048,4]{2,1,0} convert(add_unnecessary_dim)
+  some_high_precision_op = f32[1,2048,4]{2,1,0} sqrt(upcast)
+  downcast = bf16[1,2048,4]{2,1,0} convert(some_high_precision_op)
+  remove_dim = bf16[2048,4]{1,0} bitcast(downcast)
+  broadcast = bf16[2048,4,256]{2,1,0} broadcast(remove_dim), dimensions={0,1}
+  ROOT slice = bf16[2048,4,128]{2,1,0} slice(broadcast),
+    slice={[0:2048], [0:4], [0:128]}
+}
+
+ENTRY main {
+  %p0 = bf16[2048,4,256]{2,1,0} parameter(0)
+  ROOT fusion = bf16[2048,4,128]{2,1,0} fusion(p0), kind=kCustom,
+  calls=triton_computation,
+  backend_config={"fusion_backend_config":
+    {"kind":"__triton",
+     "block_level_fusion_config":{"output_tile_sizes":["8","4","128"],
+                                  "num_warps":"8"}}}
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:     tt.load
+CHECK:     tt.reduce
+CHECK:     tt.broadcast
+CHECK:     tt.store
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
 // TODO(b/353484968): move this test to a deviceless file.
 TEST_F(TritonEmitterTest, GenericEmitterLowersBroadcastFrom0dOperandCorrectly) {
   constexpr absl::string_view kHloText = R"(

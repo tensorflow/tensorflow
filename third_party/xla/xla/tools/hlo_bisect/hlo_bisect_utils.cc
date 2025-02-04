@@ -146,6 +146,7 @@ absl::Status DumpHloModule(HloModule* module, const std::string& file_name,
         env, file_path,
         module->ToString(HloPrintOptions::Canonical()
                              .set_print_large_constants(true)
+                             .set_print_backend_config(true)
                              .set_compact_operands(false))));
   } else if (output_format == "pb") {
     std::string path;
@@ -265,6 +266,7 @@ absl::StatusOr<bool> ScriptChecker::Run(const HloModule& module) {
   std::string hlo_contents =
       module.ToString(HloPrintOptions::Canonical()
                           .set_print_large_constants(true)
+                          .set_print_backend_config(true)
                           .set_compact_operands(false));
 
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(env, hlo_path, hlo_contents));

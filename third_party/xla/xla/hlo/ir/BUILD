@@ -52,6 +52,7 @@ cc_library(
         "hlo_op_metadata.h",
         "hlo_opcode.h",
         "hlo_original_value.h",
+        "hlo_print_options.h",
         "hlo_schedule.h",
         "hlo_sharding.h",
         "hlo_sharding_metadata.h",
@@ -114,6 +115,18 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_instruction_test",
+    srcs = ["hlo_instruction_test.cc"],
+    deps = [
+        ":hlo",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

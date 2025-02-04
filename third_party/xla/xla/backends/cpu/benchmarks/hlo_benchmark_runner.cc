@@ -52,6 +52,8 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                       xla::GetXlaPjrtCpuClient(client_options));
   PjRtDevice* device = client->devices().front();
+  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
+                      device->default_memory_space());
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       ParseAndReturnUnverifiedModule(
@@ -83,7 +85,7 @@ absl::Status RunHloBenchmark(benchmark::State& state,
     args_buffers.reserve(fake_args.size());
     for (const Literal& arg : fake_args) {
       TF_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
-                          client->BufferFromHostLiteral(arg, device));
+                          client->BufferFromHostLiteral(arg, memory_space));
       TF_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
     }
   } else {
@@ -96,7 +98,7 @@ absl::Status RunHloBenchmark(benchmark::State& state,
     args_buffers.reserve(args.size());
     for (const Literal* arg : args) {
       TF_ASSIGN_OR_RETURN(args_buffers.emplace_back(),
-                          client->BufferFromHostLiteral(*arg, device));
+                          client->BufferFromHostLiteral(*arg, memory_space));
       TF_RETURN_IF_ERROR(args_buffers.back()->GetReadyFuture().Await());
     }
   }

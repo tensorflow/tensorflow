@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -732,23 +733,46 @@ TEST(XplaneutilsTest, TestEventMetadataStatsAreCopiedForRefValue) {
   EXPECT_EQ(stat->StrOrRefValue(), "TestFunction");
 }
 
-TEST(XplaneutilsTest, TestIsXSpaceGrouped) {
+TEST(XplaneutilsTest, PartiallyGroupedXSpace) {
   XSpace space;
   {
-    XPlaneBuilder p1(space.add_planes());
-    auto l1 = CreateXLine(&p1, "l1", "d1", 1, 100);
-    auto e1 = CreateXEvent(&p1, l1, "event1", "display1", 1, 2);
-    CreateXStats(&p1, &e1, "event_stat1", 2.0);
+    XPlaneBuilder host(space.add_planes());
+    host.SetName("/host:CPU");
+    auto l1 = CreateXLine(&host, "l1", "d1", 1, 100);
+    auto e1 = CreateXEvent(&host, l1, "event1", "display1", 1, 2);
+    CreateXStats(&host, &e1, "non_group_id", 2.0);
+  }
+  {
+    XPlaneBuilder device(space.add_planes());
+    device.SetName("/device:TPU");
+    auto l1 = CreateXLine(&device, "l1", "d1", 1, 100);
+    auto e1 = CreateXEvent(&device, l1, "event1", "display1", 1, 2);
+    CreateXStats(&device, &e1, "group_id", 2.0);
   }
   EXPECT_FALSE(IsXSpaceGrouped(space));
+}
+
+TEST(XplaneutilsTest, TestFullyGroupedXSpace) {
+  XSpace space;
+  {
+    XPlaneBuilder host(space.add_planes());
+    host.SetName("/host:CPU");
+    auto l1 = CreateXLine(&host, "l1", "d1", 1, 100);
+    auto e1 = CreateXEvent(&host, l1, "event1", "display1", 1, 2);
+    CreateXStats(&host, &e1, "group_id", 2.0);
+  }
 
   {
-    XPlaneBuilder p2(space.add_planes());
-    auto l2 = CreateXLine(&p2, "l2", "d2", 1, 100);
-    auto e2 = CreateXEvent(&p2, l2, "event2", "display2", 1, 2);
-    CreateXStats(&p2, &e2, "group_id", 1);
+    XPlaneBuilder device(space.add_planes());
+    device.SetName("/device:TPU");
+    auto l1 = CreateXLine(&device, "l1", "d1", 1, 100);
+    auto e1 = CreateXEvent(&device, l1, "event1", "display1", 1, 2);
+    CreateXStats(&device, &e1, "group_id", 2.0);
+    auto l2 = CreateXLine(&device, "l2", "d2", 1, 100);
+    auto e2 = CreateXEvent(&device, l2, "event2", "display2", 1, 2);
+    CreateXStats(&device, &e2, "non_group_id", 2.0);
   }
-  LOG(ERROR) << space.DebugString();
+
   EXPECT_TRUE(IsXSpaceGrouped(space));
 }
 

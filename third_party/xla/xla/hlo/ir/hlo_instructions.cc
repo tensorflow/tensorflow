@@ -920,15 +920,6 @@ HloCollectiveInstruction::HloCollectiveInstruction(
   }
 }
 
-HloCollectiveInstruction::HloCollectiveInstruction(
-    HloOpcode opcode, const Shape& shape,
-    absl::Span<HloInstruction* const> operands,
-    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const std::optional<int64_t>& channel_id)
-    : HloCollectiveInstruction(opcode, shape, operands,
-                               CollectiveDeviceList(replica_groups),
-                               constrain_layout, channel_id) {}
-
 HloInstructionProto HloCollectiveInstruction::ToProto() const {
   HloInstructionProto proto = HloChannelInstruction::ToProto();
   *proto.mutable_collective_device_list() = device_list_.ToProto();
@@ -1039,17 +1030,6 @@ HloAllReduceInstructionBase::HloAllReduceInstructionBase(
   AppendComputation(reduce_computation);
   reduce_computation->SetCollectiveCallInstruction(this);
 }
-
-HloAllReduceInstructionBase::HloAllReduceInstructionBase(
-    HloOpcode opcode, const Shape& shape,
-    absl::Span<HloInstruction* const> operands,
-    HloComputation* reduce_computation,
-    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids)
-    : HloAllReduceInstructionBase(opcode, shape, operands, reduce_computation,
-                                  CollectiveDeviceList(replica_groups),
-                                  constrain_layout, channel_id,
-                                  use_global_device_ids) {}
 
 HloInstructionProto HloAllReduceInstructionBase::ToProto() const {
   HloInstructionProto proto = HloCollectiveInstruction::ToProto();

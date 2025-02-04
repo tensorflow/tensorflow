@@ -63,7 +63,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:env",
+        "@local_xla//xla/tsl/platform:env",
         "@tf_runtime//:hostcontext",
     ],
 )

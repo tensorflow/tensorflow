@@ -223,7 +223,9 @@ class ThunkExecutor {
 
     // We use indirection via NodeStorage to be able to allocate uninitialized
     // memory and do not pay the cost of default initializing all nodes.
-    using NodeStorage = std::aligned_storage_t<sizeof(Node), alignof(Node)>;
+    struct NodeStorage {
+      alignas(Node) std::byte data[sizeof(Node)];
+    };
 
     ExecuteState(ThunkExecutor* executor, Thunk::TaskRunner* runner);
 
@@ -235,6 +237,8 @@ class ThunkExecutor {
     ThunkExecutor* executor;
     Thunk::TaskRunner* runner;
 
+    // Note: using alignas(Node) here instead of in NodeStorage does not work:
+    // `nodes` would be aligned, but not its elements.
     absl::FixedArray<NodeStorage> nodes;
     tsl::AsyncValueRef<ExecuteEvent> execute_event;
 

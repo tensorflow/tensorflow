@@ -218,7 +218,7 @@ struct AliasedOffset {
 // between Def, Use1, Use2.1, Use2.2, Use3:
 //        +------+----------+-------------------+
 //       /        \          \                   \
-  //      /          v          v                   v
+//      /          v          v                   v
 //    Def         Use1       Use2(Sync Copy)     Use3
 //    |            |           \         \        |
 //    |            |            v         v       |

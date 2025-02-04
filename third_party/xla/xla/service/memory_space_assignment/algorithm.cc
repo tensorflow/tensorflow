@@ -363,8 +363,8 @@ CrossProgramPrefetches FindCrossProgramPrefetches(
 
 std::string AllocationValue::ToString() const {
   std::string out = absl::StrCat("computation = ", computation()->name());
-  absl::StrAppend(&out,
-                  (requires_contiguous_allocation_ ? " (cont alloc)" : ""));
+  absl::StrAppend(
+      &out, (requires_contiguous_allocation_ ? " (contiguous alloc)" : ""));
   absl::StrAppend(&out, "\n position:\n");
   absl::StrAppend(&out, "  ", defining_position_.ToString(), "\n");
   absl::StrAppend(&out, " uses:\n");
@@ -879,6 +879,20 @@ void MsaAlgorithm::DumpDebugStringsIfEnabled() const {
   options_.dump_fn("bufferinfo", buffer_info_str_);
   options_.dump_fn("allocinfo", allocation_info_str_);
   options_.dump_fn("scheduleinfo", instruction_schedule_str_);
+}
+
+std::string MsaAlgorithm::OptionalRequiredMemoryAssignmentToString(
+    const std::optional<MsaAlgorithm::RequiredMemoryAssignment>& assignment) {
+  if (!assignment.has_value()) {
+    return "null";
+  }
+
+  if (assignment->offset) {
+    return absl::StrCat(MemorySpaceToString(assignment->memory_space),
+                        " at offset ", assignment->offset->offset);
+  }
+
+  return MemorySpaceToString(assignment->memory_space);
 }
 
 absl::Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
@@ -2588,7 +2602,10 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
       if (use.hlo_use.instruction->opcode() != HloOpcode::kBitcast ||
           use.hlo_use.instruction ==
               use.hlo_use.instruction->parent()->root_instruction()) {
-        result_mark(AllocateSegment(request), result);
+        AllocationResult allocate_segment_result = AllocateSegment(request);
+        VLOG(2) << "AllocateSegment result: "
+                << ResultToString(allocate_segment_result);
+        result_mark(allocate_segment_result, result);
         if (options_.allocation_result_modifier_testing_fn) {
           options_.allocation_result_modifier_testing_fn(request, result);
         }
@@ -4535,17 +4552,19 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   // we're allowed to prefetch. If the use expects the output to be in default
   // memory, we cannot prefetch it because if we did, it would be in alternate
   // memory instead.
-  auto required_assignment_at_start = RequiredMemoryAssignmentAt(
-      request.allocation_value->value(), request.inclusive_start_time);
+  std::optional<RequiredMemoryAssignment> required_assignment_at_start =
+      RequiredMemoryAssignmentAt(request.allocation_value->value(),
+                                 request.inclusive_start_time);
   std::optional<MemorySpace> required_memory_space_at_start;
   if (required_assignment_at_start) {
     required_memory_space_at_start = required_assignment_at_start->memory_space;
   }
   // Find required assignment both for the use and its aliases. If they are both
   // non-nullopt, then make sure they require the same assignment.
-  auto required_assignment_at_end = RequiredMemoryAssignmentAt(
-      request.allocation_value_to_update->value(), request.end_time);
-  auto aliased_required_assignment_at_end =
+  std::optional<RequiredMemoryAssignment> required_assignment_at_end =
+      RequiredMemoryAssignmentAt(request.allocation_value_to_update->value(),
+                                 request.end_time);
+  std::optional<RequiredMemoryAssignment> aliased_required_assignment_at_end =
       AliasedRequiredAssignmentForUse(*request.use);
   if (required_assignment_at_end != aliased_required_assignment_at_end) {
     if (required_assignment_at_end == std::nullopt) {
@@ -4593,6 +4612,12 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       }
     }
   }
+
+  VLOG(3)
+      << "Required memory assignment at start: "
+      << OptionalRequiredMemoryAssignmentToString(required_assignment_at_start)
+      << "; required memory assignment at end: "
+      << OptionalRequiredMemoryAssignmentToString(required_assignment_at_end);
 
   AllocationResult allocation_result = AllocationResult::kSuccess;
   // First try keeping the allocation entirely in the alternate memory.

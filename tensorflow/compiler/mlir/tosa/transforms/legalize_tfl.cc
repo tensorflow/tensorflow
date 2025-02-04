@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -202,6 +203,9 @@ DECL_CONVERT_OP(While);
 DECL_CONVERT_OP(Real);
 DECL_CONVERT_OP(Imag);
 DECL_CONVERT_OP(RFFT2d);
+DECL_CONVERT_OP(LogicalAnd);
+DECL_CONVERT_OP(LogicalOr);
+DECL_CONVERT_OP(Pow);
 DECL_CONVERT_OP(BroadcastTo);
 
 #undef DECL_CONVERT_OP
@@ -266,44 +270,37 @@ LogicalResult ConvertTFLGeluOp::matchAndRewrite(
   //   op6 = mul(x, 0.5)
   //   op7 = mul(op6, op5)
 
-  auto fp_scalar_ty = RankedTensorType::get({}, rewriter.getF32Type());
-
-  Value cst_3 = rewriter.create<tosa::ConstOp>(
-      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {3.0f}));
+  auto rank = input_type.getRank();
+  Value cst_3 = getTosaConstTensorSingleF32(rewriter, op, 3.0f, rank);
   auto op0_pow_3 =
       CreateOpAndInfer<tosa::PowOp>(rewriter, loc, output_type, input, cst_3);
 
-  Value cst_004 = rewriter.create<tosa::ConstOp>(
-      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {4.471500e-02f}));
+  Value cst_004 =
+      getTosaConstTensorSingleF32(rewriter, op, 4.471500e-02f, rank);
   auto op1_mul_op0_004 =
-      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, output_type, op0_pow_3,
-                                    cst_004, rewriter.getI8IntegerAttr(0));
+      CreateMulOpAndInfer(rewriter, op, output_type, op0_pow_3, cst_004);
 
   auto op2_add_x_op1 = CreateOpAndInfer<tosa::AddOp>(rewriter, loc, output_type,
                                                      input, op1_mul_op0_004);
 
-  Value cst_sqrt2pi = rewriter.create<tosa::ConstOp>(
-      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {0.797884583f}));
-  auto op3_mul_op2_sqrt2pi =
-      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, output_type, op2_add_x_op1,
-                                    cst_sqrt2pi, rewriter.getI8IntegerAttr(0));
+  Value cst_sqrt2pi =
+      getTosaConstTensorSingleF32(rewriter, op, 0.797884583f, rank);
+  auto op3_mul_op2_sqrt2pi = CreateMulOpAndInfer(rewriter, op, output_type,
+                                                 op2_add_x_op1, cst_sqrt2pi);
 
   auto op4_tanh_op3 = CreateOpAndInfer<tosa::TanhOp>(rewriter, loc, output_type,
                                                      op3_mul_op2_sqrt2pi);
 
-  Value cst_1 = rewriter.create<tosa::ConstOp>(
-      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {1.0f}));
+  Value cst_1 = getTosaConstTensorSingleF32(rewriter, op, 1.0f, rank);
   auto op5_add_op4_1 = CreateOpAndInfer<tosa::AddOp>(rewriter, loc, output_type,
                                                      op4_tanh_op3, cst_1);
 
-  Value cst_05 = rewriter.create<tosa::ConstOp>(
-      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {0.5f}));
-  auto op6_mul_x_05 = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, output_type, input, cst_05, rewriter.getI8IntegerAttr(0));
+  Value cst_05 = getTosaConstTensorSingleF32(rewriter, op, 0.5f, rank);
+  auto op6_mul_x_05 =
+      CreateMulOpAndInfer(rewriter, op, output_type, input, cst_05);
 
-  auto op7_mul_op6_op5 = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, output_type, op6_mul_x_05, op5_add_op4_1,
-      rewriter.getI8IntegerAttr(0));
+  auto op7_mul_op6_op5 = CreateMulOpAndInfer(rewriter, op, output_type,
+                                             op6_mul_x_05, op5_add_op4_1);
 
   rewriter.replaceOp(op, {op7_mul_op6_op5.getResult()});
 
@@ -673,13 +670,13 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
                                            PatternRewriter& rewriter) {
   auto tfl_add_op = cast<TflOp>(op);
 
-  ShapedType input_lhs_type =
-      mlir::dyn_cast<ShapedType>(tfl_add_op.getLhs().getType());
-  ShapedType input_rhs_type =
-      mlir::dyn_cast<ShapedType>(tfl_add_op.getRhs().getType());
+  Value lhs = tfl_add_op.getLhs();
+  Value rhs = tfl_add_op.getRhs();
+
+  ShapedType input_lhs_type = mlir::dyn_cast<ShapedType>(lhs.getType());
+  ShapedType input_rhs_type = mlir::dyn_cast<ShapedType>(rhs.getType());
   ShapedType output_type =
       mlir::dyn_cast<ShapedType>(tfl_add_op.getResult().getType());
-  // Not a ranked tensor output
   if (!input_lhs_type || !input_rhs_type || !output_type) return failure();
 
   bool input_lhs_is_qtype = mlir::isa<mlir::quant::UniformQuantizedType>(
@@ -739,11 +736,11 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
 
 #if TFLITE_SINGLE_ROUNDING
     Value op1_rescale_lhs = buildRescaleToInt32(
-        rewriter, op, tfl_add_op.getLhs(),
+        rewriter, op, lhs,
         lhs_rescale_scale * static_cast<double>(1 << input_shift),
         input_lhs_qtype.getZeroPoint());
     Value op2_rescale_rhs = buildRescaleToInt32(
-        rewriter, op, tfl_add_op.getRhs(),
+        rewriter, op, rhs,
         rhs_rescale_scale * static_cast<double>(1 << input_shift),
         input_rhs_qtype.getZeroPoint());
 #else  // TFLITE_DOUBLE_ROUNDING
@@ -757,25 +754,24 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
     //    leaves a left shift of 15 impossible. Using a Cast + Shift instead.
     // 2. In other cases, we are scaling by lhs_rescale_scale*(1<<input_shift)
     if (lhs_rescale_scale == 0.5) {
-      op1_rescale_lhs =
-          buildRescaleToInt32(rewriter, op, tfl_add_op.getLhs(),
-                              lhs_rescale_scale * (1 << input_shift),
-                              input_lhs_qtype.getZeroPoint());
+      op1_rescale_lhs = buildRescaleToInt32(
+          rewriter, op, lhs, lhs_rescale_scale * (1 << input_shift),
+          input_lhs_qtype.getZeroPoint());
     } else {
       Value op1_none_half_scale_intermediate;
       if (output_qtype.getStorageTypeIntegralWidth() == 16) {
         auto tfl_add_lhs_casted = CreateOpAndInfer<tosa::CastOp>(
-            rewriter, op->getLoc(), rescale_type_input_left,
-            tfl_add_op.getLhs());
+            rewriter, op->getLoc(), rescale_type_input_left, lhs);
         op1_none_half_scale_intermediate =
             CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
                 rewriter, op->getLoc(), rescale_type_input_left,
                 tfl_add_lhs_casted.getResult(),
-                getTosaConstTensorSingleI32(rewriter, op, input_shift));
+                getTosaConstTensorSingleI32(rewriter, op, input_shift,
+                                            input_lhs_type.getRank()));
       } else {
-        op1_none_half_scale_intermediate = buildRescaleToInt32(
-            rewriter, op, tfl_add_op.getLhs(), (1 << input_shift),
-            input_lhs_qtype.getZeroPoint());
+        op1_none_half_scale_intermediate =
+            buildRescaleToInt32(rewriter, op, lhs, (1 << input_shift),
+                                input_lhs_qtype.getZeroPoint());
       }
       op1_rescale_lhs = buildRescaleToInt32(
           rewriter, op, op1_none_half_scale_intermediate, lhs_rescale_scale, 0);
@@ -788,25 +784,24 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
     //    leaves a left shift of 15 impossible. Using a Cast + Shift instead.
     // 2. In other cases, we are scaling by rhs_rescale_scale*(1<<input_shift)
     if (rhs_rescale_scale == 0.5) {
-      op2_rescale_rhs =
-          buildRescaleToInt32(rewriter, op, tfl_add_op.getRhs(),
-                              rhs_rescale_scale * (1 << input_shift),
-                              input_rhs_qtype.getZeroPoint());
+      op2_rescale_rhs = buildRescaleToInt32(
+          rewriter, op, rhs, rhs_rescale_scale * (1 << input_shift),
+          input_rhs_qtype.getZeroPoint());
     } else {
       Value op2_none_half_scale_intermediate;
       if (output_qtype.getStorageTypeIntegralWidth() == 16) {
         auto tfl_add_rhs_casted = CreateOpAndInfer<tosa::CastOp>(
-            rewriter, op->getLoc(), rescale_type_input_right,
-            tfl_add_op.getRhs());
+            rewriter, op->getLoc(), rescale_type_input_right, rhs);
         op2_none_half_scale_intermediate =
             CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
                 rewriter, op->getLoc(), rescale_type_input_right,
                 tfl_add_rhs_casted.getResult(),
-                getTosaConstTensorSingleI32(rewriter, op, input_shift));
+                getTosaConstTensorSingleI32(rewriter, op, input_shift,
+                                            input_rhs_type.getRank()));
       } else {
-        op2_none_half_scale_intermediate = buildRescaleToInt32(
-            rewriter, op, tfl_add_op.getRhs(), (1 << input_shift),
-            input_rhs_qtype.getZeroPoint());
+        op2_none_half_scale_intermediate =
+            buildRescaleToInt32(rewriter, op, rhs, (1 << input_shift),
+                                input_rhs_qtype.getZeroPoint());
       }
       op2_rescale_rhs = buildRescaleToInt32(
           rewriter, op, op2_none_half_scale_intermediate, rhs_rescale_scale, 0);
@@ -823,8 +818,7 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
     output = op4_rescale_op3;
   } else {
     auto op1_add_in =
-        CreateOpAndInfer<TosaOp>(rewriter, op->getLoc(), output_type,
-                                 tfl_add_op.getLhs(), tfl_add_op.getRhs());
+        CreateOpAndInfer<TosaOp>(rewriter, op->getLoc(), output_type, lhs, rhs);
 
     output = op1_add_in.getResult();
   }
@@ -964,20 +958,18 @@ LogicalResult ConvertTFLDivOp::matchAndRewrite(
   auto fused_activation_fn = tfl_div_op.getFusedActivationFunctionAttr();
 
   Type element_type = output_type.getElementType();
+  Value lhs = tfl_div_op.getLhs();
+  Value rhs = tfl_div_op.getRhs();
   Value div_op;
   if (mlir::isa<IntegerType>(element_type)) {
-    div_op =
-        CreateOpAndInfer<tosa::IntDivOp>(
-            rewriter, op->getLoc(), output_type, tfl_div_op.getLhs(),
-            tfl_div_op.getRhs())
-            .getResult();
+    div_op = CreateOpAndInfer<tosa::IntDivOp>(rewriter, op->getLoc(),
+                                              output_type, lhs, rhs)
+                 .getResult();
   } else {
     auto reciprocal_op = CreateOpAndInfer<tosa::ReciprocalOp>(
-        rewriter, op->getLoc(), tfl_div_op.getRhs().getType(),
-        tfl_div_op.getRhs());
-    div_op = CreateOpAndInfer<tosa::MulOp>(
-                 rewriter, op->getLoc(), output_type, tfl_div_op.getLhs(),
-                 reciprocal_op.getResult(), rewriter.getI8IntegerAttr(0))
+        rewriter, op->getLoc(), rhs.getType(), rhs);
+    div_op = CreateMulOpAndInfer(rewriter, op, output_type, lhs,
+                                 reciprocal_op.getResult())
                  .getResult();
   }
 
@@ -1000,10 +992,11 @@ LogicalResult ConvertTFLMaximumOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_max_op = cast<TFL::MaximumOp>(op);
 
-  ShapedType input_lhs_type =
-      dyn_cast<ShapedType>(tfl_max_op.getLhs().getType());
-  ShapedType input_rhs_type =
-      dyn_cast<ShapedType>(tfl_max_op.getRhs().getType());
+  Value lhs = tfl_max_op.getLhs();
+  Value rhs = tfl_max_op.getRhs();
+
+  ShapedType input_lhs_type = dyn_cast<ShapedType>(lhs.getType());
+  ShapedType input_rhs_type = dyn_cast<ShapedType>(rhs.getType());
   ShapedType output_type =
       dyn_cast<ShapedType>(tfl_max_op.getResult().getType());
 
@@ -1028,10 +1021,8 @@ LogicalResult ConvertTFLMaximumOp::matchAndRewrite(
   if (output_is_qtype) {
     ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
 
-    Value op1_rescale_lhs =
-        removeZeroPointAndCastToInt32(rewriter, op, tfl_max_op.getLhs(), 0);
-    Value op2_rescale_rhs =
-        removeZeroPointAndCastToInt32(rewriter, op, tfl_max_op.getRhs(), 0);
+    Value op1_rescale_lhs = removeZeroPointAndCastToInt32(rewriter, op, lhs, 0);
+    Value op2_rescale_rhs = removeZeroPointAndCastToInt32(rewriter, op, rhs, 0);
 
     auto op3_max_op1_op2 = CreateOpAndInfer<tosa::MaximumOp>(
         rewriter, op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs);
@@ -1041,9 +1032,8 @@ LogicalResult ConvertTFLMaximumOp::matchAndRewrite(
 
     output = op4_rescale_op3;
   } else {
-    auto op1_max_in = CreateOpAndInfer<tosa::MaximumOp>(
-        rewriter, op->getLoc(), output_type, tfl_max_op.getLhs(),
-        tfl_max_op.getRhs());
+    auto op1_max_in = CreateOpAndInfer<tosa::MaximumOp>(rewriter, op->getLoc(),
+                                                        output_type, lhs, rhs);
 
     output = op1_max_in.getResult();
   }
@@ -1057,10 +1047,11 @@ LogicalResult ConvertTFLMinimumOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_min_op = cast<TFL::MinimumOp>(op);
 
-  ShapedType input_lhs_type =
-      dyn_cast<ShapedType>(tfl_min_op.getLhs().getType());
-  ShapedType input_rhs_type =
-      dyn_cast<ShapedType>(tfl_min_op.getRhs().getType());
+  Value lhs = tfl_min_op.getLhs();
+  Value rhs = tfl_min_op.getRhs();
+
+  ShapedType input_lhs_type = dyn_cast<ShapedType>(lhs.getType());
+  ShapedType input_rhs_type = dyn_cast<ShapedType>(rhs.getType());
   ShapedType output_type =
       dyn_cast<ShapedType>(tfl_min_op.getResult().getType());
   // Not a shaped tensor output
@@ -1084,11 +1075,8 @@ LogicalResult ConvertTFLMinimumOp::matchAndRewrite(
   if (output_is_qtype) {
     ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
 
-    Value op1_rescale_lhs =
-        removeZeroPointAndCastToInt32(rewriter, op, tfl_min_op.getLhs(), 0);
-    Value op2_rescale_rhs =
-        removeZeroPointAndCastToInt32(rewriter, op, tfl_min_op.getRhs(), 0);
-
+    Value op1_rescale_lhs = removeZeroPointAndCastToInt32(rewriter, op, lhs, 0);
+    Value op2_rescale_rhs = removeZeroPointAndCastToInt32(rewriter, op, rhs, 0);
     auto op3_min_op1_op2 = CreateOpAndInfer<tosa::MinimumOp>(
         rewriter, op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs);
 
@@ -1097,9 +1085,8 @@ LogicalResult ConvertTFLMinimumOp::matchAndRewrite(
 
     output = op4_rescale_op3;
   } else {
-    auto op1_min_in = CreateOpAndInfer<tosa::MinimumOp>(
-        rewriter, op->getLoc(), output_type, tfl_min_op.getLhs(),
-        tfl_min_op.getRhs());
+    auto op1_min_in = CreateOpAndInfer<tosa::MinimumOp>(rewriter, op->getLoc(),
+                                                        output_type, lhs, rhs);
 
     output = op1_min_in.getResult();
   }
@@ -1152,14 +1139,17 @@ LogicalResult ConvertTFLAddNOp::matchAndRewrite(
 
   assert(inputs.size() >= 2);
 
-  auto newOp = CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(),
-                                             output_type, inputs[0], inputs[1]);
+  Value x = inputs[0];
+  Value y = inputs[1];
+  Value newValue =
+      CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(), output_type, x, y);
   for (int i = 2; i < inputs.size(); i++) {
-    newOp = CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(), output_type,
-                                          inputs[i], newOp.getResult());
+    Value next = inputs[i];
+    newValue = CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(),
+                                             output_type, next, newValue);
   }
 
-  rewriter.replaceOp(op, {newOp.getResult()});
+  rewriter.replaceOp(op, {newValue});
 
   return success();
 }
@@ -1471,9 +1461,16 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
     return success();
   }
 
+  DenseI64ArrayAttr kernel_size;
   DenseI64ArrayAttr pad;
   DenseI64ArrayAttr stride;
   DenseI64ArrayAttr dilation;
+  {
+    // TFLite filter format is tensorflow::FORMAT_OHWI
+    int64_t kernel_h = filter_type.getDimSize(1);
+    int64_t kernel_w = filter_type.getDimSize(2);
+    kernel_size = rewriter.getDenseI64ArrayAttr({kernel_h, kernel_w});
+  }
   {
     int64_t stride_h = tfl_conv2d_op.getStrideH();
     int64_t stride_w = tfl_conv2d_op.getStrideW();
@@ -1512,10 +1509,20 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
     }
   }
 
+  // TFLite only supports NHWC format
+  Value conv2d_input = getInputSlicedToItsUsedSize(
+      rewriter, op, tensorflow::FORMAT_NHWC, input_type,
+      tfl_conv2d_op.getInput(), kernel_size, pad, stride, dilation);
+
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ bias_ety);
+
   auto a1_conv2d_op = CreateOpAndInfer<tosa::Conv2DOp>(
-      rewriter, op->getLoc(), output_type.clone(bias_ety),
-      tfl_conv2d_op.getInput(), tfl_conv2d_op.getFilter(), unquantized_bias,
-      pad, stride, dilation);
+      rewriter, op->getLoc(), output_type.clone(bias_ety), conv2d_input,
+      tfl_conv2d_op.getFilter(), unquantized_bias, pad, stride, dilation,
+      acc_type);
 
   Value conv2d_output;
   if (input_is_qtype) {
@@ -1559,17 +1566,60 @@ LogicalResult ConvertTFLConv3DOp::matchAndRewrite(
   }
 
   bool input_is_qtype =
-      mlir::isa<mlir::quant::QuantizedType>(input_type.getElementType());
+      input_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool filter_is_qtype =
-      mlir::isa<mlir::quant::QuantizedType>(filter_type.getElementType());
+      filter_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool output_is_qtype =
-      mlir::isa<mlir::quant::QuantizedType>(output_type.getElementType());
+      output_type.getElementType().isa<mlir::quant::QuantizedType>();
 
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
-    return rewriter.notifyMatchFailure(op,
-                                       "input/filter/output tensor should be "
-                                       "all quantized or all floating-point");
+    return rewriter.notifyMatchFailure(
+        op,
+        "ConvertTFLConv3DOp: input/filter/output tensor should "
+        "be all quantized or all floating-point.");
+  }
+
+  DenseI64ArrayAttr kernel_size;
+  DenseI64ArrayAttr pad;
+  DenseI64ArrayAttr stride;
+  DenseI64ArrayAttr dilation;
+  {
+    // TFLite filter format is DHWIO
+    int64_t kernel_d = filter_type.getDimSize(0);
+    int64_t kernel_h = filter_type.getDimSize(1);
+    int64_t kernel_w = filter_type.getDimSize(2);
+    kernel_size = rewriter.getDenseI64ArrayAttr({kernel_d, kernel_h, kernel_w});
+  }
+  {
+    int64_t stride_d = tfl_conv3d_op.getStrideD();
+    int64_t stride_h = tfl_conv3d_op.getStrideH();
+    int64_t stride_w = tfl_conv3d_op.getStrideW();
+    stride = rewriter.getDenseI64ArrayAttr({stride_d, stride_h, stride_w});
+  }
+  {
+    int64_t dilation_d = tfl_conv3d_op.getDilationDFactor();
+    int64_t dilation_h = tfl_conv3d_op.getDilationHFactor();
+    int64_t dilation_w = tfl_conv3d_op.getDilationWFactor();
+    dilation =
+        rewriter.getDenseI64ArrayAttr({dilation_d, dilation_h, dilation_w});
+  }
+  {
+    tensorflow::Padding tf_pad;
+    if (!GetPaddingFromString(tfl_conv3d_op.getPadding().str(), &tf_pad).ok()) {
+      return failure();
+    }
+
+    // TFLite doesn't support explicit padding
+    if (!getPaddingValuesFromPadType(
+            tf_pad,
+            tensorflow::FORMAT_NHWC,  // TFLite only supports NDHWC format,
+                                      // tensorflow::FORMAT_NHWC is used for
+                                      // both rank 4 and rank 5 tensors
+            0,                        // TFLite filter is DHWIO
+            input_type, filter_type, stride, dilation, rewriter, pad)) {
+      return failure();
+    }
   }
 
   Value unquantized_bias = tfl_conv3d_op.getBias();
@@ -1582,21 +1632,27 @@ LogicalResult ConvertTFLConv3DOp::matchAndRewrite(
         RankedTensorType::get({bias_dim}, filter_type.getElementType());
     auto bias_attr = rewriter.getZeroAttr(bias_type);
     unquantized_bias = CreateOpAndInfer<tosa::ConstOp>(
-        rewriter, op->getLoc(), bias_type, mlir::cast<ElementsAttr>(bias_attr));
+        rewriter, op->getLoc(), bias_type, bias_attr.cast<ElementsAttr>());
   }
 
-  SmallVector<int64_t, 3> strides({tfl_conv3d_op.getStrideD(),
-                                   tfl_conv3d_op.getStrideH(),
-                                   tfl_conv3d_op.getStrideW()});
-  SmallVector<int64_t, 3> dilations({tfl_conv3d_op.getDilationDFactor(),
-                                     tfl_conv3d_op.getDilationHFactor(),
-                                     tfl_conv3d_op.getDilationWFactor()});
+  // TFLite only supports NDHWC format, tensorflow::FORMAT_NHWC is used for both
+  // rank 4 and rank 5 tensors
+  Value conv3d_input = getInputSlicedToItsUsedSize(
+      rewriter, op, tensorflow::FORMAT_NHWC, input_type,
+      tfl_conv3d_op.getInput(), kernel_size, pad, stride, dilation);
+
   Type bias_ety =
-      mlir::cast<ShapedType>(unquantized_bias.getType()).getElementType();
+      unquantized_bias.getType().cast<ShapedType>().getElementType();
+
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ bias_ety);
+
   std::optional<Value> a1_conv3d_op = convertConv3DCommon(
-      rewriter, op, output_type.clone(bias_ety), tfl_conv3d_op.getInput(),
-      tfl_conv3d_op.getFilter(), unquantized_bias, strides, dilations,
-      tfl_conv3d_op.getPadding().str(), StringRef("NDHWC"));
+      rewriter, op, output_type.clone(bias_ety), conv3d_input,
+      tfl_conv3d_op.getFilter(), unquantized_bias, pad, stride, dilation,
+      acc_type, StringRef("NDHWC"));
 
   if (!a1_conv3d_op) return failure();
 
@@ -1727,10 +1783,15 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
   if (!zero_bias) return failure();
   Type bias_ety = mlir::cast<ShapedType>(zero_bias->getType()).getElementType();
 
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ bias_ety);
+
   auto a1_conv2d_op = CreateOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety),
       tfl_conv_op.getInput(), tfl_conv_op.getWeights(), zero_bias.value(),
-      outpad, stride, output_shape);
+      outpad, stride, output_shape, acc_type);
 
   Value conv2d_output;
   if (input_is_qtype) {
@@ -1774,11 +1835,11 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   if (!filter_type) return failure();
 
   bool input_is_qtype =
-      mlir::isa<mlir::quant::QuantizedType>(input_type.getElementType());
+      input_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool filter_is_qtype =
-      mlir::isa<mlir::quant::QuantizedType>(filter_type.getElementType());
+      filter_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool output_is_qtype =
-      mlir::isa<mlir::quant::QuantizedType>(output_type.getElementType());
+      output_type.getElementType().isa<mlir::quant::QuantizedType>();
 
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
@@ -1803,11 +1864,18 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   // a3_transpose_conv2d = tosa.transpose_conv2d(input, a2_reshape, padding,
   // stride, dilation)
 
+  DenseI64ArrayAttr kernel_size;
   DenseI64ArrayAttr pad;
   DenseI64ArrayAttr stride;
   DenseI64ArrayAttr dilation;
   auto depth_multiplier = tfl_conv2d_op.getDepthMultiplierAttr();
 
+  {
+    // DepthwiseConv2D TFLite filter format is tensorflow::FORMAT_IHWO
+    int64_t kernel_h = filter_type.getDimSize(1);
+    int64_t kernel_w = filter_type.getDimSize(2);
+    kernel_size = rewriter.getDenseI64ArrayAttr({kernel_h, kernel_w});
+  }
   {
     int64_t stride_h = tfl_conv2d_op.getStrideH();
     int64_t stride_w = tfl_conv2d_op.getStrideW();
@@ -1867,7 +1935,7 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
   Value unquantized_bias = tfl_conv2d_op.getBias();
   if (unquantized_bias) {
     Type new_bias_ety = getElementTypeOrSelf(unquantized_bias.getType());
-    if (auto qtype = mlir::dyn_cast<mlir::quant::QuantizedType>(new_bias_ety)) {
+    if (auto qtype = new_bias_ety.dyn_cast<mlir::quant::QuantizedType>()) {
       new_bias_ety = qtype.getStorageType();
     }
     if (new_bias_ety.getIntOrFloatBitWidth() >
@@ -1876,10 +1944,20 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
     }
   }
 
+  // TFLite only supports NHWC format
+  Value conv2d_input = getInputSlicedToItsUsedSize(
+      rewriter, op, tensorflow::FORMAT_NHWC, input_type,
+      tfl_conv2d_op.getInput(), kernel_size, pad, stride, dilation);
+
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ bias_ety);
+
   auto a3_depthwise_conv2d_op = CreateOpAndInfer<tosa::DepthwiseConv2DOp>(
-      rewriter, op->getLoc(), output_type.clone(bias_ety),
-      tfl_conv2d_op.getInput(), a2_filter_reshape_op.getResult(),
-      unquantized_bias, pad, stride, dilation);
+      rewriter, op->getLoc(), output_type.clone(bias_ety), conv2d_input,
+      a2_filter_reshape_op.getResult(), unquantized_bias, pad, stride, dilation,
+      acc_type);
 
   Value conv2d_output;
   if (input_is_qtype) {
@@ -2169,12 +2247,17 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
 
   Type bias_ety = mlir::cast<ShapedType>(bias_val.getType()).getElementType();
 
+  auto acc_type =
+      getConvAccTypeAttr(rewriter,
+                         /* input_etype = */ input_type.getElementType(),
+                         /* output_etype = */ bias_ety);
+
   auto fc_op = CreateOpAndInfer<tosa::Conv2DOp>(
       rewriter, op->getLoc(), UnrankedTensorType::get(bias_ety), input_val,
       filter_val, bias_val,
       /* pad = */ rewriter.getDenseI64ArrayAttr({0, 0, 0, 0}),
       /* stride = */ rewriter.getDenseI64ArrayAttr({1, 1}),
-      /* dilation = */ rewriter.getDenseI64ArrayAttr({1, 1}));
+      /* dilation = */ rewriter.getDenseI64ArrayAttr({1, 1}), acc_type);
 
   Value fc_output;
   if (input_is_qtype) {
@@ -2680,24 +2763,24 @@ LogicalResult ConvertTFLL2NormalizationOp::matchAndRewrite(
 
   if (!input_ty.hasRank()) return failure();
 
+  auto rank = input_ty.getRank();
+
   if (input_ty.getElementType().isF32()) {
-    auto shift = rewriter.getIntegerAttr(rewriter.getI8Type(), 0);
     auto result_ty = UnrankedTensorType::get(input_ty.getElementType());
-    auto mul = CreateOpAndInfer<tosa::MulOp>(rewriter, loc, result_ty, input,
-                                             input, shift);
+    auto mul = CreateMulOpAndInfer(rewriter, op, result_ty, input, input);
     auto sum = CreateOpAndInfer<tosa::ReduceSumOp>(
         rewriter, loc, result_ty, mul,
         rewriter.getI32IntegerAttr(input_ty.getRank() - 1));
 
     SmallVector<float> min(1, sqrt(std::numeric_limits<float>::min()));
-    Value min_val = getConstTensor<float>(rewriter, op, min, {}).value();
+    Value min_val = getTosaConstTensorSingleF32(
+        rewriter, op, sqrt(std::numeric_limits<float>::min()), rank);
     auto max = CreateOpAndInfer<tosa::MaximumOp>(rewriter, loc, result_ty, sum,
                                                  min_val);
     auto rsqrt = CreateOpAndInfer<tosa::RsqrtOp>(rewriter, loc, result_ty, max)
                      .getResult();
-    Value result = CreateOpAndInfer<tosa::MulOp>(rewriter, loc, result_ty,
-                                                 rsqrt, input, shift)
-                       .getResult();
+    Value result =
+        CreateMulOpAndInfer(rewriter, op, result_ty, rsqrt, input).getResult();
 
     auto fused_activation_fn = tfl_l2norm_op.getFusedActivationFunctionAttr();
 
@@ -2789,10 +2872,10 @@ LogicalResult ConvertTFLTileOp::matchAndRewrite(
     multiples_vals.push_back(
         multiples_elems.getValues<APInt>()[i].getSExtValue());
 
-  DenseI64ArrayAttr multiples_attr =
-      rewriter.getDenseI64ArrayAttr(multiples_vals);
+  auto multiples = getTosaConstShape(rewriter, op, multiples_vals);
+
   CreateReplaceOpAndInfer<tosa::TileOp>(rewriter, op, output_type,
-                                        tfl_tile_op.getInput(), multiples_attr);
+                                        tfl_tile_op.getInput(), multiples);
 
   return success();
 }
@@ -2938,9 +3021,14 @@ LogicalResult ConvertTFLPadOp::matchAndRewrite(
   // Not a ranked tensor output
   if (!output_type) return failure();
 
+  SmallVector<int64_t> padding_vals;
+  if (failed(getVectorFromValue64(tfl_pad_op.getPadding(), padding_vals))) {
+    return rewriter.notifyMatchFailure(op, "padding is not a constant value");
+  }
+  Value padding = getTosaConstShape(rewriter, op->getLoc(), padding_vals);
+
   auto pad_op = CreateOpAndInfer<tosa::PadOp>(
-      rewriter, op->getLoc(), output_type, tfl_pad_op.getInput(),
-      tfl_pad_op.getPadding());
+      rewriter, op->getLoc(), output_type, tfl_pad_op.getInput(), padding);
 
   rewriter.replaceOp(op, {pad_op.getResult()});
   return success();
@@ -2983,8 +3071,14 @@ LogicalResult ConvertTFLPadV2Op::matchAndRewrite(
   auto tfl_pad_op = cast<TFL::PadV2Op>(op);
 
   Value input = tfl_pad_op.getInput();
-  Value padding = tfl_pad_op.getPadding();
   Value constant_value = tfl_pad_op.getConstantValues();
+
+  SmallVector<int64_t> padding_vals;
+  if (failed(getVectorFromValue64(tfl_pad_op.getPadding(), padding_vals))) {
+    return rewriter.notifyMatchFailure(op, "padding is not a constant value");
+  }
+
+  Value padding = getTosaConstShape(rewriter, op->getLoc(), padding_vals);
 
   CreateReplaceOpAndInfer<tosa::PadOp>(rewriter, op, tfl_pad_op.getType(),
                                        input, padding, constant_value);
@@ -3166,10 +3260,10 @@ LogicalResult ConvertTFLBucketizeOp::matchAndRewrite(
 
   auto boundaries_input_type =
       boundaries_type.clone(input_type.getElementType());
-  auto boundaries_op_casted = CreateOpAndInfer<tosa::CastOp>(
+  Value boundaries_op_casted = CreateOpAndInfer<tosa::CastOp>(
       rewriter, loc, boundaries_input_type, boundaries_op);
 
-  auto reshaped_input = CreateOpAndInfer<tosa::ReshapeOp>(
+  Value reshaped_input = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, loc, input_type.clone(new_input_shape), input,
       rewriter.getDenseI64ArrayAttr(new_input_shape));
 
@@ -3273,7 +3367,9 @@ LogicalResult ConvertTFLHardSwishOp::matchAndRewrite(
     // op5 = reciprocal(6)
     // op6 = mul (op4, op5)
 
-    Value op1_value = getTosaConstTensorSingleF32(rewriter, op, 3.0);
+    auto rank = input_type.getRank();
+
+    Value op1_value = getTosaConstTensorSingleF32(rewriter, op, 3.0, rank);
 
     auto op2_add_x_op1 =
         CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(), output_type,
@@ -3284,17 +3380,17 @@ LogicalResult ConvertTFLHardSwishOp::matchAndRewrite(
         rewriter.getI64IntegerAttr(0), rewriter.getI64IntegerAttr(0),
         rewriter.getF32FloatAttr(0.0f), rewriter.getF32FloatAttr(6.0f));
 
-    auto op4_mul_x_op3 = CreateOpAndInfer<tosa::MulOp>(
-        rewriter, op->getLoc(), output_type, tfl_hardswish_op.getInput(),
-        op3_relu_op2_6.getResult(), 0);
+    auto op4_mul_x_op3 = CreateMulOpAndInfer(rewriter, op, output_type,
+                                             tfl_hardswish_op.getInput(),
+                                             op3_relu_op2_6.getResult());
 
-    auto const_6 = getTosaConstTensorSingleF32(rewriter, op, 6.0);
+    auto const_6 = getTosaConstTensorSingleF32(rewriter, op, 6.0, rank);
     auto op5_reciprocal_6 = CreateOpAndInfer<tosa::ReciprocalOp>(
         rewriter, op->getLoc(), const_6.getType(), const_6);
 
-    auto op6_mul_op4_op5 = CreateOpAndInfer<tosa::MulOp>(
-        rewriter, op->getLoc(), output_type, op4_mul_x_op3.getResult(),
-        op5_reciprocal_6.getResult(), 0);
+    auto op6_mul_op4_op5 = CreateMulOpAndInfer(rewriter, op, output_type,
+                                               op4_mul_x_op3.getResult(),
+                                               op5_reciprocal_6.getResult());
 
     rewriter.replaceOp(op, {op6_mul_op4_op5.getResult()});
   }
@@ -3361,11 +3457,12 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
   //
   // arctan(-z) = -arctan(z)                                        (1)
 
-  Value pi = getTosaConstTensorSingleF32(rewriter, op, M_PI);
-  Value pi_2 = getTosaConstTensorSingleF32(rewriter, op, M_PI_2);
-  Value zero = getTosaConstTensorSingleF32(rewriter, op, 0.0);
-  Value one = getTosaConstTensorSingleF32(rewriter, op, 1.0);
-  Value two = getTosaConstTensorSingleF32(rewriter, op, 2.0);
+  auto rank = input_x_ty.getRank();
+  Value pi = getTosaConstTensorSingleF32(rewriter, op, M_PI, rank);
+  Value pi_2 = getTosaConstTensorSingleF32(rewriter, op, M_PI_2, rank);
+  Value zero = getTosaConstTensorSingleF32(rewriter, op, 0.0, rank);
+  Value one = getTosaConstTensorSingleF32(rewriter, op, 1.0, rank);
+  Value two = getTosaConstTensorSingleF32(rewriter, op, 2.0, rank);
 
   // 1. Restrict the input to the atan lookup from [-inf, inf] to [0, 1].
   // By utilizing (0) and (1) we compute: min(|x|, |y|) / max(|x|, |y|).
@@ -3379,15 +3476,15 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
                                                   abs_y, abs_x);
   auto recip =
       CreateOpAndInfer<tosa::ReciprocalOp>(rewriter, loc, input_y_ty, max_xy);
-  auto atan_input = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, input_y_ty, recip, min_xy, rewriter.getI8IntegerAttr(0));
+  auto atan_input =
+      CreateMulOpAndInfer(rewriter, op, input_y_ty, recip, min_xy);
 
   // 2. Scale and translate the normalized domain to the table domain. This
   // includes a translating and scaling to [-int16_max, int16_max] and casting
   // to an i16 as it is the highest precision the table operation supports.
   auto fp_scalar_ty = RankedTensorType::get({}, rewriter.getF32Type());
-  auto scale_up = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, input_y_ty, atan_input, two, rewriter.getI8IntegerAttr(0));
+  auto scale_up =
+      CreateMulOpAndInfer(rewriter, op, input_y_ty, atan_input, two);
   auto translate =
       CreateOpAndInfer<tosa::SubOp>(rewriter, loc, input_y_ty, scale_up, one);
   Value int_limit = rewriter.create<tosa::ConstOp>(
@@ -3396,8 +3493,7 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
           fp_scalar_ty,
           {static_cast<float>(std::numeric_limits<int16_t>::max())}));
   auto int_scaled =
-      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_y_ty, translate,
-                                    int_limit, rewriter.getI8IntegerAttr(0));
+      CreateMulOpAndInfer(rewriter, op, input_y_ty, translate, int_limit);
 
   auto int16_ty = input_y_ty.clone(rewriter.getIntegerType(16));
   auto casted =
@@ -3421,9 +3517,8 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
       DenseElementsAttr::get(
           fp_scalar_ty,
           {static_cast<float>(1.0 / static_cast<float>(1 << 22))}));
-  auto table_output =
-      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, output_ty, table_result_fp,
-                                    output_scale, rewriter.getI8IntegerAttr(0));
+  auto table_output = CreateMulOpAndInfer(rewriter, op, output_ty,
+                                          table_result_fp, output_scale);
 
   auto bool_ty = output_ty.clone(rewriter.getIntegerType(1));
 
@@ -3604,11 +3699,9 @@ static LogicalResult LegalizeFloatingPointPrelu(Operation* op,
                                                 PatternRewriter& rewriter,
                                                 Value input, Value alpha,
                                                 ShapedType output_type) {
-  Value const_zero = getTosaConstTensorSingleF32(rewriter, op, 0.0);
-
-  auto mul = CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                           input, alpha, 0);
-
+  Value mul = CreateMulOpAndInfer(rewriter, op, output_type, input, alpha);
+  auto rank = mul.getType().cast<ShapedType>().getRank();
+  Value const_zero = getTosaConstTensorSingleF32(rewriter, op, 0.0, rank);
   auto ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
       rewriter, op->getLoc(), output_type.clone(rewriter.getIntegerType(1)),
       input, const_zero);
@@ -3656,8 +3749,8 @@ static LogicalResult LegalizeQuantizedPrelu(Operation* op,
 
   Value op_rescale_in = removeZeroPointAndCastToInt32(
       rewriter, op, input, input_qtype.getZeroPoint());
-
-  Value const_zero = getTosaConstTensorSingleI32(rewriter, op, 0);
+  auto rank = rescale_type.getRank();
+  Value const_zero = getTosaConstTensorSingleI32(rewriter, op, 0, rank);
   Value op_ge = CreateOpAndInfer<tosa::GreaterEqualOp>(
       rewriter, op->getLoc(), rescale_type.clone(rewriter.getI1Type()),
       op_rescale_in, const_zero);
@@ -3677,8 +3770,8 @@ static LogicalResult LegalizeQuantizedPrelu(Operation* op,
   Value op_rescale_alpha = removeZeroPointAndCastToInt32(
       rewriter, op, alpha, alpha_qtype.getZeroPoint());
 
-  Value op_mul = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, op->getLoc(), rescale_type, op_rescale_in, op_rescale_alpha, 0);
+  Value op_mul = CreateMulOpAndInfer(rewriter, op, rescale_type, op_rescale_in,
+                                     op_rescale_alpha);
 
   op_rescale_slope_in =
       buildRescale(rewriter, op, output_type, op_mul, scale_alpha,
@@ -3781,9 +3874,9 @@ static LogicalResult LegalizeFloatingPointLeakyRelu(Operation* op,
                                                     PatternRewriter& rewriter,
                                                     Value input, double alpha,
                                                     ShapedType output_type) {
-  Value const_alpha = getTosaConstTensorSingleF32(rewriter, op, alpha);
-  auto mul = CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                           input, const_alpha, 0);
+  auto rank = input.getType().cast<ShapedType>().getRank();
+  Value const_alpha = getTosaConstTensorSingleF32(rewriter, op, alpha, rank);
+  auto mul = CreateMulOpAndInfer(rewriter, op, output_type, input, const_alpha);
   if (alpha <= 1.0) {
     // leaky_relu( input ) = max(input*alpha, input)
     CreateReplaceOpAndInfer<tosa::MaximumOp>(rewriter, op, output_type, mul,
@@ -4209,8 +4302,8 @@ LogicalResult ConvertTFLSparseToDenseOp::matchAndRewrite(
   Value multiply_constant = CreateOpAndInfer<tosa::ConstOp>(
       rewriter, loc, multiply_constant_type, multiply_constant_attr);
 
-  Value multiply_op = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, indices_ty, indices, multiply_constant, 0);
+  Value multiply_op =
+      CreateMulOpAndInfer(rewriter, op, indices_ty, indices, multiply_constant);
 
   Value reduce_op = CreateOpAndInfer<tosa::ReduceSumOp>(
       rewriter, loc, UnrankedTensorType::get(indices_ety), multiply_op,
@@ -4287,7 +4380,7 @@ LogicalResult ConvertTFLArgMinOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto arg_max_op = cast<TFL::ArgMinOp>(op);
   auto loc = arg_max_op.getLoc();
-  auto input = arg_max_op.getInput();
+  Value input = arg_max_op.getInput();
   auto input_ty = mlir::cast<ShapedType>(input.getType());
   Type input_ety = input_ty.getElementType();
 
@@ -4559,6 +4652,21 @@ LogicalResult ConvertTFLRFFT2dOp::matchAndRewrite(
       rewriter, op, output_type, concat.getResult());
 
   return success();
+}
+
+LogicalResult ConvertTFLLogicalAndOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  return ConvertBinaryOp<tosa::LogicalAndOp>(op, rewriter);
+}
+
+LogicalResult ConvertTFLLogicalOrOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  return ConvertBinaryOp<tosa::LogicalOrOp>(op, rewriter);
+}
+
+LogicalResult ConvertTFLPowOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  return ConvertBinaryOp<tosa::PowOp>(op, rewriter);
 }
 
 LogicalResult ConvertTFLBroadcastToOp::matchAndRewrite(

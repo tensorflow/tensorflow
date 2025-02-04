@@ -16,7 +16,6 @@
 
 #include <array>
 #include <sstream>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -29,13 +28,11 @@
 #include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
-#include "tensorflow/lite/experimental/litert/test/test_macros.h"
 #include "tensorflow/lite/experimental/litert/tools/dump.h"
 
 namespace litert::internal {
 namespace {
 
-using ::testing::HasSubstr;
 using testing::UniqueTestDirectory;
 
 constexpr absl::string_view kTestPluginSearchPath =
@@ -211,7 +208,7 @@ TEST(ApplyTest, Simple) {
   auto* op = subgraph.Ops().front();
 
   EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
-  EXPECT_TRUE(model.FindExternalBuffer(op));
+  EXPECT_TRUE(model.FindOpAsset(op));
 
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
 }
@@ -233,7 +230,7 @@ TEST(ApplyTest, MultiSubgraph) {
     auto* op = subgraph.Ops().front();
 
     EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
-    EXPECT_TRUE(model.FindExternalBuffer(op));
+    EXPECT_TRUE(model.FindOpAsset(op));
   }
 
   {
@@ -243,7 +240,7 @@ TEST(ApplyTest, MultiSubgraph) {
     auto* op = subgraph.Ops().front();
 
     EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
-    EXPECT_TRUE(model.FindExternalBuffer(op));
+    EXPECT_TRUE(model.FindOpAsset(op));
   }
 
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
@@ -264,7 +261,8 @@ TEST(ApplyTest, ApplyPlugins) {
   ASSERT_TRUE(env);
 
   LiteRtHwAccelerators compilation_options = static_cast<LiteRtHwAccelerators>(
-      kLiteRtHwAccelatorCpu | kLiteRtHwAccelatorGpu | kLiteRtHwAccelatorNpu);
+      kLiteRtHwAcceleratorCpu | kLiteRtHwAcceleratorGpu |
+      kLiteRtHwAcceleratorNpu);
   auto new_flatbuffer =
       litert::internal::ApplyPlugins(env->Get(), &model, compilation_options);
   ASSERT_TRUE(new_flatbuffer);
@@ -277,7 +275,7 @@ TEST(ApplyTest, ApplyPlugins) {
   auto* op = subgraph.Ops().front();
 
   EXPECT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
-  EXPECT_TRUE(model.FindExternalBuffer(op));
+  EXPECT_TRUE(model.FindOpAsset(op));
 
   EXPECT_TRUE(model.FindMetadata(kLiteRtBuildStampKey));
 }

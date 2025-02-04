@@ -898,10 +898,8 @@ func.func @convert_bmm_rhs_transpose_into_fc_negative_adjx_true(%arg0: tensor<16
   %0 = "tfl.transpose"(%arg1, %cst) : (tensor<16x16xf32>, tensor<2xi32>) -> tensor<16x16xf32>
   %1 = "tfl.batch_matmul"(%arg0, %0) <{adj_x = true, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
   return %1 : tensor<16x16xf32>
-  // CHECK:  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
-  // CHECK:  %0 = "tfl.transpose"(%arg1, %cst) : (tensor<16x16xf32>, tensor<2xi32>) -> tensor<16x16xf32>
-  // CHECK:  %1 = "tfl.batch_matmul"(%arg0, %0) <{adj_x = true, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
-  // CHECK:  return %1 : tensor<16x16xf32>
+  // CHECK:  %0 = "tfl.batch_matmul"(%arg0, %arg1) <{adj_x = true, adj_y = true, asymmetric_quantize_inputs = false}> : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
+  // CHECK:  return %0 : tensor<16x16xf32>
 }
 
 // CHECK-LABEL: @FuseBMMInputReshape_WithTwoRhsDims_DynamicShapedInput

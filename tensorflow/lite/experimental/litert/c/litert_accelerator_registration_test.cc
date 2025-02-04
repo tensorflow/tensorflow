@@ -29,7 +29,7 @@ class DummyAccelerator {
  public:
   static std::unique_ptr<DummyAccelerator> CpuAccelerator() {
     auto accelerator = std::make_unique<DummyAccelerator>();
-    accelerator->hardware_support_ = kLiteRtHwAccelatorCpu;
+    accelerator->hardware_support_ = kLiteRtHwAcceleratorCpu;
     return accelerator;
   }
 

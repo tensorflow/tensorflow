@@ -107,7 +107,6 @@ using ::int64_t;
 using ::tsl::int16;
 using ::tsl::int32;
 using ::tsl::int8;
-using ::tsl::StatusOr;  // TENSORFLOW_STATUS_OK
 using ::tsl::uint16;
 using ::tsl::uint32;
 using ::tsl::uint64;
@@ -1628,8 +1627,11 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
     return failure();
 
+  // Use TypeToShape to handle bounded dynamism.
+  // HLO expects broadcast sizes to use the bound's value, not kDynamic.
+  xla::Shape shape = xla::TypeToShape(type);
   value_map[op] =
-      BroadcastInDim(operand, Convert_ArrayRef(type.getShape()),
+      BroadcastInDim(operand, shape.dimensions(),
                      Convert_broadcast_dimensions(op.getBroadcastDimensions()));
   return success();
 }

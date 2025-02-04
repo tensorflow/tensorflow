@@ -2323,22 +2323,27 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   auto param0 = AllOf(op::Parameter(0), op::Shape("f32[14,129]"));
-  auto param0_resharded = AllOf(
-      op::Slice(op::Reshape(op::Transpose(op::AllToAll(op::Reshape(param0))))),
-      op::Shape("f32[7,257]"));
+  auto param0_adjusted =
+      AllOf(op::Select(op::Compare(op::Add(), op::Broadcast(op::Constant())),
+                       param0, op::Broadcast(op::Constant())),
+            op::Shape("f32[14,129]"));
+  auto param0_replicated = AllOf(op::AllReduce(op::DynamicUpdateSlice(
+                                     op::Broadcast(), param0_adjusted, _, _)),
+                                 op::Shape("f32[14,257]"));
 
   auto param1 = AllOf(op::Parameter(1), op::Shape("f32[14,58]"));
-  auto param1_resharded =
-      AllOf(op::Reshape(op::Transpose(op::AllToAll(op::Reshape(param1)))),
-            op::Shape("f32[7,116]"));
+  auto param1_replicated = AllOf(
+      op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(), param1, _, _)),
+      op::Shape("f32[14,116]"));
 
-  auto concatenate = AllOf(op::Concatenate(param0_resharded, param1_resharded),
-                           op::Shape("f32[7,373]"));
+  auto concatenate =
+      AllOf(op::Concatenate(param0_replicated, param1_replicated),
+            op::Shape("f32[14,373]"));
 
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Reshape(op::Transpose(
-                        op::AllToAll(op::Reshape(op::Pad(concatenate, _))))),
-                    op::Shape("f32[14,187]")));
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, AllOf(op::DynamicSlice(op::Pad(concatenate, op::Constant()), _, _),
+                  op::Shape("f32[14,187]")));
 }
 
 TEST_P(SpmdPartitioningTest, ConcatenateAlongBothDimensions) {
@@ -15547,20 +15552,16 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
 
-  // TODO(b/353990256). Involuntary full rematerialization between shardings
-  // {devices=[2,2,2]<=[8]} to {devices=[8,1,1]<=[8]}.
   auto param0 = AllOf(op::Parameter(0), op::Shape("f32[16,16,16]"));
-  auto param0_replicated = op::AllReduce(op::AllReduce(
-      op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(), param0, _, _, _))));
-  auto param0_reshard = AllOf(op::Shape("f32[4,32,32]"),
-                              op::DynamicSlice(param0_replicated, _, _, _));
+  auto param0_reshard =
+      AllOf(op::Shape("f32[16,32,32]"),
+            op::AllReduce(op::AllReduce(
+                op::DynamicUpdateSlice(op::Broadcast(), param0, _, _, _))));
   auto cholesky =
-      AllOf(op::Cholesky(param0_reshard), op::Shape("f32[4,32,32]"));
-  auto cholesky_replicated =
-      op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(), cholesky, _, _, _));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::DynamicSlice(cholesky_replicated, _, _, _),
-                    op::Shape("f32[16,16,16]")));
+      AllOf(op::Cholesky(param0_reshard), op::Shape("f32[16,32,32]"));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(op::DynamicSlice(cholesky, _, _, _), op::Shape("f32[16,16,16]")));
 }
 
 TEST_P(SpmdPartitioningTest, TriangularSolve) {

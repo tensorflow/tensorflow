@@ -273,7 +273,8 @@ absl::Status PyClient::Defragment() {
     TmpBuffer& tmp_buffer = it.second;
     std::unique_ptr<PjRtBuffer> new_copy =
         pjrt_client()
-            ->BufferFromHostLiteral(*tmp_buffer.host_copy, pjrt_buf->device())
+            ->BufferFromHostLiteral(*tmp_buffer.host_copy,
+                                    pjrt_buf->memory_space())
             .value();
     TF_CHECK_OK(new_copy->GetReadyFuture().Await());
 

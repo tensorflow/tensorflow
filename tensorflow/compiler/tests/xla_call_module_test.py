@@ -1463,7 +1463,7 @@ module @jit_fun_flat_jax {
     res1 = x - y
 
     # Verify that multiple inner TF function calls with the same private
-    # functions are properly renamed during MHLO import. This test case is
+    # functions are properly renamed during StableHLO import. This test case is
     # carefully constructed such that one outer XlaCallModule op has two custom
     # calls, each of which has the same private "@call" function with different
     # body. This is to catch bugs in the func renaming logic.

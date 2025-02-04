@@ -189,8 +189,8 @@ absl::Status LinkLibdevice(llvm::Module* module) {
 
   auto cuda_path = mlir::NVVM::getCUDAToolkitPath();
   if (cuda_path.empty() || !fs::is_directory(cuda_path)) {
-    return absl::InternalError(
-        "CUDA path does not exist or is not a directory");
+    return absl::InternalError(absl::StrFormat(
+        "CUDA path %s does not exist or is not a directory", cuda_path));
   }
   auto sep = llvm::sys::path::get_separator().str();
   std::string libdevice_path;

@@ -49,7 +49,6 @@ using tensorflow::ProfileOptions;
 using tsl::mutex;
 using tsl::mutex_lock;
 // using tsl::OkStatus;
-using tsl::Status;
 using tsl::profiler::Annotation;
 using tsl::profiler::AnnotationStack;
 using tsl::profiler::FindOrAddMutablePlaneWithName;

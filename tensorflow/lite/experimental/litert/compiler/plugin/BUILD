@@ -63,6 +63,7 @@ cc_library(
 #     ],
 #     deps = [
 #         ":compiler_plugin",
+#         "@com_google_googletest//:gtest_main",
 #         "@com_google_absl//absl/strings:string_view",
 #         "//tensorflow/lite/experimental/litert/c:litert_common",
 #         "//tensorflow/lite/experimental/litert/c:litert_environment",
@@ -71,9 +72,7 @@ cc_library(
 #         "//tensorflow/lite/experimental/litert/core:build_stamp",
 #         "//tensorflow/lite/experimental/litert/core:filesystem",
 #         "//tensorflow/lite/experimental/litert/test:common",
-#         "//tensorflow/lite/experimental/litert/test:test_macros",
 #         "//tensorflow/lite/experimental/litert/tools:dump",
-#         "@com_google_googletest//:gtest_main",
 #     ],
 # )
 # copybara:uncomment_end

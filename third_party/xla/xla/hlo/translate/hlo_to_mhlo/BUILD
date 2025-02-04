@@ -75,8 +75,10 @@ cc_library(
     srcs = ["stack_location_utils.cc"],
     hdrs = ["stack_location_utils.h"],
     deps = [
+        ":hlo_utils",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -117,6 +119,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+        "@stablehlo//:base",
     ],
 )
 
@@ -213,6 +216,7 @@ cc_library(
     hdrs = ["location_importer.h"],
     deps = [
         "stack_location_utils",
+        ":hlo_utils",
         "//xla/hlo/ir:hlo",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

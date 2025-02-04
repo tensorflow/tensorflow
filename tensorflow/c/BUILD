@@ -687,8 +687,8 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf_status_headers",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla/tsl/c:tsl_status_helper",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -699,9 +699,10 @@ tf_cc_test(
         ":tf_status",
         ":tf_status_helper",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:test",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -808,9 +809,9 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
             "//tensorflow/core:protos_all_cc",
-            "@local_tsl//tsl/platform:statusor",
             "@local_xla//xla/stream_executor:stream",
             "@local_xla//xla/tsl/framework:device_id_utils",
+            "@local_xla//xla/tsl/platform:statusor",
         ],
     }),
 )

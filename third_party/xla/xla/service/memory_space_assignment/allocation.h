@@ -48,6 +48,8 @@ namespace xla::memory_space_assignment {
 // MemorySpaceAssignment uses a notion of a slow and large default memory
 // space and a fast and small alternate memory space.
 enum class MemorySpace : std::uint8_t { kDefault, kAlternate };
+std::string MemorySpaceToString(MemorySpace memory_space);
+
 using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
     const HloInstruction* instruction, int64_t split_dim)>;
 

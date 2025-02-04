@@ -68,9 +68,9 @@ cc_library(
     deps = [
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/tsl/c:tsl_status_internal",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -100,10 +100,10 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/stream_executor/tpu:c_api_conversions",
         "@local_xla//xla/tsl/framework:device_id_utils",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -169,7 +169,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -233,12 +233,12 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:mutex",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:thread_annotations",
         "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -254,7 +254,7 @@ cc_library(
         ":plugin_op_kernel",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/flags:flag",
-        "@local_tsl//tsl/platform:macros",
+        "@local_xla//xla/tsl/platform:macros",
     ],
 )
 
@@ -365,15 +365,16 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:test",
         "@local_xla//xla/tsl/distributed_runtime:call_options",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_client",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:env_impl",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
         "@local_xla//xla/tsl/protobuf:coordination_config_proto_cc",
         "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc",
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
@@ -385,7 +386,7 @@ cc_library(
     hdrs = ["plugin_variable.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -398,7 +399,7 @@ cc_library(
         ":plugin_variable",
         "//tensorflow/compiler/jit:variable_info",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -416,8 +417,8 @@ cc_library(
         "//tensorflow/c/experimental/next_pluggable_device:c_api_hdrs",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 

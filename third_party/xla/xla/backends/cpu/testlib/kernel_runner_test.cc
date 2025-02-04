@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -81,7 +82,7 @@ TEST(KernelRunnerTest, Add) {
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
   TF_ASSERT_OK_AND_ASSIGN(JitCompiler compiler,
-                          KernelRunner::CreateJitCompiler());
+                          KernelRunner::CreateJitCompiler(HloModuleConfig()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       KernelRunner runner,

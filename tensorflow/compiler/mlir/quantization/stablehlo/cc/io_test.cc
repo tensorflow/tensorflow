@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/file_system.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/types.h"
 
 namespace stablehlo::quantization::io {
 namespace {

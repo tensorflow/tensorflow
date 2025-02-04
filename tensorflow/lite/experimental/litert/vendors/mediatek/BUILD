@@ -18,18 +18,19 @@ package(
 )
 
 cc_library(
-    name = "neuron_adapter",
+    name = "neuron_adapter_api",
     srcs = [
-        "neuron_adapter.cc",
+        "neuron_adapter_api.cc",
     ],
     hdrs = [
-        "neuron_adapter.h",
+        "neuron_adapter_api.h",
     ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/core:dynamic_loading",
+        "//tensorflow/lite/experimental/litert/tools:dump",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
