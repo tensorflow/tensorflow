@@ -18,6 +18,21 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def EraseDeadFunctionsPass : Pass<"xla-erase-dead-functions", "mlir::ModuleOp"> {
+  let summary = "Deletes unused functions";
+
+  let description = [{
+      Deletes functions that are not called.
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "xla::XlaDialect",
+  ];
+
+  let constructor = "CreateEraseDeadFunctionsPass()";
+}
+
 def FlattenTensorsPass : Pass<"xla-flatten-tensors", "mlir::ModuleOp"> {
   let summary = "Flatten tensors.";
 
