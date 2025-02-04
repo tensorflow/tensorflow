@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/core/macros.h"
 #include "tensorflow/compiler/mlir/lite/debug/debug.h"
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
@@ -543,6 +544,13 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   tflite::FlatbufferExportOptions options;
   std::string translated_result;
+  // If the module size is greater than 2GB, we need to use buffer offset.
+  // flatbuffer_export.cc currently implements a brute force approach to decide
+  // whether to use buffer offset or not, this is expensive on HWM usage. We can
+  // do better by analyzing the module size beforehand.
+  if (mlir::TFL::GetApproximateModuleSize(module.get()) > flatbuffer_size_max) {
+    converter_flags.set_use_buffer_offset(true);
+  }
   options.converter_flags = converter_flags;
   options.saved_model_tags = saved_model_tags;
   options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
