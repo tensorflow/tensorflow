@@ -277,3 +277,15 @@ def litert_dynamic_lib(
         visibility = vis,
         deps = [lib_target_ref],
     )
+
+def copy_file(name, src, target, visibility = None):
+    input_path = "$(location %s)" % src
+    output_path = "$(@D)/" + target
+
+    native.genrule(
+        name = name,
+        srcs = [src],
+        outs = [target],
+        visibility = visibility,
+        cmd = "cp %s %s" % (input_path, output_path),
+    )

@@ -39,14 +39,14 @@ limitations under the License.
 #include "riegeli/bytes/fd_writer.h"  // from @riegeli
 #include "riegeli/bytes/string_writer.h"  // from @riegeli
 #include "riegeli/records/record_writer.h"  // from @riegeli
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/tools/proto_splitter/cc/max_size.h"
 #include "tensorflow/tools/proto_splitter/cc/split.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 
 #define IS_OSS true
 

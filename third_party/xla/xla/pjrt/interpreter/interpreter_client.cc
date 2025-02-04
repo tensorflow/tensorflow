@@ -62,8 +62,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -501,7 +501,7 @@ InterpreterClient::RunBackend(std::unique_ptr<HloModule> hlo_module,
           /*op_supports_dynamism_handler=*/[&](HloInstruction* hlo) {
             return OpDynamismSupport::kOptional;
           }));
-  auto evaluator = std::make_unique<HloEvaluator>();
+  auto evaluator = hlo_evaluator_factory_();
   evaluator->set_use_fast_path(
       hlo_module->config().debug_options().xla_hlo_evaluator_use_fast_path());
   evaluator->set_custom_call_handler(HandleEvaluatorCustomCall);
