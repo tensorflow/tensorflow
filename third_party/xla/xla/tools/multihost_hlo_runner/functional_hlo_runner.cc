@@ -189,6 +189,37 @@ std::string AbslUnparseFlag(InputFormat input_format) {
   }
 }
 
+bool AbslParseFlag(absl::string_view text, OutputFormat* output_format,
+                   std::string* error) {
+  if (text == "text") {
+    *output_format = OutputFormat::kText;
+    return true;
+  }
+  if (text == "proto_binary") {
+    *output_format = OutputFormat::kProtoBinary;
+    return true;
+  }
+  if (text == "proto_text") {
+    *output_format = OutputFormat::kProtoText;
+    return true;
+  }
+  *error = "unknown value for enumeration";
+  return false;
+}
+
+std::string AbslUnparseFlag(OutputFormat output_format) {
+  switch (output_format) {
+    case OutputFormat::kText:
+      return "text";
+    case OutputFormat::kProtoBinary:
+      return "proto_binary";
+    case OutputFormat::kProtoText:
+      return "proto_text";
+    default:
+      return absl::StrCat(output_format);
+  }
+}
+
 bool AbslParseFlag(absl::string_view text,
                    FunctionalHloRunner::ModuleArgumentMode* argument_mode,
                    std::string* error) {
@@ -442,7 +473,7 @@ FunctionalHloRunner::CreateExecutableBuildOptionsFromExecutionOptions(
 
 absl::Status FunctionalHloRunner::DumpOutput(
     const FunctionalHloRunner::PerDeviceLiteralVecType& output,
-    absl::string_view dump_output_to, int task_id) {
+    absl::string_view dump_output_to, int task_id, OutputFormat output_format) {
   std::vector<std::string> output_path_vec =
       absl::StrSplit(dump_output_to, '.');
   std::string suffix = output_path_vec.back();
@@ -458,12 +489,30 @@ absl::Status FunctionalHloRunner::DumpOutput(
     for (int literal_id = 0; literal_id < literal_vec.size(); ++literal_id) {
       output_path_vec[literal_id_index] = absl::StrCat("literal_", literal_id);
       std::string literal_path = absl::StrJoin(output_path_vec, ".");
-      CHECK_EQ(suffix, std::string("txt"));
-      absl::Status write_status =
-          tsl::WriteStringToFile(tsl::Env::Default(), literal_path,
-                                 literal_vec[literal_id].ToString());
-      if (!write_status.ok()) {
-        return write_status;
+      switch (output_format) {
+        case OutputFormat::kText: {
+          CHECK_EQ(suffix, std::string("txt"));
+          absl::Status write_status =
+              tsl::WriteStringToFile(tsl::Env::Default(), literal_path,
+                                     literal_vec[literal_id].ToString());
+          if (!write_status.ok()) {
+            return write_status;
+          }
+        } break;
+        case OutputFormat::kProtoBinary: {
+          CHECK_EQ(suffix, std::string("pb"));
+          TF_RETURN_IF_ERROR(
+              tsl::WriteBinaryProto(tsl::Env::Default(), literal_path,
+                                    literal_vec[literal_id].ToProto()));
+          break;
+        }
+        case OutputFormat::kProtoText: {
+          CHECK_EQ(suffix, std::string("pbtxt"));
+          TF_RETURN_IF_ERROR(
+              tsl::WriteTextProto(tsl::Env::Default(), literal_path,
+                                  literal_vec[literal_id].ToProto()));
+          break;
+        }
       }
     }
   }
@@ -545,7 +594,8 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
                                 const RunningOptions& running_options,
                                 absl::string_view hlo_text,
                                 InputFormat input_format,
-                                const PerDeviceLiteralVecType& arguments) {
+                                const PerDeviceLiteralVecType& arguments,
+                                std::minstd_rand0* engine) {
   // We only support SPMD as of now, i.e., all devices are supposed
   // to execute the same HLO module.
   // Currently there is no mechanism to map the loaded arguments to
@@ -577,7 +627,7 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
 
   return CompileAndRun(
       client, debug_options, preproc_options, compile_options, running_options,
-      hlo_module_and_arguments.hlo_module.get(), loaded_arguments);
+      hlo_module_and_arguments.hlo_module.get(), loaded_arguments, engine);
 }
 
 absl::Status FunctionalHloRunner::LoadAndCompile(
@@ -723,12 +773,13 @@ FunctionalHloRunner::CompileAndRun(PjRtClient& client,
                                    const CompileOptions& compile_options,
                                    const RunningOptions& running_options,
                                    HloModule* hlo_module,
-                                   const PerDeviceLiteralVecType& arguments) {
+                                   const PerDeviceLiteralVecType& arguments,
+                                   std::minstd_rand0* engine) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       Compile(client, hlo_module, debug_options,
                               preproc_options, compile_options));
 
-  return Run(client, executable.get(), arguments, running_options);
+  return Run(client, executable.get(), arguments, running_options, engine);
 }
 
 namespace {

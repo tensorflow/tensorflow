@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
@@ -631,6 +633,23 @@ TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshot) {
 
   CHECK_EQ(hlo_module_and_arguments_from_text.arguments.size(),
            hlo_module_and_arguments_from_binary.arguments.size());
+}
+
+TEST_F(FunctionalHloRunnerTest, FixFakeArguments) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  // Options corresponding to --num_replicas=1 --num_partitions=1
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  CompileOptions compile_options;
+  FunctionalHloRunner::RunningOptions running_options;
+
+  std::minstd_rand0 engine(42);
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRun(
+      *client, debug_options, preproc_options, compile_options, running_options,
+      {GetHloPath("single_device.hlo")}, InputFormat::kText,
+      /*arguments=*/{}, /*engine=*/&engine));
 }
 
 }  // namespace
