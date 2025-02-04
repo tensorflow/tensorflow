@@ -19,13 +19,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/emitters/transforms/passes.h"
 
 namespace xla {
-namespace gpu {
+namespace emitters {
 
 #define GEN_PASS_DEF_PROPAGATESLICEINDICESPASS
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+#include "xla/codegen/emitters/transforms/passes.h.inc"
 
 namespace {
 
@@ -76,5 +76,5 @@ std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass() {
   return std::make_unique<PropagateSliceIndicesPass>();
 }
 
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla

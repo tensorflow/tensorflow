@@ -117,6 +117,22 @@ def LowerToLLVMPass :
   let constructor = "CreateLowerToLLVMPass()";
 }
 
+def PropagateSliceIndicesPass :
+   Pass<"xla-propagate-slice-indices", "mlir::ModuleOp"> {
+  let summary = "Propagates slice indices from the entry function to all callees.";
+
+  let description = [{
+      Propagates xla.slice_index attributes from the function with the xla.entry
+      attribute to all other functions.
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect"
+  ];
+
+  let constructor = "CreatePropagateSliceIndicesPass()";
+}
+
 def SimplifyArithPass : Pass<"xla-simplify-arith", "mlir::func::FuncOp"> {
   let summary = "Simplifies arith using XLA's range-aware simplifier.";
 

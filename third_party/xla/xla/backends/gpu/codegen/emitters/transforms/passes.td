@@ -18,22 +18,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def PropagateSliceIndicesPass :
-   Pass<"xla-gpu-propagate-slice-indices", "mlir::ModuleOp"> {
-  let summary = "Propagates slice indices from the entry function to all callees.";
-
-  let description = [{
-      Propagates xla.slice_index attributes from the function with the xla.entry
-      attribute to all other functions.
-  }];
-
-  let dependentDialects = [
-    "mlir::func::FuncDialect"
-  ];
-
-  let constructor = "CreatePropagateSliceIndicesPass()";
-}
-
 def ConvertPureCallOpsPass
     : Pass<"xla-gpu-convert-pure-call-ops", "mlir::func::FuncOp"> {
   let summary = "Converts xla_gpu.pure_call to func.call";

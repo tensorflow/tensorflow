@@ -595,7 +595,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   pm.addNestedPass<FuncOp>(CreatePeelLoopsPass());
   pm.addNestedPass<FuncOp>(CreateLowerXlaGpuLoopsToScfPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
-  pm.addPass(CreatePropagateSliceIndicesPass());
+  pm.addPass(emitters::CreatePropagateSliceIndicesPass());
   pm.addPass(emitters::CreateFlattenTensorsPass());
   // We need LICM before unswitching loops, because our loop unswitcher only
   // detects for loops with a single if inside them.
