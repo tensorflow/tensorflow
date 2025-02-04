@@ -165,22 +165,6 @@ def LowerXlaGpuLoopsToScfPass : Pass<
   let constructor = "CreateLowerXlaGpuLoopsToScfPass()";
 }
 
-def EraseDeadFunctionsPass : Pass<"xla-erase-dead-functions", "mlir::ModuleOp"> {
-  let summary = "Deletes unused functions";
-
-  let description = [{
-      Deletes functions that are not called.
-  }];
-
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "xla::gpu::XlaGpuDialect",
-    "xla::XlaDialect",
-  ];
-
-  let constructor = "CreateEraseDeadFunctionsPass()";
-}
-
 def VectorizeLoadsAndStoresPass :
    Pass<"xla-gpu-vectorize-loads-stores", "mlir::func::FuncOp"> {
   let summary = "Vectorizes loads and stores.";
