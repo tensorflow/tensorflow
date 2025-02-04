@@ -302,7 +302,13 @@ class PyArray : public nanobind::object {
  private:
   absl::StatusOr<PyArray> AssertUnsharded(absl::string_view api);
 
+  // TODO(emilyaf): Remove this once xla_extension_version < 310 is no longer
+  // supported.
   void CheckAndRearrange();
+
+  nanobind::object CheckAndRearrange(absl::Span<const PyArray> py_arrays,
+                                     nanobind::object sharding,
+                                     nanobind::object aval);
 
   void SetIfrtArray(tsl::RCReference<ifrt::Array> ifrt_array);
 
@@ -310,6 +316,9 @@ class PyArray : public nanobind::object {
   const Storage& GetStorage() const;
 
   inline static PyObject* type_ = nullptr;
+  // TODO(emilyaf): Remove this once xla_extension_version < 310 is no longer
+  // supported.
+  inline static std::optional<bool> using_old_jax_array_version_;
 };
 
 class PyArrayResultHandler {
