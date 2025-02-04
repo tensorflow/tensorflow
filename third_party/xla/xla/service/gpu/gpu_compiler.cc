@@ -2667,9 +2667,6 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   HloPassPipeline main_pipeline("post-scheduling-passes");
 
   // Pipeline for async -> sync conversion on for non-overlapped async ops.
-  HloPredicate is_nop =
-      HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kConstant,
-                       HloOpcode::kBitcast, HloOpcode::kGetTupleElement>;
   {
     HloPassPipeline& pipeline =
         main_pipeline.AddPass<HloPassPipeline>("async-to-sync-converter");
@@ -2684,7 +2681,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
          module->config().debug_options().xla_gpu_enable_pipelined_p2p())) {
       pipeline.AddPass<PipelinedP2PRewriter>();
     }
-    pipeline.AddPass<GpuConvertAsyncCollectivesToSync>(is_nop);
+    pipeline.AddPass<GpuConvertAsyncCollectivesToSync>();
   }
 
   // Pipeline rematerialization passes with optional host offloading.
