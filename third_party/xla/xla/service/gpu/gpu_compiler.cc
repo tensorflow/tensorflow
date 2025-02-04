@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -73,9 +72,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/collectives/all_gather_broadcast_reorder.h"
-#include "xla/hlo/transforms/collectives/all_reduce_combiner.h"
 #include "xla/hlo/transforms/collectives/all_reduce_contiguous.h"
-#include "xla/hlo/transforms/collectives/async_collective_creator.h"
 #include "xla/hlo/transforms/collectives/collective_quantizer.h"
 #include "xla/hlo/transforms/collectives/collectives_schedule_linearizer.h"
 #include "xla/hlo/transforms/convert_memory_placement_to_internal_annotations.h"
@@ -186,7 +183,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/all_gather_optimizer.h"
 #include "xla/service/gpu/transforms/all_reduce_blueconnect.h"
 #include "xla/service/gpu/transforms/all_reduce_splitter.h"
-#include "xla/service/gpu/transforms/async_collective_annotator.h"
 #include "xla/service/gpu/transforms/async_wrapper.h"
 #include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
 #include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
@@ -1140,62 +1136,6 @@ absl::Status RunPostFusionPasses(
   return pipeline.Run(hlo_module).status();
 }
 
-absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
-  HloPassPipeline pipeline("post-fusion-collectives optimization");
-
-  // Convert all collectives to their async form, and then annotate the ones
-  // that actually need to run asynchronously with a GPU specific backend
-  // config.
-  AsyncCollectiveCreator::CollectiveCreatorConfig config;
-  config.convert_all_gather = HloPredicateTrue;
-  config.convert_all_reduce = HloPredicateTrue;
-  config.convert_all_to_all = HloPredicateTrue;
-  config.convert_collective_broadcast = HloPredicateTrue;
-  config.convert_collective_permute = HloPredicateTrue;
-  config.convert_ragged_all_to_all = HloPredicateTrue;
-  config.convert_reduce_scatter = HloPredicateTrue;
-  pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
-
-  absl::flat_hash_set<DebugOptions::CollectiveOpType> disabled_async_ops;
-  for (auto collective_op_type : hlo_module->config()
-                                     .debug_options()
-                                     .xla_gpu_disable_async_collectives()) {
-    disabled_async_ops.insert(
-        static_cast<DebugOptions::CollectiveOpType>(collective_op_type));
-  }
-  auto convert_to_async = [&disabled_async_ops](const HloInstruction* inst) {
-    switch (inst->opcode()) {
-      case HloOpcode::kAllReduceStart:
-        return !disabled_async_ops.contains(DebugOptions::ALLREDUCE);
-      case HloOpcode::kCollectivePermuteStart:
-        return !disabled_async_ops.contains(DebugOptions::COLLECTIVEPERMUTE);
-      case HloOpcode::kAllGatherStart:
-        return !disabled_async_ops.contains(DebugOptions::ALLGATHER);
-      case HloOpcode::kAsyncStart: {
-        auto async_inst = Cast<HloAsyncInstruction>(inst);
-        switch (async_inst->async_wrapped_opcode()) {
-          case HloOpcode::kCollectiveBroadcast:
-            return !disabled_async_ops.contains(
-                DebugOptions::COLLECTIVEBROADCAST);
-          case HloOpcode::kReduceScatter:
-            return !disabled_async_ops.contains(DebugOptions::REDUCESCATTER);
-          case HloOpcode::kAllToAll:
-            return !disabled_async_ops.contains(DebugOptions::ALLTOALL);
-          case HloOpcode::kRaggedAllToAll:
-            return !disabled_async_ops.contains(DebugOptions::RAGGEDALLTOALL);
-          default:
-            return false;
-        }
-      }
-      default:
-        return false;
-    }
-  };
-  pipeline.AddPass<AsyncCollectiveAnnotator>(convert_to_async);
-
-  return pipeline.Run(hlo_module).status();
-}
-
 absl::Status RunPostFusionSimplificationPasses(
     HloModule* hlo_module,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
@@ -1387,7 +1327,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
                                      ShapeSizeBytesFunction()));
   TF_RETURN_IF_ERROR(RunPostFusionPasses(
       hlo_module, gpu_target_config.device_description, pointer_size_));
-  TF_RETURN_IF_ERROR(RunPostFusionCollectiveOptimizationPasses(hlo_module));
+  TF_RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
       hlo_module, layout_insensitive_algsimp_opts, gpu_version,
       gpu_target_config));

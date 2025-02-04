@@ -14,20 +14,27 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <functional>
+#include <memory>
+#include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
+#include "xla/service/gpu/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 namespace {
@@ -45,7 +52,70 @@ int64_t GetDefaultValue(HloOpcode opcode) {
   return -1;
 }
 
+static constexpr const char* kCollectiveIdAttr = "collective_id";
+
+std::string CollectiveId(const HloInstruction* instr) {
+  return absl::StrCat(instr->unique_id());
+}
+
+// Annotate all collective instructions with a unique identifier that will be
+// preserved after async collective conversion.
+void AnnotateCollectives(HloModule* module) {
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instr : computation->instructions()) {
+      if (hlo_query::IsCollectiveCommunicationOp(instr->opcode())) {
+        instr->add_frontend_attribute(kCollectiveIdAttr, CollectiveId(instr));
+      }
+    }
+  }
+}
+
+absl::Status AnnotateSyncCollectives(HloModule* module) {
+  HloPassPipeline pipeline("annotate-sync-collectives");
+  pipeline.AddPass<GpuConvertAsyncCollectivesToSync>();
+  return pipeline.Run(module).status();
+}
+
+absl::flat_hash_set<std::string> SyncCollectiveIds(const HloModule& module) {
+  absl::flat_hash_set<std::string> sync_collective_ids;
+  for (HloComputation* computation : module.computations()) {
+    for (HloInstruction* instr : computation->instructions()) {
+      if (IsSyncCollective(instr)) {
+        sync_collective_ids.insert(
+            *instr->get_frontend_attribute(kCollectiveIdAttr));
+      }
+    }
+  }
+  return sync_collective_ids;
+}
+
 }  // namespace
+
+absl::StatusOr<absl::flat_hash_set<HloInstruction*>> SynchronousCollectives(
+    const HloModule& module, int64_t pointer_size,
+    const se::DeviceDescription& device_info) {
+  std::unique_ptr<HloModule> cloned_module = module.Clone();
+  AnnotateCollectives(cloned_module.get());
+  TF_RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(cloned_module.get()));
+  TF_RETURN_IF_ERROR(
+      ScheduleGpuModule(cloned_module.get(), pointer_size, device_info)
+          .status());
+  TF_RETURN_IF_ERROR(AnnotateSyncCollectives(cloned_module.get()));
+
+  absl::flat_hash_set<std::string> sync_collective_ids =
+      SyncCollectiveIds(*cloned_module);
+
+  // Find the corresponding sync collective instructions in the original module.
+  absl::flat_hash_set<HloInstruction*> sync_collectives;
+  for (HloComputation* computation : module.computations()) {
+    for (HloInstruction* instr : computation->instructions()) {
+      if (sync_collective_ids.contains(CollectiveId(instr))) {
+        sync_collectives.insert(instr);
+      }
+    }
+  }
+  return sync_collectives;
+}
 
 int64_t ComputeSuggestedCombinerThreshold(
     const HloModule& module, const se::DeviceDescription& device_info,
