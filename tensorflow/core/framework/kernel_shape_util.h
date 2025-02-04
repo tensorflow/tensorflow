@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_KERNEL_SHAPE_UTIL_H_
 
 #include <array>
+#include <cstdint>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/padding.h"
 

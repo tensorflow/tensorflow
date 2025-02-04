@@ -16,11 +16,17 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 
 #include <cstdint>
+#include <functional>
+#include <utility>
+#include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/version.h"
