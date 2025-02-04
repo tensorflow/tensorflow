@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 
+#include <cstdint>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
