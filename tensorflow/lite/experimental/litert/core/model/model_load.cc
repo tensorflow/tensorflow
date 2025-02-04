@@ -133,6 +133,35 @@ LiteRtStatus UnpackOp(FlatbufferContext& context, LiteRtSubgraphT& parent,
   return kLiteRtStatusOk;
 }
 
+Expected<BufferRef<uint8_t>> ReadBuffer(FlatbufferContext& context,
+                                        uint32_t buffer_ind) {
+  auto buffer = context.GetTflBuffer(buffer_ind);
+  if (!buffer) {
+    return buffer.Error();
+  }
+
+  const auto& tfl_buffer = **buffer;
+
+  if (tfl_buffer.offset() != 0) {
+    // Data is appended to the end of the flatbuffer.
+
+    const auto* alloc_base = context.AllocBase();
+    const auto offset = tfl_buffer.offset();
+    const auto size = tfl_buffer.size();
+
+    return BufferRef<uint8_t>(alloc_base + offset, size);
+  } else if (tfl_buffer.data()) {
+    // Data is in the flatbuffer.
+
+    const auto* start = tfl_buffer.data()->data();
+    const auto size = tfl_buffer.data()->size();
+
+    return BufferRef<uint8_t>(start, size);
+  } else {
+    return BufferRef<uint8_t>();
+  }
+}
+
 LiteRtStatus UnpackTensor(FlatbufferContext& context,
                           const TflPackedTensor& tfl_tensor,
                           LiteRtTensorT& litert_tensor) {
@@ -142,32 +171,12 @@ LiteRtStatus UnpackTensor(FlatbufferContext& context,
 
   const auto buffer_ind = tfl_tensor.buffer();
   if (buffer_ind != 0) {
-    auto buffer = context.GetTflBuffer(buffer_ind);
+    auto buffer = ReadBuffer(context, buffer_ind);
     if (!buffer) {
       return buffer.Error().Status();
     }
 
-    const auto& tfl_buffer = **buffer;
-    BufferRef<uint8_t> weights_buffer;
-
-    if (tfl_buffer.offset() != 0) {
-      // Data is appended to the end of the flatbuffer.
-
-      const auto* alloc_base = context.AllocBase();
-      const auto offset = tfl_buffer.offset();
-      const auto size = tfl_buffer.size();
-
-      weights_buffer = BufferRef<uint8_t>(alloc_base + offset, size);
-    } else if (tfl_buffer.data()) {
-      // Data is in the flatbuffer.
-
-      const auto* start = tfl_buffer.data()->data();
-      const auto size = tfl_buffer.data()->size();
-
-      weights_buffer = BufferRef<uint8_t>(start, size);
-    }
-
-    SetWeightsFromUnownedBuffer(litert_tensor.Weights(), weights_buffer);
+    SetWeightsFromUnownedBuffer(litert_tensor.Weights(), *buffer);
   }
 
   // TENSOR TYPE
@@ -349,14 +358,12 @@ Expected<LiteRtModelT::Ptr> UnpackModel(FlatbufferWrapper&& flatbuffer) {
       const auto* tfl_metadata = packed_model->metadata()->Get(i);
       auto name = tfl_metadata->name()->str();
       const auto buf_id = tfl_metadata->buffer();
-      auto tfl_buffer = context.GetTflBuffer(buf_id);
-      if (!tfl_buffer) {
-        return tfl_buffer.Error();
+      auto buf = ReadBuffer(context, buf_id);
+      if (!buf) {
+        return buf.Error();
       }
-      const auto& tfl_buf = **tfl_buffer;
-      // TODO add support for non-owned metadata.
-      litert_model->PushMetadata(name, tfl_buf.data()->data(),
-                                 tfl_buf.data()->size());
+
+      litert_model->PushMetadata(name, buf->Data(), buf->Size());
     }
   }
 
