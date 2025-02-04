@@ -52,6 +52,7 @@ cc_library(
         "flatten_tensors.cc",
         "lower_tensors.cc",
         "lower_to_llvm.cc",
+        "simplify_arith.cc",
     ],
     hdrs = ["passes.h"],
     deps = [

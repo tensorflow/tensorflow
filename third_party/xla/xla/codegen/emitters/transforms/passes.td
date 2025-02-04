@@ -117,4 +117,20 @@ def LowerToLLVMPass :
   let constructor = "CreateLowerToLLVMPass()";
 }
 
+def SimplifyArithPass : Pass<"xla-simplify-arith", "mlir::func::FuncOp"> {
+  let summary = "Simplifies arith using XLA's range-aware simplifier.";
+
+  let description = [{
+      We often emit bounds checks that are statically known to be satisfied.
+      This pass removes them.
+  }];
+
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::func::FuncDialect",
+  ];
+
+  let constructor = "CreateSimplifyArithPass()";
+}
+
 #endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_PASSES_TD_
