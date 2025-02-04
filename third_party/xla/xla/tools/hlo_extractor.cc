@@ -47,8 +47,7 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -330,20 +329,10 @@ absl::Status Inline(HloModule* module) {
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kFusion) {
-        HloInstruction* new_instruction =
-            computation->AddInstruction(HloInstruction::CreateCall(
-                /*shape=*/instruction->shape(),
-                /*operands=*/instruction->operands(),
-                /*computation=*/
-                instruction->fused_instructions_computation()));
-        TF_RETURN_IF_ERROR(computation
-                               ->ReplaceInstruction(
-                                   /*old_instruction=*/instruction,
-                                   /*new_instruction=*/new_instruction,
-                                   /*preserve_sharding=*/false,
-                                   /*relay_control_dependency=*/true,
-                                   /*remove_unused_operands=*/true)
-                               .status());
+        TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+            instruction, HloInstruction::CreateCall(
+                             instruction->shape(), instruction->operands(),
+                             instruction->fused_instructions_computation())));
       }
     }
   }

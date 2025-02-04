@@ -34,7 +34,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/compile_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/create_model.h"
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
 //
 // Configurations
@@ -45,7 +45,7 @@ using litert::Expected;
 using litert::mediatek::NEURON_NO_ERROR;
 using litert::mediatek::NEURON_PREFER_SUSTAINED_SPEED;
 using litert::mediatek::NEURON_PRIORITY_HIGH;
-using litert::mediatek::NeuronAdapter;
+using litert::mediatek::NeuronAdapterApi;
 using litert::mediatek::NeuronCompilation;
 using litert::mediatek::NeuronCompilationPtr;
 using litert::mediatek::NeuronModel;
@@ -254,27 +254,27 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
 namespace {
 
 Expected<std::vector<uint8_t>> CompilePartition(
-    NeuronAdapter& neuron_adapter, const litert::Subgraph& partition,
+    NeuronAdapterApi& neuron_adapter_api, const litert::Subgraph& partition,
     const std::string& graph_name, std::optional<std::string> soc_model) {
-  auto model = CreateModel(neuron_adapter, partition, graph_name);
+  auto model = CreateModel(neuron_adapter_api, partition, graph_name);
   if (!model) {
     return model.Error();
   }
 
-  auto compilation = CompileModel(neuron_adapter, model->get(), soc_model);
+  auto compilation = CompileModel(neuron_adapter_api, model->get(), soc_model);
   if (!compilation) {
     return compilation.Error();
   }
 
   size_t bytecode_size;
-  if (neuron_adapter.api().compilation_get_compiled_network_size(
+  if (neuron_adapter_api.api().compilation_get_compiled_network_size(
           compilation->get(), &bytecode_size) != NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
                  "Failed to get compiled network size");
   }
 
   std::vector<uint8_t> bytecode(bytecode_size);
-  if (neuron_adapter.api().compilation_store_compiled_network(
+  if (neuron_adapter_api.api().compilation_store_compiled_network(
           compilation->get(), bytecode.data(), bytecode.size()) !=
       NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
@@ -305,18 +305,17 @@ LiteRtStatus LiteRtCompilerPluginCompile(
 
   // Initialize SDK and load qnn shared libraries.
 
-  auto neuron_adapter =
-      NeuronAdapter::Create(/*shared_library_dir=*/std::nullopt);
-  if (!neuron_adapter) {
-    return neuron_adapter.Error().Status();
+  auto api = NeuronAdapterApi::Create(/*shared_library_dir=*/std::nullopt);
+  if (!api) {
+    return api.Error().Status();
   }
 
   auto result = std::make_unique<LiteRtCompiledResultT>();
   for (auto i = 0; i < num_partitions; ++i) {
     auto partition = litert::Subgraph(partitions[i]);
     auto graph_name = absl::StrFormat("Partition_%d", i);
-    auto bytecode = CompilePartition(**neuron_adapter, partition, graph_name,
-                                     opt_soc_model);
+    auto bytecode =
+        CompilePartition(**api, partition, graph_name, opt_soc_model);
     if (!bytecode) {
       LITERT_LOG(LITERT_INFO, "%s", bytecode.Error().Message().c_str());
       return bytecode.Error().Status();

@@ -85,7 +85,7 @@ jobs:
         working-directory: xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
         timeout-minutes: 30
         run: |
-          bash run.sh > ../../../../../../results/flax_2b.log
+          bash run.sh | tee -a ../../../../../../results/flax_2b.log
 
       # TODO(juliagmt): Re-enable once the build is fixed.
       # - name: Build run_hlo_module

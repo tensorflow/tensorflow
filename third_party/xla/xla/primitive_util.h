@@ -29,6 +29,8 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -455,6 +457,10 @@ constexpr bool IsUnsignedIntegralType(PrimitiveType type) {
 
 constexpr bool IsIntegralType(PrimitiveType type) {
   return IsUnsignedIntegralType(type) || IsSignedIntegralType(type);
+}
+
+constexpr bool Is8BitIntegralType(PrimitiveType type) {
+  return type == S8 || type == U8;
 }
 
 template <typename R, typename F>

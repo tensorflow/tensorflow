@@ -73,7 +73,7 @@ TEST_F(GpuSliceInputFusionTest, InputFusionWithATupleOfSlices) {
 ; CHECK: }
 )"
                                          : R"(
-; CHECK-LABEL: define void @{{[a-z_]*}}fusion
+; CHECK-LABEL: define ptx_kernel void @{{[a-z_]*}}fusion
 ; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
 ; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
 ; CHECK: }
@@ -122,7 +122,7 @@ TEST_F(GpuSliceInputFusionTest, ConcatThenSplit) {
 ; CHECK: }
 )"
                                          : R"(
-; CHECK-LABEL: define void @{{[a-z_]*}}fusion
+; CHECK-LABEL: define ptx_kernel void @{{[a-z_]*}}fusion
 ; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
 ; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
 ; CHECK: }

@@ -18,6 +18,7 @@ limitations under the License.
 #include <variant>
 
 #include <gtest/gtest.h>
+#include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 

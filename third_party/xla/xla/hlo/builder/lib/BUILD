@@ -731,7 +731,6 @@ cc_library(
 xla_test(
     name = "logdet_test",
     srcs = ["logdet_test.cc"],
-    # placeholder for extra tags
     tags = [
         "optonly",
     ],
@@ -767,7 +766,6 @@ cc_library(
 xla_test(
     name = "tuple_test",
     srcs = ["tuple_test.cc"],
-    # placeholder for extra tags
     deps = [
         ":tuple",
         "//xla:error_spec",

@@ -256,7 +256,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:export_utils",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/compiler/mlir/tensorflow:verify_suitable_for_graph_export",
-        "//tensorflow/compiler/mlir/tensorflow/translate:export_tf_dialect_op",
         "//tensorflow/compiler/mlir/tensorflow/translate:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/utils:name_utils",
         "//tensorflow/core:core_cpu",

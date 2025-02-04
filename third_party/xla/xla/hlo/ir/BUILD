@@ -52,6 +52,7 @@ cc_library(
         "hlo_op_metadata.h",
         "hlo_opcode.h",
         "hlo_original_value.h",
+        "hlo_print_options.h",
         "hlo_schedule.h",
         "hlo_sharding.h",
         "hlo_sharding_metadata.h",

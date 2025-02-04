@@ -6314,9 +6314,12 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
         logging_context, value_proj, node->inputs->data[2], node_index));
 
-    const TfLiteTensor& atten_mask = tensors[node->inputs->data[3]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, atten_mask, node->inputs->data[3], node_index));
+    const TfLiteTensor* atten_mask = nullptr;
+    if (node->inputs->size > 3) {
+      atten_mask = &tensors[node->inputs->data[3]];
+      TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+          logging_context, *atten_mask, node->inputs->data[3], node_index));
+    }
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
@@ -6330,17 +6333,18 @@ class Subgraph {
                       query_proj.dims->data[query_proj.dims->size - 1],
                       value_proj.dims->data[value_proj.dims->size - 1]);
     // Max sequence length match.
-    TF_LITE_ENSURE_EQ(logging_context, key_proj.dims->data[1],
-                      atten_mask.dims->data[atten_mask.dims->size - 1]);
-    TF_LITE_ENSURE_EQ(logging_context, value_proj.dims->data[1],
-                      atten_mask.dims->data[atten_mask.dims->size - 1]);
+    if (atten_mask != nullptr) {
+      TF_LITE_ENSURE_EQ(logging_context, key_proj.dims->data[1],
+                        atten_mask->dims->data[atten_mask->dims->size - 1]);
+      TF_LITE_ENSURE_EQ(logging_context, value_proj.dims->data[1],
+                        atten_mask->dims->data[atten_mask->dims->size - 1]);
+    }
 
     if (subgraph != nullptr) {
       // constants
       uint32_t query_proj_id = input_output_tensors.at(node->inputs->data[0]);
       uint32_t key_proj_id = input_output_tensors.at(node->inputs->data[1]);
       uint32_t value_proj_id = input_output_tensors.at(node->inputs->data[2]);
-      uint32_t atten_mask_id = input_output_tensors.at(node->inputs->data[3]);
       uint32_t output_id = input_output_tensors.at(node->outputs->data[0]);
       float default_out_min = -std::numeric_limits<float>::infinity();
       float default_out_max = std::numeric_limits<float>::infinity();
@@ -6562,18 +6566,21 @@ class Subgraph {
                                                cap_val_id, cap_logits_id, 0));
         fc_out_id = cap_logits_id;
       }
-      // element_add atten_mask and matmul_out
-      uint32_t padded_logits_id = XNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_EQ(
-          logging_context, xnn_status_success,
-          xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
-                                  /*dims=*/nullptr, nullptr,
-                                  XNN_INVALID_VALUE_ID, 0, &padded_logits_id));
-      TF_LITE_ENSURE_EQ(
-          logging_context, xnn_status_success,
-          xnn_define_add2(subgraph, default_out_min, default_out_max,
-                          atten_mask_id, fc_out_id, padded_logits_id,
-                          /*flags=*/0));
+      // element_add atten_mask and matmul_out if atten_mask is not nullptr.
+      uint32_t padded_logits_id = fc_out_id;
+      if (atten_mask != nullptr) {
+        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                          xnn_define_tensor_value(
+                              subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                              /*dims=*/nullptr, nullptr, XNN_INVALID_VALUE_ID,
+                              0, &padded_logits_id));
+        uint32_t atten_mask_id = input_output_tensors.at(node->inputs->data[3]);
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_add2(subgraph, default_out_min, default_out_max,
+                            atten_mask_id, fc_out_id, padded_logits_id,
+                            /*flags=*/0));
+      }
       // softmax(padded_logits)
       uint32_t probs_id = XNN_INVALID_VALUE_ID;
       TF_LITE_ENSURE_EQ(

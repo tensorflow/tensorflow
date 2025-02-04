@@ -107,7 +107,6 @@ cc_library(
         ":import_constants",
         ":import_sdy_custom_calls",
         ":open_while_free_vars_sharding",
-        "//xla/mlir_hlo:mhlo_passes",
         "//xla/mlir_hlo:stablehlo_extension_passes",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",

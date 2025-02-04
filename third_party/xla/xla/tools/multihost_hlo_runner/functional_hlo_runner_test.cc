@@ -414,6 +414,7 @@ TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
     GTEST_SKIP() << "GPU-only test.";
   }
 
+  tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=2", /*overwrite=*/true);
   tsl::SubProcess child[kNumNodes];
   for (int node_id = 0; node_id < kNumNodes; ++node_id) {
     std::vector<std::string> argv;
@@ -469,13 +470,13 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
     TF_ASSIGN_OR_RETURN(
         std::string results0,
         env.kv_store->Get("gemm_fusion_autotuning_results_"
-                          "3rICV5olU4JYmrEsiWSstWM0ew6jr1f60ikmjvPhwUc_0",
+                          "iuhMRX2JY-YpaUJD3Pw0h3H3HNGWEzN4xA0s9Q3CoK8_0",
                           absl::Seconds(1)));
     CHECK(absl::StrContains(results0, "run_time"));
     TF_ASSIGN_OR_RETURN(
         std::string results1,
         env.kv_store->Get("gemm_fusion_autotuning_results_"
-                          "3rICV5olU4JYmrEsiWSstWM0ew6jr1f60ikmjvPhwUc_1",
+                          "iuhMRX2JY-YpaUJD3Pw0h3H3HNGWEzN4xA0s9Q3CoK8_1",
                           absl::Seconds(1)));
     CHECK(absl::StrContains(results1, "run_time"));
     // The nodes autotune different fusions.

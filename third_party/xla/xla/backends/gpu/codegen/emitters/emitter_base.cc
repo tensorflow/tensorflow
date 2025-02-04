@@ -574,10 +574,10 @@ absl::Status EmitterBase::RunPassPipeline(
 }
 
 void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm) {
-  pm.addNestedPass<FuncOp>(CreateSimplifyArithPass());
+  pm.addNestedPass<FuncOp>(emitters::CreateSimplifyArithPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(CreateEraseDeadFunctionsPass());
+  pm.addPass(emitters::CreateEraseDeadFunctionsPass());
   pm.addPass(mlir::createCSEPass());
 }
 
@@ -595,7 +595,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   pm.addNestedPass<FuncOp>(CreatePeelLoopsPass());
   pm.addNestedPass<FuncOp>(CreateLowerXlaGpuLoopsToScfPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
-  pm.addPass(CreatePropagateSliceIndicesPass());
+  pm.addPass(emitters::CreatePropagateSliceIndicesPass());
   pm.addPass(emitters::CreateFlattenTensorsPass());
   // We need LICM before unswitching loops, because our loop unswitcher only
   // detects for loops with a single if inside them.
@@ -622,7 +622,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   // simplify-affine has maximally folded expressions to work with.
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<FuncOp>(CreateSimplifyArithPass());
+  pm.addNestedPass<FuncOp>(emitters::CreateSimplifyArithPass());
   pm.addPass(CreateSimplifyAffinePass());
   pm.addPass(CreateConvertIndexTypePass());
   // simplify-affine lowers most affine.apply ops, but if it can't prove a

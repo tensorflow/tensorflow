@@ -203,6 +203,7 @@ cc_library(
         "%{rocm_root}/include",
     ],
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [":rocm_config"],
 )
 

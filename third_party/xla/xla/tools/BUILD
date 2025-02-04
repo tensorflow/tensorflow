@@ -171,13 +171,12 @@ cc_library(
         "//xla/service:compilation_environments",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_verifier",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -669,6 +668,7 @@ xla_test(
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     deps = [
         ":matmul_perf_table_gen",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "@com_google_googletest//:gtest_main",

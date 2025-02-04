@@ -40,7 +40,7 @@
     ASSERT_EQ(status, code);                      \
   }
 
-#define LITERT_ASSERT_STATUS_OK(expr) \
+#define LITERT_ASSERT_OK(expr) \
   LITERT_ASSERT_STATUS_HAS_CODE(expr, kLiteRtStatusOk);
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_TEST_TEST_MACROS_H_

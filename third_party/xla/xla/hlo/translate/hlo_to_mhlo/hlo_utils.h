@@ -253,6 +253,10 @@ static bool HasCustomLayout(const Shape& shape) {
          shape.layout() != LayoutUtil::GetDefaultLayoutForShape(shape);
 }
 
+inline llvm::StringRef ToStringRef(absl::string_view str) {
+  return llvm::StringRef(str.data(), str.size());
+}
+
 }  // namespace xla
 
 #endif  // XLA_HLO_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_

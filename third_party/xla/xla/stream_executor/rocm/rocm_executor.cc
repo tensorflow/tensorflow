@@ -782,6 +782,33 @@ RocmExecutor::CreateMemoryAllocator(MemoryType type) {
                 }
               });
         });
+  } else if (type == MemoryType::kCollective) {
+    return std::make_unique<GenericMemoryAllocator>(
+        [this](uint64_t size)
+            -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+          void* ptr = nullptr;
+          auto hipResult = wrap::hipMalloc(&ptr, size);
+          if (hipResult != hipSuccess) {
+            return absl::InternalError(absl::StrFormat(
+                "failed to allocate %s (%llu bytes) from device collective "
+                "memory: %s, "
+                "Last NCCL warning(error)",
+                tsl::strings::HumanReadableNumBytes(size), size,
+                hipGetErrorString(hipResult)));
+          }
+          VLOG(2) << "allocated " << ptr << " of " << size
+                  << " bytes of collective memory";
+          return std::make_unique<GenericMemoryAllocation>(
+              ptr, size, [this](void* location, uint64_t size) {
+                auto status = wrap::hipFree(location);
+                if (status != hipSuccess) {
+                  LOG(ERROR) << "failed to free collective memory at "
+                             << location << "; result: " << status;
+                } else {
+                  VLOG(2) << "deallocated collective memory at " << location;
+                }
+              });
+        });
   } else if (type == MemoryType::kHost) {
     return std::make_unique<GenericMemoryAllocator>([this](uint64_t size) {
       return AllocateHostMemory(rocm_context_, size);

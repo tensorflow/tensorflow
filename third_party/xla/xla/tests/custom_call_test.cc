@@ -330,10 +330,6 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
 }
 
 XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Invalid values unsupported by MLIR";
-  }
-
   const char* const kModuleStr = R"(
     HloModule m
     ENTRY test {
@@ -1250,12 +1246,6 @@ XLA_TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
 XLA_TEST_F(FfiCustomCallTest, FfiInputAndOutputLayoutDiffer) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
-
-  if (IsMlirLoweringEnabled()) {
-    // The MLIR pipeline does /not/ transpose the output here, and there's no
-    // obvious reason why it should.
-    GTEST_SKIP() << "Appears to test an XLA current implementation detail";
-  }
 
   auto input =
       builder.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));

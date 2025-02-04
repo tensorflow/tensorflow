@@ -96,7 +96,7 @@ class DotKernelTest(parameterized.TestCase):
     hlo_module, buffer_assignment = utilities.build_hlo_module(
         hlo_op, lhs_param, rhs_param
     )
-    jit_compiler = testlib_cpu.JitCompiler()
+    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
     emitter = emitter_type(
         hlo_module.get_root_instruction(),
@@ -154,7 +154,7 @@ class DotKernelTest(parameterized.TestCase):
     hlo_module, buffer_assignment = utilities.build_hlo_module(
         hlo_op, lhs_param, rhs_param
     )
-    jit_compiler = testlib_cpu.JitCompiler()
+    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
     emitter = emitter_type(
         hlo_module.get_root_instruction(),

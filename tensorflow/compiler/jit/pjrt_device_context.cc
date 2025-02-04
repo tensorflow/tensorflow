@@ -66,7 +66,7 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
       /*byte_strides=*/std::nullopt,
       xla::PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
       /*on_done_with_host_buffer=*/
-      [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_device,
+      [cpu_tensor = *cpu_tensor]() { /* frees tensor */ }, pjrt_memory,
       device_layout);
   if (first_try_buffer.ok()) {
     return std::move(*first_try_buffer);

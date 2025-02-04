@@ -47,10 +47,13 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "erase_dead_functions.cc",
         "expand_float_ops.cc",
         "flatten_tensors.cc",
         "lower_tensors.cc",
         "lower_to_llvm.cc",
+        "propagate_slice_indices.cc",
+        "simplify_arith.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
@@ -62,6 +65,7 @@ cc_library(
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/codegen:device_spec",
+        "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
@@ -76,6 +80,7 @@ cc_library(
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithToLLVM",
         "@llvm-project//mlir:ArithTransforms",
+        "@llvm-project//mlir:CallOpInterfaces",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ComplexToLLVM",
         "@llvm-project//mlir:ControlFlowToLLVM",

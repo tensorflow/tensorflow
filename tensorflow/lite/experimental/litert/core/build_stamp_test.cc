@@ -16,13 +16,17 @@
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 
 namespace litert::internal {
 
 namespace {
+
+using ::testing::litert::IsError;
 
 static constexpr absl::string_view kSocModel = "TestSocModel";
 static constexpr absl::string_view kSocMan = "TestSocMan";
@@ -31,7 +35,7 @@ TEST(TestBuildStamp, MakeBuildStampInputsTooLarge) {
   // NOLINTNEXTLINE
   std::string long_manufacturer(256, 'a');
   auto res = MakeBuildStamp(long_manufacturer, kSocModel);
-  EXPECT_EQ(res.Error().Status(), kLiteRtStatusErrorInvalidArgument);
+  EXPECT_THAT(res, IsError(kLiteRtStatusErrorInvalidArgument));
 }
 
 TEST(TestBuildStamp, MakeBuildStamp) {
@@ -41,7 +45,6 @@ TEST(TestBuildStamp, MakeBuildStamp) {
   EXPECT_EQ(man, kSocMan);
   EXPECT_EQ(model, kSocModel);
 }
-
 
 }  // namespace
 

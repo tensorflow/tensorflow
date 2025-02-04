@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "xla/backends/gpu/codegen/triton/support.h"

@@ -22,7 +22,7 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
-#include "tensorflow/lite/experimental/litert/test/test_macros.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 
 namespace litert::internal {
 namespace {
@@ -41,8 +41,7 @@ TEST(TestDynamicLoading, GlobNoMatch) {
   Touch(Join({dir->Str(), kNotLiteRtSo}));
 
   std::vector<std::string> results;
-  LITERT_ASSERT_STATUS_OK(
-      litert::internal::FindLiteRtSharedLibs(dir->Str(), results));
+  LITERT_ASSERT_OK(litert::internal::FindLiteRtSharedLibs(dir->Str(), results));
   EXPECT_EQ(results.size(), 0);
 }
 
@@ -53,8 +52,7 @@ TEST(TestDynamicLoading, GlobOneMatch) {
   Touch(Join({dir->Str(), kNotLiteRtSo}));
 
   std::vector<std::string> results;
-  LITERT_ASSERT_STATUS_OK(
-      litert::internal::FindLiteRtSharedLibs(dir->Str(), results));
+  LITERT_ASSERT_OK(litert::internal::FindLiteRtSharedLibs(dir->Str(), results));
   ASSERT_EQ(results.size(), 1);
   EXPECT_TRUE(absl::string_view(results.front()).ends_with(kLiteRtSo1));
 }
@@ -67,8 +65,7 @@ TEST(TestDynamicLoading, GlobMultiMatch) {
   Touch(Join({dir->Str(), kNotLiteRtSo}));
 
   std::vector<std::string> results;
-  LITERT_ASSERT_STATUS_OK(
-      litert::internal::FindLiteRtSharedLibs(dir->Str(), results));
+  LITERT_ASSERT_OK(litert::internal::FindLiteRtSharedLibs(dir->Str(), results));
   ASSERT_EQ(results.size(), 2);
   EXPECT_THAT(results, Contains(HasSubstr(kLiteRtSo1)));
   EXPECT_THAT(results, Contains(HasSubstr(kLiteRtSo2)));

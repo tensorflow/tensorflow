@@ -62,34 +62,6 @@ cc_library(
 )
 
 cc_library(
-    name = "export_tf_dialect_op",
-    srcs = [
-        "export_tf_dialect_op.cc",
-    ],
-    hdrs = [
-        "export_tf_dialect_op.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:convert_type",
-        "//tensorflow/compiler/mlir/tensorflow:export_utils",
-        "//tensorflow/compiler/mlir/utils:string_container_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:DerivedAttributeOpInterface",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@local_xla//xla:status_macros",
-    ],
-)
-
-cc_library(
     name = "mlir_roundtrip_flags",
     hdrs = ["mlir_roundtrip_flags.h"],
     visibility = ["//visibility:public"],

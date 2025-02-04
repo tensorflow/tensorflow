@@ -80,7 +80,7 @@ class ConcatenateKernelRunnerTest(parameterized.TestCase):
     hlo_module, buffer_assignment = utilities.build_hlo_module(
         hlo_op, *hlo_parameters
     )
-    jit_compiler = cpu_testlib.JitCompiler()
+    jit_compiler = cpu_testlib.JitCompiler(hlo_module.get_config())
 
     emitter = cpu_testlib.ConcatenateKernelEmitter(
         hlo_module.get_root_instruction(),

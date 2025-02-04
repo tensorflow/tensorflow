@@ -88,13 +88,6 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status SequentialThunk::Cleanup(const CleanupParams& params) {
-  for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Cleanup(params));
-  }
-  return absl::OkStatus();
-}
-
 void SequentialThunk::ForAllThunks(
     absl::FunctionRef<void(const Thunk*)> fn) const {
   fn(this);

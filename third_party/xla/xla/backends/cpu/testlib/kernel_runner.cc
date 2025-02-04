@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/Support/CodeGen.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/runtime/function_library.h"
@@ -35,7 +35,10 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/runtime_symbol_generator.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -90,34 +93,38 @@ absl::Status KernelRunner::Call(absl::Span<const Argument> arguments) {
   return kernel_.Launch(thread_dim_, kernel_args);
 }
 
-absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(int opt_level) {
-  llvm::TargetOptions target_options;
-  target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
+absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(
+    const HloModuleConfig& config) {
+  const DebugOptions& debug_options = config.debug_options();
+
+  IrCompiler::Options ir_compiler_options{
+      /*optimization_level=*/IrCompiler::GetCodeGenOptLevel(config),
+      /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
+      /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
+      /*disable_expensive_passes=*/
+      debug_options.xla_llvm_disable_expensive_passes(),
+      /*slp_vectorizer_disabled=*/options::SlpVectorizerDisabled(config),
+      /*enable_loop_unrolling=*/options::EnableLoopUnrolling(config),
+  };
+
+  IrCompiler::CompilationHooks ir_compiler_hooks;
 
   // Needed to resolve symbols such as built in intrinsics (sin, cos etc).
-  JitCompiler::Options jit_compiler_options;
-  jit_compiler_options.definition_generator =
+  ExecutionEngine::DefinitionGenerator definition_generator =
       [](const llvm::DataLayout& data_layout) {
         return std::make_unique<RuntimeSymbolGenerator>(data_layout);
       };
 
-  auto& ir_compiler_options = jit_compiler_options.ir_compiler_options;
-  switch (opt_level) {
-    case 0:
-      ir_compiler_options.opt_level = llvm::CodeGenOptLevel::None;
-      break;
-    case 1:
-      ir_compiler_options.opt_level = llvm::CodeGenOptLevel::Less;
-      break;
-    case 2:
-      ir_compiler_options.opt_level = llvm::CodeGenOptLevel::Default;
-      break;
-    case 3:
-      ir_compiler_options.opt_level = llvm::CodeGenOptLevel::Aggressive;
-      break;
-    default:
-      return absl::InvalidArgumentError("Invalid optimization level");
-  }
+  JitCompiler::Options jit_compiler_options{
+      std::move(ir_compiler_options),
+      std::move(ir_compiler_hooks),
+      /*num_dylibs=*/1,
+      /*definition_generator=*/std::move(definition_generator),
+      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
+  };
+
+  llvm::TargetOptions target_options;
+  target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
 
   return JitCompiler::Create(target_options, jit_compiler_options);
 }

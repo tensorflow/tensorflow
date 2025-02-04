@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/generic_memory_allocator.h"
 #include "xla/stream_executor/host/host_event.h"
 #include "xla/stream_executor/host/host_stream.h"
+#include "xla/stream_executor/host/host_stream_factory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -139,6 +140,10 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
 
 absl::StatusOr<std::unique_ptr<Stream>> HostExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
+  const HostStreamFactory* factory = HostStreamFactory::GetFactory();
+  if (factory != nullptr) {
+    return factory->CreateStream(this);
+  }
   return std::make_unique<HostStream>(this);
 }
 

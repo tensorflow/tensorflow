@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
 
+#include <cstddef>
 #include <string>
 #include <utility>
 

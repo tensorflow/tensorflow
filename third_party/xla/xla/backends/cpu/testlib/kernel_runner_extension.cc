@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::cpu {
@@ -138,9 +139,9 @@ NB_MODULE(_extension, kernel_runner_module) {
            nb::keep_alive<1, 4>());
 
   nb::class_<JitCompiler>(kernel_runner_module, "JitCompiler")
-      .def(nb::new_([](int opt_level) {
+      .def(nb::new_([](const HloModuleConfig& config) {
              absl::StatusOr<JitCompiler> compiler =
-                 KernelRunner::CreateJitCompiler(opt_level);
+                 KernelRunner::CreateJitCompiler(config);
 
              if (!compiler.ok()) {
                throw std::runtime_error(
@@ -150,7 +151,7 @@ NB_MODULE(_extension, kernel_runner_module) {
              return std::make_unique<JitCompiler>(
                  JitCompiler(std::move(compiler).value()));
            }),
-           nb::arg("opt_level") = 3)
+           nb::arg("config"))
       .def(
           "get_target_machine",
           [](JitCompiler* self) {

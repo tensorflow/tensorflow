@@ -102,14 +102,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_fast_math_honor_functions(true);
   opts.set_xla_cpu_fast_math_honor_division(true);
 
-  // TODO(AyanmoI): Remove this flag when cuDNN FMHA is fully supported.
-  //
-  // cuDNN FMHA currently rewrites attention layers to use FlashAttention by
-  // default. This reassociation is not semantics-preserving, and the user
-  // should explicitly opt in if they wish to use this feature. cuDNN FMHA can
-  // not be turned on by default.
-  opts.set_xla_gpu_enable_cudnn_fmha(false);
-
   opts.set_xla_gpu_fused_attention_use_cudnn_rng(false);
 
   // By default, copy TF's Eigen style min_max behavior with nans.
@@ -1383,14 +1375,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_frontend),
       debug_options->xla_gpu_enable_cudnn_frontend(),
       "Use the cuDNN frontend API for convolutions when possible."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_cudnn_fmha",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_fmha),
-      debug_options->xla_gpu_enable_cudnn_fmha(),
-      "Use the cuDNN Fused Attention runtime fusion when possible. Note "
-      "that dropout support and the development of this feature as a whole is "
-      "in progress. Attention with dropout may cause results to diverge with "
-      "and without this  flag turned on."));
+  flag_list->push_back(tsl::Flag("xla_gpu_enable_cudnn_fmha",
+                                 noop_flag_setter<bool>, false,
+                                 "[Deprecated, do not use]"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_fused_attention_use_cudnn_rng",
       bool_setter_for(&DebugOptions::set_xla_gpu_fused_attention_use_cudnn_rng),

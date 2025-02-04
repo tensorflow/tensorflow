@@ -36,9 +36,9 @@ limitations under the License.
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 using stream_executor::CudaComputeCapability;
 

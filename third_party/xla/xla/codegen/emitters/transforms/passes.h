@@ -27,6 +27,7 @@ namespace emitters {
 #define GEN_PASS_DECL
 #include "xla/codegen/emitters/transforms/passes.h.inc"
 
+std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();
 std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass();
 std::unique_ptr<mlir::Pass> CreateFlattenTensorsPass();
 std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
@@ -39,6 +40,8 @@ std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(
     const std::string& gpu_device_info = "");
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(
     const stream_executor::DeviceDescription& device_description);
+std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
+std::unique_ptr<mlir::Pass> CreateSimplifyArithPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/codegen/emitters/transforms/passes.h.inc"

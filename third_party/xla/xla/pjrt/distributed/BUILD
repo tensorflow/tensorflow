@@ -1,4 +1,5 @@
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -138,6 +139,7 @@ xla_cc_test(
     name = "client_server_test",
     size = "medium",
     srcs = ["client_server_test.cc"],
+    tags = if_oss(["not_run:arm"]),
     deps = [
         ":client",
         ":distributed",

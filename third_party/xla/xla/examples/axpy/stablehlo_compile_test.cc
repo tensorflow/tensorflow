@@ -160,7 +160,7 @@ TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
   // would correspond to device memory.
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> alpha,
-      client->BufferFromHostLiteral(alpha_literal, host_cpu));
+      client->BufferFromHostLiteral(alpha_literal, host_cpu_memory_space));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> x,
       client->BufferFromHostLiteral(x_literal, host_cpu_memory_space));

@@ -90,14 +90,14 @@ TEST_F(XlaCompileLibTest, MainForGpu) {
   TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
                                       module_->ToString()));
 
-  const std::string output_path =
+  const std::string output_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_output");
   const std::string result_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_result.pb");
 
   XlaCompileOptions options;
   options.module_path = module_file;
-  options.output_path = output_path;
+  options.output_file = output_file;
   options.platform = "gpu";
   options.result_output_file = result_file;
   options.gpu_options.use_attached_device = true;

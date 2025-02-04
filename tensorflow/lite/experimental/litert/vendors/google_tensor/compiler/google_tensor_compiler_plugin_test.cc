@@ -35,13 +35,13 @@ TEST(TestGoogleTensorPlugin, GetConfigInfo) {
   auto plugin = CreatePlugin();
 
   LiteRtParamIndex num_supported_soc_models;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetNumCompilerPluginSupportedSocModels(
+  LITERT_ASSERT_OK(LiteRtGetNumCompilerPluginSupportedSocModels(
       plugin.get(), &num_supported_soc_models));
   ASSERT_EQ(num_supported_soc_models, 1);
 
   const char* soc_model_name;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetCompilerPluginSupportedSocModel(
-      plugin.get(), 0, &soc_model_name));
+  LITERT_ASSERT_OK(LiteRtGetCompilerPluginSupportedSocModel(plugin.get(), 0,
+                                                            &soc_model_name));
   ASSERT_STREQ(soc_model_name, "P25");
 }
 
@@ -50,7 +50,7 @@ TEST(TestCallGoogleTensorPlugin, PartitionSimpleMultiAdd) {
   auto model = testing::LoadTestFileModel("simple_multi_op.tflite");
 
   LiteRtOpListT selected_op_list;
-  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginPartition(
+  LITERT_ASSERT_OK(LiteRtCompilerPluginPartition(
       plugin.get(), model.Subgraph(0)->Get(), &selected_op_list));
   const auto selected_ops = selected_op_list.Vec();
 
@@ -69,8 +69,8 @@ TEST(TestCallGoogleTensorPlugin, CompileMulSubgraph) {
   LiteRtSubgraph litert_subgraph = main_subgraph->Get();
 
   LiteRtCompiledResult compiled;
-  LITERT_ASSERT_STATUS_OK(LiteRtCompilerPluginCompile(
-      plugin.get(), "P25", &litert_subgraph, 1, &compiled));
+  LITERT_ASSERT_OK(LiteRtCompilerPluginCompile(plugin.get(), "P25",
+                                               &litert_subgraph, 1, &compiled));
 
   LiteRtDestroyCompiledResult(compiled);
 }  // Todo(abhirs): activate this test once the compiler wrapper is updated

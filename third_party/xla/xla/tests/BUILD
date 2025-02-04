@@ -9,7 +9,7 @@ load(
 load("//xla:package_groups.bzl", "xla_tests_package_groups")
 load("//xla:xla.bzl", "tests_build_defs_bzl_deps", "xla_cc_binary", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
-load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -764,7 +764,6 @@ xla_test(
 xla_test(
     name = "conditional_test",
     srcs = ["conditional_test.cc"],
-    # placeholder for extra tags
     shard_count = 2,
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
@@ -1686,7 +1685,6 @@ xla_test(
 xla_test(
     name = "batch_normalization_test",
     srcs = ["batch_normalization_test.cc"],
-    # placeholder for extra tags
     disabled_backends = [
         # BatchNorm HLOs are not handled by the interpreter backend, and the
         # BatchNorm expander is not run on the interpreter.
@@ -1855,7 +1853,9 @@ xla_test(
     timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
     shard_count = 4,
-    tags = ["test_xla_cpu_no_thunks"],
+    tags = [
+        "test_xla_cpu_no_thunks",
+    ] + if_oss(["not_run:arm"]),
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -1884,7 +1884,6 @@ xla_test(
 xla_test(
     name = "tuple_test",
     srcs = ["tuple_test.cc"],
-    # placeholder for extra tags
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":client_library_test_base",
@@ -1929,7 +1928,6 @@ xla_test(
 xla_test(
     name = "reduce_test",
     srcs = ["reduce_test.cc"],
-    # placeholder for extra tags
     shard_count = 31,
     tags = [
         "optonly",
@@ -2021,7 +2019,6 @@ xla_test(
     timeout = "long",
     srcs = [],
     # placeholder for extra args for reduce_window_test
-    # placeholder for extra tags
     shard_count = 40,
     tags = [
         "optonly",
@@ -2758,7 +2755,6 @@ xla_test(
 xla_test(
     name = "collective_pipeliner_execution_test",
     srcs = ["collective_pipeliner_execution_test.cc"],
-    # placeholder for extra tags
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":hlo_test_base",
@@ -3193,7 +3189,6 @@ xla_test(
 xla_test(
     name = "outfeed_in_nested_computation_test",
     srcs = ["outfeed_in_nested_computation_test.cc"],
-    # placeholder for extra tags
     disabled_backends = [
         # Outfeed ops are not supported on the interpreter backend.
         "interpreter",
@@ -3617,7 +3612,6 @@ xla_test(
 xla_test(
     name = "batch_norm_training_test",
     srcs = ["batch_norm_training_test.cc"],
-    # placeholder for extra tags
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":hlo_test_base",

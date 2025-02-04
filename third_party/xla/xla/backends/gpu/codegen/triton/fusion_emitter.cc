@@ -963,6 +963,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
                           block_level_parameters.output_tile_sizes,
                           /*constraints_are_known_satisfied=*/false,
                           /*compute_all_tile_offset_indexing_maps=*/true));
+  VLOG(3) << "Tiled HLO computation: " << tiled_hlo_computation.ToString();
 
   SmallVector<Value, 3> tile_multi_index =
       ir_emitter_triton_internal::ComputeDelinearizedTileIndex(

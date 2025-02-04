@@ -247,6 +247,9 @@ NB_MODULE(_extension, kernel_runner_module) {
   nb::class_<HloSchedule>(kernel_runner_module, "HloSchedule")
       .def("__str__", &HloSchedule::ToString);
 
+  nb::class_<HloModuleConfig>(kernel_runner_module, "HloModuleConfig")
+      .def(nb::new_(&DefaultHloModuleConfigWithDebugOptions));
+
   nb::class_<HloModule>(kernel_runner_module, "HloModule")
       .def_static("parse_from_string",
                   [](absl::string_view str) {
@@ -298,6 +301,7 @@ NB_MODULE(_extension, kernel_runner_module) {
             return self->entry_computation()->root_instruction();
           },
           nb::rv_policy::reference_internal)
+      .def("get_config", &HloModule::config)
       .def("__str__", nb::overload_cast<>(&HloModule::ToString, nb::const_));
 }
 

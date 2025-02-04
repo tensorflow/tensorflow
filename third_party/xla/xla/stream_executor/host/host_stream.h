@@ -48,7 +48,8 @@ class HostStream : public StreamCommon {
   // stop the stream or block any other tasks from executing; rather, the stream
   // will remember the first error encountered and return it from
   // 'BlockUntilDone'.
-  bool EnqueueTaskWithStatus(absl::AnyInvocable<absl::Status() &&> task);
+  virtual bool EnqueueTaskWithStatus(
+      absl::AnyInvocable<absl::Status() &&> task);
   // Enqueue a task that doesn't report any status.
   bool EnqueueTask(absl::AnyInvocable<void() &&> task);
 
@@ -73,7 +74,7 @@ class HostStream : public StreamCommon {
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) override;
 
- private:
+ protected:
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
 

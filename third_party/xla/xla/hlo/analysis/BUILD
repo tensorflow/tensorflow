@@ -147,6 +147,7 @@ cc_library(
         "//xla/service:pattern_matcher",
         "//xla/service:value_range",
         "//xla/tools:hlo_extractor",
+        "//xla/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -154,7 +155,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -170,13 +170,13 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/service:constant_value",
         "//xla/service:value_range",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

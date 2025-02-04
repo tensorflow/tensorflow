@@ -108,6 +108,7 @@ litert_test(
     deps = [
         ":qnn_manager",
         "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:matchers_oss",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/tools:dump",
     ],
 )

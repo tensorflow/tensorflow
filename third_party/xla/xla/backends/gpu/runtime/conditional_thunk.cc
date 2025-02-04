@@ -135,13 +135,6 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status ConditionalThunk::Cleanup(const CleanupParams& params) {
-  for (auto& branch_thunk : config_.branch_thunks) {
-    TF_RETURN_IF_ERROR(branch_thunk->Cleanup(params));
-  }
-  return absl::OkStatus();
-}
-
 void ConditionalThunk::ForAllThunks(
     absl::FunctionRef<void(const Thunk*)> fn) const {
   fn(this);

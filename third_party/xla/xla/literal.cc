@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -627,8 +628,10 @@ void LiteralBase::Piece::AllocateBuffers() {
   if (bytes > kMaxInlinedBytes) {
     CHECK_EQ(buffer(), nullptr);
     rep_.emplace<DenseRep>();
-    set_buffer(
-        static_cast<char*>(tsl::port::AlignedMalloc(bytes, kMinimumAlignment)));
+    char* buffer =
+        static_cast<char*>(tsl::port::AlignedMalloc(bytes, kMinimumAlignment));
+    CHECK(buffer != nullptr) << "Failed to allocate buffer for Literal";
+    set_buffer(buffer);
   } else {
     rep_.emplace<DenseInlinedRep>();
   }
