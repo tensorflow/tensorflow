@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("module_file", &options.module_path,
                 "The path to the HLO, MHLO or StableHLO file"),
-      tsl::Flag("output_file", &options.output_path,
+      tsl::Flag("output_file", &options.output_file,
                 "The path to the output file. Required if --result_output_file "
                 "is not set."),
       tsl::Flag("platform", &options.platform,
