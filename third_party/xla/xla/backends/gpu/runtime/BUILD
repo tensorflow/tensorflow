@@ -841,6 +841,7 @@ cc_library(
         "//xla/service:global_device_id",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:stream",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
