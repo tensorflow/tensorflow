@@ -1904,17 +1904,6 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorBuffer::CopyToDevice(PjRtDevice* dst_device) {
-  tsl::profiler::TraceMe traceme("PjRtStreamExecutorBuffer::CopyToDevice");
-  VLOG(1) << "PjRtStreamExecutorBuffer::CopyToDevice";
-  if (dst_device == device_) {
-    return InvalidArgument(
-        "CopyToDevice cannot accept the same source and destination devices");
-  }
-  return CopyToDeviceMemorySpace(dst_device, nullptr);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorBuffer::CopyToDeviceMemorySpace(
     PjRtDevice* dst_device, PjRtMemorySpace* dst_memory_space) {
   if (dst_device == device_ && dst_memory_space == memory_space() &&
