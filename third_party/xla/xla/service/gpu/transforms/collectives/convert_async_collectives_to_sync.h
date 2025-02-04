@@ -30,7 +30,8 @@ namespace gpu {
 
 class GpuConvertAsyncCollectivesToSync : public ConvertAsyncCollectivesToSync {
  public:
-  using ConvertAsyncCollectivesToSync::ConvertAsyncCollectivesToSync;
+  GpuConvertAsyncCollectivesToSync();
+
   absl::string_view name() const override {
     return "gpu-convert-async-collectives-to-sync";
   }

@@ -24,13 +24,23 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/transforms/collectives/convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
+
+GpuConvertAsyncCollectivesToSync::GpuConvertAsyncCollectivesToSync()
+    : ConvertAsyncCollectivesToSync(/*is_nop=*/
+                                    HloPredicateIsOp<
+                                        HloOpcode::kParameter,
+                                        HloOpcode::kConstant,
+                                        HloOpcode::kBitcast,
+                                        HloOpcode::kGetTupleElement>) {}
 
 absl::Status GpuConvertAsyncCollectivesToSync::ConvertAsyncInstructionsToSync(
     HloComputation* computation,
