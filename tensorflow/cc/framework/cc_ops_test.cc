@@ -120,8 +120,8 @@ TEST(CCOpTest, ExampleTrainer) {
 
 TEST(CCOpTest, ThrowAwayOp) {
   Scope root = Scope::NewRootScope();
-  ThrowAway1(root, 1, 2.3f, 1, 1, 1, ThrowAway1::Builder(42));
-  ThrowAway2(root, ThrowAway2::ThrowAway2_(3).Scope(1));
+  ThrowAway1 give_me_a_name(root, 1, 2.3f, 1, 1, 1, ThrowAway1::Builder(42));
+  ThrowAway2 give_me_a_name(root, ThrowAway2::ThrowAway2_(3).Scope(1));
   TF_EXPECT_OK(root.status());
 }
 
