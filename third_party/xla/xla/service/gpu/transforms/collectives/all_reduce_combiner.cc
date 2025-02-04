@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/all_reduce_combiner.h"
+#include "xla/service/gpu/transforms/collectives/all_reduce_combiner.h"
 
 #include <optional>
 
@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/collectives/all_reduce_combiner.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gpu_collective_combiner_utils.h"
+#include "xla/service/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 #include "xla/service/hlo_domain_map.h"
 #include "xla/tsl/platform/statusor.h"
 

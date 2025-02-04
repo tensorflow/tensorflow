@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/reduce_scatter_combiner.h"
+#include "xla/service/gpu/transforms/collectives/reduce_scatter_combiner.h"
 
 #include <gtest/gtest.h>
 #include "absl/log/log.h"

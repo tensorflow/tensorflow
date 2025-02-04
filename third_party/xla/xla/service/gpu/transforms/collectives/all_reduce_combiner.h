@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_ALL_REDUCE_COMBINER_H_
-#define XLA_SERVICE_GPU_ALL_REDUCE_COMBINER_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_COMBINER_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_COMBINER_H_
 
 #include <cstdint>
 
@@ -58,4 +58,4 @@ class GpuAllReduceCombiner : public AllReduceCombiner {
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_ALL_REDUCE_COMBINER_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_ALL_REDUCE_COMBINER_H_

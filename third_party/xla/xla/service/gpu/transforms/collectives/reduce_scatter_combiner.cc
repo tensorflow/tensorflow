@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/all_gather_combiner.h"
+#include "xla/service/gpu/transforms/collectives/reduce_scatter_combiner.h"
 
 #include <optional>
 
@@ -21,21 +21,19 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/transforms/collectives/all_gather_combiner.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gpu_collective_combiner_utils.h"
+#include "xla/service/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 #include "xla/service/hlo_domain_map.h"
+#include "xla/service/reduce_scatter_combiner.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
-
 namespace {
 
-std::optional<AllGatherCombiner::GroupKey> PipelinedCombinerKey(
+std::optional<ReduceScatterCombiner::GroupKey> PipelinedCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
-    bool combine_by_dim, bool combine_different_dtypes) {
+    bool combine_by_dim) {
   auto backend_config = instruction->backend_config<GpuBackendConfig>();
   if (!backend_config.ok()) {
     return std::nullopt;
@@ -43,31 +41,31 @@ std::optional<AllGatherCombiner::GroupKey> PipelinedCombinerKey(
   if (!backend_config->collective_backend_config().is_pipelined()) {
     return std::nullopt;
   }
-  return AllGatherCombiner::CombineKey(instruction, domain_map, combine_by_dim,
-                                       combine_different_dtypes);
+  return ReduceScatterCombiner::CombineKey(instruction, domain_map,
+                                           combine_by_dim);
 }
 
 }  // namespace
 
-absl::StatusOr<bool> GpuAllGatherCombiner::Run(
+absl::StatusOr<bool> GpuReduceScatterCombiner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Combiner threshold is specified. Running parent pass code.
   if (combine_threshold_in_bytes_ != default_combine_threshold_in_bytes_) {
-    return AllGatherCombiner::Run(module, execution_threads);
+    return ReduceScatterCombiner::Run(module, execution_threads);
   }
 
   // If there are no pipelined instructions in the IR, the optimizations below
   // do not kick in anyway.
   // Exit early so we do not perform expensive scheduling dry run below.
   if (!ContainsPipelinedInstruction(*module)) {
-    return AllGatherCombiner::Run(module, execution_threads);
+    return ReduceScatterCombiner::Run(module, execution_threads);
   }
 
   // Combine as much as possible for pipelined collectives.
   int previous_combiner_threshold = combine_threshold_in_bytes_;
   combine_threshold_in_bytes_ = ComputeSuggestedCombinerThreshold(
-      *module, device_info_, HloOpcode::kAllGather, pointer_size_);
+      *module, device_info_, HloOpcode::kReduceScatter, pointer_size_);
   TF_ASSIGN_OR_RETURN(
       bool combined_pipelined_instructions,
       RunWithKeyCombiner(module, execution_threads, PipelinedCombinerKey));
@@ -76,7 +74,7 @@ absl::StatusOr<bool> GpuAllGatherCombiner::Run(
   // The rest is combined by the parent pass code.
   combine_threshold_in_bytes_ = previous_combiner_threshold;
   TF_ASSIGN_OR_RETURN(bool combined_rest,
-                      AllGatherCombiner::Run(module, execution_threads));
+                      ReduceScatterCombiner::Run(module, execution_threads));
   return combined_pipelined_instructions || combined_rest;
 }
 

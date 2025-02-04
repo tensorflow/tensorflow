@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_collective_combiner_utils.h"
+#include "xla/service/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 
 #include <cstdint>
 #include <optional>

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_ALL_GATHER_COMBINER_H_
-#define XLA_SERVICE_GPU_ALL_GATHER_COMBINER_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_REDUCE_SCATTER_COMBINER_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_REDUCE_SCATTER_COMBINER_H_
 
 #include <cstdint>
 
@@ -23,29 +23,30 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/hlo/transforms/collectives/all_gather_combiner.h"
+#include "xla/service/reduce_scatter_combiner.h"
 #include "xla/stream_executor/device_description.h"
-
 namespace xla::gpu {
 
-// Similarly to `AllGatherCombiner` pass, combines `AllGather` ops into a single
-// larger `AllGather` op to maximize network bandwidth usage. Additionally, if
-// no flags are set for combiner thresholds, the pass will try to figure out the
-// optimal combiner threshold by itself.
-class GpuAllGatherCombiner : public AllGatherCombiner {
+// Similarly to `ReduceScatterCombiner` pass, combines `ReduceScatter` ops into
+// a single larger `ReduceScatter` op to maximize network bandwidth usage.
+// Additionally, if no flags are set for combiner thresholds, the pass will try
+// to figure out the optimal combiner threshold by itself.
+class GpuReduceScatterCombiner : public ReduceScatterCombiner {
  public:
-  GpuAllGatherCombiner(const se::DeviceDescription& device_info,
-                       const int default_combine_threshold_in_bytes,
-                       int64_t combine_threshold_in_bytes,
-                       int64_t combine_threshold_count, bool combine_by_dim,
-                       bool combine_different_dtypes, int64_t pointer_size)
-      : AllGatherCombiner(combine_threshold_in_bytes, combine_threshold_count,
-                          combine_by_dim, combine_different_dtypes),
+  GpuReduceScatterCombiner(const se::DeviceDescription& device_info,
+                           const int default_combine_threshold_in_bytes,
+                           int64_t combine_threshold_in_bytes,
+                           int64_t combine_threshold_count, bool combine_by_dim,
+                           int64_t pointer_size)
+      : ReduceScatterCombiner(combine_threshold_in_bytes,
+                              combine_threshold_count, combine_by_dim),
         device_info_(device_info),
         default_combine_threshold_in_bytes_(default_combine_threshold_in_bytes),
         pointer_size_(pointer_size) {}
 
-  absl::string_view name() const override { return "gpu-all-gather-combiner"; }
+  absl::string_view name() const override {
+    return "gpu-reduce-scatter-combiner";
+  }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -60,4 +61,4 @@ class GpuAllGatherCombiner : public AllGatherCombiner {
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_ALL_GATHER_COMBINER_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_REDUCE_SCATTER_COMBINER_H_
