@@ -1255,12 +1255,6 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1) {
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
-  if (IsMlirLoweringEnabled()) {
-    // TupleAllReduce is not supported by MHLO. As of late 2022, there is no
-    // known way to generate it from any frontend.
-    GTEST_SKIP();
-  }
-
   std::string hlo_string = R"(
     HloModule test
 
