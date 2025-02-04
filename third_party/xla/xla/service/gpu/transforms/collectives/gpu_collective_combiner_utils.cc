@@ -61,13 +61,13 @@ std::string CollectiveId(const HloInstruction* instr) {
 // Annotate all collective instructions with a unique identifier that will be
 // preserved after async collective conversion.
 void AnnotateCollectives(HloModule* module) {
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instr : computation->instructions()) {
-      if (hlo_query::IsCollectiveCommunicationOp(instr->opcode())) {
+  HloPredicate is_collective = [](const HloInstruction* instr) {
+    return hlo_query::IsCollectiveCommunicationOp(instr->opcode());
+  };
+  hlo_query::ForEachInstructionWithPred(
+      *module, is_collective, [](HloInstruction* instr) {
         instr->add_frontend_attribute(kCollectiveIdAttr, CollectiveId(instr));
-      }
-    }
-  }
+      });
 }
 
 absl::Status AnnotateSyncCollectives(HloModule* module) {
@@ -78,14 +78,12 @@ absl::Status AnnotateSyncCollectives(HloModule* module) {
 
 absl::flat_hash_set<std::string> SyncCollectiveIds(const HloModule& module) {
   absl::flat_hash_set<std::string> sync_collective_ids;
-  for (HloComputation* computation : module.computations()) {
-    for (HloInstruction* instr : computation->instructions()) {
-      if (IsSyncCollective(instr)) {
+  hlo_query::ForEachInstructionWithPred(
+      module, &IsSyncCollective,
+      [&sync_collective_ids](const HloInstruction* instr) {
         sync_collective_ids.insert(
             *instr->get_frontend_attribute(kCollectiveIdAttr));
-      }
-    }
-  }
+      });
   return sync_collective_ids;
 }
 
@@ -107,13 +105,14 @@ absl::StatusOr<absl::flat_hash_set<HloInstruction*>> SynchronousCollectives(
 
   // Find the corresponding sync collective instructions in the original module.
   absl::flat_hash_set<HloInstruction*> sync_collectives;
-  for (HloComputation* computation : module.computations()) {
-    for (HloInstruction* instr : computation->instructions()) {
-      if (sync_collective_ids.contains(CollectiveId(instr))) {
+  HloPredicate is_sync_collective =
+      [&sync_collective_ids](const HloInstruction* instr) {
+        return sync_collective_ids.contains(CollectiveId(instr));
+      };
+  hlo_query::ForEachInstructionWithPred(
+      module, is_sync_collective, [&sync_collectives](HloInstruction* instr) {
         sync_collectives.insert(instr);
-      }
-    }
-  }
+      });
   return sync_collectives;
 }
 

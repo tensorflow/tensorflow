@@ -4905,7 +4905,8 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSliceOfPad) {
 
 TEST_F(AlgebraicSimplifierTest, NegativePadding) {
   // Verify that a pad instruction with negative padding is replaced with a
-  // pad with non-negative padding followed by a slice.
+  // pad with non-negative padding followed by a slice. Also verify that the
+  // type of the operand and the result can be different.
   HloComputation::Builder builder(TestName());
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -4922,7 +4923,7 @@ TEST_F(AlgebraicSimplifierTest, NegativePadding) {
     dimension->set_interior_padding(0);
   }
   HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
-      ShapeUtil::MakeShape(F32, {11, 5}), param, zero, padding));
+      ShapeUtil::MakeShape(BF16, {11, 5}), param, zero, padding));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* computation =
