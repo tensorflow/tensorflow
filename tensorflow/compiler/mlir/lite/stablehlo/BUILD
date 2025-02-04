@@ -192,7 +192,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@local_tsl//tsl/platform:bfloat16",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:padding",
@@ -202,6 +201,7 @@ cc_library(
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:convert_op_folder",
         "@local_xla//xla/translate/hlo_to_mhlo:attribute_importer",
+        "@local_xla//xla/tsl/platform:status",
         "@stablehlo//:chlo_ops",
     ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
 )

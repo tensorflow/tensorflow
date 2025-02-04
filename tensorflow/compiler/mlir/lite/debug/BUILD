@@ -35,10 +35,10 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_xla//xla/tsl/lib/io:buffered_file",
+        "@local_xla//xla/tsl/platform:env",
     ],
 )
 
@@ -59,8 +59,8 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:env",
     ],
 )

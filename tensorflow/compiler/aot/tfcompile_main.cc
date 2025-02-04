@@ -24,12 +24,12 @@ limitations under the License.
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "xla/debug_options_flags.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/command_line_flags.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tfcompile {

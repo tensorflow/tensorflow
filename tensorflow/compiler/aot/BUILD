@@ -175,8 +175,8 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:debug_options_flags",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
