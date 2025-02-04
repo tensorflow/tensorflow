@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
