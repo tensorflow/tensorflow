@@ -132,6 +132,42 @@ def LowerToLLVMPass :
   let constructor = "CreateLowerToLLVMPass()";
 }
 
+def LowerXlaToScfPass :
+   Pass<"xla-lower-xla-to-scf", "mlir::func::FuncOp"> {
+  let summary = "Lowers xla to SCF.";
+
+  let dependentDialects = [
+    "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect", "mlir::scf::SCFDialect",
+    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect",
+    "xla::XlaDialect", "mlir::vector::VectorDialect",
+  ];
+
+  let options = [
+    Option<"warp_size", "warp_size", "int64_t", /*default=*/"32", "Warp size.">,
+  ];
+  let constructor = "CreateLowerXlaToScfPass()";
+}
+
+def LowerXlaLoopsToScfPass : Pass<
+    "xla-lower-xla-loops-to-scf", "mlir::func::FuncOp"> {
+  let summary = "Lowers xla.loop to SCF.";
+
+  let description = [{
+    This pass is separate from xla-lower-xla-to-scf because
+    xla-lower-xla-to-scf, inliner, peeling and xla-lower-xla-loops-to-scf
+    have to run in that order.
+  }];
+
+  let dependentDialects = [
+    "mlir::scf::SCFDialect",
+    "mlir::tensor::TensorDialect",
+    "xla::gpu::XlaGpuDialect",
+    "xla::XlaDialect",
+  ];
+
+  let constructor = "CreateLowerXlaLoopsToScfPass()";
+}
+
 def MergePointersToSameSlicePass :
    Pass<"xla-merge-pointers", "mlir::ModuleOp"> {
   let summary = "Merges pointers that share slices.";

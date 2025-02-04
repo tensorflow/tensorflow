@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_CODEGEN_EMITTERS_TRANSFORMS_PASSES_H_
 #define XLA_CODEGEN_EMITTERS_TRANSFORMS_PASSES_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -41,6 +42,8 @@ std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(
     const std::string& gpu_device_info = "");
 std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(
     const stream_executor::DeviceDescription& device_description);
+std::unique_ptr<mlir::Pass> CreateLowerXlaToScfPass(int64_t warp_size = 32);
+std::unique_ptr<mlir::Pass> CreateLowerXlaLoopsToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
 std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
 std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();

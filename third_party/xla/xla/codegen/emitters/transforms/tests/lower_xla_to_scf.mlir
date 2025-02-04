@@ -1,4 +1,4 @@
-// RUN: emitters_opt %s -xla-gpu-lower-xla-gpu-to-scf --split-input-file  \
+// RUN: emitters_opt %s -xla-lower-xla-to-scf --split-input-file  \
 // RUN: | FileCheck %s
 
 func.func @combiner(%a: f32, %b: i32, %c: f32, %d: i32) -> (f32, i32) {

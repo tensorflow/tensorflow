@@ -47,42 +47,6 @@ def ConvertFloatNvidiaPass : Pass<"xla-gpu-convert-float-nvidia", "mlir::ModuleO
   let constructor = "CreateConvertFloatNvidiaPass()";
 }
 
-def LowerXlaGpuToScfPass :
-   Pass<"xla-gpu-lower-xla-gpu-to-scf", "mlir::func::FuncOp"> {
-  let summary = "Lowers xla_gpu to SCF.";
-
-  let dependentDialects = [
-    "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect", "mlir::scf::SCFDialect",
-    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect",
-    "xla::XlaDialect", "mlir::vector::VectorDialect",
-  ];
-
-  let options = [
-    Option<"warp_size", "warp_size", "int64_t", /*default=*/"32", "Warp size.">,
-  ];
-  let constructor = "CreateLowerXlaGpuToScfPass()";
-}
-
-def LowerXlaGpuLoopsToScfPass : Pass<
-    "xla-gpu-lower-xla-gpu-loops-to-scf", "mlir::func::FuncOp"> {
-  let summary = "Lowers xla_gpu.loop to SCF.";
-
-  let description = [{
-    This pass is separate from lower-xla-gpu-to-scf because
-    lower-xla-gpu-to-scf, inliner, peeling and lower-xla-gpu-loops-to-scf
-    have to run in that order.
-  }];
-
-  let dependentDialects = [
-    "mlir::scf::SCFDialect",
-    "mlir::tensor::TensorDialect",
-    "xla::gpu::XlaGpuDialect",
-    "xla::XlaDialect",
-  ];
-
-  let constructor = "CreateLowerXlaGpuLoopsToScfPass()";
-}
-
 def VectorizeLoadsAndStoresPass :
    Pass<"xla-gpu-vectorize-loads-stores", "mlir::func::FuncOp"> {
   let summary = "Vectorizes loads and stores.";
