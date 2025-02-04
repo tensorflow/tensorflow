@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/permutation_util.h"
 
+#include <gtest/gtest.h>
 #include "xla/hlo/testlib/test.h"
 
 namespace xla {
