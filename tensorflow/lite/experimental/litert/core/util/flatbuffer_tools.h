@@ -117,8 +117,11 @@ struct TflShapeInfo {
                         tfl_tensor.shape_signature.end()) {}
 
   explicit TflShapeInfo(const TflPackedTensor& tfl_tensor)
-      : has_rank(tfl_tensor.has_rank()),
-        shape(tfl_tensor.shape()->begin(), tfl_tensor.shape()->end()) {
+      : has_rank(tfl_tensor.has_rank()) {
+    if (tfl_tensor.shape()) {
+      shape.assign(tfl_tensor.shape()->begin(), tfl_tensor.shape()->end());
+    }
+
     if (tfl_tensor.shape_signature()) {
       shape_signature.assign(tfl_tensor.shape_signature()->begin(),
                              tfl_tensor.shape_signature()->end());
