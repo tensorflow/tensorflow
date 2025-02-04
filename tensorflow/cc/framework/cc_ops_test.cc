@@ -14,13 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/cc/ops/test_op.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace tensorflow {

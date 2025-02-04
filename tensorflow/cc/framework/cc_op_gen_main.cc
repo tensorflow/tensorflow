@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/cc/framework/cc_op_gen.h"
 #include "tensorflow/cc/framework/cc_op_gen_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"

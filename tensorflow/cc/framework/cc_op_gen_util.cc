@@ -15,19 +15,28 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/cc_op_gen_util.h"
 
+#include <cctype>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/escaping.h"
+#include "tensorflow/core/framework/api_def.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/strcat.h"
