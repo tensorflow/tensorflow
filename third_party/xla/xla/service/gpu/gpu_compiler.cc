@@ -1966,7 +1966,7 @@ GpuCompiler::CompileSingleModule(
   TF_ASSIGN_OR_RETURN(
       BackendCompileResult result,
       CompileTargetBinary(module_config, llvm_module, device_description,
-                          relocatable, debug_module, options));
+                          relocatable, debug_module, options, shard_number));
 
   const bool should_dump = DumpingEnabledForHloModule(
       debug_module ? debug_module->name() : "", module_config.debug_options());
@@ -1986,22 +1986,6 @@ GpuCompiler::CompileSingleModule(
 
   if (user_post_optimization_hook_) {
     user_post_optimization_hook_(*llvm_module);
-  }
-
-  // Write PTX to IR dump directory, if IR dumping was requested.
-  if (should_dump) {
-    absl::string_view ptx = result.asm_text;
-    if (debug_module) {
-      DumpToFileInDirOrStdout(*debug_module, "",
-                              shard_number.has_value()
-                                  ? (std::to_string(*shard_number) + ".ptx")
-                                  : "ptx",
-                              ptx);
-    } else {
-      LOG(ERROR) << "Dumping is not implemented since the file name cannot be "
-                    "inferred. Please implement (potentially MLIR) module -> "
-                    "filename heuristic.";
-    }
   }
 
   return result;

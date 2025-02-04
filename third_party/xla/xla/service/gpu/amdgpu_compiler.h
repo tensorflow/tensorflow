@@ -64,7 +64,8 @@ class AMDGPUCompiler : public GpuCompiler {
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       const se::DeviceDescription& device_description, bool relocatable,
-      const HloModule* debug_module, const CompileOptions& options) override;
+      const HloModule* debug_module, const CompileOptions& options,
+      std::optional<int> shard_number) override;
 
   absl::Status AddGemmFusionAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
