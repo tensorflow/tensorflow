@@ -18,21 +18,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertPureCallOpsPass
-    : Pass<"xla-gpu-convert-pure-call-ops", "mlir::func::FuncOp"> {
-  let summary = "Converts xla_gpu.pure_call to func.call";
-  let description = [{
-      We use xla_gpu.pure_call ops for calls to enable CSE and other
-      transformations (e.g. LICM). This pass rewrites our custom ops to standard
-      ops.
-  }];
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "xla::XlaDialect"
-  ];
-  let constructor = "CreateConvertPureCallOpsPass()";
-}
-
 def MergePointersToSameSlicePass :
    Pass<"xla-gpu-merge-pointers", "mlir::ModuleOp"> {
   let summary = "Merges pointers that share slices.";

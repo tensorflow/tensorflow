@@ -47,6 +47,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "convert_pure_call_ops.cc",
         "erase_dead_functions.cc",
         "expand_float_ops.cc",
         "flatten_tensors.cc",

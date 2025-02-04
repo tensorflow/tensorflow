@@ -40,7 +40,6 @@ cc_library(
     srcs = [
         "convert_float_nvidia.cc",
         "convert_index_type.cc",
-        "convert_xla_gpu_pure_call_ops.cc",
         "fuse_loops.cc",
         "lower_xla_gpu_to_scf.cc",
         "merge_pointers_to_same_slice.cc",

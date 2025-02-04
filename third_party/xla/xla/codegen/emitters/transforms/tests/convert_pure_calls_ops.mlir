@@ -1,5 +1,5 @@
-// RUN: emitters_opt %s -xla-gpu-convert-pure-call-ops | FileCheck %s
-// RUN: emitters_opt %s -cse -xla-gpu-convert-pure-call-ops \
+// RUN: emitters_opt %s -xla-convert-pure-call-ops | FileCheck %s
+// RUN: emitters_opt %s -cse -xla-convert-pure-call-ops \
 // RUN: | FileCheck %s -check-prefixes=CHECK-CSE
 
 func.func private @callee() -> f32 {

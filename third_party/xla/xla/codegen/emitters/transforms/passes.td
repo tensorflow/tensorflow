@@ -18,6 +18,21 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def ConvertPureCallOpsPass
+    : Pass<"xla-convert-pure-call-ops", "mlir::func::FuncOp"> {
+  let summary = "Converts xla.pure_call to func.call";
+  let description = [{
+      We use xla.pure_call ops for calls to enable CSE and other
+      transformations (e.g. LICM). This pass rewrites our custom ops to standard
+      ops.
+  }];
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "xla::XlaDialect"
+  ];
+  let constructor = "CreateConvertPureCallOpsPass()";
+}
+
 def EraseDeadFunctionsPass : Pass<"xla-erase-dead-functions", "mlir::ModuleOp"> {
   let summary = "Deletes unused functions";
 

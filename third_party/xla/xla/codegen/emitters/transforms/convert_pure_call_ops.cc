@@ -17,14 +17,14 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 
 namespace xla {
-namespace gpu {
+namespace emitters {
 namespace {
 
 #define GEN_PASS_DEF_CONVERTPURECALLOPSPASS
-#include "xla/backends/gpu/codegen/emitters/transforms/passes.h.inc"
+#include "xla/codegen/emitters/transforms/passes.h.inc"
 
 struct RewriteCall : mlir::OpRewritePattern<PureCallOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -57,5 +57,5 @@ std::unique_ptr<::mlir::Pass> CreateConvertPureCallOpsPass() {
   return std::make_unique<ConvertPureCallOpsPass>();
 }
 
-}  // namespace gpu
+}  // namespace emitters
 }  // namespace xla
