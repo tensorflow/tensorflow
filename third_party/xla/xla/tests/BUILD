@@ -2571,16 +2571,10 @@ xla_test(
     name = "convert_test",
     srcs = ["convert_test.cc"],
     tags = [
-<<<<<<< HEAD
         "test_xla_cpu_thunks",
         "cuda-only", #TODO(rocm): weekly sync 24-10-01
         "test_xla_cpu_no_thunks",
         ],
-=======
-        "test_migrated_to_hlo_runner_pjrt",
-        "test_xla_cpu_no_thunks",
-    ],
->>>>>>> upstream/master
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",

@@ -1,5 +1,4 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-<<<<<<< HEAD
 diff -ruN --strip-trailing-cr a/lld/ELF/Config.h b/lld/ELF/Config.h
 --- a/lld/ELF/Config.h
 +++ b/lld/ELF/Config.h
@@ -57,5 +56,3 @@ diff -ruN --strip-trailing-cr a/lld/ELF/Writer.cpp b/lld/ELF/Writer.cpp
    demoteSymbolsAndComputeIsPreemptible(ctx);
  
    if (ctx.arg.copyRelocs && ctx.arg.discard != DiscardPolicy::None)
-=======
->>>>>>> upstream/master
