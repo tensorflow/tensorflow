@@ -932,13 +932,15 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
                     std::move(on_done_with_host_buffer),
                     args->memory->memory_space, &layout.value()));
   } else if (has_layout_and_no_memory) {
+    PJRT_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
+                          args->device->device->default_memory_space());
     PJRT_ASSIGN_OR_RETURN(
         buffer, args->client->client->BufferFromHostBuffer(
                     args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
                     dims, byte_strides,
                     ::pjrt::ConvertFromPjRtHostBufferSemantics(
                         args->host_buffer_semantics),
-                    std::move(on_done_with_host_buffer), args->device->device,
+                    std::move(on_done_with_host_buffer), memory_space,
                     &layout.value()));
   } else if (has_memory_and_no_layout) {
     PJRT_ASSIGN_OR_RETURN(
