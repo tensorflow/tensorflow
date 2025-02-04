@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/env.h"
@@ -145,7 +146,7 @@ std::unique_ptr<HloModule> GetModule(absl::string_view lhs_dtype,
   return *std::move(parsed);
 }
 
-void Measure(HloRunner& runner, Executable* executable,
+void Measure(HloRunner& runner, OpaqueExecutable* executable,
              const std::vector<Literal>& args_small,
              const std::vector<Literal>& args_large) {
   CHECK_OK(runner.ExecuteWithExecutable(executable, args_small).status());
@@ -335,7 +336,7 @@ int64_t GetFlops(const HloDotInstruction& dot) {
 
 }  // namespace
 
-std::unique_ptr<Executable> MatmulPerfTableGen::Compile(
+std::unique_ptr<OpaqueExecutable> MatmulPerfTableGen::Compile(
     std::unique_ptr<HloModule> module) {
   auto compiled =
       runner_.CreateExecutable(std::move(module), /*run_hlo_passes=*/true);
@@ -356,7 +357,7 @@ absl::Duration MatmulPerfTableGen::Profile(std::unique_ptr<HloModule> module) {
                                                       /*use_large_range=*/true)
                                         .value();
 
-  std::unique_ptr<Executable> compiled = Compile(std::move(module));
+  std::unique_ptr<OpaqueExecutable> compiled = Compile(std::move(module));
 
   // First run to warm up stuff.
   CHECK_OK(runner_.ExecuteWithExecutable(compiled.get(), args_small).status());

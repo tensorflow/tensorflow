@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/executable.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/xla_data.pb.h"
@@ -81,11 +80,11 @@ class HloRunnerPjRt : public HloRunnerInterface {
 
   // Creates an executable object given an HLO module. If run_hlo_passes is
   // true, the HLO passes will be run as part of compilation.
-  absl::StatusOr<std::unique_ptr<Executable>> CreateExecutable(
+  absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
 
   absl::StatusOr<Literal> ExecuteWithExecutable(
-      Executable* executable, absl::Span<const Literal* const> arguments,
+      OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
       ExecutionProfile* profile) override;
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
@@ -99,14 +98,14 @@ class HloRunnerPjRt : public HloRunnerInterface {
       DeviceAssignment* device_assignment) override;
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<Executable*(int64_t)> executable_provider,
+      std::function<OpaqueExecutable*(int64_t)> executable_provider,
       std::function<int64_t(int64_t)> argument_count_provider,
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      Executable* executable,
+      OpaqueExecutable* executable,
       const HloRunnerInterface::ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
 
@@ -128,6 +127,9 @@ class HloRunnerPjRt : public HloRunnerInterface {
   int device_count() const override { return pjrt_client_->device_count(); }
 
   bool HasProperty(HloRunnerPropertyTag::Type tag) const override;
+
+  absl::StatusOr<absl::Nonnull<const HloModule*>> HloModuleFromWrapped(
+      const OpaqueExecutable* wrapped) const override;
 
  private:
   absl::StatusOr<CompileOptions> GenerateDefaultCompileOptions(

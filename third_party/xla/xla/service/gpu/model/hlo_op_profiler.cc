@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -179,7 +180,7 @@ absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
                                                       /*use_large_range=*/true)
                                         .value();
   const absl::Time t_compile_start = absl::Now();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> ex,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> ex,
                       runner_.CreateExecutable(std::move(module),
                                                /*run_hlo_passes=*/false));
   if (absl::Now() - t_compile_start > absl::Seconds(10)) {

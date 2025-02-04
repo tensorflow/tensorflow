@@ -26,8 +26,10 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -1158,7 +1160,11 @@ TEST_F(CommandBufferSchedulingTest, DynamicSliceFusionDynamicSlicing) {
     HloModuleConfig config(m_clone->config());
     config.set_debug_options(options);
     m_clone->set_config(config);
-    TF_ASSIGN_OR_RETURN(auto exec, CreateExecutable(std::move(m_clone), false));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> wrapped_exec,
+                        CreateExecutable(std::move(m_clone), false));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> exec,
+                        test_runner_as_hlo_runner().ExecutableFromWrapped(
+                            std::move(wrapped_exec)));
     auto gpu_exec = std::unique_ptr<GpuExecutable>(
         static_cast<GpuExecutable*>(exec.release()));
     TF_RET_CHECK(llvm::any_of(gpu_exec->GetThunk().thunks(),
@@ -1226,7 +1232,11 @@ TEST_F(CommandBufferSchedulingTest, DynamicSliceFusionStaticSlicing) {
     HloModuleConfig config(m_clone->config());
     config.set_debug_options(options);
     m_clone->set_config(config);
-    TF_ASSIGN_OR_RETURN(auto exec, CreateExecutable(std::move(m_clone), false));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> wrapped_exec,
+                        CreateExecutable(std::move(m_clone), false));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> exec,
+                        test_runner_as_hlo_runner().ExecutableFromWrapped(
+                            std::move(wrapped_exec)));
     return std::unique_ptr<GpuExecutable>(
         static_cast<GpuExecutable*>(exec.release()));
   };
