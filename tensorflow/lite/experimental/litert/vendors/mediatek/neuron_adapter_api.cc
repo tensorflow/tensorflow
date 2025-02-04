@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
 #include <dlfcn.h>
 
@@ -37,25 +37,28 @@
 namespace litert {
 namespace mediatek {
 
-NeuronAdapter::NeuronAdapter() : api_(new Api) {}
+NeuronAdapterApi::NeuronAdapterApi() : api_(new Api) {}
 
-NeuronAdapter::~NeuronAdapter() {
+NeuronAdapterApi::~NeuronAdapterApi() {
   if (dlib_handle_) {
     litert::internal::CloseLib(dlib_handle_);
   }
 }
 
-litert::Expected<NeuronAdapter::Ptr> NeuronAdapter::Create(
+litert::Expected<NeuronAdapterApi::Ptr> NeuronAdapterApi::Create(
     std::optional<std::string> shared_library_dir) {
-  std::unique_ptr<NeuronAdapter> neuron_adapter(new NeuronAdapter);
-  if (auto status = neuron_adapter->LoadSymbols(shared_library_dir); !status) {
+  std::unique_ptr<NeuronAdapterApi> neuron_adapter_api(new NeuronAdapterApi);
+  if (auto status = neuron_adapter_api->LoadSymbols(shared_library_dir);
+      !status) {
+    LITERT_LOG(LITERT_ERROR, "Failed to load NeuronAdapter shared library: %s",
+               status.Error().Message().c_str());
     return status.Error();
   }
 
-  return neuron_adapter;
+  return neuron_adapter_api;
 }
 
-litert::Expected<void> NeuronAdapter::LoadSymbols(
+litert::Expected<void> NeuronAdapterApi::LoadSymbols(
     std::optional<std::string> shared_library_dir) {
   constexpr auto kLibNeuronAdapterLib = "libneuron_adapter.so";
 
@@ -69,10 +72,12 @@ litert::Expected<void> NeuronAdapter::LoadSymbols(
       shared_library_dir.has_value()
           ? absl::StrCat(*shared_library_dir, "/", kLibNeuronAdapterLib)
           : kLibNeuronAdapterLib};
-  if (litert::internal::OpenLib(so_paths, &dlib_handle_) != kLiteRtStatusOk) {
-    return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                              "Failed to load NeuronAdapter shared library");
+  if (auto status = litert::internal::OpenLib(so_paths, &dlib_handle_, true);
+      status != kLiteRtStatusOk) {
+    return litert::Error(status, "Failed to load NeuronAdapter shared library");
   }
+
+  LITERT_LOG(LITERT_INFO, "Loaded NeuronAdapter shared library.");
 
   // Binds all supported symbols from the shared library to the function
   // pointers.
@@ -130,7 +135,7 @@ litert::Expected<void> NeuronAdapter::LoadSymbols(
   return {};
 }
 
-Expected<NeuronModelPtr> NeuronAdapter::CreateModel() const {
+Expected<NeuronModelPtr> NeuronAdapterApi::CreateModel() const {
   NeuronModel* model;
   if (api().model_create(&model) != NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
@@ -139,7 +144,7 @@ Expected<NeuronModelPtr> NeuronAdapter::CreateModel() const {
   return NeuronModelPtr{model, api().model_free};
 }
 
-Expected<NeuronCompilationPtr> NeuronAdapter::CreateCompilation(
+Expected<NeuronCompilationPtr> NeuronAdapterApi::CreateCompilation(
     NeuronModel* model) const {
   NeuronCompilation* compilation;
   if (api().compilation_create(model, &compilation) != NEURON_NO_ERROR) {
@@ -149,18 +154,22 @@ Expected<NeuronCompilationPtr> NeuronAdapter::CreateCompilation(
   return NeuronCompilationPtr{compilation, api().compilation_free};
 }
 
-Expected<NeuronCompilationPtr> NeuronAdapter::CreateCompilation(
+Expected<NeuronCompilationPtr> NeuronAdapterApi::CreateCompilation(
     NeuronModel* model, const std::string& compile_options) const {
   NeuronCompilation* compilation;
-  if (api().compilation_create_with_options(
-          model, &compilation, compile_options.c_str()) != NEURON_NO_ERROR) {
+  if (auto status = api().compilation_create_with_options(
+          model, &compilation, compile_options.c_str());
+      status != NEURON_NO_ERROR) {
+    LITERT_LOG(LITERT_ERROR,
+               "NeuronCompilation_createWithOptions failed with error %d",
+               status);
     return Error(kLiteRtStatusErrorRuntimeFailure,
                  "Failed to create NeuronCompilation");
   }
   return NeuronCompilationPtr{compilation, api().compilation_free};
 }
 
-Expected<NeuronExecutionPtr> NeuronAdapter::CreateExecution(
+Expected<NeuronExecutionPtr> NeuronAdapterApi::CreateExecution(
     NeuronCompilation* compilation) const {
   NeuronExecution* execution;
   if (api().execution_create(compilation, &execution) != NEURON_NO_ERROR) {

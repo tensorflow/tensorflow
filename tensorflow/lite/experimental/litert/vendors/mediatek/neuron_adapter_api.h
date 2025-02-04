@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_MEDIATEK_NEURON_ADAPTER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_MEDIATEK_NEURON_ADAPTER_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_MEDIATEK_NEURON_ADAPTER_API_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_MEDIATEK_NEURON_ADAPTER_API_H_
 
 #include <cstdint>
 #include <memory>
@@ -155,17 +155,17 @@ using NeuronCompilationPtr =
 using NeuronExecutionPtr =
     std::unique_ptr<NeuronExecution, void (*)(NeuronExecution*)>;
 
-class NeuronAdapter {
+class NeuronAdapterApi {
  public:
-  using Ptr = std::unique_ptr<NeuronAdapter>;
+  using Ptr = std::unique_ptr<NeuronAdapterApi>;
   struct Api;
 
-  NeuronAdapter(NeuronAdapter&) = delete;
-  NeuronAdapter(NeuronAdapter&&) = delete;
-  NeuronAdapter& operator=(const NeuronAdapter&) = delete;
-  NeuronAdapter& operator=(NeuronAdapter&&) = delete;
+  NeuronAdapterApi(NeuronAdapterApi&) = delete;
+  NeuronAdapterApi(NeuronAdapterApi&&) = delete;
+  NeuronAdapterApi& operator=(const NeuronAdapterApi&) = delete;
+  NeuronAdapterApi& operator=(NeuronAdapterApi&&) = delete;
 
-  ~NeuronAdapter();
+  ~NeuronAdapterApi();
 
   static Expected<Ptr> Create(std::optional<std::string> shared_library_dir);
 
@@ -190,7 +190,7 @@ class NeuronAdapter {
       NeuronCompilation* compilation) const;
 
  private:
-  NeuronAdapter();
+  NeuronAdapterApi();
   litert::Expected<void> LoadSymbols(
       std::optional<std::string> shared_library_dir);
 
@@ -201,7 +201,7 @@ class NeuronAdapter {
 // A convenient struct for holding function pointers to NeuronAdapter API
 // symbols. These function pointers will be loaded to the shared library on
 // device during runtime.
-struct NeuronAdapter::Api {
+struct NeuronAdapterApi::Api {
   decltype(&NeuronCompilation_create) compilation_create = nullptr;
   decltype(&NeuronCompilation_createWithOptions)
       compilation_create_with_options = nullptr;
@@ -256,4 +256,4 @@ struct NeuronAdapter::Api {
 
 }  // namespace litert::mediatek
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_MEDIATEK_NEURON_ADAPTER_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_MEDIATEK_NEURON_ADAPTER_API_H_

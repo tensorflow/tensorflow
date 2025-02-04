@@ -43,7 +43,7 @@ litert_dynamic_lib(
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
-        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -63,7 +63,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/core/model",
-        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
         "//tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations:add_op_legalization",
         "//tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations:operand_map",
         "@com_google_absl//absl/strings:string_view",
@@ -84,7 +84,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_model",
         "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
         "//tensorflow/lite/experimental/litert/core/model",
-        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
@@ -113,11 +113,14 @@ litert_test(
     # MTK.
     target_compatible_with = select({
         "@platforms//os:android": [],
+        "@platforms//os:linux": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    ungrte = True,
     use_sys_malloc = True,
     deps = [
         ":compiler_plugin",  # buildcleaner: keep
+        "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
@@ -128,7 +131,7 @@ litert_test(
         "//tensorflow/lite/experimental/litert/test:matchers",
         "//tensorflow/lite/experimental/litert/test:test_models",
         "//tensorflow/lite/experimental/litert/vendors/cc:litert_compiler_plugin",
-        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter",
+        "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings:string_view",
     ],
