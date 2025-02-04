@@ -48,7 +48,6 @@ cc_library(
         "peel_loops.cc",
         "propagate_slice_indices.cc",
         "simplify_affine.cc",
-        "simplify_arith.cc",
         "unswitch_loops.cc",
         "vectorize_loads_stores.cc",
     ],

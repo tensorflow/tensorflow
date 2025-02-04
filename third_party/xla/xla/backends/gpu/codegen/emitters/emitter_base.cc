@@ -574,7 +574,7 @@ absl::Status EmitterBase::RunPassPipeline(
 }
 
 void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm) {
-  pm.addNestedPass<FuncOp>(CreateSimplifyArithPass());
+  pm.addNestedPass<FuncOp>(emitters::CreateSimplifyArithPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(emitters::CreateEraseDeadFunctionsPass());
@@ -622,7 +622,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   // simplify-affine has maximally folded expressions to work with.
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<FuncOp>(CreateSimplifyArithPass());
+  pm.addNestedPass<FuncOp>(emitters::CreateSimplifyArithPass());
   pm.addPass(CreateSimplifyAffinePass());
   pm.addPass(CreateConvertIndexTypePass());
   // simplify-affine lowers most affine.apply ops, but if it can't prove a

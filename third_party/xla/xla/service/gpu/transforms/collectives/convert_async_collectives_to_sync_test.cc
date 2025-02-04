@@ -24,8 +24,8 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -39,10 +39,9 @@ using ::testing::IsTrue;
 // to the HLO module string.
 class GpuConvertAsyncCollectivesToSyncTest : public HloTestBase {
  public:
-  absl::Status RunPass(HloModule *module, bool expect_change,
-                       HloPredicate is_nop = {}) {
+  absl::Status RunPass(HloModule *module, bool expect_change) {
     TF_ASSIGN_OR_RETURN(bool changed,
-                        GpuConvertAsyncCollectivesToSync{is_nop}.Run(module));
+                        GpuConvertAsyncCollectivesToSync().Run(module));
     EXPECT_EQ(changed, expect_change);
     return absl::OkStatus();
   }
@@ -105,7 +104,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNop) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true, is_nop_simple_));
+  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start"), IsTrue());
 }
 TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleCollectiveBroadcast) {
