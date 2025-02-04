@@ -6372,7 +6372,9 @@ cc_library(
     srcs = ["algorithm_util.cc"],
     hdrs = ["algorithm_util.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/status",
