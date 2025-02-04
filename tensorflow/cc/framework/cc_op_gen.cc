@@ -17,14 +17,13 @@ limitations under the License.
 
 #include <memory>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
-#include "absl/strings/escaping.h"
 #include "tensorflow/cc/framework/cc_op_gen_util.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/framework/tensor.pb.h"
