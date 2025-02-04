@@ -130,7 +130,7 @@ TEST(PjRtCApiClientTest, OnDeviceShape) {
             data.data(), shape.element_type(), shape.dimensions(),
             /*byte_strides=*/std::nullopt,
             PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-            client->addressable_devices()[0]));
+            client->memory_spaces()[0], /*device_layout=*/nullptr));
     EXPECT_EQ(buffer->on_device_shape(), shape);
     EXPECT_EQ(*buffer->logical_on_device_shape(), shape);
   }
