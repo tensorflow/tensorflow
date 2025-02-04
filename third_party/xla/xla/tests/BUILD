@@ -9,7 +9,7 @@ load(
 load("//xla:package_groups.bzl", "xla_tests_package_groups")
 load("//xla:xla.bzl", "tests_build_defs_bzl_deps", "xla_cc_binary", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
-load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -1853,7 +1853,9 @@ xla_test(
     timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
     shard_count = 4,
-    tags = ["test_xla_cpu_no_thunks"],
+    tags = [
+        "test_xla_cpu_no_thunks",
+    ] + if_oss(["not_run:arm"]),
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
