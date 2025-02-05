@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 
 namespace tensorflow {

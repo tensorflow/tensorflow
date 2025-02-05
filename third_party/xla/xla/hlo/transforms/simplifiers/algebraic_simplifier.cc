@@ -5759,6 +5759,10 @@ absl::Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     TF_ASSIGN_OR_RETURN(HloInstruction * nonzero_pad,
                         MakePadHlo(pad->mutable_operand(0),
                                    pad->mutable_operand(1), nonzero_padding));
+    // MakePadHlo assumes that the return type matches the type of the operand,
+    // but that's not required. Use the type from the original pad instruction.
+    nonzero_pad->mutable_shape()->set_element_type(pad->shape().element_type());
+
     // Copy the layout from the original pad instructions. The new pad and the
     // slice instruction should all have the same layout.
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
