@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 // This module contains a minimal subset of gmock functionality just
 // sufficient to execute the currently existing tests.
