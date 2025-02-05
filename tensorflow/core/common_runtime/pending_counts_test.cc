@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/pending_counts.h"
 
+#include <atomic>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/platform/env.h"
