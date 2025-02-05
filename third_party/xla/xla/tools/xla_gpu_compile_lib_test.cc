@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/gpu_symbol_repository.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
@@ -115,7 +115,7 @@ TEST_F(XlaCompileLibTest, MainForGpu) {
 }
 
 TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningEnabled) {
-  gpu::AutotunerUtil::ClearAutotuneResults();
+  gpu::AutotunerCache::ClearAutotuneResults();
 
   HloModuleAndMetadata mod;
   mod.hlo_module = std::move(module_);
@@ -136,11 +136,11 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningEnabled) {
 
   EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
               absl_testing::IsOkAndHolds(true));
-  EXPECT_FALSE(gpu::AutotunerUtil::ResultCacheIsEmpty());
+  EXPECT_FALSE(gpu::AutotunerCache::ResultCacheIsEmpty());
 }
 
 TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningDisabled) {
-  gpu::AutotunerUtil::ClearAutotuneResults();
+  gpu::AutotunerCache::ClearAutotuneResults();
 
   HloModuleAndMetadata mod;
   mod.hlo_module = std::move(module_);
@@ -161,12 +161,12 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningDisabled) {
 
   EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
               absl_testing::IsOkAndHolds(false));
-  EXPECT_TRUE(gpu::AutotunerUtil::ResultCacheIsEmpty());
+  EXPECT_TRUE(gpu::AutotunerCache::ResultCacheIsEmpty());
 }
 
 TEST_F(XlaCompileLibTest,
        LoadAutotuneDataGpuDataNotPresentAndAutotuningEnabled) {
-  gpu::AutotunerUtil::ClearAutotuneResults();
+  gpu::AutotunerCache::ClearAutotuneResults();
 
   HloModuleAndMetadata mod;
   mod.hlo_module = std::move(module_);
@@ -177,12 +177,12 @@ TEST_F(XlaCompileLibTest,
 
   EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
               absl_testing::IsOkAndHolds(false));
-  EXPECT_TRUE(gpu::AutotunerUtil::ResultCacheIsEmpty());
+  EXPECT_TRUE(gpu::AutotunerCache::ResultCacheIsEmpty());
 }
 
 TEST_F(XlaCompileLibTest,
        LoadAutotuneDataGpuDataNotPresentAndAutotuningDisabled) {
-  gpu::AutotunerUtil::ClearAutotuneResults();
+  gpu::AutotunerCache::ClearAutotuneResults();
 
   HloModuleAndMetadata mod;
   mod.hlo_module = std::move(module_);
@@ -193,7 +193,7 @@ TEST_F(XlaCompileLibTest,
 
   EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
               absl_testing::IsOkAndHolds(false));
-  EXPECT_TRUE(gpu::AutotunerUtil::ResultCacheIsEmpty());
+  EXPECT_TRUE(gpu::AutotunerCache::ResultCacheIsEmpty());
 }
 
 }  // namespace
