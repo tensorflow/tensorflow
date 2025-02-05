@@ -944,8 +944,9 @@ TEST(StreamExecutorGpuClientTest, AsyncCopyToDevice) {
       auto transfer_manager,
       client->CreateBuffersForAsyncHostToDevice({src_literal.shape()}, d0));
   auto src_buffer = transfer_manager->RetrieveBuffer(0);
-  // CopyToDevice won't be enqueued until src_buffer is available.
-  auto local_recv_buffer = *src_buffer->CopyToDevice(d1);
+  // CopyToMemorySpace won't be enqueued until src_buffer is available.
+  auto local_recv_buffer =
+      *src_buffer->CopyToMemorySpace(*d1->default_memory_space());
 
   TF_ASSERT_OK(
       transfer_manager->TransferLiteralToBuffer(0, src_literal, []() {}));
