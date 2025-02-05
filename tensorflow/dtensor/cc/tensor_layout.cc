@@ -16,23 +16,27 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <map>
-#include <memory>
-#include <numeric>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
+#include "absl/strings/strip.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "third_party/protobuf/util/message_differencer.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/errors.h"
