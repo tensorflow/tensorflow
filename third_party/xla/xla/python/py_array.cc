@@ -480,9 +480,8 @@ PyArray_Storage::PyArray_Storage(
   prev = nullptr;
 }
 
-void PyArray::PyInit(PyArray self, nb::object aval, nb::object sharding,
-                     absl::Span<const PyArray> py_arrays, bool committed,
-                     bool skip_checks) {
+void PyInit_helper(PyArray self, nb::object aval, nb::object sharding,
+                   absl::Span<const PyArray> py_arrays, bool committed) {
   auto dtype = nb::cast<nb_dtype>(aval.attr("dtype"));
   auto shape = nb::cast<std::vector<int64_t>>(aval.attr("shape"));
   auto ifrt_array =
@@ -492,9 +491,19 @@ void PyArray::PyInit(PyArray self, nb::object aval, nb::object sharding,
             std::move(shape), std::move(sharding), committed,
             py_arrays.at(0).py_client(), Traceback::Get(),
             std::move(ifrt_array), xla::PjRtFuture<>());
+}
 
-  if (!skip_checks) {
-    self.CheckAndRearrange();
+void PyArray::PyInit(PyArray self, nb::object aval, nb::object sharding,
+                     absl::Span<const PyArray> py_arrays, bool committed,
+                     bool skip_checks) {
+  if (skip_checks) {
+    PyInit_helper(self, aval, sharding, py_arrays, committed);
+  } else {
+    nb::object rearranged_arrays =
+        self.CheckAndRearrange(py_arrays, sharding, aval);
+    auto rearranged_py_arrays =
+        nb::cast<std::vector<PyArray>>(rearranged_arrays);
+    PyInit_helper(self, aval, sharding, rearranged_py_arrays, committed);
   }
 }
 
@@ -595,7 +604,8 @@ PyArray::PyArray(nb::object aval, bool weak_type, nb_dtype dtype,
             std::move(result_status));
 
   if (!skip_checks) {
-    CheckAndRearrange();
+    this->attr("_arrays") = this->attr("_check_and_rearrange")(
+        this->attr("_arrays"), this->attr("_sharding"), this->attr("aval"));
   }
 }
 
@@ -607,7 +617,11 @@ const PyArray::Storage& PyArray::GetStorage() const {
   return *GetPyArrayStorageFromObject(reinterpret_cast<PyArrayObject*>(ptr()));
 }
 
-void PyArray::CheckAndRearrange() { this->attr("_check_and_rearrange")(); }
+nb::object PyArray::CheckAndRearrange(const absl::Span<const PyArray> py_arrays,
+                                      const nb::object sharding,
+                                      const nb::object aval) {
+  return this->attr("_check_and_rearrange")(py_arrays, sharding, aval);
+}
 
 void PyArray::SetIfrtArray(tsl::RCReference<ifrt::Array> ifrt_array) {
   GetStorage().ifrt_array = std::move(ifrt_array);
