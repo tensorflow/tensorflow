@@ -20,6 +20,8 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
+#include "tensorflow/lite/experimental/genai/genai_ops.h"
+#include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -97,6 +99,16 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
         }
         return wrapper;
       });
+  m.def(
+      "GenAIOpsRegisterer",
+      [](uintptr_t resolver) {
+        tflite::ops::custom::GenAIOpsRegisterer(
+            reinterpret_cast<tflite::MutableOpResolver*>(resolver));
+      },
+      R"pbdoc(
+        GenAI op registerer function with the correct signature.
+        Registers GenAI custom ops.
+      )pbdoc");
   py::class_<InterpreterWrapper>(m, "InterpreterWrapper", py::module_local())
       .def(
           "AllocateTensors",

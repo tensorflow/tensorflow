@@ -1551,7 +1551,7 @@ pywrap_library(
         "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
-        "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
+        # "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
         "//tensorflow/lite/python/metrics:_pywrap_tensorflow_lite_metrics_wrapper",
         "//tensorflow/lite/python/optimize:_pywrap_tensorflow_lite_calibration_wrapper",
         "//tensorflow/python:_pywrap_dtensor_device",
