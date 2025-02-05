@@ -60,6 +60,7 @@ cc_library(
 #         "noasan",
 #         "nomsan",
 #         "nosan",
+#         "notsan",
 #     ],
 #     deps = [
 #         ":compiler_plugin",
