@@ -115,6 +115,7 @@ ValueRange CreateTFPartitionedCallOp(OpBuilder& builder,
                                      const ValueRange args) {
   TF::PartitionedCallOp call_op = builder.create<TF::PartitionedCallOp>(
       location, output_types, args,
+      /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
       FlatSymbolRefAttr::get(builder.getStringAttr(func_name)),
       /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
 

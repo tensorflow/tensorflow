@@ -457,6 +457,8 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
 
     FlatSymbolRefAttr:$f,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$_disable_call_shape_inference
@@ -615,6 +617,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
 
     FlatSymbolRefAttr:$f,
     StrAttr:$config,
@@ -1068,6 +1072,8 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall",
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
     TF_Int32Tensor:$device_ordinal,
 
     SymbolRefAttr:$f,
@@ -2751,5 +2757,54 @@ def TF_XlaSparseDenseMatmulGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradW
 
   TF_DerivedOperandSizeAttr M = TF_DerivedOperandSizeAttr<6>;
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<5>;
+}
+
+// b/394499589: move back to tf_generated_ops.td
+def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
+  let summary = [{
+returns `f(inputs)`, where `f`'s body is placed and partitioned.
+  }];
+
+  let description = [{
+Asynchronously executes a function, potentially across multiple devices but
+within a single process. The kernel places and partitions a given function's
+underlying graph, and executes each of the partitioned subgraphs as a function.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A list of input tensors.}]>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
+
+    SymbolRefAttr:$f,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config_proto,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$executor_type
+  );
+
+  let results = (outs
+    Res<Variadic<TF_Tensor>, [{A list of return values.}]>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
+
+    // Returns the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable.
+    void setCalleeFromCallable(CallInterfaceCallable callee);
+
+    // returns the callee of this operation.
+    func::FuncOp func() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getF());
+    }
+  }];
 }
 #endif // TF_OPS

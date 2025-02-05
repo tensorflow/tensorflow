@@ -111,7 +111,8 @@ mlir::func::FuncOp CreateBranchFunctionWithDeduplicatedResults(
   // Create the call op to the original func. The arguments are simply
   // the arguments from the wrapper function.
   auto call_op = builder.create<mlir::TF::PartitionedCallOp>(
-      loc, result_types, block->getArguments(),
+      loc, result_types, block->getArguments(), /*args_attrs=*/nullptr,
+      /*res_attrs=*/nullptr,
       mlir::FlatSymbolRefAttr::get(func.getSymNameAttr()), empty_string_attr,
       empty_string_attr, empty_string_attr);
 

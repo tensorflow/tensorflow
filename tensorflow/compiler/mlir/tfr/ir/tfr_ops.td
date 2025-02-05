@@ -132,7 +132,9 @@ def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {
 
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
-    Variadic<TFR_allowedArgType>:$args);
+    Variadic<TFR_allowedArgType>:$args,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs);
 
   let results = (outs
     Variadic<TFR_allowedResultType>:$outs);

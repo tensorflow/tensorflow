@@ -434,7 +434,8 @@ mlir::LogicalResult ExpandTPUOperation(
   }
 
   auto call_op = builder.create<OperationType>(
-      op->getLoc(), func_type.getResults(), operands, op.getFAttr(),
+      op->getLoc(), func_type.getResults(), operands, /*args_attrs=*/nullptr,
+      /*res_attrs=*/nullptr, op.getFAttr(),
       /*config=*/builder.getStringAttr(""),
       /*config_proto=*/builder.getStringAttr(""),
       /*executor_type=*/builder.getStringAttr(""));
@@ -499,7 +500,8 @@ mlir::LogicalResult ExpandOperation(
     }
 
     auto new_op = builder.create<Operation>(
-        op->getLoc(), op->getResultTypes(), operands, op.getFAttr(),
+        op->getLoc(), op->getResultTypes(), operands, /*args_attrs=*/nullptr,
+        /*res_attrs=*/nullptr, op.getFAttr(),
         /*config=*/builder.getStringAttr(""),
         /*config_proto=*/builder.getStringAttr(""),
         /*executor_type=*/builder.getStringAttr(""));
@@ -693,12 +695,13 @@ mlir::LogicalResult BuildOuterMainFunc(
   // Get the type of the translated function.
   mlir::FunctionType func_type = translated_func.getFunctionType();
   // Then build a call op targeting it (reflecting its result types)
-  auto expanded_call_op =
-      builder.create<CallOp>(call_ops[0].getLoc(), func_type.getResults(),
-                             inputs, translated_func.getSymName(),
-                             /*config=*/builder.getStringAttr(""),
-                             /*config_proto=*/builder.getStringAttr(""),
-                             /*executor_type=*/builder.getStringAttr(""));
+  auto expanded_call_op = builder.create<CallOp>(
+      call_ops[0].getLoc(), func_type.getResults(), inputs,
+      /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
+      translated_func.getSymName(),
+      /*config=*/builder.getStringAttr(""),
+      /*config_proto=*/builder.getStringAttr(""),
+      /*executor_type=*/builder.getStringAttr(""));
 
   // Set the output layout attribute on the new call op.
   std::vector<std::optional<Layout>> output_layouts;

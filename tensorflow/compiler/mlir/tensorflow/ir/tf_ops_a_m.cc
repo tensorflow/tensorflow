@@ -897,7 +897,8 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
   auto func = mlir::cast<SymbolRefAttr>(op.getBranches()[index]);
   auto empty = rewriter.getStringAttr("");
   ReplaceTfOpWithNewOp<PartitionedCallOp>(
-      rewriter, op, op.getResultTypes(), op.getOperands().drop_front(), func,
+      rewriter, op, op.getResultTypes(), op.getOperands().drop_front(),
+      /*args_attrs=*/nullptr, /*res_attrs=*/nullptr, func,
       /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
   return success();
 }
@@ -3149,7 +3150,8 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
   auto rewrite = [&](auto op_type) {
     auto empty = rewriter.getStringAttr("");
     ReplaceTfOpWithNewOp<typename decltype(op_type)::CallOp>(
-        rewriter, op, op.getResultTypes(), op.getInput(), func,
+        rewriter, op, op.getResultTypes(), op.getInput(),
+        /*args_attrs=*/nullptr, /*res_attrs=*/nullptr, func,
         /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
   };
 

@@ -172,6 +172,8 @@ class IfrtLowerMpmdReshardToCallPass
           /*control_output=*/reshard_op.getControlOutput().getType(),
           /*inputs=*/reshard_op.getInputs(),
           /*control_inputs=*/reshard_op.getControlInputs(),
+          /*args_attrs=*/nullptr,
+          /*res_attrs=*/nullptr,
           /*callee=*/reshard_func_symbol,
           /*devices=*/devices,
           /*io_aliases=*/builder.getArrayAttr({}),

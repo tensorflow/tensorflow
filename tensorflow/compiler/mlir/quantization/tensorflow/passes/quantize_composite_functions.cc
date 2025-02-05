@@ -306,7 +306,8 @@ class ReplaceQuantizePattern
         FlatSymbolRefAttr::get(rewriter.getStringAttr(kQuantizeFuncName));
 
     auto quantize_call = rewriter.create<TF::PartitionedCallOp>(
-        loc, output_types, args, func_name,
+        loc, output_types, args, /*args_attrs=*/nullptr,
+        /*res_attrs=*/nullptr, func_name,
         /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
     auto scast_op = rewriter.create<quantfork::StorageCastOp>(
         loc, output_type, quantize_call->getResult(0));
@@ -357,7 +358,8 @@ class ReplaceDequantizePattern
         FlatSymbolRefAttr::get(rewriter.getStringAttr(kDequantizeFuncName));
     SmallVector<Value> args = {scast_op->getResult(0), scale, zero_point};
     auto dequantize_call = rewriter.create<TF::PartitionedCallOp>(
-        loc, dq_op.getResult().getType(), args, func_name,
+        loc, dq_op.getResult().getType(), args, /*args_attrs=*/nullptr,
+        /*res_attrs=*/nullptr, func_name,
         /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
     dq_op->replaceAllUsesWith(dequantize_call);
     return success();
@@ -850,8 +852,8 @@ class QuantizeFunctionPattern
     const StringAttr new_quant_func_name =
         symbol_table.insert(new_quantized_func);
     rewriter.replaceOpWithNewOp<TF::PartitionedCallOp>(
-        call_op, result_types, args,
-        FlatSymbolRefAttr::get(new_quant_func_name));
+        call_op, result_types, args, call_op.getArgAttrsAttr(),
+        call_op.getResAttrsAttr(), FlatSymbolRefAttr::get(new_quant_func_name));
 
     return success();
   }
@@ -938,8 +940,8 @@ class QuantizeFunctionPattern
     const StringAttr new_quant_func_name =
         symbol_table.insert(new_quantized_func);
     auto quantized_call_op = rewriter.create<TF::PartitionedCallOp>(
-        call_op.getLoc(), result_types, args,
-        FlatSymbolRefAttr::get(new_quant_func_name));
+        call_op.getLoc(), result_types, args, call_op.getArgAttrsAttr(),
+        call_op.getResAttrsAttr(), FlatSymbolRefAttr::get(new_quant_func_name));
 
     for (int result_idx : llvm::seq<int>(0, call_op->getNumResults())) {
       Value result = call_op->getResult(result_idx);

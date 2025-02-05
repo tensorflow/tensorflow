@@ -540,16 +540,19 @@ def ArgTypesMatchCallee : Constraint<
     CPred<"ArgTypesMatchCallee(&*$_builder.getInsertionPoint(), $1, $2)">>;
 
 foreach callOp = [TF_PartitionedCallOp, TF_StatefulPartitionedCallOp] in {
-  def : Pat<(callOp:$op $args, FlatSymbolRefAttr:$f,
+  def : Pat<(callOp:$op $args,  $args_attrs, $res_attrs, FlatSymbolRefAttr:$f,
              $config, $config_proto, $executor_type),
-            (CallOp $f, $args, ConstantAttr<UnitAttr, "false">),
+            (CallOp $f, $args,  $args_attrs, $res_attrs,
+             ConstantAttr<UnitAttr, "false">),
           [(ArgTypesMatchCallee $op, $args, $f)]>;
 }
 
 // The extra attr on this op is _disable_call_shape_inference, which we ignore
 // in the bridge.
-def : Pat<(TF_LegacyCallOp:$op $args, FlatSymbolRefAttr:$f, $attr),
-          (CallOp $f, $args, ConstantAttr<UnitAttr, "false">),
+def : Pat<(TF_LegacyCallOp:$op $args, $args_attrs, $res_attrs,
+           FlatSymbolRefAttr:$f, $attr),
+          (CallOp $f, $args, $args_attrs, $res_attrs,
+           ConstantAttr<UnitAttr, "false">),
         [(ArgTypesMatchCallee $op, $args, $f)]>;
 
 //===----------------------------------------------------------------------===//

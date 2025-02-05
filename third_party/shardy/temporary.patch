@@ -1,528 +1,2183 @@
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index f35b1a3..509398d 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -1,508 +1 @@
- Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/clang/lib/AST/StmtPrinter.cpp b/clang/lib/AST/StmtPrinter.cpp
----- a/clang/lib/AST/StmtPrinter.cpp
--+++ b/clang/lib/AST/StmtPrinter.cpp
--@@ -1293,8 +1293,14 @@
--          << PD->getFunctionScopeIndex();
--       break;
--     }
--+    case Decl::Decomposition:
--+      OS << "decomposition";
--+      for (const auto &I : cast<DecompositionDecl>(VD)->bindings())
--+        OS << '-' << I->getName();
--+      break;
--     default:
---      llvm_unreachable("Unhandled anonymous declaration kind");
--+      OS << "unhandled-anonymous-" << VD->getDeclKindName();
--+      break;
--     }
--   }
--   if (Node->hasExplicitTemplateArgs()) {
--diff -ruN --strip-trailing-cr a/clang/test/Analysis/anonymous-decls.cpp b/clang/test/Analysis/anonymous-decls.cpp
----- a/clang/test/Analysis/anonymous-decls.cpp
--+++ b/clang/test/Analysis/anonymous-decls.cpp
--@@ -0,0 +1,89 @@
--+// RUN: %clang_analyze_cc1 -analyzer-checker=debug.DumpCFG -triple x86_64-apple-darwin12 -std=c++20 %s 2>&1 | FileCheck %s
--+
--+struct A {
--+  static A a;
--+  char b;
--+  friend bool operator==(A, A) = default;
--+};
--+bool _ = A() == A::a;
--+
--+// FIXME: steps 1 and 5 show anonymous function parameters are
--+// not handled correctly.
--+
--+// CHECK-LABEL: bool operator==(A, A) noexcept = default
--+// CHECK-NEXT: [B2 (ENTRY)]
--+// CHECK-NEXT:    Succs (1): B1
--+// CHECK:      [B1]
--+// CHECK-NEXT:    1: function-parameter-0-0
--+// CHECK-NEXT:    2: [B1.1].b
--+// CHECK-NEXT:    3: [B1.2] (ImplicitCastExpr, LValueToRValue, char)
--+// CHECK-NEXT:    4: [B1.3] (ImplicitCastExpr, IntegralCast, int)
--+// CHECK-NEXT:    5: function-parameter-0-1
--+// CHECK-NEXT:    6: [B1.5].b
--+// CHECK-NEXT:    7: [B1.6] (ImplicitCastExpr, LValueToRValue, char)
--+// CHECK-NEXT:    8: [B1.7] (ImplicitCastExpr, IntegralCast, int)
--+// CHECK-NEXT:    9: [B1.4] == [B1.8]
--+// CHECK-NEXT:   10: return [B1.9];
--+// CHECK-NEXT:    Preds (1): B2
--+// CHECK-NEXT:    Succs (1): B0
--+// CHECK:      [B0 (EXIT)]
--+// CHECK-NEXT:    Preds (1): B1
--+
--+namespace std {
--+template <class> struct iterator_traits;
--+template <class, class> struct pair;
--+template <class _Tp> struct iterator_traits<_Tp *> {
--+  typedef _Tp &reference;
--+};
--+template <long, class> struct tuple_element;
--+template <class> struct tuple_size;
--+template <class _T1, class _T2> struct tuple_size<pair<_T1, _T2>> {
--+  static const int value = 2;
--+};
--+template <class _T1, class _T2> struct tuple_element<0, pair<_T1, _T2>> {
--+  using type = _T1;
--+};
--+template <class _T1, class _T2> struct tuple_element<1, pair<_T1, _T2>> {
--+  using type = _T2;
--+};
--+template <long _Ip, class _T1, class _T2>
--+tuple_element<_Ip, pair<_T1, _T2>>::type get(pair<_T1, _T2> &);
--+struct __wrap_iter {
--+  iterator_traits<pair<int, int> *>::reference operator*();
--+  void operator++();
--+};
--+bool operator!=(__wrap_iter, __wrap_iter);
--+struct vector {
--+  __wrap_iter begin();
--+  __wrap_iter end();
--+};
--+} // namespace std
--+int main() {
--+  std::vector v;
--+  for (auto &[a, b] : v)
--+    ;
--+}
--+
--+// FIXME: On steps 8 and 14, a decomposition is referred by name, which they never have.
--+
--+// CHECK-LABEL: int main()
--+// CHECK:      [B3]
--+// CHECK-NEXT:   1: operator*
--+// CHECK-NEXT:   2: [B3.1] (ImplicitCastExpr, FunctionToPointerDecay, iterator_traits<pair<int, int> *>::reference (*)(void))
--+// CHECK-NEXT:   3: __begin1
--+// CHECK-NEXT:   4: * [B3.3] (OperatorCall)
--+// CHECK-NEXT:   5: auto &;
--+// CHECK-NEXT:   6: get<0UL>
--+// CHECK-NEXT:   7: [B3.6] (ImplicitCastExpr, FunctionToPointerDecay, typename tuple_element<0L, pair<int, int> >::type (*)(pair<int, int> &))
--+// CHECK-NEXT:   8: decomposition-a-b
--+// CHECK-NEXT:   9: [B3.7]([B3.8])
--+// CHECK-NEXT:  10: [B3.9]
--+// CHECK-NEXT:  11: std::tuple_element<0, std::pair<int, int>>::type a = get<0UL>(decomposition-a-b);
--+// CHECK-NEXT:  12: get<1UL>
--+// CHECK-NEXT:  13: [B3.12] (ImplicitCastExpr, FunctionToPointerDecay, typename tuple_element<1L, pair<int, int> >::type (*)(pair<int, int> &))
--+// CHECK-NEXT:  14: decomposition-a-b
--+// CHECK-NEXT:  15: [B3.13]([B3.14])
--+// CHECK-NEXT:  16: [B3.15]
--+// CHECK-NEXT:  17: std::tuple_element<1, std::pair<int, int>>::type b = get<1UL>(decomposition-a-b);
--+// CHECK-NEXT:   Preds (1): B1
--+// CHECK-NEXT:   Succs (1): B2
--diff -ruN --strip-trailing-cr a/clang/test/Analysis/anonymous-parameter.cpp b/clang/test/Analysis/anonymous-parameter.cpp
----- a/clang/test/Analysis/anonymous-parameter.cpp
--+++ b/clang/test/Analysis/anonymous-parameter.cpp
--@@ -1,30 +0,0 @@
---// RUN: %clang_analyze_cc1 -analyzer-checker=debug.DumpCFG -triple x86_64-apple-darwin12 -std=c++20 %s 2>&1 | FileCheck %s
---
---struct A {
---  static A a;
---  char b;
---  friend bool operator==(A, A) = default;
---};
---bool _ = A() == A::a;
---
---// FIXME: steps 1 and 5 show anonymous function parameters are
---// not handled correctly.
---
---// CHECK-LABEL: bool operator==(A, A) noexcept = default
---// CHECK-NEXT: [B2 (ENTRY)]
---// CHECK-NEXT:    Succs (1): B1
---// CHECK:      [B1]
---// CHECK-NEXT:    1: function-parameter-0-0
---// CHECK-NEXT:    2: [B1.1].b
---// CHECK-NEXT:    3: [B1.2] (ImplicitCastExpr, LValueToRValue, char)
---// CHECK-NEXT:    4: [B1.3] (ImplicitCastExpr, IntegralCast, int)
---// CHECK-NEXT:    5: function-parameter-0-1
---// CHECK-NEXT:    6: [B1.5].b
---// CHECK-NEXT:    7: [B1.6] (ImplicitCastExpr, LValueToRValue, char)
---// CHECK-NEXT:    8: [B1.7] (ImplicitCastExpr, IntegralCast, int)
---// CHECK-NEXT:    9: [B1.4] == [B1.8]
---// CHECK-NEXT:   10: return [B1.9];
---// CHECK-NEXT:    Preds (1): B2
---// CHECK-NEXT:    Succs (1): B0
---// CHECK:      [B0 (EXIT)]
---// CHECK-NEXT:    Preds (1): B1
--diff -ruN --strip-trailing-cr a/llvm/lib/AsmParser/LLParser.cpp b/llvm/lib/AsmParser/LLParser.cpp
----- a/llvm/lib/AsmParser/LLParser.cpp
--+++ b/llvm/lib/AsmParser/LLParser.cpp
--@@ -10709,12 +10709,15 @@
--       return true;
-- 
--     SmallVector<unsigned> StackIdIndices;
---    do {
---      uint64_t StackId = 0;
---      if (parseUInt64(StackId))
---        return true;
---      StackIdIndices.push_back(Index->addOrGetStackIdIndex(StackId));
---    } while (EatIfPresent(lltok::comma));
--+    // Synthesized callsite records will not have a stack id list.
--+    if (Lex.getKind() != lltok::rparen) {
--+      do {
--+        uint64_t StackId = 0;
--+        if (parseUInt64(StackId))
--+          return true;
--+        StackIdIndices.push_back(Index->addOrGetStackIdIndex(StackId));
--+      } while (EatIfPresent(lltok::comma));
--+    }
-- 
--     if (parseToken(lltok::rparen, "expected ')' in stackIds"))
--       return true;
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/MemProfContextDisambiguation.cpp b/llvm/lib/Transforms/IPO/MemProfContextDisambiguation.cpp
----- a/llvm/lib/Transforms/IPO/MemProfContextDisambiguation.cpp
--+++ b/llvm/lib/Transforms/IPO/MemProfContextDisambiguation.cpp
--@@ -4205,7 +4205,8 @@
-- // Locate the summary for F. This is complicated by the fact that it might
-- // have been internalized or promoted.
-- static ValueInfo findValueInfoForFunc(const Function &F, const Module &M,
---                                      const ModuleSummaryIndex *ImportSummary) {
--+                                      const ModuleSummaryIndex *ImportSummary,
--+                                      const Function *CallingFunc = nullptr) {
--   // FIXME: Ideally we would retain the original GUID in some fashion on the
--   // function (e.g. as metadata), but for now do our best to locate the
--   // summary without that information.
--@@ -4220,20 +4221,48 @@
--   // Now query with the original name before any promotion was performed.
--   StringRef OrigName =
--       ModuleSummaryIndex::getOriginalNameBeforePromote(F.getName());
--+  // When this pass is enabled, we always add thinlto_src_file provenance
--+  // metadata to imported function definitions, which allows us to recreate the
--+  // original internal symbol's GUID.
--+  auto SrcFileMD = F.getMetadata("thinlto_src_file");
--+  // If this is a call to an imported/promoted local for which we didn't import
--+  // the definition, the metadata will not exist on the declaration. However,
--+  // since we are doing this early, before any inlining in the LTO backend, we
--+  // can simply look at the metadata on the calling function which must have
--+  // been from the same module if F was an internal symbol originally.
--+  if (!SrcFileMD && F.isDeclaration()) {
--+    // We would only call this for a declaration for a direct callsite, in which
--+    // case the caller would have provided the calling function pointer.
--+    assert(CallingFunc);
--+    SrcFileMD = CallingFunc->getMetadata("thinlto_src_file");
--+    // If this is a promoted local (OrigName != F.getName()), since this is a
--+    // declaration, it must be imported from a different module and therefore we
--+    // should always find the metadata on its calling function. Any call to a
--+    // promoted local that came from this module should still be a definition.
--+    assert(SrcFileMD || OrigName == F.getName());
--+  }
--+  StringRef SrcFile = M.getSourceFileName();
--+  if (SrcFileMD)
--+    SrcFile = dyn_cast<MDString>(SrcFileMD->getOperand(0))->getString();
--   std::string OrigId = GlobalValue::getGlobalIdentifier(
---      OrigName, GlobalValue::InternalLinkage, M.getSourceFileName());
--+      OrigName, GlobalValue::InternalLinkage, SrcFile);
--   TheFnVI = ImportSummary->getValueInfo(GlobalValue::getGUID(OrigId));
---  if (TheFnVI)
---    return TheFnVI;
---  // Could be a promoted local imported from another module. We need to pass
---  // down more info here to find the original module id. For now, try with
---  // the OrigName which might have been stored in the OidGuidMap in the
---  // index. This would not work if there were same-named locals in multiple
---  // modules, however.
---  auto OrigGUID =
---      ImportSummary->getGUIDFromOriginalID(GlobalValue::getGUID(OrigName));
---  if (OrigGUID)
---    TheFnVI = ImportSummary->getValueInfo(OrigGUID);
--+  // Internal func in original module may have gotten a numbered suffix if we
--+  // imported an external function with the same name. This happens
--+  // automatically during IR linking for naming conflicts. It would have to
--+  // still be internal in that case (otherwise it would have been renamed on
--+  // promotion in which case we wouldn't have a naming conflict).
--+  if (!TheFnVI && OrigName == F.getName() && F.hasLocalLinkage() &&
--+      F.getName().contains('.')) {
--+    OrigName = F.getName().rsplit('.').first;
--+    OrigId = GlobalValue::getGlobalIdentifier(
--+        OrigName, GlobalValue::InternalLinkage, SrcFile);
--+    TheFnVI = ImportSummary->getValueInfo(GlobalValue::getGUID(OrigId));
--+  }
--+  // The only way we may not have a VI is if this is a declaration created for
--+  // an imported reference. For distributed ThinLTO we may not have a VI for
--+  // such declarations in the distributed summary.
--+  assert(TheFnVI || F.isDeclaration());
--   return TheFnVI;
-- }
-- 
--@@ -4592,7 +4621,7 @@
--           // Locate the synthesized callsite info for the callee VI, if any was
--           // created, and use that for cloning.
--           ValueInfo CalleeVI =
---              findValueInfoForFunc(*CalledFunction, M, ImportSummary);
--+              findValueInfoForFunc(*CalledFunction, M, ImportSummary, &F);
--           if (CalleeVI && MapTailCallCalleeVIToCallsite.count(CalleeVI)) {
--             auto Callsite = MapTailCallCalleeVIToCallsite.find(CalleeVI);
--             assert(Callsite != MapTailCallCalleeVIToCallsite.end());
--diff -ruN --strip-trailing-cr a/llvm/test/ThinLTO/X86/memprof_imported_internal2.ll b/llvm/test/ThinLTO/X86/memprof_imported_internal2.ll
----- a/llvm/test/ThinLTO/X86/memprof_imported_internal2.ll
--+++ b/llvm/test/ThinLTO/X86/memprof_imported_internal2.ll
--@@ -0,0 +1,93 @@
--+;; Test to make sure that the memprof ThinLTO backend finds the correct summary
--+;; when there was a naming conflict between an internal function in the original
--+;; module and an imported external function with the same name. The IR linking
--+;; will automatically append a "." followed by a numbered suffix to the existing
--+;; local name in that case. Note this can happen with C where the mangling would
--+;; be the same for the internal and external functions of the same name (C++
--+;; would have different mangling).
--+
--+;; Note we don't need any MemProf related metadata for this to fail to find a
--+;; ValueInfo and crash if the wrong GUID is computed for the renamed local.
--+
--+;; The original code looks something like:
--+;;
--+;; src1.c:
--+;; extern void external1();
--+;; extern void external2();
--+;; static void foo() {
--+;;   external2();
--+;; }
--+;; int main() {
--+;;   external1();
--+;;   foo();
--+;;   return 0;
--+;; }
--+;;
--+;; src2.c:
--+;; extern void external2();
--+;; void foo() {
--+;;   external2();
--+;; }
--+;; void external1() {
--+;;   foo();
--+;; }
--+;;
--+;; The assembly for src1 shown below was dumped after function importing.
--+
--+; RUN: rm -rf %t && split-file %s %t && cd %t
--+; RUN: llvm-as src1.ll -o src1.o
--+; RUN: llvm-as src1.o.thinlto.ll -o src1.o.thinlto.bc
--+
--+;; Simply check that we don't crash when trying to find the ValueInfo for each
--+;; function in the IR.
--+; RUN: opt -passes=memprof-context-disambiguation src1.o -S -memprof-import-summary=src1.o.thinlto.bc
--+
--+;--- src1.ll
--+; ModuleID = 'src1.o'
--+source_filename = "src1.c"
--+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
--+target triple = "x86_64-unknown-linux-gnu"
--+
--+define dso_local noundef i32 @main() {
--+entry:
--+  tail call void @external1()
--+  tail call void @foo.2()
--+  ret i32 0
--+}
--+
--+define internal void @foo.2() {
--+entry:
--+  tail call void @external2()
--+  ret void
--+}
--+
--+declare void @external2()
--+
--+define available_externally dso_local void @foo() !thinlto_src_module !1 !thinlto_src_file !2 {
--+entry:
--+  tail call void @external2()
--+  ret void
--+}
--+
--+define available_externally dso_local void @external1() !thinlto_src_module !1 !thinlto_src_file !2 {
--+entry:
--+  tail call void @foo()
--+  ret void
--+}
--+
--+!1 = !{!"src2.o"}
--+!2 = !{!"src2.c"}
--+
--+;--- src1.o.thinlto.ll
--+; ModuleID = 'src1.o.thinlto.bc'
--+source_filename = "src1.o.thinlto.bc"
--+
--+^0 = module: (path: "src1.o", hash: (2435941910, 498944982, 2551913764, 2759430100, 3918124321))
--+^1 = module: (path: "src2.o", hash: (1826286437, 1557684621, 1220464477, 2734102338, 1025249503))
--+^2 = module: (path: "src3.o", hash: (1085916433, 503665945, 2163560042, 340524, 2255774964))
--+^3 = gv: (guid: 1456206394295721279, summaries: (function: (module: ^0, flags: (linkage: internal, visibility: default, notEligibleToImport: 0, live: 1, dsoLocal: 1, canAutoHide: 0, importType: definition), insts: 2, funcFlags: (readNone: 0, readOnly: 0, noRecurse: 0, returnDoesNotAlias: 0, noInline: 1, alwaysInline: 0, noUnwind: 1, mayThrow: 0, hasUnknownCall: 0, mustBeUnreachable: 0)))) ;; src1.c:foo
--+^4 = gv: (guid: 6699318081062747564, summaries: (function: (module: ^1, flags: (linkage: external, visibility: default, notEligibleToImport: 0, live: 1, dsoLocal: 1, canAutoHide: 0, importType: definition), insts: 2, funcFlags: (readNone: 0, readOnly: 0, noRecurse: 0, returnDoesNotAlias: 0, noInline: 1, alwaysInline: 0, noUnwind: 1, mayThrow: 0, hasUnknownCall: 0, mustBeUnreachable: 0)))) ;; src2.c:foo
--+^5 = gv: (guid: 13087145834073153720, summaries: (function: (module: ^1, flags: (linkage: external, visibility: default, notEligibleToImport: 0, live: 1, dsoLocal: 1, canAutoHide: 0, importType: definition), insts: 2, funcFlags: (readNone: 0, readOnly: 0, noRecurse: 0, returnDoesNotAlias: 0, noInline: 0, alwaysInline: 0, noUnwind: 1, mayThrow: 0, hasUnknownCall: 0, mustBeUnreachable: 0), calls: ((callee: ^4, tail: 1))))) ;; src1.c:external1
--+^6 = gv: (guid: 15822663052811949562, summaries: (function: (module: ^0, flags: (linkage: external, visibility: default, notEligibleToImport: 0, live: 1, dsoLocal: 1, canAutoHide: 0, importType: definition), insts: 3, funcFlags: (readNone: 0, readOnly: 0, noRecurse: 0, returnDoesNotAlias: 0, noInline: 0, alwaysInline: 0, noUnwind: 1, mayThrow: 0, hasUnknownCall: 0, mustBeUnreachable: 0), calls: ((callee: ^5, tail: 1), (callee: ^3, tail: 1))))) ;; src1.c:main
--+^8 = flags: 97
--+^9 = blockcount: 0
--diff -ruN --strip-trailing-cr a/llvm/test/ThinLTO/X86/memprof_imported_internal.ll b/llvm/test/ThinLTO/X86/memprof_imported_internal.ll
----- a/llvm/test/ThinLTO/X86/memprof_imported_internal.ll
--+++ b/llvm/test/ThinLTO/X86/memprof_imported_internal.ll
--@@ -0,0 +1,152 @@
--+;; Test to make sure that the memprof ThinLTO backend finds the correct summary
--+;; for an imported promoted local, so that we can perform the correct cloning.
--+;; In particular, we should be able to use the thinlto_src_file metadata to
--+;; recreate its original GUID. In particular, this test contains promoted
--+;; internal functions with the same original name as those that were imported,
--+;; and we want to ensure we don't use those by mistake.
--+
--+;; The original code looks something like:
--+;;
--+;; src1.cc:
--+;; extern void external1();
--+;; extern void external2();
--+;; static void internal1() {
--+;;   external2();
--+;; }
--+;; static void internal2() {
--+;;   external2();
--+;; }
--+;; int main() {
--+;;   internal1();
--+;;   internal2();
--+;;   external1();
--+;;   return 0;
--+;; }
--+;;
--+;; src2.cc:
--+;; extern void external2();
--+;; static void internal1() {
--+;;   external2();
--+;; }
--+;; static void internal2() {
--+;;   external2();
--+;; }
--+;; void external1() {
--+;;   internal1();
--+;;   internal2();
--+;; }
--+;;
--+;; The assembly for src1 shown below was dumped after function importing, with
--+;; some hand modification to ensure we import the definitions of src2.cc's
--+;; external1 and internal1 functions, and the declaration only for its
--+;; internal2 function. I also hand modified it to add !callsite metadata
--+;; to a few calls, and the distributed ThinLTO summary in src1.o.thinlto.ll to
--+;; contain callsite metadata records with cloning results.
--+
--+; RUN: rm -rf %t && split-file %s %t && cd %t
--+; RUN: llvm-as src1.ll -o src1.o
--+; RUN: llvm-as src1.o.thinlto.ll -o src1.o.thinlto.bc
--+
--+; RUN: opt -passes=memprof-context-disambiguation src1.o -S -memprof-import-summary=src1.o.thinlto.bc | FileCheck %s
--+
--+;; Per the cloning results in the summary, none of the original functions should
--+;; call any memprof clones.
--+; CHECK-NOT: memprof
--+;; We should have one clone of src1.cc's internal1 that calls a clone of
--+;; external2.
--+; CHECK-LABEL: define void @_ZL9internal1v.llvm.5985484347676238233.memprof.1()
--+; CHECK:  tail call void @_Z9external2v.memprof.1()
--+; CHECK-LABEL: declare void @_Z9external2v.memprof.1()
--+;; We should have one clone of external1 that calls a clone of internal2 from
--+;; a synthesized callsite record (for a tail call with a missing frame).
--+; CHECK-LABEL: define available_externally {{.*}} void @_Z9external1v.memprof.1()
--+; CHECK:  tail call void @_ZL9internal1v.llvm.3267420853450984672()
--+; CHECK:  tail call void @_ZL9internal2v.llvm.3267420853450984672.memprof.1()
--+; CHECK-LABEL: declare void @_ZL9internal2v.llvm.3267420853450984672.memprof.1()
--+;; We should have 2 clones of src2.cc's internal1 function, calling a single
--+;; clone of external2.
--+; CHECK-LABEL: define available_externally void @_ZL9internal1v.llvm.3267420853450984672.memprof.1()
--+; CHECK:  tail call void @_Z9external2v.memprof.1()
--+; CHECK:  tail call void @_Z9external2v.memprof.1()
--+; CHECK-LABEL: define available_externally void @_ZL9internal1v.llvm.3267420853450984672.memprof.2()
--+; CHECK:  tail call void @_Z9external2v.memprof.1()
--+; CHECK:  tail call void @_Z9external2v.memprof.1()
--+; CHECK-NOT: memprof
--+
--+;--- src1.ll
--+; ModuleID = 'src1.o'
--+source_filename = "src1.cc"
--+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
--+target triple = "x86_64-unknown-linux-gnu"
--+
--+define dso_local noundef i32 @main() {
--+entry:
--+  tail call void @_ZL9internal1v.llvm.5985484347676238233()
--+  tail call void @_ZL9internal2v.llvm.5985484347676238233()
--+  tail call void @_Z9external1v()
--+  ret i32 0
--+}
--+
--+define void @_ZL9internal1v.llvm.5985484347676238233() {
--+entry:
--+  tail call void @_Z9external2v(), !callsite !8
--+  ret void
--+}
--+
--+define void @_ZL9internal2v.llvm.5985484347676238233() {
--+entry:
--+  tail call void @_Z9external2v()
--+  ret void
--+}
--+
--+declare void @_Z9external2v()
--+
--+define available_externally dso_local void @_Z9external1v() !thinlto_src_module !6 !thinlto_src_file !7 {
--+entry:
--+  tail call void @_ZL9internal1v.llvm.3267420853450984672()
--+  tail call void @_ZL9internal2v.llvm.3267420853450984672()
--+  ret void
--+}
--+
--+define available_externally void @_ZL9internal1v.llvm.3267420853450984672() !thinlto_src_module !6 !thinlto_src_file !7 {
--+entry:
--+  ;; This one has more callsite records than the other version of internal1,
--+  ;; which would cause the code to iterate past the end of the callsite
--+  ;; records if we incorrectly got the other internal1's summary.
--+  tail call void @_Z9external2v(), !callsite !9
--+  tail call void @_Z9external2v(), !callsite !10
--+  ret void
--+}
--+
--+declare void @_ZL9internal2v.llvm.3267420853450984672()
--+
--+!6 = !{!"src2.o"}
--+!7 = !{!"src2.cc"}
--+!8 = !{i64 12345}
--+!9 = !{i64 23456}
--+!10 = !{i64 34567}
--+
--+;--- src1.o.thinlto.ll
--+; ModuleID = 'src1.o.thinlto.bc'
--+source_filename = "src1.o.thinlto.bc"
--+
--+^0 = module: (path: "src1.o", hash: (1393604173, 1072112025, 2857473630, 2016801496, 3238735916))
--+^1 = module: (path: "src2.o", hash: (760755700, 1705397472, 4198605753, 677969311, 2408738824))
--+;; src2.o:internal1. It specifies that we should have 3 clones total (including
--+;; original).
--+^3 = gv: (guid: 1143217136900127394, summaries: (function: (module: ^1, flags: (linkage: available_externally, visibility: default, notEligibleToImport: 0, live: 1, dsoLocal: 1, canAutoHide: 0, importType: definition), insts: 2, funcFlags: (readNone: 0, readOnly: 0, noRecurse: 0, returnDoesNotAlias: 0, noInline: 1, alwaysInline: 0, noUnwind: 0, mayThrow: 0, hasUnknownCall: 0, mustBeUnreachable: 0), calls: ((callee: ^6, tail: 1), (callee: ^6, tail: 1)), callsites: ((callee: ^6, clones: (0, 1, 1), stackIds: (23456)), (callee: ^6, clones: (0, 1, 1), stackIds: (34567))))))
--+;; src2.o:internal2. It was manually modified to have importType = declaration.
--+^4 = gv: (guid: 3599593882704738259, summaries: (function: (module: ^1, flags: (linkage: available_externally, visibility: default, notEligibleToImport: 0, live: 1, dsoLocal: 1, canAutoHide: 0, importType: declaration), insts: 2, funcFlags: (readNone: 0, readOnly: 0, noRecurse: 0, returnDoesNotAlias: 0, noInline: 1, alwaysInline: 0, noUnwind: 0, mayThrow: 0, hasUnknownCall: 0, mustBeUnreachable: 0), calls: ((callee: ^6, tail: 1)))))
--+;; src1.o:internal1.
--+^5 = gv: (guid: 6084810090198994915, summaries: (function: (module: ^0, flags: (linkage: internal, visibility: default, notEligibleToImport: 0, live: 1, dsoLocal: 1, canAutoHide: 0, importType: definition), insts: 2, funcFlags: (readNone: 0, readOnly: 0, noRecurse: 0, returnDoesNotAlias: 0, noInline: 1, alwaysInline: 0, noUnwind: 0, mayThrow: 0, hasUnknownCall: 0, mustBeUnreachable: 0), calls: ((callee: ^6, tail: 1)), callsites: ((callee: ^6, clones: (0, 1), stackIds: (12345))))))
--+^6 = gv: (guid: 8596367375252297795)
--+;; src1.o:internal2.
--+^7 = gv: (guid: 11092151021205906565, summaries: (function: (module: ^0, flags: (linkage: internal, visibility: default, notEligibleToImport: 0, live: 1, dsoLocal: 1, canAutoHide: 0, importType: definition), insts: 2, funcFlags: (readNone: 0, readOnly: 0, noRecurse: 0, returnDoesNotAlias: 0, noInline: 1, alwaysInline: 0, noUnwind: 0, mayThrow: 0, hasUnknownCall: 0, mustBeUnreachable: 0), calls: ((callee: ^6, tail: 1)))))
--+;; src2.o:external1. It contains a synthesized callsite record for the tail call
--+;; to internal2 (the empty stackId list indicates it is synthesized for a
--+;; discovered missing tail call frame.
--+^8 = gv: (guid: 12313225385227428720, summaries: (function: (module: ^1, flags: (linkage: external, visibility: default, notEligibleToImport: 0, live: 1, dsoLocal: 1, canAutoHide: 0, importType: definition), insts: 3, calls: ((callee: ^3, tail: 1), (callee: ^4, tail: 1)), callsites: ((callee: ^4, clones: (0, 1), stackIds: ())))))
--+;; src1.o:main.
--+^9 = gv: (guid: 15822663052811949562, summaries: (function: (module: ^0, flags: (linkage: external, visibility: default, notEligibleToImport: 0, live: 1, dsoLocal: 1, canAutoHide: 0, importType: definition), insts: 4, funcFlags: (readNone: 0, readOnly: 0, noRecurse: 1, returnDoesNotAlias: 0, noInline: 0, alwaysInline: 0, noUnwind: 0, mayThrow: 0, hasUnknownCall: 0, mustBeUnreachable: 0), calls: ((callee: ^5, tail: 1), (callee: ^7, tail: 1), (callee: ^8, tail: 1)))))
--+^10 = flags: 97
--+^11 = blockcount: 0
+diff --git a/shardy/dialect/sdy/ir/attrs.td b/shardy/dialect/sdy/ir/attrs.td
+index c4ef24a..8c1dc72 100644
+--- a/shardy/dialect/sdy/ir/attrs.td
++++ b/shardy/dialect/sdy/ir/attrs.td
+@@ -362,25 +362,25 @@ def Sdy_AxisRef : AttrDef<Sdy_Dialect, "AxisRef"> {
+     //  "a":(1)3, "a":(2)3 -> false
+     bool canCoexist(AxisRefAttr other) const;
+ 
+-    // If this axis or sub-axis overlaps with `other`, returns that overlapping
+-    // axis or sub-axis, otherwise returns `std::nullopt`.
++    // Returns the largest prefix of this axis that overlaps with `other`, or
++    // `std::nullopt` if the prefix does not exist.
+     //
+     // If this axis and `other` can't coexist, returns `std::nullopt` (see
+     // AxisRefAttr::canCoexist).
+     //
+     // For example:
+-    //  "a", "a":(2)2      -> "a":(2)2
++    //  "a", "a"           -> "a"
++    //  "a":(2)2, "a"      -> "a":(2)2
+     //  "a":(2)2, "a":(2)2 -> "a":(2)2
+-    //  "a":(1)4, "a":(2)4 -> "a":(2)2
+-    //  "a":(2)4, "a":(1)4 -> "a":(2)2
+     //  "a":(1)4, "a":(1)2 -> "a":(1)2
+-    //  "a":(2)8, "a":(4)2 -> "a":(4)2
+-    //  "a":(1)4, "a":(4)2 -> std::nullopt
+-    //  "a":(1)2, "a":(4)2 -> std::nullopt
+-    //  "a":(1)4, "b":(2)4 -> std::nullopt
++    //  "a":(2)8, "a":(1)4 -> "a":(2)2
++    //  "a", "b"           -> std::nullopt
++    //  "a":(2)2, "b"      -> std::nullopt
++    //  "a":(1)4, "a":(2)4 -> std::nullopt
+     //  "a":(1)2, "a":(1)3 -> std::nullopt
+     //  "a":(3)2, "a":(2)3 -> std::nullopt
+-    std::optional<AxisRefAttr> getOverlap(AxisRefAttr other) const;
++    std::optional<AxisRefAttr> getPrefixWithOverlap(
++        AxisRefAttr other, MeshAttr mesh) const;
+ 
+     // If there is no overlap between this axis and `other`, return this axis.
+     // Otherwise, return the largest prefix of this axis by removing the
+@@ -443,6 +443,26 @@ def Sdy_AxisRef : AttrDef<Sdy_Dialect, "AxisRef"> {
+     //  "a":(1)2, "a":(2)4 -> std::nullopt
+     std::optional<AxisRefAttr> getGreatestCommonPrefix(AxisRefAttr other) const;
+ 
++    // Removes the common prefix of this axis and `other` from this axis. If the
++    // two axes do not have common prefix or `other` is greater or equal to this
++    // axis, return `std::nullopt`.
++    //
++    // If this axis and `other` can't coexist, returns `std::nullopt` (see
++    // AxisRefAttr::canCoexist).
++    //
++    // For example:
++    //  "a", "a":(1)4      -> "a":(4)2 (size("a") == 8)
++    //  "a":(1)4, "a":(1)2 -> "a":(2)2
++    //  "a":(2)8, "a":(2)4 -> "a":(8)2
++    //  "a", "b"           -> std::nullopt
++    //  "a", "a"           -> std::nullopt
++    //  "a":(1)4, "a"      -> std::nullopt
++    //  "a":(2)4, "a":(2)8 -> std::nullopt
++    //  "a":(1)2, "a":(2)4 -> std::nullopt
++    //  "a":(1)2, "a":(1)3 -> std::nullopt
++    std::optional<AxisRefAttr> removeCommonPrefix(
++        AxisRefAttr prefix, MeshAttr mesh) const;
++
+     // Returns whether this axis-ref can be merged with `other`, i.e., they are
+     // consecutive sub-axes of the same full axis and this sub-axis is major to
+     // `other`.
+diff --git a/shardy/dialect/sdy/ir/dialect.cc b/shardy/dialect/sdy/ir/dialect.cc
+index a912576..01ec501 100644
+--- a/shardy/dialect/sdy/ir/dialect.cc
++++ b/shardy/dialect/sdy/ir/dialect.cc
+@@ -436,22 +436,6 @@ bool AxisRefAttr::overlaps(AxisRefAttr other) const {
+          otherSubAxisInfo.getPreSize() < thisSubAxisInfo.getNextPreSize();
+ }
+ 
+-namespace {
+-
+-bool canSubAxesCoexist(int64_t minPreSize, int64_t maxPreSize,
+-                       int64_t minNextPreSize, int64_t maxNextPreSize) {
+-  if (minNextPreSize > maxPreSize) {
+-    // Sub-axes overlap, check if overlapping and non-overlapping parts are
+-    // valid.
+-    return minNextPreSize % maxPreSize == 0 && maxPreSize % minPreSize == 0 &&
+-           maxNextPreSize % minNextPreSize == 0;
+-  }
+-  // Sub-axes don't overlap, check if the gap is valid.
+-  return maxPreSize % minNextPreSize == 0;
+-}
+-
+-}  // namespace
+-
+ bool AxisRefAttr::canCoexist(AxisRefAttr other) const {
+   if (getName() != other.getName()) {
+     return true;
+@@ -473,46 +457,31 @@ bool AxisRefAttr::canCoexist(AxisRefAttr other) const {
+   auto [minNextPreSize, maxNextPreSize] =
+       std::minmax(thisNextPreSize, otherNextPreSize);
+ 
+-  return canSubAxesCoexist(minPreSize, maxPreSize, minNextPreSize,
+-                           maxNextPreSize);
++  if (minNextPreSize > maxPreSize) {
++    // Sub-axes overlap, check if overlapping and non-overlapping parts are
++    // valid.
++    return minNextPreSize % maxPreSize == 0 && maxPreSize % minPreSize == 0 &&
++           maxNextPreSize % minNextPreSize == 0;
++  }
++  // Sub-axes don't overlap, check if the gap is valid.
++  return maxPreSize % minNextPreSize == 0;
+ }
+ 
+-std::optional<AxisRefAttr> AxisRefAttr::getOverlap(AxisRefAttr other) const {
+-  if (other.getName() != getName()) {
++std::optional<AxisRefAttr> AxisRefAttr::getPrefixWithOverlap(
++    AxisRefAttr other, MeshAttr mesh) const {
++  int64_t thisPreSize = getSubAxisPreSize();
++  if (!canCoexist(other) || !overlaps(other) ||
++      other.getSubAxisPreSize() > thisPreSize) {
+     return std::nullopt;
+   }
+-
+-  SubAxisInfoAttr thisSubAxisInfo = getSubAxisInfo();
+-  SubAxisInfoAttr otherSubAxisInfo = other.getSubAxisInfo();
+-
+-  if (!thisSubAxisInfo) {
+-    // This is a full axis.
+-    return other;
+-  }
+-
+-  if (!otherSubAxisInfo) {
+-    // Other is a full axis.
++  if (other.contains(*this)) {
+     return *this;
+   }
+-
+-  int64_t thisPreSize = thisSubAxisInfo.getPreSize();
+-  int64_t otherPreSize = otherSubAxisInfo.getPreSize();
+-  int64_t thisNextPreSize = thisSubAxisInfo.getNextPreSize();
+-  int64_t otherNextPreSize = otherSubAxisInfo.getNextPreSize();
+-
+-  auto [minPreSize, maxPreSize] = std::minmax(thisPreSize, otherPreSize);
+-  auto [minNextPreSize, maxNextPreSize] =
+-      std::minmax(thisNextPreSize, otherNextPreSize);
+-
+-  if (minNextPreSize <= maxPreSize ||
+-      !canSubAxesCoexist(minPreSize, maxPreSize, minNextPreSize,
+-                         maxNextPreSize)) {
+-    // No overlap or can't co-exist.
+-    return std::nullopt;
+-  }
+-
+-  return AxisRefAttr::get(getContext(), getName(), maxPreSize,
+-                          minNextPreSize / maxPreSize);
++  int64_t thisNextPreSize = getNextPreSizeOrFullSize(mesh);
++  int64_t otherNextPreSize = other.getNextPreSizeOrFullSize(mesh);
++  return AxisRefAttr::get(
++      getContext(), getName(), thisPreSize,
++      std::min(thisNextPreSize, otherNextPreSize) / thisPreSize);
+ }
+ 
+ std::optional<AxisRefAttr> AxisRefAttr::getPrefixWithoutOverlap(
+@@ -587,6 +556,14 @@ std::optional<AxisRefAttr> AxisRefAttr::getGreatestCommonPrefix(
+   return std::nullopt;
+ }
+ 
++std::optional<AxisRefAttr> AxisRefAttr::removeCommonPrefix(
++    AxisRefAttr prefix, MeshAttr mesh) const {
++  if (!prefix.strictPrefixOf(*this)) {
++    return std::nullopt;
++  }
++  return getSuffixWithoutOverlap(prefix, mesh);
++}
++
+ //===----------------------------------------------------------------------===//
+ // DimensionShardingAttr
+ //===----------------------------------------------------------------------===//
+diff --git a/shardy/dialect/sdy/ir/dialect_test.cc b/shardy/dialect/sdy/ir/dialect_test.cc
+index ffbf8de..cde0334 100644
+--- a/shardy/dialect/sdy/ir/dialect_test.cc
++++ b/shardy/dialect/sdy/ir/dialect_test.cc
+@@ -252,47 +252,57 @@ TEST_F(DialectTest, AxisRefAttrCompare) {
+   compare(createSubAxis("x", 1, 4), createSubAxis("x", 2, 2));
+ }
+ 
+-TEST_F(DialectTest, AxisRefAttrGetOverlap) {
+-  auto contained = [](AxisRefAttr small, AxisRefAttr large) {
+-    EXPECT_TRUE(large.contains(small));
+-    EXPECT_EQ(large.getOverlap(small), small);
+-    EXPECT_EQ(small.getOverlap(large), small);
+-  };
+-  contained(createAxis("x"), createAxis("x"));
+-  contained(createSubAxis("x", 1, 4), createAxis("x"));
+-  contained(createSubAxis("x", 4, 8), createAxis("x"));
+-  contained(createSubAxis("x", 2, 2), createSubAxis("x", 2, 2));
+-  contained(createSubAxis("x", 1, 2), createSubAxis("x", 1, 4));
+-  contained(createSubAxis("x", 2, 2), createSubAxis("x", 1, 4));
+-  contained(createSubAxis("x", 2, 2), createSubAxis("x", 1, 8));
+-
+-  auto overlaps = [](AxisRefAttr a, AxisRefAttr b, AxisRefAttr expected) {
+-    EXPECT_EQ(a.getOverlap(b), expected);
+-    EXPECT_EQ(b.getOverlap(a), expected);
++TEST_F(DialectTest, AxisRefAttrGetPrefixWithOverlap) {
++  auto mesh = MeshAttr::get(&context, {MeshAxisAttr::get(&context, "x", 16),
++                                       MeshAxisAttr::get(&context, "y", 4)});
++  auto samePrefix = [&](AxisRefAttr a, AxisRefAttr b) {
++    AxisRefAttr smaller = std::min(a, b);
++    EXPECT_EQ(a.getPrefixWithOverlap(b, mesh), smaller);
++    EXPECT_EQ(b.getPrefixWithOverlap(a, mesh), smaller);
+   };
+-  overlaps(createSubAxis("x", 1, 4), createSubAxis("x", 2, 4),
+-           createSubAxis("x", 2, 2));
+-  overlaps(createSubAxis("x", 4, 4), createSubAxis("x", 2, 4),
+-           createSubAxis("x", 4, 2));
++  samePrefix(createAxis("x"), createAxis("x"));
++  samePrefix(createSubAxis("x", 2, 2), createSubAxis("x", 2, 2));
++  samePrefix(createSubAxis("x", 1, 4), createSubAxis("x", 1, 2));
+ 
+-  auto checkNoOverlap = [](AxisRefAttr a, AxisRefAttr b) {
+-    EXPECT_FALSE(a.overlaps(b));
+-    EXPECT_EQ(a.getOverlap(b), std::nullopt);
+-    EXPECT_EQ(b.getOverlap(a), std::nullopt);
++  // "x":(2)4 and "x"
++  EXPECT_EQ(
++      createSubAxis("x", 2, 4).getPrefixWithOverlap(createAxis("x"), mesh),
++      createSubAxis("x", 2, 4));
++  EXPECT_EQ(
++      createAxis("x").getPrefixWithOverlap(createSubAxis("x", 2, 4), mesh),
++      std::nullopt);
++
++  // "x":(2)4 and "x":(1)4
++  EXPECT_EQ(createSubAxis("x", 2, 4).getPrefixWithOverlap(
++                createSubAxis("x", 1, 4), mesh),
++            createSubAxis("x", 2, 2));
++  EXPECT_EQ(createSubAxis("x", 1, 4).getPrefixWithOverlap(
++                createSubAxis("x", 2, 4), mesh),
++            std::nullopt);
++
++  // "x"(4)2 and "x":(2)8
++  EXPECT_EQ(createSubAxis("x", 4, 2).getPrefixWithOverlap(
++                createSubAxis("x", 2, 8), mesh),
++            createSubAxis("x", 4, 2));
++  EXPECT_EQ(createSubAxis("x", 2, 8).getPrefixWithOverlap(
++                createSubAxis("x", 4, 2), mesh),
++            std::nullopt);
++
++  auto checkNoOverlap = [&](AxisRefAttr a, AxisRefAttr b) {
++    EXPECT_EQ(a.getPrefixWithOverlap(b, mesh), std::nullopt);
++    EXPECT_EQ(b.getPrefixWithOverlap(a, mesh), std::nullopt);
+   };
+   checkNoOverlap(createAxis("x"), createAxis("y"));
+   checkNoOverlap(createAxis("x"), createSubAxis("y", 1, 2));
+   checkNoOverlap(createSubAxis("x", 1, 4), createSubAxis("x", 4, 2));
+   checkNoOverlap(createSubAxis("x", 1, 2), createSubAxis("x", 4, 2));
+ 
+-  auto checkCannotCoexist = [](AxisRefAttr a, AxisRefAttr b) {
+-    EXPECT_FALSE(a.canCoexist(b));
+-    EXPECT_EQ(a.getOverlap(b), std::nullopt);
+-    EXPECT_EQ(b.getOverlap(a), std::nullopt);
++  auto checkCannotCoexist = [&](AxisRefAttr a, AxisRefAttr b) {
++    EXPECT_EQ(a.getPrefixWithOverlap(b, mesh), std::nullopt);
++    EXPECT_EQ(b.getPrefixWithOverlap(a, mesh), std::nullopt);
+   };
+-  checkCannotCoexist(createSubAxis("x", 1, 2), createSubAxis("x", 3, 2));
+-  checkCannotCoexist(createSubAxis("x", 1, 3), createSubAxis("x", 2, 3));
+-  checkCannotCoexist(createSubAxis("x", 2, 3), createSubAxis("x", 3, 2));
++  checkCannotCoexist(createSubAxis("x", 1, 2), createSubAxis("x", 1, 3));
++  checkCannotCoexist(createSubAxis("x", 3, 2), createSubAxis("x", 2, 3));
+ }
+ 
+ // The test cases are the same as DialectTest.AxisRefAttrOverlaps.
+@@ -443,6 +453,36 @@ TEST_F(DialectTest, AxisRefAttrGetGreatestCommonPrefix) {
+   prefix(createSubAxis("x", 2, 4), createSubAxis("x", 2, 8));
+ }
+ 
++TEST_F(DialectTest, AxisRefAttrRemoveCommonPrefix) {
++  auto mesh = MeshAttr::get(&context, {MeshAxisAttr::get(&context, "x", 16),
++                                       MeshAxisAttr::get(&context, "y", 4)});
++  auto isNotPrefix = [&](AxisRefAttr a, AxisRefAttr b) {
++    EXPECT_EQ(a.removeCommonPrefix(b, mesh), std::nullopt);
++    EXPECT_EQ(b.removeCommonPrefix(a, mesh), std::nullopt);
++  };
++  isNotPrefix(createAxis("x"), createAxis("y"));
++  isNotPrefix(createSubAxis("x", 1, 2), createSubAxis("y", 1, 2));
++  isNotPrefix(createSubAxis("x", 1, 2), createSubAxis("x", 2, 4));
++  isNotPrefix(createSubAxis("x", 1, 2), createSubAxis("x", 1, 3));
++
++  auto equals = [&](AxisRefAttr a) {
++    EXPECT_EQ(a.removeCommonPrefix(a, mesh), std::nullopt);
++  };
++  equals(createAxis("x"));
++  equals(createSubAxis("x", 2, 4));
++
++  auto prefix = [&](AxisRefAttr small, AxisRefAttr large,
++                    AxisRefAttr expected) {
++    EXPECT_EQ(large.removeCommonPrefix(small, mesh), expected);
++    EXPECT_EQ(small.removeCommonPrefix(large, mesh), std::nullopt);
++  };
++  prefix(createSubAxis("x", 1, 4), createAxis("x"), createSubAxis("x", 4, 4));
++  prefix(createSubAxis("x", 1, 2), createSubAxis("x", 1, 4),
++         createSubAxis("x", 2, 2));
++  prefix(createSubAxis("x", 2, 4), createSubAxis("x", 2, 8),
++         createSubAxis("x", 8, 2));
++}
++
+ TEST_F(DialectTest, TensorShardingAttrCanShardOrReplicate) {
+   TensorShardingAttr sharding = createTensorSharding(
+       {createDimSharding({createAxis("x"), createSubAxis("z", 2, 2)},
+diff --git a/shardy/dialect/sdy/ir/verifiers.cc b/shardy/dialect/sdy/ir/verifiers.cc
+index b6da095..4c15ee4 100644
+--- a/shardy/dialect/sdy/ir/verifiers.cc
++++ b/shardy/dialect/sdy/ir/verifiers.cc
+@@ -780,7 +780,8 @@ ArrayRef<AxisRefAttr>::iterator findManualAxisAfterFreeAxis(
+ // For each set of op values (operands/results) and corresponding sharding for
+ // each value, verifies:
+ // 1. the sharding list itself wrt the mesh and `globalTypes`,
+-// 2. the in/out shardings are valid w.r.t the corresponding global type,
++// 2. the in/out shardings are valid w.r.t the corresponding global
++//    type,
+ // 3. the number of global and local tensor inputs/outputs of the op region
+ //    match,
+ // 4. the manual axes come before any free axes in each dim sharding,
+@@ -815,7 +816,7 @@ LogicalResult verifyManualComputationValue(
+     return failure();
+   }
+ 
+-  // 3. Verify the number of global and local tensor inputs/outputs of the op
++  // 4. Verify the number of global and local tensor inputs/outputs of the op
+   //    region match.
+   if (globalTypes.size() != localTypes.size()) {
+     return op->emitOpError("number of op ")
+@@ -829,7 +830,7 @@ LogicalResult verifyManualComputationValue(
+            globalTypes, localTypes, shardingPerValueAttr.getShardings()))) {
+     auto [globalType, localType, sharding] = valueEntry;
+ 
+-    // 4. Verify the manual axes come before any free axes in each dim sharding.
++    // 5. Verify the manual axes come before any free axes in each dim sharding.
+     for (auto [dim, dimSharding] :
+          llvm::enumerate(sharding.getDimShardings())) {
+       ArrayRef<AxisRefAttr> axes = dimSharding.getAxes();
+@@ -845,7 +846,7 @@ LogicalResult verifyManualComputationValue(
+       }
+     }
+ 
+-    // 5. Verify the global shape and local shapes of the op regions
++    // 6. Verify the global shape and local shapes of the op regions
+     //    arguments/results match.
+     SmallVector<int64_t> newDimSizes;
+     auto globalRankedType = mlir::cast<RankedTensorType>(globalType);
+@@ -872,7 +873,7 @@ LogicalResult verifyManualComputationValue(
+              << ", actual local shape " << localRankedType;
+     }
+ 
+-    // 6. No manual axes are split.
++    // 7. No manual axes are split.
+     if (sharding.anyOfAxisRef([&](AxisRefAttr axis) {
+           return axis.getSubAxisInfo() &&
+                  manualAxesSet.contains(axis.getName());
+diff --git a/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc b/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
+index 19ac62e..955f093 100644
+--- a/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
++++ b/shardy/dialect/sdy/transforms/export/reshard_to_collectives.cc
+@@ -15,20 +15,17 @@ limitations under the License.
+ 
+ #include <cassert>
+ #include <cstdint>
+-#include <functional>
+ #include <iterator>
+ #include <list>
+ #include <memory>  // IWYU pragma: keep
+ #include <optional>
++#include <set>
+ #include <utility>
+ 
+-#include "llvm/ADT/DenseMap.h"
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
+-#include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Diagnostics.h"
+-#include "mlir/IR/Location.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/Pass/Pass.h"  // IWYU pragma: keep
+@@ -49,13 +46,36 @@ namespace {
+ 
+ using OptionalAxisRef = std::optional<AxisRefAttr>;
+ 
+-using AxesPerDim = SmallVector<SmallVector<AxisRefAttr>>;
+-
+-// We use an std::list so we can pop from the front, back, and with a specific
++// We use an std::list so we can pop from the front and the back and with an
+ // iterator at constant time.
++// TODO(tomnatan): Consider using AxisListRef instead of std::list once it can
++// also replace the first axis in the list with a different sub-axis.
+ using AxisList = std::list<AxisRefAttr>;
+ 
+-using AxisRefToDimMap = llvm::SmallDenseMap<AxisRefAttr, int64_t>;
++// We use an std::set so sub-axes are ordered by their pre-size and size, and
++// we can use set::lower_bound to find the first overlapping axis (see
++// getFirstOverlapping).
++using AvailableAxes = std::set<AxisRefAttr>;
++
++// Removes the common prefix of both `first` and `second`.
++void removeCommonPrefix(AxisList& first, AxisList& second, MeshAttr mesh) {
++  while (!first.empty() && !second.empty() && first.front() == second.front()) {
++    first.pop_front();
++    second.pop_front();
++  }
++  if (first.empty() || second.empty()) {
++    return;
++  }
++  if (OptionalAxisRef suffix =
++          first.front().removeCommonPrefix(second.front(), mesh)) {
++    first.front() = *suffix;
++    second.pop_front();
++  } else if (OptionalAxisRef suffix =
++                 second.front().removeCommonPrefix(first.front(), mesh)) {
++    second.front() = *suffix;
++    first.pop_front();
++  }
++}
+ 
+ // Returns a vector of `InnerAxisList` per dimension from the given `sharding`.
+ template <class InnerAxisList>
+@@ -68,555 +88,304 @@ SmallVector<InnerAxisList> getAxesPerDim(TensorShardingAttr sharding) {
+   return axesPerDim;
+ }
+ 
+-// Returns an iterator to the first axis in `orderedAxes` that overlaps with
+-// `axis`, or `orderedAxes.end()` if there is no such axis.
+-ArrayRef<AxisRefAttr>::iterator getFirstOverlapping(
+-    AxisRefAttr axis, ArrayRef<AxisRefAttr> orderedAxes) {
+-  if (orderedAxes.empty()) {
+-    return orderedAxes.end();
++AvailableAxes::const_iterator getPrevOrEnd(AvailableAxes::iterator it,
++                                           const AvailableAxes& availableAxes) {
++  return it == availableAxes.begin() ? availableAxes.end() : std::prev(it);
++}
++
++// Returns an iterator to the first axis in `availableAxes` that overlaps with
++// `axis`, or `availableAxes.end()` if there is no such axis.
++AvailableAxes::iterator getFirstOverlapping(
++    AxisRefAttr axis, const AvailableAxes& availableAxes) {
++  if (availableAxes.empty()) {
++    return availableAxes.end();
+   }
+-  auto* afterIt = llvm::lower_bound(orderedAxes, axis);
++  auto afterIt = availableAxes.lower_bound(axis);
++  auto beforeIt = getPrevOrEnd(afterIt, availableAxes);
+   // If there is at least one overlapping axis, the first one is necessarily
+-  // `afterIt` or `beforeIt = std::prev(afterIt)`.
++  // `afterIt` or `beforeIt`.
+   //
+   // Proof:
+-  // Given the definition of `lower_bound`, we have `beforeIt < A <= afterIt`,
+-  // where A is `axis`.
++  // Let `axis` be A and the first overlapping axis in `availableAxes` be B.
+   //
+-  // - For any entry B with `B < beforeIt < A`, B and `beforeIt` cannot overlap.
+-  //   Thus `beforeIt` isolates A and B such that they cannot overlap.
+-  // - For any entry C with `A <= afterIt < C`, if A and C overlap, then A and
+-  //   `afterIt` must overlap as well.
+-
+-  if (afterIt != orderedAxes.begin() && std::prev(afterIt)->overlaps(axis)) {
+-    return std::prev(afterIt);
++  // Note that there can't be two overlapping available axes. `lower_bound`
++  // returns the first available axis greater or equal to A.
++  //
++  // * If `B >= A`, then there can't be another available axis C such that
++  //   `A <= C < B` since it would have to be overlapping with A and thus the
++  //   first overlapping axis instead of B. Therefore, `lower_bound` will
++  //   return B.
++  // * If `B < A`, then there can't be another available axis C such that
++  //   `B < C < A` since B and C can't overlap. Therefore, `lower_bound` will
++  //   return the axis after B, which doesn't overlap with A.
++
++  if (beforeIt != availableAxes.end() && beforeIt->overlaps(axis)) {
++    return beforeIt;
+   }
+-  if (afterIt != orderedAxes.end() && afterIt->overlaps(axis)) {
++  if (afterIt != availableAxes.end() && afterIt->overlaps(axis)) {
+     return afterIt;
+   }
+-  return orderedAxes.end();
++  return availableAxes.end();
+ }
+ 
+-// Returns a map from `AxisRefAttr` to the dimension in `axesPerDim` that this
+-// axis appears.
+-AxisRefToDimMap getAxisRefToDimMap(ArrayRef<AxisList> axesPerDim) {
+-  AxisRefToDimMap result;
+-  for (auto [dim, axes] : llvm::enumerate(axesPerDim)) {
+-    for (AxisRefAttr axis : axes) {
+-      result.try_emplace(axis, dim);
+-    }
++// Removes `availableAxis` from `availableAxes` and adds the prefix and suffix
++// of `availableAxis` that don't overlap with `overlap` back to `availableAxes`.
++//
++// We assume that `availableAxis` overlaps with `overlap`.
++void removeOverlapFromAvailable(AxisRefAttr availableAxis, AxisRefAttr overlap,
++                                AvailableAxes& availableAxes, MeshAttr mesh) {
++  availableAxes.erase(availableAxis);
++  if (OptionalAxisRef prefix = availableAxis.getPrefixWithoutOverlap(overlap)) {
++    availableAxes.insert(*prefix);
+   }
+-  return result;
+-}
+-
+-SmallVector<AxisRefAttr> getOrderedAxes(ArrayRef<AxisList> axesPerDim) {
+-  SmallVector<AxisRefAttr> result;
+-  for (const AxisList& axes : axesPerDim) {
+-    result.append(axes.begin(), axes.end());
++  if (OptionalAxisRef suffix =
++          availableAxis.getSuffixWithoutOverlap(overlap, mesh)) {
++    availableAxes.insert(*suffix);
+   }
+-  llvm::sort(result);
+-  return result;
+ }
+ 
+-// Remove the common prefix of `inAxesPerDim` and `outAxesPerDim`.
+-void removeCommonPrefix(SmallVector<AxisList>& inAxesPerDim,
+-                        SmallVector<AxisList>& outAxesPerDim) {
+-  for (auto [inAxes, outAxes] : llvm::zip_equal(inAxesPerDim, outAxesPerDim)) {
+-    while (!inAxes.empty() && !outAxes.empty() &&
+-           inAxes.front() == outAxes.front()) {
+-      inAxes.pop_front();
+-      outAxes.pop_front();
+-    }
++// Adds `axis` to `availableAxes` and merges it with sub-axes in
++// `availableAxes` that can be merged with `axis`.
++//
++// We assume that `axis` doesn't overlap with any axis in `availableAxes`.
++void addAvailableAxis(AxisRefAttr axis, AvailableAxes& availableAxes,
++                      MeshAttr mesh) {
++  // `lower_bound` returns the first available axis greater or equal to `axis`,
++  // and we know `axis` doesn't overlap with any available axis.
++  auto afterIt = availableAxes.lower_bound(axis);
++  auto beforeIt = getPrevOrEnd(afterIt, availableAxes);
++  AxisRefAttr axisToAdd = axis;
++  // Try to merge `axisToAdd` with the first axis greater than it from the left.
++  if (afterIt != availableAxes.end() && axisToAdd.canMerge(*afterIt)) {
++    axisToAdd = axisToAdd.merge(*afterIt, mesh);
++    availableAxes.erase(afterIt);
+   }
+-}
+ 
+-// In case an axis A in `axes` overlaps but isn't equal to an axis B in
+-// `orderedOtherAxes`, decomposes A into 1-3 sub-axes (overlap and
+-// non-overlapping prefix and suffix), and replaces A with the decomposed
+-// sub-axes that form it.
+-void alignSubAxesByDecomposition(AxisList& axes,
+-                                 ArrayRef<AxisRefAttr> orderedOtherAxes,
+-                                 MeshAttr mesh) {
+-  auto axisIt = axes.begin();
+-  while (axisIt != axes.end()) {
+-    AxisRefAttr axis = *axisIt;
+-    auto* overlapIt = getFirstOverlapping(axis, orderedOtherAxes);
+-    // There are two paths to complete the while loop below:
+-    // 1. the while condition is not met from the start, in which case we need
+-    //    to advance `axisIt`.
+-    // 2. we enter the while until the condition isn't met, in which case we
+-    //    only need to advance `axisIt` if it points to a created suffix.
+-    bool axisAdvancedInWhile = false;
+-    while (overlapIt != orderedOtherAxes.end() && overlapIt->canCoexist(axis) &&
+-           !overlapIt->contains(axis) && overlapIt->overlaps(axis)) {
+-      axisIt = axes.erase(axisIt);
+-      if (OptionalAxisRef prefix = axis.getPrefixWithoutOverlap(*overlapIt)) {
+-        axes.insert(axisIt, *prefix);
+-      }
+-      axes.insert(axisIt, *axis.getOverlap(*overlapIt));
+-      if (OptionalAxisRef suffix =
+-              axis.getSuffixWithoutOverlap(*overlapIt, mesh)) {
+-        // If there is a suffix, that should be the next axis to process.
+-        axisIt = axes.insert(axisIt, *suffix);
+-        axis = *suffix;
+-        ++overlapIt;
+-        axisAdvancedInWhile = false;
+-      } else {
+-        // Otherwise, we're done with the current axis.
+-        axisAdvancedInWhile = true;
+-        break;
+-      }
+-    }
+-    if (!axisAdvancedInWhile) {
+-      ++axisIt;
+-    }
++  // Try to merge `axisToAdd` with the last axis less than it from the right.
++  if (beforeIt != availableAxes.end() && beforeIt->canMerge(axisToAdd)) {
++    axisToAdd = beforeIt->merge(axisToAdd, mesh);
++    availableAxes.erase(beforeIt);
+   }
++  availableAxes.insert(axisToAdd);
+ }
+ 
+-// In case two `AxisRefAttr` in `inAxesPerDim` and `outAxesPerDim` respectively
+-// overlap but aren't equal, decomposes them into up to three sub-axes (overlap
+-// and non-overlapping prefix and suffix), and replaces each original axis with
+-// the decomposed sub-axes that form it (see overload above).
+-//
+-// For example, "a":(1)8 and "a":(4)4 are decomposed into "a":(1)4, "a":(4)2,
+-// and "a":(8)2. Then "a":(1)8 is replaced with ["a":(1)4, "a":(4)2] and
+-// "a":(4)4 is replaced with ["a":(4)2, "a":(8)2].
+-void alignSubAxesByDecomposition(SmallVector<AxisList>& inAxesPerDim,
+-                                 SmallVector<AxisList>& outAxesPerDim,
+-                                 MeshAttr mesh) {
+-  SmallVector<AxisRefAttr> orderedInAxes = getOrderedAxes(inAxesPerDim);
+-  SmallVector<AxisRefAttr> orderedOutAxes = getOrderedAxes(outAxesPerDim);
+-  for (AxisList& inAxes : inAxesPerDim) {
+-    alignSubAxesByDecomposition(inAxes, orderedOutAxes, mesh);
++// If there is a prefix of `axis` that fully overlaps with an axis in
++// `availableAxes`, returns that prefix and removes it from `availableAxes`.
++// Otherwise, returns `std::nullopt` and leaves `availableAxes` unchanged.
++std::optional<AxisRefAttr> takeAvailablePrefix(AxisRefAttr axis,
++                                               AvailableAxes& availableAxes,
++                                               MeshAttr mesh) {
++  // It's enough to check the first overlapping axis since any other overlapping
++  // axis would necessarily not fully overlap with a prefix of `axis`.
++  auto availableIt = getFirstOverlapping(axis, availableAxes);
++  if (availableIt == availableAxes.end()) {
++    return std::nullopt;
+   }
+-  for (AxisList& outAxes : outAxesPerDim) {
+-    alignSubAxesByDecomposition(outAxes, orderedInAxes, mesh);
++  AxisRefAttr availableAxis = *availableIt;
++  if (OptionalAxisRef result = axis.getPrefixWithOverlap(availableAxis, mesh)) {
++    removeOverlapFromAvailable(availableAxis, *result, availableAxes, mesh);
++    return result;
+   }
++  return std::nullopt;
+ }
+ 
+-// Removes the axes in `axesToPop` from the back of `currentAxes`.
++// Removes all axis refs in `axes` from `availableAxes`.
+ //
+-// Note that `axesToPop` can have decomposed sub-axes of an axis in
+-// `currentAxes`, which is taken into account.
+-void popBackFromCurrentAxes(SmallVector<AxisRefAttr>& currentAxes,
+-                            const AxisList& axesToPop,
+-                            AxisList::iterator startIt) {
+-  for (auto it = axesToPop.rbegin(); it != std::make_reverse_iterator(startIt);
+-       ++it) {
+-    if (auto prefix = currentAxes.back().getPrefixWithoutOverlap(*it)) {
+-      currentAxes.back() = *prefix;
+-    } else {
+-      currentAxes.pop_back();
+-    }
++// We assume for every axis ref in `axes` there is exactly one axis ref in
++// `availableAxes` that contains it, and if they aren't equal, we remove the
++// containing axis and add back the prefix and suffix that don't overlap, if
++// exist.
++void removeUnavailableAxes(ArrayRef<AxisRefAttr> axes, MeshAttr mesh,
++                           AvailableAxes& availableAxes) {
++  for (AxisRefAttr axis : axes) {
++    removeOverlapFromAvailable(*getFirstOverlapping(axis, availableAxes), axis,
++                               availableAxes, mesh);
+   }
+ }
+ 
+-struct AllToAllInfo {
+-  SmallVector<AxisRefAttr> axes;
+-  int64_t tgtDim;
+-
+-  explicit AllToAllInfo(int64_t tgtDim) : tgtDim(tgtDim) {}
+-};
+-
+-// A class that applies an algorithm to transform an input sharding into an
+-// output sharding via a sequence of collectives.
+-//
+-// The current sharding is initialized with the input sharding, and after each
+-// collective insertion, the current sharding is updated w.r.t the collective,
+-// until it matches the output sharding and we are done.
+-//
+-// We define the current state of the transformation as follows:
+-//
+-// - `inAxesPerDim` - the axes in the current sharding per dimension, such that
+-//   the common prefix with the output sharding is removed.
+-// - `outAxesPerDim` - the axes in the output sharding per dimension, such that
+-//   the common prefix with the current sharding is removed.
+-// - `currentAxesPerDim` - the axes in the current sharding, including the
+-//   common prefix with the output sharding.
+-//
+-// These invariants are maintained throughout the algorithm, and specifically
+-// after each collective insertion.
+-//
+-// We also maintain `inAxisToDimMap` and `outAxisToDimMap`, which are used to
+-// find the dimension in `inAxesPerDim` and `outAxesPerDim` respectively where
+-// a given axis ref appears. `inAxisToDimMap` is updated when in axes are
+-// removed or moved to another dim, and `outAxisToDimMap` remains unchanged.
+-//
+-// Note that `inAxesPerDim` and `outAxesPerDim` represent the *diff* between the
+-// current and output sharding, i.e., when they are empty the shardings match
+-// exactly. The algorithm inserts collectives and updates the current state
+-// accordingly, until both `inAxesPerDim` and `outAxesPerDim` are empty.
+-class CollectiveInserter {
+- public:
+-  CollectiveInserter(TensorShardingAttr inSharding,
+-                     TensorShardingAttr outSharding, MeshAttr mesh,
+-                     Value result, ConversionPatternRewriter& rewriter,
+-                     Location loc)
+-      : rewriter(rewriter),
+-        loc(loc),
+-        mesh(mesh),
+-        meshOrRef(inSharding.getMeshOrRef()),
+-        result(result),
+-        inAxesPerDim(getAxesPerDim<AxisList>(inSharding)),
+-        outAxesPerDim(getAxesPerDim<AxisList>(outSharding)),
+-        currentAxesPerDim(getAxesPerDim<SmallVector<AxisRefAttr>>(inSharding)),
+-        collectiveAxesPerDim(inSharding.getRank()) {
+-    // We align sub-axes between the input and output axes, so that we can treat
+-    // sub-axes like full axes and assume any two sub-axes that overlap are also
+-    // equal, which allows using them as keys in a hash map.
+-    alignSubAxesByDecomposition(inAxesPerDim, outAxesPerDim, mesh);
+-    // We remove the common prefix of `inAxesPerDim` and `outAxesPerDim`, since
+-    // those axes stay exactly the same during the reshard. We are left with
+-    // `inAxesPerDim` and `outAxesPerDim` that need to become empty, via a
+-    // sequence of collectives.
+-    removeCommonPrefix(inAxesPerDim, outAxesPerDim);
+-
+-    inAxisToDimMap = getAxisRefToDimMap(inAxesPerDim);
+-    outAxisToDimMap = getAxisRefToDimMap(outAxesPerDim);
+-  }
+-
+-  // Inserts a sequence of collectives to transform the input sharding into the
+-  // output sharding, and returns the result of the final collective.
+-  //
+-  // If the input and output sharding are the same, returns the input value
+-  // without inserting any collective.
+-  Value insert() {
+-    while (!isDone()) {
+-      // 1. Try to insert an all-slice, that decreases the size of the tensor.
+-      tryAllSlice();
+-
+-      // 2. Try to insert all-to-alls, that preserves the size of the tensor.
+-      tryAllToAlls();
+-
+-      // 3. Try to insert an all-gather, that increases the size of the tensor.
+-      tryAllGather();
+-    }
+-
+-    return result;
++// Returns all available axes or sub-axes in `mesh` that aren't used in
++// `axesPerDim`.
++AvailableAxes getAvailableAxes(ArrayRef<SmallVector<AxisRefAttr>> axesPerDim,
++                               MeshAttr mesh) {
++  AvailableAxes unboundAxes;
++  for (MeshAxisAttr axis : mesh.getAxes()) {
++    unboundAxes.insert(AxisRefAttr::get(mesh.getContext(), axis.getName()));
+   }
+-
+- private:
+-  // Returns true if the input sharding has been transformed into the output
+-  // sharding, i.e., both `inAxesPerDim` and `outAxesPerDim` are empty.
+-  bool isDone() const {
+-    return llvm::all_of(inAxesPerDim, std::mem_fn(&AxisList::empty)) &&
+-           llvm::all_of(outAxesPerDim, std::mem_fn(&AxisList::empty));
+-  }
+-
+-  MLIRContext* getContext() const { return rewriter.getContext(); }
+-
+-  int64_t getRank() const { return inAxesPerDim.size(); }
+-
+-  TensorShardingAttr getCurrentSharding() const {
+-    return TensorShardingAttr::getClosed(getContext(), meshOrRef,
+-                                         currentAxesPerDim);
++  for (ArrayRef<AxisRefAttr> axes : axesPerDim) {
++    removeUnavailableAxes(axes, mesh, unboundAxes);
+   }
++  return unboundAxes;
++}
+ 
+-  // If an all-gather can be performed on `dim`, returns the axes to gather for
+-  // that dimension.
+-  //
+-  // We gather all axes in `gatheringAxes = inAxesPerDim[dim]`, and update the
+-  // internal state as follows:
+-  //
+-  // - `inAxesPerDim[dim]` is cleared.
+-  // - `gatheringAxes` are popped from the back of `currentAxesPerDim[dim]`.
+-  //
+-  // For example:
+-  //
+-  // Input: `dim = 1`
+-  //
+-  // Initial state:
+-  // - `inAxesPerDim = [[], ["x", "y"]]`,
+-  // - `outAxesPerDim = [[], []]`
+-  // - `currentAxesPerDim = [["w"], ["z", "x", "y"]]`
+-  //
+-  // Returns: `["x", "y"]`, and updates:
+-  // - `inAxesPerDim = [[], []]`,
+-  // - `outAxesPerDim = [[], []]`
+-  // - `currentAxesPerDim = [["w"], ["z"]]`
+-  SmallVector<AxisRefAttr> getGatheringAxes(int64_t dim) {
+-    AxisList& inAxes = inAxesPerDim[dim];
+-    if (inAxes.empty()) {
+-      return {};
+-    }
+-    SmallVector<AxisRefAttr>& currentAxes = currentAxesPerDim[dim];
+-    SmallVector<AxisRefAttr> gatheringAxes;
+-    gatheringAxes.reserve(inAxes.size());
+-    popBackFromCurrentAxes(currentAxes, inAxes, inAxes.begin());
+-    for (AxisRefAttr axis : inAxes) {
+-      addAxisOrMerge(gatheringAxes, axis, mesh);
+-      inAxisToDimMap.erase(axis);
+-    }
+-    inAxes.clear();
+-    return gatheringAxes;
++// Returns the axes to slice for a specific dimension.
++//
++// If `inAxes` is empty, the prefix of `outAxes` that is available (i.e., fully
++// contained by axes in `availableAxes`) can be sliced. The slicing axes are
++// removed from `outAxes` and `availableAxes`, and added to `currentAxes`.
++SmallVector<AxisRefAttr> getSlicingAxes(const AxisList& inAxes,
++                                        AxisList& outAxes,
++                                        SmallVector<AxisRefAttr>& currentAxes,
++                                        AvailableAxes& availableAxes,
++                                        MeshAttr mesh) {
++  if (!inAxes.empty()) {
++    return {};
+   }
+-
+-  // Tries to insert an `sdy.all_gather`.
+-  void tryAllGather() {
+-    bool hasGatheringAxes = false;
+-    for (auto [dim, collectiveAxes] : llvm::enumerate(collectiveAxesPerDim)) {
+-      SmallVector<AxisRefAttr> gatheringAxes = getGatheringAxes(dim);
+-      if (!gatheringAxes.empty()) {
+-        hasGatheringAxes = true;
+-      }
+-      collectiveAxes = AxisRefListAttr::get(getContext(), gatheringAxes);
+-    }
+-    if (hasGatheringAxes) {
+-      result = rewriter.create<AllGatherOp>(loc, result, collectiveAxesPerDim,
+-                                            getCurrentSharding());
++  SmallVector<AxisRefAttr> slicingAxes;
++  while (!outAxes.empty()) {
++    AxisRefAttr outAxis = outAxes.front();
++    std::optional<AxisRefAttr> availablePrefix =
++        takeAvailablePrefix(outAxis, availableAxes, mesh);
++    if (!availablePrefix) {
++      break;
+     }
+-  }
+-
+-  // TODO(b/392952931): currently we are greedily slicing and all-to-all-ing
+-  // axes even if the destination dimension is too small to accommodate the
+-  // extra axes. This would introduce padding which is sub-optimal, thus we
+-  // should only do this if the dimension has enough space left, or slice as
+-  // much as possible to fill the space.
+-
+-  // If an all-slice can be performed, returns the axes to slice for each
+-  // dimension.
+-  //
+-  // For each dimension d, each axis X in `outAxesPerDim[d]` that isn't present
+-  // in `inAxisToDimMap` (i.e., available to slice) is sliced as follows:
+-  //
+-  // - If the last axis Y before X in `outAxesPerDim[d]` that isn't sliced holds
+-  //   `inAxisToDimMap[Y] == d`, or there isn't such an axis, then X is sliced
+-  //   on that dimension.
+-  // - Otherwise, X is sliced on the mapped dimension (`inAxisToDimMap[Y]`), so
+-  //   we can later do an all-to-all on a smaller tensor to move both axes to
+-  //   the other dimension.
+-  //
+-  // Returns std::nullopt if there are no slicing axes in any dimension.
+-  //
+-  // The internal state is updated as follows for each dimension `d` and the
+-  // slicing axes on that dimension (`slicingAxes`):
+-  //
+-  // - `slicingAxes` are appended to `inAxesPerDim[d]` and
+-  //   `currentAxesPerDim[d]`.
+-  // - The common prefix between `inAxesPerDim[d]` and `outAxesPerDim[d]` is
+-  //   removed from both.
+-  //
+-  // Note that this brings us closer to being done, i.e., having both
+-  // `inAxesPerDim` and `outAxesPerDim` empty, because we take axes that are
+-  // present in `outAxesPerDim` but not in `inAxesPerDim`, and either:
+-  //
+-  // - Remove them from `outAxesPerDim`, if they are where they need to be.
+-  // - Add them to `inAxesPerDim` otherwise, which will allow us to perform an
+-  //   all-to-all or collective-permute on them to get them to the right place.
+-  //
+-  // For example:
+-  //
+-  // Initial state:
+-  // - `inAxesPerDim = [[], ["y"], []]`,
+-  // - `outAxesPerDim = [["x"], [], ["y", "z", "w"]]`
+-  // - `currentAxesPerDim = [["u"], ["y"], []]`
+-  //
+-  // Returns: `[["x"], ["z", "w"], []]`, and updates:
+-  // - `inAxesPerDim = [[], ["y", "z", "w"], []]`,
+-  // - `outAxesPerDim = [[], [], ["y", "z", "w"]]`
+-  // - `currentAxesPerDim = [["u", "x"], ["y", "z", "w"], []]`
+-  std::optional<AxesPerDim> getSlicingAxesPerDim() {
+-    AxesPerDim slicingAxesPerDim(currentAxesPerDim.size());
+-
+-    bool hasSlicingAxes = false;
+-    for (auto [outDim, outAxes] : llvm::enumerate(outAxesPerDim)) {
+-      auto outIt = outAxes.begin();
+-      std::optional<int64_t> lastInDim;
+-      while (outIt != outAxes.end()) {
+-        AxisRefAttr outAxis = *outIt;
+-        if (auto inAxisEntryIt = inAxisToDimMap.find(outAxis);
+-            inAxisEntryIt != inAxisToDimMap.end()) {
+-          // Out axis isn't available to slice.
+-          lastInDim = inAxisEntryIt->second;
+-          ++outIt;
+-          continue;
+-        }
+-        // We should slice `outAxis` at `lastInDim` if present or `outDim`
+-        // otherwise.
+-        hasSlicingAxes = true;
+-        int64_t slicingDim = lastInDim.value_or(outDim);
+-        addAxisOrMerge(slicingAxesPerDim[slicingDim], outAxis, mesh);
+-        addAxisOrMerge(currentAxesPerDim[slicingDim], outAxis, mesh);
+-        AxisList& inAxes = inAxesPerDim[slicingDim];
+-        if (inAxes.empty() && outIt == outAxes.begin()) {
+-          // Slicing axis is where it needs to be.
+-          outIt = outAxes.erase(outIt);
+-        } else {
+-          inAxisToDimMap.try_emplace(outAxis, slicingDim);
+-          inAxes.push_back(outAxis);
+-          ++outIt;
+-        }
+-      }
++    slicingAxes.push_back(*availablePrefix);
++    addAxisOrMerge(currentAxes, *availablePrefix, mesh);
++    outAxes.pop_front();
++    if (*availablePrefix != outAxis) {
++      // Safe to dereference since we know `availablePrefix` and `outAxis` have
++      // a common prefix and aren't equal.
++      outAxes.push_front(
++          *outAxis.getSuffixWithoutOverlap(*availablePrefix, mesh));
++      break;
+     }
+-
+-    return hasSlicingAxes ? std::make_optional(slicingAxesPerDim)
+-                          : std::nullopt;
+   }
++  return slicingAxes;
++}
+ 
+-  // Tries to insert an `sdy.all_slice`.
+-  void tryAllSlice() {
+-    if (std::optional<AxesPerDim> slicingAxesPerDim = getSlicingAxesPerDim()) {
+-      for (auto [collectiveAxes, slicingAxes] :
+-           llvm::zip_equal(collectiveAxesPerDim, *slicingAxesPerDim)) {
+-        collectiveAxes = AxisRefListAttr::get(getContext(), slicingAxes);
+-      }
+-      result = rewriter.create<AllSliceOp>(loc, result, collectiveAxesPerDim,
+-                                           getCurrentSharding());
+-    }
++// Returns the axes to gather for a specific dimension.
++//
++// All axes in `inAxes` are gathered greedily. The gathering axes are removed
++// from `availableAxes`, popped from the back of `currentAxes`, and `inAxes` is
++// cleared.
++SmallVector<AxisRefAttr> getGatheringAxes(AxisList& inAxes,
++                                          SmallVector<AxisRefAttr>& currentAxes,
++                                          AvailableAxes& availableAxes,
++                                          MeshAttr mesh) {
++  if (inAxes.empty()) {
++    return {};
+   }
+-
+-  // If an all-to-all can be performed for the given source dimension `srcDim`,
+-  // returns the axes and target dimension of this all-to-all.
+-  //
+-  // The suffix of axes in `inAxesPerDim[srcDim]` that are mapped to the same
+-  // dimension in `outAxisToDimMap` are all-to-all-ed with the mapped dimension
+-  // as the target (tgtDim).
+-  //
+-  // The internal state is updated as follows for `allToAllAxes` and `tgtDim`:
+-  //
+-  // - `allToAllAxes` are popped from the back of `inAxesPerDim[srcDim]` and
+-  //   `currentAxesPerDim[srcDim]`.
+-  // - `allToAllAxes` are appended to `inAxesPerDim[tgtDim]` and
+-  //   `currentAxesPerDim[tgtDim]`.
+-  // - The common prefix between `inAxesPerDim[tgtDim]` and
+-  //   `outAxesPerDim[tgtDim]` is removed from both.
+-  //
+-  // Note that this brings us closer to being done, i.e., having both
+-  // `inAxesPerDim` and `outAxesPerDim` empty, because we move axes from
+-  // `inAxesPerDim[srcDim]` to either:
+-  //
+-  // - Where they need to be in `tgtDim`, in which case they are removed from
+-  //   `outAxesPerDim[tgtDim]`.
+-  // - Move axes from `inAxesPerDim[srcDim]` to `inAxesPerDim[tgtDim]`, which
+-  //   will allow us to perform a collective permute on them to get them to the
+-  //   right place.
+-  //
+-  // For example:
+-  //
+-  // Input: `srcDim = 1`
+-  //
+-  // Initial state:
+-  // - `inAxesPerDim = [["w"], ["x", "y", "z"], []]`,
+-  // - `outAxesPerDim = [["x"], [], ["y", "z"]]`
+-  // - `currentAxesPerDim = [["w"], ["x", "y", "z"], []]`
+-  //
+-  // First call returns: `{axes = ["y", "z"], tgtDim = 2}`, and updates:
+-  // - `inAxesPerDim = [["w"], ["x"], []]`,
+-  // - `outAxesPerDim = [["x"], [], []]`
+-  // - `currentAxesPerDim = [["w"], ["x"], ["y", "z"]]`
+-  //
+-  // Second call returns: `{axes = ["x"], tgtDim = 0}`, and updates:
+-  // - `inAxesPerDim = [["w", "x"], [], []]`,
+-  // - `outAxesPerDim = [["x"], [], []]`
+-  // - `currentAxesPerDim = [["w", "x"], [], ["y", "z"]]`
+-  std::optional<AllToAllInfo> getAllToAllInfo(int64_t srcDim) {
+-    AxisList& srcInAxes = inAxesPerDim[srcDim];
+-
+-    auto axisRevIt = srcInAxes.rbegin();
+-    int64_t numAxes = 0;
+-    std::optional<int64_t> optTgtDim;
+-    for (; axisRevIt != srcInAxes.rend(); ++axisRevIt) {
+-      auto outAxisEntryIt = outAxisToDimMap.find(*axisRevIt);
+-      if (outAxisEntryIt == outAxisToDimMap.end()) {
+-        break;
+-      }
+-      int64_t outAxisDim = outAxisEntryIt->second;
+-      if (outAxisDim == srcDim || (optTgtDim && outAxisDim != *optTgtDim)) {
+-        break;
+-      }
+-      optTgtDim = outAxisDim;
+-      ++numAxes;
+-    }
+-
+-    if (!optTgtDim) {
+-      // Can't do an all-to-all from `srcDim` to any dimension.
+-      return std::nullopt;
+-    }
+-
+-    auto startInAxisIt = axisRevIt.base();
+-
+-    AllToAllInfo result(*optTgtDim);
+-    auto& [allToAllAxes, tgtDim] = result;
+-    allToAllAxes.reserve(numAxes);
+-
+-    SmallVector<AxisRefAttr>& srcCurrentAxes = currentAxesPerDim[srcDim];
+-    SmallVector<AxisRefAttr>& tgtCurrentAxes = currentAxesPerDim[tgtDim];
+-
+-    popBackFromCurrentAxes(srcCurrentAxes, srcInAxes, startInAxisIt);
+-
+-    AxisList& tgtInAxes = inAxesPerDim[tgtDim];
+-    AxisList& tgtOutAxes = outAxesPerDim[tgtDim];
+-    auto srcInAxisIt = startInAxisIt;
+-    while (srcInAxisIt != srcInAxes.end()) {
+-      AxisRefAttr axis = *srcInAxisIt;
+-      addAxisOrMerge(allToAllAxes, axis, mesh);
+-      addAxisOrMerge(tgtCurrentAxes, axis, mesh);
+-      srcInAxisIt = srcInAxes.erase(srcInAxisIt);
+-      inAxisToDimMap.erase(axis);
+-      if (tgtInAxes.empty() && tgtOutAxes.front() == axis) {
+-        tgtOutAxes.pop_front();
+-      } else {
+-        tgtInAxes.push_back(axis);
+-        inAxisToDimMap.try_emplace(axis, tgtDim);
+-      }
+-    }
+-
+-    return result;
++  SmallVector<AxisRefAttr> gatheringAxes = llvm::to_vector(inAxes);
++  currentAxes.pop_back_n(inAxes.size() - 1);
++  if (OptionalAxisRef prefix =
++          currentAxes.back().getPrefixWithoutOverlap(inAxes.front())) {
++    currentAxes.back() = *prefix;
++  } else {
++    currentAxes.pop_back();
+   }
+ 
+-  // Tries to insert a sequence of `sdy.all_to_all`s.
+-  void tryAllToAlls() {
+-    bool allToAllCreated = false;
+-    do {
+-      allToAllCreated = false;
+-      for (int64_t srcDim = 0; srcDim < getRank(); ++srcDim) {
+-        if (auto info = getAllToAllInfo(srcDim)) {
+-          result =
+-              rewriter.create<AllToAllOp>(loc, result, srcDim, info->tgtDim,
+-                                          info->axes, getCurrentSharding());
+-          allToAllCreated = true;
+-        }
+-      }
+-    } while (allToAllCreated);
++  for (AxisRefAttr axis : inAxes) {
++    addAvailableAxis(axis, availableAxes, mesh);
+   }
+-
+-  ConversionPatternRewriter& rewriter;
+-  Location loc;
+-  MeshAttr mesh;
+-  Attribute meshOrRef;
+-  Value result;
+-  SmallVector<AxisList> inAxesPerDim, outAxesPerDim;
+-  AxesPerDim currentAxesPerDim;
+-  SmallVector<AxisRefListAttr> collectiveAxesPerDim;
+-  AxisRefToDimMap inAxisToDimMap, outAxisToDimMap;
+-};
++  inAxes.clear();
++  return gatheringAxes;
++}
+ 
+ class ReshardPattern : public OpConversionPattern<ReshardOp> {
+  public:
+   using OpConversionPattern::OpConversionPattern;
+ 
+  private:
++  // For the moment we only consider all_gather and all_slice.
++  // TODO(b/380226848): Add support for other collectives.
+   LogicalResult matchAndRewrite(
+       ReshardOp op, OpAdaptor adaptor,
+       ConversionPatternRewriter& rewriter) const override {
+-    TensorShardingAttr inSharding = getSharding(adaptor.getInput());
+-    TensorShardingAttr outSharding = adaptor.getSharding();
++    TensorShardingAttr inputSharding = getSharding(adaptor.getInput());
++    TensorShardingAttr outputSharding = adaptor.getSharding();
+     // Here it's safe to assume that shardings' meshes have a name.
+-    if (inSharding.getRank() != outSharding.getRank() ||
+-        inSharding.getMeshName() != outSharding.getMeshName()) {
++    if (inputSharding.getRank() != outputSharding.getRank() ||
++        inputSharding.getMeshName() != outputSharding.getMeshName()) {
+       return rewriter.notifyMatchFailure(
+           op, [](Diagnostic& diag) { diag << "Incompatible shardings"; });
+     }
++    int64_t rank = inputSharding.getRank();
+ 
+     // TODO(tomnatan): we should verify that the operand of ReshardOp has a
+     // sharding.
+     // TODO(tomnatan): use a SymbolTable.
+ 
+-    CollectiveInserter collectiveInserter(
+-        inSharding, outSharding, inSharding.getMesh(op), adaptor.getInput(),
+-        rewriter, op.getLoc());
+-    rewriter.replaceOp(op, collectiveInserter.insert());
++    MeshAttr mesh = inputSharding.getMesh(op);
++    SmallVector<AxisList> inAxesPerDim = getAxesPerDim<AxisList>(inputSharding);
++    SmallVector<AxisList> outAxesPerDim =
++        getAxesPerDim<AxisList>(outputSharding);
++    // We remove the common prefix of `inAxes` and `outAxes`, since those axes
++    // stay exactly the same during the reshard. We are left with `inAxes` that
++    // need to be transformed into `outAxes`, via a sequence of collectives.
++    for (auto [inAxes, outAxes] :
++         llvm::zip_equal(inAxesPerDim, outAxesPerDim)) {
++      removeCommonPrefix(inAxes, outAxes, mesh);
++    }
++
++    auto hasRemainingAxes = [](const AxisList& axes) { return !axes.empty(); };
++    bool hasRemainingInAxes = llvm::any_of(inAxesPerDim, hasRemainingAxes);
++    bool hasRemainingOutAxes = llvm::any_of(outAxesPerDim, hasRemainingAxes);
++
++    if (!hasRemainingInAxes && !hasRemainingOutAxes) {
++      rewriter.replaceOp(op, adaptor.getInput());
++      return success();
++    }
++
++    SmallVector<SmallVector<AxisRefAttr>> currentAxesPerDim =
++        getAxesPerDim<SmallVector<AxisRefAttr>>(inputSharding);
++    AvailableAxes availableAxes = getAvailableAxes(currentAxesPerDim, mesh);
++
++    Value input = adaptor.getInput();
++    MLIRContext* context = rewriter.getContext();
++
++    auto getCurrentSharding = [&]() {
++      return TensorShardingAttr::getClosed(
++          context, inputSharding.getMeshOrRef(), currentAxesPerDim);
++    };
++
++    SmallVector<AxisRefListAttr> collectiveAxesPerDim(rank);
++
++    // We aren't done until both `inAxesPerDim` and `outAxesPerDim` are
++    // empty.
++    // TODO(b/380226848): this is an initial implementation that only inserts
++    // all-gathers and all-slices, and greedily all-gathers axes after the first
++    // attempt to insert an all-slice.
++    while (hasRemainingInAxes || hasRemainingOutAxes) {
++      // 1. Try to insert an all-slice first, as it decreases the size of the
++      // tensor.
++      hasRemainingOutAxes = false;
++      bool hasSlicingAxes = false;
++      for (auto [inAxes, outAxes, currentAxes, collectiveAxes] :
++           llvm::zip_equal(inAxesPerDim, outAxesPerDim, currentAxesPerDim,
++                           collectiveAxesPerDim)) {
++        SmallVector<AxisRefAttr> slicingAxes =
++            getSlicingAxes(inAxes, outAxes, currentAxes, availableAxes, mesh);
++        if (!slicingAxes.empty()) {
++          hasSlicingAxes = true;
++        }
++        if (!outAxes.empty()) {
++          hasRemainingOutAxes = true;
++        }
++        collectiveAxes = AxisRefListAttr::get(context, slicingAxes);
++      }
++      if (hasSlicingAxes) {
++        input = rewriter.create<AllSliceOp>(
++            op.getLoc(), input, collectiveAxesPerDim, getCurrentSharding());
++      }
++
++      // 2. Try to insert an all-gather, that increases the size of the tensor.
++      hasRemainingInAxes = false;
++      bool hasGatheringAxes = false;
++      for (auto [inAxes, currentAxes, collectiveAxes] : llvm::zip_equal(
++               inAxesPerDim, currentAxesPerDim, collectiveAxesPerDim)) {
++        SmallVector<AxisRefAttr> gatheringAxes =
++            getGatheringAxes(inAxes, currentAxes, availableAxes, mesh);
++        if (!gatheringAxes.empty()) {
++          hasGatheringAxes = true;
++        }
++        collectiveAxes = AxisRefListAttr::get(context, gatheringAxes);
++      }
++      if (hasGatheringAxes) {
++        input = rewriter.create<AllGatherOp>(
++            op.getLoc(), input, collectiveAxesPerDim, getCurrentSharding());
++      }
++    }
+ 
++    rewriter.replaceOp(op, input);
+     return success();
+   }
+ };
+@@ -628,7 +397,7 @@ struct ReshardToCollectivesPass
+   LogicalResult initialize(MLIRContext* context) final {
+     target = std::make_shared<ConversionTarget>(*context);
+     target->addIllegalOp<ReshardOp>();
+-    target->addLegalOp<AllGatherOp, AllSliceOp, AllToAllOp>();
++    target->addLegalOp<AllGatherOp, AllSliceOp>();
+ 
+     RewritePatternSet patternsInternal(context);
+     patternsInternal.add<ReshardPattern>(context);
+diff --git a/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir b/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
+index 1a87721..0f92727 100644
+--- a/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/reshard_to_collectives.mlir
+@@ -5,8 +5,6 @@ sdy.mesh @mesh2d = <["x"=2, "y"=2]>
+ sdy.mesh @mesh2d_4x2 = <["x"=4, "y"=2]>
+ sdy.mesh @mesh2d_2x8 = <["x"=2, "y"=8]>
+ sdy.mesh @mesh3d = <["x"=2, "y"=2, "z"=2]>
+-sdy.mesh @mesh3d_4x2x4 = <["x"=4, "y"=2, "z"=4]>
+-sdy.mesh @mesh4d_z4 = <["x"=2, "y"=2, "z"=4, "w"=2]>
+ sdy.mesh @mesh4d_w4 = <["x"=2, "y"=2, "z"=2, "w"=4]>
+ sdy.mesh @mesh4d_w16 = <["x"=2, "y"=2, "z"=2, "w"=16]>
+ 
+@@ -17,222 +15,72 @@ func.func @redundant_reshard(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.shardin
+   return %0 : tensor<16x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @all_gather_single_axis
+-func.func @all_gather_single_axis(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2d, [{"y"}, {"x"}]>}) -> tensor<16x8xf32> {
++// CHECK-LABEL: func @reshard_to_all_gather_single_axis
++func.func @reshard_to_all_gather_single_axis(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2d, [{"y"}, {"x"}]>}) -> tensor<16x8xf32> {
+   // CHECK-NEXT: sdy.all_gather [{}, {"x"}] %arg0 out_sharding=<@mesh2d, [{"y"}, {}]>
+   %0 = sdy.reshard %arg0 <@mesh2d, [{"y"}, {}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @all_gather_multiple_axes
+-func.func @all_gather_multiple_axes(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{"x", "y", "z"}, {}]>}) -> tensor<16x8xf32> {
++// CHECK-LABEL: func @reshard_to_all_gather_multiple_axes
++func.func @reshard_to_all_gather_multiple_axes(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{"x", "y", "z"}, {}]>}) -> tensor<16x8xf32> {
+   // CHECK-NEXT: sdy.all_gather [{"y", "z"}, {}] %arg0 out_sharding=<@mesh3d, [{"x"}, {}]>
+   %0 = sdy.reshard %arg0 <@mesh3d, [{"x"}, {}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @all_gather_multiple_dims
+-func.func @all_gather_multiple_dims(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{"y", "z"}, {"x"}]>}) -> tensor<16x8xf32> {
++// CHECK-LABEL: func @reshard_to_all_gather_multiple_dims
++func.func @reshard_to_all_gather_multiple_dims(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{"y", "z"}, {"x"}]>}) -> tensor<16x8xf32> {
+   // CHECK-NEXT: sdy.all_gather [{"z"}, {}] %arg0 out_sharding=<@mesh3d, [{"y"}, {"x"}]>
+   %0 = sdy.reshard %arg0 <@mesh3d, [{"y"}, {"x"}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @all_gather_with_subaxis
+-func.func @all_gather_with_subaxis(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2d_2x8, [{"y"}, {"x"}]>}) -> tensor<16x8xf32> {
++// CHECK-LABEL: func @reshard_to_all_gather_with_subaxis
++func.func @reshard_to_all_gather_with_subaxis(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh2d_2x8, [{"y"}, {"x"}]>}) -> tensor<16x8xf32> {
+   // CHECK-NEXT: sdy.all_gather [{"y":(4)2}, {}] %arg0 out_sharding=<@mesh2d_2x8, [{"y":(1)4}, {"x"}]>
+  %0 = sdy.reshard %arg0 <@mesh2d_2x8, [{"y":(1)4}, {"x"}]> :  tensor<16x8xf32>
+  return %0 : tensor<16x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @all_slice_multiple_axes
+-func.func @all_slice_multiple_axes(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{}, {}]>}) -> tensor<16x8xf32> {
++// CHECK-LABEL: func @reshard_to_all_slice_multiple_axes
++func.func @reshard_to_all_slice_multiple_axes(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{}, {}]>}) -> tensor<16x8xf32> {
+   // CHECK-NEXT: sdy.all_slice [{"x"}, {"y", "z"}] %arg0 out_sharding=<@mesh3d, [{"x"}, {"y", "z"}]>
+   %0 = sdy.reshard %arg0 <@mesh3d, [{"x"}, {"y", "z"}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @all_slice_minor_axis
+-func.func @all_slice_minor_axis(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{"x"}, {"y"}]>}) -> tensor<16x8xf32> {
++// CHECK-LABEL: func @reshard_to_all_slice_minor_axis
++func.func @reshard_to_all_slice_minor_axis(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{"x"}, {"y"}]>}) -> tensor<16x8xf32> {
+   // CHECK-NEXT: sdy.all_slice [{}, {"z"}] %arg0 out_sharding=<@mesh3d, [{"x"}, {"y", "z"}]>
+   %0 = sdy.reshard %arg0 <@mesh3d, [{"x"}, {"y", "z"}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @all_slice_with_subaxis
+-func.func @all_slice_with_subaxis(%arg0 : tensor<16x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d_4x2x4, [{"x":(1)2}, {"y"}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: sdy.all_slice [{"x":(2)2}, {"z":(1)2}] %arg0 out_sharding=<@mesh3d_4x2x4, [{"x"}, {"y", "z":(1)2}]>
+-  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"x"}, {"y", "z":(1)2}]> : tensor<16x8xf32>
+-  return %0 : tensor<16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_single_axis
+-func.func @all_to_all_single_axis(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{"x"}, {"y"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: sdy.all_to_all {"x"} 0->2 %arg0 out_sharding=<@mesh3d, [{}, {"y"}, {"x"}]>
+-  %0 = sdy.reshard %arg0 <@mesh3d, [{}, {"y"}, {"x"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_multiple_axes
+-func.func @all_to_all_multiple_axes(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d, [{"x"}, {}, {"y", "z"}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: sdy.all_to_all {"y", "z"} 2->1 %arg0 out_sharding=<@mesh3d, [{"x"}, {"y", "z"}, {}]>
+-  %0 = sdy.reshard %arg0 <@mesh3d, [{"x"}, {"y", "z"}, {}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @two_all_to_alls_different_tgt_dims
+-func.func @two_all_to_alls_different_tgt_dims(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d_4x2x4, [{}, {"y", "x"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"x"} 1->0 %arg0 out_sharding=<@mesh3d_4x2x4, [{"x"}, {"y"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"y"} 1->2 %[[ALL_TO_ALL_0]] out_sharding=<@mesh3d_4x2x4, [{"x"}, {}, {"y"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL_1]]
+-  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"x"}, {}, {"y"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @two_all_to_alls_tgt_dim_not_empty
+-func.func @two_all_to_alls_tgt_dim_not_empty(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d_4x2x4, [{"x"}, {"y", "z"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"z"} 1->0 %arg0 out_sharding=<@mesh3d_4x2x4, [{"x", "z"}, {"y"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"y"} 1->2 %[[ALL_TO_ALL_0]] out_sharding=<@mesh3d_4x2x4, [{"x", "z"}, {}, {"y"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL_1]]
+-  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"x", "z"}, {}, {"y"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @slice_then_all_to_alls
+-func.func @slice_then_all_to_alls(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d_4x2x4, [{}, {"y", "z"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"x"}, {}, {}] %arg0 out_sharding=<@mesh3d_4x2x4, [{"x"}, {"y", "z"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"z"} 1->0 %[[ALL_SLICE]] out_sharding=<@mesh3d_4x2x4, [{"x", "z"}, {"y"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"y"} 1->2 %[[ALL_TO_ALL_0]] out_sharding=<@mesh3d_4x2x4, [{"x", "z"}, {}, {"y"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL_1]]
+-  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"x", "z"}, {}, {"y"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_subaxis_then_all_gather
+-func.func @all_to_all_subaxis_then_all_gather(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d_4x2x4, [{"x"}, {"z", "y"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"y"} 1->2 %arg0 out_sharding=<@mesh3d_4x2x4, [{"x"}, {"z"}, {"y"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"z":(2)2} 1->0 %[[ALL_TO_ALL_0]] out_sharding=<@mesh3d_4x2x4, [{"x", "z":(2)2}, {"z":(1)2}, {"y"}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{}, {"z":(1)2}, {}] %[[ALL_TO_ALL_1]] out_sharding=<@mesh3d_4x2x4, [{"x", "z":(2)2}, {}, {"y"}]>
+-  // CHECK-NEXT: return %[[ALL_GATHER]]
+-  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"x", "z":(2)2}, {}, {"y"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_subaxis_and_full_axis_then_all_gather
+-func.func @all_to_all_subaxis_and_full_axis_then_all_gather(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh4d_z4, [{"x"}, {"z", "w", "y"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"y"} 1->2 %arg0 out_sharding=<@mesh4d_z4, [{"x"}, {"z", "w"}, {"y"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"z":(2)2, "w"} 1->0 %[[ALL_TO_ALL_0]] out_sharding=<@mesh4d_z4, [{"x", "z":(2)2, "w"}, {"z":(1)2}, {"y"}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{}, {"z":(1)2}, {}] %[[ALL_TO_ALL_1]] out_sharding=<@mesh4d_z4, [{"x", "z":(2)2, "w"}, {}, {"y"}]>
+-  // CHECK-NEXT: return %[[ALL_GATHER]]
+-  %0 = sdy.reshard %arg0 <@mesh4d_z4, [{"x", "z":(2)2, "w"}, {}, {"y"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @slice_on_src_dim_then_all_to_all_subaxis
+-func.func @slice_on_src_dim_then_all_to_all_subaxis(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh4d_w4, [{}, {"w":(1)2}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"w":(2)2}, {}] %arg0 out_sharding=<@mesh4d_w4, [{}, {"w"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w"} 1->0 %[[ALL_SLICE]] out_sharding=<@mesh4d_w4, [{"w"}, {}, {}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL]]
+-  %0 = sdy.reshard %arg0 <@mesh4d_w4, [{"w"}, {}, {}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @slice_on_src_dim_then_all_to_all_multiple_axes
+-func.func @slice_on_src_dim_then_all_to_all_multiple_axes(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh4d_w4, [{}, {"x"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"y", "z"}, {}] %arg0 out_sharding=<@mesh4d_w4, [{}, {"x", "y", "z"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"x", "y", "z"} 1->2 %[[ALL_SLICE]] out_sharding=<@mesh4d_w4, [{}, {}, {"x", "y", "z"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL]]
+-  %0 = sdy.reshard %arg0 <@mesh4d_w4, [{}, {}, {"x", "y", "z"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// TODO(b/380226848): the tests below require collective permute to do the right
+-// thing. At the moment, we do a redundant all-slice or all-to-all, just to
+-// all-gather the added axes and slice again in the right order.
+-
+-// CHECK-LABEL: func @all_to_all_axes_at_src_out_of_order
+-func.func @all_to_all_axes_at_src_out_of_order(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d_4x2x4, [{"z"}, {"y", "x"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"y", "x"} 1->0 %arg0 out_sharding=<@mesh3d_4x2x4, [{"z", "y", "x"}, {}, {}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"z", "y", "x"}, {}, {}] %[[ALL_TO_ALL]] out_sharding=<@mesh3d_4x2x4, [{}, {}, {}]>
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"x", "y", "z"}, {}, {}] %[[ALL_GATHER]] out_sharding=<@mesh3d_4x2x4, [{"x", "y", "z"}, {}, {}]>
+-  // CHECK-NEXT: return %[[ALL_SLICE]]
+-  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"x", "y", "z"}, {}, {}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_two_tgt_dims_src_out_of_order
+-func.func @all_to_all_two_tgt_dims_src_out_of_order(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d_4x2x4, [{}, {"x", "z", "y"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"y"} 1->0 %arg0 out_sharding=<@mesh3d_4x2x4, [{"y"}, {"x", "z"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"z"} 1->2 %[[ALL_TO_ALL_0]] out_sharding=<@mesh3d_4x2x4, [{"y"}, {"x"}, {"z"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_2:.*]] = sdy.all_to_all {"x"} 1->0 %[[ALL_TO_ALL_1]] out_sharding=<@mesh3d_4x2x4, [{"y", "x"}, {}, {"z"}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"y", "x"}, {}, {}] %[[ALL_TO_ALL_2]] out_sharding=<@mesh3d_4x2x4, [{}, {}, {"z"}]>
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"x", "y"}, {}, {}] %[[ALL_GATHER]] out_sharding=<@mesh3d_4x2x4, [{"x", "y"}, {}, {"z"}]>
+-  // CHECK-NEXT: return %[[ALL_SLICE]]
+-  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"x", "y"}, {}, {"z"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_two_tgt_dims_src_out_of_order_2
+-func.func @all_to_all_two_tgt_dims_src_out_of_order_2(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh3d_4x2x4, [{}, {"y", "z", "x"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_TO_ALL_0:.*]] = sdy.all_to_all {"x"} 1->0 %arg0 out_sharding=<@mesh3d_4x2x4, [{"x"}, {"y", "z"}, {}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_1:.*]] = sdy.all_to_all {"z"} 1->2 %[[ALL_TO_ALL_0]] out_sharding=<@mesh3d_4x2x4, [{"x"}, {"y"}, {"z"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL_2:.*]] = sdy.all_to_all {"y"} 1->0 %[[ALL_TO_ALL_1]] out_sharding=<@mesh3d_4x2x4, [{"x", "y"}, {}, {"z"}]>
+-  // CHECK-NEXT: return %[[ALL_TO_ALL_2]]
+-  %0 = sdy.reshard %arg0 <@mesh3d_4x2x4, [{"x", "y"}, {}, {"z"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_and_gather_src_dim_out_of_order
+-func.func @all_to_all_and_gather_src_dim_out_of_order(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh4d_z4, [{"x"}, {"y", "z", "w"}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"z":(2)2, "w"} 1->0 %arg0 out_sharding=<@mesh4d_z4, [{"x", "z":(2)2, "w"}, {"y", "z":(1)2}, {}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{}, {"y", "z":(1)2}, {}] %[[ALL_TO_ALL]] out_sharding=<@mesh4d_z4, [{"x", "z":(2)2, "w"}, {}, {}]>
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {}, {"y"}] %[[ALL_GATHER]] out_sharding=<@mesh4d_z4, [{"x", "z":(2)2, "w"}, {}, {"y"}]>
+-  // CHECK-NEXT: return %[[ALL_SLICE]]
+-  %0 = sdy.reshard %arg0 <@mesh4d_z4, [{"x", "z":(2)2, "w"}, {}, {"y"}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @slice_then_reorder_axes
+-func.func @slice_then_reorder_axes(%arg0 : tensor<16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh2d, [{"y"}, {}, {}]>}) -> tensor<16x8x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"x"}, {}, {}] %arg0 out_sharding=<@mesh2d, [{"y", "x"}, {}, {}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"y", "x"}, {}, {}] %[[ALL_SLICE]] out_sharding=<@mesh2d, [{}, {}, {}]>
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"x", "y"}, {}, {}] %[[ALL_GATHER]] out_sharding=<@mesh2d, [{"x", "y"}, {}, {}]>
+-  // CHECK-NEXT: return %[[ALL_SLICE]]
+-  %0 = sdy.reshard %arg0 <@mesh2d, [{"x", "y"}, {}, {}]> : tensor<16x8x8xf32>
+-  return %0 : tensor<16x8x8xf32>
+-}
+-
+ // CHECK-LABEL: func @major_axis_available_to_slice
+ func.func @major_axis_available_to_slice(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh4d_w4, [{"y", "z", "w"}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"x"}] %arg0 out_sharding=<@mesh4d_w4, [{"y", "z", "w"}, {"x"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w"} 0->1 %[[ALL_SLICE]] out_sharding=<@mesh4d_w4, [{"y", "z"}, {"x", "w"}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"z"}, {}] %[[ALL_TO_ALL]] out_sharding=<@mesh4d_w4, [{"y"}, {"x", "w"}]>
+-  // CHECK-NEXT: return %[[ALL_GATHER]]
++  // CHECK-NEXT: %[[ALL_SLICE_0:.*]] = sdy.all_slice [{}, {"x"}] %arg0 out_sharding=<@mesh4d_w4, [{"y", "z", "w"}, {"x"}]>
++  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"z", "w"}, {}] %[[ALL_SLICE_0]] out_sharding=<@mesh4d_w4, [{"y"}, {"x"}]>
++  // CHECK-NEXT: %[[ALL_SLICE_1:.*]] = sdy.all_slice [{}, {"w"}] %[[ALL_GATHER]] out_sharding=<@mesh4d_w4, [{"y"}, {"x", "w"}]>
++  // CHECK-NEXT: return %[[ALL_SLICE_1]]
+   %0 = sdy.reshard %arg0 <@mesh4d_w4, [{"y"}, {"x", "w"}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @prefix_subaxis_available_to_slice
+ func.func @prefix_subaxis_available_to_slice(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh4d_w4, [{"y", "z", "w":(2)2}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"x", "w":(1)2}] %arg0 out_sharding=<@mesh4d_w4, [{"y", "z", "w":(2)2}, {"x", "w":(1)2}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w":(2)2} 0->1 %[[ALL_SLICE]] out_sharding=<@mesh4d_w4, [{"y", "z"}, {"x", "w"}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"z"}, {}] %[[ALL_TO_ALL]] out_sharding=<@mesh4d_w4, [{"y"}, {"x", "w"}]>
+-  // CHECK-NEXT: return %[[ALL_GATHER]]
++  // CHECK-NEXT: %[[ALL_SLICE_0:.*]] = sdy.all_slice [{}, {"x", "w":(1)2}] %arg0 out_sharding=<@mesh4d_w4, [{"y", "z", "w":(2)2}, {"x", "w":(1)2}]>
++  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"z", "w":(2)2}, {}] %[[ALL_SLICE_0]] out_sharding=<@mesh4d_w4, [{"y"}, {"x", "w":(1)2}]>
++  // CHECK-NEXT: %[[ALL_SLICE_1:.*]] = sdy.all_slice [{}, {"w":(2)2}] %[[ALL_GATHER]] out_sharding=<@mesh4d_w4, [{"y"}, {"x", "w"}]>
++  // CHECK-NEXT: return %[[ALL_SLICE_1]]
+   %0 = sdy.reshard %arg0 <@mesh4d_w4, [{"y"}, {"x", "w"}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+-// NOTE: this test case should have the following result with collective permute:
+-// %0 = sdy.all_slice [{}, {"x"}] %arg0 out_sharding=<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2}, {"x"}]> : tensor<16x8xf32>
+-// %1 = sdy.collective_permute %0 out_sharding=<@mesh4d_w16, [{"y", "w":(2)8}, {"x"}]> : tensor<16x8xf32>
+-// %2 = sdy.all_to_all {"w":(2)8} 0->1 %1 out_sharding=<@mesh4d_w16, [{"y"}, {"x", "w":(2)8}]> : tensor<16x8xf32>
+-// return %2 : tensor<16x8xf32>
+-
+ // CHECK-LABEL: func @prefix_subaxis_available_to_slice_2
+ func.func @prefix_subaxis_available_to_slice_2(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE_0:.*]] = sdy.all_slice [{"w":(8)2}, {"x", "w":(2)2}] %arg0 out_sharding=<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2, "w":(8)2}, {"x", "w":(2)2}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w":(8)2} 0->1 %[[ALL_SLICE_0]] out_sharding=<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2}, {"x", "w":(2)2, "w":(8)2}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"w":(4)2, "z", "w":(1)2}, {"w":(8)2}] %[[ALL_TO_ALL]] out_sharding=<@mesh4d_w16, [{"y"}, {"x", "w":(2)2}]>
++  // CHECK-NEXT: %[[ALL_SLICE_0:.*]] = sdy.all_slice [{}, {"x", "w":(2)2}] %arg0 out_sharding=<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2}, {"x", "w":(2)2}]>
++  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"w":(4)2, "z", "w":(1)2}, {}] %[[ALL_SLICE_0]] out_sharding=<@mesh4d_w16, [{"y"}, {"x", "w":(2)2}]>
+   // CHECK-NEXT: %[[ALL_SLICE_1:.*]] = sdy.all_slice [{}, {"w":(4)4}] %[[ALL_GATHER]] out_sharding=<@mesh4d_w16, [{"y"}, {"x", "w":(2)8}]>
+   // CHECK-NEXT: return %[[ALL_SLICE_1]]
+   %0 = sdy.reshard %arg0 <@mesh4d_w16, [{"y"}, {"x", "w":(2)8}]> : tensor<16x8xf32>
+@@ -242,8 +90,7 @@ func.func @prefix_subaxis_available_to_slice_2(%arg0: tensor<16x8xf32> {sdy.shar
+ // CHECK-LABEL: func @split_full_axis_not_available_to_slice
+ func.func @split_full_axis_not_available_to_slice(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh4d_w4, [{"y", "w":(1)2, "z", "w":(2)2}, {}]>}) -> tensor<16x8xf32> {
+   // CHECK-NEXT: %[[ALL_SLICE_0:.*]] = sdy.all_slice [{}, {"x"}] %arg0 out_sharding=<@mesh4d_w4, [{"y", "w":(1)2, "z", "w":(2)2}, {"x"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w":(2)2} 0->1 %[[ALL_SLICE_0]] out_sharding=<@mesh4d_w4, [{"y", "w":(1)2, "z"}, {"x", "w":(2)2}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"w":(1)2, "z"}, {"w":(2)2}] %[[ALL_TO_ALL]] out_sharding=<@mesh4d_w4, [{"y"}, {"x"}]>
++  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"w":(1)2, "z", "w":(2)2}, {}] %[[ALL_SLICE_0]] out_sharding=<@mesh4d_w4, [{"y"}, {"x"}]>
+   // CHECK-NEXT: %[[ALL_SLICE_1:.*]] = sdy.all_slice [{}, {"w"}] %[[ALL_GATHER]] out_sharding=<@mesh4d_w4, [{"y"}, {"x", "w"}]>
+   // CHECK-NEXT: return %[[ALL_SLICE_1]]
+   %0 = sdy.reshard %arg0 <@mesh4d_w4, [{"y"}, {"x", "w"}]> : tensor<16x8xf32>
+@@ -252,50 +99,47 @@ func.func @split_full_axis_not_available_to_slice(%arg0: tensor<16x8xf32> {sdy.s
+ 
+ // CHECK-LABEL: func @prefix_subaxis_not_available_to_slice
+ func.func @prefix_subaxis_not_available_to_slice(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh4d_w4, [{"y", "z", "w":(1)2}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"w":(2)2}, {"x"}] %arg0 out_sharding=<@mesh4d_w4, [{"y", "z", "w"}, {"x"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w"} 0->1 %[[ALL_SLICE]] out_sharding=<@mesh4d_w4, [{"y", "z"}, {"x", "w"}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"z"}, {}] %[[ALL_TO_ALL]] out_sharding=<@mesh4d_w4, [{"y"}, {"x", "w"}]>
+-  // CHECK-NEXT: return %[[ALL_GATHER]]
++  // CHECK-NEXT: %[[ALL_SLICE_0:.*]] = sdy.all_slice [{}, {"x"}] %arg0 out_sharding=<@mesh4d_w4, [{"y", "z", "w":(1)2}, {"x"}]>
++  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"z", "w":(1)2}, {}] %[[ALL_SLICE_0]] out_sharding=<@mesh4d_w4, [{"y"}, {"x"}]>
++  // CHECK-NEXT: %[[ALL_SLICE_1:.*]] = sdy.all_slice [{}, {"w"}] %[[ALL_GATHER]] out_sharding=<@mesh4d_w4, [{"y"}, {"x", "w"}]>
++  // CHECK-NEXT: return %[[ALL_SLICE_1]]
+   %0 = sdy.reshard %arg0 <@mesh4d_w4, [{"y"}, {"x", "w"}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @prefix_and_suffix_subaxes_not_available_to_slice
+ func.func @prefix_and_suffix_subaxes_not_available_to_slice(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2}, {}]>}) -> tensor<16x8xf32> {
+-  // CHECK-NEXT: %[[ALL_SLICE_0:.*]] = sdy.all_slice [{"w":(2)2, "w":(8)2}, {"x"}] %arg0 out_sharding=<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)4, "w":(8)2}, {"x"}]>
+-  // CHECK-NEXT: %[[ALL_TO_ALL:.*]] = sdy.all_to_all {"w":(1)4, "w":(8)2} 0->1 %[[ALL_SLICE_0]] out_sharding=<@mesh4d_w16, [{"y", "w":(4)2, "z"}, {"x", "w":(1)4, "w":(8)2}]>
+-  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"w":(4)2, "z"}, {"w":(8)2}] %[[ALL_TO_ALL]] out_sharding=<@mesh4d_w16, [{"y"}, {"x", "w":(1)4}]>
+-  // CHECK-NEXT: %[[ALL_SLICE_1:.*]] = sdy.all_slice [{}, {"w":(4)4}] %[[ALL_GATHER]] out_sharding=<@mesh4d_w16, [{"y"}, {"x", "w"}]>
++  // CHECK-NEXT: %[[ALL_SLICE_0:.*]] = sdy.all_slice [{}, {"x"}] %arg0 out_sharding=<@mesh4d_w16, [{"y", "w":(4)2, "z", "w":(1)2}, {"x"}]>
++  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"w":(4)2, "z", "w":(1)2}, {}] %[[ALL_SLICE_0]] out_sharding=<@mesh4d_w16, [{"y"}, {"x"}]>
++  // CHECK-NEXT: %[[ALL_SLICE_1:.*]] = sdy.all_slice [{}, {"w"}] %[[ALL_GATHER]] out_sharding=<@mesh4d_w16, [{"y"}, {"x", "w"}]>
+   // CHECK-NEXT: return %[[ALL_SLICE_1]]
+   %0 = sdy.reshard %arg0 <@mesh4d_w16, [{"y"}, {"x", "w"}]> : tensor<16x8xf32>
+   return %0 : tensor<16x8xf32>
+ }
+ 
+-// TODO(b/391138813): Add proper support for axes that can't co-exist
+-
+-// LABEL: func @reshard_with_non_divisible_subaxes_same_pre_size
+-// func.func @reshard_with_non_divisible_subaxes_same_pre_size(%arg0 : tensor<6x2xf32> {sdy.sharding=#sdy.sharding<@mesh1d_6, [{"x":(1)2}, {}]>}) -> tensor<6x2xf32> {
+-//   NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"x":(1)2}, {}] %arg0 out_sharding=<@mesh1d_6, [{}, {}]>
+-//   NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"x":(1)3}, {}] %[[ALL_GATHER]] out_sharding=<@mesh1d_6, [{"x":(1)3}, {}]>
+-//   NEXT: return %[[ALL_SLICE]]
+-//  %0 = sdy.reshard %arg0 <@mesh1d_6, [{"x":(1)3}, {}]> :  tensor<6x2xf32>
+-//  return %0 : tensor<6x2xf32>
+-// }
++// CHECK-LABEL: func @reshard_with_non_divisible_subaxes_same_pre_size
++func.func @reshard_with_non_divisible_subaxes_same_pre_size(%arg0 : tensor<6x2xf32> {sdy.sharding=#sdy.sharding<@mesh1d_6, [{"x":(1)2}, {}]>}) -> tensor<6x2xf32> {
++  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"x":(1)2}, {}] %arg0 out_sharding=<@mesh1d_6, [{}, {}]>
++  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"x":(1)3}, {}] %[[ALL_GATHER]] out_sharding=<@mesh1d_6, [{"x":(1)3}, {}]>
++  // CHECK-NEXT: return %[[ALL_SLICE]]
++ %0 = sdy.reshard %arg0 <@mesh1d_6, [{"x":(1)3}, {}]> :  tensor<6x2xf32>
++ return %0 : tensor<6x2xf32>
++}
+ 
+-// LABEL: func @reshard_with_non_divisible_overlapping_subaxes
+-// func.func @reshard_with_non_divisible_overlapping_subaxes(%arg0 : tensor<6x2xf32> {sdy.sharding=#sdy.sharding<@mesh1d_6, [{"x":(2)3}, {}]>}) -> tensor<6x2xf32> {
+-//   NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"x":(2)3}, {}] %arg0 out_sharding=<@mesh1d_6, [{}, {}]>
+-//   NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"x":(1)3}, {}] %[[ALL_GATHER]] out_sharding=<@mesh1d_6, [{"x":(1)3}, {}]>
+-//   NEXT: return %[[ALL_SLICE]]
+-//  %0 = sdy.reshard %arg0 <@mesh1d_6, [{"x":(1)3}, {}]> :  tensor<6x2xf32>
+-//  return %0 : tensor<6x2xf32>
+-// }
++// CHECK-LABEL: func @reshard_with_non_divisible_overlapping_subaxes
++func.func @reshard_with_non_divisible_overlapping_subaxes(%arg0 : tensor<6x2xf32> {sdy.sharding=#sdy.sharding<@mesh1d_6, [{"x":(2)3}, {}]>}) -> tensor<6x2xf32> {
++  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"x":(2)3}, {}] %arg0 out_sharding=<@mesh1d_6, [{}, {}]>
++  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{"x":(1)3}, {}] %[[ALL_GATHER]] out_sharding=<@mesh1d_6, [{"x":(1)3}, {}]>
++  // CHECK-NEXT: return %[[ALL_SLICE]]
++ %0 = sdy.reshard %arg0 <@mesh1d_6, [{"x":(1)3}, {}]> :  tensor<6x2xf32>
++ return %0 : tensor<6x2xf32>
++}
+ 
+-// LABEL: func @reshard_with_non_divisible_overlapping_diff_dim
+-// func.func @reshard_with_non_divisible_overlapping_diff_dim(%arg0 : tensor<6x2xf32> {sdy.sharding=#sdy.sharding<@mesh1d_6, [{"x":(2)3}, {}]>}) -> tensor<6x2xf32> {
+-//   NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"x":(2)3}, {}] %arg0 out_sharding=<@mesh1d_6, [{}, {}]>
+-//   NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"x":(1)3}] %[[ALL_GATHER]] out_sharding=<@mesh1d_6, [{}, {"x":(1)3}]>
+-//   NEXT: return %[[ALL_SLICE]]
+-//  %0 = sdy.reshard %arg0 <@mesh1d_6, [{}, {"x":(1)3}]> :  tensor<6x2xf32>
+-//  return %0 : tensor<6x2xf32>
+-// }
++// CHECK-LABEL: func @reshard_with_non_divisible_overlapping_diff_dim
++func.func @reshard_with_non_divisible_overlapping_diff_dim(%arg0 : tensor<6x2xf32> {sdy.sharding=#sdy.sharding<@mesh1d_6, [{"x":(2)3}, {}]>}) -> tensor<6x2xf32> {
++  // CHECK-NEXT: %[[ALL_GATHER:.*]] = sdy.all_gather [{"x":(2)3}, {}] %arg0 out_sharding=<@mesh1d_6, [{}, {}]>
++  // CHECK-NEXT: %[[ALL_SLICE:.*]] = sdy.all_slice [{}, {"x":(1)3}] %[[ALL_GATHER]] out_sharding=<@mesh1d_6, [{}, {"x":(1)3}]>
++  // CHECK-NEXT: return %[[ALL_SLICE]]
++ %0 = sdy.reshard %arg0 <@mesh1d_6, [{}, {"x":(1)3}]> :  tensor<6x2xf32>
++ return %0 : tensor<6x2xf32>
++}
+diff --git a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
+index 05a04e5..c2de9ec 100644
+--- a/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/basic_propagation.cc
+@@ -122,44 +122,23 @@ void notifyShardingModified(Value value,
+   notifyUsersModified(value, notifyOpModified);
+ }
+ 
+-// Struct to hold common parameters for sharding propagation.
+-struct PropagationSharedParams {
+-  const ShardingGroupMap& shardingGroupMap;
+-  StringRef meshName;
+-  MeshAttr mesh;
+-  std::optional<NotifyOpModifiedCallback> notifyOpModified;
+-};
+-
+-struct PropagationTensorParams {
+-  ValueRange tensors;
+-  ArrayRef<TensorShardingAttr> shardings;
+-  SetShardingPerTensorCallback setShardingCallback;
+-
+-  PropagationTensorParams(ValueRange tensors,
+-                          ArrayRef<TensorShardingAttr> shardings,
+-                          SetShardingPerTensorCallback setShardingCallback)
+-      : tensors(tensors),
+-        shardings(shardings),
+-        setShardingCallback(setShardingCallback) {}
+-};
+-
+ // Update the sharding of `value` to the sharding in `tensorFactorShardings`.
+ //
+ // Returns true if it's possible to update the sharding, i.e., if strided view
+ // isn't needed and all non-minor-most factors are divisible by sharding axes.
+-bool updateTensorSharding(Value modifiedValue,
+-                          TensorShardingAttr oldTensorSharding,
+-                          SetTensorShardingCallback setTensorShardingCallback,
+-                          const TensorFactorShardings& tensorFactorShardings,
+-                          TensorMappingAttr tensorMapping,
+-                          ArrayRef<int64_t> factorSizes,
+-                          const PropagationSharedParams& params) {
++bool updateTensorSharding(
++    TensorShardingAttr oldTensorSharding,
++    SetTensorShardingCallback setTensorShardingCallback,
++    const TensorFactorShardings& tensorFactorShardings,
++    TensorMappingAttr tensorMapping, ArrayRef<int64_t> factorSizes,
++    StringRef meshName, MeshAttr mesh, Value modifiedValue,
++    const ShardingGroupMap& shardingGroupMap,
++    std::optional<NotifyOpModifiedCallback> notifyOpModified) {
+   // We can assume `modifiedValue` exists since we are updating its sharding.
+   assert(modifiedValue && "modified value should exist");
+   TensorShardingAttr newSharding =
+       tensorFactorShardings.createTensorShardingAttr(
+-          params.mesh.getContext(), tensorMapping, factorSizes, params.meshName,
+-          params.mesh);
++          mesh.getContext(), tensorMapping, factorSizes, meshName, mesh);
+   // `oldTensorSharding` may be null if there is no sharding, in which case we
+   // check if `newSharding` is empty.
+   // TODO(tomnatan): remove this checking if the new sharding equals the old
+@@ -177,20 +156,19 @@ bool updateTensorSharding(Value modifiedValue,
+ 
+   setTensorShardingCallback(newSharding);
+ 
+-  if (params.notifyOpModified) {
+-    notifyShardingModified(modifiedValue, *params.notifyOpModified);
++  if (notifyOpModified) {
++    notifyShardingModified(modifiedValue, *notifyOpModified);
+   }
+ 
+   // Set the sharding of all values in the same sharding group to be equivalent
+   // (skipping the modified value which has already been updated).
+-  for (Value groupValue :
+-       params.shardingGroupMap.getGroupMembers(modifiedValue)) {
++  for (Value groupValue : shardingGroupMap.getGroupMembers(modifiedValue)) {
+     if (groupValue == modifiedValue) {
+       continue;
+     }
+     setSharding(groupValue, newSharding);
+-    if (params.notifyOpModified) {
+-      notifyShardingModified(groupValue, *params.notifyOpModified);
++    if (notifyOpModified) {
++      notifyShardingModified(groupValue, *notifyOpModified);
+     }
+   }
+ 
+@@ -205,35 +183,47 @@ bool updateTensorSharding(Value modifiedValue,
+ // `tensorFactorShardings`, e.g., if strided view is required, sets the
+ // respective bit in `updateTensor` or `updateResult` to false.
+ void updateTensorShardings(
+-    const PropagationTensorParams& tensorParams,
++    ValueRange tensors, ArrayRef<TensorShardingAttr> tensorShardings,
++    SetShardingPerTensorCallback setTensorShardingCallback,
+     ArrayRef<TensorFactorShardings> tensorFactorShardings,
+     ArrayRef<TensorMappingAttr> tensorMappings, ArrayRef<int64_t> factorSizes,
+-    BitVector& updateTensor, const PropagationSharedParams& params) {
++    BitVector& updateTensor, StringRef meshName, MeshAttr mesh,
++    const ShardingGroupMap& shardingGroupMap,
++    std::optional<NotifyOpModifiedCallback> notifyOpModified) {
+   for (int64_t index : updateTensor.set_bits()) {
+-    if (!updateTensorSharding(getShardableValue(tensorParams.tensors[index]),
+-                              tensorParams.shardings[index],
+-                              std::bind(tensorParams.setShardingCallback,
+-                                        std::placeholders::_1, index),
+-                              tensorFactorShardings[index],
+-                              tensorMappings[index], factorSizes, params)) {
++    if (!updateTensorSharding(
++            tensorShardings[index],
++            std::bind(setTensorShardingCallback, std::placeholders::_1, index),
++            tensorFactorShardings[index], tensorMappings[index], factorSizes,
++            meshName, mesh, getShardableValue(tensors[index]), shardingGroupMap,
++            notifyOpModified)) {
+       updateTensor.reset(index);
+     }
+   }
+ }
+ 
+ // Same as the overload above, except operates on both operands and results.
+-void updateTensorShardings(const PropagationTensorParams& operandsParams,
+-                           const PropagationTensorParams& resultsParams,
+-                           OpShardingRuleAttr shardingRule,
+-                           const ShardingProjection& shardingProjection,
+-                           BitVector& updateOperand, BitVector& updateResult,
+-                           const PropagationSharedParams& params) {
+-  updateTensorShardings(operandsParams, shardingProjection.getOperands(),
++void updateTensorShardings(
++    ValueRange operands, ValueRange results,
++    ArrayRef<TensorShardingAttr> operandShardings,
++    ArrayRef<TensorShardingAttr> resultShardings,
++    SetShardingPerTensorCallback setOperandShardingCallback,
++    SetShardingPerTensorCallback setResultShardingCallback,
++    OpShardingRuleAttr shardingRule,
++    const ShardingProjection& shardingProjection, BitVector& updateOperand,
++    BitVector& updateResult, StringRef meshName, MeshAttr mesh,
++    const ShardingGroupMap& shardingGroupMap,
++    std::optional<NotifyOpModifiedCallback> notifyOpModified) {
++  updateTensorShardings(operands, operandShardings, setOperandShardingCallback,
++                        shardingProjection.getOperands(),
+                         shardingRule.getOperandMappings(),
+-                        shardingRule.getFactorSizes(), updateOperand, params);
+-  updateTensorShardings(resultsParams, shardingProjection.getResults(),
++                        shardingRule.getFactorSizes(), updateOperand, meshName,
++                        mesh, shardingGroupMap, notifyOpModified);
++  updateTensorShardings(results, resultShardings, setResultShardingCallback,
++                        shardingProjection.getResults(),
+                         shardingRule.getResultMappings(),
+-                        shardingRule.getFactorSizes(), updateResult, params);
++                        shardingRule.getFactorSizes(), updateResult, meshName,
++                        mesh, shardingGroupMap, notifyOpModified);
+ }
+ 
+ // Propagates tensor shardings of the given `operands` and `results` according
+@@ -243,16 +233,17 @@ void updateTensorShardings(const PropagationTensorParams& operandsParams,
+ // the Operation. For example, for CaseOp, an op with no operands, it's called
+ // with the return values of each branch/region.
+ LogicalResult propagateTensorShardings(
+-    const PropagationTensorParams& operandsParams,
+-    const PropagationTensorParams& resultsParams,
+-    OpShardingRuleAttr shardingRule,
+-    PropagationDirectionAlongFactor directionAlongFactor,
+-    const FactorPropagation& factorPropagation, bool conservativePropagation,
+-    Operation* op, const SymbolTable& symbolTable, PatternRewriter* rewriter,
+-    ShardingGroupMap shardingGroupMap) {
+-  std::optional<StringRef> meshName = getCommonMeshName(
+-      operandsParams.shardings, resultsParams.shardings, symbolTable);
+-
++    ValueRange operands, ValueRange results,
++    ArrayRef<TensorShardingAttr> operandShardings,
++    ArrayRef<TensorShardingAttr> resultShardings,
++    SetShardingPerTensorCallback setOperandShardingCallback,
++    SetShardingPerTensorCallback setResultShardingCallback,
++    OpShardingRuleAttr shardingRule, PropagationDirection direction,
++    const FactorPropagation& factorPropagation,
++    const ShardingGroupMap& shardingGroupMap, bool conservativePropagation,
++    Operation* op, const SymbolTable& symbolTable, PatternRewriter* rewriter) {
++  std::optional<StringRef> meshName =
++      getCommonMeshName(operandShardings, resultShardings, symbolTable);
+   if (!meshName.has_value()) {
+     // This means none of the operands or results have a sharding attribute or
+     // the sharding attributes use different meshes.
+@@ -264,7 +255,6 @@ LogicalResult propagateTensorShardings(
+   }
+   MeshAttr mesh = getMeshAttr(op, meshName.value());
+   assert(mesh && "unknown mesh");
+-
+   std::optional<NotifyOpModifiedCallback> notifyOpModified = std::nullopt;
+   if (rewriter) {
+     notifyOpModified = [op, rewriter](Operation* modifiedOp) {
+@@ -277,31 +267,39 @@ LogicalResult propagateTensorShardings(
+       }
+     };
+   }
+-
+   ShardingProjection shardingProjection = ShardingProjection::build(
+-      operandsParams.shardings, resultsParams.shardings, shardingRule, mesh);
++      operandShardings, resultShardings, shardingRule, mesh);
+   bool anyUpdated = false;
++  // TODO(zixuanjiang). We apply the same propagation direction to all factors.
++  // We may want to consider propagating along different factors with different
++  // directions in the future.
++  PropagationDirectionAlongFactor directionAlongFactor = [direction](int64_t) {
++    return direction;
++  };
+   auto updateShardings = [&]() {
+     auto [updateOperand, updateResult] =
+         factorPropagation.propagateFactorShardings(
+             shardingProjection, directionAlongFactor,
+             shardingRule.getFactorSizes(), mesh, op, conservativePropagation);
+-    PropagationSharedParams params{shardingGroupMap, meshName.value(), mesh,
+-                                   notifyOpModified};
+-
+-    updateTensorShardings(operandsParams, resultsParams, shardingRule,
+-                          shardingProjection, updateOperand, updateResult,
+-                          params);
+ 
++    // We need to update the tensor sharding attributes explicitly, as we
++    // have been modifying our internal `shardingProjection` so far.
++    updateTensorShardings(operands, results, operandShardings, resultShardings,
++                          setOperandShardingCallback, setResultShardingCallback,
++                          shardingRule, shardingProjection, updateOperand,
++                          updateResult, meshName.value(), mesh,
++                          shardingGroupMap, notifyOpModified);
+     anyUpdated = updateOperand.any() || updateResult.any();
+   };
+-
+   MLIRContext* context = op->getContext();
++  // NOTE: assuming the existence of an action handler is the
++  // `SourceShardingHandler`. Need to check for it here to avoid copying
++  // `shardingProjection` when debugging is disabled.
+   if (context->hasActionHandler()) {
+-    context->executeAction<SourceShardingAction>(
+-        updateShardings,
+-        /*IRUnits=*/{op}, operandsParams.tensors, resultsParams.tensors, mesh,
+-        shardingRule, shardingProjection);
++    context->executeAction<SourceShardingAction>(updateShardings,
++                                                 /*IRUnits=*/{op}, operands,
++                                                 results, mesh, shardingRule,
++                                                 shardingProjection);
+   } else {
+     updateShardings();
+   }
+@@ -314,34 +312,49 @@ LogicalResult propagateTensorShardings(
+   return success(anyUpdated);
+ }
+ 
++// Same as the overload above, except there is a single operand and result.
++LogicalResult propagateTensorShardings(
++    Value operand, Value result, TensorShardingAttr operandSharding,
++    TensorShardingAttr resultsSharding,
++    SetTensorShardingCallback setOperandShardingCallback,
++    SetTensorShardingCallback setResultShardingCallback,
++    OpShardingRuleAttr shardingRule, Operation* op,
++    const SymbolTable& symbolTable, PatternRewriter* rewriter,
++    const FactorPropagation& factorPropagation,
++    const ShardingGroupMap& shardingGroupMap,
++    PropagationDirection direction = PropagationDirection::BOTH,
++    bool conservativePropagation = false) {
++  return propagateTensorShardings(
++      operand, result, operandSharding, resultsSharding,
++      [&](TensorShardingAttr sharding, int64_t) {
++        setOperandShardingCallback(sharding);
++      },
++      [&](TensorShardingAttr sharding, int64_t) {
++        setResultShardingCallback(sharding);
++      },
++      shardingRule, direction, factorPropagation, shardingGroupMap,
++      conservativePropagation, op, symbolTable, rewriter);
++}
++
+ // Same as the overload above, except the operand and result shardings are
+ // extracted using `getSharding` and set using `setSharding`.
+ LogicalResult propagateTensorShardings(
+     ValueRange operands, ValueRange results, OpShardingRuleAttr shardingRule,
+     Operation* op, const SymbolTable& symbolTable, PatternRewriter& rewriter,
+-    PropagationDirectionAlongFactor directionAlongFactor,
+     const FactorPropagation& factorPropagation,
+     const ShardingGroupMap& shardingGroupMap,
++    PropagationDirection direction = PropagationDirection::BOTH,
+     bool conservativePropagation = false) {
+-  SmallVector<TensorShardingAttr> operandsShardings = getShardings(operands);
+-  SmallVector<TensorShardingAttr> resultsShardings = getShardings(results);
+-  PropagationTensorParams operandsParams = PropagationTensorParams(
+-      /*tensors=*/operands,
+-      /*shardings=*/operandsShardings,
+-      /*setShardingCallback=*/[&](TensorShardingAttr sharding, int64_t index) {
++  return propagateTensorShardings(
++      operands, results, getShardings(operands), getShardings(results),
++      [&](TensorShardingAttr sharding, int64_t index) {
+         setSharding(operands[index], sharding);
+-      });
+-  PropagationTensorParams resultsParams = PropagationTensorParams(
+-      /*tensors=*/results,
+-      /*shardings=*/resultsShardings,
+-      /*setShardingCallback=*/[&](TensorShardingAttr sharding, int64_t index) {
++      },
++      [&](TensorShardingAttr sharding, int64_t index) {
+         setSharding(results[index], sharding);
+-      });
+-
+-  return propagateTensorShardings(operandsParams, resultsParams, shardingRule,
+-                                  directionAlongFactor, factorPropagation,
+-                                  conservativePropagation, op, symbolTable,
+-                                  &rewriter, shardingGroupMap);
++      },
++      shardingRule, direction, factorPropagation, shardingGroupMap,
++      conservativePropagation, op, symbolTable, &rewriter);
+ }
+ 
+ // Propagates the shardings between the operands of the `funcOp`'s terminator
+@@ -361,39 +374,28 @@ LogicalResult propagateFuncResults(FuncOp funcOp,
+     // NOTE: we void the returned `LogicalResult` since function updates aren't
+     // done through a rewriter, can ignore whether operands/results were
+     // updated.
+-    // The operand/result function arguments are used to:
+-    // - invoke the rewriter (if specified) that a value was updated. But
+-    //   a rewriter isn't used here.
+-    // - log warnings on the defining op. In this case it would either be on
+-    //   the defining op of `returnValue` or `funcOp` if it's a function
+-    //   argument. Here it will be okay to log the warning on the defining
+-    //   op of `returnValue`.
+-    // As such, we pass `returnValue` as both the operand and result.
+-    TensorShardingAttr operandShardingRef = getSharding(returnValue);
+-    TensorShardingAttr resultsShardingRef =
+-        getFuncResultSharding(funcOp, resNum);
+-    PropagationTensorParams operandsParams = PropagationTensorParams(
+-        /*tensors=*/returnValue,
+-        /*shardings=*/operandShardingRef,
+-        /*setShardingCallback=*/[&](TensorShardingAttr sharding, int64_t) {
++    (void)propagateTensorShardings(
++        // The operand/result function arguments are used to:
++        // - invoke the rewriter (if specified) that a value was updated. But
++        //   a rewriter isn't used here.
++        // - log warnings on the defining op. In this case it would either be on
++        //   the defining op of `returnValue` or `funcOp` if it's a function
++        //   argument. Here it will be okay to log the warning on the defining
++        //   op of `returnValue`.
++        // As such, we pass `returnValue` as both the operand and result.
++        returnValue, returnValue, getSharding(returnValue),
++        getFuncResultSharding(funcOp, resNum),
++        [&](TensorShardingAttr sharding) {
+           setSharding(returnValue, sharding);
+-        });
+-    PropagationTensorParams resultsParams = PropagationTensorParams(
+-        /*tensors=*/returnValue,
+-        /*shardings=*/resultsShardingRef,
+-        /*setShardingCallback=*/[&](TensorShardingAttr sharding, int64_t) {
++        },
++        [&](TensorShardingAttr sharding) {
+           setFuncResultSharding(funcOp, resNum, sharding);
+-        });
+-
+-    (void)propagateTensorShardings(
+-        operandsParams, resultsParams,
++        },
+         // Treat the sharding data flow b/w the `funcOp` terminator and func
+-        // result attrs as an identity op. Create an equivalent sharding rule.
+-        createIdentityShardingRule(tensorType),
+-        std::bind(propagateAny, funcOp, std::placeholders::_1),
+-        factorPropagation,
+-        /*conservativePropagation=*/false, funcOp, symbolTable,
+-        /*rewriter=*/nullptr, shardingGroupMap);
++        // result attrs as an identity op. Create an equivalent sharding
++        // rule.
++        createIdentityShardingRule(tensorType), funcOp, symbolTable,
++        /*rewriter=*/nullptr, factorPropagation, shardingGroupMap);
+   }
+   return success();
+ }
+@@ -439,13 +441,19 @@ class PropagateRegisteredOp : public RewritePattern {
+         diag << "op doesn't have a registered sharding rule";
+       });
+     }
++    PropagationDirection direction = getDirectionToPropagate(op);
++    if (direction == PropagationDirection::NONE) {
++      // No need to continue to propagate if the direction is `NONE`, as
++      // neither operands nor results can be updated.
++      return rewriter.notifyMatchFailure(op, [](Diagnostic& diag) {
++        diag << "propagation direction on op is NONE";
++      });
++    }
+ 
+-    PropagationDirectionAlongFactor directionAlongFactor =
+-        std::bind(getDirectionToPropagate, op, std::placeholders::_1);
+     return propagateTensorShardings(op->getOperands(), op->getResults(),
+                                     shardingRule, op, symbolTable, rewriter,
+-                                    directionAlongFactor, factorPropagation,
+-                                    shardingGroupMap, conservativePropagation);
++                                    factorPropagation, shardingGroupMap,
++                                    direction, conservativePropagation);
+   }
+ 
+  private:
+@@ -476,41 +484,23 @@ class PropagateDataFlowEdgeOp : public OpRewritePattern<DataFlowEdgeOp> {
+     SmallVector<Value> sources = dataFlowEdgeOp.getSources();
+     // The sharding of `dataFlowEdgeOp.getResult()` is the sharding of all
+     // targets.
+-
+-    SmallVector<TensorShardingAttr> operandShardingRef = getShardings(sources);
+-    TensorShardingAttr resultsShardingRef =
++    return propagateTensorShardings(
++        sources, dataFlowEdgeOp.getResult(), getShardings(sources),
+         dataFlowEdgeOp.transformTargetSharding(
+             dataFlowEdgeOp.getShardingAttr(),
+-            DataFlowShardingTransformType::kBeforeEdgePropagation);
+-
+-    PropagationTensorParams operandsParams = PropagationTensorParams(
+-        /*tensors=*/sources,
+-        /*shardings=*/operandShardingRef,
+-        /*setShardingCallback=*/
+-        [&sources](TensorShardingAttr sharding, int64_t index) {
++            DataFlowShardingTransformType::kBeforeEdgePropagation),
++        [&](TensorShardingAttr sharding, int64_t index) {
+           setSharding(sources[index], sharding);
+-        });
+-    Value result = dataFlowEdgeOp.getResult();
+-    PropagationTensorParams resultsParams = PropagationTensorParams(
+-        /*tensors=*/result,
+-        /*shardings=*/resultsShardingRef,
+-        /*setShardingCallback=*/
+-        [&dataFlowEdgeOp](TensorShardingAttr sharding, int64_t _) {
++        },
++        [&](TensorShardingAttr sharding, int64_t _) {
+           dataFlowEdgeOp.setShardingAttr(dataFlowEdgeOp.transformTargetSharding(
+               sharding, DataFlowShardingTransformType::kAfterEdgePropagation));
+-        });
+-
+-    // TODO(b/394390827). We may pass getDirectionToPropagate so we can decide
+-    // to change the priority of data flow ops.
+-    PropagationDirectionAlongFactor directionAlongFactor =
+-        std::bind(propagateAny, dataFlowEdgeOp, std::placeholders::_1);
+-    return propagateTensorShardings(
+-        operandsParams, resultsParams,
++        },
+         createIdentityShardingRule(cast<ShapedType>(dataFlowEdgeOp.getType()),
+                                    sources.size()),
+-        directionAlongFactor, factorPropagation,
++        PropagationDirection::BOTH, factorPropagation, shardingGroupMap,
+         /*conservativePropagation=*/false, dataFlowEdgeOp, symbolTable,
+-        &rewriter, shardingGroupMap);
++        &rewriter);
+   }
+ 
+  private:
+@@ -539,9 +529,8 @@ class PropagatePropagationBarrier
+         propagationBarrierOp.getInput(), propagationBarrierOp.getResult(),
+         createIdentityShardingRule(
+             cast<RankedTensorType>(propagationBarrierOp.getType())),
+-        propagationBarrierOp, symbolTable, rewriter,
+-        [&](int64_t) { return propagationBarrierOp.getAllowedDirection(); },
+-        factorPropagation, shardingGroupMap);
++        propagationBarrierOp, symbolTable, rewriter, factorPropagation,
++        shardingGroupMap, propagationBarrierOp.getAllowedDirection());
+   }
+ 
+  private:
+@@ -588,7 +577,7 @@ bool allValidShapes(ModuleOp moduleOp) {
+ 
+ }  // namespace
+ 
+-PropagationDirection propagateAny(Operation*, int64_t) {
++PropagationDirection propagateAny(Operation*) {
+   return PropagationDirection::BOTH;
+ }
+ 
+diff --git a/shardy/dialect/sdy/transforms/propagation/basic_propagation.h b/shardy/dialect/sdy/transforms/propagation/basic_propagation.h
+index 676f339..732565d 100644
+--- a/shardy/dialect/sdy/transforms/propagation/basic_propagation.h
++++ b/shardy/dialect/sdy/transforms/propagation/basic_propagation.h
+@@ -17,8 +17,6 @@ limitations under the License.
+ #define SHARDY_DIALECT_SDY_TRANSFORMS_PROPAGATION_BASIC_PROPAGATION_H_
+ 
+ #include <stdbool.h>
+-
+-#include <cstdint>
+ #include <functional>
+ #include <memory>
+ #include <string>
+@@ -31,22 +29,21 @@ limitations under the License.
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
++#include "shardy/dialect/sdy/transforms/propagation/passes.h"
+ #include "shardy/dialect/sdy/transforms/propagation/basic_factor_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/factor_propagation.h"
+-#include "shardy/dialect/sdy/transforms/propagation/passes.h"
+ #include "shardy/dialect/sdy/transforms/propagation/sharding_group_map.h"
+ 
+ namespace mlir {
+ namespace sdy {
+ 
+ // A function that determines in which direction propagation should happen for a
+-// given op and factor index.
++// given op.
+ using GetDirectionToPropagateFn =
+-    std::function<PropagationDirection(Operation* op, int64_t factorIndex)>;
++    std::function<PropagationDirection(Operation*)>;
+ 
+-// A function that returns `PropagationDirection::BOTH` for all operations and
+-// factor indices.
+-PropagationDirection propagateAny(Operation* op, int64_t factorIndex);
++// A function that returns `PropagationDirection::BOTH` for all operations.
++PropagationDirection propagateAny(Operation* op);
+ 
+ // The implementation class for the basic propagation pass.
+ //
+diff --git a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
+index 8fa2894..4528ac5 100644
+--- a/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/op_priority_propagation.cc
+@@ -46,11 +46,34 @@ namespace sdy {
+ namespace {
+ 
+ // A function that determines in which direction propagation should happen for a
+-// given op and factor index.
+-using GetDirectionToPropagateFnPtr = PropagationDirection (*)(Operation*,
+-                                                              int64_t);
++// given op.
++using GetDirectionToPropagateFnPtr = PropagationDirection (*)(Operation*);
+ 
+-PropagationDirection isPassThrough(Operation* op, int64_t) {
++template <typename... OpTs>
++PropagationDirection isaBoth(Operation* op) {
++  return isa<OpTs...>(op) ? PropagationDirection::BOTH
++                          : PropagationDirection::NONE;
++}
++
++template <typename... OpTs>
++PropagationDirection isNotABoth(Operation* op) {
++  return !isa<OpTs...>(op) ? PropagationDirection::BOTH
++                           : PropagationDirection::NONE;
++}
++
++template <typename... OpTs>
++PropagationDirection isaForward(Operation* op) {
++  return isa<OpTs...>(op) ? PropagationDirection::FORWARD
++                          : PropagationDirection::NONE;
++}
++
++template <typename... OpTs>
++PropagationDirection isaBackward(Operation* op) {
++  return isa<OpTs...>(op) ? PropagationDirection::BACKWARD
++                          : PropagationDirection::NONE;
++}
++
++PropagationDirection isPassThrough(Operation* op) {
+   if (isElementwise(op) ||
+       isa<stablehlo::ReshapeOp, stablehlo::TransposeOp>(op)) {
+     return PropagationDirection::BOTH;
+@@ -70,19 +93,18 @@ constexpr std::array<GetDirectionToPropagateFnPtr, 2> opPropagationSchedule = {
+ // a caller. It will return the intersection of the passed in
+ // `getDirectionToPropagate` and the op based direction.
+ GetDirectionToPropagateFn getOpBasedDirectionToPropagate(
+-    int64_t currentPriority,
++    int64_t currentOpPriority,
+     GetDirectionToPropagateFn getDirectionToPropagate) {
+-  return [currentPriority, getDirectionToPropagate](Operation* op,
+-                                                    int64_t factorIndex) {
++  return [currentOpPriority, getDirectionToPropagate](Operation* op) {
+     PropagationDirection opBasedDirection = std::accumulate(
+         opPropagationSchedule.begin(),
+-        opPropagationSchedule.begin() + currentPriority + 1,
++        opPropagationSchedule.begin() + currentOpPriority + 1,
+         PropagationDirection::NONE,
+         [&](PropagationDirection acc, GetDirectionToPropagateFnPtr dirFn) {
+-          return unionOfPropagationDirections(acc, dirFn(op, factorIndex));
++          return unionOfPropagationDirections(acc, dirFn(op));
+         });
+-    return intersectionOfPropagationDirections(
+-        opBasedDirection, getDirectionToPropagate(op, factorIndex));
++    return intersectionOfPropagationDirections(opBasedDirection,
++                                               getDirectionToPropagate(op));
+   };
+ }
+ 
+@@ -107,13 +129,13 @@ LogicalResult OpPriorityPropagationPassImpl::propagate(
+     return AggressivePropagationPassImpl::propagate(
+         moduleOp, symbolTable, shardingGroupMap, getDirectionToPropagate);
+   }
+-  // Reset currentPriority to 0. Before running the pass. This same instance
++  // Reset currentOpPriority to 0. Before running the pass. This same instance
+   // could have been run earlier already (e.g. with a different user priority).
+-  for (int64_t currentPriority = 0;
+-       currentPriority < opPropagationSchedule.size(); currentPriority++) {
++  for (int64_t currentOpPriority = 0;
++       currentOpPriority < opPropagationSchedule.size(); currentOpPriority++) {
+     if (AggressivePropagationPassImpl::propagate(
+             moduleOp, symbolTable, shardingGroupMap,
+-            getOpBasedDirectionToPropagate(currentPriority,
++            getOpBasedDirectionToPropagate(currentOpPriority,
+                                            getDirectionToPropagate))
+             .failed()) {
+       return failure();
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index d2ef15d..c4a6676 100644
+index c4a6676..dc3cead 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "f0d05b099dafda89df4c971b64b2051c33db5da1"
--    LLVM_SHA256 = "29326f27b5bffa5f57b0f8a99d3e864c09a67bf899341103a7cd609fd3ea80e3"
-+    LLVM_COMMIT = "386af4a5c64ab75eaee2448dc38f2e34a40bfed0"
-+    LLVM_SHA256 = "4b752a2dfb5e4e55cf9812a353bce7e437e0852f4eef64929f48d74732080c50"
+-    LLVM_COMMIT = "386af4a5c64ab75eaee2448dc38f2e34a40bfed0"
+-    LLVM_SHA256 = "4b752a2dfb5e4e55cf9812a353bce7e437e0852f4eef64929f48d74732080c50"
++    LLVM_COMMIT = "f8287f6c373fcf993643dd6f0e30dde304c1be73"
++    LLVM_SHA256 = "add2841174abc79c45aa309bdf0cf631aa8f97e7a4df57dcfca57c60df27527f"
  
      tf_http_archive(
          name = name,

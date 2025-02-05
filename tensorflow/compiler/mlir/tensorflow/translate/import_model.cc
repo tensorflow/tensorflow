@@ -788,7 +788,7 @@ absl::Status CreateSavedModelIR(
         mlir::OpBuilder body_builder(&func.getBody());
         auto call = body_builder.create<mlir::TF::StatefulPartitionedCallOp>(
             func.getLoc(), orig_func.getFunctionType().getResults(),
-            args_as_values,
+            args_as_values, /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
             mlir::SymbolRefAttr::get(builder.getContext(), orig_func.getName()),
             /*config=*/builder.getStringAttr(""),
             /*config_proto=*/builder.getStringAttr(""),
