@@ -88,7 +88,7 @@ TEST(UtilTest, ConvertStatus) {
   EXPECT_EQ(context.error, "Some Error");
 
   context.error.clear();
-  EXPECT_EQ(ConvertStatus(&context, tensorflow::Status()), kTfLiteOk);
+  EXPECT_EQ(ConvertStatus(&context, absl::Status()), kTfLiteOk);
   EXPECT_TRUE(context.error.empty());
 }
 
