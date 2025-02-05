@@ -37,7 +37,8 @@ namespace mlir::TFL {
 LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
                                   SmallVector<double, 4>& scales,
                                   SmallVector<int64_t, 4>& zero_points,
-                                  int& num_bits, bool& is_signed) {
+                                  int& num_bits, bool& is_signed,
+                                  bool& is_narrow_range) {
   auto scale_attr = llvm::dyn_cast_or_null<DenseFPElementsAttr>(
       op.getCompositeAttributes().get("scale"));
   if (scale_attr == nullptr) {
@@ -68,10 +69,19 @@ LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
   if (dtype == "i8") {
     num_bits = 8;
     is_signed = true;
+  } else if (dtype == "i4") {
+    num_bits = 4;
+    is_signed = true;
   } else {
-    // TODO(majiddadashi) currently only tested with i8.
     return failure();
   }
+  auto narrow_range_attr = llvm::dyn_cast_or_null<BoolAttr>(
+      op.getCompositeAttributes().get("narrow_range"));
+  if (narrow_range_attr == nullptr) {
+    return failure();
+  }
+  is_narrow_range = narrow_range_attr.getValue();
+
   return success();
 }
 
