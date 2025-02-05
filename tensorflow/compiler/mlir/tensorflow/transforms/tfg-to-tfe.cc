@@ -463,9 +463,10 @@ class ConvertGeneralOp : public ConversionPattern {
             op->getAttrOfType<BoolAttr>("_disable_call_shape_inference")
                 .getValue();
       }
-      inner_op =
-          rewriter.create<LegacyCallOp>(loc, new_types, inner_op_operands,
-                                        op_name, disable_call_shape_inference);
+      inner_op = rewriter.create<LegacyCallOp>(
+          loc, new_types, inner_op_operands,
+          /*args_attrs=*/nullptr,
+          /*res_attrs=*/nullptr, op_name, disable_call_shape_inference);
     }
 
     rewriter.create<tf_executor::YieldOp>(loc, inner_op->getResults());

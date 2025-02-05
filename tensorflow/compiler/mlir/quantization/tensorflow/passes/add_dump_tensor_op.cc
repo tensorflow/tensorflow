@@ -82,6 +82,7 @@ Operation *DuplicateOp(TF::PartitionedCallOp call_op, PatternRewriter &rewriter,
   // get quantized.
   auto new_call_op = rewriter.create<TF::PartitionedCallOp>(
       call_op.getLoc(), call_op.getResultTypes(), call_op.getOperands(),
+      call_op.getArgAttrsAttr(), call_op.getResAttrsAttr(),
       FlatSymbolRefAttr::get(new_ref_func_name));
   return new_call_op;
 }

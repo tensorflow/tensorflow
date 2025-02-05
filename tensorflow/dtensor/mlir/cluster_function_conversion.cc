@@ -144,7 +144,8 @@ mlir::LogicalResult ReplaceClusterWithPartitionCallOp(
   builder->setInsertionPoint(cluster_func);
   auto call_op = builder->create<mlir::TF::StatefulPartitionedCallOp>(
       cluster_func.getLoc(), output_types, cluster_func.getOperands(),
-      function_name, mesh_attr, /*config_proto=*/builder->getStringAttr(""),
+      /*args_attrs=*/nullptr, /*res_attrs=*/nullptr, function_name, mesh_attr,
+      /*config_proto=*/builder->getStringAttr(""),
       /*executor_type=*/builder->getStringAttr(""));
 
   MaybeSkipXlaCompilation(builder, call_op);
