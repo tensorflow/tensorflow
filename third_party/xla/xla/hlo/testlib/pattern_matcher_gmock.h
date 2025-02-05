@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 
