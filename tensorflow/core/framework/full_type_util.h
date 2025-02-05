@@ -24,7 +24,9 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

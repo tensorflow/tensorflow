@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/kernel_def_util.h"
 
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 

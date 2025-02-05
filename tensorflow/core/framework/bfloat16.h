@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_BFLOAT16_H_
 
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/types.h"
 
 // Compact 16-bit encoding of floating point numbers. This representation uses
