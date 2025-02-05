@@ -791,6 +791,13 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
                      ::testing::HasSubstr(
                          "FP8 convolutions are only supported on CUDA GPUs")));
 
+  s = ConvRewriter(se::RocmComputeCapability{"gfx950"}).Run(m.get()).status();
+  EXPECT_THAT(s, tsl::testing::StatusIs(
+                     absl::StatusCode::kUnimplemented,
+                     ::testing::HasSubstr(
+                         "FP8 convolutions are only supported on CUDA GPUs")));
+
+
   // Test unsupported FP8 type
   module_with_type = absl::StrReplaceAll(module_str, {{"TYPE", "f8e4m3fnuz"}});
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(module_with_type));
