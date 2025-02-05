@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -202,6 +203,7 @@ class OpKernelRunnerTable {
   // Return true if it successfully inserts `runner`. `index` is supposed to be
   // dense.
   bool Insert(int64_t index, OpKernelRunner runner) {
+    absl::MutexLock lock(&mu_);
     if (runners_.size() <= index) runners_.resize(index + 1);
     if (runners_[index]) return false;
     runners_[index] = std::move(runner);
@@ -224,6 +226,7 @@ class OpKernelRunnerTable {
   }
 
   const OpKernelRunner* GetUnsafe(int64_t index) const {
+    absl::ReaderMutexLock lock(&mu_);
     DCHECK_GT(runners_.size(), index);
     auto& result = runners_[index];
     DCHECK(result);
@@ -231,6 +234,7 @@ class OpKernelRunnerTable {
   }
 
  private:
+  mutable absl::Mutex mu_;
   std::vector<OpKernelRunner> runners_;
 };
 
