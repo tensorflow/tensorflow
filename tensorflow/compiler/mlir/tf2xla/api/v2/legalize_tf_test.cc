@@ -34,6 +34,8 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/monitoring/test_utils.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -46,8 +48,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace tf2xla {
