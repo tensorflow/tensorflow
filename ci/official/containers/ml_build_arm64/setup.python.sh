@@ -25,7 +25,11 @@ REQUIREMENTS=$2
 
 add-apt-repository ppa:deadsnakes/ppa
 # Install Python packages for this container's version
-if [[ ${VERSION} == "python3.13" ]]; then
+if [[ ${VERSION} == "python3.13-nogil" ]]; then
+  cat >pythons.txt <<EOF
+$VERSION
+EOF
+elif [[ ${VERSION} == "python3.13" ]]; then
   cat >pythons.txt <<EOF
 $VERSION
 $VERSION-dev
