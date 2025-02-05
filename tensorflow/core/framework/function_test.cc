@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
