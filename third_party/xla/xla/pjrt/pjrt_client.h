@@ -865,19 +865,9 @@ class PjRtClient {
         platform_name());
   }
 
-  // TODO(b/277820585): remove BufferFromHostLiteral with PjRtDevice after the
-  // migration is done.
-
   // Note that literal must remain in scope until the transfer has completed, so
   // the caller should, for example, wait for GetReadyFuture().Await()
   // completes on the return value before letting literal go out of scope.
-  ABSL_DEPRECATED("Use BufferFromHostLiteral with a PjRtMemorySpace instead")
-  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device) {
-    TF_ASSIGN_OR_RETURN(auto* memory_space, device->default_memory_space());
-    return BufferFromHostLiteral(literal, memory_space);
-  }
-
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space) {
     return tsl::errors::Unimplemented(
