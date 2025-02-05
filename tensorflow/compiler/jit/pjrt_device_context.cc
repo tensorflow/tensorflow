@@ -271,7 +271,8 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
           .value();
 
   absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or =
-      src_device_buffer->CopyToDevice(pjrt_dst_device);
+      src_device_buffer->CopyToMemorySpace(
+          *pjrt_dst_device->default_memory_space());
   if (!buffer_or.ok()) {
     done(buffer_or.status());
     return;

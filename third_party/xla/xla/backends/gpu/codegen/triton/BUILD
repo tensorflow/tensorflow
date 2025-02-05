@@ -186,6 +186,7 @@ cc_library(
         ":fusion_emitter_legacy_matmul",
         ":passes",
         ":support",
+        ":tma_utils",
         ":xla_triton",
         ":xla_triton_passes",
         "//xla:autotuning_proto_cc",
@@ -1048,5 +1049,47 @@ xla_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "tma_utils",
+    srcs = ["tma_utils.cc"],
+    hdrs = ["tma_utils.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/codegen:emitter_loc_op_builder",
+        "//xla/service:hlo_module_config",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:tma_metadata",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@triton//:TritonDialects",
+    ],
+)
+
+xla_cc_test(
+    name = "tma_utils_test",
+    srcs = ["tma_utils_test.cc"],
+    deps = [
+        ":tma_utils",
+        "//xla:shape_util",
+        "//xla/codegen:emitter_loc_op_builder",
+        "//xla/service:hlo_module_config",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:tma_metadata",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:NVVMDialect",
+        "@triton//:TritonDialects",
     ],
 )

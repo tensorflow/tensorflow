@@ -402,7 +402,8 @@ TEST(PjRtClientTest, CopyToDevice) {
 
   auto* device_1 = client->addressable_devices()[1];
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, buffer->CopyToDevice(device_1));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, buffer->CopyToMemorySpace(
+                                           *device_1->default_memory_space()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
 
@@ -434,7 +435,8 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
   constexpr int kConcurrentCopy = 16;
   std::vector<std::unique_ptr<PjRtBuffer>> results(kConcurrentCopy);
   for (int i = 0; i < kConcurrentCopy; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(results[i], buffer->CopyToDevice(device_1));
+    TF_ASSERT_OK_AND_ASSIGN(results[i], buffer->CopyToMemorySpace(
+                                            *device_1->default_memory_space()));
   }
 
   // The destructor of TfrtCpuBuffer should wait for outstanding copy.
@@ -480,7 +482,8 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
   constexpr int kConcurrentCopy = 16;
   std::vector<std::unique_ptr<PjRtBuffer>> results(kConcurrentCopy);
   for (int i = 0; i < kConcurrentCopy; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(results[i], buffer->CopyToDevice(device_1));
+    TF_ASSERT_OK_AND_ASSIGN(results[i], buffer->CopyToMemorySpace(
+                                            *device_1->default_memory_space()));
   }
 
   // The destructor of TfrtCpuBuffer should wait for outstanding copy.

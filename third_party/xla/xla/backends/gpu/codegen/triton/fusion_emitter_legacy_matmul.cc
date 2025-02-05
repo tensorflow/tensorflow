@@ -1962,45 +1962,29 @@ class Scopes {
 // iteration arguments for the next iteration.
 class IterableInput {
  public:
-  IterableInput(size_t iter_arg_index, size_t operand_index,
-                int contracting_dimension, Type type, Type storage_type,
-                SmallVector<Value> increments, const HloInstruction* hlo_instr,
-                const Side* side, std::vector<int32_t> boundary_checks)
+  IterableInput(size_t iter_arg_index, size_t operand_index, Type type,
+                Type storage_type, SmallVector<Value> increments,
+                const HloInstruction* hlo_instr, const Side* side)
       : iter_arg_index_(iter_arg_index),
         operand_index_(operand_index),
-        contracting_dimension_(contracting_dimension),
         type_(type),
-        storage_type_(storage_type),
-        increments_(increments),
-        hlo_instr_(hlo_instr),
+        hlo_(hlo_instr),
         side_(side),
-        boundary_checks_(boundary_checks) {};
+        storage_type_(storage_type),
+        increments_(increments) {};
 
-  static absl::StatusOr<IterableInput> CreateIterableInput(
-      size_t iter_arg_index, EmitterLocOpBuilder& b, const MatMulDims& dims,
-      const Side* side, const HloInstruction* hlo_instr,
-      MatMulEmitterHelper& emitter) {
-    Type input_ty;
-    if (side->scope == TritonFusionAnalysis::Scope::META) {
-      input_ty = b.getI16Type();
-    } else {
-      TF_ASSIGN_OR_RETURN(input_ty,
-                          TritonType(b, hlo_instr->shape().element_type()));
-    }
-    int contracting_dimension =
-        (side->scope == TritonFusionAnalysis::Scope::RHS)
-            ? dims.rhs_contracting_dim_idx
-            : dims.lhs_contracting_dim_idx;
-
-    SmallVector<Value> increments =
-        emitter.EmitIncrements(b, *side, *hlo_instr, contracting_dimension);
-
-    return IterableInput(iter_arg_index, GetOperandIndex(side->scope),
-                         contracting_dimension, input_ty,
-                         StorageType(b, input_ty), increments, hlo_instr, side,
-                         /*boundary_checks=*/{});
+  // Emits the initial values for the input. Returns a vector of the initial
+  // values for iteration arguments.
+  absl::StatusOr<SmallVector<Value>> EmitInitialValues(
+      MatMulEmitterHelper& emitter, EmitterLocOpBuilder& b,
+      const ValueRange& bases, Value pid_k) {
+    TF_ASSIGN_OR_RETURN(auto tensor_ptr,
+                        emitter.EmitTensorPointer(b, hlo_, *side_, bases, pid_k,
+                                                  boundary_checks_));
+    return SmallVector<Value>{tensor_ptr};
   }
 
+  // Emits the load for the input and casts if necessary.
   Value EmitLoad(EmitterLocOpBuilder b, ValueRange args) const {
     Value param_value = EmitParameterLoad(b, args.front(), boundary_checks_);
     if (type_ != storage_type_) {
@@ -2010,27 +1994,68 @@ class IterableInput {
     return param_value;
   }
 
+  // Emits the next iteration arguments for the given input.
+  SmallVector<Value> EmitAdvance(EmitterLocOpBuilder b, ValueRange args) const {
+    if (increments_.empty()) {
+      return args;
+    } else {
+      return SmallVector<Value>{b.create<mt::AdvanceOp>(
+          args.front().getType(), args.front(), increments_)};
+    }
+  }
+
+  // Returns the number of iteration arguments associated with this input. The
+  // input uses the arguments at indices iter_arg_index() and the NumIterArgs()
+  // - 1 following it.
+  int NumIterArgs() const { return 1; }
+
   // Index of the iter_arg of the ForOp associated with this input.
-  size_t iter_arg_index_;
+  size_t iter_arg_index() const { return iter_arg_index_; }
   // Index used to differentiate it between LHS, RHS, and META inputs.
-  size_t operand_index_;
-  // Index of the contracting dimension in the input.
-  int contracting_dimension_;
+  size_t operand_index() const { return operand_index_; }
   // Type of the input.
+  Type type() const { return type_; }
+  // HLO instruction associated with this input.
+  const HloInstruction* hlo() const { return hlo_; }
+  // Side associated with this input.
+  const Side* side() const { return side_; }
+
+ protected:
+  size_t iter_arg_index_;
+  size_t operand_index_;
   Type type_;
+  const HloInstruction* hlo_;
+  const Side* side_;
+
   // Storage type of the input (in case it is different & needs to be casted).
   Type storage_type_;
   // Represents how much to increment the input on each loop iteration.
   SmallVector<Value> increments_;
-
-  // Necessary for some operations at the moment. Maybe could be refactored out.
-  const HloInstruction* hlo_instr_;
-  const Side* side_;
-
-  // This is currently set afterwards, but needs to be associated with the input
-  // during iteration.
-  std::vector<int32_t> boundary_checks_;
+  // This gets set in the EmitInitialValues function.
+  std::vector<int32_t> boundary_checks_ = {};
 };
+
+static absl::StatusOr<IterableInput> CreateIterableInput(
+    size_t iter_arg_index, EmitterLocOpBuilder& b, const MatMulDims& dims,
+    const Side* side, const HloInstruction* hlo_instr,
+    MatMulEmitterHelper& emitter) {
+  Type input_ty;
+  if (side->scope == TritonFusionAnalysis::Scope::META) {
+    input_ty = b.getI16Type();
+  } else {
+    TF_ASSIGN_OR_RETURN(input_ty,
+                        TritonType(b, hlo_instr->shape().element_type()));
+  }
+  int contracting_dimension = (side->scope == TritonFusionAnalysis::Scope::RHS)
+                                  ? dims.rhs_contracting_dim_idx
+                                  : dims.lhs_contracting_dim_idx;
+
+  SmallVector<Value> increments =
+      emitter.EmitIncrements(b, *side, *hlo_instr, contracting_dimension);
+
+  return IterableInput(iter_arg_index, GetOperandIndex(side->scope), input_ty,
+                       StorageType(b, input_ty), increments, hlo_instr, side);
+}
 
 enum MaskExpandDimension { kMajor = 0, kMinor = 1 };
 
@@ -2217,18 +2242,15 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
 
     // Load tiles of all parameters of LHS and RHS scopes and advance pointers.
     for (const IterableInput& input : inputs) {
-      Value param_value = input.EmitLoad(b, iter_args[input.iter_arg_index_]);
-      CHECK(values[input.operand_index_]
-                .insert({input.hlo_instr_, param_value})
+      auto args = iter_args.slice(input.iter_arg_index(), input.NumIterArgs());
+      Value param_value = input.EmitLoad(b, args);
+      CHECK(values[input.operand_index()]
+                .insert({input.hlo(), param_value})
                 .second);
 
-      if (input.increments_.empty()) {
-        iter_args_next.push_back(iter_args[input.iter_arg_index_]);
-      } else {
-        iter_args_next.push_back(b.create<mt::AdvanceOp>(
-            iter_args[input.iter_arg_index_].getType(),
-            iter_args[input.iter_arg_index_], input.increments_));
-      }
+      auto new_args = input.EmitAdvance(b, args);
+      iter_args_next.insert(iter_args_next.end(), new_args.begin(),
+                            new_args.end());
     }
 
     // Emit all operations of LHS and RHS scopes.
@@ -2322,16 +2344,14 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     for (const HloInstruction* input_hlo : ScopeInputs(analysis, side->scope)) {
       TF_ASSIGN_OR_RETURN(SmallVector<Value> arguments,
                           GetArguments(fn, *input_hlo));
+      TF_ASSIGN_OR_RETURN(IterableInput iter_input,
+                          CreateIterableInput(iter_args.size(), b, dims, side,
+                                              input_hlo, emitter));
       TF_ASSIGN_OR_RETURN(
-          IterableInput iter_input,
-          IterableInput::CreateIterableInput(iter_args.size(), b, dims, side,
-                                             input_hlo, emitter));
-      TF_ASSIGN_OR_RETURN(Value tensor_ptr,
-                          emitter.EmitTensorPointer(
-                              b, input_hlo, *side, arguments, scopes.pid_k(),
-                              iter_input.boundary_checks_));
+          auto inits,
+          iter_input.EmitInitialValues(emitter, b, arguments, scopes.pid_k()));
+      iter_args.insert(iter_args.end(), inits.begin(), inits.end());
       inputs.push_back(iter_input);
-      iter_args.push_back(tensor_ptr);
     }
   }
 

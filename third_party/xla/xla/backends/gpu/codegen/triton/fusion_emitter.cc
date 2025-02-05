@@ -87,6 +87,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/backends/gpu/codegen/triton/passes.h"
+#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/backends/gpu/codegen/triton/xla_triton_ops.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
@@ -1139,6 +1140,7 @@ absl::StatusOr<TritonModule> CreateTritonModule(
     TF_ASSIGN_OR_RETURN(tma_metadata,
                         EmitMatMul(b, libdevice_path, device_info, fusion, fn,
                                    block_level_parameters));
+    RewriteFunctionForTma(b, fn, tma_metadata);
   } else if (fusion_kind == kTritonFusionKind) {
     TF_RETURN_IF_ERROR(EmitGeneric(b, libdevice_path, device_info, fusion, fn,
                                    block_level_parameters));
