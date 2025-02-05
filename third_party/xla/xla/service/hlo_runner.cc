@@ -23,6 +23,8 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -212,7 +214,7 @@ absl::StatusOr<Literal> HloRunner::ExecuteWithBufferAssignment(
 }
 
 absl::StatusOr<Literal> HloRunner::ExecuteWithExecutable(
-    Executable* executable, absl::Span<const Literal* const> arguments,
+    OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
     ExecutionProfile* profile) {
   entry_computation_layout_ =
       &(executable->module().entry_computation_layout());
@@ -312,14 +314,14 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
     std::unique_ptr<HloModule> module,
     absl::Span<ScopedShapedBuffer const> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
   return ExecuteWithDeviceBuffers(executable.get(), arguments, profile);
 }
 
 absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
-    Executable* executable, absl::Span<ScopedShapedBuffer const> arguments,
-    ExecutionProfile* profile) {
+    OpaqueExecutable* executable,
+    absl::Span<ScopedShapedBuffer const> arguments, ExecutionProfile* profile) {
   std::vector<ExecutionInput> execution_arguments =
       ExecutionInputsFromScopedShapedBuffers(
           arguments, executable->module().input_output_alias_config(),
@@ -345,7 +347,7 @@ HloRunner::ExecuteWithMovedDeviceBuffersAndBufferAssignment(
     std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
+      std::unique_ptr<OpaqueExecutable> executable,
       CreateExecutableWithBufferAssignment(
           std::move(module), buffer_assignment_proto, run_hlo_passes));
   return ExecuteWithMovedDeviceBuffers(executable.get(), std::move(arguments),
@@ -410,7 +412,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     std::unique_ptr<HloModule> module, const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
+      std::unique_ptr<OpaqueExecutable> executable,
       CreateExecutable(std::move(module), options.run_hlo_passes));
   return ExecuteReplicated(executable.get(), options, device_assignment);
 }
@@ -555,7 +557,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
-    Executable* executable, const ReplicatedExecuteOptions& options,
+    OpaqueExecutable* executable, const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment, ExecutionProfile* profile) {
   return ExecuteReplicatedImpl(
       [&](const std::vector<ServiceExecutableRunOptions>& service_run_options,
@@ -603,7 +605,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
-    std::function<Executable*(int64_t)> executable_provider,
+    std::function<OpaqueExecutable*(int64_t)> executable_provider,
     std::function<int64_t(int64_t)> argument_count_provider,
     std::function<const Literal*(int64_t, int64_t)> argument_provider,
     const ReplicatedExecuteOptions& options,
@@ -666,14 +668,14 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
   return ExecuteReplicated(std::move(module), options, &device_assignment);
 }
 
-absl::StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(
+absl::StatusOr<std::unique_ptr<OpaqueExecutable>> HloRunner::CreateExecutable(
     std::unique_ptr<HloModule> module, bool run_hlo_passes) {
   return CreateExecutableWithBufferAssignment(
       std::move(module),
       /*buffer_assignment_proto=*/nullptr, run_hlo_passes);
 }
 
-absl::StatusOr<std::unique_ptr<Executable>>
+absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
 HloRunner::CreateExecutableWithBufferAssignment(
     std::unique_ptr<HloModule> module,
     const BufferAssignmentProto* buffer_assignment_proto, bool run_hlo_passes) {
@@ -691,7 +693,7 @@ HloRunner::CreateExecutableWithBufferAssignment(
     }
     auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
     TF_ASSIGN_OR_RETURN(
-        auto executables,
+        std::vector<std::unique_ptr<Executable>> executables,
         backend().compiler()->Compile(std::move(module_group),
                                       {{backend().default_stream_executor()}},
                                       backend().memory_allocator()));
@@ -748,6 +750,34 @@ bool HloRunner::HasProperty(const HloRunnerPropertyTag::Type tag) const {
     return backend().platform()->Name() == "Host";
   }
   return false;
+}
+
+absl::StatusOr<Executable*> HloRunner::ExecutableFromWrapped(
+    const OpaqueExecutable* wrapped) const {
+  return const_cast<Executable*>(wrapped);
+}
+
+absl::StatusOr<std::unique_ptr<Executable>> HloRunner::ExecutableFromWrapped(
+    std::unique_ptr<OpaqueExecutable> wrapped) const {
+  return std::unique_ptr<Executable>(wrapped.release());
+}
+
+std::unique_ptr<OpaqueExecutable> HloRunner::WrapExecutable(
+    std::unique_ptr<Executable> executable) const {
+  return std::unique_ptr<OpaqueExecutable>(executable.release());
+}
+
+absl::StatusOr<absl::Nonnull<const HloModule*>> HloRunner::HloModuleFromWrapped(
+    const OpaqueExecutable* wrapped) const {
+  if (wrapped->has_module()) {
+    return &wrapped->module();
+  }
+  return absl::NotFoundError("OpaqueExecutable does not contain an HloModule.");
+}
+
+absl::StatusOr<absl::Nonnull<const HloProto*>> HloRunner::HloProtoFromWrapped(
+    const OpaqueExecutable* wrapped) const {
+  return wrapped->hlo_proto();
 }
 
 }  // namespace xla

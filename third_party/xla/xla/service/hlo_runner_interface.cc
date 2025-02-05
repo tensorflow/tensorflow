@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
-#include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -129,7 +128,7 @@ absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithBufferAssignment(
 }
 
 absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
-    Executable* executable, absl::Span<const Literal> arguments,
+    OpaqueExecutable* executable, absl::Span<const Literal> arguments,
     ExecutionProfile* profile) {
   // Construct a vector of plain pointers for the arguments.
   auto argument_pointers = MakePointerVector<const Literal>(arguments);
