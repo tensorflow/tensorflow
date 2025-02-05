@@ -549,6 +549,24 @@ absl::StatusOr<bool> HloControlFlowFlattening::Run(
                  instruction->opcode() == HloOpcode::kConditional) {
         TF_RETURN_IF_ERROR(SetConditionalValue(instruction));
         changed = true;
+      } else if (remove_sparse_core_calls_ &&
+                 !instruction->parent()->IsFusionComputation() &&
+                 (instruction->opcode() == HloOpcode::kAsyncStart ||
+                  instruction->opcode() == HloOpcode::kAsyncDone) &&
+                 instruction->parent()->execution_thread() == "main" &&
+                 instruction->async_wrapped_computation() != nullptr &&
+                 instruction->async_execution_thread() == "sparsecore") {
+        VLOG(1) << "Remove " << instruction->name();
+        if (instruction->opcode() == HloOpcode::kAsyncDone) {
+          while (instruction->opcode() == HloOpcode::kAsyncDone ||
+                 instruction->opcode() == HloOpcode::kAsyncUpdate ||
+                 instruction->opcode() == HloOpcode::kAsyncStart) {
+            HloInstruction* operand = instruction->mutable_operand(0);
+            TF_RETURN_IF_ERROR(RemoveCollective(instruction).status());
+            instruction = operand;
+          }
+          changed = true;
+        }
       }
     }
   }
