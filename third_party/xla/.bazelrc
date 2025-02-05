@@ -1,6 +1,3 @@
-# Prevent XNNPACK from using `-mavxvnniint8` (only available in clang 16+/gcc 13+).
-build --define=xnn_enable_avxvnniint8=false
-
 # Load the TensorFlow bazelrc
 import %workspace%/tensorflow.bazelrc
 import %workspace%/warnings.bazelrc
