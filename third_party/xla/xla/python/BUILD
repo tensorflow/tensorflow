@@ -372,6 +372,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@nanobind",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "//third_party/py/numpy:headers",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:comparison_util",
         "//xla:literal",
@@ -423,6 +424,7 @@ cc_library(
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/python/lib/core:numpy",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
