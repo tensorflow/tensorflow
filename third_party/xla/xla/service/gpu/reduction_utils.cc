@@ -20,6 +20,7 @@ limitations under the License.
 #include <ostream>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
