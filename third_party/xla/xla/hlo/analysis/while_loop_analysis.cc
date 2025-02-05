@@ -198,7 +198,7 @@ static std::optional<int64_t> GetUniqueGTEDependenceIndex(
       [](const HloInstruction* inst) -> ReplaceType {
         return ReplaceType::kReplaceParam;
       },
-      /*cross_computation=*/false, /*inline_calls_and_fusions=*/false,
+      /*cross_computation=*/false, /*inline_calls_and_fusions=*/true,
       /*run_verifier=*/false);
   HloComputation* entry = extracted->entry_computation();
 
