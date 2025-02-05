@@ -45,6 +45,10 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 
 namespace xla {
