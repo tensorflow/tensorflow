@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/module_attributes_importer.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
