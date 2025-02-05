@@ -1019,5 +1019,46 @@ TEST_F(WhileLoopAnalysisTest,
   EXPECT_EQ(trip_count, std::nullopt);
 }
 
+TEST_F(WhileLoopAnalysisTest, GetIndvarIndexShouldWorkWhenParamIsCopied) {
+  const char* hlo = R"(
+    HloModule test
+
+    fused_copy {
+      param.1 = (s32[],s32[]) parameter(0)
+      ROOT copy = (s32[], s32[]) copy(param.1)
+    }
+
+    body {
+      param.1 = (s32[], s32[]) parameter(0)
+      copy_fusion = (s32[], s32[]) fusion(param.1), kind=kInput, calls=fused_copy
+      iter.1 = s32[] get-tuple-element(copy_fusion), index=0
+      c.1 = s32[] constant(1)
+      add.1 = s32[] add(iter.1, c.1)
+      data.1 = s32[] get-tuple-element(copy_fusion), index=1
+      ROOT tuple = (s32[], s32[]) tuple(add.1, data.1)
+    }
+
+    condition {
+      param = (s32[], s32[]) parameter(0)
+      iter = s32[] get-tuple-element(param), index=0
+      c.10 = s32[] constant(10)
+      ROOT compare = pred[] compare(iter, c.10), direction=LT
+    }
+
+    ENTRY main {
+      c0 = s32[] constant(0)
+      data = s32[] parameter(0)
+      tuple = (s32[], s32[]) tuple(c0, data)
+      ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  EXPECT_EQ(GetLoopInductionVarTupleIdx(while_op), 0);
+}
+
 }  // namespace
 }  // namespace xla
