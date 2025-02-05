@@ -130,6 +130,14 @@ message DebugOptions {
   // clang-format off
   // go/keep-sorted start newline_separated=yes skip_lines=1 ignore_prefixes=["bool","int32","string"]
   // clang-format on
+  // Controls XnnGraphFusion HLO pass.
+  XnnGraphFusionMode xla_cpu_experimental_xnn_graph_fusion_mode = 365;
+
+  enum XnnGraphFusionMode {
+    XNN_GRAPH_FUSION_MODE_DISABLED = 0;
+    XNN_GRAPH_FUSION_MODE_GREEDY = 1;
+  }
+
   // Use region analysis in copy insertion pass.
   bool xla_cpu_copy_insertion_use_region_analysis = 337;
 
@@ -1128,7 +1136,7 @@ message DebugOptions {
 
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
-  // Next id: 365
+  // Next id: 366
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
