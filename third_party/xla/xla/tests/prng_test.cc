@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <array>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -23,6 +22,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/SpecialFunctions"
 #include "xla/client/local_client.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/test.h"

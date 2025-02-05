@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"

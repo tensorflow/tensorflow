@@ -15,7 +15,11 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <tuple>
+#include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -23,6 +27,8 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
