@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -109,7 +110,7 @@ std::pair<GpuResourceType, ResourceUsageType> GetP2PResourceAndUsage(
 bool IsGpuAsyncStart(const HloInstruction& hlo) {
   return (hlo_query::IsAsyncCollectiveStartOp(&hlo,
                                               /*include_send_recv=*/true) &&
-          !IsSyncCollective(&hlo)) ||
+          !IsGPUSyncCollective(hlo)) ||
          IsAsyncComputeOp(hlo) || hlo.opcode() == HloOpcode::kCopyStart;
 }
 
@@ -117,7 +118,7 @@ bool IsGpuAsyncStart(const HloInstruction& hlo) {
 bool IsGpuAsyncDone(const HloInstruction& hlo) {
   return (hlo_query::IsAsyncCollectiveDoneOp(&hlo,
                                              /*include_send_recv=*/true) &&
-          !IsSyncCollective(hlo.operand(0))) ||
+          !IsGPUSyncCollective(*hlo.operand(0))) ||
          IsAsyncComputeOp(hlo) || hlo.opcode() == HloOpcode::kCopyDone;
 }
 

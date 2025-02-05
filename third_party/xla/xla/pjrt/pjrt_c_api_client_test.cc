@@ -206,7 +206,7 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> result,
-      buffer->CopyToDevice(client->addressable_devices()[1]));
+      buffer->CopyToMemorySpace(client->memory_spaces()[1]));
   buffer.reset();
   ASSERT_TRUE(result);
   TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());

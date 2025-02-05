@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -41,7 +41,7 @@ NcclCollectiveBroadcastStartThunk::NcclCollectiveBroadcastStartThunk(
     ThunkInfo thunk_info, const HloCollectiveBroadcastInstruction* instr,
     std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
     : NcclCollectiveThunk(Thunk::kNcclCollectiveBroadcastStart, thunk_info,
-                          IsSyncCollective(instr)),
+                          IsGPUSyncCollective(*instr)),
       config_(GetNcclCollectiveConfig(instr, std::nullopt)),
       buffers_(std::move(buffers)) {}
 

@@ -49,10 +49,21 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "collective_ops_utils",
+    srcs = ["collective_ops_utils.cc"],
+    hdrs = ["collective_ops_utils.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:backend_configs_cc",
+    ],
+)
+
+cc_library(
     name = "gpu_collective_combiner_utils",
     srcs = ["gpu_collective_combiner_utils.cc"],
     hdrs = ["gpu_collective_combiner_utils.h"],
     deps = [
+        ":collective_ops_utils",
         ":convert_async_collectives_to_sync",
         "//xla:util",
         "//xla/hlo/ir:hlo",
