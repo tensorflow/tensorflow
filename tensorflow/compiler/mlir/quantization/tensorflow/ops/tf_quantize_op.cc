@@ -101,7 +101,8 @@ TF::PartitionedCallOp FinalizeFunctionRegister(
   rewriter.restoreInsertionPoint(original_point);
 
   auto quantize_call = rewriter.create<TF::PartitionedCallOp>(
-      quantized_op->getLoc(), quantize_result_type, input, func_name_attr,
+      quantized_op->getLoc(), quantize_result_type, input,
+      /*args_attrs=*/nullptr, /*res_attrs=*/nullptr, func_name_attr,
       /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
   return quantize_call;
 }

@@ -236,7 +236,7 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
     auto new_op = builder.create<CallOp>(
         op->getLoc(), compose_func_type.getResults(),
         SymbolRefAttr::get(builder.getContext(), compose_func.getName()),
-        new_operands);
+        new_operands, /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
 
     // Replace the use of the old op. This is mapping the results from the
     // target TF ops to the TFR function returns. If the TFR function return is
