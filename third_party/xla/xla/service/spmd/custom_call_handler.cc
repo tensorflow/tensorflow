@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/spmd/custom_call_handler.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -388,6 +389,49 @@ std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
                                           kSPMDOpRotateRight, opaque);
 }
 
+absl::Status SpmdPartitioningVisitor::HandleCustomCallJaxLog(
+    HloInstruction* hlo) {
+  const HloCustomCallInstruction* custom_call =
+      Cast<HloCustomCallInstruction>(hlo);
+  const int64_t num_operands = hlo->operand_count();
+  std::vector<HloInstruction*> partitioned_operands;
+  partitioned_operands.reserve(num_operands);
+  std::vector<Shape> partitioned_shapes_with_layout_constraints;
+  partitioned_shapes_with_layout_constraints.reserve(num_operands);
+  for (size_t i = 0; i < num_operands; ++i) {
+    spmd::PartitionedHlo partitioned_operand =
+        GetPartitionedHlo(hlo->operand(i));
+    partitioned_operands.push_back(partitioned_operand.hlo());
+    Shape partitioned_shape_with_layout_constraint =
+        partitioned_operand.hlo()->shape();
+    (*partitioned_shape_with_layout_constraint.mutable_layout()) =
+        custom_call->operand_shapes_with_layout()[i].layout();
+    partitioned_shapes_with_layout_constraints.push_back(
+        partitioned_shape_with_layout_constraint);
+  }
+
+  std::unique_ptr<HloInstruction> partitioned_instruction =
+      HloInstruction::CreateCustomCall(
+          hlo->shape(), partitioned_operands, custom_call->custom_call_target(),
+          partitioned_shapes_with_layout_constraints, custom_call->opaque(),
+          custom_call->api_version());
+  auto partitioned_custom_call =
+      Cast<HloCustomCallInstruction>(partitioned_instruction.get());
+  partitioned_custom_call->set_custom_call_has_side_effect(
+      custom_call->custom_call_has_side_effect());
+  HloInstruction* partitioned_hlo =
+      b_.AddInstruction(std::move(partitioned_instruction));
+  partitioned_hlo->set_sharding(HloSharding::Replicate());
+
+  spmd::PartitionedHlo result_partitioned =
+      spmd::PartitionedHlo(partitioned_hlo, hlo->shape(),
+                           MakePartitioningState())
+          .Reshard(hlo->sharding());
+  SetPartitionedHlo(hlo, result_partitioned);
+
+  return absl::OkStatus();
+}
+
 absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   if (auto* partitioner = GetCustomCallPartitioner(hlo->custom_call_target())) {
     return partitioner->Partition(this, hlo);
@@ -475,6 +519,10 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
                                           MakePartitioningState())
                                .Reshard(hlo->sharding()));
     return absl::OkStatus();
+  }
+
+  if (hlo->custom_call_target() == "__gpu$jax.gpu.log") {
+    return HandleCustomCallJaxLog(hlo);
   }
 
   return DefaultAction(hlo);

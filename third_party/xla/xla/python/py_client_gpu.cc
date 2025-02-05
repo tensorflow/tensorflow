@@ -21,9 +21,12 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/service/custom_call_status.h"
 #if TENSORFLOW_USE_ROCM
@@ -34,6 +37,8 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/driver_types.h"
 #endif
 #include "nanobind/nanobind.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/transpose.h"
@@ -42,6 +47,7 @@ limitations under the License.
 #include "xla/python/nb_numpy.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/platform_util.h"
+
 #if TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
 #define gpuStreamHandle hipStream_t
@@ -172,5 +178,18 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
 XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
     "xla_python_gpu_callback", &XlaPythonGpuCallback,
     absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
+
+absl::Status JaxLog(absl::string_view prefix, ffi::RemainingArgs args) {
+  LOG(INFO) << prefix << ": " << args.size() << " inputs\n";
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(
+    kJaxLog, JaxLog,
+    ffi::Ffi::Bind().Attr<absl::string_view>("prefix").RemainingArgs());
+XLA_FFI_REGISTER_HANDLER(
+    ffi::GetXlaFfiApi(), "__gpu$jax.gpu.log",
+    absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()),
+    kJaxLog);
 
 }  // namespace xla
