@@ -16,7 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_COMMON_SHAPE_FNS_H_
 
 #include <array>
+#include <cstdint>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"

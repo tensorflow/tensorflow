@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_BFLOAT16_H_
 #define TENSORFLOW_CORE_FRAMEWORK_BFLOAT16_H_
 
+#include <cstdint>
+
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
 
