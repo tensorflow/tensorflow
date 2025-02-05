@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/util/saved_tensor_slice_util.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace dtensor {
