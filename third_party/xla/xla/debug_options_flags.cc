@@ -1032,6 +1032,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "us to dump into the directory specified by the environment variable "
       "TEST_UNDECLARED_OUTPUTS_DIR."));
   flag_list->push_back(tsl::Flag(
+      "xla_flags_reset", bool_setter_for(&DebugOptions::set_xla_flags_reset),
+      debug_options->xla_flags_reset(),
+      "Whether to reset XLA_FLAGS next time to parse."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_annotate_with_emitter_loc",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_unsupported_annotate_with_emitter_loc),
@@ -2199,6 +2203,10 @@ void AppendDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
 
 xla::DebugOptions GetDebugOptionsFromFlags() {
   absl::call_once(flags_init, &AllocateFlags, nullptr);
+  if (flag_values->xla_flags_reset()) {
+    ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects,
+                                     /*reset_envvar=*/true);
+  }
   return *flag_values;
 }
 
