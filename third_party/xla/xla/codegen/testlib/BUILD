@@ -77,7 +77,7 @@ pytype_strict_library(
         ":_extension",
         "//third_party/py/numpy",
         "//xla/python:xla_extension",
-        "@ml_dtypes",  # buildcleaner: keep (transitively depend on it via xla_extension)
+        "@ml_dtypes_py//ml_dtypes",  # buildcleaner: keep (transitively depend on it via xla_extension)
     ],
 )
 

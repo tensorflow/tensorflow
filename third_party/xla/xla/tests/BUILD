@@ -2649,7 +2649,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:blocking_counter",
-        "@ml_dtypes//:float8",
+        "@ml_dtypes_py//ml_dtypes:float8",
     ],
 )
 
