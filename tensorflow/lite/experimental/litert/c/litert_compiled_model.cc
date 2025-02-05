@@ -69,6 +69,24 @@ LiteRtStatus LiteRtGetCompiledModelInputBufferRequirements(
   return kLiteRtStatusOk;
 }
 
+LiteRtStatus LiteRtGetCompiledModelInputBufferRequirementsByTensorName(
+    LiteRtCompiledModel compiled_model, LiteRtParamIndex signature_index,
+    const char* input_name,
+    LiteRtTensorBufferRequirements* buffer_requirements) {
+  if (!compiled_model || !buffer_requirements) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+
+  auto res = compiled_model->GetInputBufferRequirementsCApi(signature_index,
+                                                            input_name);
+  if (!res) {
+    LITERT_LOG(LITERT_ERROR, "%s", res.Error().Message().c_str());
+    return res.Error().Status();
+  }
+  *buffer_requirements = res.Value();
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus LiteRtGetCompiledModelOutputBufferRequirements(
     LiteRtCompiledModel compiled_model, LiteRtParamIndex signature_index,
     LiteRtParamIndex output_index,
@@ -79,6 +97,24 @@ LiteRtStatus LiteRtGetCompiledModelOutputBufferRequirements(
 
   auto res = compiled_model->GetOutputBufferRequirementsCApi(signature_index,
                                                              output_index);
+  if (!res) {
+    LITERT_LOG(LITERT_ERROR, "%s", res.Error().Message().c_str());
+    return res.Error().Status();
+  }
+  *buffer_requirements = res.Value();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetCompiledModelOutputBufferRequirementsByTensorName(
+    LiteRtCompiledModel compiled_model, LiteRtParamIndex signature_index,
+    const char* output_name,
+    LiteRtTensorBufferRequirements* buffer_requirements) {
+  if (!compiled_model || !buffer_requirements) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+
+  auto res = compiled_model->GetOutputBufferRequirementsCApi(signature_index,
+                                                             output_name);
   if (!res) {
     LITERT_LOG(LITERT_ERROR, "%s", res.Error().Message().c_str());
     return res.Error().Status();

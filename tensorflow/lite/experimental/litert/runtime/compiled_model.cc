@@ -221,6 +221,23 @@ LiteRtCompiledModelT::GetInputBufferRequirements(
 }
 
 Expected<LiteRtTensorBufferRequirements>
+LiteRtCompiledModelT::GetInputBufferRequirements(
+    absl::string_view signature_key, absl::string_view input_name) {
+  auto runner = GetSignatureRunner(signature_key);
+  if (runner == nullptr) {
+    return Unexpected(kLiteRtStatusErrorNotFound,
+                      "Failed to get signature runner");
+  }
+
+  auto* input_tensor = runner->input_tensor(std::string(input_name).c_str());
+  if (input_tensor == nullptr) {
+    return Unexpected(kLiteRtStatusErrorNotFound, "Failed to get input tensor");
+  }
+
+  return GetTensorBufferRequirements(input_tensor);
+}
+
+Expected<LiteRtTensorBufferRequirements>
 LiteRtCompiledModelT::GetOutputBufferRequirements(
     absl::string_view signature_key, size_t output_index) {
   auto runner = GetSignatureRunner(signature_key);
@@ -234,6 +251,24 @@ LiteRtCompiledModelT::GetOutputBufferRequirements(
   }
   auto output_name = output_names[output_index];
   auto* output_tensor = runner->output_tensor(output_name);
+  if (output_tensor == nullptr) {
+    return Unexpected(kLiteRtStatusErrorNotFound,
+                      "Failed to get output tensor");
+  }
+
+  return GetTensorBufferRequirements(output_tensor);
+}
+
+Expected<LiteRtTensorBufferRequirements>
+LiteRtCompiledModelT::GetOutputBufferRequirements(
+    absl::string_view signature_key, absl::string_view output_name) {
+  auto runner = GetSignatureRunner(signature_key);
+  if (runner == nullptr) {
+    return Unexpected(kLiteRtStatusErrorNotFound,
+                      "Failed to get signature runner");
+  }
+
+  auto* output_tensor = runner->output_tensor(std::string(output_name).c_str());
   if (output_tensor == nullptr) {
     return Unexpected(kLiteRtStatusErrorNotFound,
                       "Failed to get output tensor");

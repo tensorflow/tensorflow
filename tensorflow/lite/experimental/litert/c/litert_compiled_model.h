@@ -68,6 +68,20 @@ LiteRtStatus LiteRtGetCompiledModelInputBufferRequirements(
     LiteRtParamIndex input_index,
     LiteRtTensorBufferRequirements* buffer_requirements);
 
+// Returns the buffer requirements for the given n-th input tensor. The returned
+// LiteRtTensorBufferRequirements is used to create the input tensor
+// buffer.
+//
+// Parameters:
+// - compiled_model: the target `LiteRtCompiledModel` object.
+// - signature_index: the index of the signature in `LiteRtModel`.
+// - input_name: the name of the input tensor in the signature (subgraph).
+// - buffer_requirements: the returned `LiteRtTensorBufferRequirements`.
+LiteRtStatus LiteRtGetCompiledModelInputBufferRequirementsByTensorName(
+    LiteRtCompiledModel compiled_model, LiteRtParamIndex signature_index,
+    const char* input_name,
+    LiteRtTensorBufferRequirements* buffer_requirements);
+
 // Returns the buffer requirements for the given n-th output tensor. The
 // returned LiteRtTensorBufferRequirements is used to create the output tensor
 // buffer.
@@ -80,6 +94,20 @@ LiteRtStatus LiteRtGetCompiledModelInputBufferRequirements(
 LiteRtStatus LiteRtGetCompiledModelOutputBufferRequirements(
     LiteRtCompiledModel compiled_model, LiteRtParamIndex signature_index,
     LiteRtParamIndex output_index,
+    LiteRtTensorBufferRequirements* buffer_requirements);
+
+// Returns the buffer requirements for the given n-th output tensor. The
+// returned LiteRtTensorBufferRequirements is used to create the output tensor
+// buffer.
+//
+// Parameters:
+// - compiled_model: the target `LiteRtCompiledModel` object.
+// - signature_index: the index of the signature in `LiteRtModel`.
+// - output_name: the name of the output tensor in the signature (subgraph).
+// - buffer_requirements: the returned `LiteRtTensorBufferRequirements`.
+LiteRtStatus LiteRtGetCompiledModelOutputBufferRequirementsByTensorName(
+    LiteRtCompiledModel compiled_model, LiteRtParamIndex signature_index,
+    const char* output_name,
     LiteRtTensorBufferRequirements* buffer_requirements);
 
 // Runs the model of the given signature synchronously, with the provided

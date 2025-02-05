@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -38,7 +39,8 @@ using testing::Pointwise;
 namespace litert {
 namespace {
 
-TEST(CompiledModelTest, Basic) {
+TEST(CompiledModelTest,
+     BasicWithIndexBasedLiteRtTensorBufferRequirementsLookup) {
   auto path = testing::GetTestFilePath(kModelFileName);
 
   LiteRtModel model;
@@ -112,6 +114,143 @@ TEST(CompiledModelTest, Basic) {
     size_t tensor_buffer_size;
     EXPECT_EQ(LiteRtGetTensorBufferRequirementsBufferSize(
                   tensor_buffer_requirements, &tensor_buffer_size),
+              kLiteRtStatusOk);
+    LiteRtTensorBuffer tensor_buffer;
+    EXPECT_EQ(
+        LiteRtCreateManagedTensorBuffer(tensor_buffer_type, &kInput0TensorType,
+                                        tensor_buffer_size, &tensor_buffer),
+        kLiteRtStatusOk);
+    output_tensor_buffers.push_back(tensor_buffer);
+  }
+
+  {
+    ABSL_LOG(INFO) << "Filling inputs with data";
+    void* host_mem_addr;
+
+    ASSERT_EQ(LiteRtLockTensorBuffer(input_tensor_buffers[0], &host_mem_addr),
+              kLiteRtStatusOk);
+    std::memcpy(host_mem_addr, kTestInput0Tensor, sizeof(kTestInput0Tensor));
+    ASSERT_EQ(LiteRtUnlockTensorBuffer(input_tensor_buffers[0]),
+              kLiteRtStatusOk);
+
+    ASSERT_EQ(LiteRtLockTensorBuffer(input_tensor_buffers[1], &host_mem_addr),
+              kLiteRtStatusOk);
+    std::memcpy(host_mem_addr, kTestInput1Tensor, sizeof(kTestInput1Tensor));
+    ASSERT_EQ(LiteRtUnlockTensorBuffer(input_tensor_buffers[1]),
+              kLiteRtStatusOk);
+  }
+
+  ASSERT_EQ(LiteRtRunCompiledModel(
+                compiled_model, /*signature_index=*/0,
+                input_tensor_buffers.size(), input_tensor_buffers.data(),
+                output_tensor_buffers.size(), output_tensor_buffers.data()),
+            kLiteRtStatusOk);
+
+  {
+    ABSL_LOG(INFO) << "Checking output...";
+    void* host_mem_addr;
+    ASSERT_EQ(LiteRtLockTensorBuffer(output_tensor_buffers[0], &host_mem_addr),
+              kLiteRtStatusOk);
+    auto output = absl::MakeSpan(static_cast<const float*>(host_mem_addr),
+                                 kTestOutputSize);
+    for (auto i = 0; i < kTestOutputSize; ++i) {
+      ABSL_LOG(INFO) << output[i] << "\t" << kTestOutputTensor[i];
+    }
+    EXPECT_THAT(output, Pointwise(FloatNear(1e-3), kTestOutputTensor));
+    ASSERT_EQ(LiteRtUnlockTensorBuffer(output_tensor_buffers[0]),
+              kLiteRtStatusOk);
+  }
+
+  LiteRtDestroyCompiledModel(compiled_model);
+  LiteRtDestroyModel(model);
+  LiteRtDestroyEnvironment(environment);
+
+  for (auto tensor_buffer : input_tensor_buffers) {
+    LiteRtDestroyTensorBuffer(tensor_buffer);
+  }
+  for (auto tensor_buffer : output_tensor_buffers) {
+    LiteRtDestroyTensorBuffer(tensor_buffer);
+  }
+}
+
+TEST(CompiledModelTest,
+     BasicWithNameBasedLiteRtTensorBufferRequirementsLookup) {
+  auto path = testing::GetTestFilePath(kModelFileName);
+
+  LiteRtModel model;
+  ASSERT_EQ(LiteRtCreateModelFromFile(path.c_str(), &model), kLiteRtStatusOk);
+
+  LiteRtCompilationOptions compilation_options;
+  ASSERT_EQ(LiteRtCreateCompilationOptions(&compilation_options),
+            kLiteRtStatusOk);
+  ASSERT_EQ(LiteRtSetCompilationOptionsHardwareAccelerators(
+                compilation_options, kLiteRtHwAcceleratorCpu),
+            kLiteRtStatusOk);
+
+  LiteRtEnvironment environment;
+  LiteRtEnvOption options = {};
+  ASSERT_EQ(LiteRtEnvironmentCreate(/*num_options=*/0, &options, &environment),
+            kLiteRtStatusOk);
+
+  LiteRtCompiledModel compiled_model;
+  ASSERT_EQ(LiteRtCreateCompiledModel(environment, model, compilation_options,
+                                      &compiled_model),
+            kLiteRtStatusOk);
+
+  LiteRtSubgraph subgraph;
+  ASSERT_EQ(LiteRtGetModelSubgraph(model, 0, &subgraph), kLiteRtStatusOk);
+
+  LiteRtParamIndex num_inputs;
+  ASSERT_EQ(LiteRtGetNumSubgraphInputs(subgraph, &num_inputs), kLiteRtStatusOk);
+
+  std::vector<LiteRtTensorBuffer> input_tensor_buffers;
+  input_tensor_buffers.reserve(num_inputs);
+  for (auto i = 0; i < num_inputs; ++i) {
+    LiteRtTensorBufferRequirements tensor_buffer_requirements_by_name;
+    ASSERT_EQ(LiteRtGetCompiledModelInputBufferRequirementsByTensorName(
+                  compiled_model, /*signature_index=*/0,
+                  std::string(subgraph->Inputs()[i]->Name()).c_str(),
+                  &tensor_buffer_requirements_by_name),
+              kLiteRtStatusOk);
+
+    LiteRtTensorBufferType tensor_buffer_type;
+    EXPECT_EQ(LiteRtGetTensorBufferRequirementsSupportedTensorBufferType(
+                  tensor_buffer_requirements_by_name, /*type_index=*/0,
+                  &tensor_buffer_type),
+              kLiteRtStatusOk);
+    size_t tensor_buffer_size;
+    EXPECT_EQ(LiteRtGetTensorBufferRequirementsBufferSize(
+                  tensor_buffer_requirements_by_name, &tensor_buffer_size),
+              kLiteRtStatusOk);
+    LiteRtTensorBuffer tensor_buffer;
+    EXPECT_EQ(
+        LiteRtCreateManagedTensorBuffer(tensor_buffer_type, &kInput0TensorType,
+                                        tensor_buffer_size, &tensor_buffer),
+        kLiteRtStatusOk);
+    input_tensor_buffers.push_back(tensor_buffer);
+  }
+
+  LiteRtParamIndex num_outputs;
+  ASSERT_EQ(LiteRtGetNumSubgraphOutputs(subgraph, &num_outputs),
+            kLiteRtStatusOk);
+
+  std::vector<LiteRtTensorBuffer> output_tensor_buffers;
+  output_tensor_buffers.reserve(num_outputs);
+  for (auto i = 0; i < num_outputs; ++i) {
+    LiteRtTensorBufferRequirements tensor_buffer_requirements_by_name;
+    ASSERT_EQ(LiteRtGetCompiledModelOutputBufferRequirementsByTensorName(
+                  compiled_model, /*signature_index=*/0,
+                  std::string(subgraph->Outputs()[i]->Name()).c_str(),
+                  &tensor_buffer_requirements_by_name),
+              kLiteRtStatusOk);
+    LiteRtTensorBufferType tensor_buffer_type;
+    EXPECT_EQ(LiteRtGetTensorBufferRequirementsSupportedTensorBufferType(
+                  tensor_buffer_requirements_by_name, /*type_index=*/0,
+                  &tensor_buffer_type),
+              kLiteRtStatusOk);
+    size_t tensor_buffer_size;
+    EXPECT_EQ(LiteRtGetTensorBufferRequirementsBufferSize(
+                  tensor_buffer_requirements_by_name, &tensor_buffer_size),
               kLiteRtStatusOk);
     LiteRtTensorBuffer tensor_buffer;
     EXPECT_EQ(

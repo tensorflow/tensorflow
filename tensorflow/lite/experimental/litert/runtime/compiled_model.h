@@ -67,6 +67,12 @@ class LiteRtCompiledModelT {
   litert::Expected<LiteRtTensorBufferRequirements> GetInputBufferRequirements(
       absl::string_view signature_key, size_t input_index);
 
+  // Returns the buffer requirements for the input tensor with the given name.
+  // The returned LiteRtTensorBufferRequirements is used to create the input
+  // tensor buffer.
+  litert::Expected<LiteRtTensorBufferRequirements> GetInputBufferRequirements(
+      absl::string_view signature_key, absl::string_view input_name);
+
   // The same as GetInputBufferRequirements() for C API.
   litert::Expected<LiteRtTensorBufferRequirements>
   GetInputBufferRequirementsCApi(size_t signature_index, size_t input_index) {
@@ -78,12 +84,29 @@ class LiteRtCompiledModelT {
     return GetInputBufferRequirements(*signature_keys_[signature_index],
                                       input_index);
   }
+  litert::Expected<LiteRtTensorBufferRequirements>
+  GetInputBufferRequirementsCApi(size_t signature_index,
+                                 const char* input_name) {
+    if (signature_index >= signature_keys_.size()) {
+      return litert::Unexpected(
+          kLiteRtStatusErrorIndexOOB,
+          "Signature index is out of range of signature keys");
+    }
+    return GetInputBufferRequirements(*signature_keys_[signature_index],
+                                      input_name);
+  }
 
   // Returns the buffer requirements for the n-th output tensor. The returned
   // LiteRtTensorBufferRequirements is used to create the output tensor
   // buffer.
   litert::Expected<LiteRtTensorBufferRequirements> GetOutputBufferRequirements(
       absl::string_view signature_key, size_t output_index);
+
+  // Returns the buffer requirements for the output tensor with the given name.
+  // The returned LiteRtTensorBufferRequirements is used to create the output
+  // tensor buffer.
+  litert::Expected<LiteRtTensorBufferRequirements> GetOutputBufferRequirements(
+      absl::string_view signature_key, absl::string_view output_name);
 
   // The same as GetOutputBufferRequirements() for C API.
   litert::Expected<LiteRtTensorBufferRequirements>
@@ -95,6 +118,17 @@ class LiteRtCompiledModelT {
     }
     return GetOutputBufferRequirements(*signature_keys_[signature_index],
                                        output_index);
+  }
+  litert::Expected<LiteRtTensorBufferRequirements>
+  GetOutputBufferRequirementsCApi(size_t signature_index,
+                                  const char* output_name) {
+    if (signature_index >= signature_keys_.size()) {
+      return litert::Unexpected(
+          kLiteRtStatusErrorIndexOOB,
+          "Signature index is out of range of signature keys");
+    }
+    return GetOutputBufferRequirements(*signature_keys_[signature_index],
+                                       output_name);
   }
 
   // Runs the model of the given signature with the provided input/output
