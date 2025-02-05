@@ -1,4 +1,4 @@
-/* Copyright 2022 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,12 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/tuple.h"
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
+
+#include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
-namespace ifrt {
+namespace gpu {
 
-char Tuple::ID = 0;
+// Returns true if instruction is a synchronous collective op.
+bool IsGPUSyncCollective(const HloInstruction& instr);
 
-}  // namespace ifrt
+}  // namespace gpu
 }  // namespace xla
+
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_

@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -69,7 +69,7 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
     ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
     std::vector<NcclCollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
     : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info,
-                          IsSyncCollective(instr)),
+                          IsGPUSyncCollective(*instr)),
       config_(GetNcclAllToAllConfig(instr)),
       buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {

@@ -1248,21 +1248,6 @@ class PjRtBuffer {
   // True if and only if Delete or Release has previously been called.
   virtual bool IsDeleted() = 0;
 
-  // Copies the buffer to device `dst_device`, performing a d2d transfer when
-  // `dst_device` is sharing the same Client, and performing a d2h and h2d copy
-  // if `dst_device` lives on a different Client.
-  // Returns an error if the buffer is already on dst_device.
-  //
-  // See note on semantics of cross-device copies in the class definition
-  // comment for PjRtClient.
-  ABSL_DEPRECATED("Use CopyToMemorySpace instead")
-  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
-      PjRtDevice* dst_device) {
-    TF_ASSIGN_OR_RETURN(PjRtMemorySpace * dst_memory_space,
-                        dst_device->default_memory_space());
-    return CopyToMemorySpace(dst_memory_space);
-  };
-
   // Copies the buffer to memory space `dst_memory_space`.
   //
   // The destination memory space may be attached to any client, but optimized

@@ -248,9 +248,6 @@ bool IsCollective(const HloInstruction* instruction);
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
 
-// Returns true if instruction is a synchronous collective op.
-bool IsSyncCollective(const HloInstruction* instr);
-
 // Returns the cycle type and indices of the vertices that form cycles. For
 // example, GetCycleTypeAndIndices({{0,3},{1,0},{2,1},{3,2}}) returns
 // {kBackward, {0}}, since the communication pattern contains a backward cycle

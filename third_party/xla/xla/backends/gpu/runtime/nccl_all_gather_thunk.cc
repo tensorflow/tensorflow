@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/stream.h"
@@ -69,7 +70,7 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
     ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
     std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
     : NcclCollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info,
-                          IsSyncCollective(inst)),
+                          IsGPUSyncCollective(*inst)),
       config_(impl::GetNcclAllGatherConfig(inst)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
