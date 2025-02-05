@@ -31,7 +31,8 @@ namespace mlir::TFL {
 LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
                                   SmallVector<double, 4>& scales,
                                   SmallVector<int64_t, 4>& zero_points,
-                                  int& num_bits, bool& is_signed);
+                                  int& num_bits, bool& is_signed,
+                                  bool& is_narrow_range);
 
 LogicalResult GetStorageParams(unsigned num_bits, bool narrow_range,
                                bool is_signed, MLIRContext* ctx,

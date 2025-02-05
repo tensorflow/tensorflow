@@ -258,12 +258,6 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
 
   bool IsDeleted() override { return is_deleted_; }
 
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
-      PjRtDevice* dst_device) override {
-    return absl::UnimplementedError(
-        "CopyToDevice not supported by InterpreterLiteralWrapperBuffer.");
-  }
-
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override {
     return absl::UnimplementedError(
