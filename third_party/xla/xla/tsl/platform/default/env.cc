@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/tsl/platform/env.h"
+
 #include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
@@ -27,35 +29,75 @@ limitations under the License.
 #include <time.h>
 #include <unistd.h>
 
-#include <cstdint>
-
 #ifdef __FreeBSD__
 #include <pthread_np.h>
 #endif
 
+#ifdef __APPLE__
+#include <mach/thread_info.h>  // for MAXTHREADNAMESIZE
+#endif
+
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+
+#include <cstdint>
 #include <map>
+#include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
+#include "absl/base/const_init.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/default/posix_file_system.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/ram_file_system.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/load_library.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/strcat.h"
 
 namespace tsl {
 
 namespace {
 
-mutex name_mutex(tsl::LINKER_INITIALIZED);
+#if defined(__APPLE__)
+constexpr int kMaxThreadNameLen = MAXTHREADNAMESIZE - 1;
+#elif defined(__FreeBSD__)
+constexpr int kMaxThreadNameLen = MAXCOMLEN - 1;
+#elif defined(__linux__)
+// Per the man pages, the maximum length of a thread name is 15 characters.
+constexpr int kMaxThreadNameLen = 15;
+#else
+constexpr int kMaxThreadNameLen = 0;
+#endif
 
-std::map<std::thread::id, string>& GetThreadNameRegistry()
-    TF_EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
-  static auto* thread_name_registry = new std::map<std::thread::id, string>();
+absl::Mutex name_mutex(absl::kConstInit);
+
+absl::flat_hash_map<std::thread::id, std::string>& GetThreadNameRegistry()
+    ABSL_SHARED_LOCKS_REQUIRED(name_mutex) {
+  static auto* thread_name_registry =
+      new absl::flat_hash_map<std::thread::id, std::string>();
   return *thread_name_registry;
+}
+
+int64_t GetCurrentThreadIdInternal() {
+#ifdef __APPLE__
+  uint64_t tid64;
+  pthread_threadid_np(nullptr, &tid64);
+  return static_cast<int64_t>(tid64);
+#elif defined(__FreeBSD__)
+  return pthread_getthreadid_np();
+#elif defined(__NR_gettid)
+  return static_cast<int64_t>(syscall(__NR_gettid));
+#else
+  return std::hash<std::thread::id>()(std::this_thread::get_id());
+#endif
 }
 
 // We use the pthread API instead of std::thread so we can control stack sizes.
@@ -89,12 +131,24 @@ class PThread : public Thread {
     std::unique_ptr<ThreadParams> params(
         reinterpret_cast<ThreadParams*>(params_arg));
     {
-      mutex_lock l(name_mutex);
+      absl::MutexLock l(&name_mutex);
       GetThreadNameRegistry().emplace(std::this_thread::get_id(), params->name);
+    }
+    if constexpr (kMaxThreadNameLen > 0) {
+      std::array<char, kMaxThreadNameLen + 1> buf;
+      absl::SNPrintF(buf.data(), buf.size(), "%s/%u", params->name.c_str(),
+                     GetCurrentThreadIdInternal());
+      buf[sizeof(buf) - 1] = '\0';
+#if defined(__APPLE__) || defined(__FreeBSD__)
+      pthread_set_name_np(pthread_self(), params->name.c_str());
+#elif defined(__linux__)
+      // NOLINTNEXTLINE: ABI requires unsigned long.
+      prctl(PR_SET_NAME, reinterpret_cast<unsigned long>(buf));
+#endif
     }
     params->fn();
     {
-      mutex_lock l(name_mutex);
+      absl::MutexLock l(&name_mutex);
       GetThreadNameRegistry().erase(std::this_thread::get_id());
     }
     return nullptr;
@@ -134,7 +188,8 @@ class PosixEnv : public Env {
     }
   }
 
-  Thread* StartThread(const ThreadOptions& thread_options, const string& name,
+  Thread* StartThread(const ThreadOptions& thread_options,
+                      const std::string& name,
                       absl::AnyInvocable<void()> fn) override {
     return new PThread(thread_options, name, std::move(fn));
   }
@@ -145,9 +200,9 @@ class PosixEnv : public Env {
     return current_thread_id;
   }
 
-  bool GetCurrentThreadName(string* name) override {
+  bool GetCurrentThreadName(std::string* name) override {
     {
-      mutex_lock l(name_mutex);
+      absl::ReaderMutexLock l(&name_mutex);
       auto thread_name =
           GetThreadNameRegistry().find(std::this_thread::get_id());
       if (thread_name != GetThreadNameRegistry().end()) {
@@ -155,22 +210,24 @@ class PosixEnv : public Env {
         return true;
       }
     }
-#if defined(__GLIBC__) || defined(__FreeBSD__)
-    char buf[100];
-#ifdef __FreeBSD__
-    int res = 0;
-    pthread_get_name_np(pthread_self(), buf, static_cast<size_t>(100));
-#else
-    int res = pthread_getname_np(pthread_self(), buf, static_cast<size_t>(100));
+
+    if constexpr (kMaxThreadNameLen > 0) {
+      int res = 0;
+      char buf[kMaxThreadNameLen + 1];
+#if defined(__FreeBSD__) || defined(__APPLE__)
+      res = pthread_get_name_np(pthread_self(), buf, std::size(buf));
+#elif defined(__linux__)
+      // NOLINTNEXTLINE: ABI requires unsigned long.
+      res = prctl(PR_GET_NAME, reinterpret_cast<unsigned long>(buf));
 #endif
-    if (res != 0) {
-      return false;
+      if (res != 0) {
+        return false;
+      }
+      *name = buf;
+      return true;
     }
-    *name = buf;
-    return true;
-#else
+
     return false;
-#endif
   }
 
   void SchedClosure(absl::AnyInvocable<void()> closure) override {
@@ -232,20 +289,6 @@ class PosixEnv : public Env {
 
  private:
   void GetLocalTempDirectories(std::vector<string>* list) override;
-
-  int64_t GetCurrentThreadIdInternal() {
-#ifdef __APPLE__
-    uint64_t tid64;
-    pthread_threadid_np(nullptr, &tid64);
-    return static_cast<int64_t>(tid64);
-#elif defined(__FreeBSD__)
-    return pthread_getthreadid_np();
-#elif defined(__NR_gettid)
-    return static_cast<int64_t>(syscall(__NR_gettid));
-#else
-    return std::hash<std::thread::id>()(std::this_thread::get_id());
-#endif
-  }
 };
 
 }  // namespace

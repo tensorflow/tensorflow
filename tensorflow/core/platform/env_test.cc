@@ -437,15 +437,12 @@ TEST_F(DefaultEnvTest, GetProcessId) {
 
 TEST_F(DefaultEnvTest, GetThreadInformation) {
   Env* env = Env::Default();
-  // TODO(fishx): Turn on this test for Apple.
-#if !defined(__APPLE__)
   EXPECT_NE(env->GetCurrentThreadId(), 0);
-#endif
   string thread_name;
   bool res = env->GetCurrentThreadName(&thread_name);
 #if defined(PLATFORM_WINDOWS) || defined(__ANDROID__)
   EXPECT_FALSE(res);
-#elif !defined(__APPLE__)
+#else
   EXPECT_TRUE(res);
   EXPECT_GT(thread_name.size(), 0);
 #endif
@@ -454,10 +451,7 @@ TEST_F(DefaultEnvTest, GetThreadInformation) {
 TEST_F(DefaultEnvTest, GetChildThreadInformation) {
   Env* env = Env::Default();
   Thread* child_thread = env->StartThread({}, "tf_child_thread", [env]() {
-  // TODO(fishx): Turn on this test for Apple.
-#if !defined(__APPLE__)
     EXPECT_NE(env->GetCurrentThreadId(), 0);
-#endif
     string thread_name;
     bool res = env->GetCurrentThreadName(&thread_name);
     EXPECT_TRUE(res);
