@@ -16,7 +16,6 @@ package(
 py_strict_library(
     name = "saved_model",
     srcs = ["saved_model.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":builder",
@@ -40,7 +39,6 @@ py_strict_library(
 py_strict_library(
     name = "constants",
     srcs = ["constants.py"],
-    srcs_version = "PY3",
     deps = [
         ":pywrap_saved_model",
         "//tensorflow/python/util:tf_export",
@@ -50,14 +48,12 @@ py_strict_library(
 py_strict_library(
     name = "signature_constants",
     srcs = ["signature_constants.py"],
-    srcs_version = "PY3",
     deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_strict_library(
     name = "tag_constants",
     srcs = ["tag_constants.py"],
-    srcs_version = "PY3",
     deps = ["//tensorflow/python/util:tf_export"],
 )
 
@@ -67,7 +63,6 @@ py_strict_library(
         "builder.py",
         "builder_impl.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":fingerprinting_utils",
         ":path_helpers",
@@ -94,7 +89,6 @@ py_strict_library(
         "loader.py",
         "loader_impl.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":constants",
         ":path_helpers",
@@ -139,7 +133,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "simple_save",
     srcs = ["simple_save.py"],
-    srcs_version = "PY3",
     deps = [
         ":builder",
         ":signature_constants",
@@ -157,7 +150,6 @@ py_strict_library(
         "main_op.py",
         "main_op_impl.py",
     ],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:control_flow_ops",
@@ -210,7 +202,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "path_helpers",
     srcs = ["path_helpers.py"],
-    srcs_version = "PY3",
     deps = [
         ":constants",
         "//tensorflow/python/lib/io:file_io",
@@ -224,7 +215,6 @@ py_strict_library(
         "utils.py",
         "utils_impl.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
@@ -271,7 +261,6 @@ py_strict_library(
         "signature_def_utils.py",
         "signature_def_utils_impl.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":signature_constants",
         ":utils",
@@ -321,7 +310,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "signature_serialization",
     srcs = ["signature_serialization.py"],
-    srcs_version = "PY3",
     deps = [
         ":function_serialization",
         ":revived_types",
@@ -343,13 +331,11 @@ py_strict_library(
 py_strict_library(
     name = "save_context",
     srcs = ["save_context.py"],
-    srcs_version = "PY3",
 )
 
 tf_py_strict_test(
     name = "save_context_test",
     srcs = ["save_context_test.py"],
-    srcs_version = "PY3",
     deps = [
         ":save_context",
         ":save_options",
@@ -361,7 +347,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "save",
     srcs = ["save.py"],
-    srcs_version = "PY3",
     deps = [
         ":builder",
         ":fingerprinting_utils",
@@ -425,7 +410,6 @@ py_strict_library(
     srcs = [
         "tracing_utils.py",
     ],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/checkpoint:tensor_callable",
@@ -510,7 +494,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "load",
     srcs = ["load.py"],
-    srcs_version = "PY3",
     tags = [
         "ignore_for_dep=third_party.py.tf_keras.optimizers.optimizer_v2",
     ],
@@ -566,7 +549,6 @@ py_strict_library(
 py_strict_library(
     name = "load_v1_in_v2",
     srcs = ["load_v1_in_v2.py"],
-    srcs_version = "PY3",
     deps = [
         ":function_deserialization",
         ":loader",
@@ -715,7 +697,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "revived_types",
     srcs = ["revived_types.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/trackable:data_structures",
@@ -737,7 +718,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "function_serialization",
     srcs = ["function_serialization.py"],
-    srcs_version = "PY3",
     deps = [
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
@@ -753,7 +733,6 @@ py_strict_library(
 py_strict_library(
     name = "function_deserialization",
     srcs = ["function_deserialization.py"],
-    srcs_version = "PY3",
     deps = [
         ":nested_structure_coder",
         "//tensorflow/core:protos_all_py",
@@ -840,7 +819,6 @@ py_strict_library(
 py_strict_library(
     name = "method_name_updater",
     srcs = ["method_name_updater.py"],
-    srcs_version = "PY3",
     deps = [
         ":constants",
         ":loader",
@@ -996,7 +974,6 @@ tf_py_strict_test(
     size = "small",
     srcs = ["keras_injection_test.py"],
     data = ["//tensorflow/cc/saved_model:saved_model_test_files"],
-    python_version = "PY3",
     tags = ["no_oss"],  # Due to the usage of keras component.
     deps = [
         "//tensorflow:tensorflow_py",
@@ -1045,7 +1022,6 @@ tf_py_strict_test(
     name = "fingerprinting_test",
     size = "small",
     srcs = ["fingerprinting_test.py"],
-    python_version = "PY3",
     deps = [
         ":fingerprinting",
         ":fingerprinting_utils",
@@ -1067,7 +1043,6 @@ tf_py_strict_test(
     name = "tracing_utils_test",
     size = "small",
     srcs = ["tracing_utils_test.py"],
-    python_version = "PY3",
     deps = [
         ":tracing_utils",
         "//tensorflow/python/eager:def_function",
