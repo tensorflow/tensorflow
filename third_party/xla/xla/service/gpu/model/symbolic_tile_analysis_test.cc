@@ -172,10 +172,10 @@ ENTRY main {
   EXPECT_THAT(*root, MatchTiledHloInstruction(/*tile_sizes=*/{1, 10},
                                               /*tile_strides=*/{1, 1},
                                               /*tile_offsets_indexing=*/R"(
-    (d0, d1) -> (d0, d1 * 10),
+    (tid_0, tid_1) -> (tid_0, tid_1 * 10),
     domain:
-    d0 in [0, 1],
-    d1 in [0, 9]
+    tid_0 in [0, 1],
+    tid_1 in [0, 9]
   )"));
 
   auto p0_from_subtract0 = root->operand(0);
@@ -185,20 +185,20 @@ ENTRY main {
                                       /*tile_sizes=*/{1, 10},
                                       /*tile_strides=*/{1, 1},
                                       /*tile_offsets_indexing=*/R"(
-    (d0, d1) -> (d0, d1 * 10),
+    (tid_0, tid_1) -> (tid_0, tid_1 * 10),
     domain:
-    d0 in [0, 1],
-    d1 in [0, 9]
+    tid_0 in [0, 1],
+    tid_1 in [0, 9]
   )"));
 
   EXPECT_THAT(*p0_from_subtract1, MatchTiledHloInstruction(
                                       /*tile_sizes=*/{1, 97},
                                       /*tile_strides=*/{1, 1},
                                       /*tile_offsets_indexing=*/R"(
-    (d0, d1) -> (d0, 0),
+    (tid_0, tid_1) -> (tid_0, 0),
     domain:
-    d0 in [0, 1],
-    d1 in [0, 9]
+    tid_0 in [0, 1],
+    tid_1 in [0, 9]
   )"));
 }
 
@@ -287,10 +287,10 @@ ENTRY main {
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{1, 97}, /*tile_strides=*/{1, 1},
                   /*tile_offsets_indexing=*/R"(
-    (d0, d1) -> (d0, 0),
+    (tid_0, tid_1) -> (tid_0, 0),
     domain:
-    d0 in [0, 1],
-    d1 in [0, 0]
+    tid_0 in [0, 1],
+    tid_1 in [0, 0]
   )"));
 }
 
@@ -320,22 +320,22 @@ ENTRY main {
   EXPECT_THAT(*root, MatchTiledHloInstruction(
                          /*tile_sizes=*/{2, 4, 2}, /*tile_strides=*/{1, 1, 1},
                          /*tile_offsets_indexing=*/R"(
-    (d0, d1, d2) -> (d0 * 2, d1 * 4, d2 * 2),
+    (tid_0, tid_1, tid_2) -> (tid_0 * 2, tid_1 * 4, tid_2 * 2),
     domain:
-    d0 in [0, 1],
-    d1 in [0, 1],
-    d2 in [0, 7]
+    tid_0 in [0, 1],
+    tid_1 in [0, 1],
+    tid_2 in [0, 7]
   )"));
 
   EXPECT_THAT(*root->operand(0),
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{4, 2, 2}, /*tile_strides=*/{1, 1, 1},
                   /*tile_offsets_indexing=*/R"(
-    (d0, d1, d2) -> (d1 * 4, d2 * 2, d0 * 2),
+    (tid_0, tid_1, tid_2) -> (tid_1 * 4, tid_2 * 2, tid_0 * 2),
     domain:
-    d0 in [0, 1],
-    d1 in [0, 1],
-    d2 in [0, 7]
+    tid_0 in [0, 1],
+    tid_1 in [0, 1],
+    tid_2 in [0, 7]
   )"));
 }
 
@@ -369,30 +369,30 @@ ENTRY main {
   EXPECT_THAT(*root, MatchTiledHloInstruction(
                          /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
                          /*tile_offsets_indexing=*/R"(
-    (d0, d1) -> (d0 * 2, d1 * 2),
+    (tid_0, tid_1) -> (tid_0 * 2, tid_1 * 2),
     domain:
-    d0 in [0, 1],
-    d1 in [0, 3]
+    tid_0 in [0, 1],
+    tid_1 in [0, 3]
   )"));
 
   EXPECT_THAT(*p0_from_slice0,
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
                   /*tile_offsets_indexing=*/R"(
-    (d0, d1) -> (d0 * 2, d1 * 2 + 2),
+    (tid_0, tid_1) -> (tid_0 * 2, tid_1 * 2 + 2),
     domain:
-    d0 in [0, 1],
-    d1 in [0, 3]
+    tid_0 in [0, 1],
+    tid_1 in [0, 3]
   )"));
 
   EXPECT_THAT(*p0_from_slice1,
               MatchTiledHloInstruction(
                   /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
                   /*tile_offsets_indexing=*/R"(
-    (d0, d1) -> (d0 * 2 + 3, d1 * 2 + 4),
+    (tid_0, tid_1) -> (tid_0 * 2 + 3, tid_1 * 2 + 4),
     domain:
-    d0 in [0, 1],
-    d1 in [0, 3]
+    tid_0 in [0, 1],
+    tid_1 in [0, 3]
   )"));
 }
 
@@ -424,30 +424,30 @@ ENTRY main {
   EXPECT_THAT(*dot, MatchTiledHloInstruction(
                         /*tile_sizes=*/{2, 2}, /*tile_strides=*/{1, 1},
                         /*tile_offsets_indexing=*/R"(
-    (d0, d1) -> (d0 * 2, d1 * 2),
+    (tid_0, tid_1) -> (tid_0 * 2, tid_1 * 2),
     domain:
-    d0 in [0, 1],
-    d1 in [0, 7]
+    tid_0 in [0, 1],
+    tid_1 in [0, 7]
   )"));
 
   const TiledHloInstruction* lhs = dot->operand(0);
   EXPECT_THAT(*lhs, MatchTiledHloInstruction(
                         /*tile_sizes=*/{2, 8}, /*tile_strides=*/{1, 1},
                         /*tile_offsets_indexing=*/R"(
-    (d0, d1) -> (d0 * 2, 0),
+    (tid_0, tid_1) -> (tid_0 * 2, 0),
     domain:
-    d0 in [0, 1],
-    d1 in [0, 7]
+    tid_0 in [0, 1],
+    tid_1 in [0, 7]
   )"));
 
   const TiledHloInstruction* rhs = dot->operand(1);
   EXPECT_THAT(*rhs, MatchTiledHloInstruction(
                         /*tile_sizes=*/{8, 2}, /*tile_strides=*/{1, 1},
                         /*tile_offsets_indexing=*/R"(
-    (d0, d1) -> (0, d1 * 2),
+    (tid_0, tid_1) -> (0, tid_1 * 2),
     domain:
-    d0 in [0, 1],
-    d1 in [0, 7]
+    tid_0 in [0, 1],
+    tid_1 in [0, 7]
   )"));
 }
 
@@ -906,10 +906,10 @@ ENTRY main {
                   /*tile_sizes=*/{1, 1},
                   /*tile_strides=*/{1, 1},
                   /*tile_offsets_indexing=*/R"(
-    (d0, d1) -> (d0, d1),
+    (tid_0, tid_1) -> (tid_0, tid_1),
     domain:
-    d0 in [0, 65537],
-    d1 in [0, 32767]
+    tid_0 in [0, 65537],
+    tid_1 in [0, 32767]
   )"));
 }
 
@@ -961,20 +961,20 @@ ENTRY main {
                                   /*tile_sizes=*/{1, 1, 32},
                                   /*tile_strides=*/{0, 1, 1},
                                   /*tile_offsets_indexing=*/R"(
-    (d0, d1) -> (0, d1, 0),
+    (tid_0, tid_1) -> (0, tid_1, 0),
     domain:
-    d0 in [0, 0],
-    d1 in [0, 1]
+    tid_0 in [0, 0],
+    tid_1 in [0, 1]
   )"));
 
   EXPECT_THAT(*param_0_tile, MatchTiledHloInstruction(
                                  /*tile_sizes=*/{1, 1, 32},
                                  /*tile_strides=*/{0, 1, 1},
                                  /*tile_offsets_indexing=*/R"(
-    (d0, d1){rt0, rt1} -> (rt0, d1, rt1),
+    (tid_0, tid_1){rt0, rt1} -> (rt0, tid_1, rt1),
     domain:
-    d0 in [0, 0],
-    d1 in [0, 1],
+    tid_0 in [0, 0],
+    tid_1 in [0, 1],
     rt0 in [0, 1],
     rt1 in [0, 226]
   )"));

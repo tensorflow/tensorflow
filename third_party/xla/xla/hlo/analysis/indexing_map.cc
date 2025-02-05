@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/numeric/int128.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -1181,6 +1182,11 @@ bool IndexingMap::IsSymbolConstrained(int64_t symbol_id) const {
     if (result) return true;
   }
   return false;
+}
+
+void IndexingMap::RenameDimVar(int64_t id, absl::string_view new_name) {
+  CHECK_LT(id, dim_vars_.size());
+  dim_vars_[id].name = new_name;
 }
 
 RangeEvaluator::RangeEvaluator(const IndexingMap& indexing_map,

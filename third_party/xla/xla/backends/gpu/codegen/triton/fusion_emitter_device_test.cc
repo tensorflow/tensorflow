@@ -218,7 +218,7 @@ ENTRY main {
                                    "num_warps":"1"}}}})";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           "triton_softmax_computation", R"(
-CHECK:        #indexing_map = #xla.indexing_map<"(d0) -> (d0 * 127), domain: d0 in [0, 124]">
+CHECK:        #indexing_map = #xla.indexing_map<"(tid_0) -> (tid_0 * 127), domain: tid_0 in [0, 124]">
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[ZERO:.*]] = arith.constant 0 : i32
 CHECK-DAG:        %[[C125:.*]] = arith.constant 125 : i64
@@ -283,7 +283,7 @@ ENTRY main {
                                    "num_warps":"1"}}}})";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           "triton_softmax_computation", R"(
-CHECK:         #indexing_map = #xla.indexing_map<"(d0) -> (d0 * 127), domain: d0 in [0, 124]">
+CHECK:         #indexing_map = #xla.indexing_map<"(tid_0) -> (tid_0 * 127), domain: tid_0 in [0, 124]">
 CHECK:         tt.func @triton_fn(
 CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: !tt.ptr<f32>
