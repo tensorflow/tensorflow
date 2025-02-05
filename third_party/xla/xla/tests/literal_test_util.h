@@ -22,6 +22,7 @@ limitations under the License.
 #include <random>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "absl/base/attributes.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
