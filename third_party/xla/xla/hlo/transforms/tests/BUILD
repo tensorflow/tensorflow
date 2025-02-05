@@ -23,6 +23,7 @@ lit_test_suite(
     name = "hlo_opt_tests",
     srcs = enforce_glob(
         [
+            "hlo_opt_list_passes.hlo",
             "run_single_pass.hlo",
             "run_multiple_passes.hlo",
             "algebraic_simplifier.hlo",

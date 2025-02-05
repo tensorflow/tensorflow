@@ -35,6 +35,9 @@ namespace xla {
 // Platform-independent provider of `hlo-opt` functionality.
 class OptProvider {
  public:
+  using PassRegistry =
+      absl::flat_hash_map<std::string, std::function<void(HloPassPipeline&)>>;
+
   OptProvider() : pass_registry_() { RegisterAllHardwareIndependentPasses(); }
 
   virtual ~OptProvider() = default;
@@ -64,14 +67,15 @@ class OptProvider {
   // Registers all passes and pipelines provided by this provider.
   virtual void RegisterProviderPasses(HloModule& module);
 
-  // Returns a string of all registered pass names.
-  virtual std::string GetRegisteredPassNames();
+  // Returns registry of all registered passes in provider.
+  const OptProvider::PassRegistry& GetRegisteredPasses() {
+    return pass_registry_;
+  }
 
  protected:
   // Map of pass names to pass registration functions. The pass registration
   // function takes a HloPassPipeline and adds the corresponding pass to it.
-  absl::flat_hash_map<std::string, std::function<void(HloPassPipeline&)>>
-      pass_registry_;
+  OptProvider::PassRegistry pass_registry_;
 
   // Adds an entry of pass name vs pass registration function to registry.
   template <typename T, typename... Args>
@@ -86,12 +90,6 @@ class OptProvider {
 
   // Registers all hardware independent passes.
   void RegisterAllHardwareIndependentPasses();
-
-  // Returns a string of all registered pass names. Helper function for
-  // GetRegisteredPassNames, avoids duplicating code for each provider.
-  std::string GetRegisteredPassNamesHelper(
-      const absl::flat_hash_map<
-          std::string, std::function<void(HloPassPipeline&)>>& pass_registry_);
 };
 
 }  // namespace xla
