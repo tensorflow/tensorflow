@@ -21,20 +21,18 @@ cc_library(
     name = "operand_map",
     srcs = ["operand_map.cc"],
     hdrs = ["operand_map.h"],
+    tags = [
+        # Don't build/test in OS until MediaTek SDK is available.
+        "nobuilder",
+        "notap",
+    ],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/c:litert_op_code",
-        "//tensorflow/lite/experimental/litert/c:litert_options",
         "//tensorflow/lite/experimental/litert/cc:litert_element_type",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
-        "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
-        "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -42,18 +40,17 @@ cc_library(
     name = "add_op_legalization",
     srcs = ["add_op_legalization.cc"],
     hdrs = ["add_op_legalization.h"],
+    tags = [
+        # Don't build/test in OS until MediaTek SDK is available.
+        "nobuilder",
+        "notap",
+    ],
     deps = [
         "operand_map",
         "//tensorflow/lite/experimental/litert/c:litert_common",
-        "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/c:litert_op_code",
         "//tensorflow/lite/experimental/litert/c:litert_options",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "//tensorflow/lite/experimental/litert/cc:litert_model",
-        "//tensorflow/lite/experimental/litert/cc:litert_model_predicates",
-        "//tensorflow/lite/experimental/litert/core/model",
         "//tensorflow/lite/experimental/litert/vendors/mediatek:neuron_adapter_api",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )

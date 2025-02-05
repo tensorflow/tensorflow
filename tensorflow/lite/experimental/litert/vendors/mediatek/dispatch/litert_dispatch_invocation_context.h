@@ -17,6 +17,7 @@
 
 #include <optional>
 
+#include "neuron/api/NeuronAdapter.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -69,11 +70,9 @@ class LiteRtDispatchInvocationContextT {
 
   LiteRtDispatchInvocationContextT(
       const litert::mediatek::NeuronAdapterApi& neuron_adapter_api,
-      LiteRtDispatchDeviceContext device_context,
-      litert::mediatek::NeuronModel* model,
-      litert::mediatek::NeuronCompilation* compilation,
-      litert::mediatek::NeuronExecution* execution, int num_inputs,
-      int num_outputs)
+      LiteRtDispatchDeviceContext device_context, NeuronModel* model,
+      NeuronCompilation* compilation, NeuronExecution* execution,
+      int num_inputs, int num_outputs)
       : neuron_adapter_api_(neuron_adapter_api),
         device_context_(device_context),
         model_(model),
@@ -84,9 +83,9 @@ class LiteRtDispatchInvocationContextT {
 
   const litert::mediatek::NeuronAdapterApi& neuron_adapter_api_;
   LiteRtDispatchDeviceContext device_context_;
-  litert::mediatek::NeuronModel* model_;
-  litert::mediatek::NeuronCompilation* compilation_;
-  litert::mediatek::NeuronExecution* execution_;
+  NeuronModel* model_;
+  NeuronCompilation* compilation_;
+  NeuronExecution* execution_;
   std::vector<std::unique_ptr<IoRequirementsBuilder>>
       input_requirements_builders_;
   std::vector<std::unique_ptr<IoRequirementsBuilder>>
