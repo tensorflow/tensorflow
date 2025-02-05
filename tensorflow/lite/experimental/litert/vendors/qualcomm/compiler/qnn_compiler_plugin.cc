@@ -16,12 +16,12 @@
 
 #include <cstddef>
 #include <cstdlib>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -32,6 +32,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/qnn_compose_graph.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
+#include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 
 using ::litert::qnn::QnnManager;
 
@@ -238,6 +239,17 @@ bool IsOpSupported(const litert::Op& op) {
   return false;
 }
 
+LiteRtStatus WriteContextBinary(QnnManager& qnn_manager,
+                                Qnn_ContextHandle_t context_handle,
+                                std::string output_path) {
+  std::vector<char> buf;
+  LITERT_RETURN_IF_ERROR(
+      qnn_manager.GenerateContextBinary(context_handle, buf));
+  std::ofstream fout(output_path, std::ios::binary);
+  fout.write(buf.data(), static_cast<int64_t>(buf.size()));
+  return kLiteRtStatusOk;
+}
+
 }  // namespace
 
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
@@ -283,41 +295,47 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   }
   LITERT_LOG(LITERT_INFO, "%s", "QNN manager created");
 
-  // Initialize context.
+  // LITERT_ENSURE_SUPPORTED(num_partitions, 2);
+  for (auto i = 0; i < num_partitions; ++i) {
+    // Initialize context.
 
-  LITERT_LOG(LITERT_INFO, "%s", "Creating context handle");
-  auto context_configs = QnnManager::DefaultContextConfigs();
-  auto context_handle = (*qnn_manager)->CreateContextHandle(context_configs);
-  if (!context_handle) {
-    LITERT_LOG(LITERT_ERROR, "%s", context_handle.Error().Message().c_str());
-    return context_handle.Error().Status();
-  }
-  LITERT_LOG(LITERT_INFO, "%s", "Context handle created");
+    LITERT_LOG(LITERT_INFO, "%s", "Creating context handle");
+    auto context_configs = QnnManager::DefaultContextConfigs();
+    auto context_handle = (*qnn_manager)->CreateContextHandle(context_configs);
+    if (!context_handle) {
+      LITERT_LOG(LITERT_ERROR, "%s", context_handle.Error().Message().c_str());
+      return context_handle.Error().Status();
+    }
+    LITERT_LOG(LITERT_INFO, "%s", "Context handle created");
 
-  auto result = std::make_unique<LiteRtCompiledResultT>();
+    auto result = std::make_unique<LiteRtCompiledResultT>();
 
-  // Compose graphs.
+    // Compose graphs.
 
-  LITERT_LOG(LITERT_INFO, "%s", "Composing graph(s)");
-  // TODO: Support multiple partitions in QCC plugin compile.
-  LITERT_ENSURE_SUPPORTED(num_partitions, 1);
-  {
+    LITERT_LOG(LITERT_INFO, "%s", "Composing graph(s)");
+    // TODO: Support multiple partitions in QCC plugin compile.
+    // Test code for 2 partitions
+  
     std::string& entry_point_name = result->graph_names.emplace_back();
-    entry_point_name = "qnn_partition_0";
+    entry_point_name = "qnn_partition_" + std::to_string(i);
     LITERT_RETURN_IF_ERROR(litert::qnn::ComposeGraph(
-        **qnn_manager, context_handle->get(), partitions[0], entry_point_name));
+        **qnn_manager, context_handle->get(), partitions[i], entry_point_name));
+
+    LITERT_LOG(LITERT_INFO, "%s", "Graph composed");
+
+    // Generate context binary.
+
+    LITERT_LOG(LITERT_INFO, "%s", "Generating context binary");
+    LITERT_RETURN_IF_ERROR((*qnn_manager)
+                               ->GenerateContextBinary(context_handle->get(),
+                                                       result->context_bin));
+    LITERT_LOG(LITERT_INFO, "%s", "Context binary generated");
+
+    *compiled_result = result.release();
+
+    WriteContextBinary((**qnn_manager), context_handle->get(),
+                       "ctx_bin/" + entry_point_name + ".bin");
   }
-  LITERT_LOG(LITERT_INFO, "%s", "Graph composed");
-
-  // Generate context binary.
-
-  LITERT_LOG(LITERT_INFO, "%s", "Generating context binary");
-  LITERT_RETURN_IF_ERROR(
-      (*qnn_manager)
-          ->GenerateContextBinary(context_handle->get(), result->context_bin));
-  LITERT_LOG(LITERT_INFO, "%s", "Context binary generated");
-
-  *compiled_result = result.release();
 
   return kLiteRtStatusOk;
 }

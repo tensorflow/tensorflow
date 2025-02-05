@@ -34,7 +34,7 @@ litert_dynamic_lib(
     visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
     deps = [
         ":qnn_compose_graph",
-        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
@@ -78,7 +78,7 @@ litert_test(
         ":qnn_compiler_plugin",  # buildcleaner: keep
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings:string_view",
-        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_op_code",
@@ -95,6 +95,7 @@ litert_test(
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_op",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations:quantize_op_legalization",
+        "//tensorflow/lite/experimental/litert/core/model:graph_validation",
     ],
 )
 
@@ -110,7 +111,7 @@ litert_lib(
         ":graph_mapper",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
@@ -168,7 +169,7 @@ litert_lib(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_model",
