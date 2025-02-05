@@ -27,6 +27,12 @@ RUN /setup.python.sh python3.9 /builder.requirements.txt
 RUN /setup.python.sh python3.10 /builder.requirements.txt
 RUN /setup.python.sh python3.11 /builder.requirements.txt
 RUN /setup.python.sh python3.13 /builder.requirements.txt
+# python3.13-nogil is a free-threaded build of python3.13. Skip installing
+# packages from builder.requirements.txt for python3.13-nogil because:
+#   - twine does not have pre-built wheels for this python build;
+#   - They are only needed by the system python (python3.12) in JAX CI;
+#   - Other projects do not use free-threaded python in their current CI.
+RUN /setup.python.sh python3.13-nogil /builder.requirements.txt
 
 # Since we are using python3.12 as the default python version, we need to
 # install python3.12 last for now.
