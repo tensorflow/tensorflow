@@ -56,6 +56,8 @@ TEST_F(GetPointerMemorySpaceTest, Device) {
 }
 
 TEST_F(GetPointerMemorySpaceTest, Collective) {
+  // TODO (rocm) Remove this once https://github.com/openxla/xla/pull/22532 is merged
+  GTEST_SKIP() << "Collectives are not enabled for ROCm";
   StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
   auto mem =
       executor->Allocate(64, static_cast<int64_t>(MemoryType::kCollective));
