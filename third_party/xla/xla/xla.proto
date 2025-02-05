@@ -1122,7 +1122,7 @@ message DebugOptions {
 
   // Whether to ignore channel ids(including verifier channel id checks)
   // for collectives in the given HLO.
-  bool xla_experimental_ignore_channel_id = 330;
+  bool xla_ignore_channel_id = 330;
 
   bool xla_pjrt_allow_auto_layout_in_hlo = 344;
 

@@ -631,8 +631,7 @@ absl::Status RunOptimizationPasses(
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   HloPassPipeline pipeline("optimization");
-  AddHloVerifier(&pipeline,
-                 !debug_options.xla_experimental_ignore_channel_id());
+  AddHloVerifier(&pipeline, !debug_options.xla_ignore_channel_id());
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<WindowedEinsumHandler>();
@@ -767,8 +766,7 @@ absl::Status RunOptimizationPasses(
   // point.
   [&, &pipeline =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
-    AddHloVerifier(&pipeline,
-                   !debug_options.xla_experimental_ignore_channel_id(),
+    AddHloVerifier(&pipeline, !debug_options.xla_ignore_channel_id(),
                    HloVerifierOpts{}, /*debug_only=*/true);
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
@@ -1555,7 +1553,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   }
 
   HloPassPipeline pipeline("post-layout_assignment");
-  AddHloVerifier(&pipeline, !debug_options.xla_experimental_ignore_channel_id(),
+  AddHloVerifier(&pipeline, !debug_options.xla_ignore_channel_id(),
                  HloVerifierOpts{}
                      .MakeLayoutSensitive()
                      .WithInstructionCanChangeLayout(
@@ -1651,8 +1649,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                                  LayoutAssignment::InstructionCanChangeLayout)
                              .VerifyBroadcastDimensionsOrder()
                              .VerifyReshapeIsBitcast();
-  opts.verify_unique_channel_ids =
-      !debug_options.xla_experimental_ignore_channel_id();
+  opts.verify_unique_channel_ids = !debug_options.xla_ignore_channel_id();
   pipeline.AddPass<HloVerifier>(
       std::make_unique<DefaultVerifierMetadata>(std::move(opts)),
       "end-of-post-layout_assignment");
@@ -2642,10 +2639,9 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
 
   if (module->config().debug_options().xla_gpu_pgle_accuracy_checker() ==
       DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
-    AddHloVerifier(
-        &main_pipeline,
-        module->config().debug_options().xla_experimental_ignore_channel_id(),
-        HloVerifierOpts{}.VerifyInstructionNameUnchanged());
+    AddHloVerifier(&main_pipeline,
+                   module->config().debug_options().xla_ignore_channel_id(),
+                   HloVerifierOpts{}.VerifyInstructionNameUnchanged());
   }
   return main_pipeline.Run(module).status();
 }

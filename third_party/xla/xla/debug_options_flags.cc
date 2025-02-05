@@ -297,7 +297,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
-  opts.set_xla_experimental_ignore_channel_id(false);
+  opts.set_xla_ignore_channel_id(true);
   opts.set_xla_gpu_dot_merger_threshold_mb(32);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
@@ -2101,11 +2101,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_disable_binary_libraries(),
       "Disable XLA GPU passes that depend on non-open source binary "
       "libraries"));
-  flag_list->push_back(tsl::Flag(
-      "xla_experimental_ignore_channel_id",
-      bool_setter_for(&DebugOptions::set_xla_experimental_ignore_channel_id),
-      debug_options->xla_experimental_ignore_channel_id(),
-      "Experimental: ignore channel ids for collective operations."));
+  flag_list->push_back(
+      tsl::Flag("xla_ignore_channel_id",
+                bool_setter_for(&DebugOptions::set_xla_ignore_channel_id),
+                debug_options->xla_ignore_channel_id(),
+                "Ignore channel ids for collective operations."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dot_merger_threshold_mb",
       int32_setter_for(&DebugOptions::set_xla_gpu_dot_merger_threshold_mb),

@@ -1753,7 +1753,7 @@ ENTRY entry {
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
 
   auto opts = GetDebugOptionsForTest();
-  opts.set_xla_experimental_ignore_channel_id(true);
+  opts.set_xla_ignore_channel_id(true);
   config.set_debug_options(opts);
 
   config.set_num_partitions(kNumPartitions);
