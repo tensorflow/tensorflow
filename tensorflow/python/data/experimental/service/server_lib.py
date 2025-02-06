@@ -175,7 +175,7 @@ class DispatchServer:
 
     Args:
       config: (Optional.) A `tf.data.experimental.service.DispatcherConfig`
-        configration. If `None`, the dispatcher will use default
+        configuration. If `None`, the dispatcher will use default
         configuration values.
       start: (Optional.) Boolean, indicating whether to start the server after
         creating it. Defaults to True.
@@ -382,7 +382,7 @@ class WorkerServer:
     """Creates a new worker server.
 
     Args:
-      config: A `tf.data.experimental.service.WorkerConfig` configration.
+      config: A `tf.data.experimental.service.WorkerConfig` configuration.
       start: (Optional.) Boolean, indicating whether to start the server after
         creating it. Defaults to True.
     """

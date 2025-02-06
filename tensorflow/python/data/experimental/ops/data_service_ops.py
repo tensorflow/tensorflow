@@ -291,7 +291,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
       target_workers: (Optional.) Which workers to read from. If `"AUTO"`,
         tf.data runtime decides which workers to read from. If `"ANY"`, reads
         from any tf.data service workers. If `"LOCAL"`, only reads from local
-        in-processs tf.data service workers. `"AUTO"` works well for most cases,
+        in-process tf.data service workers. `"AUTO"` works well for most cases,
         while users can specify other targets. For example, `"LOCAL"` helps
         avoid RPCs and data copy if every TF worker colocates with a tf.data
         service worker. Consumers of a shared job must use the same
@@ -508,7 +508,7 @@ def _distribute(
         for details.
     target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
       runtime decides which workers to read from. If `"ANY"`, reads from any
-      tf.data service workers. If `"LOCAL"`, only reads from local in-processs
+      tf.data service workers. If `"LOCAL"`, only reads from local in-process
       tf.data service workers. `"AUTO"` works well for most cases, while users
       can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
       data copy if every TF worker colocates with a tf.data service worker.
@@ -768,7 +768,7 @@ def distribute(
         for details.
     target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
       runtime decides which workers to read from. If `"ANY"`, reads from any
-      tf.data service workers. If `"LOCAL"`, only reads from local in-processs
+      tf.data service workers. If `"LOCAL"`, only reads from local in-process
       tf.data service workers. `"AUTO"` works well for most cases, while users
       can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
       data copy if every TF worker colocates with a tf.data service worker.
@@ -980,7 +980,7 @@ def _from_dataset_id(processing_mode,
         for details.
     target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
       runtime decides which workers to read from. If `"ANY"`, reads from any
-      tf.data service workers. If `"LOCAL"`, only reads from local in-processs
+      tf.data service workers. If `"LOCAL"`, only reads from local in-process
       tf.data service workers. `"AUTO"` works well for most cases, while users
       can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
       data copy if every TF worker colocates with a tf.data service worker.
@@ -1164,7 +1164,7 @@ def from_dataset_id(processing_mode,
         for details.
     target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
       runtime decides which workers to read from. If `"ANY"`, reads from any
-      tf.data service workers. If `"LOCAL"`, only reads from local in-processs
+      tf.data service workers. If `"LOCAL"`, only reads from local in-process
       tf.data service workers. `"AUTO"` works well for most cases, while users
       can specify other targets. For example, `"LOCAL"` helps avoid RPCs and
       data copy if every TF worker colocates with a tf.data service worker.

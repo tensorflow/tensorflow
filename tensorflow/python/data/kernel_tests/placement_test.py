@@ -146,7 +146,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
   @test_util.run_gpu_only
   def testFunctionCall(self):
     # Ideally, placer should know that Call(dataset) should be on the same
-    # device as the dataset. Create a funciton that could be place don the GPU,
+    # device as the dataset. Create a function that could be place don the GPU,
     # but a Dataset that cannot.
     @def_function.function
     def test_call(dataset):
