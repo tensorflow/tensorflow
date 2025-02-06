@@ -1149,7 +1149,6 @@ xla_test(
         "test_xla_cpu_no_thunks",
     ],
     deps = [
-        ":client_library_test_base",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
         ":literal_test_util",
@@ -1167,6 +1166,8 @@ xla_test(
         "//xla/hlo/testlib:test",
         "//xla/service",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/types:span",
