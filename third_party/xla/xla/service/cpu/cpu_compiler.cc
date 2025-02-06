@@ -1836,6 +1836,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     VLOG(1) << "Compiling ahead-of-time: " << module->name();
 
     if (!module->has_schedule()) {
+      if (module->config().debug_options().xla_cpu_use_thunk_runtime()) {
+        return InvalidArgument("CompileAheadOfTime does not work with thunks");
+      }
       TF_RETURN_IF_ERROR(RunHloPasses(module, /*is_aot_compile=*/true,
                                       target_machine.get(),
                                       /*dummy*/ CompileOptions{}));
