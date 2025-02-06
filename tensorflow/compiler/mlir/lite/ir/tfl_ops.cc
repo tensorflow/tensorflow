@@ -226,6 +226,36 @@ DenseElementsAttr GetSqueezedPermutation(Value input_value,
       llvm::ArrayRef(squeezed_permutation));
 }
 
+// Utility function to determine if an operation should be folded.
+// This is a heuristic to avoid folding operations that result in larger
+// constants.
+bool ShouldFoldOperation(Operation* inst) {
+  auto get_size = [&](TypeRange types) {
+    int64_t size = 0;
+    for (auto t : types) {
+      auto tensor_type = mlir::cast<TensorType>(t);
+      // Ignore types with undefined bit widths.
+      if (!tensor_type.getElementType().isIntOrFloat()) continue;
+      // Ignore types with dynamic shapes.
+      if (!tensor_type.hasStaticShape()) continue;
+      size += tensor_type.getNumElements() *
+              tensor_type.getElementType().getIntOrFloatBitWidth();
+    }
+    return size;
+  };
+
+  int64_t results_size = get_size(inst->getResultTypes());
+  int64_t operands_size = get_size(inst->getOperandTypes());
+
+  constexpr int kSizeFactor = 2;
+  constexpr int64_t kResultsSizeThreshold = (1 << 16);   // 64 Kib =   8 KiB
+  constexpr int64_t kOperandsSizeThreshold = (1 << 30);  //  1 Gib = 128 MiB
+
+  return (operands_size <= kOperandsSizeThreshold) &&
+         ((results_size <= kResultsSizeThreshold) ||
+          (results_size <= kSizeFactor * operands_size));
+}
+
 #include "tensorflow/compiler/mlir/lite/ir/tfl_canonicalize.inc"
 
 }  // namespace
@@ -861,6 +891,8 @@ void buildFusedBroadcastableBinOp(Builder* builder, OperationState& result,
 //===----------------------------------------------------------------------===//
 
 OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
@@ -907,6 +939,8 @@ int64_t AddOp::GetArithmeticCount(Operation* op) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult FloorOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   auto result_type = getType();
   if (!IsF32ShapedType(result_type)) return {};
@@ -925,6 +959,8 @@ OpFoldResult FloorOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult BitwiseXorOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto compute = [](APInt lhs, APInt rhs) -> APInt {
     lhs ^= rhs;
     return lhs;
@@ -939,6 +975,8 @@ OpFoldResult BitwiseXorOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ExpOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   auto result_type = getType();
   if (!IsF32ShapedType(result_type)) return {};
@@ -957,6 +995,8 @@ OpFoldResult ExpOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult LogicalNotOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto data = llvm::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getLhs());
   if (!data) {
     return {};
@@ -1142,6 +1182,8 @@ LogicalResult ConcatenationOp::verify() {
 }
 
 OpFoldResult ConcatenationOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   if (getFusedActivationFunction() == "NONE") {
     if (auto output_type =
@@ -1960,6 +2002,8 @@ mlir::LogicalResult ScatterNdOp::verify() {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
@@ -2034,6 +2078,8 @@ int64_t MulOp::GetArithmeticCount(Operation* op) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult PowOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   if (getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseFPElementsAttr, float>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
@@ -2052,6 +2098,8 @@ OpFoldResult PowOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
@@ -2574,6 +2622,8 @@ llvm::SmallVector<int64_t> UnpackIndexOperand(Attribute operand) {
 }
 
 OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   if (!getType().hasStaticShape()) {
     return {};
   }
@@ -2799,6 +2849,8 @@ OpFoldResult SqueezeOp::fold(FoldAdaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult SubOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
@@ -3390,6 +3442,8 @@ mlir::LogicalResult SVDFOp::verify() {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult AbsOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
@@ -3404,6 +3458,8 @@ OpFoldResult AbsOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult NegOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
@@ -3418,6 +3474,8 @@ OpFoldResult NegOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult SinOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
@@ -3436,6 +3494,8 @@ OpFoldResult SinOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult CosOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
@@ -3454,6 +3514,8 @@ OpFoldResult CosOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult LogOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
@@ -3495,6 +3557,8 @@ OpFoldResult ShapeOp::fold(FoldAdaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult SqrtOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
@@ -3513,6 +3577,8 @@ OpFoldResult SqrtOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult RsqrtOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32/bf16 is implemented.
@@ -3538,6 +3604,8 @@ OpFoldResult RsqrtOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult SquareOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   Type result_type = getType();
   // Only constant fold for tensor of f32 is implemented.
@@ -3558,6 +3626,8 @@ T ComputeRelu(T val) {
 
 // TODO: b/361137571 - Add folding for quantized types if it is needed.
 OpFoldResult ReluOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto data = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getX());
   if (!data) {
     return {};
@@ -3582,6 +3652,8 @@ OpFoldResult ReluOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto lhs_type = getLhs().getType();
   auto rhs_type = getRhs().getType();
 
@@ -3615,6 +3687,8 @@ OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult MinimumOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto lhs_type = getLhs().getType();
   auto rhs_type = getRhs().getType();
 
@@ -3645,6 +3719,8 @@ OpFoldResult MinimumOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult LessOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   if (getLhs().getType().getElementType().isInteger(32)) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
@@ -3664,6 +3740,8 @@ OpFoldResult LessOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult LessEqualOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   if (getLhs().getType().getElementType().isInteger(32)) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
@@ -3683,6 +3761,8 @@ OpFoldResult LessEqualOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult GreaterOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   if (getLhs().getType().getElementType().isInteger(32)) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
@@ -3702,6 +3782,8 @@ OpFoldResult GreaterOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   if (getLhs().getType().getElementType().isInteger(32)) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
@@ -3721,6 +3803,8 @@ OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   if (getX().getType().getElementType().isInteger(32)) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
         getType(), adaptor.getX(), adaptor.getY(),
@@ -3740,6 +3824,8 @@ OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult NotEqualOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   if (getLhs().getType().getElementType().isInteger(32)) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
@@ -3759,12 +3845,16 @@ OpFoldResult NotEqualOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult LogicalAndOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   return ConstFoldBinaryOp<DenseIntElementsAttr, bool, bool>(
       getType(), adaptor.getLhs(), adaptor.getRhs(),
       [](bool lhs, bool rhs) { return lhs && rhs; });
 }
 
 OpFoldResult LogicalOrOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   return ConstFoldBinaryOp<DenseIntElementsAttr, bool, bool>(
       getType(), adaptor.getLhs(), adaptor.getRhs(),
       [](bool lhs, bool rhs) { return lhs || rhs; });
@@ -3777,6 +3867,8 @@ OpFoldResult LogicalOrOp::fold(FoldAdaptor adaptor) {
 // TODO: b/359275356 - Expand this to handle the broadcast case similar
 // to `ConstFoldBinaryOpDense`.
 OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto lhs_type = getX().getType();
   auto rhs_type = getY().getType();
   auto condition_type = getCondition().getType();
@@ -3862,6 +3954,8 @@ static size_t GetOutputFlatIndex(size_t input_flat_ind,
 }
 
 OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto input = adaptor.getInput();
   auto axes = adaptor.getAxes();
 
@@ -3920,6 +4014,8 @@ OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult RankOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   assert(operands.size() == 1);
   auto result_type = mlir::cast<ShapedType>(getType());
@@ -4084,6 +4180,8 @@ OpFoldResult CastFloatToFloat(DenseFPElementsAttr data, FloatType in_type,
 }
 
 OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   if (operands.size() != 1) {
     return {};
@@ -4221,6 +4319,8 @@ DenseElementsAttr BuildConstRangeTensor(Type result_elem_type, int num_elements,
 }  // namespace
 
 OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   assert(operands.size() == 3);
   auto start_tensor = mlir::dyn_cast_or_null<ElementsAttr>(operands[0]);
@@ -4450,6 +4550,8 @@ void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
 
   auto input_tensor = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0]);
@@ -4983,6 +5085,8 @@ int64_t MaxPool2DOp::GetArithmeticCount(Operation* op) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult ReverseV2Op::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto input = adaptor.getInput();
   auto axis = adaptor.getAxis();
 
@@ -5224,6 +5328,8 @@ ParseResult ControlNodeOp::parse(OpAsmParser& parser, OperationState& result) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult EmbeddingLookupOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   auto operands = adaptor.getOperands();
   auto lookup_attr = mlir::dyn_cast_or_null<DenseIntElementsAttr>(operands[0]);
   auto value_attr = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[1]);
@@ -5357,6 +5463,8 @@ LogicalResult BitcastOp::verify() {
 }
 
 OpFoldResult BitcastOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
   if (getType() == getInput().getType()) return getInput();
   return {};
 }
