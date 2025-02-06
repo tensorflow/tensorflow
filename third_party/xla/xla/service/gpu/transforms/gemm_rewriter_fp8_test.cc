@@ -2991,6 +2991,49 @@ TEST_P(ParameterizedFp8GemmRewriteTest, FnuzTypeF8) {
   }
 }
 
+TEST_P(ParameterizedFp8GemmRewriteTest, NoTransposeOnBlackwellF8) {
+  if (!IsBlackwell()) {
+    GTEST_SKIP() << "Test requires a Blackwell GPU.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = <<F8E4M3>>[32,16] parameter(0)
+      y = <<F8E4M3>>[32,16] parameter(1)
+      ROOT out = <<F8E4M3>>[16,16] dot(x, y), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+          }
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(absl::StrReplaceAll(hlo_text, replacements_),
+                            ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[32,16], {{.*}}: <<F8E4M3>>[32,16]) -> <<F8E4M3>>[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<F8E4M3>>[32,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<F8E4M3>>[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[C1:[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = (<<F8E4M3>>[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]], [[C1]], [[C1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+          )");
+}
+
 INSTANTIATE_TEST_SUITE_P(Fp8CublasTestsBothLegacyAndLt,
                          ParameterizedFp8GemmRewriteTest, ::testing::Bool());
 
