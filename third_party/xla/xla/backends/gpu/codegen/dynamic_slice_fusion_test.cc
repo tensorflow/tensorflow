@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
-#include <cstdint>
-#include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
@@ -45,11 +47,11 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 #define PLATFORM "CUDA"
 #if GOOGLE_CUDA
@@ -3130,8 +3132,12 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterSlice) {
 
   auto module_new_opt_clone = module_new_opt->Clone();
   TF_ASSERT_OK_AND_ASSIGN(
-      auto exec, CreateExecutable(std::move(module_new_opt_clone), false));
-  GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
+      std::unique_ptr<OpaqueExecutable> wrapped_executable,
+      CreateExecutable(std::move(module_new_opt_clone), false));
+  TF_ASSERT_OK_AND_ASSIGN(Executable* const exec,
+                          test_runner_as_hlo_runner().ExecutableFromWrapped(
+                              wrapped_executable.get()));
+  GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec);
   ASSERT_EQ(gpu_exec->GetThunk().thunks().size(), 2ul);
   auto& rs_start_thunk = gpu_exec->GetThunk().thunks()[0];
   auto& rs_done_thunk = gpu_exec->GetThunk().thunks()[1];
