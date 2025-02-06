@@ -60,6 +60,8 @@ class HloControlFlowFlattening : public HloModulePass {
     // If flatten_conditional is true, this will behe default predicate value to
     // use for predicated conditional ops.
     bool conditional_value = false;
+    // Remove call-start and call-done associated with sparse core.
+    bool remove_sparse_core_calls = true;
   };
   explicit HloControlFlowFlattening(const Options& options)
       : while_execution_count_(options.while_execution_count),
