@@ -354,6 +354,10 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       if (core_details.ParseFromArray(core_details_bytes.data(),
                                       core_details_bytes.size())) {
         core_details.set_hostname(hostname);
+        // This is a backfill for XPlanes that were create before this field was
+        // added.
+        core_details.set_is_sparse_core(
+            tsl::profiler::GetSparseCoreId(device_trace->name()).has_value());
         core_id_to_details_map[device_trace->id()] = core_details;
       }
     }

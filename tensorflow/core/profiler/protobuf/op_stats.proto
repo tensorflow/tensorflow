@@ -113,7 +113,7 @@ message RunEnvironment {
   reserved 6;
 }
 
-// Next ID: 7
+// Next ID: 8
 message CoreDetails {
   string hostname = 1;
   uint32 device_ordinal = 2;  // unique within host, TPU core only
@@ -121,6 +121,7 @@ message CoreDetails {
   uint32 local_chip_id = 4;   // unique within host
   uint32 global_chip_id = 5;  // unique within mesh
   uint32 global_core_id = 6;  // unique within mesh, TPU core only
+  bool is_sparse_core = 7;
 }
 
 // Metrics based on hardware performance counters.
