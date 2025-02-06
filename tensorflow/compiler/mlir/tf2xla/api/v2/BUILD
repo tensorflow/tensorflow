@@ -398,3 +398,15 @@ tf_cc_test(
         "@riegeli//riegeli/bytes:read_all",
     ],
 )
+
+cc_library(
+    name = "mlir_roundtrip_flags",
+    hdrs = ["mlir_roundtrip_flags.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+    ],
+)
