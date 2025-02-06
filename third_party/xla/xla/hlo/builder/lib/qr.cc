@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/qr.h"
 
 #include <algorithm>
-#include <memory>
+#include <cstdint>
 #include <vector>
 
 #include "absl/status/statusor.h"
