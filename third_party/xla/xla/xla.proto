@@ -49,6 +49,8 @@ message DebugOptions {
     ALLTOALL = 5;
     COLLECTIVEPERMUTE = 6;
     RAGGEDALLTOALL = 7;
+    // Add more collectives before ALL
+    ALLCOLLECTIVES = 8;
   }
 
   // Commands are categorized into 5 types:

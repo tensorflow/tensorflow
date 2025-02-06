@@ -132,6 +132,13 @@ class CollectiveOpsTestE2E : public HloTestBase {
         num_replicas, /*run_hlo_passes=*/false, &device_assignment);
   }
 
+  bool IsAsync(const HloInstruction* inst) {
+    return !inst->backend_config<gpu::GpuBackendConfig>()
+                .value()
+                .collective_backend_config()
+                .is_sync();
+  }
+
  protected:
   absl::flat_hash_map<absl::string_view, absl::string_view> replacements_;
 
@@ -188,16 +195,7 @@ class CollectiveOpsWithFlagsBase : public CollectiveOpsTestE2E {
     return CreateExecutable(std::move(module),
                             /*run_hlo_passes=*/true);
   }
-
   using CollectiveOpsTestE2E::CreateExecutable;
-
-  bool IsAsync(const HloInstruction* inst) {
-    return !inst->backend_config<gpu::GpuBackendConfig>()
-                .value()
-                .collective_backend_config()
-                .is_sync();
-  }
-
   const bool enable_async_;
   const bool enable_p2p_memcpy_;
   const int64_t num_devices_;
@@ -1012,6 +1010,58 @@ TEST_F(CollectiveOpsTestE2E, NoAllToAllDecomposition) {
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 25, 21, 26}, results[1]);
+}
+
+// Verify that collectives won't be transformed into async ones.
+TEST_F(CollectiveOpsTestE2E, NoAsyncCollectives) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  apply_op {
+    x = u32[] parameter(0)
+    y = u32[] parameter(1)
+    ROOT apply_op = u32[] add(x, y)
+  }
+
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2, 2] broadcast(id), dimensions={}
+    a0 = u32[2, 2] constant({{10, 15}, {20, 25}})
+    a1 = u32[2, 2] add(id2, a0)
+    all2all = u32[2, 2] all-to-all(a1), replica_groups={{0,1}}, dimensions={0}
+    ROOT ag = u32[2, 2] all-reduce(all2all), replica_groups={{0,1}}, to_apply=apply_op
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.mutable_debug_options().add_xla_disable_hlo_passes(
+      "gpu-convert-async-collectives-to-sync");
+  config.mutable_debug_options().add_xla_gpu_disable_async_collectives(
+      DebugOptions::ALLCOLLECTIVES);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+  ASSERT_TRUE(executable->has_module());
+  HloModule* executable_module = &executable->module();
+
+  // Verify that the all-to-all is a sync collective.
+  const HloInstruction* all_to_all =
+      FindInstruction(executable_module, HloOpcode::kAsyncStart);
+  EXPECT_FALSE(IsAsync(all_to_all));
+
+  // Verify that the all-reduce is a sync collective.
+  const HloInstruction* all_reduce =
+      FindInstruction(executable_module, HloOpcode::kAllReduceStart);
+
+  EXPECT_FALSE(IsAsync(all_reduce));
 }
 
 // E2E tests comparing the results of windowed einsum and non-windowed cases.

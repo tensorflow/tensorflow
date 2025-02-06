@@ -713,6 +713,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         if (absl::c_all_of(values, is_collective_type)) {
           debug_options->clear_xla_gpu_disable_async_collectives();
           for (const absl::string_view value : values) {
+            auto parsed_op = parse_collective_type(value);
+            if (parsed_op == DebugOptions::ALLCOLLECTIVES) {
+              for (int i = (int)DebugOptions::ALLREDUCE;
+                   i < (int)DebugOptions::ALLCOLLECTIVES; i++) {
+                debug_options->add_xla_gpu_disable_async_collectives(
+                    (DebugOptions::CollectiveOpType)i);
+              }
+              return true;
+            }
             debug_options->add_xla_gpu_disable_async_collectives(
                 parse_collective_type(value));
           }
