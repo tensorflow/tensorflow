@@ -57,6 +57,7 @@ def _tfcompile_model_library_rule_impl(ctx):
                       "--xla_cpu_fast_math_honor_functions=false " +
                       "--xla_cpu_fast_math_honor_division=false " +
                       "--xla_cpu_enable_fast_min_max=true " +
+                      "--xla_cpu_use_thunk_runtime=false " +
                       ctx.attr.xla_flags + " " +
                       "$${XLA_FLAGS:-}' "),
         "CUDA_VISIBLE_DEVICES": "",

@@ -184,6 +184,17 @@ def MergePointersToSameSlicePass :
   let constructor = "CreateMergePointersToSameSlicePass()";
 }
 
+def PeelLoopsPass : Pass<"xla-peel-loops", "mlir::func::FuncOp"> {
+  let summary = "Peels xla.loop.";
+  let description = [{
+      Attempts to split each loop dimension [0, NUM_ITERATIONS)
+      as [0, NUM_ITERATIONS - 1) and [NUM_ITERATIONS - 1, NUM_ITERATIONS)
+      if it removes a constraint.
+  }];
+  let dependentDialects = ["xla::XlaDialect"];
+  let constructor = "CreatePeelLoopsPass()";
+}
+
 def PropagateSliceIndicesPass :
    Pass<"xla-propagate-slice-indices", "mlir::ModuleOp"> {
   let summary = "Propagates slice indices from the entry function to all callees.";

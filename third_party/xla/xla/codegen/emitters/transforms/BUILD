@@ -1,4 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -29,6 +31,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -55,6 +58,7 @@ cc_library(
         "lower_to_llvm.cc",
         "lower_xla_to_scf.cc",
         "merge_pointers_to_same_slice.cc",
+        "peel_loops.cc",
         "propagate_slice_indices.cc",
         "simplify_affine.cc",
         "simplify_arith.cc",
@@ -81,6 +85,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

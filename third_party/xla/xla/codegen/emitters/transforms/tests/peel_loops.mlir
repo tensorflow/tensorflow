@@ -1,4 +1,4 @@
-// RUN: emitters_opt -split-input-file %s -xla-gpu-peel-loops \
+// RUN: emitters_opt -split-input-file %s -xla-peel-loops \
 // RUN: | FileCheck %s
 
 #map = #xla.indexing_map<"(d0)[s0, s1] -> (s0, s1), domain:"
