@@ -931,8 +931,8 @@ Value getInputSlicedToItsUsedSize(PatternRewriter& rewriter, Operation* op,
     auto slice_op = CreateOpAndInfer<tosa::SliceOp>(
         rewriter, op->getLoc(),
         UnrankedTensorType::get(input_type.getElementType()), input_val,
-        rewriter.getDenseI64ArrayAttr(start),
-        rewriter.getDenseI64ArrayAttr(size));
+        getTosaConstShape(rewriter, op->getLoc(), start),
+        getTosaConstShape(rewriter, op->getLoc(), size));
 
     return slice_op.getResult();
   }
@@ -997,16 +997,14 @@ void TrimQuantizedIntegerRange(UniformQuantizedType dtype, int64_t& val_min,
   TrimQuantizedIntegerRangeMax(dtype, val_max);
 }
 
-tosa::MulOp CreateMulOpAndInfer(PatternRewriter& rewriter, Operation* op,
-                                Type result_ty, Value input1, Value input2,
-                                int8_t shift) {
+tosa::MulOp CreateMulOpAndInfer(PatternRewriter& rewriter, Operation* op, Type result_ty,
+    Value input1, Value input2, int8_t shift) {
   if (EqualizeRanks(rewriter, op->getLoc(), input1, input2).failed()) {
     // uncompatible broadcast shapes, no reshape is inserted
     // ResultsBroadcastableShape verify will handle this
   }
-  return CreateOpAndInfer<tosa::MulOp>(
-      rewriter, op->getLoc(), result_ty, input1, input2,
-      rewriter.getI8IntegerAttr(shift));
+  return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), result_ty, input1,
+      input2, getConstTensor<int8_t>(rewriter, op, shift, {1}).value());
 }
 
 }  // namespace tosa
