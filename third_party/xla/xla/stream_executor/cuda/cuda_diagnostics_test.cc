@@ -18,7 +18,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/debugging/leak_check.h"
 #include "absl/log/check.h"
-#include "absl/log/globals.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "tsl/platform/statusor.h"
