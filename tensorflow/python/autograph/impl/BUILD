@@ -70,8 +70,6 @@ py_strict_library(
 tf_py_strict_test(
     name = "api_test",
     srcs = ["api_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":api",
         ":conversion",

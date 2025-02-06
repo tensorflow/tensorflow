@@ -145,7 +145,6 @@ pytype_strict_library(
     srcs = [
         "runtime_client.py",
     ],
-    srcs_version = "PY3",
     visibility = [
         "//learning/brain/experimental/tfq:__subpackages__",
         "//tensorflow/core/function/transform:__subpackages__",
@@ -162,7 +161,6 @@ py_strict_test(
     name = "runtime_client_py_test",
     srcs = ["runtime_client_test.py"],
     main = "runtime_client_test.py",
-    python_version = "PY3",
     tags = ["no_oss"],  # TODO(b/219089812)
     deps = [
         ":runtime_client_py",
