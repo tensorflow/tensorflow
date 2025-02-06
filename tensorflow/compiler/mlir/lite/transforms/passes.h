@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/split_merged_operands_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/unfold_large_splat_constants_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
+#include "tensorflow/compiler/mlir/lite/transforms/utilities/elements_attr_roundtrip_pass.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 
 namespace mlir {
@@ -347,6 +348,9 @@ inline void registerTensorFlowLitePasses() {
   // Other TFLite Passes
   Register<UnfoldLargeSplatConstantPass>();
   Register<SplitMergedOperandsPass>();
+
+  // Utility Passes
+  Register<ElementsAttrRoundtripPass, ElementsAttrRoundtripPassOptions>();
 }
 
 }  // namespace TFL
