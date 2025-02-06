@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
-#include <vector>
-
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/lite/toco/python/toco_python_api.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"

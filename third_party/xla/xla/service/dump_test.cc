@@ -24,10 +24,8 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace {
@@ -210,5 +208,41 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshot) {
                                   &hlo_snapshot_loaded));
   EXPECT_EQ(hlo_snapshot_loaded.hlo_module().name(), module.name());
 }
+
+TEST(DumpHloIfEnabled, DumpsBuildClNumber) {
+  // BuildData isn't available in OSS.
+  if (tsl::kIsOpenSource) {
+    GTEST_SKIP() << "BuildData isn't available in OSS.";
+  }
+
+  HloModuleConfig config;
+  DebugOptions options = config.debug_options();
+  auto env = tsl::Env::Default();
+
+  std::string dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+
+  options.set_xla_dump_to(dump_dir);
+  options.set_xla_dump_hlo_as_text(true);
+  options.set_xla_dump_large_constants(false);
+  config.set_debug_options(options);
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[11] parameter(0)
+      c = s32[11] constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
+      ROOT x = s32[11] multiply(p0, c)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+
+  std::string dump_name = "dump";
+  auto paths = DumpHloModuleIfEnabled(*m, dump_name);
+  EXPECT_EQ(paths.size(), 1);
+
+  EXPECT_TRUE(absl::StrContains(paths[0], ".cl_"));
+}
+
 }  // namespace
 }  // namespace xla

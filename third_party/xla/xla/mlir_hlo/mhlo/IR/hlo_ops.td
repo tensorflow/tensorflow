@@ -343,6 +343,10 @@ def MHLO_ExpOp: MHLO_UnaryElementwiseOp<"exponential",
     %result = mhlo.exponential %operand : tensor<2x2xf64>
     ```
   }];
+  let arguments = (ins MHLO_FpComplexOrQuantizedIntTensor:$operand,
+   DefaultValuedOptionalAttr<MHLO_ResultAccuracyAttr, "::mlir::mhlo::ResultAccuracyMode::DEFAULT">:$result_accuracy);
+  let results = (outs MHLO_FpComplexOrQuantizedIntTensor:$result);
+  let hasVerifier = 1;
   let hasFolder = 1;
 }
 def MHLO_Expm1Op: MHLO_UnaryElementwiseOp<"exponential_minus_one",
@@ -2118,7 +2122,7 @@ def MHLO_BroadcastInDimOp : MHLO_Op<"broadcast_in_dim",
     MHLO_BroadcastDimAttr:$broadcast_dimensions
   );
 
-  let results = (outs MHLO_StaticShapeTensor);
+  let results = (outs MHLO_StaticShapeOrBoundedDimTensor);
 
   let hasFolder = 1;
   let hasCanonicalizer = 1;
@@ -2877,7 +2881,7 @@ def MHLO_ReshapeOp: MHLO_Op<"reshape",
 
   let arguments = (ins MHLO_AnyTensor:$operand);
 
-  let results = (outs MHLO_AnyTensor);
+  let results = (outs MHLO_StaticShapeOrBoundedDimTensor);
   let hasFolder = 1;
   let hasCanonicalizer = 1;
   let hasVerifier = 1;

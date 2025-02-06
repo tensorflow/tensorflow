@@ -51,9 +51,9 @@
 #include "xla/python/ifrt_proxy/server/grpc_server.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {

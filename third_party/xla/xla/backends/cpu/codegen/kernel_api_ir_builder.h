@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_CODEGEN_KERNEL_API_IR_BUILDER_H_
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 
@@ -41,6 +43,8 @@ class KernelApiIrBuilder {
   struct Options {
     bool enable_invariant_load_metadata;
     int32_t prefer_vector_width;
+
+    static Options FromHloModuleConfig(const HloModuleConfig& config);
   };
 
   // Thread dimensions of the kernel invocation.
@@ -90,7 +94,7 @@ class KernelApiIrBuilder {
     absl::InlinedVector<BufferUse, 8> buffer_uses;
   };
 
-  KernelApiIrBuilder(llvm::LLVMContext& context_, Options options);
+  KernelApiIrBuilder(llvm::LLVMContext& context, Options options);
 
   // Emits a kernel prototype for the given HLO instruction.
   // buffer_assignment may be null, in which case we will not compute alias
@@ -102,8 +106,12 @@ class KernelApiIrBuilder {
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       llvm::Module& module, absl::string_view name,
       absl::Span<const KernelParameter> arguments,
-      absl::Span<const KernelParameter> results,
-      bool compute_alias_metadata = true);
+      absl::Span<const KernelParameter> results);
+
+  // Create a module with the given name, the name is given a prefix that is
+  // specific to XLA and relied on further down the pipeline.
+  static std::unique_ptr<llvm::Module> CreateModule(absl::string_view name,
+                                                    llvm::LLVMContext& context);
 
  private:
   ThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& builder,

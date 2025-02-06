@@ -16,7 +16,7 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_OPENCL_CL_CONTEXT_H_
 
 #include "absl/status/status.h"
-#include "third_party/opencl_headers/CL/cl.h"
+#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/runtime/opencl/cl_device.h"
 
 namespace litert {

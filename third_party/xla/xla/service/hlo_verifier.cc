@@ -649,12 +649,31 @@ absl::Status ShapeVerifier::HandleRaggedAllToAll(HloInstruction* hlo) {
 
   TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
 
+  const int64_t kNumRaggedOperands = 6;
   TF_RET_CHECK(all_to_all != nullptr);
-  TF_RET_CHECK(hlo->operand_count() == 6);
+  TF_RET_CHECK(hlo->operand_count() == kNumRaggedOperands);
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
   }
+
+  // Check that *_offsets/*_sizes operands all have the same shape and
+  // are rank 1 or rank 2.
+  const int64_t kOffsetsSizesOperandsStart = 2;
+  for (int64_t i = kOffsetsSizesOperandsStart + 1; i < kNumRaggedOperands;
+       ++i) {
+    if (operand_shapes[i - 1]->rank() != 1 &&
+        operand_shapes[i - 1]->rank() != 2) {
+      return Internal("RaggedAllToAll operand %d must be rank 1 or 2: %s",
+                      i - 1, hlo->ToString());
+    }
+    if (!ShapeUtil::Equal(*operand_shapes[i - 1], *operand_shapes[i])) {
+      return Internal(
+          "RaggedAllToAll operands have different shapes (%d, %d): %s", i - 1,
+          i, hlo->ToString());
+    }
+  }
+
   return CheckShape(hlo,
                     ShapeInference::InferRaggedAllToAllShape(operand_shapes));
 }
@@ -707,9 +726,10 @@ absl::Status CheckBufferOffset(const Shape& buffer_shape,
 }
 
 absl::Status CheckInplaceCollectivePermute(HloInstruction* collective_permute) {
-  if (collective_permute->operand_count() == 1) {
+  if (!Cast<HloCollectivePermuteInstruction>(collective_permute)->inplace()) {
     return absl::OkStatus();
   }
+  // TODO support grouped partial collective permute
   if (collective_permute->operand_count() != 4) {
     return Internal("Unexpected number of operands: %d.",
                     collective_permute->operand_count());
@@ -869,8 +889,10 @@ absl::Status ShapeVerifier::HandleCollectivePermute(HloInstruction* hlo) {
   absl::c_transform(
       hlo->operands(), std::back_inserter(operand_shapes),
       [](const HloInstruction* operand) { return &(operand->shape()); });
-  return CheckShape(
-      hlo, ShapeInference::InferCollectivePermuteShape(operand_shapes));
+  return CheckShape(hlo,
+                    ShapeInference::InferCollectivePermuteShape(
+                        operand_shapes,
+                        Cast<HloCollectivePermuteInstruction>(hlo)->inplace()));
 }
 
 absl::Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
@@ -889,8 +911,10 @@ absl::Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
     context_shapes = std::vector<Shape>(hlo->shape().tuple_shapes().begin() + 2,
                                         hlo->shape().tuple_shapes().end());
   }
-  return CheckShape(hlo, ShapeInference::InferCollectivePermuteStartShape(
-                             operand_shapes, context_shapes));
+  return CheckShape(hlo,
+                    ShapeInference::InferCollectivePermuteStartShape(
+                        operand_shapes, context_shapes,
+                        Cast<HloCollectivePermuteInstruction>(hlo)->inplace()));
 }
 
 absl::Status ShapeVerifier::HandleCollectivePermuteDone(HloInstruction* hlo) {
@@ -1354,8 +1378,9 @@ absl::Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
       }
     } else {
       TF_RET_CHECK(ShapeUtil::Compatible(output_subshape, operand_subshape))
-          << "Different aliasing shapes: " << operand_subshape.ToString()
-          << " vs " << output_subshape.ToString();
+          << "Different aliasing shapes: "
+          << operand_subshape.ToString(/*print_layout=*/true) << " vs "
+          << output_subshape.ToString(/*print_layout=*/true);
     }
   }
   return absl::OkStatus();
@@ -1435,12 +1460,14 @@ absl::Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
         custom_call->operand(pair.second.first)->shape(), pair.second.second);
     if (opts_.layout_sensitive) {
       TF_RET_CHECK(operand_subshape == output_subshape)
-          << "Different aliasing shapes: " << operand_subshape.ToString()
-          << " vs " << output_subshape.ToString();
+          << "Different aliasing shapes: "
+          << operand_subshape.ToString(/*print_layout=*/true) << " vs "
+          << output_subshape.ToString(/*print_layout=*/true);
     } else {
       TF_RET_CHECK(ShapeUtil::Compatible(output_subshape, operand_subshape))
-          << "Different aliasing shapes: " << operand_subshape.ToString()
-          << " vs " << output_subshape.ToString();
+          << "Different aliasing shapes: "
+          << operand_subshape.ToString(/*print_layout=*/true) << " vs "
+          << output_subshape.ToString(/*print_layout=*/true);
     }
   }
   return absl::OkStatus();
@@ -1655,7 +1682,8 @@ absl::Status ShapeVerifier::CheckAsyncOpComputationShapes(
     return Internal(
         "The %s expects the async shape to be a tuple of at least two "
         "elements, found %s.",
-        HloOpcodeString(async_op->opcode()), async_shape.ToString());
+        HloOpcodeString(async_op->opcode()),
+        async_shape.ToString(/*print_layout=*/true));
   }
 
   ProgramShape computation_shape =
@@ -2993,9 +3021,10 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
               Layout::Equal().IgnoreTiles().IgnoreMemorySpace();
           if (instruction->opcode() == HloOpcode::kConvert ||
               instruction->opcode() == HloOpcode::kCompare ||
+              instruction->opcode() == HloOpcode::kIsFinite ||
               (instruction->opcode() == HloOpcode::kSelect &&
                operand_shape.element_type() == PRED)) {
-            // Convert and Compare instructions can change element_size_in_bits
+            // Some instructions can change element_size_in_bits
             // Select instructions ignore element_size_in_bits for predicate
             equal_predicate.IgnoreElementSize();
           } else if (instruction->opcode() == HloOpcode::kDynamicSlice ||

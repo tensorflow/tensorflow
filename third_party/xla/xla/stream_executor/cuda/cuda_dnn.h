@@ -557,7 +557,7 @@ class CudnnSupport : public dnn::DnnSupport {
 #if CUDNN_VERSION >= 8100
   // Loads complete graph from its serialized representation.
   absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> DeserializeGraph(
-      absl::string_view serialized_data) const override;
+      Stream& stream, absl::string_view serialized_data) const override;
 #endif  // CUDNN_VERSION >= 8100
 
  private:

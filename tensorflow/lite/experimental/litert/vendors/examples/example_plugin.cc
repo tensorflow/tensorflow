@@ -46,7 +46,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
     if (op.Code() != kLiteRtOpCodeTflMul) {
       continue;
     }
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op.Get()));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
   }
   return kLiteRtStatusOk;
 }
@@ -88,13 +88,14 @@ LiteRtStatus CompileSinglePartition(LiteRtParamIndex partition_index,
 
 LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
-    LiteRtSubgraph* partitions, LiteRtParamIndex num_partitions,
-    LiteRtCompiledResult* compiled_result) {
+    LiteRtModel partitions, LiteRtCompiledResult* compiled_result) {
   LiteRtCompiledResult result = new LiteRtCompiledResultT;
 
+  auto model = litert::Model::CreateFromNonOwnedHandle(partitions);
+  const auto num_partitions = model.NumSubgraphs();
   for (auto i = 0; i < num_partitions; ++i) {
-    LITERT_RETURN_STATUS_IF_NOT_OK(
-        CompileSinglePartition(i, partitions[i], *result));
+    LITERT_RETURN_IF_ERROR(
+        CompileSinglePartition(i, model.Subgraph(i)->Get(), *result));
   }
 
   *compiled_result = result;

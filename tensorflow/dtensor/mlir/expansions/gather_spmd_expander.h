@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_GATHER_SPMD_EXPANDER_H_
 #define TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_GATHER_SPMD_EXPANDER_H_
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"

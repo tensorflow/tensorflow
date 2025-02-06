@@ -22,8 +22,8 @@
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
-#include "third_party/opencl_headers/CL/cl.h"
-#include "third_party/opencl_headers/CL/cl_platform.h"
+#include <CL/cl.h>
+#include <CL/cl_platform.h>
 #include "tensorflow/lite/experimental/litert/runtime/opencl/opencl_wrapper.h"
 
 namespace litert {

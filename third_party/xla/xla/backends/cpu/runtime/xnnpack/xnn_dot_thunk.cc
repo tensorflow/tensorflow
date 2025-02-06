@@ -37,8 +37,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::cpu {
 
@@ -79,29 +79,8 @@ absl::StatusOr<xnn_subgraph_t> XnnDotThunk::BuildDotSubgraph(
   return subgraph;
 }
 
-absl::StatusOr<bool> XnnDotThunk::IsSupported(
-    const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
-    const Shape& rhs_shape, const Shape& out_shape) {
-  // TODO(ezhulenev): Support other element types.
-  if (lhs_shape.element_type() != F32 || rhs_shape.element_type() != F32 ||
-      out_shape.element_type() != F32) {
-    return false;
-  }
-
-  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
-                                                      rhs_shape, out_shape));
-
-  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
-                      GetDotCanonicalDims(dot_dimensions, dot_shape));
-
-  // XNNPACK does not support transposing LHS or col-major layouts.
-  return dot_canonical_dims.lhs_canonical &&
-         !dot_canonical_dims.lhs_column_major &&
-         !dot_canonical_dims.rhs_column_major;
-}
-
 absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunk::Create(
-    Info info, DotDimensionNumbers dot_dimensions,
+    Options options, Info info, DotDimensionNumbers dot_dimensions,
     BufferAllocation::Slice lhs_buffer, Shape lhs_shape,
     BufferAllocation::Slice rhs_buffer, Shape rhs_shape,
     BufferAllocation::Slice out_buffer, Shape out_shape) {
@@ -118,7 +97,8 @@ absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunk::Create(
                        out_buffer, std::move(out_shape)};
 
   return absl::WrapUnique(
-      new XnnDotThunk(info, std::move(dot_dimensions), std::move(dot_slices),
+      new XnnDotThunk(std::move(options), std::move(info),
+                      std::move(dot_dimensions), std::move(dot_slices),
                       std::move(dot_shape), std::move(dot_canonical_dims)));
 }
 
@@ -132,13 +112,15 @@ static std::vector<XnnFusionThunk::Result> DotResults(const DotSlices& slices) {
   return {XnnFusionThunk::Result{slices.out_buffer, slices.out_shape}};
 }
 
-XnnDotThunk::XnnDotThunk(Info info, DotDimensionNumbers dot_dimensions,
+XnnDotThunk::XnnDotThunk(Options options, Info info,
+                         DotDimensionNumbers dot_dimensions,
                          DotSlices dot_slices, DotShape dot_shape,
                          DotCanonicalDims dot_canonical_dims)
-    : XnnFusionThunk(std::move(info), DotArguments(dot_slices),
-                     DotResults(dot_slices),
-                     std::bind(&XnnDotThunk::BuildDotSubgraph, this,
-                               std::placeholders::_1, std::placeholders::_2)),
+    : XnnFusionThunk(
+          std::move(options), std::move(info), DotArguments(dot_slices),
+          DotResults(dot_slices),
+          Builder(std::bind(&XnnDotThunk::BuildDotSubgraph, this,
+                            std::placeholders::_1, std::placeholders::_2))),
       dot_dimensions_(std::move(dot_dimensions)),
       dot_slices_(std::move(dot_slices)),
       dot_shape_(std::move(dot_shape)),

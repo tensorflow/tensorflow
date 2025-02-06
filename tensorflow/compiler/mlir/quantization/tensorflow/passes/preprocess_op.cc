@@ -249,7 +249,7 @@ void PreprocessOpPass::runOnOperation() {
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 
   for (auto func : module_op.getOps<func::FuncOp>()) {
-    if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+    if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-preprocess-op failed.";
       signalPassFailure();
     }

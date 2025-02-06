@@ -260,4 +260,28 @@ def MHLO_RngAlgorithmAttr : EnumAttr<MHLO_Dialect, MHLO_RngAlgorithm, "rng_algor
   let assemblyFormat = "`<` $value `>`";
 }
 
+//===----------------------------------------------------------------------===//
+// Result Accuracy enum definitions.
+//===----------------------------------------------------------------------===//
+
+def MHLO_RESULT_ACCURACY_DEFAULT : I32EnumAttrCase<"DEFAULT", 0>;
+def MHLO_RESULT_ACCURACY_HIGHEST : I32EnumAttrCase<"HIGHEST", 1>;
+def MHLO_RESULT_ACCURACY_TOLERANCE: I32EnumAttrCase<"TOLERANCE", 2>;
+
+def MHLO_ResultAccuracyMode : I32EnumAttr<"ResultAccuracyMode",
+    "XLA result accuracy mode.",
+    [
+      MHLO_RESULT_ACCURACY_DEFAULT,
+      MHLO_RESULT_ACCURACY_HIGHEST,
+      MHLO_RESULT_ACCURACY_TOLERANCE
+    ]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::mhlo";
+}
+
+def MHLO_ResultAccuracyModeAttr : EnumAttr<MHLO_Dialect, MHLO_ResultAccuracyMode, "result_accuracy_mode"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
+
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ENUMS

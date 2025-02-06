@@ -40,22 +40,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_lexer.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -2267,6 +2267,20 @@ ENTRY CollectivePermute {
 )",
 /*replica_count=*/4
 },
+// combined collective-permute
+{
+"CombinedCollectivePermute",
+R"(HloModule CombinedCollectivePermute, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}, replica_count=4
+
+ENTRY CollectivePermute {
+  input.0 = f32[128,32]{0,1} parameter(0)
+  input.1 = f32[128,32]{0,1} parameter(1)
+  ROOT root = (f32[128,32]{0,1}, f32[128,32]{0,1}) collective-permute(input.0, input.1), source_target_pairs={{0,1},{1,2},{2,3}}
+}
+
+)",
+/*replica_count=*/4
+},
 // collective-permute with in-place updates
 {
 "CollectivePermuteInPlaceUpdate",
@@ -2281,6 +2295,25 @@ ENTRY CollectivePermuteInPlaceUpdate {
   constant.2 = s32[] constant(64)
   tuple.2 = (s32[], s32[]) tuple(constant.1, constant.2)
   ROOT root = f32[128,128]{0,1} collective-permute(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{128,32}}
+}
+
+)",
+/*replica_count=*/4
+},
+// collective-permute with in-place updates 3-dimensional
+{
+"CollectivePermuteInPlaceUpdate3D",
+R"(HloModule CollectivePermuteInPlaceUpdate3D, entry_computation_layout={(f32[128,128,32]{0,1,2})->f32[128,128,128]{0,1,2}}, replica_count=4
+
+ENTRY CollectivePermuteInPlaceUpdate {
+  input = f32[128,128,32]{0,1,2} parameter(0)
+  constant = f32[] constant(1)
+  output = f32[128,128,128]{0,1,2} broadcast(constant), dimensions={}
+  constant.1 = s32[] constant(0)
+  tuple.1 = (s32[], s32[], s32[]) tuple(constant.1, constant.1, constant.1)
+  constant.2 = s32[] constant(64)
+  tuple.2 = (s32[], s32[], s32[]) tuple(constant.1, constant.1, constant.2)
+  ROOT root = f32[128,128,128]{0,1,2} collective-permute(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{128,128,32}}
 }
 
 )",
@@ -2375,6 +2408,21 @@ ENTRY CollectivePermuteStartAndDone {
   input = f32[128,32]{0,1} parameter(0)
   collective-permute-start.1 = (f32[128,32]{0,1}, f32[128,32]{0,1}, u32[], u32[]) collective-permute-start(input), source_target_pairs={{0,1},{1,2},{2,3}}
   ROOT collective-permute-done.1 = f32[128,32]{0,1} collective-permute-done(collective-permute-start.1)
+}
+
+)",
+/*replica_count=*/4
+},
+// combined collective-permute-start and -done
+{
+"CombinedCollectivePermuteStartAndDone",
+R"(HloModule CombinedCollectivePermuteStartAndDone, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}, replica_count=4
+
+ENTRY CombinedCollectivePermuteStartAndDone {
+  input.0 = f32[128,32]{0,1} parameter(0)
+  input.1 = f32[128,32]{0,1} parameter(1)
+  collective-permute-start.1 = ((f32[128,32]{0,1}, f32[128,32]{0,1}), (f32[128,32]{0,1}, f32[128,32]{0,1})) collective-permute-start(input.0, input.1), source_target_pairs={{0,1},{1,2},{2,3}}
+  ROOT collective-permute-done.1 = (f32[128,32]{0,1}, f32[128,32]{0,1}) collective-permute-done(collective-permute-start.1)
 }
 
 )",
@@ -3476,8 +3524,36 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 })";
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
-      ParseAndReturnUnverifiedModule(
-          original, {}, HloParserOptions().set_fill_missing_layouts(false));
+      ParseAndReturnUnverifiedModule(original, {},
+                                     HloParserOptions()
+                                         .set_fill_missing_layouts(false)
+                                         .set_keep_module_auto_layouts(false));
+  TF_ASSERT_OK(module.status());
+  // Do not set the default layout.
+  EXPECT_FALSE(module.value()->entry_computation_layout().AnyLayoutSet());
+}
+
+TEST_F(HloParserTest, EntryComputationLayoutDefinedThroughAutoLayout) {
+  const std::string original = R"(
+HloModule layout_defined, entry_computation_layout={(f32[8,16,256]) -> f32[8,16]}
+
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
+  input = f32[8,16,256]{0,1,2} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{0,1} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(original, {},
+                                     HloParserOptions()
+                                         .set_fill_missing_layouts(true)
+                                         .set_keep_module_auto_layouts(true));
   TF_ASSERT_OK(module.status());
   // Do not set the default layout.
   EXPECT_FALSE(module.value()->entry_computation_layout().AnyLayoutSet());
@@ -3500,8 +3576,10 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 })";
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
-      ParseAndReturnUnverifiedModule(
-          original, {}, HloParserOptions().set_fill_missing_layouts(true));
+      ParseAndReturnUnverifiedModule(original, {},
+                                     HloParserOptions()
+                                         .set_fill_missing_layouts(true)
+                                         .set_keep_module_auto_layouts(false));
   TF_ASSERT_OK(module.status());
   EXPECT_THAT(module.value()
                   ->entry_computation_layout()
@@ -3528,8 +3606,10 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 })";
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
-      ParseAndReturnUnverifiedModule(
-          original, {}, HloParserOptions().set_fill_missing_layouts(true));
+      ParseAndReturnUnverifiedModule(original, {},
+                                     HloParserOptions()
+                                         .set_fill_missing_layouts(true)
+                                         .set_keep_module_auto_layouts(false));
   TF_ASSERT_OK(module.status());
   EXPECT_THAT(module.value()
                   ->entry_computation_layout()

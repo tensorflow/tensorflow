@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/primitive_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -110,7 +111,23 @@ bool IsAmpere(stream_executor::GpuComputeCapability gpu_compute_capability) {
 // which we explicitly test for now.
 bool IsSupportedByCublasOrCublasLt(
     PrecisionConfig::Algorithm algorithm,
-    stream_executor::GpuComputeCapability gpu_compute_capability) {
+    stream_executor::GpuComputeCapability gpu_compute_capability,
+    const HloDotInstruction* dot, const int64_t rhs_contracting_index) {
+  // 8-bit x 8-bit GEMMs with contracting dim < 4 are not supported by cuBLAS.
+  // As this was determined through a failing test, I'm eering on the side of
+  // caution and not generalizing this further.
+  if (dot) {
+    auto lhs_type = dot->operand(0)->shape().element_type();
+    auto rhs_type = dot->operand(1)->shape().element_type();
+    auto contracting_dim_size =
+        dot->operand(1)->shape().dimensions(rhs_contracting_index);
+    if (primitive_util::Is8BitIntegralType(lhs_type) &&
+        primitive_util::Is8BitIntegralType(rhs_type) &&
+        contracting_dim_size < 4) {
+      return false;
+    }
+  }
+
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:

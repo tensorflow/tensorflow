@@ -83,7 +83,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -192,25 +191,6 @@ class NameUniquifier : public OpOrArgNameMapper {
 
   const FunctionLibraryDefinition& flib_;
 };
-
-// Preprocesses GraphDef before it can be converted to Graph by,
-// - Adding the default attributes to each node def if they are missing from
-//   the GraphDef.
-// - Replacing LegacyFedInput nodes with Placeholder nodes if
-//   convert_legacy_fed_inputs option is enabled.
-absl::Status PreprocessGraphDef(const GraphImportConfig* specs,
-                                GraphDef* graph_def) {
-  for (auto& node_def : *graph_def->mutable_node()) {
-    const tensorflow::OpRegistrationData* op_reg_data =
-        tensorflow::OpRegistry::Global()->LookUp(node_def.op());
-    if (!op_reg_data) {
-      // This is likely a function call node, so we should continue.
-      continue;
-    }
-    ::tensorflow::AddDefaultsToNodeDef(op_reg_data->op_def, &node_def);
-  }
-  return absl::OkStatus();
-}
 
 // Determines the names used to reference objects in the SavedObjectGraph.
 class ObjectNames {
@@ -808,7 +788,7 @@ absl::Status CreateSavedModelIR(
         mlir::OpBuilder body_builder(&func.getBody());
         auto call = body_builder.create<mlir::TF::StatefulPartitionedCallOp>(
             func.getLoc(), orig_func.getFunctionType().getResults(),
-            args_as_values,
+            args_as_values, /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
             mlir::SymbolRefAttr::get(builder.getContext(), orig_func.getName()),
             /*config=*/builder.getStringAttr(""),
             /*config_proto=*/builder.getStringAttr(""),
@@ -993,15 +973,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelObjectGraph(
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
   options.add_default_attributes = import_options.add_default_attributes;
+  options.upgrade_legacy = import_options.upgrade_legacy;
   Graph graph(OpRegistry::Global());
 
-  GraphDef preprocessed_graphdef(graphdef);
-  if (import_options.add_default_attributes) {
-    TF_RETURN_IF_ERROR(PreprocessGraphDef(nullptr, &preprocessed_graphdef));
-  }
-
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
-      options, std::move(preprocessed_graphdef), &graph));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(options, graphdef, &graph));
 
   NameUniquifier function_name_uniquifier(graph.flib_def());
   for (const auto& fn_name : graph.flib_def().ListFunctionNames()) {
@@ -1057,14 +1032,10 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
     GraphDef graph_def(meta_graph_def->graph_def());
     auto graph = std::make_unique<Graph>(OpRegistry::Global());
 
-    if (import_options.upgrade_legacy) {
-      TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(
-          graph_def, graph->flib_def().default_registry()));
-    }
-
     GraphConstructorOptions graph_ctor_options;
     graph_ctor_options.allow_internal_ops = true;
     graph_ctor_options.add_default_attributes = true;
+    graph_ctor_options.upgrade_legacy = import_options.upgrade_legacy;
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
         graph_ctor_options, std::move(graph_def), graph.get()));
 
@@ -1694,24 +1665,6 @@ absl::Status SavedModelSignatureDefImporter::LiftVariables(
 
 SavedModelMLIRImportInput::~SavedModelMLIRImportInput() = default;
 
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
-    const GraphDef& graphdef, const GraphDebugInfo& debug_info,
-    const GraphImportConfig& specs, mlir::MLIRContext* context) {
-  GraphConstructorOptions options;
-  options.allow_internal_ops = true;
-  Graph graph(OpRegistry::Global());
-  GraphDef preprocessed_graphdef(graphdef);
-  TF_RETURN_IF_ERROR(PreprocessGraphDef(&specs, &preprocessed_graphdef));
-
-  if (specs.upgrade_legacy) {
-    TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(
-        preprocessed_graphdef, graph.flib_def().default_registry()));
-  }
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
-      options, std::move(preprocessed_graphdef), &graph));
-  return tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
-      graph, debug_info, graph.flib_def(), specs, context);
-}
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,

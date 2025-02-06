@@ -36,8 +36,8 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -299,10 +299,18 @@ absl::StatusOr<bool> DotAlgorithmRewriter::Run(
 absl::StatusOr<HloInstruction*>
 DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32(HloInstruction* lhs,
                                                  HloInstruction* rhs) {
-  TF_RET_CHECK(lhs->shape().element_type() == PrimitiveType::F32)
-      << "Algorithm field set to BF16_BF16_F32, but the lhs is not F32.";
-  TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
-      << "Algorithm field set to BF16_BF16_F32, but the rhs is not F32.";
+  TF_RET_CHECK(lhs->shape().element_type() == PrimitiveType::F32 ||
+               lhs->shape().element_type() == PrimitiveType::BF16)
+      << "Algorithm field set to BF16_BF16_F32, but the lhs isn't F32 or BF16.";
+  TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32 ||
+               rhs->shape().element_type() == PrimitiveType::BF16)
+      << "Algorithm field set to BF16_BF16_F32, but the rhs isn't F32 or BF16.";
+  if (lhs->shape().element_type() == PrimitiveType::BF16 &&
+      rhs->shape().element_type() == PrimitiveType::BF16) {
+    TF_ASSIGN_OR_RETURN(auto result_bf16,
+                        MakeBinaryHlo(HloOpcode::kMultiply, lhs, rhs));
+    return UpcastToF32(result_bf16);
+  }
   auto lhs_bf16 = RoundToBF16(lhs);
   auto rhs_bf16 = RoundToBF16(rhs);
   TF_ASSIGN_OR_RETURN(auto result_bf16,

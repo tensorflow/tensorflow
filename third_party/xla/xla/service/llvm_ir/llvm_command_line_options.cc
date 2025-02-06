@@ -23,11 +23,12 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/Support/CommandLine.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -47,8 +48,8 @@ LLVMCommandLineOptionsLock::LLVMCommandLineOptionsLock(
   // Check if previous client used a different set of LLVM options,
   // (re)initialize if that's the case.
   if (client_signature_ != active_client_signature_) {
-    LOG(INFO) << "XLA (re)initializing LLVM with options fingerprint: "
-              << client_signature_;
+    VLOG(1) << "XLA (re)initializing LLVM with options fingerprint: "
+            << client_signature_;
     VLOG(1) << "XLA LLVM options:";
     CHECK_EQ(num_active_clients_, 0);
 

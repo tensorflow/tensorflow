@@ -25,8 +25,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/service/computation_placer.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {

@@ -101,4 +101,12 @@ void WarnIfBadPtxasVersion(absl::string_view method,
   });
 }
 
+// The extension is used for compute capabilities 9.0, 10.0, 10.1 and 12.0.
+// https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
+bool ShouldUsePtxExtension(const CudaComputeCapability& cc) {
+  return (cc.major == 9 && cc.minor == 0) ||
+         (cc.major == 10 && (cc.minor == 0 || cc.minor == 1)) ||
+         (cc.major == 12 && cc.minor == 0);
+}
+
 }  // namespace stream_executor

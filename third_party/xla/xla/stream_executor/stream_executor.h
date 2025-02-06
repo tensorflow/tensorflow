@@ -37,9 +37,11 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -88,6 +90,12 @@ class StreamExecutor {
 
   // Creates and initializes an Event.
   virtual absl::StatusOr<std::unique_ptr<Event>> CreateEvent() = 0;
+
+  // Creates a MemoryAllocator for the given type.
+  virtual absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+  CreateMemoryAllocator(MemoryType type) {
+    return absl::UnimplementedError("Not Implemented");
+  }
 
   // Obtains metadata about the underlying device.
   // The value is cached on first use.
@@ -148,38 +156,11 @@ class StreamExecutor {
   // Deallocation of a nullptr-representative value is permitted.
   virtual void Deallocate(DeviceMemoryBase* mem) = 0;
 
-  // Allocates unified memory space of the given size, if supported.
-  // See
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-unified-memory-programming-hd
-  // for more details on unified memory.
-  virtual void* UnifiedMemoryAllocate(uint64_t size) { return nullptr; }
-
-  // Deallocates unified memory space previously allocated with
-  // UnifiedMemoryAllocate.
-  virtual void UnifiedMemoryDeallocate(void* mem) {}
-
-  // Allocates collective device memory using ncclMemAlloc.
-  // See
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
-  // for more details on User Buffer Registration.
-  virtual absl::StatusOr<void*> CollectiveMemoryAllocate(uint64_t size) {
-    return absl::UnimplementedError("Not implemented");
-  }
-
-  // Deallocates collective device memory previously allocated with
-  // CollectiveMemoryAllocate.
-  virtual absl::Status CollectiveMemoryDeallocate(void* mem) {
-    return absl::UnimplementedError("Not implemented");
-  }
-
   // Allocates a region of host memory and registers it with the platform API.
   // Memory allocated in this manner is required for use in asynchronous memcpy
   // operations, such as Stream::Memcpy.
   virtual absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) = 0;
-
-  // Deallocates a region of host memory allocated by HostMemoryAllocate().
-  virtual void HostMemoryDeallocate(void* mem) = 0;
 
   // Returns the memory space of the given pointer.
   virtual absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) {
@@ -342,6 +323,15 @@ class StreamExecutor {
   // Sets the argument logging mode. Returns true if 'mode' is valid.
   // The mode is a bitmask of the kLog* constants.
   virtual bool SetArgumentLoggingMode(uint64_t mode) { return false; }
+
+  // Creates, allocates, and copies a CUtensorMap object for the given TMA
+  // descriptor.  Returns a DeviceMemoryBase pointing to the allocated
+  // CUtensorMap object to be used as an argument to a kernel.
+  // Only implemented on CUDA GPUs.
+  virtual absl::StatusOr<DeviceMemoryBase> CreateTensorMap(
+      gpu::TmaDescriptor tma_desc, void* global_address) {
+    return absl::UnimplementedError("Not Implemented");
+  }
 };
 
 template <typename T>

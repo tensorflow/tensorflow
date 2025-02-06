@@ -6790,7 +6790,7 @@ The lower regularized incomplete Gamma function is defined as:
 
 where
 
-\\(gamma(a, x) = \\int_{0}^{x} t^{a-1} exp(-t) dt\\)
+\\(gamma(a, x) = \int_{0}^{x} t^{a-1} exp(-t) dt\\)
 
 is the lower incomplete Gamma function.
 
@@ -11335,52 +11335,6 @@ truncated normal values using the parameters for each row.}]>:$output
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_PartitionedCallOp : TF_Op<"PartitionedCall", [CallOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
-  let summary = [{
-returns `f(inputs)`, where `f`'s body is placed and partitioned.
-  }];
-
-  let description = [{
-Asynchronously executes a function, potentially across multiple devices but
-within a single process. The kernel places and partitions a given function's
-underlying graph, and executes each of the partitioned subgraphs as a function.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_Tensor>, [{A list of input tensors.}]>:$args,
-
-    SymbolRefAttr:$f,
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config,
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config_proto,
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$executor_type
-  );
-
-  let results = (outs
-    Res<Variadic<TF_Tensor>, [{A list of return values.}]>:$output
-  );
-
-  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
-  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
-
-  let extraClassDeclaration = [{
-    // Gets the argument operands to the called function.
-    operand_range getArgOperands() { return getArgs(); }
-    MutableOperandRange getArgOperandsMutable() {
-      return getArgsMutable();
-    }
-
-    // Returns the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
-    // Sets the callee from the callable.
-    void setCalleeFromCallable(CallInterfaceCallable callee);
-
-    // returns the callee of this operation.
-    func::FuncOp func() {
-      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getF());
-    }
-  }];
-}
-
 def TF_PolygammaOp : TF_Op<"Polygamma", [Pure, ResultsBroadcastableShape]>,
                      WithBroadcastableBinOpBuilder {
   let summary = [{
@@ -12899,6 +12853,12 @@ def TF_RemoteCallOp : TF_Op<"RemoteCall", [CallOpInterface]> {
     void setCalleeFromCallable(CallInterfaceCallable callee) {
       (*this)->setAttr("f", callee.get<SymbolRefAttr>());
     }
+    Attribute removeArgAttrsAttr() { return nullptr; }
+    Attribute removeResAttrsAttr() { return nullptr; }
+    ArrayAttr getArgAttrsAttr() { return nullptr; }
+    ArrayAttr getResAttrsAttr() { return nullptr; }
+    void setArgAttrsAttr(ArrayAttr) { return; }
+    void setResAttrsAttr(ArrayAttr) { return; }
   }];
 }
 

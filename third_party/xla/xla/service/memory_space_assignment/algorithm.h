@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_ALGORITHM_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <list>
 #include <map>
@@ -35,6 +36,8 @@ limitations under the License.
 #endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -54,6 +57,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/options.h"
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
@@ -217,12 +221,13 @@ class AsynchronousCopyResource {
 
  private:
   // Internal helper method to implement adding/removing/checking resources.
-  // ConsumeResource() may modify delay_. If delay_change_map is not null,
+  // ConsumeResource() may modify delay_. If delay_changes is not null,
   // for any change to delay_[i], {i, delay_[i]} will be added to
-  // delay_change_map, allowing callers to undo any modifications.
+  // delay_changes, allowing callers to undo any modifications by iterating over
+  // the vector in reverse order.
   bool ConsumeResource(
       int64_t exclusive_start_time, int64_t end_time, float resource,
-      absl::flat_hash_map<int64_t, float>* delay_change_map = nullptr,
+      std::vector<std::pair<int64_t, float>>* delay_changes = nullptr,
       float resource_to_free = 0.0);
 
   // Same as the public RemoveCopy except it works on the async_copies_
@@ -335,7 +340,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   struct RequiredMemoryAssignment {
     MemorySpace memory_space;
     int64_t time;
-    AliasedOffset* offset;
+    AliasedOffset* offset = nullptr;
 
     bool equals_ignoring_time(const RequiredMemoryAssignment& other) const {
       return memory_space == other.memory_space && offset == other.offset;
@@ -522,6 +527,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     return result_is(result, AllocationResult::kFailOutOfAsyncCopies) ||
            result_is(result, AllocationResult::kFailViolatesAsyncCopyResource);
   }
+
+  // Converts an std::optional<RequiredMemoryAssignment> to a string for
+  // logging.
+  static std::string OptionalRequiredMemoryAssignmentToString(
+      const std::optional<RequiredMemoryAssignment>& assignment);
 
   // For the given loop with the start and end index and loop size, run the
   // MemoryBoundLoopOptimizer and record its outputs into
@@ -999,6 +1009,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
                               ShapeIndex producer_shape_index,
                               absl::string_view consumer_name) const;
 
+  // Takes a group of allocation values and splits them if they can be split on
+  // the same dimension.
+  void MaybeSplitAllocationValues(
+      absl::Span<AllocationValue> allocation_values);
+
   AllocationSequence* allocations_;
   const Options& options_;
   const HloAliasAnalysis& alias_analysis_;
@@ -1079,6 +1094,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       failed_async_conversions_;
   absl::flat_hash_set<const HloInstruction*> successful_async_conversion_set_;
   std::vector<const HloInstruction*> not_finalized_async_conversions_;
+  // Maps from an HloValue to the dimension it is split on.
+  absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>
+      instruction_to_split_dims_;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;

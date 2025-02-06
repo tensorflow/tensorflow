@@ -1571,7 +1571,7 @@ class DnnSupport {
       std::optional<dnn::TensorDescriptor> dbias_descriptor);
 
   virtual absl::StatusOr<std::unique_ptr<DnnGraph>> DeserializeGraph(
-      absl::string_view) const {
+      Stream& stream, absl::string_view) const {
     return absl::UnimplementedError("Graph support requires cuDNN >= 8.1.");
   };
 

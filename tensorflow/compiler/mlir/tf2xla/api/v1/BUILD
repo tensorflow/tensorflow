@@ -50,7 +50,12 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -59,8 +64,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/builder:xla_computation",
@@ -71,6 +74,9 @@ cc_library(
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
         "@stablehlo//:register",
     ],
 )
@@ -99,12 +105,13 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -186,8 +193,6 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
@@ -196,6 +201,8 @@ tf_cc_test(
         "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/tsl/lib/core:status_test_util",
         "@local_xla//xla/tsl/lib/monitoring:test_utils",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -233,7 +240,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:error_logging",
-        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -257,8 +264,8 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -277,6 +284,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:error_payloads",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -287,8 +295,8 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:error_logging",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla/tsl/lib/monitoring:counter",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -309,8 +317,8 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 

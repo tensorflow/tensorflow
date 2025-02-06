@@ -321,7 +321,7 @@ class PjRtCApiClient : public PjRtClient {
       std::optional<CompileOptions> options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtDevice* device) override {
+      const Shape& shape, PjRtMemorySpace* memory_space) override {
     return Unimplemented(
         "PJRT C API does not support CreateUninitializedBuffer. Please report "
         "an issue at https://github.com/google/jax/issues if you need this "
@@ -356,24 +356,10 @@ class PjRtCApiClient : public PjRtClient {
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtDevice* device) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtDevice* device, const Layout* device_layout) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtMemorySpace* memory_space, const Layout* device_layout) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device) override {
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space) override {
     return Unimplemented(
         "PJRT C API does not support BufferFromHostLiteral. Please report an "
         "issue at https://github.com/google/jax/issues if you need this "
@@ -381,7 +367,7 @@ class PjRtCApiClient : public PjRtClient {
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
-      void* device_ptr, const Shape& shape, PjRtDevice* device,
+      void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
 
@@ -413,6 +399,10 @@ class PjRtCApiClient : public PjRtClient {
         "PJRT C API does not support Defragment. Please report an issue at "
         "https://github.com/google/jax/issues if you need this feature.");
   }
+
+  absl::Status DmaMap(void* data, size_t size) override;
+
+  absl::Status DmaUnmap(void* data) override;
 
   const PJRT_Api* pjrt_c_api() const;
 
@@ -481,9 +471,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   // PJRT C API doesn't support tuple buffers.
   bool IsTuple() const override { return false; }
 
-  const Shape& on_device_shape() const override {
-    LOG(FATAL) << "PjRtBuffer::on_device_shape() not implemented in PJRT C API";
-  }
+  const Shape& on_device_shape() const override;
 
   bool has_dynamic_dimensions() const override;
 
@@ -491,10 +479,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   absl::StatusOr<std::vector<int64_t>> logical_dimensions() override;
 
-  absl::StatusOr<Shape> logical_on_device_shape() override {
-    LOG(FATAL) << "PjRtBuffer::on_logical_device_shape() not implemented in "
-                  "PJRT C API";
-  }
+  absl::StatusOr<Shape> logical_on_device_shape() override;
 
   PjRtMemorySpace* memory_space() const override;
 
@@ -524,9 +509,6 @@ class PjRtCApiBuffer : public PjRtBuffer {
   }
 
   bool IsDeleted() override;
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
-      PjRtDevice* dst_device) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
@@ -580,6 +562,8 @@ class PjRtCApiBuffer : public PjRtBuffer {
       is_dynamic_dimension_;
   // Used to synchronize concurrent setting of cached values.
   mutable absl::Mutex mu_;
+  // Cached result of on_device_shape();
+  mutable std::optional<Shape> on_device_shape_;
 };
 
 class PjRtCApiExternalReference : public PjRtBuffer::ExternalReference {

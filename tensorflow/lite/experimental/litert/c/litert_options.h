@@ -167,6 +167,15 @@ LiteRtStatus LiteRtGetReshapeNewShapeOption(LiteRtOp op,
 //==============================================================================
 LiteRtStatus LiteRtGetSumKeepDimsOption(LiteRtOp op, bool* keepdims);
 
+//==============================================================================
+//
+// Get option APIs for LiteRt Pack op.
+//  Options:
+// - axisOption : int32_t
+//
+//==============================================================================
+LiteRtStatus LiteRtGetPackAxisOption(LiteRtOp op, int32_t* axis);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

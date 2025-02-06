@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"

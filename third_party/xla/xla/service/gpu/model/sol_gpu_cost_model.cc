@@ -33,6 +33,8 @@ namespace {
 // Constants for NCCL SoL model
 constexpr double kHeaderOverhead = 0.025;
 constexpr absl::string_view kNcclOpLaunchUs = "nccl_op_launch_us";
+// it's GBytes/s, not Gbit/s (ex: 40Gb/s = 5GB/s)
+// GBytes per second = 10^9 bytes per second
 constexpr absl::string_view kNicSpeedGbps = "nic_speed_gbps";
 constexpr absl::string_view kChunkPrepUs = "chunk_prep_us";
 constexpr absl::string_view kRttUs = "rtt_us";
@@ -113,11 +115,11 @@ absl::Duration SolGPUCostModel::ChunkPrepLatency(
 
 absl::Duration SolGPUCostModel::TransferDuration(
     const int64_t per_gpu_msg_size_bytes) const {
-  // x1e6 to comvert secs to microseconds;
-  // x1024*1024 *1024 to convert Gbytes/sec to bytes/sec
+  // x1e6 to convert secs to microseconds;
+  // x10^9 to convert Gbytes/sec to bytes/sec
   const long double ret =
       (1e6 * static_cast<long double>(per_gpu_msg_size_bytes)) /
-      (std::pow(1024.0, 3) * xla_flag_config_.nic_speed_gbps);
+      (1e9 * xla_flag_config_.nic_speed_gbps);
   return absl::Microseconds(ret * (1 + kHeaderOverhead));
 }
 

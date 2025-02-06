@@ -65,14 +65,12 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops);
 
-// Prepare result to pass to the runtime for given partition and, optionally,
-// for a given SoC model (parameter `soc_model` can be NULL to specify a default
-// SoC model). The given subgraphs are valid sub-DAG within the ops selected in
-// partition step.
+// Prepare result to pass to the runtime for given model containing partitioned
+// subgraphs. Optionally, handles a SoC model (parameter `soc_model` can be NULL
+// to specify a default SoC model).
 LiteRtStatus LiteRtCompilerPluginCompile(LiteRtCompilerPlugin compiler_plugin,
                                          const char* soc_model,
-                                         LiteRtSubgraph* partitions,
-                                         LiteRtParamIndex num_partitions,
+                                         LiteRtModel partitions,
                                          LiteRtCompiledResult* compiled_result);
 
 //
@@ -81,18 +79,21 @@ LiteRtStatus LiteRtCompilerPluginCompile(LiteRtCompilerPlugin compiler_plugin,
 
 void LiteRtDestroyCompiledResult(LiteRtCompiledResult result);
 
-// Get serialized result to compiled modules available to all custom ops.
-// This could be one module with multiple entry points or multiple modules
-// concat together.
+// Get the buffer for the compiled byte code for the given index.
 LiteRtStatus LiteRtGetCompiledResultByteCode(
-    LiteRtCompiledResult compiled_result, const void** byte_code,
-    size_t* byte_code_size);
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex byte_code_idx,
+    const void** byte_code, size_t* byte_code_size);
 
-// Get info to embed in a particular custom op. This could be  any opaque data
-// parsed in the custom op.
+// The number of individual byte code modules.
+LiteRtStatus LiteRtCompiledResultNumByteCodeModules(
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_byte_code);
+
+// Get per-op info related to a particular compiled partition as well as the
+// index of the respective byte code buffer.
 LiteRtStatus LiteRtGetCompiledResultCallInfo(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex call_idx,
-    const void** call_info, size_t* call_info_size);
+    const void** call_info, size_t* call_info_size,
+    LiteRtParamIndex* byte_code_idx);
 
 // Get the number of calls that will be made to the HAL for this graph.
 // This should equal the number of partitions given for compilation which

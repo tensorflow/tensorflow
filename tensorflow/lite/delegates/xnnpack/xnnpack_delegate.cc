@@ -6197,7 +6197,8 @@ class Subgraph {
 
     const auto CheckParamTensorShape = [&](const TfLiteTensor& param_tensor,
                                            const char* param_tensor_name) {
-      if (input_tensor.dims->size != GetTensorData<int32_t>(&param_tensor)[0]) {
+      if (param_tensor.dims->size != 1 ||
+          input_tensor.dims->size != param_tensor.dims->data[0]) {
         TF_LITE_MAYBE_KERNEL_LOG(
             logging_context,
             "%s shape (%d) must be equal to input shape (%d) "
@@ -6231,64 +6232,41 @@ class Subgraph {
 
     auto begin_data = GetTensorData<int32_t>(&begin_tensor);
     auto end_data = GetTensorData<int32_t>(&end_tensor);
-    auto input_shape = input_tensor.dims;
-    std::array<size_t, XNN_MAX_TENSOR_DIMS> begins;
-    std::array<size_t, XNN_MAX_TENSOR_DIMS> sizes;
-    std::array<size_t, XNN_MAX_TENSOR_DIMS> ends;
+    std::array<int64_t, XNN_MAX_TENSOR_DIMS> begins, ends;
     for (size_t i = 0; i < num_dims; i++) {
-      if (begin_data[i] < 0) {
-        // TODO(b/329228576): Add support for negative begin.
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "begin %d must be greater than or equal to zero "
-            "in STRIDED_SLICE node #%d",
-            begin_data[i], node_index);
-        return kTfLiteError;
-      }
-      begins[i] = begin_data[i] < 0 ? input_shape->data[i] + begin_data[i]
-                                    : begin_data[i];
       if ((params->begin_mask & (1 << i)) != 0) {
         begins[i] = 0;
-      }
-
-      int actual_end_data = end_data[i];
-      if (params->offset) {
-        actual_end_data += begin_data[i];
-      }
-      // If end is negative, we count from the back, -1 is the last element.
-      if (actual_end_data < 0) {
-        // TODO(b/329228576): Add support for negative begin.
-        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "end %d must be greater than or equal to zero "
-                                 "in STRIDED_SLICE node #%d",
-                                 end_data[i], node_index);
-        return kTfLiteError;
       } else {
-        ends[i] = actual_end_data;
+        begins[i] = begin_data[i];
       }
 
       if ((params->end_mask & (1 << i)) != 0) {
-        // TODO(b/329228576): Add support for negative begin.
+        ends[i] = 0;
+      } else if (params->offset) {
+        ends[i] = end_data[i] + begins[i];
+      } else {
+        ends[i] = end_data[i];
+      }
+
+      // Some models contain illegal crop info that will result in failure
+      // inside our kernels; check here and punt those to the default
+      // delegate implementation for it to decide how to handle them.
+      const int64_t extent = input_tensor.dims->data[i];
+      const size_t offset = begins[i] < 0 ? begins[i] + extent : begins[i];
+      const size_t size =
+          ends[i] <= 0 ? ends[i] + extent - offset : ends[i] - offset;
+      if (offset + size > extent) {
         TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "non-zero end mask not supported "
-                                 "in STRIDED_SLICE node #%d",
-                                 end_data[i], node_index);
+                                 "offset %zu + size %zu exceeds extent %zu in "
+                                 "STRIDED_SLICE node #%d for dimension %zu",
+                                 offset, size, extent, node_index, i);
         return kTfLiteError;
       }
-
-      if (begins[i] >= ends[i]) {
-        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "begin index %zu must be less than end index "
-                                 "%zu for STRIDED_SLICE node #%d",
-                                 begins[i], ends[i], node_index);
-      }
-
-      sizes[i] = ends[i] - begins[i];
     }
 
     if (subgraph != nullptr) {
-      const xnn_status status = xnn_define_static_slice(
-          subgraph, num_dims, begins.data(), sizes.data(),
+      const xnn_status status = xnn_define_static_slice_v3(
+          subgraph, num_dims, begins.data(), ends.data(), /*strides*/ nullptr,
           input_output_tensors.at(input_tensor_index),
           input_output_tensors.at(output_tensor_index), /*flags=*/0);
       if (status != xnn_status_success) {
@@ -6336,9 +6314,12 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
         logging_context, value_proj, node->inputs->data[2], node_index));
 
-    const TfLiteTensor& atten_mask = tensors[node->inputs->data[3]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, atten_mask, node->inputs->data[3], node_index));
+    const TfLiteTensor* atten_mask = nullptr;
+    if (node->inputs->size > 3) {
+      atten_mask = &tensors[node->inputs->data[3]];
+      TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+          logging_context, *atten_mask, node->inputs->data[3], node_index));
+    }
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
@@ -6352,17 +6333,18 @@ class Subgraph {
                       query_proj.dims->data[query_proj.dims->size - 1],
                       value_proj.dims->data[value_proj.dims->size - 1]);
     // Max sequence length match.
-    TF_LITE_ENSURE_EQ(logging_context, key_proj.dims->data[1],
-                      atten_mask.dims->data[atten_mask.dims->size - 1]);
-    TF_LITE_ENSURE_EQ(logging_context, value_proj.dims->data[1],
-                      atten_mask.dims->data[atten_mask.dims->size - 1]);
+    if (atten_mask != nullptr) {
+      TF_LITE_ENSURE_EQ(logging_context, key_proj.dims->data[1],
+                        atten_mask->dims->data[atten_mask->dims->size - 1]);
+      TF_LITE_ENSURE_EQ(logging_context, value_proj.dims->data[1],
+                        atten_mask->dims->data[atten_mask->dims->size - 1]);
+    }
 
     if (subgraph != nullptr) {
       // constants
       uint32_t query_proj_id = input_output_tensors.at(node->inputs->data[0]);
       uint32_t key_proj_id = input_output_tensors.at(node->inputs->data[1]);
       uint32_t value_proj_id = input_output_tensors.at(node->inputs->data[2]);
-      uint32_t atten_mask_id = input_output_tensors.at(node->inputs->data[3]);
       uint32_t output_id = input_output_tensors.at(node->outputs->data[0]);
       float default_out_min = -std::numeric_limits<float>::infinity();
       float default_out_max = std::numeric_limits<float>::infinity();
@@ -6584,18 +6566,21 @@ class Subgraph {
                                                cap_val_id, cap_logits_id, 0));
         fc_out_id = cap_logits_id;
       }
-      // element_add atten_mask and matmul_out
-      uint32_t padded_logits_id = XNN_INVALID_VALUE_ID;
-      TF_LITE_ENSURE_EQ(
-          logging_context, xnn_status_success,
-          xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
-                                  /*dims=*/nullptr, nullptr,
-                                  XNN_INVALID_VALUE_ID, 0, &padded_logits_id));
-      TF_LITE_ENSURE_EQ(
-          logging_context, xnn_status_success,
-          xnn_define_add2(subgraph, default_out_min, default_out_max,
-                          atten_mask_id, fc_out_id, padded_logits_id,
-                          /*flags=*/0));
+      // element_add atten_mask and matmul_out if atten_mask is not nullptr.
+      uint32_t padded_logits_id = fc_out_id;
+      if (atten_mask != nullptr) {
+        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                          xnn_define_tensor_value(
+                              subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                              /*dims=*/nullptr, nullptr, XNN_INVALID_VALUE_ID,
+                              0, &padded_logits_id));
+        uint32_t atten_mask_id = input_output_tensors.at(node->inputs->data[3]);
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_add2(subgraph, default_out_min, default_out_max,
+                            atten_mask_id, fc_out_id, padded_logits_id,
+                            /*flags=*/0));
+      }
       // softmax(padded_logits)
       uint32_t probs_id = XNN_INVALID_VALUE_ID;
       TF_LITE_ENSURE_EQ(
@@ -7271,6 +7256,10 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
               case kTfLiteBuiltinFullyConnected:
               case kTfLiteBuiltinConv2d:
               case kTfLiteBuiltinDepthwiseConv2d:
+                // Don't dequantize input nodes. XNNPack cannot handle them.
+                if (output_node->inputs->data[0] == output_id) {
+                  skip_this_node = false;
+                }
                 break;
               default:
                 skip_this_node = false;

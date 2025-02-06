@@ -20,7 +20,7 @@ package(
             "@llvm-project//llvm:not",
             "@llvm-project//mlir:libmlir_c_runner_utils.so",
             "@llvm-project//mlir:libmlir_runner_utils.so",
-            "@llvm-project//mlir:mlir-cpu-runner",
+            "@llvm-project//mlir:mlir-runner",
         ],
         # copybara:uncomment driver = "@llvm-project//mlir:run_lit",
         tags = [

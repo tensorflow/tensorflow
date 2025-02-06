@@ -74,6 +74,7 @@ class PrimitiveType(enum.IntEnum):
   U16: PrimitiveType
   U32: PrimitiveType
   U64: PrimitiveType
+  F4E2M1FN: PrimitiveType
   F8E3M4: PrimitiveType
   F8E4M3: PrimitiveType
   F8E4M3FN: PrimitiveType
@@ -81,6 +82,7 @@ class PrimitiveType(enum.IntEnum):
   F8E4M3FNUZ: PrimitiveType
   F8E5M2: PrimitiveType
   F8E5M2FNUZ: PrimitiveType
+  F8E8M0FNU: PrimitiveType
   BF16: PrimitiveType
   F16: PrimitiveType
   F32: PrimitiveType
@@ -688,6 +690,13 @@ def batched_device_put(
     devices: List[Device],
     committed: bool = True,
 ) -> ArrayImpl: ...
+
+def reorder_shards(
+    x: ArrayImpl,
+    dst_sharding: Any,
+    array_copy_semantics: ArrayCopySemantics,
+) -> ArrayImpl: ...
+
 def check_and_canonicalize_memory_kind(
     memory_kind: Optional[str], device_list: DeviceList
 ) -> Optional[str]: ...
@@ -1019,3 +1028,16 @@ def is_asan() -> bool: ...
 def is_msan() -> bool: ...
 def is_tsan() -> bool: ...
 def is_sanitized() -> bool: ...
+
+class TransferConnection:
+
+  def address(self) -> str: ...
+
+  def _pull_flat(self, uuid, backend, avals_flat) -> list[Any]: ...
+
+class TransferServer:
+  def _await_pull_flat(self, uuid, args: list[ArrayImpl]): ...
+
+  def connect(self, address: str) -> TransferConnection: ...
+
+def start_transfer_server(client: Client, address: str = "", transport_addresses: list[str] = [], max_num_parallel_copies: int = 0, transfer_size: int = 0) -> TransferServer: ...

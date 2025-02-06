@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/executable.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/xla_data.pb.h"
@@ -47,14 +47,14 @@ class HloRunnerPjRt : public HloRunnerInterface {
   explicit HloRunnerPjRt(
       std::unique_ptr<PjRtClient> pjrt_client,
       DeviceShapeRepresentationFn device_shape_representation_fn,
-      DeviceShapeSizeFn device_shape_size_fn,
-      bool use_parameter_layout_on_device = false);
+      DeviceShapeSizeFn device_shape_size_fn);
 
   ~HloRunnerPjRt() override;
 
   // Transfers data between the host and device.
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> TransferLiteralToDevice(
-      const Literal& literal, const Layout& parameter_layout);
+      const Literal& literal, absl::Nonnull<PjRtMemorySpace*> memory_space,
+      const Layout& on_device_layout);
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   TransferLiteralsToDevice(const ComputationLayout& entry_layout,
                            absl::Span<const Literal* const> literals);
@@ -80,11 +80,11 @@ class HloRunnerPjRt : public HloRunnerInterface {
 
   // Creates an executable object given an HLO module. If run_hlo_passes is
   // true, the HLO passes will be run as part of compilation.
-  absl::StatusOr<std::unique_ptr<Executable>> CreateExecutable(
+  absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
 
   absl::StatusOr<Literal> ExecuteWithExecutable(
-      Executable* executable, absl::Span<const Literal* const> arguments,
+      OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
       ExecutionProfile* profile) override;
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
@@ -98,20 +98,21 @@ class HloRunnerPjRt : public HloRunnerInterface {
       DeviceAssignment* device_assignment) override;
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<Executable*(int64_t)> executable_provider,
+      std::function<OpaqueExecutable*(int64_t)> executable_provider,
       std::function<int64_t(int64_t)> argument_count_provider,
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      Executable* executable,
+      OpaqueExecutable* executable,
       const HloRunnerInterface::ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment, ExecutionProfile* profile = nullptr);
 
   absl::string_view Name() const override;
 
   void UpdateEntryComputationLayout(HloModule* module) {
+    // TODO - b/391868033: Remove UpdateEntryComputationLayout from this class.
     xla::UpdateEntryComputationLayout(module, device_shape_representation_fn_);
   }
 
@@ -124,6 +125,11 @@ class HloRunnerPjRt : public HloRunnerInterface {
   }
 
   int device_count() const override { return pjrt_client_->device_count(); }
+
+  bool HasProperty(HloRunnerPropertyTag::Type tag) const override;
+
+  absl::StatusOr<absl::Nonnull<const HloModule*>> HloModuleFromWrapped(
+      const OpaqueExecutable* wrapped) const override;
 
  private:
   absl::StatusOr<CompileOptions> GenerateDefaultCompileOptions(
@@ -141,7 +147,6 @@ class HloRunnerPjRt : public HloRunnerInterface {
   std::unique_ptr<PjRtClient> pjrt_client_;
   DeviceShapeRepresentationFn device_shape_representation_fn_;
   DeviceShapeSizeFn device_shape_size_fn_;
-  bool use_parameter_layout_on_device_ = false;
 };
 
 }  // namespace xla

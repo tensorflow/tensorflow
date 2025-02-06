@@ -19,13 +19,19 @@
 #include "tensorflow/lite/experimental/litert/core/environment.h"
 
 LiteRtStatus LiteRtEnvironmentCreate(int num_options,
-                                     const LiteRtEnvOption* options) {
-  if (auto status = litert::internal::Environment::CreateWithOptions(
-          absl::MakeSpan(options, num_options));
-      !status) {
+                                     const LiteRtEnvOption* options,
+                                     LiteRtEnvironment* environment) {
+  auto status = LiteRtEnvironmentT::CreateWithOptions(
+      absl::MakeSpan(options, num_options));
+  if (!status) {
     return status.Error().Status();
   }
+  *environment = status->release();
   return kLiteRtStatusOk;
 }
 
-void LiteRtEnvironmentDestroy() { litert::internal::Environment::Destroy(); }
+void LiteRtDestroyEnvironment(LiteRtEnvironment environment) {
+  if (environment != nullptr) {
+    delete environment;
+  }
+}

@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -66,7 +67,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace ifrt_serving {

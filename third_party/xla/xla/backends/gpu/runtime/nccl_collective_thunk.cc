@@ -90,6 +90,7 @@ bool IsTypeSupportedByNccl(PrimitiveType element_type,
     case F8E4M3FN:
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
+    case F8E8M0FNU:
       return !IsReductionCollective(reduction_op);
     default:
       return false;

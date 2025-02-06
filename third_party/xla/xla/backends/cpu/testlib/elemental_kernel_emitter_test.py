@@ -23,8 +23,9 @@ from absl.testing import parameterized
 import numpy as np
 
 from xla.backends.cpu import testlib as testlib_cpu
+from xla.backends.cpu.testlib import utilities
 from xla.codegen import testlib as testlib_base
-from xla.codegen.testlib import utilities as testlib_utilities
+from xla.codegen.testlib.utilities import opcode_arity
 from xla.python import xla_extension
 
 HloOpcode = testlib_base.HloOpcode
@@ -114,10 +115,7 @@ class ElementalHloOpcodeDef:
     shape=[(4,), (4, 3), (4, 3, 10)],
     dtype=[np.dtype(np.float32), np.dtype(np.float64)],
 )
-class ElementalKernelRunnerTest(absltest.TestCase):
-
-  def id(self):
-    return self._test_params_reprs.get(self._testMethodName, "")
+class ElementalKernelRunnerTest(parameterized.TestCase):
 
   def test_elemental_kernel_emitter(
       self,
@@ -128,7 +126,7 @@ class ElementalKernelRunnerTest(absltest.TestCase):
 
     [op, np_op, input_ranges, decimal_precision] = op_def
 
-    num_inputs = testlib_utilities.opcode_arity(op)
+    num_inputs = opcode_arity(op)
     self.assertIsNotNone(num_inputs)
 
     np_inputs = [
@@ -150,15 +148,25 @@ class ElementalKernelRunnerTest(absltest.TestCase):
         output_literal.shape(), op, hlo_parameters
     )
 
-    emitter = testlib_cpu.ElementalKernelEmitter(hlo_op)
-    kernel_spec = emitter.emit_kernel_spec()
-    self.assertIsNotNone(kernel_spec)
+    hlo_module, buffer_assignment = utilities.build_hlo_module(
+        hlo_op, *hlo_parameters
+    )
+    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
-    # kernel_spec is consumed by the runner, so we need to save the IR string
-    # before passing it to the runner.
-    ir_string = str(kernel_spec.kernel_source())
+    emitter = testlib_cpu.ElementalKernelEmitter(
+        hlo_module.get_root_instruction(),
+        buffer_assignment,
+        jit_compiler.get_target_machine(),
+    )
 
-    runner = testlib_cpu.KernelRunner.create(kernel_spec)
+    kernel_definition = emitter.emit_kernel_definition()
+    self.assertIsNotNone(kernel_definition)
+
+    # kernel_definition is consumed by the runner, so we need to save the IR
+    # string before passing it to the runner.
+    ir_string = str(kernel_definition.source())
+
+    runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)
 
     runner.call(list(itertools.chain(input_literals, [output_literal])))
     np.testing.assert_array_almost_equal(
@@ -193,7 +201,7 @@ class ElementalKernelRunnerTest(absltest.TestCase):
         np.dtype(np.float64),
     ],
 )
-class ElementalComparisonKernelRunnerTest(absltest.TestCase):
+class ElementalComparisonKernelRunnerTest(parameterized.TestCase):
 
   def test_elemental_comparision_kernel_emitter(self, op_def, shape, dtype):
     [direction, np_op] = op_def
@@ -215,9 +223,20 @@ class ElementalComparisonKernelRunnerTest(absltest.TestCase):
         output_literal.shape(), lhs_param, rhs_param, direction
     )
 
-    emitter = testlib_cpu.ElementalKernelEmitter(hlo_op)
+    hlo_module, buffer_assignment = utilities.build_hlo_module(
+        hlo_op, lhs_param, rhs_param
+    )
+    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
-    runner = testlib_cpu.KernelRunner.create(emitter.emit_kernel_spec())
+    emitter = testlib_cpu.ElementalKernelEmitter(
+        hlo_module.get_root_instruction(),
+        buffer_assignment,
+        jit_compiler.get_target_machine(),
+    )
+
+    runner = testlib_cpu.KernelRunner.create(
+        emitter.emit_kernel_definition(), jit_compiler
+    )
 
     runner.call([lhs_literal, rhs_literal, output_literal])
     np.testing.assert_equal(
@@ -242,10 +261,7 @@ class ElementalComparisonKernelRunnerTest(absltest.TestCase):
         np.dtype(np.float64),
     ],
 )
-class HloModuleKernelRunnerTest(absltest.TestCase):
-
-  def id(self):
-    return self._test_params_reprs.get(self._testMethodName, "")
+class HloModuleKernelRunnerTest(parameterized.TestCase):
 
   def test_map(self, input_dimensions, dtype):
     scalar_shape = xla_extension.Shape.scalar_shape(dtype)
@@ -268,12 +284,8 @@ class HloModuleKernelRunnerTest(absltest.TestCase):
       }}
     """.format(scalar_shape=scalar_shape, shape=shape)
 
-    hlo_compiler = testlib_cpu.HloCompiler()
-    hlo_module = testlib_base.HloModule.parse_from_string(hlo)
-    hlo_module.set_schedule(hlo_compiler.create_hlo_schedule(hlo_module))
-    buffer_assignment = hlo_compiler.create_buffer_assignment(hlo_module)
-
-    jit_compiler = testlib_cpu.JitCompiler()
+    hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
+    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
     emitter = testlib_cpu.ElementalKernelEmitter(
         hlo_module.get_root_instruction(),
@@ -288,7 +300,7 @@ class HloModuleKernelRunnerTest(absltest.TestCase):
     output_literal = xla_extension.Literal(shape)
 
     runner = testlib_cpu.KernelRunner.create(
-        emitter.emit_kernel_spec(), jit_compiler
+        emitter.emit_kernel_definition(), jit_compiler
     )
 
     runner.call([input_literal, output_literal])
@@ -343,12 +355,8 @@ class HloModuleKernelRunnerTest(absltest.TestCase):
           output_shape=output_shape,
       )
 
-      hlo_compiler = testlib_cpu.HloCompiler()
-      hlo_module = testlib_base.HloModule.parse_from_string(hlo)
-      hlo_module.set_schedule(hlo_compiler.create_hlo_schedule(hlo_module))
-      buffer_assignment = hlo_compiler.create_buffer_assignment(hlo_module)
-
-      jit_compiler = testlib_cpu.JitCompiler()
+      hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
+      jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
 
       emitter = testlib_cpu.ElementalKernelEmitter(
           hlo_module.get_root_instruction(),
@@ -365,7 +373,7 @@ class HloModuleKernelRunnerTest(absltest.TestCase):
       output_literal = xla_extension.Literal(output_shape)
 
       runner = testlib_cpu.KernelRunner.create(
-          emitter.emit_kernel_spec(), jit_compiler
+          emitter.emit_kernel_definition(), jit_compiler
       )
 
       runner.call([input_literal, initial_value_literal, output_literal])

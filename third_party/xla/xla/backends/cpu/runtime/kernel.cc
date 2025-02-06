@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/kernel.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -24,13 +25,16 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
+#include "xla/backends/cpu/runtime/work_queue.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/util.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 
@@ -56,40 +60,78 @@ static absl::InlinedVector<XLA_CPU_KernelArg, 8> ConvertBuffersToKernelArgs(
   return args;
 }
 
-namespace {
-// Keep a state of an in-flight asynchronous kernel execution on a heap to keep
-// it alive until the last task is done.
-class KernelExecuteState {
+template <bool thread_dim_x_only>
+class Kernel::ParallelTask {
  public:
-  KernelExecuteState(Kernel::TaskRunner task_runner, XLA_CPU_Kernel* kernel,
-                     Kernel::ThreadDim thread_dims,
-                     absl::Span<const XLA_CPU_KernelArg> args);
-  ~KernelExecuteState();
+  ParallelTask(XLA_CPU_Kernel* kernel, Kernel::ThreadDim thread_dims,
+               absl::Span<const XLA_CPU_KernelArg> args);
 
-  // Calls a task with index `task_index` synchronously.
-  void CallSync(uint64_t task_index);
-
-  // Calls tasks in the [start_index, end_index) range asynchronously using task
-  // runner to schedule work. Executes a single task in the caller thread.
-  void CallAsync(uint64_t start_index, uint64_t end_index);
-
-  tsl::AsyncValueRef<LaunchEvent> event() const { return event_.AsRef(); }
+  // Invokes a host kernel for a given task index.
+  absl::Status operator()(size_t task_index) const;
 
  private:
   // Converts linear task index in [0, num_tasks) to (x, y, z) coordinate. We
   // assume that `x` is the fastest iterating dimension.
-  XLA_CPU_KernelThread Delinearize(uint64_t task_index);
-
-  Kernel::TaskRunner task_runner_;
-  size_t num_tasks_;
+  XLA_CPU_KernelThread Delinearize(uint64_t task_index) const;
 
   XLA_CPU_Kernel* kernel_;
   XLA_CPU_KernelThreadDim thread_dims_;
   absl::InlinedVector<XLA_CPU_KernelArg, 8> args_;
 
-  tsl::CountDownAsyncValueRef<LaunchEvent> event_;
+  size_t num_tasks_;
+
+  // Strides for delinearizing task index to (x, y, z) coordinate.
+  uint64_t stride_z_;
+  uint64_t stride_y_;
 };
-}  // namespace
+
+template <bool thread_dim_x_only>
+Kernel::ParallelTask<thread_dim_x_only>::ParallelTask(
+    XLA_CPU_Kernel* kernel, Kernel::ThreadDim thread_dims,
+    absl::Span<const XLA_CPU_KernelArg> args)
+    : kernel_(kernel),
+      thread_dims_({thread_dims.x, thread_dims.y, thread_dims.z}),
+      args_(args.begin(), args.end()),
+      num_tasks_(thread_dims_.x * thread_dims_.y * thread_dims_.z),
+      stride_z_(thread_dims_.y * thread_dims_.x),
+      stride_y_(thread_dims_.x) {}
+
+template <bool thread_dim_x_only>
+absl::Status Kernel::ParallelTask<thread_dim_x_only>::operator()(
+    size_t task_index) const {
+  DCHECK_LT(task_index, num_tasks_) << "Task index out of range";  // Crash OK
+
+  XLA_CPU_KernelThread kernel_thread = Delinearize(task_index);
+  XLA_CPU_KernelCallFrame call_frame = {&thread_dims_, &kernel_thread,
+                                        args_.size(), args_.data()};
+
+  XLA_CPU_KernelError* error = (*kernel_)(&call_frame);
+
+  if (ABSL_PREDICT_TRUE(error == nullptr)) {
+    return absl::OkStatus();
+  } else {
+    return Internal("Failed to call host kernel: x=%d, y=%d, z=%d",
+                    kernel_thread.x, kernel_thread.y, kernel_thread.z);
+  }
+}
+
+template <bool thread_dim_x_only>
+XLA_CPU_KernelThread Kernel::ParallelTask<thread_dim_x_only>::Delinearize(
+    uint64_t task_index) const {
+  // In the most common case we parallelize only over the `x` dimension.
+  if constexpr (thread_dim_x_only) {
+    return XLA_CPU_KernelThread{task_index, 1, 1};
+  }
+
+  // Convert linear task index to (x, y, z) coordinate.
+  uint64_t z = task_index / stride_z_;
+  task_index = task_index % stride_z_;
+  uint64_t y = task_index / stride_y_;
+  task_index = task_index % stride_y_;
+  uint64_t x = task_index;
+
+  return XLA_CPU_KernelThread{x, y, z};
+}
 
 Kernel::Kernel(unsigned arity, XLA_CPU_Kernel* kernel)
     : function_(std::make_unique<KernelFunctionPtr>(kernel)),
@@ -131,14 +173,13 @@ absl::Status Kernel::Launch(const ThreadDim& thread_dims,
 
 tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
     const ThreadDim& thread_dims, absl::Span<const DeviceMemoryBase> buffers,
-    TaskRunner task_runner) const {
-  return Launch(thread_dims, ConvertBuffersToKernelArgs(buffers),
-                std::move(task_runner));
+    const Eigen::ThreadPoolDevice* device) const {
+  return Launch(thread_dims, ConvertBuffersToKernelArgs(buffers), device);
 }
 
 tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
     const ThreadDim& thread_dims, absl::Span<const XLA_CPU_KernelArg> args,
-    TaskRunner task_runner) const {
+    const Eigen::ThreadPoolDevice* device) const {
   size_t num_tasks = thread_dims.x * thread_dims.y * thread_dims.z;
   CHECK_GT(num_tasks, 0) << "Number of tasks must be positive";  // Crash Ok
 
@@ -150,97 +191,18 @@ tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
                : tsl::MakeErrorAsyncValueRef(std::move(launched));
   }
 
-  // Create host kernel execute state on heap and kick-off execution.
-  auto state = std::make_unique<KernelExecuteState>(std::move(task_runner),
-                                                    kernel_, thread_dims, args);
-  state->CallAsync(/*start_index=*/0, /*end_index=*/num_tasks);
+  // Do not create more workers than the number of threads in the thread pool.
+  size_t num_workers =
+      std::min<size_t>(std::min<size_t>(num_tasks, device->numThreadsInPool()),
+                       std::numeric_limits<uint16_t>::max());
 
-  // Move execute state to the execute event callback to ensure that it is kept
-  // alive while host kernel has pending tasks.
-  auto execute_event = state->event();
-  execute_event.AndThen([state = std::move(state)] {});
-
-  return execute_event;
-}
-
-KernelExecuteState::KernelExecuteState(Kernel::TaskRunner task_runner,
-                                       XLA_CPU_Kernel kernel,
-                                       Kernel::ThreadDim thread_dims,
-                                       absl::Span<const XLA_CPU_KernelArg> args)
-    : task_runner_(std::move(task_runner)),
-      num_tasks_(thread_dims.x * thread_dims.y * thread_dims.z),
-      kernel_(kernel),
-      thread_dims_({thread_dims.x, thread_dims.y, thread_dims.z}),
-      args_(args.begin(), args.end()),
-      event_(num_tasks_) {}
-
-KernelExecuteState::~KernelExecuteState() {
-  auto cnt = event_.count();
-  DCHECK_EQ(cnt, 0) << "Host kernel execute state is destroyed before all "
-                       "tasks are completed";
-}
-
-void KernelExecuteState::CallSync(uint64_t task_index) {
-  CHECK_LT(task_index, num_tasks_) << "Task index out of range";  // Crash OK
-
-  // Do not execute the task if the kernel execution has already failed.
-  if (ABSL_PREDICT_FALSE(event_.is_error())) {
-    event_.CountDown(absl::OkStatus());
-    return;
-  }
-
-  XLA_CPU_KernelThread kernel_thread = Delinearize(task_index);
-  XLA_CPU_KernelCallFrame call_frame = {&thread_dims_, &kernel_thread,
-                                        args_.size(), args_.data()};
-
-  XLA_CPU_KernelError* error = (*kernel_)(&call_frame);
-
-  if (ABSL_PREDICT_TRUE(error == nullptr)) {
-    event_.CountDown(absl::OkStatus());
+  if (ABSL_PREDICT_TRUE(thread_dims.y == 1 && thread_dims.z == 1)) {
+    return Worker::Parallelize(device, num_workers, num_tasks,
+                               ParallelTask<true>(kernel_, thread_dims, args));
   } else {
-    event_.CountDown(absl::InternalError(
-        absl::StrFormat("Failed to call host kernel: x=%d, y=%d, z=%d",
-                        kernel_thread.x, kernel_thread.y, kernel_thread.z)));
+    return Worker::Parallelize(device, num_workers, num_tasks,
+                               ParallelTask<false>(kernel_, thread_dims, args));
   }
-}
-
-void KernelExecuteState::CallAsync(uint64_t start_index, uint64_t end_index) {
-  CHECK_LT(start_index, end_index) << "Invalid task index range";  // Crash OK
-
-  auto dispatch = [&](auto index_type) {
-    using Index = decltype(index_type);
-    while (end_index - start_index > 1) {
-      uint64_t mid_index = (start_index + end_index) / 2;
-      task_runner_([self = this, mid = Index(mid_index),
-                    end = Index(end_index)] { self->CallAsync(mid, end); });
-      end_index = mid_index;
-    }
-  };
-
-  // If the number of tasks is small, we can use uint16_t to index them and hit
-  // small object optimization in the std::function and avoid a heap allocation.
-  if (ABSL_PREDICT_TRUE(end_index <= std::numeric_limits<uint16_t>::max())) {
-    dispatch(uint16_t{});
-  } else {
-    dispatch(uint64_t{});
-  }
-
-  CallSync(start_index);
-}
-
-XLA_CPU_KernelThread KernelExecuteState::Delinearize(uint64_t task_index) {
-  uint64_t stride_z = thread_dims_.y * thread_dims_.x;
-  uint64_t stride_y = thread_dims_.x;
-
-  uint64_t z = task_index / stride_z;
-  task_index = task_index % stride_z;
-
-  uint64_t y = task_index / stride_y;
-  task_index = task_index % stride_y;
-
-  uint64_t x = task_index;
-
-  return XLA_CPU_KernelThread{x, y, z};
 }
 
 }  // namespace xla::cpu

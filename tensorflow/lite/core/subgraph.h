@@ -141,7 +141,7 @@ class Subgraph {
                                        allocation, sparsity, buffer_identifier);
   }
   TfLiteStatus SetTensorParametersReadOnly(
-      int tensor_index, TfLiteType type, const char* name, const size_t ndims,
+      int tensor_index, TfLiteType type, const char* name, size_t ndims,
       const int* dims, TfLiteQuantization quantization, const char* buffer,
       size_t bytes, const Allocation* allocation = nullptr,
       TfLiteSparsity* sparsity = nullptr,
@@ -165,9 +165,9 @@ class Subgraph {
         is_variable, dims_signature.size(), dims_signature.data());
   }
   TfLiteStatus SetTensorParametersReadWrite(
-      int tensor_index, TfLiteType type, const char* name, const size_t ndims,
+      int tensor_index, TfLiteType type, const char* name, size_t ndims,
       const int* dims, TfLiteQuantization quantization,
-      bool is_variable = false, const size_t ndims_signature = 0,
+      bool is_variable = false, size_t ndims_signature = 0,
       const int* dims_signature = nullptr);
 
   // Get all tensors in the subgraph.

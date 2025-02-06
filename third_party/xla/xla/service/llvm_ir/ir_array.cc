@@ -22,6 +22,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
@@ -41,10 +42,10 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace llvm_ir {

@@ -452,7 +452,7 @@ py_strict_library(
         "//tensorflow/python/types:doc_typealias",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "@ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes",
     ],
 )
 
@@ -493,6 +493,7 @@ py_strict_library(
         "error_interpolation.py",
     ],
     srcs_version = "PY3",
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/util:tf_stack",
@@ -627,11 +628,17 @@ py_strict_library(
         "convert_to_constants.py",
     ],
     srcs_version = "PY3",
-    visibility = visibility + [
-        "//learning/deepmind/deepfunc:__subpackages__",
-        "//platforms/darwinn:__subpackages__",
-        "//tensorflow:internal",
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + [
+    # "//learning/deepmind/deepfunc:__subpackages__",
+    # "//platforms/darwinn:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":dtypes",
         ":errors",

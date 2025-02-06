@@ -35,12 +35,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/primitive_util.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/service/custom_call_status.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace nb = nanobind;
 
@@ -77,7 +78,10 @@ absl::Status CpuCallback::PrepareAndCall(void* result, void** arg_ptrs) {
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto result_tuple, Call(std::move(args)));
+  EnterHostCallback();
+  absl::StatusOr<nb::tuple> maybe_result_tuple = Call(std::move(args));
+  LeaveHostCallback();
+  TF_ASSIGN_OR_RETURN(auto result_tuple, maybe_result_tuple);
 
   for (size_t i = 0; i < results_.size(); ++i) {
     if (results_[i].type == xla::TOKEN) {

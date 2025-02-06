@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
@@ -380,6 +382,16 @@ absl::StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::RunMemorySpaceAssignment(
     const HloLiveRange& hlo_live_range,
     const HloAliasAnalysis& alias_analysis) {
+  bool splitting_enabled = options_.determine_split_dimension_fn != nullptr &&
+                           options_.init_split_tree_fn != nullptr &&
+                           options_.shape_size_fn != nullptr;
+  if (splitting_enabled) {
+    CHECK_EQ(options_.sliced_prefetch_options.max_slices(), 0)
+        << "TODO(b/167392593): Support sliced prefetches for split shapes.";
+    CHECK(!options_.enable_window_prefetch)
+        << "TODO(b/167392593): Support split shapes for window "
+           "prefetches.";
+  }
   TF_RETURN_IF_ERROR(FindAllocationSequence(hlo_live_range, alias_analysis));
 
   std::optional<RuntimeSimulator> runtime_simulator = std::nullopt;
@@ -418,7 +430,12 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   TF_RETURN_IF_ERROR(VerifyAndExportHeapSimulatorTrace(
       *alias,
       runtime_simulator.has_value() ? &alt_mem_bytes_occupied : nullptr));
-
+  if (VLOG_IS_ON(2) && runtime_simulator.has_value()) {
+    float estimated_time = runtime_simulator->SimulateElapsedTime(
+        module_, allocations_, &alt_mem_bytes_occupied);
+    LOG(INFO) << "Estimated elapsed time with async copies (sec): "
+              << estimated_time;
+  }
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << "Module after memory space assignment: ";
     XLA_LOG_LINES(INFO, module_->ToString());
@@ -479,7 +496,7 @@ absl::Status MemorySpaceAssignment::Process(
       VLOG(3) << "Allocation not needed.";
       continue;
     }
-    TF_RETURN_IF_ERROR(allocation->Process());
+    TF_RETURN_IF_ERROR(allocation->Process(options_.bitcast_split_fn));
     // Add the offset and size of the allocation in the alternate memory to
     // the output map.
     if (allocation->is_scoped_allocation()) {
@@ -503,7 +520,6 @@ absl::Status MemorySpaceAssignment::Process(
         CHECK(
             !sliced_copy_allocation.cross_program_prefetch_index().has_value());
       }
-
       alternate_memory_assignments_.emplace_back(
           allocation->defining_position(), allocation->chunk());
       alternate_memory_size_ =
@@ -985,7 +1001,7 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
         for (HloInstruction* new_instruction : insts_before_iter->second) {
           if (new_instruction->parent() == computation) {
             VLOG(4) << "before " << instruction_index << ": "
-                    << new_instruction->name();
+                    << new_instruction->ToString();
             TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
                 new_instruction, &new_sequence, &inserted_instructions));
           }
@@ -1011,7 +1027,7 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
             instruction->opcode() != HloOpcode::kTuple &&
             !inserted_instructions.contains(instruction)) {
           VLOG(4) << "inst " << instruction_index << ": "
-                  << instruction->name();
+                  << instruction->ToString();
           TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
               instruction, &new_sequence, &inserted_instructions));
         }
@@ -1022,7 +1038,7 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
         for (HloInstruction* new_instruction : insts_after_iter->second) {
           if (new_instruction->parent() == computation) {
             VLOG(4) << "after " << instruction_index << ": "
-                    << new_instruction->name();
+                    << new_instruction->ToString();
             TF_RETURN_IF_ERROR(InsertInstructionAndEnsureOperandsInserted(
                 new_instruction, &new_sequence, &inserted_instructions));
           }

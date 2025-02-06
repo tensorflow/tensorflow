@@ -17,17 +17,18 @@
 
 #include <memory>
 
+#include "neuron/api/NeuronAdapter.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
 class LiteRtDispatchDeviceContextT {
  public:
   using Ptr = std::unique_ptr<LiteRtDispatchDeviceContextT>;
   struct NeuronMemoryInfo {
-    litert::mediatek::NeuronMemory* neuron_memory;
+    NeuronMemory* neuron_memory;
     size_t size;
     size_t offset;
   };
@@ -35,7 +36,7 @@ class LiteRtDispatchDeviceContextT {
   ~LiteRtDispatchDeviceContextT();
 
   static litert::Expected<Ptr> Create(
-      const litert::mediatek::NeuronAdapter& neuron_adapter);
+      const litert::mediatek::NeuronAdapterApi& neuron_adapter_api);
 
   litert::Expected<LiteRtTensorBufferHandle> RegisterTensorBuffer(
       const litert::TensorBuffer& tensor_buffer);
@@ -59,28 +60,27 @@ class LiteRtDispatchDeviceContextT {
   class NeuronMemoryRegistry {
    public:
     explicit NeuronMemoryRegistry(
-        const litert::mediatek::NeuronAdapter& neuron_adapter)
-        : neuron_adapter_(neuron_adapter) {}
+        const litert::mediatek::NeuronAdapterApi& neuron_adapter_api)
+        : neuron_adapter_api_(neuron_adapter_api) {}
     ~NeuronMemoryRegistry();
-    LiteRtTensorBufferHandle Register(
-        litert::mediatek::NeuronMemory* neuron_memory, size_t size,
-        size_t offset);
+    LiteRtTensorBufferHandle Register(NeuronMemory* neuron_memory, size_t size,
+                                      size_t offset);
     litert::Expected<void> Unregister(
         LiteRtTensorBufferHandle tensor_buffer_handle);
     litert::Expected<NeuronMemoryInfo*> Find(
         LiteRtTensorBufferHandle tensor_buffer_handle);
 
    private:
-    const litert::mediatek::NeuronAdapter& neuron_adapter_;
+    const litert::mediatek::NeuronAdapterApi& neuron_adapter_api_;
     std::vector<NeuronMemoryInfo> records_;
   };
 
   explicit LiteRtDispatchDeviceContextT(
-      const litert::mediatek::NeuronAdapter& neuron_adapter)
-      : neuron_adapter_(neuron_adapter),
-        neuron_memory_registry_(neuron_adapter) {}
+      const litert::mediatek::NeuronAdapterApi& neuron_adapter_api)
+      : neuron_adapter_api_(neuron_adapter_api),
+        neuron_memory_registry_(neuron_adapter_api) {}
 
-  const litert::mediatek::NeuronAdapter& neuron_adapter_;
+  const litert::mediatek::NeuronAdapterApi& neuron_adapter_api_;
   NeuronMemoryRegistry neuron_memory_registry_;
 };
 

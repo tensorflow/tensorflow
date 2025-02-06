@@ -181,8 +181,7 @@ ENTRY main {
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: [[bitcast_0:%[^ ]+]] = f32[1,5,4,3]{3,2,1,0} bitcast([[p_1:%[^ ]+]])
-// CHECK: [[transpose_2:%[^ ]+]] = f32[1,5,4,3]{3,2,1,0} transpose([[bitcast_0]]), dimensions={0,1,2,3}
-// CHECK: [[abs_3:%[^ ]+]] = f32[1,5,4,3]{3,2,1,0} abs([[transpose_2]])
+// CHECK: [[abs_3:%[^ ]+]] = f32[1,5,4,3]{3,2,1,0} abs([[bitcast_0]])
 )");
 }
 
@@ -934,6 +933,23 @@ ENTRY main {
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: pred[10]{0} compare({{.*}})
+)");
+}
+
+TEST_F(LayoutNormalizationTest, RegressionJaxB25759) {
+  const char* hlo = R"(
+HloModule repro
+
+ENTRY main {
+  p0 = f32[2,3,2,2]{2,1,3,0} parameter(0)
+  p1 = f32[2,2,2,3] parameter(1)
+  transpose = f32[2,3,2,2]{2,1,3,0} transpose(p1), dimensions={0,3,1,2}
+  ROOT multiply = f32[2,3,2,2]{2,1,3,0} multiply(p0, transpose)
+})";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: %[[TRANSPOSE:.*]] = f32[2,2,3,2]{3,2,1,0} transpose
+// CHECK: multiply({{.*}}, %[[TRANSPOSE]])
 )");
 }
 

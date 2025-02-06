@@ -2089,9 +2089,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleConstant(
         LiteralUtil::GetFirstScalarLiteral(constant->literal()));
     HloInstruction* scalar = constant->AddInstruction(
         simplifier_->CreateConstantWithLayoutUpdated(std::move(unique_scalar)));
-    return ReplaceWithNewInstruction(
-        constant,
+    HloInstruction* broadcast = constant->AddInstruction(
         HloInstruction::CreateBroadcast(constant->shape(), scalar, {}));
+    return ReplaceInstruction(constant, broadcast);
   }
 
   // If a literal is an increasing sequence from zero, replace it with an iota.
@@ -4507,11 +4507,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleMaximum(
   if (primitive_util::IsIntegralType(ty) ||
       (primitive_util::IsFloatingPointType(ty) &&
        options_.minmax_propagate_nan())) {
-    Literal min_val = LiteralUtil::MinValue(ty);
-    if (IsAll(lhs, min_val)) {
+    // Note that `lhs` and `rhs` can have a different element type than
+    // `maximum` if we are dealing with floating point types.
+    PrimitiveType lhs_ty = lhs->shape().element_type();
+    PrimitiveType rhs_ty = rhs->shape().element_type();
+    Literal min_val_lhs = LiteralUtil::MinValue(lhs_ty);
+    if (rhs_ty == ty && IsAll(lhs, min_val_lhs)) {
       return ReplaceInstruction(maximum, rhs);
     }
-    if (IsAll(rhs, min_val)) {
+    Literal min_val_rhs = LiteralUtil::MinValue(rhs_ty);
+    if (lhs_ty == ty && IsAll(rhs, min_val_rhs)) {
       return ReplaceInstruction(maximum, lhs);
     }
   }
@@ -4612,11 +4617,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleMinimum(
   if (primitive_util::IsIntegralType(ty) ||
       (primitive_util::IsFloatingPointType(ty) &&
        options_.minmax_propagate_nan())) {
-    Literal max_val = LiteralUtil::MaxValue(ty);
-    if (IsAll(lhs, max_val)) {
+    // Note that `lhs` and `rhs` can have a different element type than
+    // `minimum` if we are dealing with floating point types.
+    PrimitiveType lhs_ty = lhs->shape().element_type();
+    PrimitiveType rhs_ty = rhs->shape().element_type();
+    Literal max_val_lhs = LiteralUtil::MaxValue(lhs_ty);
+    if (rhs_ty == ty && IsAll(lhs, max_val_lhs)) {
       return ReplaceInstruction(minimum, rhs);
     }
-    if (IsAll(rhs, max_val)) {
+    Literal max_val_rhs = LiteralUtil::MaxValue(rhs_ty);
+    if (lhs_ty == ty && IsAll(rhs, max_val_rhs)) {
       return ReplaceInstruction(minimum, lhs);
     }
   }
@@ -5749,6 +5759,10 @@ absl::Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     TF_ASSIGN_OR_RETURN(HloInstruction * nonzero_pad,
                         MakePadHlo(pad->mutable_operand(0),
                                    pad->mutable_operand(1), nonzero_padding));
+    // MakePadHlo assumes that the return type matches the type of the operand,
+    // but that's not required. Use the type from the original pad instruction.
+    nonzero_pad->mutable_shape()->set_element_type(pad->shape().element_type());
+
     // Copy the layout from the original pad instructions. The new pad and the
     // slice instruction should all have the same layout.
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(

@@ -1,4 +1,4 @@
-// RUN: xla-translate -hlo-text-to-mlir-hlo -split-input-file %s -o - | FileCheck %s
+// RUN: hlo-translate -hlo-to-mlir -emit-mhlo -split-input-file %s -o - | FileCheck %s
 
 HloModule dot_algorithm_f8_f8_f32, entry_computation_layout={(f32[2,2,2]{2,1,0}, f32[2,2,2]{2,1,0})->f32[2,2,2]{2,1,0}}
 

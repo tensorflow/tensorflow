@@ -44,9 +44,9 @@ class Shape {
   Shape();
   ~Shape();
   Shape(const Shape&);
-  Shape(Shape&&);
+  Shape(Shape&&) noexcept;
   Shape& operator=(const Shape&);
-  Shape& operator=(Shape&&);
+  Shape& operator=(Shape&&) noexcept;
 
   // Construct a shape from a ShapeProto.
   explicit Shape(const ShapeProto& shape_proto);

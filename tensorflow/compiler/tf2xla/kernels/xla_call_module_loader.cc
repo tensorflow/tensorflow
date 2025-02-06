@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -62,15 +63,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir/utils/type_util.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/python/refine_polymorphic_shapes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -113,8 +111,7 @@ constexpr llvm::StringRef kUsesShapePolymorphismAttr =
 }  // namespace
 
 bool IsTokenType(mlir::Type type) {
-  return mlir::isa<mlir::stablehlo::TokenType>(type) ||
-         mlir::isa<mlir::mhlo::TokenType>(type);
+  return mlir::isa<mlir::stablehlo::TokenType>(type);
 }
 
 absl::StatusOr<std::unique_ptr<XlaCallModuleLoader>>
@@ -259,7 +256,7 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
       continue;
     }
     if (IsTokenType(arg_type)) {
-      static_array_input_types[i] = mlir::stablehlo::TokenType::get(context_);
+      static_array_input_types[i] = arg_type;
       VLOG(3) << "XlaCallModule static array input type #" << i << ": "
               << mlir::debugString(static_array_input_types[i])
               << " for argument type " << mlir::debugString(arg_type);
@@ -340,6 +337,9 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
       (version_ >= kVersionStartSupportShapeAssertions &&
        !IsShapeAssertionsCheckDisabled(loading_disabled_checks_));
 
+  // Store the original output types before shape refinement.
+  mlir::TypeRange original_output_types = OutputTypes();
+
   // RefinePolymorphicShapes will refine using the new static types and clean up
   // the shape_refinement_operand_wrapper custom calls.
   TF_RETURN_IF_ERROR(
@@ -347,6 +347,12 @@ absl::Status XlaCallModuleLoader::RefineDynamicShapes(
 
   if (VLOG_IS_ON(3)) {
     DumpMlirOpToFile("xla_call_module.after_shape_refinement", *module_);
+  }
+
+  // Mark the output types as refined if they are different from the original
+  // output types.
+  if (OutputTypes() != original_output_types) {
+    output_types_refined_ = true;
   }
 
   return absl::OkStatus();
@@ -370,7 +376,6 @@ absl::Status XlaCallModuleLoader::LoadModule(
   // we only include allowable dialects.
   context_->loadDialect<mlir::func::FuncDialect>();
   context_->loadDialect<mlir::stablehlo::StablehloDialect>();
-  context_->loadDialect<mlir::mhlo::MhloDialect>();
   context_->loadDialect<mlir::chlo::ChloDialect>();
   context_->loadDialect<mlir::vhlo::VhloDialect>();
 
@@ -471,9 +476,10 @@ absl::Status XlaCallModuleLoader::ValidateStaticShapes() {
   return xla::ValidateStaticShapes(*module_);
 }
 
-absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
+absl::Status XlaCallModuleLoader::PrepareStablehloForLowering() {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
 
+  // TODO (b/393390051): Migrate required passes to StableHLO.
   mlir::PassManager pm(module_->getContext());
   applyTensorflowAndCLOptions(pm);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
@@ -484,6 +490,7 @@ absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
   // regions, since XLA uses functional control flow.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createSinkConstantsToControlFlowPass());
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
   if (failed(pm.run(*module_))) {
     return absl::InternalError(
         absl::StrCat("MHLO->HLO lowering passes failed: ",
@@ -499,10 +506,7 @@ absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
 
 absl::StatusOr<xla::XlaComputation> XlaCallModuleLoader::ToXlaComputation() {
   xla::HloProto proto;
-  mlir::MlirToHloConversionOptions options;
-  TF_RETURN_IF_ERROR(
-      mlir::ConvertMlirHloToHlo(*module_, &proto, /*use_tuple_args=*/false,
-                                /*return_tuple=false*/ false, options));
+  TF_RETURN_IF_ERROR(xla::ConvertStablehloToHloProto(*module_, &proto));
   return xla::XlaComputation(std::move(*proto.mutable_hlo_module()));
 }
 

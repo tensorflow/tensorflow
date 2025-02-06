@@ -100,5 +100,24 @@ TEST(TimespanTests, Operators) {
   EXPECT_FALSE(Timespan(12, 0) <= Timespan(11, 0));
 }
 
+TEST(TimespanTests, ExpandToIncludeWithEmptyDestination) {
+  Timespan empty1;
+  Timespan nonempty1(0, 10);
+  empty1.ExpandToInclude(nonempty1);
+  EXPECT_EQ(empty1, nonempty1);
+
+  Timespan empty2;
+  Timespan nonempty2(5, 3);
+  empty2.ExpandToInclude(nonempty2);
+  EXPECT_EQ(empty2, nonempty2);
+}
+
+TEST(TimespanTests, ExpandToIncludeWithNonEmptyDestination) {
+  Timespan ts1 = Timespan::FromEndPoints(0, 4);
+  Timespan ts2 = Timespan::FromEndPoints(5, 8);
+  ts1.ExpandToInclude(ts2);
+  EXPECT_EQ(ts1, Timespan(0, 8));
+}
+
 }  // namespace profiler
 }  // namespace tsl

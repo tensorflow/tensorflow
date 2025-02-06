@@ -19,11 +19,12 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 #include "absl/base/call_once.h"
 #include "absl/base/optimization.h"
 #include "pthreadpool.h"
-#include "xla/backends/cpu/runtime/xnnpack/parallel_loop_runner.h"
+#include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
@@ -153,7 +154,7 @@ static void DestroyCustomPthreadpool(pthreadpool_t threadpool) {  // NOLINT
 
 static size_t GetThreadsCount(pthreadpool_t threadpool) {  // NOLINT
   if (ABSL_PREDICT_FALSE(threadpool == nullptr)) {
-    return 0;
+    return 1;
   }
 
   return Cast(threadpool)->runner()->num_threads();
@@ -172,7 +173,7 @@ static void Parallelize1D(  // NOLINT
   ParallelLoopRunner::Task1D task = [function, context](size_t offset) {
     (*function)(context, offset);
   };
-  Cast(threadpool)->runner()->Parallelize(range, task);
+  Cast(threadpool)->runner()->Parallelize(range, std::move(task));
 }
 
 static void Parallelize1DTile1D(  // NOLINT
@@ -189,7 +190,7 @@ static void Parallelize1DTile1D(  // NOLINT
                                                               size_t extent) {
     (*function)(context, offset, extent);
   };
-  Cast(threadpool)->runner()->Parallelize(range, tile, task);
+  Cast(threadpool)->runner()->Parallelize(range, tile, std::move(task));
 }
 
 static void Parallelize2DTile1D(pthreadpool_t threadpool,  // NOLINT
@@ -209,7 +210,9 @@ static void Parallelize2DTile1D(pthreadpool_t threadpool,  // NOLINT
       [function, context](size_t offset_i, size_t offset_j, size_t extent_j) {
         (*function)(context, offset_i, offset_j, extent_j);
       };
-  Cast(threadpool)->runner()->Parallelize(range_i, range_j, tile_j, task);
+  Cast(threadpool)
+      ->runner()
+      ->Parallelize(range_i, range_j, tile_j, std::move(task));
 }
 
 static void Parallelize3DTile2D(pthreadpool_t threadpool,  // NOLINT
@@ -236,7 +239,7 @@ static void Parallelize3DTile2D(pthreadpool_t threadpool,  // NOLINT
       };
   Cast(threadpool)
       ->runner()
-      ->Parallelize(range_i, range_j, range_k, tile_j, tile_k, task);
+      ->Parallelize(range_i, range_j, range_k, tile_j, tile_k, std::move(task));
 }
 
 }  // namespace xla::cpu

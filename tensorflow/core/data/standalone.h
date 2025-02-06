@@ -20,6 +20,8 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/data/unbounded_thread_pool.h"
@@ -33,8 +35,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {

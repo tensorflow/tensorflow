@@ -27,10 +27,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -44,6 +45,18 @@ namespace {
 
 using Arguments = absl::InlinedVector<NanoRtExecutable::Argument, 8>;
 using Results = absl::InlinedVector<NanoRtExecutable::Result, 8>;
+
+TEST(NanoRtClientTest, ManagedTempAlignment) {
+  NanoRtExecutable::ManagedTemp<3> temp0(1);
+  NanoRtExecutable::ManagedTemp<3> temp1(2);
+  NanoRtExecutable::ManagedTemp<3> temp2(3);
+  NanoRtExecutable::ManagedTemp<3> temp3(1024);
+
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp0.data()[0]) % Align(), 0);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp1.data()[0]) % Align(), 0);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp2.data()[0]) % Align(), 0);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(&temp3.data()[0]) % Align(), 0);
+}
 
 TEST(NanoRtClientTest, CompileAndRunScalarComputation) {
   constexpr absl::string_view hlo = R"(
@@ -271,6 +284,7 @@ BENCHMARK(BM_NanoRtFibonacci);
 static void BM_PjRtAddScalars(benchmark::State& state) {
   auto client = GetXlaPjrtCpuClient(/*options=*/{});
   PjRtDevice* device = (*client)->devices().front();
+  PjRtMemorySpace* memory_space = *device->default_memory_space();
 
   auto computation = CreateAddScalarsComputation();
 
@@ -286,11 +300,13 @@ static void BM_PjRtAddScalars(benchmark::State& state) {
   for (auto _ : state) {
     auto p0 = (*client)->BufferFromHostBuffer(
         &p0_value, PrimitiveType::F32, {}, std::nullopt,
-        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr, device);
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+        memory_space, /*device_layout=*/nullptr);
 
     auto p1 = (*client)->BufferFromHostBuffer(
         &p1_value, PrimitiveType::F32, {}, std::nullopt,
-        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr, device);
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+        memory_space, /*device_layout=*/nullptr);
 
     absl::InlinedVector<PjRtBuffer*, 2> arguments = {p0->get(), p1->get()};
     CHECK_OK((*executable)->ExecuteSharded(arguments, device, execute_options));
@@ -302,6 +318,7 @@ BENCHMARK(BM_PjRtAddScalars);
 static void BM_PjRtFibonacci(benchmark::State& state) {
   auto client = GetXlaPjrtCpuClient(/*options=*/{});
   PjRtDevice* device = (*client)->devices().front();
+  PjRtMemorySpace* memory_space = *device->default_memory_space();
 
   auto computation = CreateFibonacciComputation();
 
@@ -317,11 +334,13 @@ static void BM_PjRtFibonacci(benchmark::State& state) {
   for (auto _ : state) {
     auto p0 = (*client)->BufferFromHostBuffer(
         &p0_value, PrimitiveType::F32, {}, std::nullopt,
-        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr, device);
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+        memory_space, /*device_layout=*/nullptr);
 
     auto p1 = (*client)->BufferFromHostBuffer(
         &p1_value, PrimitiveType::F32, {}, std::nullopt,
-        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr, device);
+        PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+        memory_space, /*device_layout=*/nullptr);
 
     absl::InlinedVector<PjRtBuffer*, 2> arguments = {p0->get(), p1->get()};
     CHECK_OK((*executable)->ExecuteSharded(arguments, device, execute_options));

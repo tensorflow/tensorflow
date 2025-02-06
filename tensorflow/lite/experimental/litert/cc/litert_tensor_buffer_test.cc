@@ -368,18 +368,20 @@ TEST(TensorBuffer, FromAhwb) {
                     "skipping the test";
   }
 
-  // Create a tensor buffer that wraps the AHardwareBuffer.
-  const litert::RankedTensorType kTensorType(::kTensorType);
-  auto tensor_buffer_from_external_memory =
-      litert::TensorBuffer::CreateFromAhwb(kTensorType, ahw_buffer,
-                                           /*ahwb_offset=*/0);
+  {
+    // Create a tensor buffer that wraps the AHardwareBuffer.
+    const litert::RankedTensorType kTensorType(::kTensorType);
+    auto tensor_buffer_from_ahwb =
+        litert::TensorBuffer::CreateFromAhwb(kTensorType, ahw_buffer,
+                                             /*ahwb_offset=*/0);
 
-  auto lock_and_addr_external_memory = litert::TensorBufferScopedLock::Create(
-      *tensor_buffer_from_external_memory);
-  ASSERT_TRUE(lock_and_addr_external_memory);
-  ASSERT_EQ(std::memcmp(lock_and_addr_external_memory->second, kTensorData,
-                        sizeof(kTensorData)),
-            0);
+    auto lock_and_addr_external_memory =
+        litert::TensorBufferScopedLock::Create(*tensor_buffer_from_ahwb);
+    ASSERT_TRUE(lock_and_addr_external_memory);
+    ASSERT_EQ(std::memcmp(lock_and_addr_external_memory->second, kTensorData,
+                          sizeof(kTensorData)),
+              0);
+  }
 
   if (__builtin_available(android 26, *)) {
     AHardwareBuffer_release(ahw_buffer);

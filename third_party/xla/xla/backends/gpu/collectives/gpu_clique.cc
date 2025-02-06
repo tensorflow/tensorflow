@@ -32,20 +32,20 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/lockable.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla::gpu {
 
 GpuClique::GpuClique(
-    GpuCliqueKey key, std::optional<CliqueId> id,
+    GpuCliqueKey key, std::optional<CliqueIds> ids,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
-    : Clique(std::move(communicators)), key_(key), id_(id) {}
+    : Clique(std::move(communicators)), key_(key), ids_(ids) {}
 
 std::string GpuClique::DebugString() const {
-  std::string out =
-      absl::StrFormat("key: %s; fingerprint(id): %d; size: %d; communicators: ",
-                      key_.ToString(), id_.has_value() ? id_->fingerprint() : 0,
-                      num_communicators());
+  std::string out = absl::StrFormat(
+      "key: %s; fingerprint(id): %d; size: %d; communicators: ",
+      key_.ToString(), ids_.has_value() ? ids_->fingerprint() : 0,
+      num_communicators());
   int32_t cnt = 0;
   ForEachComm([&](RankId rank, Communicator* comm) {
     if (cnt++) absl::StrAppend(&out, ", ");
@@ -70,9 +70,9 @@ std::string GpuClique::LockableName::ToString(const GpuClique& clique) {
 }
 
 LockableGpuClique::LockableGpuClique(
-    GpuCliqueKey clique_key, std::optional<CliqueId> clique_id,
+    GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
-    : Lockable(std::move(clique_key), clique_id, std::move(communicators)) {}
+    : Lockable(std::move(clique_key), clique_ids, std::move(communicators)) {}
 
 absl::Status LockableGpuClique::HealthCheck() const {
   return value().HealthCheck();

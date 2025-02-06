@@ -62,8 +62,12 @@ GpuEventType ParseMemcpyName(absl::string_view memcpy_name) {
   return GpuEventType::kUnknown;
 }
 
-void SetNodeTimes(const XEventVisitor& event, NodeExecStats* ns) {
-  ns->set_all_start_micros(tsl::profiler::NanoToMicro(event.TimestampNs()));
+void SetNodeTimes(uint64_t start_time, const XEventVisitor& event,
+                  NodeExecStats* ns) {
+  // Since XPlane uses relative times, we need to convert event.TimestampNs() to
+  // absolute times
+  ns->set_all_start_micros(
+      tsl::profiler::NanoToMicro(start_time + event.TimestampNs()));
   ns->set_op_start_rel_micros(0);
   ns->set_op_end_rel_micros(tsl::profiler::NanoToMicro(event.DurationNs()));
   ns->set_all_end_rel_micros(tsl::profiler::NanoToMicro(event.DurationNs()));
@@ -78,6 +82,13 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
     LOG(WARNING) << "GPU trace was not collected.";
     return;
   }
+
+  const XPlane* env_plane = FindPlaneWithName(xspace, kTaskEnvPlaneName);
+  XPlaneVisitor env_plane_visitor(env_plane, {}, {FindTaskEnvStatType});
+  uint64_t start_time =
+      env_plane_visitor.GetStat(TaskEnvStatType::kEnvProfileStartTime)
+          ->IntOrUintValue();
+
   const XPlane* host_plane = FindPlaneWithName(xspace, kHostThreadsPlaneName);
   DCHECK_NE(host_plane, nullptr);
 
@@ -101,7 +112,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
                 absl::StrCat("/device:GPU:", device_ordinal, "/sync"));
           }
           NodeExecStats* ns = sync_dev_stats->add_node_stats();
-          SetNodeTimes(event, ns);
+          SetNodeTimes(start_time, event, ns);
           ns->set_node_name(std::string(event.Name()));
           ns->set_timeline_label(absl::StrCat("ThreadId ", thread_id));
           ns->set_thread_id(thread_id);
@@ -128,7 +139,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
         GpuEventStats stats(&event);
 
         auto ns = std::make_unique<NodeExecStats>();
-        SetNodeTimes(event, ns.get());
+        SetNodeTimes(start_time, event, ns.get());
 
         // Get launch information if available.
         if (stats.correlation_id.has_value()) {

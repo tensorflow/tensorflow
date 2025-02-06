@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/utils/convert_op_folder.h"
 #include "xla/mlir_hlo/utils/hlo_utils.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/rng_alg.h"
@@ -76,7 +77,6 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tsl/platform/bfloat16.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 
 namespace mlir {
@@ -135,7 +135,7 @@ static DenseIntElementsAttr GetI64ElementsAttrForValue(int size, int64_t val,
 // accumulation over the given input type.
 Type GetSumAccumulationType(Type input_type) {
   MLIRContext *ctx = input_type.getContext();
-  if (input_type.isBF16() || input_type.isF16()) return FloatType::getF32(ctx);
+  if (input_type.isBF16() || input_type.isF16()) return Float32Type::get(ctx);
   if (input_type.isSignlessInteger(8) || input_type.isSignlessInteger(16))
     return IntegerType::get(ctx, 32);
   return input_type;
@@ -655,7 +655,7 @@ static Type ChangeTensorElementType(Builder *b, Type tensor_type,
 static Type GetAccumulationType(Type ty) {
   // Upcast 16 bit sum reductions to 32 bit to reduce the precision loss from
   // repeated floating point additions.
-  return (ty.isF16() || ty.isBF16()) ? FloatType::getF32(ty.getContext()) : ty;
+  return (ty.isF16() || ty.isBF16()) ? Float32Type::get(ty.getContext()) : ty;
 }
 
 //===----------------------------------------------------------------------===//

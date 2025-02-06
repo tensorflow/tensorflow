@@ -97,9 +97,9 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
   for (mlir::OpOperand& returnOperand : terminatorOp->getOpOperands()) {
     if (auto sharding = funcOp.getResultAttrOfType<TensorShardingAttr>(
             returnOperand.getOperandNumber(), kShardingAttr)) {
-      // We cannot save the result shardings as frontend attributes. MHLO->HLO
-      // conversion converts `mhlo.sharding`s on the results to a tuple
-      // sharding on the ROOT instruction, but it discards the frontend
+      // We cannot save the result shardings as frontend attributes.
+      // StableHLO->HLO conversion converts `mhlo.sharding`s on the results to a
+      // tuple sharding on the ROOT instruction, but it discards the frontend
       // attributes on the MLIR results. Thus, instead of making the conversion
       // handle that, push the shardings to a temporary custom op for each
       // FuncOp result with a sharding. Then during import, we will copy the
@@ -152,15 +152,16 @@ class SdyRoundTripExportShardyAttrsPass
       }
     }
 
-    SmallVector<NamedAttribute> mhloMeshes;
-    // Saves the MeshOps for MHLO<->HLO round-trip and removes them from the
-    // ModuleOp.
+    SmallVector<NamedAttribute> stablehloMeshes;
+    // Saves the MeshOps for StableHLO<->HLO round-trip and removes them from
+    // the ModuleOp.
     for (MeshOp meshOp : moduleOp.getOps<MeshOp>()) {
-      mhloMeshes.emplace_back(meshOp.getSymNameAttr(), meshOp.getMeshAttr());
+      stablehloMeshes.emplace_back(meshOp.getSymNameAttr(),
+                                   meshOp.getMeshAttr());
     }
-    if (!mhloMeshes.empty()) {
+    if (!stablehloMeshes.empty()) {
       setFrontendAttribute(moduleOp, kMeshesRoundTripAttr,
-                           DictionaryAttr::get(context, mhloMeshes));
+                           DictionaryAttr::get(context, stablehloMeshes));
     }
   }
 

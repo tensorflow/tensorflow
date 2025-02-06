@@ -26,7 +26,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -66,6 +66,7 @@ namespace xla::cpu {
 class Thunk {
  public:
   enum class Kind {
+    kUnknown,
     kAllGather,
     kAllReduce,
     kAllToAll,
@@ -182,12 +183,13 @@ class Thunk {
     static absl::StatusOr<CustomCallExecuteParams> Create(
         const ExecutableRunOptions* run_options);
 
+    RunId run_id;
     int32_t device_ordinal;
     const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
     const ffi::ExecutionContext* ffi_execution_context = nullptr;
 
    private:
-    CustomCallExecuteParams(int32_t device_ordinal,
+    CustomCallExecuteParams(RunId run_id, int32_t device_ordinal,
                             const Eigen::ThreadPoolDevice* intra_op_thread_pool,
                             const ffi::ExecutionContext* ffi_execution_context);
   };

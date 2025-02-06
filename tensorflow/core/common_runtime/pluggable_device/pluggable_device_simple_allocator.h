@@ -18,13 +18,9 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <optional>
-#include <string>
-#include <unordered_map>
-#include <vector>
 
-#include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
+#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -32,7 +28,7 @@ namespace tensorflow {
 
 class PluggableDeviceSimpleAllocator : public Allocator {
  public:
-  explicit PluggableDeviceSimpleAllocator(DeviceMemAllocator* sub_allocator);
+  explicit PluggableDeviceSimpleAllocator(tsl::SubAllocator* sub_allocator);
   ~PluggableDeviceSimpleAllocator() override = default;
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;

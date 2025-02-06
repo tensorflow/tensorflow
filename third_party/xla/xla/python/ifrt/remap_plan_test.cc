@@ -32,13 +32,14 @@ limitations under the License.
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {

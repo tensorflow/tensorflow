@@ -19,6 +19,7 @@
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
@@ -49,7 +50,8 @@ LITERT_DEFINE_HANDLE(LiteRtCompiledModel);
 // The model is loaded into memory and the caller takes ownership of the
 // returned object.
 LiteRtStatus LiteRtCreateCompiledModel(
-    LiteRtModel model, LiteRtCompilationOptions compilation_options,
+    LiteRtEnvironment environment, LiteRtModel model,
+    LiteRtCompilationOptions compilation_options,
     LiteRtCompiledModel* compiled_model);
 
 // Returns the buffer requirements for the given n-th input tensor. The returned
@@ -80,8 +82,8 @@ LiteRtStatus LiteRtGetCompiledModelOutputBufferRequirements(
     LiteRtParamIndex output_index,
     LiteRtTensorBufferRequirements* buffer_requirements);
 
-// Runs the model of the given n-th signature with the provided input/output
-// LiteRtTensorBuffer.
+// Runs the model of the given signature synchronously, with the provided
+// input/output LiteRtTensorBuffer.
 //
 // Parameters:
 // - compiled_model: the target `LiteRtCompiledModel` object.
@@ -96,6 +98,33 @@ LiteRtStatus LiteRtRunCompiledModel(LiteRtCompiledModel compiled_model,
                                     LiteRtTensorBuffer* input_buffers,
                                     size_t num_output_buffers,
                                     LiteRtTensorBuffer* output_buffers);
+
+// Runs the model of the given signature asynchronously, if possible, with the
+// provided input/output LiteRtTensorBuffers. If asynchronous execution is
+// possible, then the function sets parameter `async` to true; if asynchronous
+// execution is not possible, then the function runs the model synchronously and
+// sets parameter `async` to false. Note that:
+//
+// - Asynchronous execution is possible only in certain cases, based on the ops
+//   included in the model, the selected HW accelerator(s), and the capability
+//   of the user device hardware.
+//
+// - If asynchronous execution is indeed possible, it may be that only some
+//   parts of the model are run asynchronously (e.g., ops mapped to the GPU)
+//   while other parts of the model are still run synchronously with the
+//   invocation of this call (e.g., ops mapped to the CPU).
+//
+// - In case of asynchronous execution some or all of the output tensor buffers
+//   will have a synchronization event attached to them and the caller is
+//   responsible for passing such events to a downstream processing step.
+//
+// Parameters:
+// - async: optional boolean to let the caller know if the model is being run
+//   asynchronously.
+LiteRtStatus LiteRtRunCompiledModelAsync(
+    LiteRtCompiledModel compiled_model, LiteRtParamIndex signature_index,
+    size_t num_input_buffers, LiteRtTensorBuffer* input_buffers,
+    size_t num_output_buffers, LiteRtTensorBuffer* output_buffers, bool* async);
 
 void LiteRtDestroyCompiledModel(LiteRtCompiledModel compiled_model);
 

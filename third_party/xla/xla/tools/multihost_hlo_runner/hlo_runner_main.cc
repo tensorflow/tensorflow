@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/init_main.h"
@@ -97,10 +98,13 @@ struct HloRunnerConfig {
   std::string hlo_argument_mode = "use_random_inputs";
   int32_t while_execution_count = -1;
   bool remove_infeed_outfeed = true;
+  bool compile_as_stablehlo = false;
   int32_t num_repeats = 1;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
   float gpu_client_mem_fraction = xla::GpuAllocatorConfig{}.memory_fraction;
+  bool profile_execution = false;
+  std::string xla_gpu_dump_xspace_to = "";
 };
 
 }  // namespace
@@ -199,6 +203,7 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
       opts.xla_dump_as_proto
           ? FunctionalHloRunner::XlaProtoDumpMode::kDumpAsProto
           : FunctionalHloRunner::XlaProtoDumpMode::kNotDumpAsProto;
+  out.xla_gpu_dump_xspace_to = opts.xla_gpu_dump_xspace_to;
   return out;
 }
 
@@ -240,6 +245,14 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
         env, xla::GetPjRtEnvironmentForGpu(
                  opts.address_str, gpu_options,
                  absl::Seconds(opts.gpu_client_initialization_timeout_sec)));
+    // Create a GPURunnerProfiler to profile GPU executions to save xspace data
+    // to disk.
+    if (env.client != nullptr && !opts.xla_gpu_dump_xspace_to.empty()) {
+      TF_ASSIGN_OR_RETURN(auto profiler,
+                          GPURunnerProfiler::Create(opts.xla_gpu_dump_xspace_to,
+                                                    /*keep_xspace=*/false));
+      running_options.profiler = profiler.get();
+    }
   } else if (opts.device_type_str == "host") {
     TF_ASSIGN_OR_RETURN(env, xla::GetPjRtEnvironmentForHostCpu());
   } else {
@@ -249,18 +262,30 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
   }
   CHECK(env.client != nullptr);
 
+  std::vector<ExecutionProfile> execution_profiles;
+  if (opts.profile_execution) {
+    running_options.execution_profiles = &execution_profiles;
+  }
+
   for (int c = 1; c < argc; c++) {
     const char* filename = argv[c];
-    std::cout << "\n** Running " << filename << " **\n";
+    execution_profiles.clear();
     if (opts.should_run) {
+      std::cout << "\n** Running " << filename << " **\n";
       TF_RETURN_IF_ERROR(xla::FunctionalHloRunner::LoadAndRunAndDump(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, running_options, filename, opts.input_format,
           opts.dump_output_literal_to, opts.task_id));
     } else {
+      std::cout << "\n** Compiling " << filename << " **\n";
       TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
           *env.client, GetDebugOptionsFromFlags(), preproc_options,
           raw_compile_options, argv[c], opts.input_format, opts.task_id));
+    }
+    for (int i = 0; i < execution_profiles.size(); ++i) {
+      std::cout << "## Execution time, file=" << filename << " repeat=" << i
+                << " duration=" << execution_profiles[i].compute_time_ns()
+                << "ns" << std::endl;
     }
   }
   return absl::OkStatus();
@@ -325,6 +350,9 @@ int main(int argc, char** argv) {
                 "a certain number of iterations."),
       tsl::Flag("remove_infeed_outfeed", &opts.remove_infeed_outfeed,
                 "If set, we will remove all infeed and outfeed operations."),
+      tsl::Flag("compile_as_stablehlo", &opts.compile_as_stablehlo,
+                "If set, convert the module to StableHLO before passing to "
+                "PjRt for compilation."),
       tsl::Flag("num_repeats", &opts.num_repeats,
                 "Repeatedly execute the HLO for this many times."),
       tsl::Flag("execution_options_path", &opts.execution_options_path,
@@ -337,7 +365,11 @@ int main(int argc, char** argv) {
       tsl::Flag("gpu_client_mem_fraction", &opts.gpu_client_mem_fraction,
                 "The maximum fraction of available memory to allocate in range "
                 "of (0.0, 1.0). Same as XLA_CLIENT_MEM_FRACTION in the Python "
-                "client. Only used with the BFC allocator.")};
+                "client. Only used with the BFC allocator."),
+      tsl::Flag("profile_execution", &opts.profile_execution,
+                "If set, we will profile the execution and print the results."),
+      tsl::Flag("xla_gpu_dump_xspace_to", &opts.xla_gpu_dump_xspace_to,
+                "A directory to dump xspace data for GPU profiling.")};
 
   xla::AppendDebugOptionsFlags(&flag_list);
 

@@ -71,7 +71,6 @@ cc_library(
     srcs = ["import_constants.cc"],
     hdrs = ["import_constants.h"],
     deps = [
-        "//xla/mlir_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -79,6 +78,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -107,10 +107,11 @@ cc_library(
         ":import_constants",
         ":import_sdy_custom_calls",
         ":open_while_free_vars_sharding",
-        "//xla/mlir_hlo:mhlo_passes",
+        "//xla/mlir_hlo:stablehlo_extension_passes",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_passes",
     ],
 )

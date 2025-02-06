@@ -813,10 +813,20 @@ cc_library(
         "utils/translate_utils.h",
     ],
     deps = [
+        ":convert_type",
+        ":export_utils",
+        ":tensorflow",
+        ":tensorflow_types",
+        "//tensorflow/compiler/mlir/utils:string_container_utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@llvm-project//mlir:FuncDialect",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -878,7 +888,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla:test",
     ],
 )
 
@@ -922,7 +931,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_xla//xla:test",
+        "@local_xla//xla/hlo/testlib:test",
     ],
 )
 
@@ -971,7 +980,7 @@ cc_library(
     hdrs = ["utils/eval_util.h"],
     deps = [
         ":convert_tensor",
-        ":export_tf_dialect_op",
+        ":translate_utils",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/core:framework",
@@ -996,7 +1005,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla:test",
+        "@local_xla//xla/hlo/testlib:test",
         "@local_xla//xla/mlir/utils:error_util",
     ],
 )
@@ -1026,6 +1035,7 @@ cc_library(
         ":serialize_mlir_module_utils",
         ":tensorflow",
         "//tensorflow/compiler/mlir/lite/tools:translate_cl_options",
+        "//tensorflow/compiler/mlir/tensorflow/translate/tools:parsers",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/compiler/tf2xla:layout_util",
@@ -1470,8 +1480,8 @@ cc_library(
     srcs = ["utils/shape_inference_utils.cc"],
     hdrs = ["utils/shape_inference_utils.h"],
     deps = [
-        ":export_tf_dialect_op",
         ":tensorflow_types",
+        ":translate_utils",
         "//tensorflow/core/ir:shape_inference_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -1726,11 +1736,9 @@ build_test(
 # these BUILD targets in a follow up.
 aliased_targets = [
     "import_model",
-    "export_tf_dialect_op",
     "mlir_roundtrip_flags",
     "mlir_import_options",
     "translate_lib",
-    "upgrade_graph",
 ]
 
 [
@@ -1741,3 +1749,9 @@ aliased_targets = [
     )
     for target in aliased_targets
 ]
+
+alias(
+    name = "file_tf_mlir_translate",
+    actual = "//tensorflow/compiler/mlir/tensorflow/translate/tools:file_tf_mlir_translate",
+    visibility = ["//visibility:public"],
+)

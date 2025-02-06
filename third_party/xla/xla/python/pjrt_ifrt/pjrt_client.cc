@@ -81,12 +81,12 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -947,12 +947,15 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
         return InvalidArgument("Cannot copy array to non-addressable device %s",
                                device->DebugString());
       }
-      TF_ASSIGN_OR_RETURN(
-          buffer,
-          pjrt_client_->BufferFromHostBuffer(
-              data, primitive_type, shape.dims(), byte_strides, semantics,
-              on_done_with_host_buffer_per_device,
-              tensorflow::down_cast<PjRtDevice*>(device)->pjrt_device()));
+      TF_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
+                          tensorflow::down_cast<PjRtDevice*>(device)
+                              ->pjrt_device()
+                              ->default_memory_space());
+      TF_ASSIGN_OR_RETURN(buffer,
+                          pjrt_client_->BufferFromHostBuffer(
+                              data, primitive_type, shape.dims(), byte_strides,
+                              semantics, on_done_with_host_buffer_per_device,
+                              memory_space, /*device_layout=*/nullptr));
     }
     buffers.push_back(std::move(buffer));
   }

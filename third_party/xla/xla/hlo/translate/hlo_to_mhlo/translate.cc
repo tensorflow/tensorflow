@@ -55,20 +55,21 @@ bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
 mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations, bool flatten_computation_args_result) {
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
+
   HloProto hlo_proto;
   std::string content(input.data(), input.size());
   if (!LoadHloProto(content, &hlo_proto)) {
-    LOG(ERROR) << "Failed to load proto";
+    module->emitError("Failed to load proto");
     return nullptr;
   }
 
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
   auto status = ConvertHloToMlirHlo(
       module.get(), hlo_proto.mutable_hlo_module(), import_all_computations,
       flatten_computation_args_result);
   if (!status.ok()) {
-    LOG(ERROR) << "Hlo module import failed: " << status;
+    module->emitError("Hlo module import failed: ") << status.message();
     return nullptr;
   }
 
@@ -78,22 +79,23 @@ mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
 mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations, bool flatten_computation_args_result) {
-  std::string content(input.data(), input.size());
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
 
+  std::string content(input.data(), input.size());
   auto hlo_module_error = ParseAndReturnUnverifiedModule(content);
   if (!hlo_module_error.ok()) {
-    LOG(ERROR) << "HLO Module loading failed: " << hlo_module_error.status();
+    module->emitError("HLO Module loading failed: ")
+        << hlo_module_error.status().message();
     return nullptr;
   }
 
   auto hlo_module = std::move(hlo_module_error.value());
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
   auto status =
       ConvertHloToMlirHlo(*module, hlo_module.get(), import_all_computations,
                           flatten_computation_args_result);
   if (!status.ok()) {
-    LOG(ERROR) << "HLO Module import failed: " << status;
+    module->emitError("HLO Module import failed: ") << status.message();
     return nullptr;
   }
 

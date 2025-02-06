@@ -45,11 +45,11 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 
@@ -214,6 +214,14 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
       after_pass_checks(module.get());
     }
   }
+}
+
+void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
+    absl::string_view hlo_with_checks, HloPassInterface&& hlo_pass,
+    std::function<void(HloModule*)> after_pass_checks,
+    const HloModuleConfig* config) const {
+  RunAndFilecheckHloRewrite(hlo_with_checks, std::move(hlo_pass),
+                            hlo_with_checks, after_pass_checks, config);
 }
 
 void HloHardwareIndependentTestBase::RunAndFilecheckHloModuleGroupRewrite(

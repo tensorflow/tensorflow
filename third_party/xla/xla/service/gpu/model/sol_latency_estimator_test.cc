@@ -98,7 +98,7 @@ ENTRY main {
 
 })",
       /*opcode=*/HloOpcode::kAllGatherStart,
-      /*expected_latency=*/absl::Microseconds(1323),
+      /*expected_latency=*/absl::Microseconds(1345),
   };
 
   EstimatorTestCase all_gather_inter_host_pairwise = {
@@ -116,7 +116,7 @@ ENTRY main {
   ROOT ag-done = bf16[16000,8000] all-gather-done(ag-start)
 })",
       /*opcode=*/HloOpcode::kAllGatherStart,
-      /*expected_latency=*/absl::Microseconds(1323),
+      /*expected_latency=*/absl::Microseconds(1345),
   };
 
   EstimatorTestCase all_gather_all_ranks = {
@@ -134,7 +134,7 @@ ENTRY main {
   ROOT ag-done = bf16[16000,8000] all-gather-done(ag-start)
 })",
       /*opcode=*/HloOpcode::kAllGatherStart,
-      /*expected_latency=*/absl::Microseconds(1323),
+      /*expected_latency=*/absl::Microseconds(1345),
   };
 
   EstimatorTestCase reduce_scatter_all_ranks = {
@@ -164,7 +164,7 @@ ENTRY main {
   ROOT rs-done = bf16[64,128256] async-done(rs-start)
 })",
       /*opcode=*/HloOpcode::kAsyncStart,
-      /*expected_latency=*/absl::Microseconds(10525),
+      /*expected_latency=*/absl::Microseconds(10708),
   };
 
   return {

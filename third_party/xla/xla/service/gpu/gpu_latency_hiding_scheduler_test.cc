@@ -80,12 +80,13 @@ class GpuLatencyHidingSchedulerBaseTest : public HloTestBase {
 
   HloModuleConfig GetModuleConfig(
       absl::string_view fdo_profile,
-      bool enable_experimental_pipeline_parallelism_opt = false) {
+      DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level =
+          DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
-    debug_options.set_xla_gpu_enable_experimental_pipeline_parallelism_opt(
-        enable_experimental_pipeline_parallelism_opt);
+    debug_options.set_xla_gpu_experimental_pipeline_parallelism_opt_level(
+        pipeline_parallelism_opt_level);
     config.set_debug_options(debug_options);
     config.set_fdo_profile(fdo_profile);
     return config;
@@ -111,7 +112,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
       bitcast0 = f32[2,16] bitcast(parameter1)
       partition-id0 = u32[] partition-id()
       replica-id0 = u32[] replica-id()
-      tuple0 = (f32[], f32[2,16], u32[], u32[]) tuple(parameter0, bitcast0, partition-id0, replica-id0)
+      tuple0 = (f32[], f32[2,16], u32[], u32[]) tuple(parameter0, bitcast0,
+          partition-id0, replica-id0)
       opt-barrier = (f32[], f32[2,16], u32[], u32[]) opt-barrier(tuple0)
       ROOT _ = get-tuple-element(opt-barrier), index=0
     }
@@ -232,9 +234,11 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
       p1 = f32[2] parameter(1)
       ar_0 = f32[] all-reduce-start(p0), to_apply=reduce
       ar_1 = f32[] all-reduce-done(ar_0)
-      rs_0 = ((f32[2]), f32[1]) reduce-scatter-start(p1), to_apply=reduce, dimensions={0}
+      rs_0 = ((f32[2]), f32[1]) reduce-scatter-start(p1), to_apply=reduce,
+          dimensions={0}
       rs_1 = f32[1] reduce-scatter-done(rs_0)
-      ag_0 = (f32[2], f32[4]) all-gather-start(p1), replica_groups={{0,1}}, dimensions={0}
+      ag_0 = (f32[2], f32[4]) all-gather-start(p1), replica_groups={{0,1}},
+          dimensions={0}
       ag_1 = f32[4] all-gather-done(ag_0)
       ROOT _ = (f32[], f32[1], f32[4]) tuple(ar_1, rs_1, ag_1)
     }
@@ -364,7 +368,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
       p2 = f32[2] parameter(2)
       ar_0 = f32[] all-reduce-start(p0), to_apply=reduce
       ar_1 = f32[] all-reduce-done(ar_0)
-      rs_0 = ((f32[2]), f32[1]) reduce-scatter-start(p1), to_apply=reduce, dimensions={0}
+      rs_0 = ((f32[2]), f32[1]) reduce-scatter-start(p1), to_apply=reduce,
+          dimensions={0}
       rs_1 = f32[1] reduce-scatter-done(rs_0)
       add_0 = f32[2] add(p1, p2)
       ROOT _ = (f32[], f32[1], f32[2]) tuple(ar_1, rs_1, add_0)
@@ -418,7 +423,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
       p2 = f32[2] parameter(2)
       ar_0 = f32[] all-reduce-start(p0), to_apply=reduce, replica_groups={{0,1}}
       ar_1 = f32[] all-reduce-done(ar_0)
-      rs_0 = ((f32[2]), f32[1]) reduce-scatter-start(p1), to_apply=reduce, dimensions={0}, replica_groups={{0, 1}}
+      rs_0 = ((f32[2]), f32[1]) reduce-scatter-start(p1), to_apply=reduce,
+          dimensions={0}, replica_groups={{0, 1}}
       rs_1 = f32[1] reduce-scatter-done(rs_0)
       add_0 = f32[2] add(p1, p2)
       ROOT _ = (f32[], f32[1], f32[2]) tuple(ar_1, rs_1, add_0)
@@ -518,7 +524,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, SchedulePipelinedSendRecvsLate) {
 
   absl::string_view kFdoProfile = "";
   auto config = GetModuleConfig(
-      kFdoProfile, /*enable_experimental_pipeline_parallelism_opt=*/true);
+      kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
+          PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 

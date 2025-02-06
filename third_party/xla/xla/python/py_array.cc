@@ -38,7 +38,10 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -64,11 +67,13 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/python/guard_lib.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
@@ -84,6 +89,7 @@ limitations under the License.
 #include "xla/python/py_values.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/sharding.h"
+#include "xla/python/to_ifrt_sharding.h"
 #include "xla/python/traceback.h"
 #include "xla/python/types.h"
 #include "xla/python/util.h"
@@ -91,6 +97,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/python/lib/core/numpy.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -474,9 +482,8 @@ PyArray_Storage::PyArray_Storage(
   prev = nullptr;
 }
 
-void PyArray::PyInit(PyArray self, nb::object aval, nb::object sharding,
-                     absl::Span<const PyArray> py_arrays, bool committed,
-                     bool skip_checks) {
+void PyInit_helper(PyArray self, nb::object aval, nb::object sharding,
+                   absl::Span<const PyArray> py_arrays, bool committed) {
   auto dtype = nb::cast<nb_dtype>(aval.attr("dtype"));
   auto shape = nb::cast<std::vector<int64_t>>(aval.attr("shape"));
   auto ifrt_array =
@@ -486,9 +493,19 @@ void PyArray::PyInit(PyArray self, nb::object aval, nb::object sharding,
             std::move(shape), std::move(sharding), committed,
             py_arrays.at(0).py_client(), Traceback::Get(),
             std::move(ifrt_array), xla::PjRtFuture<>());
+}
 
-  if (!skip_checks) {
-    self.CheckAndRearrange();
+void PyArray::PyInit(PyArray self, nb::object aval, nb::object sharding,
+                     absl::Span<const PyArray> py_arrays, bool committed,
+                     bool skip_checks) {
+  if (skip_checks) {
+    PyInit_helper(self, aval, sharding, py_arrays, committed);
+  } else {
+    nb::object rearranged_arrays =
+        self.CheckAndRearrange(py_arrays, sharding, aval);
+    auto rearranged_py_arrays =
+        nb::cast<std::vector<PyArray>>(rearranged_arrays);
+    PyInit_helper(self, aval, sharding, rearranged_py_arrays, committed);
   }
 }
 
@@ -589,7 +606,8 @@ PyArray::PyArray(nb::object aval, bool weak_type, nb_dtype dtype,
             std::move(result_status));
 
   if (!skip_checks) {
-    CheckAndRearrange();
+    this->attr("_arrays") = this->attr("_check_and_rearrange")(
+        this->attr("_arrays"), this->attr("_sharding"), this->attr("aval"));
   }
 }
 
@@ -601,7 +619,11 @@ const PyArray::Storage& PyArray::GetStorage() const {
   return *GetPyArrayStorageFromObject(reinterpret_cast<PyArrayObject*>(ptr()));
 }
 
-void PyArray::CheckAndRearrange() { this->attr("_check_and_rearrange")(); }
+nb::object PyArray::CheckAndRearrange(const absl::Span<const PyArray> py_arrays,
+                                      const nb::object sharding,
+                                      const nb::object aval) {
+  return this->attr("_check_and_rearrange")(py_arrays, sharding, aval);
+}
 
 void PyArray::SetIfrtArray(tsl::RCReference<ifrt::Array> ifrt_array) {
   GetStorage().ifrt_array = std::move(ifrt_array);
@@ -998,7 +1020,8 @@ absl::StatusOr<nb::object> CudaArrayInterfaceToBuffer(
   TF_ASSIGN_OR_RETURN(
       auto pjrt_buffer,
       device->client()->pjrt_client()->CreateViewOfDeviceBuffer(
-          static_cast<char*>(data_ptr), shape, pjrt_device->pjrt_device(),
+          static_cast<char*>(data_ptr), shape,
+          *pjrt_device->pjrt_device()->default_memory_space(),
           on_delete_callback,
           stream <= 2 ? std::nullopt : std::make_optional(stream)));
   auto* ifrt_client =
@@ -1283,6 +1306,117 @@ absl::StatusOr<PyArray> PyArray::BatchedDevicePut(
   return PyArray(aval, weak_type, dtype, std::move(shape), sharding,
                  dst_devices[0]->client(), Traceback::Get(),
                  std::move(ifrt_array), committed, /*skip_checks=*/true);
+}
+
+absl::StatusOr<PyArray> PyArray::ReorderShards(
+    PyArray x, nanobind::object dst_sharding,
+    ifrt::ArrayCopySemantics array_copy_semantics) {
+  xla::ifrt::Array* ifrt_array_ptr = x.ifrt_array();
+  if (ifrt_array_ptr == nullptr) {
+    return absl::InvalidArgumentError(
+        "Reorder() called on deleted or donated buffer");
+  }
+
+  ifrt::Client* const client = ifrt_array_ptr->client();
+
+  const auto& device_list = ifrt_array_ptr->sharding().devices();
+  TF_ASSIGN_OR_RETURN(auto dst_device_list, GetIfrtDeviceList(dst_sharding));
+  if (device_list->AddressableDeviceList()->size() !=
+      dst_device_list->AddressableDeviceList()->size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Array is expected to have ",
+        dst_device_list->AddressableDeviceList()->size(),
+        " addressable shards, but has ",
+        device_list->AddressableDeviceList()->size(), " addressable shards"));
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const xla::ifrt::Sharding> dst_ifrt_sharding,
+      GetIfrtConcreteEvenSharding(dst_sharding, ifrt_array_ptr->dtype(),
+                                  ifrt_array_ptr->shape()));
+
+  tsl::RCReference<xla::ifrt::Array> new_ifrt_array;
+  {
+    nb::gil_scoped_release gil_release;
+
+    const absl::Span<xla::ifrt::Device* const> addressable_devices =
+        device_list->AddressableDeviceList()->devices();
+    const absl::Span<xla::ifrt::Device* const> dst_addressable_devices =
+        dst_device_list->AddressableDeviceList()->devices();
+
+    absl::flat_hash_map<int, int> device_id_to_array_shard_index;
+    device_id_to_array_shard_index.reserve(dst_addressable_devices.size());
+    for (int i = 0; i < dst_addressable_devices.size(); ++i) {
+      const int device_id = dst_addressable_devices[i]->Id().value();
+      const bool inserted =
+          device_id_to_array_shard_index.insert({device_id, i}).second;
+      if (!inserted) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Sharding contains duplicate device id=", device_id));
+      }
+    }
+
+    std::vector<int64_t> from_shard_indices;
+    from_shard_indices.reserve(addressable_devices.size());
+    std::vector<int64_t> to_shard_indices;
+    to_shard_indices.reserve(dst_addressable_devices.size());
+    for (int i = 0; i < dst_addressable_devices.size(); ++i) {
+      from_shard_indices.push_back(i);
+      const int shard_device_id = addressable_devices[i]->Id().value();
+      const auto it = device_id_to_array_shard_index.find(shard_device_id);
+      if (it == device_id_to_array_shard_index.end()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Array shard ", i, " is on device id=", shard_device_id,
+            ", but sharding does not have a shard on that device."));
+      }
+      to_shard_indices.push_back(it->second);
+    }
+
+    auto mappings =
+        std::make_shared<std::vector<xla::ifrt::RemapPlan::Mapping>>();
+    {
+      auto& mapping = mappings->emplace_back();
+      mapping.in_array = 0;
+      mapping.out_array = 0;
+      mapping.from.reserve(dst_addressable_devices.size());
+      mapping.to.reserve(dst_addressable_devices.size());
+      for (int64_t i = 0; i < dst_addressable_devices.size(); ++i) {
+        mapping.from.push_back(xla::ifrt::RemapPlan::Interval{
+            from_shard_indices[i], from_shard_indices[i] + 1, 1});
+        mapping.to.push_back(xla::ifrt::RemapPlan::Interval{
+            to_shard_indices[i], to_shard_indices[i] + 1, 1});
+      }
+    }
+
+    xla::ifrt::RemapPlan plan = {
+        /*input_specs=*/{xla::ifrt::ArraySpec{
+            /*dtype=*/ifrt_array_ptr->dtype(),
+            /*shape=*/ifrt_array_ptr->shape(),
+            /*sharding=*/ifrt_array_ptr->shared_ptr_sharding()}},
+        /*output_specs=*/
+        {xla::ifrt::ArraySpec{/*dtype=*/ifrt_array_ptr->dtype(),
+                              /*shape=*/ifrt_array_ptr->shape(),
+                              /*sharding=*/std::move(dst_ifrt_sharding)}},
+        /*mappings=*/std::move(mappings),
+    };
+    DCHECK_OK(plan.Validate());
+    std::vector<tsl::RCReference<xla::ifrt::Array>> input;
+    input.push_back(tsl::FormRef(ifrt_array_ptr));
+    TF_ASSIGN_OR_RETURN(
+        auto remapped,
+        client->RemapArrays(plan, absl::MakeSpan(input), array_copy_semantics));
+
+    TF_RET_CHECK(remapped.size() == 1);
+    new_ifrt_array = std::move(remapped.front());
+  }
+
+  return xla::PyArray(nb::borrow<nb::object>(x.aval().ptr()), x.weak_type(),
+                      nb::borrow<xla::nb_dtype>(x.dtype().ptr()),
+                      std::vector<int64_t>(x.shape().begin(), x.shape().end()),
+                      std::move(dst_sharding), x.py_client(), x.traceback(),
+                      std::move(new_ifrt_array),
+                      /*committed=*/true,
+                      /*skip_checks=*/true);
 }
 
 absl::Status PyArray::BatchedBlockUntilReady(std::vector<nb::object> objs) {
@@ -1582,7 +1716,82 @@ absl::StatusOr<nb::object> PyHostValue::AsNumPyArray(
   } else {
     TF_RETURN_IF_ERROR(ready_.Await());
   }
+  if (string_array_contents_ != nullptr) {
+    TF_RETURN_IF_ERROR(ConvertStringArrayContentsToNumpyArray(ifrt_array));
+  }
   return value_;
+}
+
+absl::Status PyHostValue::ConvertStringArrayContentsToNumpyArray(
+    ifrt::Array* ifrt_array) {
+#ifdef NPY_2_0_API_VERSION
+  if (PyArray_RUNTIME_VERSION < NPY_2_0_API_VERSION) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("String arrays are not supported in NumPy version: ",
+                     PyArray_RUNTIME_VERSION));
+  }
+  auto numpy_dtype = nb::steal<nb_dtype>(
+      reinterpret_cast<PyObject*>(PyArray_DescrFromType(NPY_VSTRING)));
+  value_ = nb_numpy_ndarray(numpy_dtype, ifrt_array->shape().dims(),
+                            /*strides=*/std::nullopt);
+
+  auto dst_py_array_obj = reinterpret_cast<::PyArrayObject*>(value_.ptr());
+  auto iter =
+      nb::steal(PyArray_IterNew(reinterpret_cast<PyObject*>(dst_py_array_obj)));
+  for (auto& cord : *string_array_contents_) {
+    absl::string_view input_str_view = cord.Flatten();
+    auto py_unicode = nb::steal(PyUnicode_FromStringAndSize(
+        input_str_view.data(), input_str_view.size()));
+    if (py_unicode.ptr() == nullptr) {
+      return absl::InternalError("PyUnicode_FromStringAndSize failed");
+    }
+    if (PyArray_SETITEM(dst_py_array_obj,
+                        static_cast<char*>(PyArray_ITER_DATA(iter.ptr())),
+                        py_unicode.ptr()) != 0) {
+      return absl::InternalError("PyArray_SETITEM failed");
+    }
+    PyArray_ITER_NEXT(iter.ptr());
+  }
+
+  value_.attr("flags").attr("writeable") = nb::bool_(false);
+
+  string_array_contents_.reset();
+
+  return absl::OkStatus();
+#else
+  return absl::FailedPreconditionError(
+      "String arrays are not supported in this NumPy version.");
+#endif
+}
+
+absl::Status PyHostValue::CopyStringArrayToHostAsync(
+    std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array) {
+  auto transfer_guard_formatter = [ifrt_array] {
+    return absl::StrCat(
+        "shape=(", absl::StrJoin(ifrt_array->shape().dims(), ","),
+        "), dtype=", ifrt_array->dtype().DebugString(), ", device=",
+        ifrt_array->sharding().devices()->devices().front()->DebugString());
+  };
+  TF_RETURN_IF_ERROR(
+      jax::ApplyTransferGuardToDeviceToHost(transfer_guard_formatter));
+
+  TF_ASSIGN_OR_RETURN(nb_dtype dtype, IfrtDtypeToNbDtype(ifrt_array->dtype()));
+  auto shape = ifrt_array->shape();
+
+  // Allocate a vector of cords to hold the contents of the array until
+  // they are until they are ultimately converted to a numpy array as part
+  // of the `AsNumPyArray` call.
+  string_array_contents_ =
+      std::make_shared<std::vector<absl::Cord>>(shape.num_elements());
+  ready_ = ifrt_array->CopyToHostBuffer(string_array_contents_->data(),
+                                        /*byte_strides=*/std::nullopt,
+                                        ifrt::ArrayCopySemantics::kAlwaysCopy);
+
+  ready_.OnReady(
+      [string_array_contents = string_array_contents_](absl::Status) {
+      });  // Keeps the cords alive until the copy is done.
+
+  return absl::OkStatus();
 }
 
 absl::Status PyHostValue::CopyToHostAsync(
@@ -1591,6 +1800,12 @@ absl::Status PyHostValue::CopyToHostAsync(
     // The array value has been populated, so CopyToHostAsync has been called.
     return absl::OkStatus();
   }
+
+  // Copying in Arrays of type kString requires some special handling
+  if (ifrt_array->dtype().kind() == ifrt::DType::kString) {
+    return CopyStringArrayToHostAsync(dynamic_shape_holder, ifrt_array);
+  }
+
   auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array);
   if (arr != nullptr && !arr->pjrt_buffers().front()->IsTuple() &&
       IsZeroCopyableCpuBuffer(arr->pjrt_buffers().front().get())) {

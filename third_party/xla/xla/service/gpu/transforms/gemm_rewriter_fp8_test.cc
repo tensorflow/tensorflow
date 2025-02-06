@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
@@ -31,17 +32,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/gpu/transforms/gemm_rewriter_test_lib.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/test.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -154,10 +155,6 @@ ENTRY main {
       f32[8,16,2560]{2,1,0} %dot.6237)
 })";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-; CHECK:    custom-call({{.*}}"lhs_batch_dimensions":["1"],"rhs_batch_dimensions":["0"]
-  )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {

@@ -31,10 +31,6 @@ namespace {
 
 using ::litert::qnn::QnnManager;
 
-static constexpr const int VERSION_MAJOR = 0;
-static constexpr const int VERSION_MINOR = 1;
-static constexpr const int VERSION_PATCH = 0;
-
 static std::unique_ptr<QnnManager> TheQnnManager;
 
 QnnManager& Qnn() { return *TheQnnManager; }
@@ -65,7 +61,7 @@ LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
   auto configs = QnnManager::DefaultBackendConfigs();
   if (auto qnn_manager = QnnManager::Create(configs, shared_library_dir_opt);
       !qnn_manager) {
-    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().c_str());
     return qnn_manager.Error().Status();
   } else {
     std::swap(TheQnnManager, *qnn_manager);
@@ -88,8 +84,8 @@ LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
   snprintf(BuildId, sizeof(BuildId),
            "Qualcomm Dispatch API version %d.%d.%d, QNN API version %d.%d.%d, "
            "build id: %s",
-           VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH,
-           qnn_api_version.coreApiVersion.major,
+           LITERT_API_VERSION_MAJOR, LITERT_API_VERSION_MINOR,
+           LITERT_API_VERSION_PATCH, qnn_api_version.coreApiVersion.major,
            qnn_api_version.coreApiVersion.minor,
            qnn_api_version.coreApiVersion.patch, build_id);
   BuildId[sizeof(BuildId) - 1] = 0;
@@ -118,7 +114,7 @@ LiteRtStatus DeviceContextCreate(LiteRtDispatchDeviceContext* device_context) {
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to create device context: %s",
-               context.Error().Message().data());
+               context.Error().Message().c_str());
     return context.Error().Status();
   }
 }
@@ -139,7 +135,7 @@ LiteRtStatus GetInputRequirements(
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
-               requirements.Error().Message().data());
+               requirements.Error().Message().c_str());
     return requirements.Error().Status();
   }
 }
@@ -155,7 +151,7 @@ LiteRtStatus GetOutputRequirements(
     return kLiteRtStatusOk;
   } else {
     LITERT_LOG(LITERT_ERROR, "Failed to get tensor buffer requirements: %s",
-               requirements.Error().Message().data());
+               requirements.Error().Message().c_str());
     return requirements.Error().Status();
   }
 }
@@ -165,7 +161,7 @@ LiteRtStatus RegisterTensorBuffer(
     LiteRtTensorBufferHandle* tensor_buffer_handle) {
   if (auto status = device_context->RegisterTensorBuffer(buffer); !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to register buffer: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   } else {
     *tensor_buffer_handle = *status;
@@ -177,7 +173,7 @@ LiteRtStatus UnregisterTensorBuffer(LiteRtDispatchDeviceContext device_context,
                                     LiteRtTensorBufferHandle handle) {
   if (auto status = device_context->UnregisterTensorBuffer(handle); !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to unregister buffer: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   } else {
     return kLiteRtStatusOk;
@@ -194,7 +190,7 @@ LiteRtStatus InvocationContextCreate(
       function_name);
   if (!context) {
     LITERT_LOG(LITERT_ERROR, "Failed to create context from context binary: %s",
-               context.Error().Message().data());
+               context.Error().Message().c_str());
     return context.Error().Status();
   }
   *invocation_context = context->release();
@@ -215,7 +211,7 @@ LiteRtStatus AttachInput(LiteRtDispatchInvocationContext invocation_context,
                                                     tensor_buffer_handle);
       !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to attach input buffer: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;
@@ -228,7 +224,7 @@ LiteRtStatus AttachOutput(LiteRtDispatchInvocationContext invocation_context,
                                                      tensor_buffer_handle);
       !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to attach output buffer: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;
@@ -251,7 +247,7 @@ LiteRtStatus DetachOutput(LiteRtDispatchInvocationContext invocation_context,
 LiteRtStatus Invoke(LiteRtDispatchInvocationContext invocation_context) {
   if (auto status = invocation_context->Execute(); !status) {
     LITERT_LOG(LITERT_ERROR, "Failed to execute invocation context: %s",
-               status.Error().Message().data());
+               status.Error().Message().c_str());
     return status.Error().Status();
   }
   return kLiteRtStatusOk;
@@ -280,9 +276,9 @@ LiteRtDispatchInterface TheInterface = {
 };
 
 LiteRtDispatchApi TheApi = {
-    /*.version=*/{/*.major=*/VERSION_MAJOR,
-                  /*.minor=*/VERSION_MINOR,
-                  /*.patch=*/VERSION_PATCH},
+    /*.version=*/{/*.major=*/LITERT_API_VERSION_MAJOR,
+                  /*.minor=*/LITERT_API_VERSION_MINOR,
+                  /*.patch=*/LITERT_API_VERSION_PATCH},
     /*.interface=*/&TheInterface,
     /*.async_interface=*/nullptr,
     /*.graph_interface=*/nullptr,

@@ -15,17 +15,27 @@ limitations under the License.
 
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 
-#include <memory>
+#include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Module.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla::cpu {
+
+using ::testing::ElementsAre;
+using ::testing::Property;
 
 TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   static constexpr absl::string_view kLlvmIr = R"(
@@ -37,21 +47,30 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   LlvmIrKernelEmitter::KernelArg arg{1024, BufferUse::kWrite};
   LlvmIrKernelEmitter emitter(kLlvmIr, "noop", se::ThreadDim(), {arg});
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelSpec> kernel,
-                          emitter.EmitKernelSpec());
+  TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
+                          emitter.EmitKernelDefinition());
+
+  // Check that LLVM IR was parsed and loaded as a LLVM IR kernel source.
+  auto [kernel_spec, kernel_source] = std::move(kernel_definition).release();
+
+  EXPECT_EQ(kernel_spec.name(), "noop");
 
   // Check that kernel arguments were converted to buffer allocations.
-  ASSERT_EQ(kernel->buffer_uses().size(), 1);
+  ASSERT_EQ(kernel_spec.buffer_uses().size(), 1);
 
-  BufferUse buffer_use = kernel->buffer_uses().front();
+  BufferUse buffer_use = kernel_spec.buffer_uses().front();
   EXPECT_EQ(buffer_use.access(), BufferUse::kWrite);
   EXPECT_EQ(buffer_use.slice().index(), 0);
   EXPECT_EQ(buffer_use.slice().offset(), 0);
   EXPECT_EQ(buffer_use.slice().size(), 1024);
 
-  // Check that LLVM IR was parsed and loaded as a LLVM IR kernel source.
-  auto& src = tsl::down_cast<LlvmIrKernelSource&>(kernel->kernel_source());
-  EXPECT_EQ(src.kernel_function()->getName(), "noop");
+  auto& src = tsl::down_cast<LlvmIrKernelSource&>(*kernel_source);
+  llvm::orc::ThreadSafeModule thread_safe_module =
+      std::move(src).thread_safe_module();
+  const llvm::Module::FunctionListType& functions =
+      thread_safe_module.getModuleUnlocked()->getFunctionList();
+  EXPECT_THAT(functions,
+              ElementsAre(Property(&llvm::Function::getName, "noop")));
 }
 
 }  // namespace xla::cpu

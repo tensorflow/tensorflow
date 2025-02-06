@@ -55,8 +55,10 @@ xla_client._xla.jax_jit.set_thread_local_state_initialization_callback(
 
 bfloat16 = xla_client.bfloat16
 # TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+# float4_e2m1fn = xla_client.float4_e2m1fn
 # float8_e3m4 = xla_client.float8_e3m4
 # float8_e4m3 = xla_client.float8_e4m3
+# float8_e8m0fnu = xla_client.float8_e8m0fnu
 float8_e4m3fn = xla_client.float8_e4m3fn
 float8_e4m3fnuz = xla_client.float8_e4m3fnuz
 float8_e4m3b11fnuz = xla_client.float8_e4m3b11fnuz
@@ -189,7 +191,7 @@ def TestFactory(xla_backend,
   fp8_dtypes = [float8_e4m3b11fnuz, float8_e4m3fn, float8_e5m2]
   standard_dtypes += fp8_dtypes
   # TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
-  # standard_dtypes += [float8_e3m4, float8_e4m3]
+  # standard_dtypes += [float4_e2m1fn, float8_e3m4, float8_e4m3, float8_e8m0fnu]
   dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
@@ -3331,8 +3333,19 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       self.assertGreaterEqual(self.backend.pjrt_c_api_major_version, 0)
       self.assertGreaterEqual(self.backend.pjrt_c_api_minor_version, 0)
 
+    @unittest.skipUnless(
+        not pjrt_c_api and tfrt_tpu,
+        "Test that attributes are zero for non-plugin tfrt_tpu",
+    )
+    def testStaticTfrtTpuAttributes(self):
+      self.assertEqual(self.backend.pjrt_c_api_major_version, 0)
+      self.assertEqual(self.backend.pjrt_c_api_minor_version, 0)
+      # CL number is defined as -1 when running as test.
+      self.assertEqual(self.backend.__getattr__("cl_number"), -1)
+
     @unittest.skipIf(
-        cloud_tpu or pjrt_c_api, "PJRT version only exist for plugins"
+        cloud_tpu or pjrt_c_api or (not pjrt_c_api and tfrt_tpu),
+        "PJRT version only exist for plugins",
     )
     def testNotExistPjRtCApiVersion(self):
       with self.assertRaises(AttributeError):

@@ -49,7 +49,7 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {

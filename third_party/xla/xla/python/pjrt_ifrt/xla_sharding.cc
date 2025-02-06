@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -40,9 +41,9 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -422,6 +423,11 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
 std::string HloSharding::DebugString() const {
   return absl::StrFormat("HloSharding(memory_kind: %v, hlo_sharding: %s)",
                          memory_kind_, xla_hlo_sharding_.ToString());
+}
+
+void HloSharding::Hash(absl::HashState state) const {
+  absl::HashState::combine(std::move(state), devices_, memory_kind_,
+                           xla_hlo_sharding_);
 }
 
 std::vector<IndexDomain> TEST_HloShardingIndexDomainsSlowPath(

@@ -78,8 +78,8 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/python/lib/core:numpy",
         "@pybind11",
     ],
@@ -728,7 +728,7 @@ py_strict_library(
     name = "function",
     srcs = ["function.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
         "//tensorflow/python/eager/polymorphic_function:concrete_function",

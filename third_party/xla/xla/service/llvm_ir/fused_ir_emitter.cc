@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
@@ -35,9 +36,9 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/collectives/in_process_collectives.h"
@@ -83,8 +84,11 @@ absl::string_view Thunk::KindToString(Kind kind) {
       return "while";
     case Kind::kXnnFusion:
       return "xnn-fusion";
+    case Kind::kUnknown:
+      return "unknown";
   }
 }
+
 Thunk::Thunk(Kind kind, Info info)
     : kind_(kind),
       info_(std::move(info)),
@@ -138,15 +142,17 @@ Thunk::CustomCallExecuteParams::Create(
           ? run_options->device_ordinal()
           : run_options->stream()->parent()->device_ordinal();
 
-  return CustomCallExecuteParams{device_ordinal,
+  return CustomCallExecuteParams{run_options->run_id(), device_ordinal,
                                  run_options->intra_op_thread_pool(),
                                  run_options->ffi_execution_context()};
 }
 
 Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
-    int32_t device_ordinal, const Eigen::ThreadPoolDevice* intra_op_thread_pool,
+    RunId run_id, int32_t device_ordinal,
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool,
     const ffi::ExecutionContext* ffi_execution_context)
-    : device_ordinal(device_ordinal),
+    : run_id(run_id),
+      device_ordinal(device_ordinal),
       intra_op_thread_pool(intra_op_thread_pool),
       ffi_execution_context(ffi_execution_context) {}
 

@@ -19,9 +19,9 @@
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {

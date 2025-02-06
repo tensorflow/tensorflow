@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/util/device_name_utils.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {

@@ -21,12 +21,16 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/integrations/stream_executor_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
-#include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
@@ -47,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -116,11 +119,21 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
 
     bool use_unified_memory = options.per_process_gpu_memory_fraction() > 1.0 ||
                               options.experimental().use_unified_memory();
-    DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
-        platform->ExecutorForDevice(platform_device_id.value()).value(),
-        platform_device_id,
-        use_unified_memory ? stream_executor::MemoryType::kUnified
-                           : stream_executor::MemoryType::kDevice);
+    SubAllocator* sub_allocator = nullptr;
+    if (use_unified_memory) {
+      auto unified_memory_allocator =
+          platform->ExecutorForDevice(platform_device_id.value())
+              .value()
+              ->CreateMemoryAllocator(stream_executor::MemoryType::kUnified)
+              .value();
+      sub_allocator = new stream_executor::StreamExecutorAllocator(
+          std::move(unified_memory_allocator),
+          stream_executor::MemoryType::kUnified, platform_device_id.value());
+    } else {
+      sub_allocator = new DeviceMemAllocator(
+          platform->ExecutorForDevice(platform_device_id.value()).value(),
+          platform_device_id);
+    }
     Allocator* device_allocator = nullptr;
     auto cplatform = dynamic_cast<se::CPlatform*>(platform);
     if (cplatform == nullptr) {
@@ -182,8 +195,11 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
 
   while (static_cast<int>(pluggable_device_host_allocators_.size()) <=
          numa_node) {
-    SubAllocator* sub_allocator = new DeviceHostAllocator(
-        se, numa_node, /*alloc_visitors=*/{}, /*free_visitors=*/{});
+    auto host_memory_allocator =
+        se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+    tsl::SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
+        std::move(host_memory_allocator), stream_executor::MemoryType::kHost,
+        numa_node);
     int64_t pluggable_device_host_mem_limit_in_mb = -1;
     absl::Status status = ReadInt64FromEnvVar(
         "TF_GPU_HOST_MEM_LIMIT_IN_MB", 1LL << 17 /*128GB max by default*/,

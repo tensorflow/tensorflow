@@ -36,7 +36,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/sharding_param.pb.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {

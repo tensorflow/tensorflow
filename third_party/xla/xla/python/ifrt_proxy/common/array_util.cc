@@ -29,7 +29,7 @@
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt_proxy/common/array_util.pb.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {

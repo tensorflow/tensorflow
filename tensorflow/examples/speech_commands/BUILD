@@ -317,8 +317,8 @@ tf_cc_binary(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:types",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:types",
         "@local_xla//xla/tsl/util:command_line_flags",
     ],
 )
@@ -447,7 +447,7 @@ tf_cc_binary(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:types",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 

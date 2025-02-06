@@ -49,13 +49,12 @@ message SlicedPrefetchOptions {
 // Memory space assignment options for prefetching windows of data
 message WindowPrefetchDetail {
   message WindowDetail {
+    reserved 3;
+
     // Index of the operand that is window prefetched.
     int64 operand = 1;
     // Window buffer size in bytes.
     int64 size = 2;
-    // Unique identifier to distinguish the buffers that are associated with the
-    // same operand.
-    int64 uid = 3;
   }
 
   repeated WindowDetail windows = 1;

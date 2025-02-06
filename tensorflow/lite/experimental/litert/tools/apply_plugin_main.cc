@@ -19,11 +19,9 @@
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/CommandLine.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
 #include "tensorflow/lite/experimental/litert/tools/apply_plugin.h"
 #include "tensorflow/lite/experimental/litert/tools/outstream.h"
 
-using ::litert::internal::Serialization;
 using ::litert::tools::ApplyPlugin;
 using ::litert::tools::ApplyPluginRun;
 using ::litert::tools::UserStream;
@@ -76,11 +74,6 @@ static llvm::cl::opt<std::string> err(
                    "\"--\" for standard err, \"none\" for null stream."),
     llvm::cl::init("--"));
 
-// NOLINTNEXTLINE
-static llvm::cl::opt<std::string> serialization(
-    "serialization", llvm::cl::desc("Serialization strategy to use."),
-    llvm::cl::init("METADATA"));
-
 ApplyPluginRun::Ptr ParseFlags() {
   auto res = std::make_unique<ApplyPluginRun>();
 
@@ -105,14 +98,6 @@ ApplyPluginRun::Ptr ParseFlags() {
     res->cmd = ApplyPluginRun::Cmd::NOOP;
   } else {
     return nullptr;
-  }
-
-  if (serialization == "METADATA") {
-    res->serialization = Serialization::kMetadata;
-  } else if (serialization == "APPEND") {
-    res->serialization = Serialization::kAppend;
-  } else {
-    res->serialization = Serialization::kUnknown;
   }
 
   return res;

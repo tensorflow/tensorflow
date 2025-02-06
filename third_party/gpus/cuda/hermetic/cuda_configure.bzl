@@ -29,6 +29,7 @@ load(
     "//third_party/remote_config:common.bzl",
     "get_cpu_value",
     "get_host_environ",
+    "realpath",
     "which",
 )
 
@@ -47,7 +48,7 @@ def _find_cc(repository_ctx):
         print(("Cannot find {}, either correct your path," +
                " or set the CLANG_CUDA_COMPILER_PATH or CC" +
                " environment variables").format(cc_name))  # buildifier: disable=print
-    return cc
+    return None if not cc else realpath(repository_ctx, cc)
 
 def _auto_configure_fail(msg):
     """Output failure message when cuda configuration fails."""
@@ -170,9 +171,12 @@ def _compute_capabilities(repository_ctx):
         for prefix in ["compute_", "sm_"]:
             if not capability.startswith(prefix):
                 continue
-            if len(capability) == len(prefix) + 2 and capability[-2:].isdigit():
-                continue
-            if len(capability) == len(prefix) + 3 and capability.endswith("90a"):
+            version = capability[len(prefix):]
+
+            # Allow PTX accelerated features: sm_90a, sm_100a, etc.
+            if version.endswith("a"):
+                version = version[:-1]
+            if version.isdigit() and len(version) in (2, 3):
                 continue
             _auto_configure_fail("Invalid compute capability: %s" % capability)
 

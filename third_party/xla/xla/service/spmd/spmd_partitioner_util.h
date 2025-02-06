@@ -55,10 +55,10 @@ limitations under the License.
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -542,11 +542,9 @@ GatherScatterOperandsShardedAcrossParallelDims(
 
 // Returns rotate_amount if the concat(lhs, rhs) is equivalent to rotating the
 // elements along the concat dimension to the right by rotate_amount, where the
-// input of rotation is the shard operand of lhs and rhs. Returns -1 if the
-// pattern is not found.
-int64_t FindRotateRightPattern(const HloInstruction* concat,
-                               const HloInstruction* lhs,
-                               const HloInstruction* rhs);
+// input of rotation is the shard operand of lhs and rhs. Returns std::nullopt
+// if the pattern is not found.
+std::optional<int64_t> FindRotateRightPattern(const HloInstruction* concat);
 
 // Describes the pad with wrap pattern.
 struct PadWithWrapPattern {
@@ -556,12 +554,11 @@ struct PadWithWrapPattern {
   std::vector<const HloInstruction*> rhs_modifiers;
 };
 
-// Returns the `PadWithWrapPattern` if the concat(lhs,mid,rhs) is equivalent to
-// padding mid with wrapping (i.e., padding mid with slices of itself). Return
-// std::nullopt if the pattern is not found.
+// Returns the `PadWithWrapPattern` if the concat(lhs, mid, rhs) is equivalent
+// to padding mid with wrapping (i.e., padding mid with slices of itself).
+// Returns std::nullopt if the pattern is not found.
 std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
-    const HloInstruction* concat, const HloInstruction* lhs,
-    const HloInstruction* mid, const HloInstruction* rhs);
+    const HloInstruction* concat);
 
 // Reshards data for a slice to be happening on such data with the passed
 // parameters.

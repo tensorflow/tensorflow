@@ -15,10 +15,12 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_GOOGLE_TENSOR_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_GOOGLE_TENSOR_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_
 
+#include <cstddef>
 #include <memory>
 
 #include "absl/container/flat_hash_set.h"
 #include "third_party/odml/infra/southbound/sb_api.h"
+#include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/litert/vendors/google_tensor/dispatch/southbound.h"
@@ -32,9 +34,25 @@ class LiteRtDispatchDeviceContextT {
   static litert::Expected<Ptr> Create(
       const litert::google_tensor::Southbound& southbound);
 
+  litert::Expected<LiteRtTensorBufferHandle> RegisterTensorBuffer(
+      LiteRtTensorBuffer tensor_buffer);
+
+  litert::Expected<void> UnregisterTensorBuffer(
+      LiteRtTensorBufferHandle tensor_buffer_handle);
+
+  litert::Expected<LiteRtDispatchGraph> CreateGraph();
+  litert::Expected<void> DestroyGraph(LiteRtDispatchGraph graph);
+
+  litert::Expected<LiteRtDispatchExecutableHandle> LoadExecutable(
+      LiteRtDispatchExecutableType type, const void* bytecode,
+      size_t bytecode_size);
+
+  litert::Expected<void> UnloadExecutable(
+      LiteRtDispatchExecutableHandle exec_handle);
+
   ThrContext* thr_context() { return thr_context_; }
+
   void add_graph(ThrGraph* graph) { thr_graphs_.insert(graph); }
-  void remove_graph(ThrGraph* graph) { thr_graphs_.erase(graph); }
 
  private:
   explicit LiteRtDispatchDeviceContextT(

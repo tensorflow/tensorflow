@@ -512,6 +512,8 @@ absl::StatusOr<bool> HloControlFlowFlattening::Run(
           changed = true;
         }
       } else if (remove_comm_ && IsCollective(instruction) &&
+                 (instruction->opcode() != HloOpcode::kSend &&
+                  instruction->opcode() != HloOpcode::kRecv) &&
                  !instruction->parent()->IsFusionComputation() &&
                  (instruction->opcode() != HloOpcode::kAsyncStart &&
                   instruction->opcode() != HloOpcode::kAsyncUpdate)) {

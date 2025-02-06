@@ -135,9 +135,9 @@ StringTfLiteTensorBuffer::StringTfLiteTensorBuffer(const TfLiteTensor* tensor,
   }
 }
 
-tensorflow::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
-                                         tensorflow::Tensor* tf_tensor,
-                                         bool allow_reusing) {
+absl::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
+                                   tensorflow::Tensor* tf_tensor,
+                                   bool allow_reusing) {
   if (resource::IsBuiltinResource(tensor)) {
     // If this is native TF Lite resource variable, then we create a TF resource
     // tensor where the tensor handle encodes the identifier of the TF Lite

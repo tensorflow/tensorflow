@@ -73,6 +73,8 @@ TF_CONST_INIT extern const absl::string_view kTensorFlowOpLineName;
 TF_CONST_INIT extern const absl::string_view kXlaModuleLineName;
 TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
 TF_CONST_INIT extern const absl::string_view kSparseCoreStepLineName;
+TF_CONST_INIT extern const absl::string_view kSparseCoreOpLineName;
+TF_CONST_INIT extern const absl::string_view kSparseCoreModuleLineName;
 TF_CONST_INIT extern const absl::string_view kXlaAsyncOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
@@ -357,6 +359,8 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleNumActions,
   kMegaScaleCollectiveType,
   kMegaScaleInputSize,
+  kMegaScaleSendChannelId,
+  kMegaScaleRecvChannelId,
   kMegaScaleSlackUs,
   kMegaScaleActionType,
   kMegaScaleStartEndType,

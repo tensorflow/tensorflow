@@ -379,7 +379,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
   const int64_t kNumElems = 1024;
 
   for (std::vector<int64_t> devices :
-       PowerSetOfIota(std::min(num_devices(), 4l))) {
+       PowerSetOfIota(std::min(num_devices(), static_cast<int64_t>(4)))) {
     SCOPED_TRACE(absl::StrFormat("Running on devices {%s}",
                                  absl::StrJoin(devices, ", ")));
 
@@ -1255,12 +1255,6 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1) {
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
-  if (IsMlirLoweringEnabled()) {
-    // TupleAllReduce is not supported by MHLO. As of late 2022, there is no
-    // known way to generate it from any frontend.
-    GTEST_SKIP();
-  }
-
   std::string hlo_string = R"(
     HloModule test
 
@@ -2607,6 +2601,7 @@ class Fp8CollectiveOpsTest : public CollectiveOpsTest {
         IsCuda() ? "f8e4m3fn" : "f8e4m3fnuz";
     replacements_[kF8E5M2DatatypePlaceholder] =
         IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
+    replacements_[kF8E8M0DatatypePlaceholder] = "f8e8m0fnu";
   }
 
  protected:
@@ -2626,33 +2621,45 @@ class Fp8CollectiveOpsTest : public CollectiveOpsTest {
  private:
   static constexpr const char* kF8E4M3DatatypePlaceholder{"<<F8E4M3>>"};
   static constexpr const char* kF8E5M2DatatypePlaceholder{"<<F8E5M2>>"};
+  static constexpr const char* kF8E8M0DatatypePlaceholder{"<<F8E8M0>>"};
 };
 
 XLA_TEST_F(Fp8CollectiveOpsTest, DISABLED_ON_CPU(AllGather_8BitFloat)) {
-  const char* const kModuleStr = R"(
+  const char* const kModuleTemplate = R"(
   HloModule test
   ENTRY test_computation {
-    a0 = <<F8E4M3>>[1,2] constant({{1,2}})
-    allgather = <<F8E4M3>>[2, 2] all-gather(a0), dimensions={0}
-    p = <<F8E4M3>>[4] reshape(allgather)
+    a0 = <<TYPE>>[1,2] constant({{1,2}})
+    allgather = <<TYPE>>[2, 2] all-gather(a0), dimensions={0}
+    p = <<TYPE>>[4] reshape(allgather)
     ROOT out = f32[4] convert(p)
   }
   )";
   const int64_t kNumReplicas = 2;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(
-                       absl::StrReplaceAll(kModuleStr, replacements_), config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
-                        kNumReplicas,
-                        /*use_threads=*/true, /*run_hlo_passes=*/true));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  for (const Literal& result : results) {
-    LiteralTestUtil::ExpectR1Equal<float>({1, 2, 1, 2}, result);
-  }
+  auto runTestForType = [&](const std::string& type) {
+    std::string hlo_str =
+        absl::StrReplaceAll(kModuleTemplate, {{"TYPE", type}});
+
+    // Parse the HLO module and execute it
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto module, ParseAndReturnVerifiedModule(
+                         absl::StrReplaceAll(hlo_str, replacements_), config));
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<Literal> results,
+        ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
+                          kNumReplicas, /*use_threads=*/true,
+                          /*run_hlo_passes=*/true));
+
+    // Verify the results
+    ASSERT_EQ(results.size(), kNumReplicas);
+    for (const Literal& result : results) {
+      LiteralTestUtil::ExpectR1Equal<float>({1, 2, 1, 2}, result);
+    }
+  };
+  runTestForType("F8E8M0");
+  runTestForType("F8E4M3");
+  runTestForType("F8E5M2");
 }
 
 XLA_TEST_F(Fp8CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_8BitFloat)) {

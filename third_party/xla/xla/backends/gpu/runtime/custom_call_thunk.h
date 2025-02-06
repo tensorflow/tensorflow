@@ -115,7 +115,7 @@ class CustomCallThunk : public Thunk {
 
   absl::Status ExecuteCustomCall(const ExecuteParams& params);
 
-  absl::Status ExecuteFfiHandler(XLA_FFI_Handler* handler,
+  absl::Status ExecuteFfiHandler(RunId run_id, XLA_FFI_Handler* handler,
                                  XLA_FFI_ExecutionStage stage,
                                  se::Stream* stream,
                                  const ffi::ExecutionContext* execution_context,

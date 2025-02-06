@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {

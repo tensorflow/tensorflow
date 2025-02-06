@@ -875,7 +875,7 @@ func.func @convert_bmm_rhs_transpose_into_fc(%arg0: tensor<8x256xf32>, %arg1: te
   // CHECK:  return %2 : tensor<8x256xf32>
 
   // FOLD:  %0 = "tfl.no_value"() <{value}> : () -> none
-  // FOLD:  %1 = "tfl.fully_connected"(%arg0, %arg1, %0) <{asymmetric_quantize_inputs = true, fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<8x256xf32>, tensor<256x256xf32>, none) -> tensor<8x256xf32>
+  // FOLD:  %1 = "tfl.fully_connected"(%arg0, %arg1, %0) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<8x256xf32>, tensor<256x256xf32>, none) -> tensor<8x256xf32>
   // FOLD:  return %1 : tensor<8x256xf32>
 }
 
@@ -898,10 +898,8 @@ func.func @convert_bmm_rhs_transpose_into_fc_negative_adjx_true(%arg0: tensor<16
   %0 = "tfl.transpose"(%arg1, %cst) : (tensor<16x16xf32>, tensor<2xi32>) -> tensor<16x16xf32>
   %1 = "tfl.batch_matmul"(%arg0, %0) <{adj_x = true, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
   return %1 : tensor<16x16xf32>
-  // CHECK:  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
-  // CHECK:  %0 = "tfl.transpose"(%arg1, %cst) : (tensor<16x16xf32>, tensor<2xi32>) -> tensor<16x16xf32>
-  // CHECK:  %1 = "tfl.batch_matmul"(%arg0, %0) <{adj_x = true, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
-  // CHECK:  return %1 : tensor<16x16xf32>
+  // CHECK:  %0 = "tfl.batch_matmul"(%arg0, %arg1) <{adj_x = true, adj_y = true, asymmetric_quantize_inputs = false}> : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
+  // CHECK:  return %0 : tensor<16x16xf32>
 }
 
 // CHECK-LABEL: @FuseBMMInputReshape_WithTwoRhsDims_DynamicShapedInput
@@ -1218,7 +1216,7 @@ func.func @MoveReshapeAfterFullyConnected(%arg0: tensor<4x4x10xf32>)->(tensor<16
   // FOLD:  %[[BIAS:.*]] = "tfl.no_value"() <{value}> : () -> none
   // FOLD:  %[[SHAPE:.*]] = arith.constant dense<[16, 10]> : tensor<2xi32>
   // FOLD:  %[[INPUT:.*]] = "tfl.reshape"(%arg0, %[[SHAPE]]) : (tensor<4x4x10xf32>, tensor<2xi32>) -> tensor<16x10xf32>
-  // FOLD:  %[[RESULT:.*]] = "tfl.fully_connected"(%[[INPUT]], %[[FILTER]], %[[BIAS]]) <{asymmetric_quantize_inputs = true, fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<16x10xf32>, tensor<20x10xf32>, none) -> tensor<16x20xf32>
+  // FOLD:  %[[RESULT:.*]] = "tfl.fully_connected"(%[[INPUT]], %[[FILTER]], %[[BIAS]]) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<16x10xf32>, tensor<20x10xf32>, none) -> tensor<16x20xf32>
   // FOLD:  return %[[RESULT]] : tensor<16x20xf32>
 }
 
@@ -1272,7 +1270,7 @@ func.func @fuse_fc_and_lhs_reshape(%arg0: tensor<1x128x14336xf32>) -> tensor<128
 
   //FOLD:  %cst = arith.constant dense<9.000000e+00> : tensor<1792x14336xf32>
   //FOLD:  %0 = "tfl.no_value"() <{value}> : () -> none
-  //FOLD:  %1 = "tfl.fully_connected"(%arg0, %cst, %0) <{asymmetric_quantize_inputs = true, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x128x14336xf32>, tensor<1792x14336xf32>, none) -> tensor<128x1792xf32>
+  //FOLD:  %1 = "tfl.fully_connected"(%arg0, %cst, %0) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x128x14336xf32>, tensor<1792x14336xf32>, none) -> tensor<128x1792xf32>
   //FOLD:  return %1 : tensor<128x1792xf32>
 }
 
@@ -1314,7 +1312,7 @@ func.func @FuseFullyConnectedReshapeAddConstWithActivation(%arg0: tensor<40x37xf
   // CHECK: return %[[rs2]]
 
   // FOLD: %[[cst:.*]] = arith.constant dense<5.000000e+00> : tensor<40x40xf32>
-  // FOLD: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %arg1, %[[cst]]) <{asymmetric_quantize_inputs = true, fused_activation_function = "RELU6", keep_num_dims = false, weights_format = "DEFAULT"}>
+  // FOLD: %[[fc:.*]] = "tfl.fully_connected"(%arg0, %arg1, %[[cst]]) <{fused_activation_function = "RELU6", keep_num_dims = false, weights_format = "DEFAULT"}>
   // FOLD: return %[[fc]]
 }
 

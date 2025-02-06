@@ -311,7 +311,7 @@ message GPUOptions {
 
   // Everything inside experimental is subject to change and is not subject
   // to API stability guarantees in
-  // https://www.tensorflow.org/guide/version_compat.
+  // https://www.tensorflow.org/guide/versions.
   Experimental experimental = 9;
 }
 
@@ -583,7 +583,7 @@ message ConfigProto {
 
   // Everything inside Experimental is subject to change and is not subject
   // to API stability guarantees in
-  // https://www.tensorflow.org/guide/version_compat.
+  // https://www.tensorflow.org/guide/versions.
   message Experimental {
     // Task name for group resolution.
     string collective_group_leader = 1;
@@ -755,7 +755,7 @@ message ConfigProto {
     bool disable_functional_ops_lowering = 21;
 
     // Provides a hint to XLA auto clustering to prefer forming a single large
-    // cluster that encompases most of the graph.
+    // cluster that encompasses most of the graph.
     bool xla_prefer_single_graph_cluster = 22;
 
     // Distributed coordination service configurations.

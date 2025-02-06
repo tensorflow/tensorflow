@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -127,6 +126,7 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitCholeskyThunk(const HloInstruction* instr);
   absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitFftThunk(const HloFftInstruction* instr);
+  absl::Status EmitAsyncComputation(const HloInstruction* instr);
   absl::Status EmitFusion(const HloFusionInstruction* instr);
   absl::Status EmitCopy(const HloInstruction* instr);
   absl::Status EmitAsyncCustomCallStart(const HloInstruction* instr);
@@ -330,8 +330,6 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Container for async copy-start/copy-done events.
   std::shared_ptr<CopyThunk::AsyncEvents> copy_events_;
-
-  GpuElementalIrEmitter elemental_emitter_;
 };
 
 }  // namespace gpu

@@ -34,6 +34,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/litert/core/environment.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
 #include "tensorflow/lite/interpreter.h"
@@ -43,6 +44,12 @@
 class LiteRtCompiledModelT {
  public:
   using Ptr = std::unique_ptr<LiteRtCompiledModelT>;
+  struct OptionsDeleter {
+    void operator()(LiteRtCompilationOptionsT* options) {
+      LiteRtDestroyCompilationOptions(options);
+    }
+  };
+  using OptionsPtr = std::unique_ptr<LiteRtCompilationOptionsT, OptionsDeleter>;
 
   LiteRtCompiledModelT() = default;
   ~LiteRtCompiledModelT() = default;
@@ -50,8 +57,9 @@ class LiteRtCompiledModelT {
   // Creates a LiteRtCompiledModelT from a LiteRtModel object.
   // The model is loaded into memory and the caller takes ownership of the
   // returned object.
-  static litert::Expected<Ptr> Create(
-      LiteRtModel model, LiteRtCompilationOptions compilation_options);
+  static litert::Expected<Ptr> Create(LiteRtEnvironmentT* env,
+                                      LiteRtModel model,
+                                      OptionsPtr compilation_options = nullptr);
 
   // Returns the buffer requirements for the n-th input tensor. The returned
   // LiteRtTensorBufferRequirements is used to create the input tensor
@@ -90,18 +98,22 @@ class LiteRtCompiledModelT {
   }
 
   // Runs the model of the given signature with the provided input/output
-  // litert::TensorBuffers.
+  // litert::TensorBuffers. If parameter `async` is true, then the model is run
+  // asynchronously, if possible. Upon returning, the function sets parameter
+  // `async` to true if asynchronous execution was requested and possible,
+  // otherwise it sets it to false.
   litert::Expected<void> Run(
       absl::string_view signature_key,
       const std::vector<LiteRtTensorBuffer>& input_buffers,
-      const std::vector<LiteRtTensorBuffer>& output_buffers);
+      const std::vector<LiteRtTensorBuffer>& output_buffers, bool& async);
 
   // The same as Run() for C API.
   litert::Expected<void> RunCApi(size_t signature_index,
                                  size_t num_input_buffers,
                                  LiteRtTensorBuffer* input_buffers,
                                  size_t num_output_buffers,
-                                 LiteRtTensorBuffer* output_buffers);
+                                 LiteRtTensorBuffer* output_buffers,
+                                 bool* async);
 
  private:
   // Processes the model and initializes the internal states.
@@ -118,13 +130,12 @@ class LiteRtCompiledModelT {
 
   // Registers the TensorBuffer for the given tensor with the SignatureRunner.
   // If the TensorBuffer can be directly consumed as CPU Tensors, they'll be
-  // locked and use it with CustomAllocation. The buffer is locked by
-  // LiteRtTensorBufferScopedLock and kept in the `scoped_locks`. It will be
-  // unlocked automatically when the `scoped_locks` are destroyed.
+  // locked and use it with CustomAllocation. The locked buffer is kept in the
+  // `locked_buffers`. Caller is responsible for unlocking of these buffers.
   litert::Expected<void> RegisterBuffer(
       tflite::SignatureRunner* runner, const TfLiteTensor* tensor,
       const char* tensor_name, LiteRtTensorBuffer buffer, bool is_input,
-      std::vector<litert::TensorBufferScopedLock>& scoped_locks);
+      std::vector<LiteRtTensorBuffer>& locked_buffers);
 
   void RegisterDelegate(tflite::TfLiteOpaqueDelegateUniquePtr&& delegate) {
     delegates_.push_back(std::move(delegate));

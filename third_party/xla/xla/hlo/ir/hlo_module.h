@@ -53,7 +53,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -326,7 +326,9 @@ class HloModule {
       const absl::flat_hash_set<HloComputation*>& allow_list) const;
 
   // If config().content_aware_computation_sorting() is true, sorts computations
-  // by their contents, otherwise returns MakeComputationPostOrder().
+  // by their contents, otherwise returns MakeComputationPostOrder(). Note that
+  // the sort is potentially expensive, so this should be used only if a
+  // consistent order is required.
   std::vector<HloComputation*> MakeComputationSorted() const {
     return MakeComputationSorted({});
   }
@@ -353,6 +355,8 @@ class HloModule {
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   // Same as MakeNonfusionComputations() but sorting computations by content.
+  // Note that the sort is potentially expensive, so this should be used only if
+  // a consistent order is required.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const {
     return MakeNonfusionComputationsSorted({});
   }
@@ -499,8 +503,8 @@ class HloModule {
   bool has_schedule() const { return schedule_.has_value(); }
 
   // Returns the schedule of the module. CHECK fails if no schedule is set.
-  const HloSchedule& schedule() const { return *schedule_; }
-  HloSchedule& schedule() { return *schedule_; }
+  const HloSchedule& schedule() const { return schedule_.value(); }
+  HloSchedule& schedule() { return schedule_.value(); }
 
   HloComputation* AddComputation(std::unique_ptr<HloComputation> computation,
                                  bool is_entry) {

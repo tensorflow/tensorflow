@@ -25,9 +25,9 @@ cc_library(
     srcs = ["allocation_block.cc"],
     hdrs = ["allocation_block.h"],
     deps = [
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -49,6 +49,8 @@ cc_library(
         "//xla/service:hlo_value",
         "//xla/service:logical_buffer",
         "//xla/service:time_utils",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -61,8 +63,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -86,12 +86,12 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )

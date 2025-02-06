@@ -72,6 +72,7 @@ limitations under the License.
 #include "gloo/transport/tcp/device.h"
 #include "xla/backends/cpu/collectives/gloo_collectives.h"
 #include "xla/backends/cpu/collectives/gloo_kv_store.h"
+#include "xla/python/transfer/py_socket_transfer.h"
 #elif defined(__APPLE__)
 #include "gloo/transport/uv/device.h"
 #include "xla/backends/cpu/collectives/gloo_collectives.h"  // NOLINT
@@ -204,9 +205,11 @@ NB_MODULE(xla_extension, m) {
       .value("U32", U32)
       .value("U64", U64)
       .value("F16", F16)
+      .value("F4E2M1FN", F4E2M1FN)
       // TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
       // .value("F8E3M4", F8E3M4)
       // .value("F8E4M3", F8E4M3)
+      .value("F8E8M0FNU", F8E8M0FNU)
       .value("F8E4M3FN", F8E4M3FN)
       .value("F8E4M3B11FNUZ", F8E4M3B11FNUZ)
       .value("F8E4M3FNUZ", F8E4M3FNUZ)
@@ -597,6 +600,9 @@ NB_MODULE(xla_extension, m) {
   BuildTracebackSubmodule(m);
   BuildMlirSubmodule(m);
   BuildCustomCallShardingPybindAPI(m);
+#if defined(__linux__)
+  aux::RegisterTransferServerTypes(m);
+#endif  // defined(__linux__)
 
   // The following uses python bindings for PyClient defined above using
   // pybind11, and hence needs pybind11::module_ (not just nanobind::module_).
@@ -657,9 +663,12 @@ NB_MODULE(xla_extension, m) {
           "blocking_key_value_get_bytes",
           [](DistributedRuntimeClient& client, std::string key,
              int64_t timeout_in_ms) -> nb::bytes {
-            nb::gil_scoped_release gil_release;
-            std::string result = xla::ValueOrThrow(client.BlockingKeyValueGet(
-                key, absl::Milliseconds(timeout_in_ms)));
+            std::string result;
+            {
+              nb::gil_scoped_release gil_release;
+              result = xla::ValueOrThrow(client.BlockingKeyValueGet(
+                  key, absl::Milliseconds(timeout_in_ms)));
+            }
             return nb::bytes(result.data(), result.size());
           },
           nb::arg("key"), nb::arg("timeout_in_ms"))
@@ -673,8 +682,11 @@ NB_MODULE(xla_extension, m) {
       .def(
           "key_value_try_get_bytes",
           [](DistributedRuntimeClient& client, std::string key) -> nb::bytes {
-            nb::gil_scoped_release gil_release;
-            std::string result = xla::ValueOrThrow(client.KeyValueTryGet(key));
+            std::string result;
+            {
+              nb::gil_scoped_release gil_release;
+              result = xla::ValueOrThrow(client.KeyValueTryGet(key));
+            }
             return nb::bytes(result.data(), result.size());
           },
           nb::arg("key"))
@@ -731,15 +743,18 @@ NB_MODULE(xla_extension, m) {
           "key_value_dir_get_bytes",
           [](DistributedRuntimeClient& client, absl::string_view key)
               -> std::vector<std::pair<std::string, nb::bytes>> {
-            nb::gil_scoped_release gil_release;
-            std::vector<std::pair<std::string, std::string>> result =
-                xla::ValueOrThrow(client.KeyValueDirGet(key));
+            std::vector<std::pair<std::string, std::string>> result;
+            {
+              nb::gil_scoped_release gil_release;
+              result = xla::ValueOrThrow(client.KeyValueDirGet(key));
+            }
             // Convert std::string values to nb::bytes.
             std::vector<std::pair<std::string, nb::bytes>> kvs;
             kvs.reserve(result.size());
-            for (const auto& kv : result) {
-              kvs.push_back(std::pair(
-                  kv.first, nb::bytes(kv.second.data(), kv.second.size())));
+            for (auto& kv : result) {
+              kvs.push_back(
+                  std::pair(std::move(kv.first),
+                            nb::bytes(kv.second.data(), kv.second.size())));
             }
             return kvs;
           },
@@ -919,6 +934,14 @@ NB_MODULE(xla_extension, m) {
       nb::arg("committed") = true, nb::arg("force_copy") = false,
       nb::arg("host_buffer_semantics") =
           PjRtClient::HostBufferSemantics::kImmutableZeroCopy);
+  m.def(
+      "reorder_shards",
+      [](PyArray x, nb::object dst_sharding,
+         ifrt::ArrayCopySemantics array_copy_semantics) {
+        return ValueOrThrow(PyArray::ReorderShards(
+            std::move(x), std::move(dst_sharding), array_copy_semantics));
+      },
+      nb::arg("x"), nb::arg("dst_sharding"), nb::arg("array_copy_semantics"));
 
   m.def("batched_block_until_ready", [](std::vector<nb::object> xs) {
     ThrowIfError(PyArray::BatchedBlockUntilReady(std::move(xs)));

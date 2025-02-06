@@ -184,7 +184,7 @@ struct FoldQuantizedI32ToFloat : public OpRewritePattern<TFL::DequantizeOp> {
 
     auto dequant_values =
         mlir::cast<DenseIntOrFPElementsAttr>(input_values)
-            .mapValues(FloatType::getF32(rewriter.getContext()),
+            .mapValues(Float32Type::get(rewriter.getContext()),
                        llvm::function_ref<DequantizeFuncType>(dequantize_func));
     rewriter.replaceOpWithNewOp<TFL::ConstOp>(dequant_op, dequant_op.getType(),
                                               dequant_values);

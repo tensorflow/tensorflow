@@ -45,8 +45,8 @@ limitations under the License.
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -285,16 +285,6 @@ absl::Status EmitFusedDynamicUpdateSliceInPlace(
   return EmitFusedDynamicUpdateSliceInPlaceImpl(
       fusion->called_computations()[0], dus_and_output_array, fused_emitter,
       /*launch_dimensions=*/nullptr, b);
-}
-
-absl::Status EmitParallelFusedDynamicUpdateSliceInPlace(
-    const HloComputation* fusion,
-    const std::vector<std::pair<const HloInstruction*, const IrArray>>&
-        dus_and_output_array,
-    FusedIrEmitter* fused_emitter,
-    const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* b) {
-  return EmitFusedDynamicUpdateSliceInPlaceImpl(
-      fusion, dus_and_output_array, fused_emitter, &launch_dimensions, b);
 }
 
 }  // namespace llvm_ir

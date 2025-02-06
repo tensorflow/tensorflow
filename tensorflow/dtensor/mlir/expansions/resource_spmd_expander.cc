@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/resource_spmd_expander.h"
 
 #include <algorithm>
+#include <cassert>
 #include <iterator>
 #include <optional>
 #include <string>

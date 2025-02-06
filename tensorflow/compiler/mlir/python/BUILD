@@ -25,10 +25,12 @@ cc_library(
     srcs = ["mlir.cc"],
     hdrs = ["mlir.h"],
     deps = [
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/tensorflow/translate/tools:parsers",
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncExtensions",

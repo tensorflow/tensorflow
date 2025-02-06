@@ -37,20 +37,20 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/codegen/kernel_spec.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 #define EIGEN_USE_THREADS
@@ -118,7 +118,7 @@ KernelThunk<num_arguments, num_results>::KernelThunk(
     std::optional<absl::flat_hash_set<int64_t>> invariant_arguments,
     std::string kernel_name, se::ThreadDim thread_dim,
     std::optional<uint64_t> min_alignment)
-    : Thunk(Kind::kKernel, std::move(info)),
+    : KernelThunkBase(Kind::kKernel, std::move(info)),
       invariant_arguments_(std::move(invariant_arguments)),
       num_kernel_args_(arguments_buffers.size() + results_buffers.size()),
       kernel_name_(std::move(kernel_name)),
@@ -238,10 +238,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
   // by scheduling tasks into it. HostKernel launch completion will
   // automatically signal KernelThunk execute completion.
   if (ABSL_PREDICT_TRUE(params.intra_op_threadpool)) {
-    return kernel->Launch(
-        thread_dim_, kernel_args, [&params](Kernel::Task task) {
-          params.intra_op_threadpool->getPool()->Schedule(std::move(task));
-        });
+    return kernel->Launch(thread_dim_, kernel_args, params.intra_op_threadpool);
   }
 
   TF_RETURN_IF_ERROR(kernel->Launch(thread_dim_, kernel_args));
@@ -359,12 +356,12 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
 }
 
 absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
-    Thunk::Info info, std::unique_ptr<LlvmIrKernelSpec> kernel_spec,
+    Thunk::Info info, const KernelSpec& kernel_spec,
     std::optional<uint64_t> min_alignment) {
   std::vector<BufferAllocation::Slice> arguments_buffers;
   std::vector<BufferAllocation::Slice> results_buffers;
 
-  for (const BufferUse& buffer_use : kernel_spec->buffer_uses()) {
+  for (const BufferUse& buffer_use : kernel_spec.buffer_uses()) {
     if (buffer_use.access() == BufferUse::kRead) {
       arguments_buffers.push_back(buffer_use.slice());
     } else {
@@ -372,10 +369,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     }
   }
 
-  const std::string& kernel_name = kernel_spec->kernel_source().kernel_name();
-
   return Create(std::move(info), arguments_buffers, results_buffers,
-                std::move(kernel_name), kernel_spec->thread_dim(), std::nullopt,
+                kernel_spec.name(), kernel_spec.thread_dim(), std::nullopt,
                 min_alignment);
 }
 

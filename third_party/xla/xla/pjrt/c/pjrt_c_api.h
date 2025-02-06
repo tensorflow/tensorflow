@@ -46,6 +46,7 @@ typedef enum {
   PJRT_Extension_Type_Layouts,
   PJRT_Extension_Type_FFI,
   PJRT_Extension_Type_MemoryDescriptions,
+  PJRT_Extension_Type_Triton,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -80,7 +81,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 62
+#define PJRT_API_MINOR 67
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -632,6 +633,27 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_DefaultDeviceAssignment_Args,
 typedef PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
 
+struct PJRT_Client_DmaMap_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Client* client;
+  void* data;
+  size_t size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_DmaMap_Args, size);
+
+typedef PJRT_Error* PJRT_Client_DmaMap(PJRT_Client_DmaMap_Args* args);
+
+struct PJRT_Client_DmaUnmap_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Client* client;
+  void* data;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_DmaUnmap_Args, data);
+
+typedef PJRT_Error* PJRT_Client_DmaUnmap(PJRT_Client_DmaUnmap_Args* args);
+
 struct PJRT_AsyncHostToDeviceTransferManager_Destroy_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -790,6 +812,10 @@ typedef enum {
   // More truncated 8 bit floating-point formats.
   PJRT_Buffer_Type_F8E4M3,
   PJRT_Buffer_Type_F8E3M4,
+  PJRT_Buffer_Type_F8E8M0FNU,
+
+  // 4-bit MX floating-point format.
+  PJRT_Buffer_Type_F4E2M1FN,
 } PJRT_Buffer_Type;
 
 typedef enum {
@@ -935,7 +961,9 @@ struct PJRT_Client_CreateViewOfDeviceBuffer_Args {
   size_t num_dims;
   PJRT_Buffer_Type element_type;
   PJRT_Buffer_MemoryLayout* layout;
-  // The device that `device_buffer_ptr` is on.
+  // The device that `device_buffer_ptr` is on. The argument is ignored if
+  // `memory` is provided.
+  // DEPRECATED: Use `memory` instead.
   PJRT_Device* device;
   // A callback to be performed when the PJRT_Buffer is done with the on-device
   // buffer. This callback is optional and can be a nullptr.
@@ -951,8 +979,10 @@ struct PJRT_Client_CreateViewOfDeviceBuffer_Args {
   // to be supported on all hardware platforms.
   intptr_t stream;
   PJRT_Buffer* buffer;  // out
+  // The memory space that `device_buffer_ptr` is in.
+  PJRT_Memory* memory;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateViewOfDeviceBuffer_Args, buffer);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateViewOfDeviceBuffer_Args, memory);
 
 // Creates a PJRT buffer that is a non-owned view of an on-device buffer
 // (typically allocated by another library). The buffer may be mutated,
@@ -1531,8 +1561,9 @@ struct PJRT_ExecuteOptions {
   // during the call.
   const int64_t* non_donatable_input_indices;
   size_t num_non_donatable_input_indices;
+  PJRT_ExecuteContext* context;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, num_non_donatable_input_indices);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, context);
 
 struct PJRT_LoadedExecutable_Execute_Args {
   size_t struct_size;
@@ -2441,11 +2472,12 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_BufferSize);
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_SetBufferError);
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_AddMetadata);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_DmaMap);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_DmaUnmap);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(
-      PJRT_Api, PJRT_AsyncHostToDeviceTransferManager_AddMetadata)
+  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_DmaUnmap)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <optional>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -26,8 +28,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/array2d.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -36,13 +41,17 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/source_target_pairs.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+
 namespace xla {
 namespace {
+
+using CycleType = SourceTargetPairs::CycleType;
 
 // Creates a container of ReplicaGroups.
 std::vector<ReplicaGroup> CreateReplicaGroups(
@@ -95,7 +104,9 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId) {
     %param0 = f32[512]{0} parameter(0)
     %copy0 = f32[512]{0} copy(param0)
     %reshape0 = f32[1,1,512]{2,0,1} reshape(f32[512]{0} %copy0)
-    %all-gather = f32[1,4,512]{2,0,1} all-gather(f32[1,1,512]{2,0,1} %reshape0), channel_id=3621, replica_groups={{0,1,2,3}}, dimensions={1}, use_global_device_ids=true
+    %all-gather = f32[1,4,512]{2,0,1} all-gather(f32[1,1,512]{2,0,1} %reshape0),
+        channel_id=3621, replica_groups={{0,1,2,3}}, dimensions={1},
+        use_global_device_ids=true
     %copy1 = f32[1,4,512]{2,0,1} copy(all-gather)
     ROOT root = f32[1,4,512]{2,1,0} copy(%copy1)
   })";
@@ -106,6 +117,33 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId) {
       module->entry_computation()->GetInstructionWithName("all-gather");
 
   EXPECT_EQ(IsOrHasCollectiveWithChannelId(all_gather), all_gather);
+}
+
+TEST(CollectiveOpsUtilsTest, IsNonFusionCollectiveSendRecv) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+
+  ENTRY entry_computation {
+    data = f32[64] parameter(0)
+    tok = token[] after-all()
+    recv_ctx = (f32[64], u32[], token[]) recv(tok), channel_id=2,
+        frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}
+    send_ctx = (f32[64], u32[], token[]) send(tok, data), channel_id=2,
+        frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}
+    ROOT root = tuple(send_ctx, recv_ctx)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  HloInstruction *recv_ctx =
+      module->entry_computation()->GetInstructionWithName("recv_ctx");
+  ASSERT_NE(recv_ctx, nullptr);
+  HloInstruction *send_ctx =
+      module->entry_computation()->GetInstructionWithName("send_ctx");
+  ASSERT_NE(send_ctx, nullptr);
+
+  EXPECT_TRUE(IsNonFusionCollective(recv_ctx));
+  EXPECT_TRUE(IsNonFusionCollective(send_ctx));
 }
 
 TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
@@ -149,35 +187,26 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
   EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion2.get()), nullptr);
 }
 
-TEST(CollectiveOpsUtilsTest, IsForwardCycle) {
-  EXPECT_TRUE(IsForwardCycle({{0, 1}, {1, 0}}));
-  EXPECT_TRUE(IsForwardCycle({{0, 1}, {1, 2}, {2, 3}, {3, 0}}));
-  EXPECT_FALSE(IsForwardCycle({{0, 0}})) << "Self link is not a cycle!";
-  EXPECT_FALSE(IsForwardCycle({{}})) << "Self link due to initialization to 0";
-
-  EXPECT_FALSE(IsForwardCycle({}));
-  EXPECT_FALSE(IsForwardCycle({{0, 1}}));
-  EXPECT_FALSE(IsForwardCycle({{0, 1}, {2, 0}})) << "No link between 1 and 2";
-  EXPECT_FALSE(IsForwardCycle({{1, 0}, {0, 1}})) << "Backward cycle";
-  EXPECT_FALSE(IsForwardCycle({{3, 0}, {0, 1}, {1, 2}, {2, 3}}))
-      << "Unordered pairs are not a cycle";
-  EXPECT_FALSE(IsForwardCycle({{0, 1}, {1, 2}, {2, 3}, {4, 5}, {3, 0}}))
-      << "Out of order pairs are not a cycle";
+TEST(CollectiveOpsUtilsTest, GetForwardCycleIndices) {
+  auto res_one_cycle = GetCycleTypeAndIndices({{0, 1}, {1, 2}, {2, 3}, {3, 0}});
+  EXPECT_EQ(res_one_cycle.first, CycleType::kForward);
+  EXPECT_THAT(res_one_cycle.second, testing::UnorderedElementsAreArray({3}));
+  auto res_two_cycles =
+      GetCycleTypeAndIndices({{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 1}});
+  EXPECT_EQ(res_two_cycles.first, CycleType::kForward);
+  EXPECT_THAT(res_two_cycles.second,
+              testing::UnorderedElementsAreArray({3, 4}));
 }
 
-TEST(CollectiveOpsUtilsTest, IsBackwardCycle) {
-  EXPECT_TRUE(IsBackwardCycle({{0, 1}, {1, 0}}));
-  EXPECT_TRUE(IsBackwardCycle({{0, 3}, {1, 0}, {2, 1}, {3, 2}}));
-  EXPECT_FALSE(IsBackwardCycle({{0, 0}})) << "Self link is a backward cycle!";
-  EXPECT_FALSE(IsBackwardCycle({{}})) << "Self link due to initialization to 0";
-
-  EXPECT_FALSE(IsForwardCycle({}));
-  EXPECT_FALSE(IsForwardCycle({{1, 0}}));
-  EXPECT_FALSE(IsForwardCycle({{2, 1}, {0, 2}})) << "No link between 1 and 2";
-  EXPECT_FALSE(IsBackwardCycle({{3, 2}, {0, 3}, {1, 0}, {2, 1}}))
-      << "Unordered pairs are not a cycle";
-  EXPECT_FALSE(IsForwardCycle({{0, 1}, {1, 2}, {4, 5}, {3, 0}}))
-      << "Out of order pairs are not a cycle";
+TEST(CollectiveOpsUtilsTest, GetBackwardCycleIndices) {
+  auto res_one_cycle = GetCycleTypeAndIndices({{0, 3}, {1, 0}, {2, 1}, {3, 2}});
+  EXPECT_EQ(res_one_cycle.first, CycleType::kBackward);
+  EXPECT_THAT(res_one_cycle.second, testing::UnorderedElementsAreArray({0}));
+  auto res_two_cycles =
+      GetCycleTypeAndIndices({{0, 3}, {1, 4}, {2, 1}, {3, 2}, {4, 3}, {3, 0}});
+  EXPECT_EQ(res_two_cycles.first, CycleType::kBackward);
+  EXPECT_THAT(res_two_cycles.second,
+              testing::UnorderedElementsAreArray({0, 1}));
 }
 
 TEST(IsExclusivelyCrossModuleTest, CrossReplicaNoChannelSet) {

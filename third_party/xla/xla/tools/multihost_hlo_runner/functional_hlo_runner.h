@@ -39,8 +39,11 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/profiler_session.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 
@@ -52,6 +55,21 @@ enum class InputFormat {
   kSnapshotProtoBinary,  // HloSnapshot protobuf binary format. Can be dumped by
                          // TensorFlow by setting the environment variable
                          // xla_dump_hlo_snapshots.
+  kUnoptimizedSnapshotProtoBinary,  // HloUnoptimizedSnapshot protobuf binary
+                                    // format. Can be dumped by
+                                    // setting the flag
+                                    // xla_dump_hlo_snapshots in conjunction
+                                    // with xla_dump_as_text.
+  kUnoptimizedSnapshotProtoText,    // HloUnoptimizedSnapshot protobuf text
+                                    // format. Can be dumped by TensorFlow by
+                                    // setting the flag xla_dump_hlo_snapshots
+                                    // in conjunction with xla_dump_as_text.
+};
+
+enum class OutputFormat : std::uint8_t {
+  kText,         // Text format returned by Literal::ToString().
+  kProtoBinary,  // Protobuf binary format of an xla::LiteralProto message.
+  kProtoText,    // Protobuf text format of an xla::LiteralProto message.
 };
 
 // Interface for profiler plugins. If being set in RunningOptions, profiling
@@ -65,9 +83,66 @@ class ProfilerInterface {
   virtual void UploadSession() = 0;
 };
 
+// Interface that may optionally returns an XSpace proto after UploadSession()
+// is called. This can be used by caller to get a programmatic handler of the
+// profile data.
+class XSpaceProfilerInterface : public ProfilerInterface {
+ public:
+  virtual const tensorflow::profiler::XSpace* GetXSpace() = 0;
+};
+
+// GPURunnerProfiler is a profiler plugin that using tsl::ProfilerSession to
+// profile GPU execution and allows programmable control of
+// profiling sessions for the MultihostHloRunner. It needs to be created after
+// PJRT client is initialized. Example usage:
+//
+//   TF_ASSIGN_OR_RETURN(
+//       env, xla::GetPjRtEnvironmentForGpu(...)));
+//   if (env.client != nullptr) {
+//     TF_ASSIGN_OR_RETURN(auto profiler, GPURunnerProfiler::Create());
+//   }
+//   profiler.CreateSession();
+//   ...
+//   profiler.UploadSession();
+class GPURunnerProfiler : public XSpaceProfilerInterface {
+ public:
+  // Factory method to create a GPURunnerProfiler with profile result dump path.
+  // If keep_xspace is true, the XSpace proto can be retrieved
+  // by GetXSpace() after UploadSession() is called, which can be used by
+  // caller to get a programmatic handler of the profile data and create XProf.
+  static absl::StatusOr<std::unique_ptr<GPURunnerProfiler>> Create(
+      absl::string_view dump_path, bool keep_xspace = false);
+
+  // Default ctor.
+  explicit GPURunnerProfiler(absl::string_view dump_path, bool keep_xspace);
+
+  // Start a new profiling session.
+  void CreateSession() override;
+
+  // Stop the current profiling session.
+  void UploadSession() override;
+
+  // Returns the XSpace proto.
+  const tensorflow::profiler::XSpace* GetXSpace() override;
+
+ private:
+  // The file path to dump the profiling result.
+  std::string dump_path_;
+  // Whether to keep the XSpace proto after UploadSession() is called.
+  bool keep_xspace_;
+  // The profiler session.
+  std::unique_ptr<tsl::ProfilerSession> session_;
+  // The XSpace proto to be returned by GetXSpace().
+  std::unique_ptr<tensorflow::profiler::XSpace> xspace_;
+};
+
 bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
                    std::string* error);
 std::string AbslUnparseFlag(InputFormat input_format);
+
+bool AbslParseFlag(absl::string_view text, OutputFormat* output_format,
+                   std::string* error);
+std::string AbslUnparseFlag(OutputFormat output_format);
 
 // FunctionalHloRunner takes an HLO module as input and runs the HLO module
 // on a single or multiple hosts with various options (e.g. SPMD). The HLO
@@ -161,6 +236,10 @@ class FunctionalHloRunner {
     // If set, used as default predicate value for predicated conditional ops.
     bool conditional_value = false;
 
+    // If set, convert the module to StableHLO before passing to PjRt for
+    // compilation.
+    bool compile_as_stablehlo = false;
+
     // Should we flatten all while loops?
     bool flatten_while_loop() const {
       return while_execution_count.has_value();
@@ -193,6 +272,8 @@ class FunctionalHloRunner {
     std::string xla_dump_to = "";
     XlaTextDumpMode xla_text_dump_mode = XlaTextDumpMode::kNotDumpAsText;
     XlaProtoDumpMode xla_proto_dump_mode = XlaProtoDumpMode::kNotDumpAsProto;
+    // A directory to dump xspace data to (GPU profiler only).
+    std::string xla_gpu_dump_xspace_to = "";
   };
 
   // The options controlling the execution of the HLO module.
@@ -214,6 +295,10 @@ class FunctionalHloRunner {
     // Whether to untuple the result of running HLO module into a vector of
     // arrays. If unprovided, use the default in ExecuteOptions.
     std::optional<bool> untuple_result = std::nullopt;
+    // If not null, profiles will be stored for this run, one per repeat.
+    // Note that the first repeat is a warmup run, and uses less precise
+    // profiling method.
+    std::vector<ExecutionProfile>* execution_profiles = nullptr;
 
     // Should we log the inputs and outputs to stderr?
     bool log_input_output() const {
@@ -223,7 +308,11 @@ class FunctionalHloRunner {
 
   struct HloModuleAndArguments {
     std::unique_ptr<HloModule> hlo_module;
-    std::vector<Literal> arguments;
+
+    // The outer `std::vector` represents the list of shards. The inner
+    // `std::vector<Literal>` represents a list of arguments for a single shard
+    // partition.
+    std::vector<std::vector<Literal>> arguments;
   };
 
   struct ReplicasAndPartitions {
@@ -267,7 +356,8 @@ class FunctionalHloRunner {
       const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const RunningOptions& running_options, absl::string_view hlo_text,
-      InputFormat input_format, const PerDeviceLiteralVecType& arguments = {});
+      InputFormat input_format, const PerDeviceLiteralVecType& arguments = {},
+      std::minstd_rand0* engine = nullptr);
 
   // Loads and compiles an HLO for debugging purposes.
   //
@@ -289,7 +379,8 @@ class FunctionalHloRunner {
       const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const RunningOptions& running_options, HloModule* hlo_module,
-      const PerDeviceLiteralVecType& arguments = {});
+      const PerDeviceLiteralVecType& arguments = {},
+      std::minstd_rand0* engine = nullptr);
 
   // Compiles the HLO module.
   static absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
@@ -324,6 +415,11 @@ class FunctionalHloRunner {
 
   static absl::StatusOr<HloModuleAndArguments>
   ReadModuleFromSnapshotBinaryProtoFile(absl::string_view hlo_file);
+  static absl::StatusOr<HloModuleAndArguments>
+  ReadModuleFromUnoptimizedSnapshotBinaryProtoFile(absl::string_view hlo_file);
+  static absl::StatusOr<HloModuleAndArguments>
+  ReadModuleFromUnoptimizedSnapshotTextProtoFile(absl::string_view hlo_file);
+
   static absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
       absl::string_view hlo_file, InputFormat input_format);
 
@@ -345,7 +441,8 @@ class FunctionalHloRunner {
 
   static absl::Status DumpOutput(
       const FunctionalHloRunner::PerDeviceLiteralVecType& output,
-      absl::string_view dump_output_to, int task_id);
+      absl::string_view dump_output_to, int task_id,
+      OutputFormat output_format = OutputFormat::kText);
 
  private:
   // Calculates the requested number of replicas and partitions.

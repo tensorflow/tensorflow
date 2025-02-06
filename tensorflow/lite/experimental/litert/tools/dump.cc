@@ -24,7 +24,6 @@
 
 #include <cstdint>
 #include <ostream>
-#include <string>
 #include <vector>
 
 #include "absl/strings/str_format.h"
@@ -164,6 +163,15 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflGelu:
       out << "TFL_GELU";
       break;
+    case kLiteRtOpCodeTflDynamicUpdateSlice:
+      out << "TFL_DYNAMIC_UPDATE_SLICE";
+      break;
+    case kLiteRtOpCodeTflPack:
+      out << "TFL_PACK";
+      break;
+    case kLiteRtOpCodeTflQuantize:
+      out << "TFL_QUANTIZE";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;
@@ -270,53 +278,6 @@ void Dump(const CompilerPlugin& plugin, std::ostream& out) {
   out << "}\n";
 }
 
-void DumpDLL(void* lib_handle, std::ostream& out) {
-#if !defined(__ANDROID__) && !defined(__APPLE__)
-  out << "\n--- Lib Info ---\n";
-  if (lib_handle == nullptr) {
-    out << "Handle is nullptr\n";
-    return;
-  }
-
-  Lmid_t dl_ns_idx;
-  if (0 != ::dlinfo(lib_handle, RTLD_DI_LMID, &dl_ns_idx)) {
-    return;
-  }
-
-  std::string dl_origin;
-  dl_origin.resize(512);
-  if (0 != ::dlinfo(lib_handle, RTLD_DI_ORIGIN, dl_origin.data())) {
-    return;
-  }
-
-  link_map* lm;
-  if (0 != ::dlinfo(lib_handle, RTLD_DI_LINKMAP, &lm)) {
-    return;
-  }
-
-  out << "Lib Namespace: " << dl_ns_idx << "\n";
-  out << "Lib Origin: " << dl_origin << "\n";
-
-  out << "loaded objects:\n";
-
-  auto* forward = lm->l_next;
-  auto* backward = lm->l_prev;
-
-  while (forward != nullptr) {
-    out << "  " << forward->l_name << "\n";
-    forward = forward->l_next;
-  }
-
-  out << "***" << lm->l_name << "\n";
-
-  while (backward != nullptr) {
-    out << "  " << backward->l_name << "\n";
-    backward = backward->l_prev;
-  }
-
-  out << "\n";
-#endif
-}
 
 void Dump(const LiteRtModelT& model, std::ostream& out) {
   out << absl::StreamFormat("LiteRtModel : [ #subgraphs=%d ]\n",
@@ -395,6 +356,9 @@ void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
       break;
     case kLiteRtOpCodeTflSum:
       out << "keepdims: " << opts.AsReducerOptions()->keep_dims << "\n";
+      break;
+    case kLiteRtOpCodeTflPack:
+      out << "axis: " << opts.AsPackOptions()->axis << "\n";
       break;
     default:
       out << "No options for op code: " << op.OpCode();

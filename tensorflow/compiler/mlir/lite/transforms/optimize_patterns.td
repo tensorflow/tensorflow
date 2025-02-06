@@ -1717,6 +1717,16 @@ def FuseTransposeIntoBatchMatMulRHS: Pat<
    (IsBoolAttrEqual<"false"> $adj_x),
    (IsBoolAttrEqual<"false"> $adj_y)]>;
 
+def FuseTransposeIntoBatchMatMulRHSAdjY: Pat<
+  (TFL_BatchMatMulOp
+    $lhs,
+    (TFL_TransposeOp:$transposed_value $input, (Arith_ConstantOp:$perm_value $p0)),
+    $adj_x, $adj_y, $asymmetric_quantize_inputs),
+  (TFL_BatchMatMulOp $lhs, $input, $adj_x, ConstBoolAttrTrue, $asymmetric_quantize_inputs),
+  [(AreLastTwoDimsTransposed $perm_value),
+   (HasOneUse $transposed_value),
+   (IsBoolAttrEqual<"false"> $adj_y)]>;
+
 // Fuse squeezing LHS reshape into tfl.fully_connected.
 // This will work for any FullyConnected(Reshape(LHS), RHS), provided-
 // 1.The reshape is only squeezing the broadcast dimensions of the LHS.

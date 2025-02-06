@@ -353,7 +353,7 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
 
   patterns.add<AddCustomAggregationOp>(ctx, calib_opts_);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-insert-custom-aggregation-ops failed.";
     signalPassFailure();
   }

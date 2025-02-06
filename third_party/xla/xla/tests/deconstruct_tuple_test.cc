@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"

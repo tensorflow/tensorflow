@@ -40,10 +40,10 @@ limitations under the License.
 #include "xla/tsl/platform/default/posix_file_system.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/ram_file_system.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/load_library.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/ram_file_system.h"
 #include "tsl/platform/strcat.h"
 
 namespace tsl {

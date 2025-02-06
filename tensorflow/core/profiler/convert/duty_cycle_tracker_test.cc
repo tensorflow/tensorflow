@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/platform/test.h"
@@ -30,13 +31,35 @@ namespace {
 
 using ::tsl::profiler::Timespan;
 
-TEST(DutyCycleTrackerTest, TimeIntervalsTest) {
+TEST(DutyCycleTrackerTest, NonOverlappingIntervalsTest) {
   DutyCycleTracker tracker;
-  tracker.AddInterval(Timespan::FromEndPoints(0, 10), true);
-  tracker.AddInterval(Timespan::FromEndPoints(20, 30), true);
+  tracker.AddInterval(Timespan::FromEndPoints(10, 20), true);
+  tracker.AddInterval(Timespan::FromEndPoints(30, 40), true);
   EXPECT_EQ(tracker.GetActiveTimePs(), 20);
   EXPECT_EQ(tracker.GetIdleTimePs(), 10);
   EXPECT_EQ(tracker.GetDurationPs(), 30);
+  EXPECT_NEAR(tracker.DutyCycle(), 0.6666, 0.0001);
+}
+
+TEST(DutyCycleTrackerTest, OverlappingIntervalsTest) {
+  DutyCycleTracker tracker;
+  tracker.AddInterval(Timespan::FromEndPoints(10, 20), true);
+  tracker.AddInterval(Timespan::FromEndPoints(30, 40), true);
+  tracker.AddInterval(Timespan::FromEndPoints(20, 35), true);
+  EXPECT_EQ(tracker.GetActiveTimePs(), 30);
+  EXPECT_EQ(tracker.GetIdleTimePs(), 0);
+  EXPECT_EQ(tracker.GetDurationPs(), 30);
+  EXPECT_EQ(tracker.DutyCycle(), 1.0);
+}
+
+TEST(DutyCycleTrackerTest, DutyCycleTestWithIncludedIntervals) {
+  DutyCycleTracker tracker;
+  tracker.AddInterval(Timespan::FromEndPoints(10, 40), true);
+  tracker.AddInterval(Timespan::FromEndPoints(20, 30), true);
+  EXPECT_EQ(tracker.GetActiveTimePs(), 30);
+  EXPECT_EQ(tracker.GetIdleTimePs(), 0);
+  EXPECT_EQ(tracker.GetDurationPs(), 30);
+  EXPECT_EQ(tracker.DutyCycle(), 1.0);
 }
 
 TEST(DutyCycleTrackerTest, UnionTest) {
@@ -54,11 +77,13 @@ TEST(DutyCycleTrackerTest, UnionTest) {
   EXPECT_EQ(tracker.GetDurationPs(), 40);
 }
 
-TEST(DutyCycleTrackerTest, ActiveTimeTest) {
+TEST(DutyCycleTrackerTest, OverlappingMixedIntervalsTest) {
   DutyCycleTracker tracker;
   EXPECT_EQ(tracker.GetActiveTimePs(), 0);
-  tracker.AddInterval(Timespan::FromEndPoints(0, 10), true);
+  tracker.AddInterval(Timespan::FromEndPoints(10, 20), true);
+  tracker.AddInterval(Timespan::FromEndPoints(20, 30), false);
   EXPECT_EQ(tracker.GetActiveTimePs(), 10);
+  EXPECT_EQ(tracker.GetIdleTimePs(), 10);
 }
 
 void BM_DutyCycleTracker_AddInterval(::testing::benchmark::State& state) {
@@ -102,10 +127,9 @@ void BM_DutyCycleTracker_Union(::testing::benchmark::State& state) {
   DutyCycleTracker tracker_b;
   uint64_t merge_rate = state.range(1);
   for (uint64_t i = 0; i < state.range(0); ++i) {
-    tracker_a.AddInterval(Timespan::FromEndPoints(i * 2, i * 2 + 1), true);
+    tracker_a.AddInterval(Timespan(i * 2, 1), true);
     if (i % merge_rate == 0) {
-      tracker_b.AddInterval(
-          Timespan::FromEndPoints(i * 2, (i + merge_rate - 1) * 2), true);
+      tracker_b.AddInterval(Timespan(i * 2 + 1, merge_rate * 2 - 1), true);
     }
   }
   for (auto s : state) {

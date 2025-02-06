@@ -45,15 +45,15 @@ LiteRtStatus ReshapeOpLegalization::LegalizeOp(const litert::Op& src,
     return kLiteRtStatusLegalizeNoMatch;
   }
   std::string op_name = absl::StrFormat(kReshapeOpFmt, op_counter_++);
-  LITERT_RETURN_STATUS_IF_NOT_OK(SetOpInfo(op_name.c_str(),
-                                           kDefaultQnnOpPackageName.data(),
-                                           kQnnReshapeOpTypeName.data(), dest));
+  LITERT_RETURN_IF_ERROR(SetOpInfo(op_name.c_str(),
+                                   kDefaultQnnOpPackageName.data(),
+                                   kQnnReshapeOpTypeName.data(), dest));
   DumpLegalization(*src.Get());
   // Look up op input tensors in scope.
   const auto op_ins = src.Inputs();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, kReshapeOpInputSize,
                      QNN_TENSOR_INIT);
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.LookupInScope(op_ins.front().Get(), qnn_op_ins[0]));
 
   // Legalize op outputs and update scope.
@@ -61,9 +61,9 @@ LiteRtStatus ReshapeOpLegalization::LegalizeOp(const litert::Op& src,
   const auto op_outs = src.Outputs();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs, kReshapeOpOutputSize,
                      QNN_TENSOR_INIT);
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.LegalizeAndRegister(op_outs.front().Get(), qnn_op_outs[0]));
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.PushToScope(op_outs.front().Get(), qnn_op_outs[0]));
 
   dest.v1.numOfInputs = kReshapeOpInputSize;

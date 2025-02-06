@@ -243,6 +243,18 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   PjRtFuture<> ToLiteralHelper(MutableLiteralBase* literal,
                                AsyncWorkRunner* async_work_runner);
 
+  PjRtFuture<> DoAsyncWorkOnBuffer(
+      absl::string_view method_name,
+      absl::AnyInvocable<
+          absl::Status(const Shape& device_shape,
+                       TrackedTfrtCpuDeviceBuffer* device_buffer) &&>
+          work_on_buffer,
+      bool should_do_work_sync, AsyncWorkRunner* async_work_runner);
+
+  PjRtFuture<> CopyRawToHostHelper(void* dst, int64_t offset,
+                                   int64_t transfer_size,
+                                   AsyncWorkRunner* async_work_runner);
+
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceAcrossClients(
       PjRtDevice* dst_device);
 

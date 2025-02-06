@@ -62,8 +62,8 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/type_util.h"
-#include "xla/codegen/ir/xla_ops.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -1186,8 +1186,16 @@ ValueRange ProvideParameter(const PartitionedComputation& computation,
   }
 
   auto callee = call_target_provider(operand);
-  SmallVector<Value> operands(
-      this_fn.getArguments().take_front(instr->parent()->num_parameters()));
+  SmallVector<Value> operands;
+  if (auto backend_kind = GetBackendKind(this_fn);
+      backend_kind == xla::BackendKind::kCpu && this_fn->getAttr("xla.entry")) {
+    operands =
+        SmallVector<Value>{this_fn.getArguments().drop_front().take_front(
+            instr->parent()->num_parameters())};
+  } else {
+    operands = SmallVector<Value>{
+        this_fn.getArguments().take_front(instr->parent()->num_parameters())};
+  }
   absl::c_copy(indices, std::back_inserter(operands));
   auto results = builder.create<PureCallOp>(callee, operands).getResults();
   auto callee_subgraph = computation.FindSubgraph(operand);

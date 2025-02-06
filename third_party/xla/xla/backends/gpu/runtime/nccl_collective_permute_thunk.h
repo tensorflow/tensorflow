@@ -17,6 +17,8 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_NCCL_COLLECTIVE_PERMUTE_THUNK_H_
 
 #include <cstdint>
+#include <memory>
+#include <unordered_map>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/node_hash_map.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -52,24 +55,27 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
 
     absl::Status InitializeId(int64_t current_id) {
       absl::MutexLock lock(&mutex_);
-      recv_ptrs_[current_id] = tsl::MakeUnconstructedAsyncValueRef<void*>();
+      recv_ptrs_[current_id] =
+          tsl::MakeUnconstructedAsyncValueRef<std::vector<void*>>();
       return absl::OkStatus();
     }
 
-    absl::Status PutRecvPtr(int64_t current_id, void* ptr) {
+    absl::Status PutRecvPtr(int64_t current_id,
+                            const std::vector<void*>& ptrs) {
       if (!IsInitialized(current_id)) {
         return absl::InternalError(absl::StrCat("Current ID ", current_id,
                                                 " has not been initialized!"));
       }
       absl::MutexLock lock(&mutex_);
       if (recv_ptrs_.at(current_id).IsUnavailable()) {
-        VLOG(3) << "Putting pointer: " << ptr << " current_id " << current_id;
-        recv_ptrs_.at(current_id).emplace(ptr);
+        VLOG(3) << "Putting pointers to current_id " << current_id;
+        recv_ptrs_.at(current_id).emplace(ptrs);
       }
       return absl::OkStatus();
     }
 
-    absl::StatusOr<AsyncValueRef<void*>> GetRecvPtr(int64_t target_id) {
+    absl::StatusOr<AsyncValueRef<std::vector<void*>>> GetRecvPtr(
+        int64_t target_id) {
       if (!IsInitialized(target_id)) {
         return absl::InternalError(absl::StrCat("Target ID ", target_id,
                                                 " has not been initialized!"));
@@ -80,7 +86,7 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
 
    private:
     absl::Mutex mutex_;
-    absl::node_hash_map<int64_t, AsyncValueRef<void*>> recv_ptrs_
+    absl::node_hash_map<int64_t, AsyncValueRef<std::vector<void*>>> recv_ptrs_
         ABSL_GUARDED_BY(mutex_);
   };
 
@@ -97,10 +103,10 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
   NcclCollectivePermuteStartThunk(ThunkInfo thunk_info,
                                   const HloCollectivePermuteInstruction* instr,
                                   int64_t replica_count,
-                                  int64_t partition_count, const Buffer& buffer,
+                                  int64_t partition_count,
+                                  const std::vector<Buffer>& buffers,
                                   bool p2p_memcpy_enabled);
   absl::Status Initialize(const InitializeParams& params) override;
-  absl::Status Cleanup(const CleanupParams& params) override;
 
   static const char* GetHloOpName() { return "collective-permute-start"; }
 
@@ -112,20 +118,21 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
 
  private:
   const NcclP2PConfig config_;
-  const Buffer buffer_;
+  std::vector<Buffer> buffers_;
   RecvPtrMap recv_ptr_map_;
   absl::Mutex barrier_mutex_;
-  std::unordered_map<int64_t, uint8_t> barrier_flags_;
+  std::unordered_map<int64_t, std::unique_ptr<se::MemoryAllocation>>
+      barrier_flags_;
   bool p2p_memcpy_enabled_ = false;
   int64_t device_count_;
 };
 
 absl::Status RunCollectivePermute(
     GpuCollectives* collectives,
-    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, Communicator* comm, absl::string_view device_string,
-    int64_t current_id, bool use_memcpy,
-    NcclCollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map);
+    NcclP2PConfig::SourceTargetMapEntry source_target,
+    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+    Communicator* comm, absl::string_view device_string, int64_t current_id,
+    bool use_memcpy, NcclCollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map);
 
 }  // namespace gpu
 }  // namespace xla

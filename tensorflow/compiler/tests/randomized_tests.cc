@@ -45,7 +45,10 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -53,7 +56,6 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -69,6 +71,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/device.h"
@@ -98,8 +102,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {

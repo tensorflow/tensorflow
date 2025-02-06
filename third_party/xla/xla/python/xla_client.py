@@ -50,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 303
+_version = 311
 
 # Version number for MLIR:Python components.
 mlir_api_version = 57
@@ -282,8 +282,12 @@ PrimitiveType = _xla.PrimitiveType
 
 bfloat16 = ml_dtypes.bfloat16
 # TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+# Also, it would be better to conditionally import these based on whether they
+# are in the current version of ml_dtypes.
+# float4_e2m1fn = ml_dtypes.float4_e2m1fn
 # float8_e3m4 = ml_dtypes.float8_e3m4
 # float8_e4m3 = ml_dtypes.float8_e4m3
+# float8_e8m0fnu = ml_dtypes.float8_e8m0fnu
 float8_e4m3fn = ml_dtypes.float8_e4m3fn
 float8_e4m3b11fnuz = ml_dtypes.float8_e4m3b11fnuz
 float8_e4m3fnuz = ml_dtypes.float8_e4m3fnuz
@@ -303,8 +307,10 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
     # TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+    # PrimitiveType.F4E2M1FN: np.dtype(float4_e2m1fn),
     # PrimitiveType.F8E3M4: np.dtype(float8_e3m4),
     # PrimitiveType.F8E4M3: np.dtype(float8_e4m3),
+    # PrimitiveType.F8E8M0FNU: np.dtype(float8_e8m0fnu),
     PrimitiveType.F8E4M3FN: np.dtype(float8_e4m3fn),
     PrimitiveType.F8E4M3B11FNUZ: np.dtype(float8_e4m3b11fnuz),
     PrimitiveType.F8E5M2: np.dtype(float8_e5m2),
@@ -1027,6 +1033,7 @@ batched_copy_array_to_devices_with_sharding = (
     _xla.batched_copy_array_to_devices_with_sharding
 )
 batched_device_put = _xla.batched_device_put
+reorder_shards = _xla.reorder_shards
 batched_block_until_ready = _xla.batched_block_until_ready
 check_and_canonicalize_memory_kind = _xla.check_and_canonicalize_memory_kind
 Layout = _xla.Layout

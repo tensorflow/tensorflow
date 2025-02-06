@@ -3756,11 +3756,11 @@ func.func @if(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (ten
 
 // CHECK-LABEL: legalize_fft_mhlo_fft_type_rfft
 func.func @legalize_fft_mhlo_fft_type_rfft(%arg0 : tensor<1x1x512xf32>) -> tensor<1x1x257xcomplex<f32>> {
-  %270 = "mhlo.fft"(%arg0) <{fft_length = dense<512> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<1x1x512xf32>) -> tensor<1x1x257xcomplex<f32>>
+  %270 = "mhlo.fft"(%arg0) <{fft_length = dense<[1, 512]> : tensor<2xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<1x1x512xf32>) -> tensor<1x1x257xcomplex<f32>>
   return %270: tensor<1x1x257xcomplex<f32>>
 }
 
-// CHECK:  %cst = arith.constant dense<512> : tensor<2xi32>
+// CHECK:  %cst = arith.constant dense<[1, 512]> : tensor<2xi32>
 // CHECK:  %0 = "tfl.rfft2d"(%arg0, %cst) : (tensor<1x1x512xf32>, tensor<2xi32>) -> tensor<1x1x257xcomplex<f32>>
 // CHECK:  return %0 : tensor<1x1x257xcomplex<f32>>
 
@@ -3774,6 +3774,30 @@ func.func @fft(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>> {
 
 // CHECK: %0 = "mhlo.fft"(%arg0) <{fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type FFT>}> : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>>
 // CHECK: return %0 : tensor<3x9xcomplex<f32>>
+
+// -----
+
+// CHECK-LABEL: @mhlo_nd_fft
+func.func @mhlo_nd_fft(%arg0: tensor<2x3x345x1x256xf32>) -> tensor<2x3x345x1x129xcomplex<f32>> {
+  %0 = "mhlo.fft"(%arg0) <{fft_length = dense<[1, 256]> : tensor<2xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<2x3x345x1x256xf32>) -> tensor<2x3x345x1x129xcomplex<f32>>
+  func.return %0 : tensor<2x3x345x1x129xcomplex<f32>>
+}
+
+// CHECK: %cst = arith.constant dense<[1, 256]> : tensor<2xi32>
+// CHECK: %0 = "tfl.rfft2d"(%arg0, %cst) : (tensor<2x3x345x1x256xf32>, tensor<2xi32>) -> tensor<2x3x345x1x129xcomplex<f32>>
+// CHECK: return %0 : tensor<2x3x345x1x129xcomplex<f32>>
+
+// -----
+
+// CHECK-LABEL: @mhlo_nd_fft_1
+func.func @mhlo_nd_fft_1(%arg0: tensor<2x3x345x4x256xf32>) -> tensor<2x3x345x4x129xcomplex<f32>> {
+  %43 = "mhlo.fft"(%arg0) <{fft_length = dense<[4, 256]> : tensor<2xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<2x3x345x4x256xf32>) -> tensor<2x3x345x4x129xcomplex<f32>>
+  return %43 : tensor<2x3x345x4x129xcomplex<f32>>
+}
+
+// CHECK: %cst = arith.constant dense<[4, 256]> : tensor<2xi32>
+// CHECK: %0 = "tfl.rfft2d"(%arg0, %cst) : (tensor<2x3x345x4x256xf32>, tensor<2xi32>) -> tensor<2x3x345x4x129xcomplex<f32>>
+// CHECK: return %0 : tensor<2x3x345x4x129xcomplex<f32>>
 
 // -----
 

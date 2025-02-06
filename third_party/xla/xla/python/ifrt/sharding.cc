@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -43,9 +44,10 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -305,6 +307,10 @@ std::string SingleDeviceSharding::DebugString() const {
                          memory_kind_);
 }
 
+void SingleDeviceSharding::Hash(absl::HashState state) const {
+  absl::HashState::combine(std::move(state), devices_, memory_kind_);
+}
+
 std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(
     tsl::RCReference<DeviceList> devices, MemoryKind memory_kind) {
   memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
@@ -393,6 +399,10 @@ std::string OpaqueSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat("OpaqueSharding(devices: %v, memory_kind: %v)",
                          *devices_, memory_kind_);
+}
+
+void OpaqueSharding::Hash(absl::HashState state) const {
+  absl::HashState::combine(std::move(state), devices_, memory_kind_);
 }
 
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
@@ -613,6 +623,11 @@ std::string ConcreteSharding::DebugString() const {
       shape_, shard_shapes_);
 }
 
+void ConcreteSharding::Hash(absl::HashState state) const {
+  absl::HashState::combine(std::move(state), devices_, memory_kind_, shape_,
+                           shard_shapes_);
+}
+
 std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
     tsl::RCReference<DeviceList> devices, MemoryKind memory_kind, Shape shape,
     Shape shard_shape, bool is_fully_replicated) {
@@ -743,9 +758,14 @@ std::string ConcreteEvenSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
       "ConcreteEvenSharding(devices: %v, shape: %s, shard_shape: %s, "
-      "memory_kind: %v)",
-      *devices_, shape_.DebugString(), shard_shape_.DebugString(),
-      memory_kind_);
+      "memory_kind: %v, is_fully_replicated: %s)",
+      *devices_, shape_.DebugString(), shard_shape_.DebugString(), memory_kind_,
+      is_fully_replicated_ ? "true" : "false");
+}
+
+void ConcreteEvenSharding::Hash(absl::HashState state) const {
+  absl::HashState::combine(std::move(state), devices_, memory_kind_,
+                           is_fully_replicated_, shape_, shard_shape_);
 }
 
 absl::StatusOr<std::unique_ptr<ShardingParamSharding>>
@@ -932,6 +952,11 @@ std::string ShardingParamSharding::DebugString() const {
   return absl::StrFormat(
       "ShardingParamSharding(%s, devices: %v, memory_kind: %v)",
       sharding_param_.DebugString(), *devices_, memory_kind_);
+}
+
+void ShardingParamSharding::Hash(absl::HashState state) const {
+  absl::HashState::combine(std::move(state), devices_, memory_kind_,
+                           is_fully_replicated_, sharding_param_);
 }
 
 }  // namespace ifrt

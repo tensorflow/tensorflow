@@ -19,7 +19,8 @@
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
+#include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/litert/core/dispatch_op_schema.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_load.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
@@ -56,16 +57,21 @@ TEST(GetModelBufWithByteCode, CreateInterpreter) {
   EXPECT_NE(interpreter, nullptr);
 }
 
-TEST(GetModelBufWithByteCode, CheckMetadata) {
+TEST(GetModelBufWithByteCode, CheckAppended) {
   auto model_with_byte_code =
       GetModelBufWithByteCode(testing::GetTestFilePath(kTfliteFile),
                               testing::GetTestFilePath(kNpuFile));
   ASSERT_TRUE(model_with_byte_code);
 
   auto model = LoadModelFromBuffer(*model_with_byte_code);
+  ASSERT_TRUE(model);
 
-  auto byte_code_buffer = model->get()->FindMetadata(kByteCodeMetadataKey);
-  ASSERT_TRUE(byte_code_buffer);
+  auto* op = model->get()->Subgraphs().front()->Ops().front();
+  ASSERT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
+  auto dispatch_opts = GetDispatchOpOptions(op->CustomOptions());
+  EXPECT_EQ(dispatch_opts.name, "");
+  EXPECT_LE(dispatch_opts.bytecode_offset + dispatch_opts.bytecode_size,
+            model_with_byte_code->Size());
 }
 
 }  // namespace

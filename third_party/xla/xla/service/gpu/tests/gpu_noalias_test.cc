@@ -54,7 +54,7 @@ TEST_F(GpuNoAliasTest, Concat) {
 CHECK: define amdgpu_kernel void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 128 dereferenceable(48) %{{[a-zA-Z0-9_]+}}) #0
   )"
                                          : R"(
-CHECK: define void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 128 dereferenceable(48) %{{[a-zA-Z0-9_]+}})
+CHECK: define ptx_kernel void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 16 dereferenceable(16) %{{[a-zA-Z0-9_]+}}, ptr noalias align 128 dereferenceable(48) %{{[a-zA-Z0-9_]+}})
   )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/false);

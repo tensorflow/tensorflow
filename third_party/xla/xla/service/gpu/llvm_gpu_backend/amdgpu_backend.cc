@@ -16,16 +16,23 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <functional>
+#include <ios>
 #include <memory>
 #include <mutex>  // NOLINT
+#include <optional>
 #include <string>
 #include <system_error>  // NOLINT
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -66,6 +73,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/rocm_rocdl_path.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -74,7 +82,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/random.h"
-#include "tsl/platform/rocm_rocdl_path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -420,6 +427,10 @@ void AMDGPUBackendInit(const DebugOptions& debug_options,
   gpu::InitializePasses(registry);
 }
 
+}  // namespace
+
+namespace amdgpu {
+
 std::vector<std::string> GetAMDGPUBackendOptions(
     const DebugOptions& debug_options) {
   std::vector<std::string> backend_llvm_opts;
@@ -434,10 +445,6 @@ std::vector<std::string> GetAMDGPUBackendOptions(
 
   return backend_llvm_opts;
 }
-
-}  // namespace
-
-namespace amdgpu {
 
 std::string LibDevicePath(std::string gcn_arch_name,
                           const std::string& rocdl_dir_path) {

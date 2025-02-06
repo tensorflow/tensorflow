@@ -18,6 +18,7 @@
 #include <memory.h>
 #include <stddef.h>
 
+#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -50,6 +51,7 @@ typedef enum {
   kLiteRtTensorBufferTypeIon = 3,
   kLiteRtTensorBufferTypeDmaBuf = 4,
   kLiteRtTensorBufferTypeFastRpc = 5,
+  kLiteRtTensorBufferTypeOpenCl = 6,
 } LiteRtTensorBufferType;
 
 typedef void (*LiteRtHostMemoryDeallocator)(void* addr);
@@ -57,6 +59,7 @@ typedef void (*LiteRtAhwbDeallocator)(AHardwareBuffer* ahwb);
 typedef void (*LiteRtIonDeallocator)(void* ion_buffer_addr);
 typedef void (*LiteRtDmaBufDeallocator)(void* dmabuf_buffer_addr);
 typedef void (*LiteRtFastRpcDeallocator)(void* fastrpc_buffer_addr);
+typedef void (*LiteRtOpenClDeallocator)(void* opencl_buffer_addr);
 
 // /////////////////////////////////////////////////////////////////////////////
 // TensorBuffers.
@@ -147,6 +150,24 @@ LiteRtStatus LiteRtGetTensorBufferFastRpcBuffer(
     int* fastrpc_buffer_fd);
 #endif  // LITERT_HAS_FASTRPC_SUPPORT
 
+#if LITERT_HAS_OPENCL_SUPPORT
+// Create a tensor buffer from an existing OpenCL buffer of a given size, with
+// optional opencl memory buffer deallocator (it can be NULL). An non-zero
+// `opencl_buffer_offset` can be used to specify multiple tensor buffers sharing
+// the same underlying OpenCL buffer, in which case parameter
+// `opencl_buffer_size` must be the entire size of the underlying OpenCL
+// memory buffer, including the allocation needed for all tensor buffers
+// sharing it.
+LiteRtStatus LiteRtCreateTensorBufferFromOpenClBuffer(
+    const LiteRtRankedTensorType* tensor_type, cl_mem cl_mem_addr,
+    size_t opencl_buffer_size, LiteRtOpenClDeallocator deallocator,
+    LiteRtTensorBuffer* buffer);
+
+// Return an error if the backing buffer is not a OpenCL buffer.
+LiteRtStatus LiteRtGetTensorBufferOpenClBuffer(LiteRtTensorBuffer tensor_buffer,
+                                               cl_mem* cl_mem_addr);
+#endif  // LITERT_HAS_OPENCL_SUPPORT
+
 // Create a buffer backed by managed memory for a given size.
 LiteRtStatus LiteRtCreateManagedTensorBuffer(
     LiteRtTensorBufferType buffer_type,
@@ -173,18 +194,25 @@ LiteRtStatus LiteRtGetTensorBufferOffset(LiteRtTensorBuffer tensor_buffer,
 LiteRtStatus LiteRtHasTensorBufferEvent(LiteRtTensorBuffer tensor_buffer,
                                         bool* has_event);
 
+// Return an event attached a given tensor buffer, or NULL if no such event
+// exists. The tensor buffer retains ownership of the returned event.
 LiteRtStatus LiteRtGetTensorBufferEvent(LiteRtTensorBuffer tensor_buffer,
                                         LiteRtEvent* event);
 
+// Attach a given event to a given tensor buffer. The tensor buffer takes
+// ownership of the event.
 LiteRtStatus LiteRtSetTensorBufferEvent(LiteRtTensorBuffer tensor_buffer,
                                         LiteRtEvent event);
 
+// Remove any event that may have been previously attached to the given tensor
+// buffer and deallocate such event.
 LiteRtStatus LiteRtClearTensorBufferEvent(LiteRtTensorBuffer tensor_buffer);
 
-// Lock a tensor buffer and map it to host memory, optionally synchronizing on a
-// given input event (parameter `event` can be NULL).
+// Lock a tensor buffer and map it to host memory, potentially synchronizing on
+// an event that was previously attached to the tensor buffer with
+// `LiteRtSetTensorBufferEvent`.
 LiteRtStatus LiteRtLockTensorBuffer(LiteRtTensorBuffer tensor_buffer,
-                                    void** host_mem_addr, LiteRtEvent event);
+                                    void** host_mem_addr);
 
 // Unlock a tensor buffer and (potentially) unmap it from host memory.
 LiteRtStatus LiteRtUnlockTensorBuffer(LiteRtTensorBuffer buffer);

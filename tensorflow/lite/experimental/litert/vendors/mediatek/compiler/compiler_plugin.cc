@@ -13,14 +13,17 @@
 // limitations under the License.
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -31,7 +34,7 @@
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/compile_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/create_model.h"
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
 //
 // Configurations
@@ -39,13 +42,8 @@
 
 using litert::Error;
 using litert::Expected;
-using litert::mediatek::NEURON_NO_ERROR;
-using litert::mediatek::NEURON_PREFER_SUSTAINED_SPEED;
-using litert::mediatek::NEURON_PRIORITY_HIGH;
-using litert::mediatek::NeuronAdapter;
-using litert::mediatek::NeuronCompilation;
+using litert::mediatek::NeuronAdapterApi;
 using litert::mediatek::NeuronCompilationPtr;
-using litert::mediatek::NeuronModel;
 using litert::mediatek::NeuronModelPtr;
 
 namespace {
@@ -109,7 +107,7 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedHardware(
   if (!compiler_plugin || !supported_hardware) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *supported_hardware = kLiteRtHwAccelatorNpu;
+  *supported_hardware = kLiteRtHwAcceleratorNpu;
   return kLiteRtStatusOk;
 }
 
@@ -147,25 +145,31 @@ struct LiteRtCompiledResultT {
   std::vector<std::string> graph_names;
 };
 
-LiteRtStatus LiteRtGetCompiledResultByteCode(
-    LiteRtCompiledResult compiled_result, const void** byte_code,
-    size_t* byte_code_size) {
-  if (!compiled_result || !byte_code || !byte_code_size) {
+LiteRtStatus LiteRtCompiledResultNumByteCodeModules(
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_byte_code) {
+  if (!compiled_result || !num_byte_code) {
     return kLiteRtStatusErrorInvalidArgument;
-  } else if (compiled_result->bytecodes.size() > 1) {
-    // TODO: Revisit this struct after we extend the compiler plugin API to
-    // return results with more than one single bytecode.
-    LITERT_LOG(LITERT_ERROR, "CompilerPlugin API supports only 1 NPU bytecode");
-    return kLiteRtStatusErrorIndexOOB;
   }
-  *byte_code = compiled_result->bytecodes[0].data();
-  *byte_code_size = compiled_result->bytecodes[0].size();
+  *num_byte_code = compiled_result->bytecodes.size();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtGetCompiledResultByteCode(
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex byte_code_idx,
+    const void** byte_code, size_t* byte_code_size) {
+  if (!compiled_result || !byte_code || !byte_code_size ||
+      (byte_code_idx >= compiled_result->bytecodes.size())) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *byte_code = compiled_result->bytecodes[byte_code_idx].data();
+  *byte_code_size = compiled_result->bytecodes[byte_code_idx].size();
   return kLiteRtStatusOk;
 }
 
 LiteRtStatus LiteRtGetCompiledResultCallInfo(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex call_idx,
-    const void** call_info, size_t* call_info_size) {
+    const void** call_info, size_t* call_info_size,
+    LiteRtParamIndex* byte_code_idx) {
   if (!compiled_result || !call_info || !call_info_size) {
     return kLiteRtStatusErrorInvalidArgument;
   } else if (call_idx >= compiled_result->graph_names.size()) {
@@ -175,6 +179,8 @@ LiteRtStatus LiteRtGetCompiledResultCallInfo(
   auto& graph_name = compiled_result->graph_names[call_idx];
   *call_info = graph_name.data();
   *call_info_size = graph_name.size();
+  // MTK should have one byte code per call.
+  *byte_code_idx = call_idx;
 
   return kLiteRtStatusOk;
 }
@@ -234,7 +240,7 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
       continue;
     }
 
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op.Get()));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
   }
 
   return kLiteRtStatusOk;
@@ -243,27 +249,27 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
 namespace {
 
 Expected<std::vector<uint8_t>> CompilePartition(
-    NeuronAdapter& neuron_adapter, const litert::Subgraph& partition,
+    NeuronAdapterApi& neuron_adapter_api, const litert::Subgraph& partition,
     const std::string& graph_name, std::optional<std::string> soc_model) {
-  auto model = CreateModel(neuron_adapter, partition, graph_name);
+  auto model = CreateModel(neuron_adapter_api, partition, graph_name);
   if (!model) {
     return model.Error();
   }
 
-  auto compilation = CompileModel(neuron_adapter, model->get(), soc_model);
+  auto compilation = CompileModel(neuron_adapter_api, model->get(), soc_model);
   if (!compilation) {
     return compilation.Error();
   }
 
   size_t bytecode_size;
-  if (neuron_adapter.api().compilation_get_compiled_network_size(
+  if (neuron_adapter_api.api().compilation_get_compiled_network_size(
           compilation->get(), &bytecode_size) != NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
                  "Failed to get compiled network size");
   }
 
   std::vector<uint8_t> bytecode(bytecode_size);
-  if (neuron_adapter.api().compilation_store_compiled_network(
+  if (neuron_adapter_api.api().compilation_store_compiled_network(
           compilation->get(), bytecode.data(), bytecode.size()) !=
       NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
@@ -277,8 +283,10 @@ Expected<std::vector<uint8_t>> CompilePartition(
 
 LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
-    LiteRtSubgraph* partitions, LiteRtParamIndex num_partitions,
-    LiteRtCompiledResult* compiled_result) {
+    LiteRtModel partitions, LiteRtCompiledResult* compiled_result) {
+  auto model = litert::Model::CreateFromNonOwnedHandle(partitions);
+  const auto num_partitions = model.NumSubgraphs();
+
   LITERT_LOG(LITERT_INFO,
              "Starting MediaTek Compilation for %d subgraphs, soc_model=%s",
              num_partitions, soc_model);
@@ -294,20 +302,19 @@ LiteRtStatus LiteRtCompilerPluginCompile(
 
   // Initialize SDK and load qnn shared libraries.
 
-  auto neuron_adapter =
-      NeuronAdapter::Create(/*shared_library_dir=*/std::nullopt);
-  if (!neuron_adapter) {
-    return neuron_adapter.Error().Status();
+  auto api = NeuronAdapterApi::Create(/*shared_library_dir=*/std::nullopt);
+  if (!api) {
+    return api.Error().Status();
   }
 
   auto result = std::make_unique<LiteRtCompiledResultT>();
+
   for (auto i = 0; i < num_partitions; ++i) {
-    auto partition = litert::Subgraph(partitions[i]);
     auto graph_name = absl::StrFormat("Partition_%d", i);
-    auto bytecode = CompilePartition(**neuron_adapter, partition, graph_name,
-                                     opt_soc_model);
+    auto bytecode =
+        CompilePartition(**api, *model.Subgraph(i), graph_name, opt_soc_model);
     if (!bytecode) {
-      LITERT_LOG(LITERT_INFO, "%s", bytecode.Error().Message().data());
+      LITERT_LOG(LITERT_INFO, "%s", bytecode.Error().Message().c_str());
       return bytecode.Error().Status();
     }
 

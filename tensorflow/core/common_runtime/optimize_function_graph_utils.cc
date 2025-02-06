@@ -28,6 +28,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function_body.h"
@@ -51,12 +56,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

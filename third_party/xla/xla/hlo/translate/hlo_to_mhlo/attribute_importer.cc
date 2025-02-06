@@ -109,12 +109,12 @@ mlir::mhlo::DotAlgorithmAttr ConvertDotAlgorithm(
   bool allowImpreciseAccumulation = false;
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32: {
-      lhs = rhs = builder->getFloat8E5M2Type();
+      lhs = rhs = builder->getType<mlir::Float8E5M2Type>();
       accum = builder->getF32Type();
       break;
     }
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM: {
-      lhs = rhs = builder->getFloat8E5M2Type();
+      lhs = rhs = builder->getType<mlir::Float8E5M2Type>();
       accum = builder->getF32Type();
       allowImpreciseAccumulation = true;
       break;

@@ -19,11 +19,11 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/operand_map.h"
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
 namespace litert::mediatek {
 
-Expected<void> LegalizeAddOp(const NeuronAdapter& neuron_adapter,
+Expected<void> LegalizeAddOp(const NeuronAdapterApi& neuron_adapter_api,
                              NeuronModel* model, OperandMap& operand_map,
                              const litert::Op& op);
 

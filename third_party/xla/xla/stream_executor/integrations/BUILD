@@ -26,7 +26,6 @@ package_group(
 filegroup(
     name = "device_mem_allocator_headers",
     srcs = [
-        "device_host_allocator.h",
         "device_mem_allocator.h",
     ],
     visibility = internal_visibility(["//tensorflow/core:__pkg__"]),
@@ -69,7 +68,6 @@ cc_library(
 cc_library(
     name = "device_mem_allocator",
     hdrs = [
-        "device_host_allocator.h",
         "device_mem_allocator.h",
     ],
     deps = [
@@ -83,6 +81,42 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
+)
+
+cc_library(
+    name = "stream_executor_allocator",
+    srcs = ["stream_executor_allocator.cc"],
+    hdrs = [
+        "stream_executor_allocator.h",
+    ],
+    deps = [
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_allocator",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/framework:allocator",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+xla_cc_test(
+    name = "stream_executor_allocator_test",
+    srcs = ["stream_executor_allocator_test.cc"],
+    deps = [
+        ":stream_executor_allocator",
+        "//xla/stream_executor:generic_memory_allocation",
+        "//xla/stream_executor:generic_memory_allocator",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ] + if_google([
+        "//xla/tsl/framework:allocator",
+    ]),
 )
 
 xla_cc_test(

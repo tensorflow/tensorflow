@@ -1142,7 +1142,7 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSNested) {
                   .has_value());
 }
 
-TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSIncrementByTwo) {
+TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDSIncrementByTwo) {
   // In this version of the test, our dimension of interest gets incremented by
   // two at a time so that it takes on values {0, 2, 4}. The DS has slice size
   // two, so indeed all index values {0, 1, 2, 3, 4, 5} are retrieved by the DS.
@@ -1154,12 +1154,13 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSIncrementByTwo) {
   HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
   HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
   HloInstruction* instr = body->GetInstructionWithName("slice");
-  EXPECT_TRUE(MatchShapeCoveringDynamicIndexInstruction(
+  EXPECT_TRUE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
                   instr, input, HloOpcode::kDynamicSlice, config.value())
                   .has_value());
 }
 
-TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSIncrementByTwoMismatch) {
+TEST_F(WhileLoopUnrollerTest,
+       AdvancedMatchShapeCoveringDSIncrementByTwoMismatch) {
   // In this version of the test, our dimension of interest gets incremented by
   // two at a time so that it takes on values {0, 2, 4}. The DS has slice size
   // two, so only index values {0, 1, 2, 3, 4, 5} are retrieved by the DS and
@@ -1172,12 +1173,12 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSIncrementByTwoMismatch) {
   HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
   HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
   HloInstruction* instr = body->GetInstructionWithName("slice");
-  EXPECT_FALSE(MatchShapeCoveringDynamicIndexInstruction(
+  EXPECT_FALSE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
                    instr, input, HloOpcode::kDynamicSlice, config.value())
                    .has_value());
 }
 
-TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDUS) {
+TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDUS) {
   auto module = MakeModuleWithDUS(/*start=*/0, /*stop=*/3, /*step=*/1,
                                   /*slice_size=*/1, /*dim_size=*/3);
   HloInstruction* loop = module->entry_computation()->root_instruction();
@@ -1186,12 +1187,12 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDUS) {
   HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
   HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
   HloInstruction* instr = body->GetInstructionWithName("slice");
-  EXPECT_TRUE(MatchShapeCoveringDynamicIndexInstruction(
+  EXPECT_TRUE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
                   instr, input, HloOpcode::kDynamicUpdateSlice, config.value())
                   .has_value());
 }
 
-TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDUSIncrementByTwo) {
+TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDUSIncrementByTwo) {
   auto module = MakeModuleWithDUS(/*start=*/0, /*stop=*/6, /*step=*/2,
                                   /*slice_size=*/2, /*dim_size=*/6);
   HloInstruction* loop = module->entry_computation()->root_instruction();
@@ -1200,12 +1201,13 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDUSIncrementByTwo) {
   HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
   HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
   HloInstruction* instr = body->GetInstructionWithName("slice");
-  EXPECT_TRUE(MatchShapeCoveringDynamicIndexInstruction(
+  EXPECT_TRUE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
                   instr, input, HloOpcode::kDynamicUpdateSlice, config.value())
                   .has_value());
 }
 
-TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDUSIncrementByTwoMismatch) {
+TEST_F(WhileLoopUnrollerTest,
+       AdvancedMatchShapeCoveringDUSIncrementByTwoMismatch) {
   auto module = MakeModuleWithDUS(/*start=*/0, /*stop=*/6, /*step=*/2,
                                   /*slice_size=*/2, /*dim_size=*/7);
   HloInstruction* loop = module->entry_computation()->root_instruction();
@@ -1214,7 +1216,7 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDUSIncrementByTwoMismatch) {
   HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
   HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
   HloInstruction* instr = body->GetInstructionWithName("slice");
-  EXPECT_FALSE(MatchShapeCoveringDynamicIndexInstruction(
+  EXPECT_FALSE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
                    instr, input, HloOpcode::kDynamicUpdateSlice, config.value())
                    .has_value());
 }

@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -58,15 +59,15 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -188,7 +189,7 @@ std::ostream& operator<<(std::ostream& os, InitMethod op) {
 
 using ::testing::HasSubstr;
 
-class CustomCallTest : public HloTestBase {
+class CustomCallTest : public HloPjRtTestBase {
  protected:
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
   Shape r2f32_ = ShapeUtil::MakeShape(F32, {2, 2});
@@ -207,7 +208,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
-  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
 XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
@@ -226,7 +227,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
-  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
 XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
@@ -248,7 +249,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
-  LiteralTestUtil::ExpectR0Near<float>(10.0f, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<float>(10.0f, result, kDefaultErrorSpec);
 }
 
 XLA_TEST_F(CustomCallTest, ReportsSuccess) {
@@ -264,7 +265,7 @@ XLA_TEST_F(CustomCallTest, ReportsSuccess) {
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
-  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
 XLA_TEST_F(CustomCallTest, ReportsFailure) {
@@ -329,10 +330,6 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
 }
 
 XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Invalid values unsupported by MLIR";
-  }
-
   const char* const kModuleStr = R"(
     HloModule m
     ENTRY test {
@@ -352,7 +349,9 @@ XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
               HasSubstr("Fail with raw backend config str: foo"));
 }
 
-class CustomCallClientAPITest : public ClientLibraryTestBase {};
+class CustomCallClientAPITest
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
 
 // When using the client API, CustomCall targets can't begin with '$' -- these
 // are reserved for internal use.
@@ -361,9 +360,7 @@ XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
   CustomCall(&builder, "$illegal", /*operands=*/{},
              ShapeUtil::MakeShape(F32, {1}));
 
-  absl::StatusOr<std::unique_ptr<GlobalData>> result =
-      Execute(&builder, /*arguments=*/{});
-  EXPECT_FALSE(result.ok());
+  EXPECT_IS_NOT_OK(ExecuteAndTransfer(&builder, /*arguments=*/{}).status());
 }
 
 //===----------------------------------------------------------------------===//
@@ -869,8 +866,7 @@ XLA_TEST_F(FfiCustomCallTest, Tokens) {
 
   module->AddEntryComputation(builder.Build());
 
-  auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status, absl::OkStatus());
+  TF_EXPECT_OK(Execute(std::move(module), {}).status());
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
@@ -1022,7 +1018,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleTypedBuffers) {
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
-  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleInputAsParameters) {
@@ -1040,7 +1036,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleInputAsParameters) {
   Literal argument = LiteralUtil::CreateR0<float>(42.0f);
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
-  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseFloat) {
@@ -1056,7 +1052,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseFloat) {
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
-  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseDouble) {
@@ -1073,7 +1069,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseDouble) {
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
-  LiteralTestUtil::ExpectR0Near<double>(44.0f, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<double>(44.0f, result, kDefaultErrorSpec);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleAttr) {
@@ -1090,7 +1086,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleAttr) {
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
-  LiteralTestUtil::ExpectR0Near<float>(45.0f, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<float>(45.0f, result, kDefaultErrorSpec);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleAttrPointer) {
@@ -1109,7 +1105,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleAttrPointer) {
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
-  LiteralTestUtil::ExpectR0Near<float>(46.0f, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<float>(46.0f, result, kDefaultErrorSpec);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiHandleR2Vector) {
@@ -1132,7 +1128,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleR2Vector) {
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
-  LiteralTestUtil::ExpectR0Near<float>(10.0f, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<float>(10.0f, result, kDefaultErrorSpec);
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiWrongEnumType) {
@@ -1208,7 +1204,7 @@ XLA_TEST_P(FfiCustomCallEnumTest, FfiHandleEnumAttr) {
       break;
   }
 
-  LiteralTestUtil::ExpectR0Near<float>(expected, result, error_spec_);
+  LiteralTestUtil::ExpectR0Near<float>(expected, result, kDefaultErrorSpec);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1250,12 +1246,6 @@ XLA_TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
 XLA_TEST_F(FfiCustomCallTest, FfiInputAndOutputLayoutDiffer) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
-
-  if (IsMlirLoweringEnabled()) {
-    // The MLIR pipeline does /not/ transpose the output here, and there's no
-    // obvious reason why it should.
-    GTEST_SKIP() << "Appears to test an XLA current implementation detail";
-  }
 
   auto input =
       builder.AddInstruction(HloInstruction::CreateParameter(0, r2f32_, "p"));
@@ -1340,22 +1330,26 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleOutput) {
       c1 = f32[] constant(42.0)
       c2 = f32[] constant(8.0)
       c3 = f32[] constant(43.0)
-      ROOT custom-call = ((f32[], f32[]), (f32[], f32[])) custom-call(c0, c1, c2, c3), custom_call_target="__xla_test$$FfiTupleRotate", api_version=API_VERSION_TYPED_FFI
+      custom-call = ((f32[], f32[]), (f32[], f32[])) custom-call(c0, c1, c2, c3), custom_call_target="__xla_test$$FfiTupleRotate", api_version=API_VERSION_TYPED_FFI
+      t0x = (f32[], f32[]) get-tuple-element(custom-call), index=0
+      t00 = f32[] get-tuple-element(t0x), index=0
+      t01 = f32[] get-tuple-element(t0x), index=1
+      t1x = (f32[], f32[]) get-tuple-element(custom-call), index=1
+      t10 = f32[] get-tuple-element(t1x), index=0
+      t11 = f32[] get-tuple-element(t1x), index=1
+      ROOT tuple = (f32[], f32[], f32[], f32[]) tuple(t00, t01, t10, t11)
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  Literal arg0 = LiteralUtil::CreateR0<float>(7.f);
-  Literal arg1 = LiteralUtil::CreateR0<float>(42.f);
-  Literal arg2 = LiteralUtil::CreateR0<float>(8.f);
-  Literal arg3 = LiteralUtil::CreateR0<float>(43.f);
+  const Literal arg0 = LiteralUtil::CreateR0<float>(7.f);
+  const Literal arg1 = LiteralUtil::CreateR0<float>(42.f);
+  const Literal arg2 = LiteralUtil::CreateR0<float>(8.f);
+  const Literal arg3 = LiteralUtil::CreateR0<float>(43.f);
 
-  Literal tuple0 = LiteralUtil::MakeTuple({&arg1, &arg2});
-  Literal tuple1 = LiteralUtil::MakeTuple({&arg3, &arg0});
-
-  Literal expected = LiteralUtil::MakeTuple({&tuple0, &tuple1});
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  const Literal expected = LiteralUtil::MakeTuple({&arg1, &arg2, &arg3, &arg0});
+  TF_ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
   EXPECT_EQ(result, expected);
 }
 
@@ -1427,7 +1421,11 @@ XLA_TEST_F(FfiCustomCallTest, IgnoresEmptyTupleParameter) {
     HloModule m
 
     ENTRY test {
-      p0 = (u32[], s16[], ((), ())) parameter(0)
+      t0 = u32[] parameter(0)
+      t1 = s16[] parameter(1)
+      t2 = () tuple()
+      t3 = ((), ()) tuple(t2, t2)
+      p0 = (u32[], s16[], ((), ())) tuple(t0, t1, t3)
       ROOT custom-call = (s16[], u32[]) custom-call(p0), custom_call_target="__xla_test$$SwapTupleAnyBuffersToS16U32", api_version=API_VERSION_TYPED_FFI
     })";
 
@@ -1436,12 +1434,10 @@ XLA_TEST_F(FfiCustomCallTest, IgnoresEmptyTupleParameter) {
 
   Literal arg0 = LiteralUtil::CreateR0<uint32_t>(0xDEADC0DE);
   Literal arg1 = LiteralUtil::CreateR0<int16_t>(29);
-  Literal empty_tuple = LiteralUtil::MakeTuple({});
-  Literal nested_tuple = LiteralUtil::MakeTuple({&empty_tuple, &empty_tuple});
-  Literal argument = LiteralUtil::MakeTuple({&arg0, &arg1, &nested_tuple});
-  Literal expected = LiteralUtil::MakeTuple({&arg1, &arg0});
+  const Literal expected = LiteralUtil::MakeTuple({&arg1, &arg0});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {&argument}));
+  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
+                          Execute(std::move(module), {&arg0, &arg1}));
   EXPECT_EQ(result, expected);
 }
 
@@ -1496,7 +1492,13 @@ XLA_TEST_F(FfiCustomCallTest, HandleTupleDifferentRanks) {
     HloModule m
 
     ENTRY test {
-      p0 = ((u32[], s16[5]), (f32[2, 2], f32[4, 2, 2])) parameter(0)
+      t00 = u32[] parameter(0)
+      t01 = s16[5] parameter(1)
+      t0x = (u32[], s16[5]) tuple(t00, t01)
+      t10 = f32[2, 2] parameter(2)
+      t11 = f32[4, 2, 2] parameter(3)
+      t1x = (f32[2, 2], f32[4, 2, 2]) tuple(t10, t11)
+      p0 = ((u32[], s16[5]), (f32[2, 2], f32[4, 2, 2])) tuple(t0x, t1x)
       ROOT custom-call = (s32[5], f32[5, 2, 2]) custom-call(p0), custom_call_target="__xla_test$$HandleTupleDifferentRanks", api_version=API_VERSION_TYPED_FFI
     })";
 
@@ -1510,12 +1512,10 @@ XLA_TEST_F(FfiCustomCallTest, HandleTupleDifferentRanks) {
                                                 {{5.f, 6.f}, {7.f, 8.f}},
                                                 {{9.f, 10.f}, {11.f, 12.f}},
                                                 {{13.f, 14.f}, {15.f, 16.f}}});
-  Literal tuple_arg_0 = LiteralUtil::MakeTuple({&arg_0, &arg_1});
-  Literal tuple_arg_1 = LiteralUtil::MakeTuple({&arg_2, &arg_3});
-  Literal tuple_arg = LiteralUtil::MakeTuple({&tuple_arg_0, &tuple_arg_1});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {&tuple_arg}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const Literal result,
+      Execute(std::move(module), {&arg_0, &arg_1, &arg_2, &arg_3}));
 
   Literal expected_0 =
       LiteralUtil::CreateR1<int32_t>({2900, 3000, 3100, 3200, 3300});
@@ -1526,7 +1526,8 @@ XLA_TEST_F(FfiCustomCallTest, HandleTupleDifferentRanks) {
                                     {{13.f, 14.f}, {15.f, 16.f}},
                                     {{17.f, 18.f}, {19.f, 20.f}}});
 
-  Literal expected_tuple = LiteralUtil::MakeTuple({&expected_0, &expected_1});
+  const Literal expected_tuple =
+      LiteralUtil::MakeTuple({&expected_0, &expected_1});
   EXPECT_EQ(result, expected_tuple);
 }
 
@@ -1536,7 +1537,13 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
 
     ENTRY test {
       c0 = ((f32[], f32[]), (f32[], f32[])) constant(((7.0, 42.0), (8.0, 43.0)))
-      ROOT custom-call = (f32[], (f32[], f32[]), f32[]) custom-call(c0), custom_call_target="__xla_test$$FfiTupleRotate", api_version=API_VERSION_TYPED_FFI
+      custom-call = (f32[], (f32[], f32[]), f32[]) custom-call(c0), custom_call_target="__xla_test$$FfiTupleRotate", api_version=API_VERSION_TYPED_FFI
+      t00 = f32[] get-tuple-element(custom-call), index=0
+      t1x = (f32[], f32[]) get-tuple-element(custom-call), index=1
+      t10 = f32[] get-tuple-element(t1x), index=0
+      t11 = f32[] get-tuple-element(t1x), index=1
+      t20 = f32[] get-tuple-element(custom-call), index=2
+      ROOT result = (f32[], f32[], f32[], f32[]) tuple(t00, t10, t11, t20)
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1547,9 +1554,8 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
   Literal arg2 = LiteralUtil::CreateR0<float>(8.f);
   Literal arg3 = LiteralUtil::CreateR0<float>(43.f);
 
-  Literal inner_tuple = LiteralUtil::MakeTuple({&arg2, &arg3});
-  Literal expected = LiteralUtil::MakeTuple({&arg1, &inner_tuple, &arg0});
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  const Literal expected = LiteralUtil::MakeTuple({&arg1, &arg2, &arg3, &arg0});
+  TF_ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
   EXPECT_EQ(result, expected);
 }
 

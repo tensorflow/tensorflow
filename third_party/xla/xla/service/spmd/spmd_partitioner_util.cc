@@ -2239,30 +2239,58 @@ GatherScatterOperandsShardedAcrossParallelDims(
   return GatherScatterParallelDimSharding{new_index_shard, new_operand_shard};
 }
 
-int64_t FindRotateRightPattern(const HloInstruction* concat,
-                               const HloInstruction* lhs,
-                               const HloInstruction* rhs) {
+namespace {
+
+const HloInstruction* SkipCopyOperands(const HloInstruction* operand,
+                                       bool check_single_use = true) {
+  while (operand->user_count() == 1 && operand->opcode() == HloOpcode::kCopy) {
+    operand = operand->operand(0);
+  }
+  if (check_single_use && operand->user_count() != 1) {
+    return nullptr;
+  }
+  return operand;
+}
+
+}  // namespace
+
+std::optional<int64_t> FindRotateRightPattern(const HloInstruction* concat) {
+  if (concat->operand_count() != 2) {
+    return std::nullopt;
+  }
+  const HloInstruction* lhs = SkipCopyOperands(concat->operand(0));
+  const HloInstruction* rhs = SkipCopyOperands(concat->operand(1));
+  if (!lhs || !rhs) {
+    return std::nullopt;
+  }
+
   if (lhs->opcode() != HloOpcode::kSlice ||
       rhs->opcode() != HloOpcode::kSlice ||
       lhs->operand(0) != rhs->operand(0)) {
-    return -1;
+    return std::nullopt;
   }
   const HloInstruction* to_rotate = lhs->operand(0);
   if (!ShapeUtil::Compatible(to_rotate->shape(), concat->shape()) ||
       concat->sharding() != to_rotate->sharding()) {
-    return -1;
+    return std::nullopt;
   }
   const int64_t dim = concat->concatenate_dimension();
   if (lhs->slice_strides(dim) != 1 || rhs->slice_strides(dim) != 1 ||
       lhs->slice_starts(dim) != rhs->slice_limits(dim)) {
-    return -1;
+    return std::nullopt;
   }
   return lhs->shape().dimensions(dim);
 }
 
 std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
-    const HloInstruction* concat, const HloInstruction* lhs,
-    const HloInstruction* mid, const HloInstruction* rhs) {
+    const HloInstruction* concat) {
+  if (concat->operand_count() != 3) {
+    return std::nullopt;
+  }
+  const HloInstruction* lhs = SkipCopyOperands(concat->operand(0));
+  const HloInstruction* mid = SkipCopyOperands(concat->operand(1),
+                                               /*check_single_use=*/false);
+  const HloInstruction* rhs = SkipCopyOperands(concat->operand(2));
   if (!lhs || !mid || !rhs) {
     return std::nullopt;
   }
@@ -2294,9 +2322,7 @@ std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
   if (lhs->opcode() != HloOpcode::kSlice ||
       rhs->opcode() != HloOpcode::kSlice || lhs->operand(0) != mid ||
       rhs->operand(0) != mid || lhs->slice_strides(dim) != 1 ||
-      rhs->slice_strides(dim) != 1 || lhs->sharding() != mid->sharding() ||
-      rhs->sharding() != mid->sharding() ||
-      lhs->sharding() != concat->sharding()) {
+      rhs->slice_strides(dim) != 1) {
     return std::nullopt;
   }
   pad_pattern.lhs_slice_start = lhs->slice_starts(dim);

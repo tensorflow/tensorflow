@@ -32,14 +32,14 @@ bool IsDotOrIdentifierChar(char c) {
   return false;
 }
 
-bool ConsumeDotSeparatedIdentifiers(StringPiece* s, const string& prefix,
-                                    StringPiece* val) {
+bool ConsumeDotSeparatedIdentifiers(absl::string_view* s, const string& prefix,
+                                    absl::string_view* val) {
   if (!absl::ConsumePrefix(s, prefix)) return false;
   size_t i;
   for (i = 0; i < s->size() && IsDotOrIdentifierChar((*s)[i]); ++i) {
     // Intentionally empty
   }
-  *val = StringPiece(s->data(), i);
+  *val = absl::string_view(s->data(), i);
   s->remove_prefix(i);
   return i > 0;
 }
@@ -50,8 +50,8 @@ TEST(SemverTest, VersionStringFollowsSemver) {
   // free to refine further (for example, check for leading 0s in numbers), but
   // avoid adding dependencies.
   uint64 major, minor, patch;
-  StringPiece prerelease, metadata;
-  StringPiece semver(TF_VERSION_STRING);
+  absl::string_view prerelease, metadata;
+  absl::string_view semver(TF_VERSION_STRING);
 
   ASSERT_TRUE(str_util::ConsumeLeadingDigits(&semver, &major));
   ASSERT_TRUE(absl::ConsumePrefix(&semver, "."));

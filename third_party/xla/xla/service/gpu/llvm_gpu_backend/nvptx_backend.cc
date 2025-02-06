@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
+#include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -185,6 +186,8 @@ void NVPTXBackendInit() {
   InitializePasses(registry);
 }
 
+}  // namespace
+
 std::vector<std::string> GetNVPTXBackendOptions(
     const DebugOptions& debug_options) {
   // Feed all customized flags here, so we can override them with llvm_cl_opts
@@ -229,16 +232,14 @@ std::vector<std::string> GetNVPTXBackendOptions(
   return backend_llvm_opts;
 }
 
-}  // namespace
-
 std::string GetSmName(se::CudaComputeCapability compute_capability) {
   int compute_capability_version =
       compute_capability.major * 10 + compute_capability.minor;
   int sm_version = 30;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  int supported_versions[] = {90, 89, 87, 86, 80, 75, 72, 70, 62,
-                              61, 60, 53, 52, 50, 37, 35, 32, 30};
+  int supported_versions[] = {120, 101, 100, 90, 89, 87, 86, 80, 75, 72, 70,
+                              62,  61,  60,  53, 52, 50, 37, 35, 32, 30};
   for (int v : supported_versions) {
     if (v <= compute_capability_version) {
       sm_version = v;
@@ -260,8 +261,9 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
   // On Hopper, default to sm_90a so that all instructions can be used. But
   // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
+  // Similarly for sm_100a, sm_101a and sm_120a (Blackwell).
   absl::string_view extension =
-      (compute_capability.major == 9 && sm_version == 90) ? "a" : "";
+      stream_executor::ShouldUsePtxExtension(compute_capability) ? "a" : "";
   return absl::StrCat("sm_", sm_version, extension);
 }
 
@@ -331,7 +333,7 @@ absl::StatusOr<std::string> CompileToPtx(
 
 namespace {
 constexpr stream_executor::SemanticVersion kFallbackPtxVersion{6, 5, 0};
-constexpr stream_executor::SemanticVersion kMaxPtxVersion{8, 5, 0};
+constexpr stream_executor::SemanticVersion kMaxPtxVersion{8, 7, 0};
 }  // namespace
 
 stream_executor::SemanticVersion
@@ -353,6 +355,11 @@ DetermineHighestSupportedPtxVersionFromCudaVersion(
   // This versioning scheme is valid until CUDA 12.6
   if (cuda_version < stream_executor::SemanticVersion{12, 6, 0}) {
     return {cuda_version.major() - 4, cuda_version.minor(), 0};
+  }
+  // CUDA 12.6 -> PTX 8.5
+  // CUDA 12.8 -> PTX 8.7
+  if (cuda_version < stream_executor::SemanticVersion{12, 9, 0}) {
+    return {cuda_version.major() - 4, cuda_version.minor() - 1, 0};
   }
 
   // Return maximum known PTX version.

@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILED_MODEL_OPTIONS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_COMPILED_MODEL_OPTIONS_H_
 
+#include "tensorflow/lite/experimental/litert/c/litert_accelerator_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 
 #ifdef __cplusplus
@@ -22,7 +23,48 @@ extern "C" {
 #endif  // __cplusplus
 
 // The compilation options for the LiteRtCompiledModel.
-typedef LiteRtHwAccelerators LiteRtCompilationOptions;
+LITERT_DEFINE_HANDLE(LiteRtCompilationOptions);
+
+// Creates a compilation option object.
+//
+// This doesn't need to be passed to `LiteRtDestroyCompilationOptions` after
+// calling `LiteRtCreateCompiledModel`.
+LiteRtStatus LiteRtCreateCompilationOptions(LiteRtCompilationOptions* options);
+
+// Destroys a compilation option object.
+//
+// WARNING: this only needs to be called if the options were not passed to
+// `LiteRtCreateCompiledModel`.
+LiteRtStatus LiteRtDestroyCompilationOptions(LiteRtCompilationOptions options);
+
+// Sets the requested hardware accelerators to apply during model compilation.
+LiteRtStatus LiteRtSetCompilationOptionsHardwareAccelerators(
+    LiteRtCompilationOptions options,
+    LiteRtHwAcceleratorSet hardware_accelerators);
+
+// Gets the hardware accelerators to apply during model compilation.
+LiteRtStatus LiteRtGetCompilationOptionsHardwareAccelerators(
+    LiteRtCompilationOptions options,
+    LiteRtHwAcceleratorSet* hardware_accelerators);
+
+// Adds compilation options for a specific accelerator to the accelerator
+// compilation option list.
+//
+// Note: Multiple accelerator options may be added to the options object.
+//
+// Note: `accelerator_compilation_options`'s ownership is transferred to
+// `options`.
+LiteRtStatus LiteRtAddAcceleratorCompilationOptions(
+    LiteRtCompilationOptions options,
+    LiteRtAcceleratorCompilationOptions accelerator_compilation_options);
+
+// Retrieves the head of the accelerator compilation option list.
+//
+// Note: The following elements may be retrieved with
+// `LiteRtGetNextAcceleratorCompilationOptions`.
+LiteRtStatus LiteRtGetAcceleratorCompilationOptions(
+    LiteRtCompilationOptions options,
+    LiteRtAcceleratorCompilationOptions* accelerator_compilation_options);
 
 #ifdef __cplusplus
 }

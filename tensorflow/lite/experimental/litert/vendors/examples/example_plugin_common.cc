@@ -53,7 +53,7 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedHardware(
   if (!compiler_plugin || !supported_hardware) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *supported_hardware = kLiteRtHwAccelatorCpu;
+  *supported_hardware = kLiteRtHwAcceleratorCpu;
   return kLiteRtStatusOk;
 }
 
@@ -88,9 +88,9 @@ LiteRtStatus LiteRtGetCompilerPluginSupportedSocModel(
 //
 
 LiteRtStatus LiteRtGetCompiledResultByteCode(
-    LiteRtCompiledResult compiled_result, const void** byte_code,
-    size_t* byte_code_size) {
-  if (!compiled_result) {
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex byte_code_idx,
+    const void** byte_code, size_t* byte_code_size) {
+  if (!compiled_result || byte_code_idx != 0) {
     return kLiteRtStatusErrorInvalidArgument;
   }
   *byte_code = compiled_result->byte_code.data();
@@ -100,12 +100,14 @@ LiteRtStatus LiteRtGetCompiledResultByteCode(
 
 LiteRtStatus LiteRtGetCompiledResultCallInfo(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex call_idx,
-    const void** call_info, size_t* call_info_size) {
+    const void** call_info, size_t* call_info_size,
+    LiteRtParamIndex* byte_code_idx) {
   if (call_idx >= compiled_result->per_op_data.size()) {
     return kLiteRtStatusErrorIndexOOB;
   }
   *call_info = compiled_result->per_op_data.at(call_idx).data();
   *call_info_size = compiled_result->per_op_data.at(call_idx).size();
+  *byte_code_idx = 0;
   return kLiteRtStatusOk;
 }
 
@@ -115,6 +117,12 @@ LiteRtStatus LiteRtGetNumCompiledResultCalls(
     return kLiteRtStatusErrorInvalidArgument;
   }
   *num_calls = compiled_result->per_op_data.size();
+  return kLiteRtStatusOk;
+}
+
+LiteRtStatus LiteRtCompiledResultNumByteCodeModules(
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_byte_code) {
+  *num_byte_code = 1;
   return kLiteRtStatusOk;
 }
 

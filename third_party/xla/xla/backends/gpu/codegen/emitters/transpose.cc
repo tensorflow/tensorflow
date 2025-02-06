@@ -40,7 +40,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/backends/gpu/codegen/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/type_util.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -80,6 +80,51 @@ constexpr int kNumThreadsPerBlock = 128;
 constexpr int kMaxVectorizedBytes = 4;
 
 }  // namespace
+
+TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose) {
+  auto inv_permutation = InversePermutation(transpose->dimensions());
+  auto& output_shape = transpose->shape();
+  SmallVector<int64_t, 3> canonical_output_shape =
+      llvm::to_vector<3>(output_shape.dimensions());
+  SmallVector<int64_t, 3> canonical_permutation =
+      llvm::to_vector<3>(transpose->dimensions());
+
+  // If the last dimension is transposed, add a size-1 B dimension.
+  if (canonical_permutation.back() != canonical_output_shape.size() - 1) {
+    canonical_permutation.push_back(output_shape.rank());
+    canonical_output_shape.push_back(1);
+  }
+  int64_t dim_t1 = -1;
+  int64_t dim_t2 = -1;
+  for (int64_t i = canonical_permutation.size() - 1; i >= 0; --i) {
+    if (canonical_permutation[i] != i) {
+      dim_t2 = canonical_permutation[i];
+      dim_t1 = i;
+      break;
+    }
+  }
+  // If T1 and T2 are adjacent, insert a size-1 A dimension between them.
+  if (dim_t1 - dim_t2 == 1) {
+    canonical_output_shape.insert(canonical_output_shape.begin() + dim_t1, 1);
+    for (auto& p : canonical_permutation) {
+      if (p > dim_t2) p++;
+    }
+    canonical_permutation.insert(canonical_permutation.begin() + dim_t1,
+                                 dim_t1);
+  }
+  auto canonical_inv_permutation = InversePermutation(canonical_permutation);
+  auto canonical_input_shape =
+      Permute(canonical_output_shape, canonical_inv_permutation);
+  return TransposeSpec{
+      transpose,
+      llvm::to_vector<3>(transpose->dimensions()),
+      llvm::to_vector<3>(inv_permutation),
+      canonical_output_shape,
+      canonical_permutation,
+      llvm::to_vector<3>(canonical_inv_permutation),
+      llvm::to_vector<3>(canonical_input_shape),
+  };
+}
 
 TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis),

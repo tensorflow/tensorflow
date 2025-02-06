@@ -35,10 +35,10 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -235,7 +235,7 @@ ENTRY main {
   EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),
             HloOpcode::kCopy);
 
-  NVPTXCompiler compiler{module->config().debug_options()};
+  NVPTXCompiler compiler;
   TF_EXPECT_OK(compiler.RunPostSchedulingPipelines(
       module.get(), 100000,
       backend().default_stream_executor()->GetDeviceDescription()));

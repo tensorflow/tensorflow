@@ -52,18 +52,18 @@ LiteRtStatus EmbeddingLookupOpLegalization::LegalizeOp(
   }
   DumpLegalization(*src.Get());
   std::string op_name = absl::StrFormat(kEmbeddingLookupOpFmt, op_counter_++);
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      SetOpInfo(op_name.c_str(), kDefaultQnnOpPackageName.data(),
-                kQnnEmbeddingLookupOpTypeName.data(), dest));
+  LITERT_RETURN_IF_ERROR(SetOpInfo(op_name.c_str(),
+                                   kDefaultQnnOpPackageName.data(),
+                                   kQnnEmbeddingLookupOpTypeName.data(), dest));
 
   // Look up op input tensors in scope.
   const auto op_ins = src.Inputs();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, op_ins.size(), QNN_TENSOR_INIT);
 
-  LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.LookupInScope(
+  LITERT_RETURN_IF_ERROR(graph_mapper.LookupInScope(
       op_ins[kEmbeddingLookupOpLookipInputIndex].Get(),
       qnn_op_ins[kQnnGatherOpLookupInputIndex]));
-  LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.LookupInScope(
+  LITERT_RETURN_IF_ERROR(graph_mapper.LookupInScope(
       op_ins[kEmbeddingLookupOpTableInputIndex].Get(),
       qnn_op_ins[kQnnGatherOpTableInputIndex]));
 
@@ -71,9 +71,9 @@ LiteRtStatus EmbeddingLookupOpLegalization::LegalizeOp(
   const auto op_outs = src.Outputs();
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs,
                      kReduceEmbeddingLookupOpOutputSize, QNN_TENSOR_INIT);
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.LegalizeAndRegister(op_outs.front().Get(), qnn_op_outs[0]));
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.PushToScope(op_outs.front().Get(), qnn_op_outs[0]));
 
   // Construct the scalar "axis" param.

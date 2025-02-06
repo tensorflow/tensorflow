@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status_matchers.h"
@@ -92,6 +92,39 @@ TEST_F(PriorityFusionTest, FuseWithSharedArgument) {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Fusion()));
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
+}
+
+TEST_F(PriorityFusionTest, FusionOnStreamAnnotatedComputation) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    stream {
+      %p0 = f32[] parameter(0)
+      %p1 = f32[] parameter(1)
+      %subtract = f32[] subtract(%p0, %p1)
+      %compare = pred[] compare(%subtract, %subtract), direction=NE
+      %add = f32[] add(%p0, %p1)
+      %abs = f32[] abs(%subtract)
+      ROOT %select = f32[] select(%compare, %add, %abs)
+    }
+    ENTRY main {
+      %a = f32[] parameter(0)
+      %b = f32[] parameter(1)
+      ROOT %called = f32[] call(a, b), to_apply=stream,
+        frontend_attributes={_xla_stream_annotation="1"}
+    })")
+                    .value();
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+
+  // The call should still be there.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Call()));
+
+  // Instructions within the call are fused.
+  HloInstruction* called_root =
+      root->called_computations()[0]->root_instruction();
+  EXPECT_THAT(called_root, GmockMatch(m::Fusion()));
+  EXPECT_EQ(called_root->fusion_kind(), HloInstruction::FusionKind::kLoop);
 }
 
 TEST_F(PriorityFusionTest, FusionFusionWithDuplication) {

@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/service/global_device_id.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::gpu {
 
@@ -37,7 +37,8 @@ static GpuCliqueKey GetBaseCliqueKey() {
                       CollectiveStreamId(0), AsyncStreamKind::kCollective,
                       std::vector<std::vector<GlobalDeviceId>>{
                           {GlobalDeviceId(0), GlobalDeviceId(1)},
-                          {GlobalDeviceId(2), GlobalDeviceId(3)}});
+                          {GlobalDeviceId(2), GlobalDeviceId(3)}},
+                      GlobalDeviceId(0));
 }
 TEST(GpuCliqueKeyTest, IsSubsetOf) {
   GlobalDeviceId id0 = GlobalDeviceId(0);
@@ -53,6 +54,29 @@ TEST(GpuCliqueKeyTest, IsSubsetOf) {
   EXPECT_TRUE(key0.IsSubsetOf(key1));
   EXPECT_FALSE(key0.IsSubsetOf(key2));
   EXPECT_FALSE(key0.IsSubsetOf(key3));
+}
+
+TEST(GpuCliqueKeyTest, GetSubKeys) {
+  GlobalDeviceId id0 = GlobalDeviceId(0);
+  GlobalDeviceId id1 = GlobalDeviceId(1);
+  GlobalDeviceId id2 = GlobalDeviceId(2);
+  GlobalDeviceId id3 = GlobalDeviceId(3);
+
+  GpuCliqueKey key({id0, id1, id2, id3}, CollectiveStreamId(1));
+  std::array<int64_t, 4> nroots{1, 2, 3, 4};
+  std::vector<std::vector<GlobalDeviceId>> exp_root_devs{
+      {id0}, {id0, id2}, {id0, id2, id3}, {id0, id1, id2, id3}};
+  for (int ridx = 0; ridx < nroots.size(); ++ridx) {
+    int64_t n = nroots[ridx];
+    const auto& subkeys = key.GetSubKeys(n);
+    EXPECT_EQ(subkeys.size(), exp_root_devs[ridx].size());
+    for (int kidx = 0; kidx < subkeys.size(); ++kidx) {
+      GpuCliqueKey exp_subkey({id0, id1, id2, id3}, CollectiveStreamId(1),
+                              AsyncStreamKind::kCollective, {},
+                              exp_root_devs[ridx][kidx]);
+      EXPECT_EQ(subkeys[kidx], exp_subkey);
+    }
+  }
 }
 
 TEST(GpuCliqueKeyTest, Compare) {
@@ -148,7 +172,7 @@ TEST(GpuCliqueKeyGettersTest, StreamId) {
 
 TEST(GpuCliqueKeyGetterTest, ToString) {
   EXPECT_EQ(GetBaseCliqueKey().ToString(),
-            "devices=[0,1]; stream=0; groups=[[0,1],[2,3]]");
+            "devices=[0,1]; stream=0; groups=[[0,1],[2,3]]; root_device=0");
 }
 
 TEST(GpuCliqueIdGettersTest, Data) {

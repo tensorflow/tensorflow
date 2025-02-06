@@ -60,13 +60,13 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -920,15 +920,6 @@ HloCollectiveInstruction::HloCollectiveInstruction(
   }
 }
 
-HloCollectiveInstruction::HloCollectiveInstruction(
-    HloOpcode opcode, const Shape& shape,
-    absl::Span<HloInstruction* const> operands,
-    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const std::optional<int64_t>& channel_id)
-    : HloCollectiveInstruction(opcode, shape, operands,
-                               CollectiveDeviceList(replica_groups),
-                               constrain_layout, channel_id) {}
-
 HloInstructionProto HloCollectiveInstruction::ToProto() const {
   HloInstructionProto proto = HloChannelInstruction::ToProto();
   *proto.mutable_collective_device_list() = device_list_.ToProto();
@@ -1039,17 +1030,6 @@ HloAllReduceInstructionBase::HloAllReduceInstructionBase(
   AppendComputation(reduce_computation);
   reduce_computation->SetCollectiveCallInstruction(this);
 }
-
-HloAllReduceInstructionBase::HloAllReduceInstructionBase(
-    HloOpcode opcode, const Shape& shape,
-    absl::Span<HloInstruction* const> operands,
-    HloComputation* reduce_computation,
-    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids)
-    : HloAllReduceInstructionBase(opcode, shape, operands, reduce_computation,
-                                  CollectiveDeviceList(replica_groups),
-                                  constrain_layout, channel_id,
-                                  use_global_device_ids) {}
 
 HloInstructionProto HloAllReduceInstructionBase::ToProto() const {
   HloInstructionProto proto = HloCollectiveInstruction::ToProto();
@@ -1276,12 +1256,14 @@ HloCollectiveBroadcastInstruction::CloneWithNewOperandsImpl(
 }
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
-    HloOpcode opcode, const Shape& shape, HloInstruction* operand,
+    HloOpcode opcode, const Shape& shape,
+    absl::Span<HloInstruction* const> operands,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
     const std::optional<int64_t>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
       source_target_pairs_(source_target_pairs) {
-  AppendOperand(operand);
+  AppendOperands(operands);
+  inplace_ = false;
 }
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
@@ -1299,6 +1281,7 @@ HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
   AppendOperand(output);
   AppendOperand(input_start_indices);
   AppendOperand(output_start_indices);
+  inplace_ = true;
 }
 
 HloInstructionProto HloCollectivePermuteInstruction::ToProto() const {
@@ -1371,7 +1354,9 @@ HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* /*context*/) const {
   if (dynamic_slice_sizes_list().empty()) {
     return std::make_unique<HloCollectivePermuteInstruction>(
-        opcode(), shape, new_operands[0], source_target_pairs(), channel_id());
+        opcode(), shape,
+        absl::Span<HloInstruction* const>(new_operands.subspan(0, 1)),
+        source_target_pairs(), channel_id());
   } else {
     return std::make_unique<HloCollectivePermuteInstruction>(
         opcode(), shape, new_operands[0], new_operands[1], new_operands[2],

@@ -3,7 +3,7 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
+load("//xla:lit.bzl", "lit_test_suite")
 load(
     "//xla:xla.bzl",
     "xla_cc_binary",
@@ -145,10 +145,12 @@ xla_cc_test(
     deps = [
         ":hlo_extractor",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -228,9 +230,9 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms:cholesky_expander",
-        "//xla/hlo/transforms:rng_bit_generator_expander",
-        "//xla/hlo/transforms:rng_expander",
+        "//xla/hlo/transforms/expanders:cholesky_expander",
+        "//xla/hlo/transforms/expanders:rng_bit_generator_expander",
+        "//xla/hlo/transforms/expanders:rng_expander",
         "//xla/service:batchnorm_expander",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_verifier",
@@ -381,6 +383,7 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test",
     ],
 )
@@ -620,6 +623,93 @@ cc_library(
     deps = [],
 )
 
+cc_library(
+    name = "matmul_perf_table_gen",
+    srcs = ["matmul_perf_table_gen.cc"],
+    hdrs = ["matmul_perf_table_gen.h"],
+    deps = [
+        "//xla:debug_options_flags",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:executable",
+        "//xla/service:gpu_plugin",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service:hlo_runner",
+        "//xla/service:platform_util",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/service/gpu/model:hlo_op_profiler_lib",
+        "//xla/service/gpu/model:hlo_op_profiles",
+        "//xla/tests:test_utils",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
+    name = "matmul_perf_table_gen_test",
+    srcs = ["matmul_perf_table_gen_test.cc"],
+    backends = ["gpu"],
+    local_defines = if_cuda(["GOOGLE_CUDA"]),
+    deps = [
+        ":matmul_perf_table_gen",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "matmul_perf_table_gen_main_lib",
+    testonly = True,
+    srcs = ["matmul_perf_table_gen_main.cc"],
+    compatible_with = None,
+    tags = [
+        "no_mac",
+    ],
+    deps = [
+        ":matmul_perf_table_gen",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:platform_port",
+    ] + if_cuda([
+        "//xla/stream_executor:cuda_platform",
+    ]),
+)
+
+xla_cc_binary(
+    name = "matmul_perf_table_gen_main",
+    testonly = True,
+    tags = [
+        "no_mac",
+    ],
+    deps = [
+        ":matmul_perf_table_gen_main_lib",
+    ],
+)
+
 build_test(
     name = "compute_cost_build_test",
     targets = [
@@ -647,14 +737,7 @@ xla_cc_binary(
 
 lit_test_suite(
     name = "compute_cost_test",
-    srcs = enforce_glob(
-        [
-            "compute_cost_test.hlo",
-        ],
-        include = [
-            "*.hlo",
-        ],
-    ),
+    srcs = ["compute_cost_test.hlo"],
     cfg = "//xla:lit.cfg.py",
     tools = [
         ":compute_cost",
@@ -715,6 +798,7 @@ tsl_gpu_library(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -761,6 +845,7 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/protobuf:status_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
@@ -821,5 +906,37 @@ xla_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_binary(
+    name = "print_indexing",
+    srcs = ["print_indexing.cc"],
+    visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
+    deps = [
+        ":hlo_module_loader",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+lit_test_suite(
+    name = "print_indexing_test",
+    srcs = ["print_indexing_test.hlo"],
+    cfg = "//xla:lit.cfg.py",
+    tools = [
+        ":print_indexing",
+        "@llvm-project//llvm:FileCheck",
     ],
 )

@@ -46,7 +46,7 @@ string EncodeTensorNameSlice(const string& name, const TensorSlice& slice) {
 
 absl::Status DecodeTensorNameSlice(const string& code, string* name,
                                    tensorflow::TensorSlice* slice) {
-  StringPiece src(code);
+  absl::string_view src(code);
   uint64 x;
   if (!tensorflow::strings::OrderedCode::ReadNumIncreasing(&src, &x)) {
     return errors::Internal("Failed to parse the leading number: src = ", src);

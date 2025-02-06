@@ -31,7 +31,7 @@ static std::string EncodeKey(int k) {
   core::PutFixed32(&result, k);
   return result;
 }
-static int DecodeKey(const Slice& k) {
+static int DecodeKey(Slice k) {
   assert(k.size() == 4);
   return core::DecodeFixed32(k.data());
 }
@@ -40,7 +40,7 @@ static int DecodeValue(void* v) { return reinterpret_cast<uintptr_t>(v); }
 
 class CacheTest : public ::testing::Test {
  public:
-  static void Deleter(const Slice& key, void* v) {
+  static void Deleter(Slice key, void* v) {
     current_->deleted_keys_.push_back(DecodeKey(key));
     current_->deleted_values_.push_back(DecodeValue(v));
   }

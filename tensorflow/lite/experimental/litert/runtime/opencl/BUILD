@@ -63,6 +63,10 @@ cc_library(
     hdrs = [
         "opencl_wrapper.h",
     ],
+    visibility = [
+        "//tensorflow/lite/experimental/litert:__subpackages__",
+        "//third_party/odml/infra:__subpackages__",
+    ],
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -86,5 +90,23 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@opencl_headers",
+    ],
+)
+
+cc_test(
+    name = "buffer_test",
+    srcs = ["buffer_test.cc"],
+    # require GPU to run OpenCL tests.
+    tags = [
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":buffer",
+        ":cl_command_queue",
+        ":cl_context",
+        ":cl_device",
+        ":opencl_wrapper",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )

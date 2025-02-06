@@ -43,10 +43,10 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

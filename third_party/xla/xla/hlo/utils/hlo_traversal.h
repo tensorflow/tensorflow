@@ -128,12 +128,15 @@ class HloFusionAdaptor {
   static std::unique_ptr<HloFusionAdaptor> ForInstruction(
       const HloInstruction* instruction);
   static std::unique_ptr<HloFusionAdaptor> ForProducerConsumer(
-      const HloInstruction* producer, const HloInstruction* consumer);
+      const HloInstruction* producer, const HloInstruction* consumer,
+      bool with_extra_outputs = false);
   static std::unique_ptr<HloFusionAdaptor> ForComputation(
       const HloComputation* computation);
 
  private:
   HloFusionAdaptor() = default;
+  explicit HloFusionAdaptor(bool with_extra_outputs)
+      : with_extra_outputs_(with_extra_outputs) {}
   HloFusionAdaptor(const HloFusionAdaptor&) = delete;
   HloFusionAdaptor& operator=(const HloFusionAdaptor&) = delete;
 
@@ -142,6 +145,9 @@ class HloFusionAdaptor {
 
   absl::InlinedVector<std::unique_ptr<internal::HloFusionInstructionAdaptor>, 2>
       fusion_instructions_;
+  // Whether extra fusion roots should be created for producer consumer fusions
+  // where producer roots have extra usages outside the fusion.
+  bool with_extra_outputs_ = false;
 };
 
 enum class TraversalResult {

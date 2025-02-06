@@ -172,6 +172,12 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
   proto.mutable_non_donatable_input_indices()->Add(
       non_donatable_input_indices.begin(), non_donatable_input_indices.end());
 
+  if (execution_profile != nullptr) {
+    return absl::UnimplementedError(
+        "ExecuteOptions with non-nullptr execution_profile is not "
+        "serializable");
+  }
+
   return proto;
 }
 

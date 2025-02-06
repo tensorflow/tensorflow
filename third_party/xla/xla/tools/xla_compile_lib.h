@@ -56,7 +56,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
 struct XlaCompileOptions {
   // Fully backend-independent options.
   std::string module_path;
-  std::string output_path;
+  std::string output_file;
   std::string platform;
   std::string result_output_file;
 

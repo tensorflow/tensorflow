@@ -27,6 +27,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -72,10 +74,10 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/byte_order.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/byte_order.h"
-#include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
@@ -199,6 +201,8 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     case S16:
     case U16:
       return llvm::Type::getInt16Ty(context);
+    case F4E2M1FN:
+      return llvm::Type::getIntNTy(context, 4);
     case F8E5M2:
     case F8E5M2FNUZ:
     case F8E4M3:
@@ -206,6 +210,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     case F8E4M3B11FNUZ:
     case F8E4M3FNUZ:
     case F8E3M4:
+    case F8E8M0FNU:
       // We represent F8 as an int since there is no LLVM F8 dtype.
       return llvm::Type::getInt8Ty(context);
     case BF16:

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash_testing.h"
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
@@ -31,9 +32,9 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -204,6 +205,15 @@ TEST_P(SingleDeviceShardingTest, Disassemble) {
   }
 }
 
+TEST_P(SingleDeviceShardingTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      *SingleDeviceSharding::Create(GetDevices({0})->devices().front(),
+                                    MemoryKind()),
+      *SingleDeviceSharding::Create(GetDevices({1})->devices().front(),
+                                    MemoryKind()),
+  }));
+}
+
 TEST_P(OpaqueShardingTest, CreateWithBadDeviceList) {
   EXPECT_DEATH(
       OpaqueSharding::Create(tsl::RCReference<DeviceList>(), MemoryKind()), "");
@@ -302,6 +312,13 @@ TEST_P(OpaqueShardingTest, IndexDomainsFails) {
       StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("OpaqueSharding does not have index domain information")));
+}
+
+TEST_P(OpaqueShardingTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      *OpaqueSharding::Create(GetDevices({0, 1}), MemoryKind()),
+      *OpaqueSharding::Create(GetDevices({2, 3}), MemoryKind()),
+  }));
 }
 
 TEST_P(ConcreteShardingTest, CreateWithBadDeviceList) {
@@ -594,6 +611,18 @@ TEST_P(ConcreteShardingTest, IndexDomainsFails) {
                                  "domain information")));
 }
 
+TEST_P(ConcreteShardingTest, Hash) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dynamic_shape,
+      DynamicShape::Create(Shape({30}), BoundedDynamicShapeTag({true})));
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), Shape({30}),
+                                {Shape({10}), Shape({20})}),
+      *ConcreteSharding::Create(GetDevices({0, 1}), MemoryKind(), dynamic_shape,
+                                {dynamic_shape, dynamic_shape}),
+  }));
+}
+
 TEST_P(ConcreteEvenShardingTest, CreateWithBadDeviceList) {
   EXPECT_DEATH(ConcreteEvenSharding::Create(tsl::RCReference<DeviceList>(),
                                             MemoryKind(), Shape({}), Shape({}),
@@ -785,6 +814,17 @@ TEST_P(ConcreteEvenShardingTest, IndexDomainsFails) {
           tsl::error::INVALID_ARGUMENT,
           HasSubstr(
               "ConcreteEvenSharding does not have index domain information")));
+}
+
+TEST_P(ConcreteEvenShardingTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      *ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                    Shape({30}), Shape({30}),
+                                    /*is_fully_replicated=*/true),
+      *ConcreteEvenSharding::Create(GetDevices({2, 3}), MemoryKind(),
+                                    Shape({30}), Shape({15}),
+                                    /*is_fully_replicated=*/false),
+  }));
 }
 
 TEST_P(ShardingParamShardingTest, CreateWithBadDeviceList) {
@@ -1144,6 +1184,21 @@ TEST_P(ShardingParamShardingTest, IndexDomainWithReplication) {
                             IndexDomain(Index({0, 0}), Shape({3, 6})),
                             IndexDomain(Index({3, 0}), Shape({3, 6}))));
   }
+}
+
+TEST_P(ShardingParamShardingTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      *ShardingParamSharding::Create(
+           ShardingParam{/*dim_shards=*/{2, 3},
+                         {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}},
+           GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind())
+           .value(),
+      *ShardingParamSharding::Create(
+           ShardingParam{/*dim_shards=*/{2, 3},
+                         {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}},
+           GetDevices({3, 4, 5, 0, 1, 2}), MemoryKind())
+           .value(),
+  }));
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, SingleDeviceShardingTest,

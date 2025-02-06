@@ -1,4 +1,4 @@
-// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations -split-input-file -hlo-flatten-computation-args-result %s -o - | FileCheck %s
+// RUN: hlo-translate -hlo-to-mlir -emit-mhlo -split-input-file %s -o - | FileCheck %s
 
 HloModule CallWithBackendConfig
 

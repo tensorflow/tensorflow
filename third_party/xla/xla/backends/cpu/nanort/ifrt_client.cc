@@ -838,8 +838,9 @@ class NanoExecutable final
       nano_results.push_back(result_array->AsResult());
     }
 
-    auto event = executable_->Execute(nano_args, nano_results,
-                                      NanoRtExecutable::PreallocatedTemp{});
+    NanoRtExecutable::ManagedTemp<128> temp_buffer(
+        executable_->temp_buffer_size());
+    auto event = executable_->Execute(nano_args, nano_results, temp_buffer);
 
     // TODO(jsoyke): Consider making this non-blocking if we ever use this
     // interface for models that require threading, or if we want to delay
@@ -1392,7 +1393,7 @@ absl::Span<xla::ifrt::Device* const> NanoIfrtClient::GetAllDevices() const {
 absl::StatusOr<ifrt::DeviceAssignment>
 NanoIfrtClient::GetDefaultDeviceAssignment(int num_replicas,
                                            int num_partitions) const {
-  return ifrt::DeviceAssignment(1, 1);
+  return ifrt::DeviceAssignment(num_replicas, num_partitions);
 }
 
 absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupDevice(

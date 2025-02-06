@@ -18,10 +18,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/IR/Module.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
@@ -33,12 +37,13 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -48,11 +53,6 @@ void WarnIfBadDriverJITVersion();
 // NVPTXCompiler generates efficient GPU executables for NVPTX target.
 class NVPTXCompiler : public GpuCompiler {
  public:
-  // DebugOptions are used to determine which CompilationProvider to use.
-  explicit NVPTXCompiler(const DebugOptions& debug_options);
-
-  // The same as above, but uses the default DebugOptions determined by
-  // flags.
   explicit NVPTXCompiler();
 
   absl::Status OptimizeHloConvolutionCanonicalization(
@@ -91,7 +91,7 @@ class NVPTXCompiler : public GpuCompiler {
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       const stream_executor::DeviceDescription& device_description,
       bool relocatable, const HloModule* debug_module,
-      const CompileOptions& options) override;
+      const CompileOptions& options, std::optional<int> shard_number) override;
 
   absl::StatusOr<bool> CanUseLinkModules(
       const HloModuleConfig& module_config,
@@ -104,11 +104,19 @@ class NVPTXCompiler : public GpuCompiler {
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options) override;
 
-  absl::StatusOr<std::unique_ptr<se::cuda::CompilationProvider>>
-      compilation_provider_;
+  absl::Mutex compilation_providers_mutex_;
+  absl::flat_hash_map<se::cuda::CompilationProviderOptions,
+                      std::unique_ptr<se::cuda::CompilationProvider>>
+      compilation_providers_ ABSL_GUARDED_BY(compilation_providers_mutex_);
+
+  absl::StatusOr<const se::cuda::CompilationProvider*> GetCompilationProvider(
+      const DebugOptions& debug_options);
 
   NVPTXCompiler(const NVPTXCompiler&) = delete;
   NVPTXCompiler& operator=(const NVPTXCompiler&) = delete;
+
+  std::vector<std::string> GetLLVMCommandLineOptions(
+      const DebugOptions& debug_options) const override;
 };
 
 }  // namespace gpu

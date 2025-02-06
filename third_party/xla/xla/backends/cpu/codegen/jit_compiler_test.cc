@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/SourceMgr.h"
@@ -162,7 +163,7 @@ class ExternalDefinitionGenerator : public llvm::orc::DefinitionGenerator {
                             const llvm::orc::SymbolLookupSet& names) final {
     llvm::orc::SymbolMap new_defs;
     for (auto& [name, flags] : names) {
-      if (*name == "__external_fn") {
+      if ((*name).contains("external_fn")) {
         new_defs[name] = llvm::orc::ExecutorSymbolDef{
             llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(&AddInplace)),
             llvm::JITSymbolFlags::None};
@@ -179,7 +180,7 @@ TEST(JitCompilerTest, ExternalDefinitionGenerator) {
   llvm::orc::ThreadSafeContext tsc(std::move(context));
 
   JitCompiler::Options options;
-  options.definition_generator = [](llvm::TargetMachine*) {
+  options.definition_generator = [](const llvm::DataLayout& data_layout) {
     return std::make_unique<ExternalDefinitionGenerator>();
   };
 

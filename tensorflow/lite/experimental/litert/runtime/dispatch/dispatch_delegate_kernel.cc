@@ -14,20 +14,20 @@
 
 #include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_kernel.h"
 
-#include <any>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/litert/c/litert_event.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer_requirements.h"
@@ -36,7 +36,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer_requirements.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
+#include "tensorflow/lite/experimental/litert/core/dispatch_op_schema.h"
 #include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_options.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/runtime/tfl_utils.h"
@@ -44,65 +44,6 @@
 
 namespace litert {
 namespace internal {
-
-namespace {
-
-// Get the bytecode and function name from given custom op options data.
-Expected<std::pair<absl::string_view, BufferRef<uint8_t>>> ResolveExecInfo(
-    BufferRef<uint8_t> custom_opts, TfLiteOpaqueContext* context,
-    const LiteRtDispatchDelegateOptions& options) {
-  auto exec_info = ParseExecInfo(custom_opts);
-  if (!exec_info) {
-    LITERT_LOG(LITERT_ERROR, "Failed to parse custom initial data", "");
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
-  }
-
-  auto [function_name, metadata_key] = *exec_info;
-
-  const char* metadata;
-  size_t bytes;
-  if (auto stat = TfLiteOpaqueContextGetMetadata(context, metadata_key.data(),
-                                                 &metadata, &bytes);
-      stat != kTfLiteOk) {
-    LITERT_LOG(LITERT_ERROR, "Failed to get metadata for dispatch op: %d",
-               stat);
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
-  }
-
-  BufferRef<uint8_t> metadata_buf(metadata, bytes);
-
-  auto bytecode_loc = ParseByteCodePlaceholder(metadata_buf);
-  if (!bytecode_loc) {
-    LITERT_LOG(LITERT_ERROR, "Failed to parse metadata for dispatch op", "");
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
-  }
-
-  auto [bytecode_offset, bytecode_size] = *bytecode_loc;
-
-  LITERT_LOG(
-      LITERT_INFO,
-      "Initializing invocation context for dispatch op\n\tfunction_name: "
-      "%s\n\tbyte_code_offset: %lu \n\tbyte_code_size: %lu",
-      function_name.data(), bytecode_offset, bytecode_size);
-  if (bytecode_size == 0) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                      "Found zero-size bytecode");
-  }
-
-  auto alloc_base = FindAllocBase(options);
-  if (!alloc_base) {
-    LITERT_LOG(LITERT_ERROR,
-               "Could not find requried delegate options \"alloc_base\"", "");
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
-  }
-
-  const void* alloc = std::any_cast<const void*>(*alloc_base);
-  const void* bytecode =
-      reinterpret_cast<const uint8_t*>(alloc) + bytecode_offset;
-  return std::make_pair(function_name,
-                        BufferRef<uint8_t>(bytecode, bytecode_size));
-}
-}  // namespace
 
 DispatchDelegateKernel::~DispatchDelegateKernel() {
   for (size_t i = 0; i < input_tensor_buffer_handles_.size(); ++i) {
@@ -197,6 +138,11 @@ Expected<DispatchDelegateKernel::Ptr> DispatchDelegateKernel::Create(
                       "Dispatch API has insufficient capabilities");
   }
 
+  bool async_dispatch = (capabilities & kLiteRtDispatchCapabilitiesAsync);
+  if (async_dispatch) {
+    LITERT_LOG(LITERT_INFO, "Found async dispatch capabilities");
+  }
+
   LiteRtDispatchDeviceContext device_context;
   if (auto status = LiteRtDispatchDeviceContextCreate(&device_context);
       status != kLiteRtStatusOk) {
@@ -207,7 +153,7 @@ Expected<DispatchDelegateKernel::Ptr> DispatchDelegateKernel::Create(
   }
 
   return Ptr(new DispatchDelegateKernel(options, std::move(graph_name),
-                                        device_context));
+                                        device_context, async_dispatch));
 }
 
 TfLiteStatus DispatchDelegateKernel::Init(
@@ -242,12 +188,28 @@ TfLiteStatus DispatchDelegateKernel::Init(
   }
 
   BufferRef<uint8_t> custom_opts(init_data, init_data_size);
-  auto exec_info = ResolveExecInfo(custom_opts, context, options_);
-  if (!exec_info) {
-    LITERT_LOG(LITERT_ERROR, "Failed to parse custom options");
+
+  // Read offset and size (relative to alloc_base) from the custom options (and
+  // name).
+  const auto dispatch_opts = GetDispatchOpOptions(custom_opts);
+  if (dispatch_opts.bytecode_offset == 0) {
+    LITERT_LOG(LITERT_ERROR, "Found dispatch op with missing bytecode offset");
     return kTfLiteError;
   }
-  auto [function_name, bytecode] = *exec_info;
+
+  // Find pointer to the start of the loaded model buffer.
+  const auto alloc_base = FindAllocBase(options_);
+  if (!alloc_base) {
+    LITERT_LOG(LITERT_ERROR,
+               "Could not find requried delegate options \"alloc_base\"", "");
+    return kTfLiteError;
+  }
+
+  // Get location of bytecode in the model buffer relative to alloc_base.
+  const auto bytecode_start = reinterpret_cast<const uint8_t*>(*alloc_base) +
+                              dispatch_opts.bytecode_offset;
+  BufferRef<uint8_t> bytecode(bytecode_start, dispatch_opts.bytecode_size);
+  const auto& function_name = dispatch_opts.name;
 
   const int num_inputs = params->input_tensors->size;
   const int num_outputs = params->output_tensors->size;
@@ -293,7 +255,7 @@ TfLiteStatus DispatchDelegateKernel::Init(
     }
     auto tensor_type = ConvertTensorType(tfl_opaque_tensor);
     if (!tensor_type) {
-      LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().data());
+      LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().c_str());
       return kTfLiteError;
     }
     auto input_buffer_requirements =
@@ -315,7 +277,7 @@ TfLiteStatus DispatchDelegateKernel::Init(
     }
     auto tensor_type = ConvertTensorType(tfl_opaque_tensor);
     if (!tensor_type) {
-      LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().data());
+      LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().c_str());
       return kTfLiteError;
     }
     auto output_buffer_requirements =
@@ -374,7 +336,7 @@ TfLiteStatus DispatchDelegateKernel::CreateAndSetBuffer(
 
   auto tensor_type = ConvertTensorType(tfl_opaque_tensor);
   if (!tensor_type) {
-    LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", tensor_type.Error().Message().c_str());
     return kTfLiteError;
   }
 
@@ -384,7 +346,7 @@ TfLiteStatus DispatchDelegateKernel::CreateAndSetBuffer(
     if (auto cached_tensor_type = cached_tensor_buffer.TensorType();
         !cached_tensor_type) {
       LITERT_LOG(LITERT_ERROR, "%s",
-                 cached_tensor_type.Error().Message().data());
+                 cached_tensor_type.Error().Message().c_str());
       return kTfLiteError;
     }
 
@@ -400,7 +362,7 @@ TfLiteStatus DispatchDelegateKernel::CreateAndSetBuffer(
       GetBufferRequirements(*tensor_type, buffer_index, is_input);
   if (!tensor_buffer_requirements) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               tensor_buffer_requirements.Error().Message().data());
+               tensor_buffer_requirements.Error().Message().c_str());
     return kTfLiteError;
   }
 
@@ -408,7 +370,7 @@ TfLiteStatus DispatchDelegateKernel::CreateAndSetBuffer(
       tensor_buffer_requirements->SupportedTypes();
   if (!supported_tensor_buffer_types) {
     LITERT_LOG(LITERT_ERROR, "%s",
-               supported_tensor_buffer_types.Error().Message().data());
+               supported_tensor_buffer_types.Error().Message().c_str());
     return kTfLiteError;
   }
 
@@ -424,7 +386,8 @@ TfLiteStatus DispatchDelegateKernel::CreateAndSetBuffer(
 
   auto tensor_buffer_size = tensor_buffer_requirements->BufferSize();
   if (!tensor_buffer_size) {
-    LITERT_LOG(LITERT_ERROR, "%s", tensor_buffer_size.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s",
+               tensor_buffer_size.Error().Message().c_str());
     return kTfLiteError;
   }
 
@@ -465,6 +428,37 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffer(
                  buffer_index, status);
       return kTfLiteError;
     }
+
+    if (tensor_buffer.HasEvent()) {
+      auto event = tensor_buffer.GetEvent();
+      if (!event) {
+        LITERT_LOG(LITERT_ERROR,
+                   "Failed to get event from tensor buffer %d: %s",
+                   buffer_index, event.Error().Message().c_str());
+        return kTfLiteError;
+      }
+
+      if (!async_dispatch_) {
+        // If the Dispatch API runtime doesn't support async execution, then
+        // wait for the event on the CPU.
+        LITERT_LOG(LITERT_WARNING, "Waiting on an input event on the CPU...");
+        if (auto status = event->Wait(/*timeout_in_ms=*/-1); !status) {
+          LITERT_LOG(LITERT_ERROR, "Failed to wait on event: %s",
+                     status.Error().Message().c_str());
+          return kTfLiteError;
+        }
+
+      } else {
+        if (auto status = LiteRtDispatchAttachInputEvent(
+                invocation_context_, buffer_index, event->Get());
+            status != kLiteRtStatusOk) {
+          LITERT_LOG(LITERT_ERROR, "Failed to attach event to input %d: %d",
+                     buffer_index, status);
+          return kTfLiteError;
+        }
+      }
+    }
+
   } else {
     if (auto status = LiteRtDispatchAttachOutput(invocation_context_,
                                                  buffer_index, buffer_handle);
@@ -514,7 +508,7 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
       // provided TensorBuffer.
       auto buffer_size = tensor_buffer->Size();
       if (!buffer_size) {
-        LITERT_LOG(LITERT_ERROR, "%s", buffer_size.Error().Message().data());
+        LITERT_LOG(LITERT_ERROR, "%s", buffer_size.Error().Message().c_str());
         return kTfLiteError;
       }
       if (auto status = RegisterLiteRtTensorBuffer(std::move(*tensor_buffer),
@@ -547,7 +541,7 @@ TfLiteStatus DispatchDelegateKernel::RegisterLiteRtTensorBuffers(
       // provided TensorBuffer.
       auto buffer_size = tensor_buffer->Size();
       if (!buffer_size) {
-        LITERT_LOG(LITERT_ERROR, "%s", buffer_size.Error().Message().data());
+        LITERT_LOG(LITERT_ERROR, "%s", buffer_size.Error().Message().c_str());
         return kTfLiteError;
       }
       if (auto status = RegisterLiteRtTensorBuffer(std::move(*tensor_buffer),
@@ -597,7 +591,7 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
 
     auto lock_and_addr = TensorBufferScopedLock::Create(tensor_buffer);
     if (!lock_and_addr) {
-      LITERT_LOG(LITERT_ERROR, "%s", lock_and_addr.Error().Message().data());
+      LITERT_LOG(LITERT_ERROR, "%s", lock_and_addr.Error().Message().c_str());
       return kTfLiteError;
     }
 
@@ -605,16 +599,41 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
     std::memcpy(lock_and_addr->second, tensor_data, buffer_size);
   }
 
-  if (auto status = LiteRtDispatchInvoke(invocation_context_);
-      status != kLiteRtStatusOk) {
-    LITERT_LOG(LITERT_ERROR, "Failed to invoke context: %d", status);
-    return kTfLiteError;
-  }
-
   size_t num_node_outputs = TfLiteOpaqueNodeNumberOfOutputs(node);
   if (num_node_outputs != output_tensor_buffers_.size()) {
     LITERT_LOG(LITERT_ERROR, "Invalid number of outputs");
     return kTfLiteError;
+  }
+
+  if (async_dispatch_) {
+    std::vector<LiteRtEvent> output_events(num_node_outputs);
+    if (auto status = LiteRtDispatchInvokeAsync(
+            invocation_context_, output_events.size(), output_events.data());
+        status != kLiteRtStatusOk) {
+      LITERT_LOG(LITERT_ERROR, "Failed to invoke context asynchronously: %d",
+                 status);
+      return kTfLiteError;
+    }
+    for (size_t i = 0; i < output_events.size(); ++i) {
+      auto output_event = output_events[i];
+      if (output_event) {
+        auto& tensor_buffer = output_tensor_buffers_[i];
+        if (auto status = tensor_buffer.SetEvent(Event(output_event));
+            !status) {
+          LITERT_LOG(LITERT_ERROR,
+                     "Failed to set event on output tensor buffer: %s",
+                     status.Error().Message().c_str());
+          return kTfLiteError;
+        }
+      }
+    }
+
+  } else {
+    if (auto status = LiteRtDispatchInvoke(invocation_context_);
+        status != kLiteRtStatusOk) {
+      LITERT_LOG(LITERT_ERROR, "Failed to invoke context: %d", status);
+      return kTfLiteError;
+    }
   }
 
   for (size_t i = 0; i < num_node_outputs; ++i) {
@@ -627,7 +646,7 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
 
     auto lock_and_addr = TensorBufferScopedLock::Create(tensor_buffer);
     if (!lock_and_addr) {
-      LITERT_LOG(LITERT_ERROR, "%s", lock_and_addr.Error().Message().data());
+      LITERT_LOG(LITERT_ERROR, "%s", lock_and_addr.Error().Message().c_str());
       return kTfLiteError;
     }
 

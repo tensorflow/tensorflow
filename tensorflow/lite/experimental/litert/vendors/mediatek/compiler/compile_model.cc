@@ -17,15 +17,16 @@
 #include <optional>
 #include <string>
 
+#include "neuron/api/NeuronAdapter.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
 namespace litert::mediatek {
 
 Expected<NeuronCompilationPtr> CompileModel(
-    const NeuronAdapter& neuron_adapter, NeuronModel* model,
+    const NeuronAdapterApi& neuron_adapter_api, NeuronModel* model,
     std::optional<std::string> soc_model) {
 #if defined(__ANDROID__)
   if (soc_model) {
@@ -47,30 +48,32 @@ Expected<NeuronCompilationPtr> CompileModel(
   // - JIT Compilation: Compilation_create and Compilation_setOptimizationString
   // The code below takes care of those conditions.
 
+  // NOLINTBEGIN
   const auto compile_options =
 #if __ANDROID__
-      std::string(neuron_adapter.JitCompileOptions());
+      std::string(neuron_adapter_api.JitCompileOptions());
 #else
-      std::string(neuron_adapter.AotCompileOptions());
+      std::string(neuron_adapter_api.AotCompileOptions());
 #endif
+  // NOLINTEND
 
   auto compilation =
 #if __ANDROID__
-      neuron_adapter.CreateCompilation(model);
+      neuron_adapter_api.CreateCompilation(model);
 #else
-      neuron_adapter.CreateCompilation(model, compile_options);
+      neuron_adapter_api.CreateCompilation(model, compile_options);
 #endif
   if (!compilation) {
     return compilation.Error();
   }
 
-  if (neuron_adapter.api().compilation_set_priority(
+  if (neuron_adapter_api.api().compilation_set_priority(
           compilation->get(), NEURON_PRIORITY_HIGH) != NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
                  "Failed to set compilation priority");
   }
 
-  if (neuron_adapter.api().compilation_set_preference(
+  if (neuron_adapter_api.api().compilation_set_preference(
           compilation->get(), NEURON_PREFER_SUSTAINED_SPEED) !=
       NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
@@ -79,8 +82,9 @@ Expected<NeuronCompilationPtr> CompileModel(
 
 #if __ANDROID__
   if (!compile_options.empty()) {
-    if (auto status = neuron_adapter.api().compilation_set_optimization_string(
-            compilation->get(), compile_options.c_str());
+    if (auto status =
+            neuron_adapter_api.api().compilation_set_optimization_string(
+                compilation->get(), compile_options.c_str());
         status != NEURON_NO_ERROR) {
       LITERT_LOG(LITERT_INFO,
                  "NeuronCompilation_setOptimizationString failed with error %d",
@@ -91,7 +95,8 @@ Expected<NeuronCompilationPtr> CompileModel(
   }
 #endif
 
-  if (auto status = neuron_adapter.api().compilation_finish(compilation->get());
+  if (auto status =
+          neuron_adapter_api.api().compilation_finish(compilation->get());
       status != NEURON_NO_ERROR) {
     LITERT_LOG(LITERT_INFO, "NeuronCompilation_finish failed with error %d",
                status);

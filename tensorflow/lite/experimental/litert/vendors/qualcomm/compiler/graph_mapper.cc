@@ -17,7 +17,6 @@
 #include <alloca.h>
 #include <stdio.h>
 
-#include <algorithm>
 #include <cstdint>
 
 #include "absl/container/flat_hash_map.h"
@@ -96,9 +95,8 @@ LiteRtStatus GraphMapper::LookupInScope(LiteRtTensor litert_tensor,
   if (qnn_id == CurrentScope().end()) {
     LITERT_LOG(LITERT_INFO, "Adding constant tensor %s to qnn graph",
                qnn_tensor.v2.name);
-    LITERT_RETURN_STATUS_IF_NOT_OK(
-        LegalizeAndRegister(litert_tensor, qnn_tensor));
-    LITERT_RETURN_STATUS_IF_NOT_OK(PushToScope(litert_tensor, qnn_tensor));
+    LITERT_RETURN_IF_ERROR(LegalizeAndRegister(litert_tensor, qnn_tensor));
+    LITERT_RETURN_IF_ERROR(PushToScope(litert_tensor, qnn_tensor));
     // }
     return kLiteRtStatusOk;
   }
@@ -122,8 +120,8 @@ Qnn_GraphHandle_t& GraphMapper::QnnGraph() { return qnn_graph_; }
 LiteRtStatus GraphMapper::LegalizeAndRegister(LiteRtTensor litert_tensor,
                                               Qnn_Tensor_t& qnn_tensor) {
   litert::Tensor tensor(litert_tensor);
-  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeTensor(tensor, qnn_tensor));
-  LITERT_RETURN_STATUS_IF_NOT_OK(AssignTensorName(qnn_tensor));
+  LITERT_RETURN_IF_ERROR(LegalizeTensor(tensor, qnn_tensor));
+  LITERT_RETURN_IF_ERROR(AssignTensorName(qnn_tensor));
 
   // Set tensor as graph output if it is used by other Ops.
   if (graph_outpus_.contains(litert_tensor)) {
@@ -137,6 +135,11 @@ LiteRtStatus GraphMapper::LegalizeAndRegister(LiteRtTensor litert_tensor,
 
   LITERT_LOG(LITERT_INFO, "Legalized and registered tensor %d",
              qnn_tensor.v2.id);
+
+  for (int i = 0; i < qnn_tensor.v2.rank; ++i) {
+    LITERT_LOG(LITERT_INFO, "qnn_tensor dim[%d] = %d", i,
+               qnn_tensor.v2.dimensions[i]);
+  }
 
   return kLiteRtStatusOk;
 }

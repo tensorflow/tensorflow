@@ -933,6 +933,10 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
       add_field("PJRT_AsyncHostToDeviceTransferManager_AddMetadata",
                 kFnPtrSize);
     }
+    if (minor_version >= 67) {
+      add_field("PJRT_Client_DmaMap", kFnPtrSize);
+      add_field("PJRT_Client_DmaUnmap", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1300,6 +1304,12 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
                      PJRT_AsyncHostToDeviceTransferManager_AddMetadata),
             sizeof(
                 PJRT_Api::PJRT_AsyncHostToDeviceTransferManager_AddMetadata)}},
+          {"PJRT_Client_DmaMap",
+           {offsetof(PJRT_Api, PJRT_Client_DmaMap),
+            sizeof(PJRT_Api::PJRT_Client_DmaMap)}},
+          {"PJRT_Client_DmaUnmap",
+           {offsetof(PJRT_Api, PJRT_Client_DmaUnmap),
+            sizeof(PJRT_Api::PJRT_Client_DmaUnmap)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

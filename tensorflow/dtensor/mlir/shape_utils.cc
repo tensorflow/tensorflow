@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/shape_utils.h"
 
+#include <cassert>
+#include <cstdint>
 #include <optional>
 #include <vector>
 

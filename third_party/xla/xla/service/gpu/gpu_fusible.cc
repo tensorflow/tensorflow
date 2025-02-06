@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
@@ -847,6 +848,11 @@ bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
   });
 }
 
+bool IsStreamAnnotatedComputation(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kCall &&
+         instr->frontend_attributes().map().contains(kXlaStreamAnnotationAttr);
+}
+
 std::vector<HloComputation*> GetFusibleComputations(
     const HloModule& module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -857,6 +863,7 @@ std::vector<HloComputation*> GetFusibleComputations(
       // Don't fuse within called computations, unless they are for control
       // flow. See also fusion_wrapper.cc, which does the same.
       if (HloInstruction::MightHaveCalledComputations(instr->opcode()) &&
+          !IsStreamAnnotatedComputation(instr) &&
           instr->opcode() != HloOpcode::kWhile &&
           instr->opcode() != HloOpcode::kConditional &&
           // No need to add fusion computations, just check the flag.

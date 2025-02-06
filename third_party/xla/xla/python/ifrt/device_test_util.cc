@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -30,8 +29,8 @@ limitations under the License.
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {

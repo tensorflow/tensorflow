@@ -590,9 +590,11 @@ TEST(AutoShardingEvaluatorTest, NoViolations) {
   expected_evaluation.total.computation_cost = 159.0;  // 13+21+32+42+51
   expected_evaluation.total.communication_cost = 1590.0;  // 130+210+320+420+510
   expected_evaluation.total.resharding_cost = 10400.0;  // 4200+6200
+  expected_evaluation.total.max_memory = 1080000.0;
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.lower_bound.max_memory = 1000000.0;
   expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
@@ -612,10 +614,12 @@ TEST(AutoShardingEvaluatorTest, EvaluatesOverbudget) {
   expected_evaluation.total.communication_cost = 1580.0;  // 120+210+320+420+510
   expected_evaluation.total.resharding_cost = 9400.0;  // 3200+6200
   expected_evaluation.total.overbudget_cost = 18400000.0;  // 10*1840000
+  expected_evaluation.total.max_memory = 1940000.0;
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
   expected_evaluation.lower_bound.overbudget_cost = 9000000.0;
+  expected_evaluation.lower_bound.max_memory = 1000000.0;
   expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
@@ -639,10 +643,12 @@ TEST(AutoShardingEvaluatorTest, EvaluatesOverbudgetWithIntervals) {
   expected_evaluation.total.communication_cost = 1580.0;  // 120+210+320+420+510
   expected_evaluation.total.resharding_cost = 9400.0;  // 3200+6200
   expected_evaluation.total.overbudget_cost = 18400000.0;  // 10*1840000
+  expected_evaluation.total.max_memory = 1940000.0;
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
   expected_evaluation.lower_bound.overbudget_cost = 9000000.0;
+  expected_evaluation.lower_bound.max_memory = 1000000.0;
   expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
@@ -669,10 +675,12 @@ TEST(AutoShardingEvaluatorTest,
   expected_evaluation.total.communication_cost = 1580.0;  // 120+210+320+420+510
   expected_evaluation.total.resharding_cost = 9400.0;  // 3200+6200
   expected_evaluation.total.overbudget_cost = 18400000.0;  // 10*1840000
+  expected_evaluation.total.max_memory = 1940000.0;
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
   expected_evaluation.lower_bound.overbudget_cost = 9000000.0;
+  expected_evaluation.lower_bound.max_memory = 1000000.0;
   expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
@@ -690,9 +698,11 @@ TEST(AutoShardingEvaluatorTest, ViolatesFollower) {
   expected_evaluation.total.computation_cost = 158.0;  // 13+21+32+41+51
   expected_evaluation.total.communication_cost = 1580.0;  // 130+210+320+410+510
   expected_evaluation.total.resharding_cost = 10400.0;  // 4200+6200
+  expected_evaluation.total.max_memory = 1070000.0;
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.lower_bound.max_memory = 1000000.0;
   expected_evaluation.total_departures = 2.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
@@ -710,9 +720,11 @@ TEST(AutoShardingEvaluatorTest, ViolatesAlias) {
   expected_evaluation.total.computation_cost = 158.0;  // 13+21+32+42+50
   expected_evaluation.total.communication_cost = 1580.0;  // 130+210+320+420+500
   expected_evaluation.total.resharding_cost = 10400.0;  // 4200+6200
+  expected_evaluation.total.max_memory = 1080000.0;
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.lower_bound.max_memory = 1000000.0;
   expected_evaluation.total_departures = 4.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
@@ -730,9 +742,11 @@ TEST(AutoShardingEvaluatorTest, ViolatesMemory) {
   expected_evaluation.total.computation_cost = 158.0;  // 12+21+32+42+51
   expected_evaluation.total.communication_cost = 1580.0;  // 120+210+320+420+510
   expected_evaluation.total.resharding_cost = 9400.0;  // 3200+6200
+  expected_evaluation.total.max_memory = 1940000.0;
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.lower_bound.max_memory = 1000000.0;
   expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
@@ -753,9 +767,11 @@ TEST(AutoShardingEvaluatorTest, ViolatesInfiniteCostForNode) {
   expected_evaluation.total.computation_cost = 1e+20;  // infinite cost
   expected_evaluation.total.communication_cost = 1560.0;  // 100+210+320+420+510
   expected_evaluation.total.resharding_cost = 7400.0;  // 1200+6200
+  expected_evaluation.total.max_memory = 1050000.0;
   expected_evaluation.lower_bound.computation_cost = 153.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.lower_bound.max_memory = 1000000.0;
   expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
@@ -774,9 +790,11 @@ TEST(AutoShardingEvaluatorTest, ViolatesInfiniteCostForEdge) {
   expected_evaluation.total.computation_cost = 156.0;  // 10+21+32+42+51
   expected_evaluation.total.communication_cost = 1560.0;  // 100+210+320+420+510
   expected_evaluation.total.resharding_cost = 1e+20;  // infinite cost
+  expected_evaluation.total.max_memory = 1050000.0;
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.lower_bound.max_memory = 1000000.0;
   expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
@@ -795,9 +813,11 @@ TEST(AutoShardingEvaluatorTest, ViolatesMaxDepartures) {
   expected_evaluation.total.computation_cost = 159.0;  // 13+21+32+42+51
   expected_evaluation.total.communication_cost = 1590.0;  // 130+210+320+420+510
   expected_evaluation.total.resharding_cost = 10400.0;  // 4200+6200
+  expected_evaluation.total.max_memory = 1080000.0;
   expected_evaluation.lower_bound.computation_cost = 150.0;
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
+  expected_evaluation.lower_bound.max_memory = 1000000.0;
   expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }

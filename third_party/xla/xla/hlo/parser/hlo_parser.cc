@@ -75,12 +75,13 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -551,7 +552,7 @@ class HloParserImpl : public HloParser {
   bool ParseJsonDict(std::string* result);
   bool ParseDimensionSizes(std::vector<int64_t>* dimension_sizes,
                            std::vector<bool>* dynamic_dimensions);
-  bool ParseShape(Shape* result);
+  bool ParseShape(Shape* result, bool allow_fallback_to_default_layout = true);
   bool ParseLayout(Layout* layout);
   bool ParseLayoutIntAttribute(int64_t* attr_value,
                                absl::string_view attr_description);
@@ -922,7 +923,9 @@ bool HloParserImpl::ParseComputationLayout(
   }
   while (lexer_.GetKind() != TokKind::kRparen) {
     Shape param;
-    if (!ParseShape(&param)) {
+    if (!ParseShape(&param,
+                    /* allow_fallback_to_default_layout=*/
+                    !options_.keep_module_auto_layouts())) {
       return false;
     }
     computation_layout->add_parameter_layout(ShapeLayout(param));
@@ -942,7 +945,9 @@ bool HloParserImpl::ParseComputationLayout(
     return false;
   }
   Shape result;
-  if (!ParseShape(&result)) {
+  if (!ParseShape(&result,
+                  /* allow_fallback_to_default_layout=*/
+                  !options_.keep_module_auto_layouts())) {
     return false;
   }
   *computation_layout->mutable_result_layout() = ShapeLayout(result);
@@ -1877,27 +1882,22 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         pairs[i].second = (*source_targets)[i][1];
       }
       if (!slice_sizes.has_value()) {
-        if (operands.size() != 1) {
-          TokenError(
-              "CollectivePermute and CollectivePermuteStart must have exactly "
-              "one operand (input buffer) unless it performs dynamic-slice and "
-              "in-place update.");
-          return nullptr;
-        }
         if (opcode == HloOpcode::kCollectivePermute) {
           return builder->AddInstruction(
-              HloInstruction::CreateCollectivePermute(*shape, operands[0],
-                                                      pairs, channel_id));
+              HloInstruction::CreateCollectivePermute(*shape, operands, pairs,
+                                                      channel_id));
         }
         if (opcode == HloOpcode::kCollectivePermuteStart) {
           return builder->AddInstruction(
-              HloInstruction::CreateCollectivePermuteStart(*shape, operands[0],
+              HloInstruction::CreateCollectivePermuteStart(*shape, operands,
                                                            pairs, channel_id));
         }
         LOG(FATAL) << "Expect opcode to be CollectivePermute or "
                       "CollectivePermuteStart, but got "
                    << opcode;
       }
+      // TODO update the interface and legalization below for combined
+      // collective permutes
       if (operands.size() != 4) {
         TokenError(
             "CollectivePermute and CollectivePermuteStart must "
@@ -6257,7 +6257,8 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
 // tuple_elements
 //   ::= /*empty*/
 //   ::= shape (',' shape)*
-bool HloParserImpl::ParseShape(Shape* result) {
+bool HloParserImpl::ParseShape(Shape* result,
+                               bool allow_fallback_to_default_layout) {
   if (EatIfPresent(TokKind::kLparen)) {  // Tuple
     std::vector<Shape> shapes;
     if (lexer_.GetKind() == TokKind::kRparen) {
@@ -6266,7 +6267,7 @@ bool HloParserImpl::ParseShape(Shape* result) {
       // shape (',' shape)*
       do {
         shapes.emplace_back();
-        if (!ParseShape(&shapes.back())) {
+        if (!ParseShape(&shapes.back(), allow_fallback_to_default_layout)) {
           return false;
         }
       } while (EatIfPresent(TokKind::kComma));
@@ -6292,7 +6293,8 @@ bool HloParserImpl::ParseShape(Shape* result) {
     result->add_dimensions(dimension_sizes[i]);
     result->set_dynamic_dimension(i, dynamic_dimensions[i]);
   }
-  if (options_.fill_missing_layouts() || ShapeUtil::IsScalar(*result)) {
+  if ((allow_fallback_to_default_layout && options_.fill_missing_layouts()) ||
+      ShapeUtil::IsScalar(*result)) {
     LayoutUtil::SetToDefaultLayout(result);
   }
   // We need to lookahead to see if a following open brace is the start of a
@@ -7308,8 +7310,8 @@ absl::StatusOr<Layout> ParseLayout(absl::string_view str) {
 }
 
 std::unique_ptr<HloParser> HloParser::CreateHloParserForTests(
-    absl::string_view str) {
-  return std::make_unique<HloParserImpl>(str);
+    absl::string_view str, const HloParserOptions& options) {
+  return std::make_unique<HloParserImpl>(str, options);
 }
 
 }  // namespace xla

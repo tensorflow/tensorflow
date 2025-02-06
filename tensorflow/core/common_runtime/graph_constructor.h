@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_CONSTRUCTOR_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -52,11 +53,21 @@ struct GraphConstructorOptions {
   // If true, GraphConstructor will add attributes with their default
   // value to the Node when they are missing from the NodeDef.
   bool add_default_attributes = true;
+
+  // If true, upgrade legacy features of the graph (for instance, functionalize
+  // control-flow).
+  bool upgrade_legacy = false;
 };
 extern absl::Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                            const GraphDef& gdef, Graph* g);
 extern absl::Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                            GraphDef&& gdef, Graph* g);
+
+// Generate the shared_name for resource handle ops in the graph and functions
+// if their shared_names are empty. Resource handle ops with empty shared_name
+// may have undesired semantics.
+absl::Status GenerateResourceSharedNameIfEmpty(
+    GraphDef& gdef, const OpRegistryInterface* default_registry);
 
 // Same as ConvertGraphDefToGraph, but takes just nodes.  Used by function
 // instantiation.

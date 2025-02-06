@@ -18,12 +18,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
+#include "xla/test_helpers.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -31,7 +34,6 @@ limitations under the License.
 
 namespace xla {
 namespace {
-using tsl::testing::StatusIs;
 
 TEST(TopologyTest, BuildGlobalTopology) {
   std::vector<LocalTopologyProto> locals(2);
@@ -99,7 +101,7 @@ TEST(TopologyTest, ExchangeTopology_Twice_Succeeds) {
   DeviceProto* d3 = locals[1].add_devices();
   d3->set_local_device_ordinal(1);
 
-  InMemoryKeyValueStore kv_store;
+  InMemoryKeyValueStore kv_store(/*allow_overwrite=*/false);
   std::vector<GlobalTopologyProto> globals(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "TestPool",
@@ -143,7 +145,7 @@ TEST(TopologyTest, ExchangeTopology_TwiceWithDifferentLocalTopology_Fails) {
   DeviceProto* d3 = locals[1].add_devices();
   d3->set_local_device_ordinal(1);
 
-  InMemoryKeyValueStore kv_store;
+  InMemoryKeyValueStore kv_store(/*allow_overwrite=*/false);
   std::vector<GlobalTopologyProto> globals(num_nodes);
   {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "TestPool",
@@ -168,7 +170,7 @@ TEST(TopologyTest, ExchangeTopology_TwiceWithDifferentLocalTopology_Fails) {
                           absl::Seconds(10), /*get_global_topology_timeout=*/
                           absl::Seconds(10), &kv_store, locals[i], &globals[i],
                           /*assign_global_device_ids=*/true),
-                      StatusIs(absl::StatusCode::kInternal));
+                      tsl::testing::StatusIs(absl::StatusCode::kInternal));
         }
       });
     }

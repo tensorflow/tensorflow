@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -37,14 +39,29 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+using CycleType = SourceTargetPairs::CycleType;
+
+absl::StatusOr<ReductionKind> StringToReductionKind(
+    absl::string_view reduction_kind) {
+  if (reduction_kind == "sum") {
+    return ReductionKind::SUM;
+  } else if (reduction_kind == "prod") {
+    return ReductionKind::PRODUCT;
+  } else if (reduction_kind == "min") {
+    return ReductionKind::MIN;
+  } else if (reduction_kind == "max") {
+    return ReductionKind::MAX;
+  }
+  return InvalidArgument("Invalid reduction kind: %s", reduction_kind);
+}
 
 // Match the instruction to a reduction kind. We can represent and/or of pred as
 // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
@@ -739,6 +756,9 @@ bool IsNonFusionCollective(const HloInstruction* instruction) {
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncDone:
       return IsNonFusionCollective(instruction->async_wrapped_instruction());
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
+      return !Cast<HloSendRecvInstruction>(instruction)->is_host_transfer();
     default:
       return false;
   }
@@ -777,47 +797,57 @@ HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
   return nullptr;
 }
 
-bool IsSyncCollective(const HloInstruction* instr) {
-  auto backend_config = instr->backend_config<xla::gpu::GpuBackendConfig>();
-  if (!backend_config.ok()) {
-    return false;
-  }
-  return backend_config->collective_backend_config().is_sync();
-}
+using SourceTargetPairType = std::pair<int64_t, int64_t>;
+using SourceTargetPairsType = std::vector<SourceTargetPairType>;
 
-using SourceTargetPair = std::pair<int64_t, int64_t>;
-using SourceTargetPairs = std::vector<SourceTargetPair>;
-
-bool IsForwardCycle(const SourceTargetPairs& pairs) {
-  int64_t size = pairs.size();
-  if (size <= 1) return false;  // self reference is not a cycle.
-  const SourceTargetPair& last_pair = pairs[size - 1];
-  if (last_pair.first != size - 1 || last_pair.second != 0) {
-    return false;
+std::pair<CycleType, std::set<int>> GetCycleTypeAndIndices(
+    const SourceTargetPairsType& pairs) {
+  std::set<int> seen_replica_ids;
+  std::set<std::pair<int64_t, int64_t>> tentative_results;
+  // first figure out if we're dealing with a potential forward or backward
+  // cycle.
+  int forward_edge_counter = 0;
+  int backward_edge_counter = 0;
+  for (auto pair : pairs) {
+    pair.first < pair.second ? forward_edge_counter++ : backward_edge_counter++;
   }
-  for (int64_t i = 0; i < size - 1; ++i) {
-    const SourceTargetPair& pair = pairs[i];
-    if (pair.first != i || pair.second != i + 1) {
-      return false;
+  bool is_forward_cycle = forward_edge_counter > backward_edge_counter;
+  for (int64_t i = 0; i < pairs.size(); ++i) {
+    const SourceTargetPairType& pair = pairs[i];
+    if (is_forward_cycle) {
+      // check if the source of the current pair is smaller than the target
+      if (pair.first < pair.second) {
+        seen_replica_ids.insert(pair.first);
+      } else {
+        // the source of the current pair is larger than the target, so the
+        // current pair may be part of a cycle. We keep track of the target ID
+        // and the index of the pair in the original pairs array.
+        tentative_results.insert(std::make_pair(pair.second, i));
+      }
+    } else {
+      // The backward cycle check uses similar logic but in reverse.
+      if (pair.first > pair.second) {
+        seen_replica_ids.insert(pair.second);
+      } else {
+        tentative_results.insert(std::make_pair(pair.first, i));
+      }
     }
   }
-  return true;
-}
-
-bool IsBackwardCycle(const SourceTargetPairs& pairs) {
-  int64_t size = pairs.size();
-  if (size <= 1) return false;  // self reference is not a cycle.
-  const SourceTargetPair& first_pair = pairs[0];
-  if (first_pair.first != 0 || first_pair.second != size - 1) {
-    return false;
-  }
-  for (int64_t i = 1; i < size; ++i) {
-    const SourceTargetPair& pair = pairs[i];
-    if (pair.first != i || pair.second != i - 1) {
-      return false;
+  std::set<int> final_results;
+  // Iterate over the tentative results and only keep the indices that form an
+  // actual cycle. This is done by checking if the target replica ID of the
+  // pair is in the set of seen replica IDs. Note that the tentative results
+  // array will be fairly small in practice, so this is not adding too much to
+  // the runtime.
+  for (auto& [replica_id, index] : tentative_results) {
+    if (seen_replica_ids.find(replica_id) != seen_replica_ids.end()) {
+      final_results.insert(index);
     }
   }
-  return true;
+  CycleType cycle_type = final_results.empty() ? CycleType::kUnknown
+                         : is_forward_cycle    ? CycleType::kForward
+                                               : CycleType::kBackward;
+  return std::make_pair(cycle_type, final_results);
 }
 
 bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,

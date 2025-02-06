@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -151,16 +153,20 @@ TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
   std::cerr << "\ty:" << y_literal << std::endl;
 
   PjRtDevice* host_cpu = client->devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * host_cpu_memory_space,
+                          host_cpu->default_memory_space());
 
   // Transfer our literals to buffers. If we were using a GPU, these buffers
   // would correspond to device memory.
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> alpha,
-      client->BufferFromHostLiteral(alpha_literal, host_cpu));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> x,
-                          client->BufferFromHostLiteral(x_literal, host_cpu));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> y,
-                          client->BufferFromHostLiteral(y_literal, host_cpu));
+      client->BufferFromHostLiteral(alpha_literal, host_cpu_memory_space));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> x,
+      client->BufferFromHostLiteral(x_literal, host_cpu_memory_space));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> y,
+      client->BufferFromHostLiteral(y_literal, host_cpu_memory_space));
 
   // Do our computation.
   TF_ASSERT_OK_AND_ASSIGN(

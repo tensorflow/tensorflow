@@ -361,9 +361,24 @@ absl::StatusOr<bool> UnrollInternalWrapped(HloInstruction* while_op,
   return result.unrolled;
 }
 
-};  // namespace
+// Recursively checks if the given instruction points to the induction var of
+// the given loop config.
+bool IsLoopInductionVar(const HloInstruction* instr,
+                        const WhileLoopConfig& config) {
+  if (!instr->parent()->IsFusionComputation()) {
+    return Match(instr, match::GetTupleElement(match::Parameter(),
+                                               config.induction_var_idx));
+  } else {
+    if (!Match(instr, match::Parameter())) {
+      return false;
+    }
+    HloInstruction* caller_fusion = instr->parent()->FusionInstruction();
+    return IsLoopInductionVar(caller_fusion->operand(instr->parameter_number()),
+                              config);
+  }
+}
 
-// Recursively checks if the given instruction inside a while loop body can be
+// Recursively checks if the given instruction inside a while loop can be
 // expressed as a value range, possibly depending on the loop induction variable
 // of that while loop.
 std::optional<Range> IdentifyRangeAsFunctionOfInductionVar(
@@ -396,6 +411,8 @@ std::optional<Range> IdentifyRangeAsFunctionOfInductionVar(
       RecursivelyIdentifyRange(instr, predefined_ranges, nullptr);
   return instr_range;
 }
+
+};  // namespace
 
 // Recursively checks if the given instruction is effectively static by checking
 // if it is a constant or a parameter that points to the induction var of the
@@ -479,6 +496,91 @@ std::optional<int64_t> MatchEffectivelyStaticDynamicSliceInsideLoop(
 }
 
 std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
+    const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
+    const WhileLoopConfig& config) {
+  if (instr->opcode() != opcode) {
+    return std::nullopt;
+  }
+  // Based on the instruction type, start indices start from index 1 or 2 of the
+  // operands.
+  int64_t start_indices_offset;
+  if (instr->opcode() == HloOpcode::kDynamicSlice) {
+    start_indices_offset = 1;
+  } else if (instr->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    start_indices_offset = 2;
+  } else {
+    return std::nullopt;
+  }
+  const HloInstruction* operand = instr->operand(0);
+  if (input != nullptr && operand != input) {
+    VLOG(3) << "Input of dynamic index instruction is not the given operand.";
+    return std::nullopt;
+  }
+
+  int64_t dynamic_index = -1;
+  for (int64_t start_index = start_indices_offset;
+       start_index < instr->operand_count(); ++start_index) {
+    const HloInstruction* index = instr->operand(start_index);
+    // All constants must be zero in order to slice the entire shape.
+    if (Match(index, match::ConstantScalar())) {
+      std::optional<int64_t> offset =
+          LiteralUtil::LiteralAsScalarInt64(index->literal());
+      if (offset.has_value() && offset.value() != 0) {
+        VLOG(3) << "Constant index " << start_index << " is not zero.";
+        return std::nullopt;
+      }
+      continue;
+    }
+
+    // Check that the instruction's dynamic index points to the loop induction
+    // variable.
+    if (IsLoopInductionVar(index, config)) {
+      // In order to cover the whole shape only a single non-constant index is
+      // allowed.
+      if (dynamic_index != -1) {
+        VLOG(3) << "Multiple non-constant indices.";
+        return std::nullopt;
+      }
+      dynamic_index = start_index - start_indices_offset;
+    }
+  }
+
+  if (dynamic_index == -1) {
+    VLOG(3) << "No dynamic index found.";
+    return std::nullopt;
+  }
+
+  if (operand->shape().dimensions(dynamic_index) != config.trip_count) {
+    VLOG(3) << "The dynamic_index dimension size of the operand must be equal "
+               "to the loop trip count.";
+    return std::nullopt;
+  }
+
+  if (opcode == HloOpcode::kDynamicSlice) {
+    const Shape& result_shape = instr->shape();
+    if (result_shape.dimensions(dynamic_index) != 1) {
+      VLOG(3) << "The slice size on the dynamic_index dimension must be 1.";
+      return std::nullopt;
+    }
+
+    const Shape& operand_shape = operand->shape();
+    CHECK_EQ(result_shape.dimensions_size(), operand_shape.dimensions_size());
+    for (int64_t i = 0; i < result_shape.dimensions_size(); ++i) {
+      if (i != dynamic_index &&
+          result_shape.dimensions(i) != operand_shape.dimensions(i)) {
+        VLOG(3) << "The slice sizes must match the operand-shape on "
+                   "non-dynamic-index dimensions.";
+        return std::nullopt;
+      }
+    }
+  }
+
+  return dynamic_index;
+}
+
+// TODO(b/393399049): Replace MatchShapeCoveringDynamicInstruction with this
+// one.
+std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
     const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
     const WhileLoopConfig& config) {
   if (instr->opcode() != opcode) {

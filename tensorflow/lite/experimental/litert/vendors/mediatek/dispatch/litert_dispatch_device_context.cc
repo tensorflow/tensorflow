@@ -19,25 +19,22 @@
 #include <cstddef>
 #include <memory>
 
+#include "neuron/api/NeuronAdapter.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter.h"
-
-// NOLINTNEXTLINE
-using litert::mediatek::NEURON_NO_ERROR;
-using litert::mediatek::NeuronMemory;
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
 LiteRtDispatchDeviceContextT::~LiteRtDispatchDeviceContextT() = default;
 
 litert::Expected<LiteRtDispatchDeviceContextT::Ptr>
 LiteRtDispatchDeviceContextT::Create(
-    const litert::mediatek::NeuronAdapter& neuron_adapter) {
+    const litert::mediatek::NeuronAdapterApi& neuron_adapter_api) {
   return std::unique_ptr<LiteRtDispatchDeviceContextT>(
-      new LiteRtDispatchDeviceContextT(neuron_adapter));
+      new LiteRtDispatchDeviceContextT(neuron_adapter_api));
 }
 
 litert::Expected<LiteRtTensorBufferHandle>
@@ -63,7 +60,7 @@ LiteRtDispatchDeviceContextT::RegisterTensorBuffer(
       if (auto ahwb = tensor_buffer.GetAhwb(); ahwb) {
 #ifdef __ANDROID__
         NeuronMemory* neuron_memory;
-        if (neuron_adapter_.api().memory_create_from_ahwb(
+        if (neuron_adapter_api_.api().memory_create_from_ahwb(
                 *ahwb, &neuron_memory) != NEURON_NO_ERROR) {
           return litert::Unexpected(kLiteRtStatusErrorRuntimeFailure,
                                     "Failed to create NeuronMemory from AHWB");
@@ -71,7 +68,7 @@ LiteRtDispatchDeviceContextT::RegisterTensorBuffer(
         return neuron_memory_registry_.Register(
             neuron_memory, *tensor_buffer_size, *tensor_buffer_offset);
 #else
-        (void)neuron_adapter_;
+        (void)neuron_adapter_api_;
         return litert::Unexpected(
             kLiteRtStatusErrorRuntimeFailure,
             "AHardwareBuffer is not supported on this platform");
@@ -84,7 +81,7 @@ LiteRtDispatchDeviceContextT::RegisterTensorBuffer(
     case kLiteRtTensorBufferTypeDmaBuf:
       if (auto dma_buf = tensor_buffer.GetDmaBuf(); dma_buf) {
         NeuronMemory* neuron_memory;
-        if (neuron_adapter_.api().memory_create_from_fd(
+        if (neuron_adapter_api_.api().memory_create_from_fd(
                 *tensor_buffer_size, /*protect*/ PROT_READ | PROT_WRITE,
                 dma_buf->fd, *tensor_buffer_offset,
                 &neuron_memory) != NEURON_NO_ERROR) {
@@ -110,7 +107,7 @@ LiteRtDispatchDeviceContextT::NeuronMemoryRegistry::~NeuronMemoryRegistry() {
   for (auto i = 0; i < records_.size(); ++i) {
     auto& record = records_[i];
     if (record.neuron_memory != nullptr) {
-      neuron_adapter_.api().memory_free(record.neuron_memory);
+      neuron_adapter_api_.api().memory_free(record.neuron_memory);
     }
   }
 }
@@ -142,7 +139,7 @@ LiteRtDispatchDeviceContextT::NeuronMemoryRegistry::Unregister(
     return record.Error();
   } else {
     auto& mem = (*record)->neuron_memory;
-    neuron_adapter_.api().memory_free(mem);
+    neuron_adapter_api_.api().memory_free(mem);
     mem = nullptr;
     return {};
   }

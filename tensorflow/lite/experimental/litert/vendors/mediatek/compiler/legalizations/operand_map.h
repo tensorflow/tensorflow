@@ -23,7 +23,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
 namespace litert::mediatek {
 
@@ -32,8 +32,8 @@ namespace litert::mediatek {
 // handles them.
 class OperandMap {
  public:
-  OperandMap(const NeuronAdapter& neuron_adapter, NeuronModel* model)
-      : neuron_adapter_(neuron_adapter), model_(model) {}
+  OperandMap(const NeuronAdapterApi& neuron_adapter_api, NeuronModel* model)
+      : neuron_adapter_api_(neuron_adapter_api), model_(model) {}
 
   // Add a scalar operand to the model.
   Expected<uint32_t> AddScalarBool(bool value) {
@@ -73,7 +73,7 @@ class OperandMap {
     if (!operand_index) {
       return operand_index.Error();
     }
-    if (neuron_adapter_.api().model_set_operand_value(
+    if (neuron_adapter_api_.api().model_set_operand_value(
             model_, *operand_index, &value, sizeof(value)) != NEURON_NO_ERROR) {
       return Error(kLiteRtStatusErrorRuntimeFailure,
                    "Failed to set value of scalar operand");
@@ -81,7 +81,7 @@ class OperandMap {
     return operand_index;
   }
 
-  const NeuronAdapter& neuron_adapter_;
+  const NeuronAdapterApi& neuron_adapter_api_;
   NeuronModel* model_;
   int next_operand_index_ = 0;
   absl::flat_hash_map<LiteRtTensor, uint32_t> map_;

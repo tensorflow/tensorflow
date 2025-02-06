@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/test.h"
 
 namespace stream_executor {
 

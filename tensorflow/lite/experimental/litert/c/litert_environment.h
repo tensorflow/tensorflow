@@ -25,6 +25,10 @@ extern "C" {
 typedef enum {
   kLiteRtEnvOptionTagCompilerPluginLibraryPath = 0,
   kLiteRtEnvOptionTagDispatchLibraryPath = 1,
+  kLiteRtEnvOptionTagOpenClDeviceId = 2,
+  kLiteRtEnvOptionTagOpenClPlatformId = 3,
+  kLiteRtEnvOptionTagOpenClContext = 4,
+  kLiteRtEnvOptionTagOpenClCommandQueue = 5,
 } LiteRtEnvOptionTag;
 
 typedef struct {
@@ -32,15 +36,14 @@ typedef struct {
   LiteRtAny value;
 } LiteRtEnvOption;
 
-// Create a singleton LiteRT environment with options. Returns an error if the
-// instance already exists, in which case the specified options have no
-// effect. If not created explicitly with options, the environment instance will
-// be created (with no options) when needed.
-LiteRtStatus LiteRtEnvironmentCreate(int num_options,
-                                     const LiteRtEnvOption* options);
+LITERT_DEFINE_HANDLE(LiteRtEnvironment);
 
-// Destroy the LiteRT environment instance.
-void LiteRtEnvironmentDestroy();
+// Create a LiteRT environment with options.
+LiteRtStatus LiteRtEnvironmentCreate(int num_options,
+                                     const LiteRtEnvOption* options,
+                                     LiteRtEnvironment* environment);
+
+void LiteRtDestroyEnvironment(LiteRtEnvironment environment);
 
 #ifdef __cplusplus
 }

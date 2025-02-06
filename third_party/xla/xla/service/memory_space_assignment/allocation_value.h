@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -129,13 +130,15 @@ class AllocationValue {
       : value_(value),
         defining_position_(position),
         size_(size),
-        requires_contiguous_allocation_(false) {}
+        requires_contiguous_allocation_(false),
+        split_shape_(std::nullopt) {}
 
   const HloPosition& defining_position() const { return defining_position_; }
   const HloInstruction* defining_instruction() const {
     return defining_position().instruction;
   }
   int64_t size() const { return size_; }
+  void set_size(int64_t size) { size_ = size; }
   const std::vector<Use>& uses() const { return uses_; }
   std::vector<Use>& uses() { return uses_; }
   const HloValue* value() const { return value_; }
@@ -162,6 +165,9 @@ class AllocationValue {
     uses_.push_back({use, use_time, {}});
   }
 
+  void set_split_shape(const Shape& split_shape) { split_shape_ = split_shape; }
+  std::optional<Shape> mutable_split_shape() { return split_shape_; }
+
   std::string ToString() const;
   std::string ToShortString() const;
 
@@ -174,6 +180,9 @@ class AllocationValue {
   bool requires_contiguous_allocation_;
   std::vector<Use> uses_;
   AllocationSequence allocation_sequence_;
+
+  // If present, indicates the newly split shape.
+  std::optional<Shape> split_shape_;
 };
 
 // A data structure we use to associate Allocation objects that are aliased
@@ -209,7 +218,7 @@ struct AliasedOffset {
 // between Def, Use1, Use2.1, Use2.2, Use3:
 //        +------+----------+-------------------+
 //       /        \          \                   \
-  //      /          v          v                   v
+//      /          v          v                   v
 //    Def         Use1       Use2(Sync Copy)     Use3
 //    |            |           \         \        |
 //    |            |            v         v       |

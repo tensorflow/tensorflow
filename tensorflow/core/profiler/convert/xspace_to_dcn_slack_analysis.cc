@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/timespan.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tsl/platform/regexp.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {

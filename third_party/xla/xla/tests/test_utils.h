@@ -117,9 +117,6 @@ std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
                                                       HloInstruction* lhs,
                                                       HloInstruction* rhs);
 
-// Checks whether MLIR lowering is enabled through XLA_FLAGS.
-bool IsMlirLoweringEnabled();
-
 template <typename MessageType>
 absl::StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
   tsl::protobuf::TextFormat::Parser parser;

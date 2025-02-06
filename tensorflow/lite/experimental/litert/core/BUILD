@@ -14,13 +14,16 @@
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/lite/experimental/litert:__subpackages__",
+        "//third_party/odml/infra/ml_drift_delegate/litert:__subpackages__",
+    ],
 )
 
 cc_library(
-    name = "byte_code_util",
-    srcs = ["byte_code_util.cc"],
-    hdrs = ["byte_code_util.h"],
+    name = "build_stamp",
+    srcs = ["build_stamp.cc"],
+    hdrs = ["build_stamp.h"],
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
@@ -34,17 +37,17 @@ cc_library(
 )
 
 cc_test(
-    name = "byte_code_util_test",
-    srcs = ["byte_code_util_test.cc"],
+    name = "build_stamp_test",
+    srcs = ["build_stamp_test.cc"],
     data = [
         "//tensorflow/lite/experimental/litert/test:tflite_test_data",
     ],
     deps = [
-        ":byte_code_util",
+        ":build_stamp",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
@@ -56,10 +59,28 @@ cc_library(
     hdrs = ["dynamic_loading.h"],
     linkopts = ["-ldl"],
     deps = [
+        ":filesystem",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "insert_order_map",
+    hdrs = ["insert_order_map.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_test(
+    name = "insert_order_map_test",
+    srcs = ["insert_order_map_test.cc"],
+    deps = [
+        ":insert_order_map",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -71,10 +92,10 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_environment.h",
     ],
     deps = [
+        ":accelerator",
         "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
-        "//tensorflow/lite/experimental/litert/cc:litert_any",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "@com_google_absl//absl/types:span",
     ],
@@ -93,6 +114,16 @@ cc_test(
 )
 
 cc_library(
+    name = "accelerator",
+    srcs = ["accelerator.cc"],
+    hdrs = ["accelerator.h"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/cc:litert_expected",
+    ],
+)
+
+cc_library(
     name = "filesystem",
     srcs = ["filesystem.cc"],
     hdrs = ["filesystem.h"],
@@ -103,6 +134,17 @@ cc_library(
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/cc:litert_macros",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "dispatch_op_schema",
+    srcs = ["dispatch_op_schema.cc"],
+    hdrs = ["dispatch_op_schema.h"],
+    copts = ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"],
+    deps = [
+        "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -134,7 +176,16 @@ cc_test(
 #         "@com_google_absl//absl/strings:string_view",
 #         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
 #         "//tensorflow/lite/experimental/litert/test:common",
-#         "//tensorflow/lite/experimental/litert/test:test_macros",
+#         "//tensorflow/lite/experimental/litert/test:matchers",
 #     ],
 # )
 # copybara:uncomment_end
+
+cc_test(
+    name = "dispatch_op_schema_test",
+    srcs = ["dispatch_op_schema_test.cc"],
+    deps = [
+        ":dispatch_op_schema",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

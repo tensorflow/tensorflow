@@ -319,6 +319,12 @@ class Subgraph : public internal::NonOwnedHandle<LiteRtSubgraph> {
   SubgraphInputs Inputs() const;
   SubgraphOutputs Outputs() const;
   std::vector<Op> Ops() const;
+
+  // Returns the input tensor with the given input signature name.
+  Expected<Tensor> Input(absl::string_view name) const;
+
+  // Returns the output tensor with the given output signature name.
+  Expected<Tensor> Output(absl::string_view name) const;
 };
 
 // Model signature. C++ equivalent of LiteRtSignature.
@@ -432,7 +438,7 @@ class Model : public internal::Handle<LiteRtModel, LiteRtDestroyModel> {
     return litert::Subgraph(subgraph);
   }
 
-  Expected<class Subgraph> Subgraph(absl::string_view signature_key) {
+  Expected<class Subgraph> Subgraph(absl::string_view signature_key) const {
     auto signature = FindSignature(signature_key);
     if (!signature) {
       return Unexpected(kLiteRtStatusErrorNotFound, "Signature not found");

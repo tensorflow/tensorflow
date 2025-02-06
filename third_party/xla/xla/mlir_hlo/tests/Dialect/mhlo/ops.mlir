@@ -1640,6 +1640,14 @@ func.func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi3
 
 // -----
 
+// CHECK-LABEL: func @exponential_result_accuracy
+func.func @exponential_result_accuracy(%arg0: tensor<f32>) -> tensor<f32> {
+  %0 = "mhlo.exponential"(%arg0) {result_accuracy = #mhlo.result_accuracy<atol = 0.0, rtol = 0.0, ulps = 10, mode = #mhlo.result_accuracy_mode<TOLERANCE>>} : (tensor<f32>) -> tensor<f32>
+  func.return %0: tensor<f32>
+}
+
+// -----
+
 func.func @dot_more_dynamic_output_type(%arg0: tensor<3xf32>, %arg1: tensor<?x3xf32>) -> tensor<?xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<3xf32>, tensor<?x3xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
@@ -6844,6 +6852,13 @@ func.func @invalid_dimension_attr(%arg0: tensor<?x?xf32, #mhlo.type_extensions<b
 
 // -----
 
+func.func @f4e2m1fn(%arg0: tensor<f16>) -> tensor<f4E2M1FN> {
+  %0 = "mhlo.convert"(%arg0) : (tensor<f16>) -> tensor<f4E2M1FN>
+  func.return %0 : tensor<f4E2M1FN>
+}
+
+// -----
+
 func.func @f8e3m4(%arg0: tensor<f16>) -> tensor<f8E3M4> {
   %0 = "mhlo.convert"(%arg0) : (tensor<f16>) -> tensor<f8E3M4>
   func.return %0 : tensor<f8E3M4>
@@ -6868,6 +6883,13 @@ func.func @f8e4m3fn(%arg0: tensor<f16>) -> tensor<f8E4M3FN> {
 func.func @f8e5m2(%arg0: tensor<f16>) -> tensor<f8E5M2> {
   %0 = "mhlo.convert"(%arg0) : (tensor<f16>) -> tensor<f8E5M2>
   func.return %0 : tensor<f8E5M2>
+}
+
+// -----
+
+func.func @f8e8m0fnu(%arg0: tensor<f16>) -> tensor<f8E8M0FNU> {
+  %0 = "mhlo.convert"(%arg0) : (tensor<f16>) -> tensor<f8E8M0FNU>
+  func.return %0 : tensor<f8E8M0FNU>
 }
 
 // -----

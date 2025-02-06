@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/base/call_once.h"
@@ -32,11 +32,12 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/codegen/llvm_ir_kernel_spec.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/codegen/kernel_spec.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -45,6 +46,24 @@ namespace xla::cpu {
 
 // Forward declare thunk defined below.
 class KernelThunk;
+
+// Base class for kernel thunks required for serialization.
+// A base class is needed so that we can serialize KernelThunk and
+// SmallKernelThunk via the same interface.
+class KernelThunkBase : public Thunk {
+ public:
+  virtual ~KernelThunkBase() = default;  // NOLINT: clang-tidy complains that
+                                         // `override` should be used here.
+  KernelThunkBase(Kind kind, Info info) : Thunk(kind, std::move(info)) {}
+  virtual absl::string_view kernel_name() const = 0;
+  virtual const se::ThreadDim& thread_dim() const = 0;
+  virtual const std::optional<uint64_t>& min_alignment() const = 0;
+
+  virtual absl::Span<const BufferAllocation::Slice> arguments_buffers()
+      const = 0;
+
+  virtual absl::Span<const BufferAllocation::Slice> results_buffers() const = 0;
+};
 
 namespace internal {
 
@@ -58,9 +77,23 @@ inline constexpr int64_t kDynamicKernelParameter = -1;
 // overheads for the smallest HLO modules.
 template <int64_t num_arguments = kDynamicKernelParameter,
           int64_t num_results = kDynamicKernelParameter>
-class KernelThunk : public Thunk {
+class KernelThunk : public KernelThunkBase {
  public:
   BufferUses buffer_uses() const final;
+
+  absl::string_view kernel_name() const final { return kernel_name_; }
+  const se::ThreadDim& thread_dim() const final { return thread_dim_; }
+  const std::optional<uint64_t>& min_alignment() const final {
+    return min_alignment_;
+  }
+
+  absl::Span<const BufferAllocation::Slice> arguments_buffers() const final {
+    return absl::MakeSpan(arguments_buffers_);
+  }
+
+  absl::Span<const BufferAllocation::Slice> results_buffers() const final {
+    return absl::MakeSpan(results_buffers_);
+  }
 
  protected:
   tsl::AsyncValueRef<ExecuteEvent> ExecuteInternal(const ExecuteParams& params);
@@ -160,7 +193,7 @@ class KernelThunk final : public internal::KernelThunk<> {
       std::optional<uint64_t> min_alignment = std::nullopt);
 
   static absl::StatusOr<std::unique_ptr<Thunk>> Create(
-      Thunk::Info info, std::unique_ptr<LlvmIrKernelSpec> kernel_spec,
+      Thunk::Info info, const KernelSpec& kernel_spec,
       std::optional<uint64_t> min_alignment);
 
   tsl::AsyncValueRef<Thunk::ExecuteEvent> Execute(

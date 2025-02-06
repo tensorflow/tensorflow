@@ -12,30 +12,55 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#define EIGEN_USE_THREADS
 
 #include "xla/service/hlo_runner.h"
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
-#include "xla/hlo/parser/hlo_parser.h"
-#include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/service/backend.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo_module_util.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "tsl/platform/blocking_counter.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -189,7 +214,7 @@ absl::StatusOr<Literal> HloRunner::ExecuteWithBufferAssignment(
 }
 
 absl::StatusOr<Literal> HloRunner::ExecuteWithExecutable(
-    Executable* executable, absl::Span<const Literal* const> arguments,
+    OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
     ExecutionProfile* profile) {
   entry_computation_layout_ =
       &(executable->module().entry_computation_layout());
@@ -289,14 +314,14 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
     std::unique_ptr<HloModule> module,
     absl::Span<ScopedShapedBuffer const> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
   return ExecuteWithDeviceBuffers(executable.get(), arguments, profile);
 }
 
 absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
-    Executable* executable, absl::Span<ScopedShapedBuffer const> arguments,
-    ExecutionProfile* profile) {
+    OpaqueExecutable* executable,
+    absl::Span<ScopedShapedBuffer const> arguments, ExecutionProfile* profile) {
   std::vector<ExecutionInput> execution_arguments =
       ExecutionInputsFromScopedShapedBuffers(
           arguments, executable->module().input_output_alias_config(),
@@ -322,7 +347,7 @@ HloRunner::ExecuteWithMovedDeviceBuffersAndBufferAssignment(
     std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
+      std::unique_ptr<OpaqueExecutable> executable,
       CreateExecutableWithBufferAssignment(
           std::move(module), buffer_assignment_proto, run_hlo_passes));
   return ExecuteWithMovedDeviceBuffers(executable.get(), std::move(arguments),
@@ -387,7 +412,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     std::unique_ptr<HloModule> module, const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
+      std::unique_ptr<OpaqueExecutable> executable,
       CreateExecutable(std::move(module), options.run_hlo_passes));
   return ExecuteReplicated(executable.get(), options, device_assignment);
 }
@@ -532,7 +557,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
-    Executable* executable, const ReplicatedExecuteOptions& options,
+    OpaqueExecutable* executable, const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment, ExecutionProfile* profile) {
   return ExecuteReplicatedImpl(
       [&](const std::vector<ServiceExecutableRunOptions>& service_run_options,
@@ -580,7 +605,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
-    std::function<Executable*(int64_t)> executable_provider,
+    std::function<OpaqueExecutable*(int64_t)> executable_provider,
     std::function<int64_t(int64_t)> argument_count_provider,
     std::function<const Literal*(int64_t, int64_t)> argument_provider,
     const ReplicatedExecuteOptions& options,
@@ -643,14 +668,14 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
   return ExecuteReplicated(std::move(module), options, &device_assignment);
 }
 
-absl::StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(
+absl::StatusOr<std::unique_ptr<OpaqueExecutable>> HloRunner::CreateExecutable(
     std::unique_ptr<HloModule> module, bool run_hlo_passes) {
   return CreateExecutableWithBufferAssignment(
       std::move(module),
       /*buffer_assignment_proto=*/nullptr, run_hlo_passes);
 }
 
-absl::StatusOr<std::unique_ptr<Executable>>
+absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
 HloRunner::CreateExecutableWithBufferAssignment(
     std::unique_ptr<HloModule> module,
     const BufferAssignmentProto* buffer_assignment_proto, bool run_hlo_passes) {
@@ -668,7 +693,7 @@ HloRunner::CreateExecutableWithBufferAssignment(
     }
     auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
     TF_ASSIGN_OR_RETURN(
-        auto executables,
+        std::vector<std::unique_ptr<Executable>> executables,
         backend().compiler()->Compile(std::move(module_group),
                                       {{backend().default_stream_executor()}},
                                       backend().memory_allocator()));
@@ -712,6 +737,47 @@ const Backend& HloRunner::backend() const {
 
 absl::string_view HloRunner::Name() const {
   return backend_->platform()->Name();
+}
+
+bool HloRunner::HasProperty(const HloRunnerPropertyTag::Type tag) const {
+  if (tag == HloRunnerPropertyTag::kUsingGpuRocm) {
+    const stream_executor::DeviceDescription& device_description =
+        backend().default_stream_executor()->GetDeviceDescription();
+    return std::holds_alternative<stream_executor::RocmComputeCapability>(
+        device_description.gpu_compute_capability());
+  }
+  if (tag == HloRunnerPropertyTag::kCpu) {
+    return backend().platform()->Name() == "Host";
+  }
+  return false;
+}
+
+absl::StatusOr<Executable*> HloRunner::ExecutableFromWrapped(
+    const OpaqueExecutable* wrapped) const {
+  return const_cast<Executable*>(wrapped);
+}
+
+absl::StatusOr<std::unique_ptr<Executable>> HloRunner::ExecutableFromWrapped(
+    std::unique_ptr<OpaqueExecutable> wrapped) const {
+  return std::unique_ptr<Executable>(wrapped.release());
+}
+
+std::unique_ptr<OpaqueExecutable> HloRunner::WrapExecutable(
+    std::unique_ptr<Executable> executable) const {
+  return std::unique_ptr<OpaqueExecutable>(executable.release());
+}
+
+absl::StatusOr<absl::Nonnull<const HloModule*>> HloRunner::HloModuleFromWrapped(
+    const OpaqueExecutable* wrapped) const {
+  if (wrapped->has_module()) {
+    return &wrapped->module();
+  }
+  return absl::NotFoundError("OpaqueExecutable does not contain an HloModule.");
+}
+
+absl::StatusOr<absl::Nonnull<const HloProto*>> HloRunner::HloProtoFromWrapped(
+    const OpaqueExecutable* wrapped) const {
+  return wrapped->hlo_proto();
 }
 
 }  // namespace xla

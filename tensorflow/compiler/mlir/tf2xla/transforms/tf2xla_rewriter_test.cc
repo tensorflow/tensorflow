@@ -42,11 +42,11 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace mhlo {

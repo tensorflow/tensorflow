@@ -8,7 +8,10 @@ def tf_ops_fuzz_target_lib(name):
             "//tensorflow/core/kernels/fuzzing:fuzz_session",
             "//tensorflow/cc:cc_ops",
         ],
-        tags = ["no_windows"],
+        tags = [
+            "manual",
+            "no_windows",
+        ],
         alwayslink = 1,
     )
 

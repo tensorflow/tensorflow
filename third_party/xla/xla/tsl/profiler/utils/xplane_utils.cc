@@ -399,15 +399,14 @@ bool IsEmpty(const XSpace& space) {
 
 bool IsXSpaceGrouped(const XSpace& space) {
   for (const auto& plane : space.planes()) {
-    // If any plane has been grouped, consider space as grouped.
-    // CreateTfXPlaneVisitor is necessary because we need check "group_id" stat
-    // by its type StatType::kGroupId.
+    if (!IsDevicePlane(plane) && !IsHostPlane(plane)) continue;
+    // Ensure all host and device planes have a group id stat.
     XPlaneVisitor xplane = tsl::profiler::CreateTfXPlaneVisitor(&plane);
     const XStatMetadata* group_id_stat =
         xplane.GetStatMetadataByType(StatType::kGroupId);
-    if (group_id_stat) return true;
+    if (!group_id_stat) return false;
   }
-  return false;
+  return true;
 }
 
 void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,

@@ -974,12 +974,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "bitcast_op",
-    deprecation = "use //third_party/tensorflow/c/kernels:bitcast_op instead",
-    deps = ["//tensorflow/c/kernels:bitcast_op"],
-)
-
-tf_kernel_library(
     name = "broadcast_to_op",
     prefix = "broadcast_to_op",
     deps = ARRAY_DEPS,
@@ -3912,9 +3906,6 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "matmul_op_test",
     srcs = ["matmul_op_test.cc"],
-    tags = [
-        "no_aarch64",  # b/282068262
-    ],
     deps = [
         ":matmul_op",
         ":ops_testutil",
@@ -4913,9 +4904,6 @@ cc_library(
 
 tf_kernel_library(
     name = "stateful_random_ops",
-    copts = [
-        "-Wno-thread-safety-analysis",  # TODO(b/384723765): Remove this once the bug is fixed.
-    ],
     features = if_cuda(["-layering_check"]),
     prefix = "stateful_random_ops",
     deps = [

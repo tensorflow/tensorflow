@@ -328,6 +328,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

@@ -31,10 +31,10 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:cpu_compiler_pure",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
@@ -48,6 +48,7 @@ xla_cc_test(
         ":nanort_executable",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu:alignment",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
@@ -77,6 +78,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:util",
+        "//xla/backends/cpu:alignment",
         "//xla/backends/cpu/runtime:buffer_allocations",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/hlo/ir:hlo",
@@ -101,6 +103,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
@@ -110,6 +113,9 @@ cc_library(
     name = "ifrt_client",
     srcs = ["ifrt_client.cc"],
     hdrs = ["ifrt_client.h"],
+    visibility = internal_visibility([
+        "//xla/backends/cpu/nanort:nanort_users",
+    ]),
     deps = [
         ":nanort_client",
         ":nanort_executable",
@@ -159,6 +165,9 @@ cc_library(
     name = "register_nanort_for_ifrt_tests",
     testonly = True,
     srcs = ["register_nanort_for_ifrt_tests.cc"],
+    visibility = internal_visibility([
+        "//xla/backends/cpu/nanort:nanort_users",
+    ]),
     deps = [
         ":ifrt_client",
         "//xla/python/ifrt:test_util",

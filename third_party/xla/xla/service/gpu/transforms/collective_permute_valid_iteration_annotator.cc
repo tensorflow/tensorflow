@@ -12,15 +12,35 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/source_target_pairs.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
-
+using CycleType = SourceTargetPairs::CycleType;
 // Finds and returns the non-constant operand in instr.
-//
 // CHECK-fails if instr doesn't have exactly one unique non-constant operand.
 static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
   const HloInstruction* result = nullptr;
@@ -75,23 +95,15 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
         continue;
       }
 
-      if (inst->frontend_attributes().map().find(kSendRecvValidationAttr) !=
-          inst->frontend_attributes().map().end()) {
+      if (inst->frontend_attributes().map().contains(kSendRecvValidationAttr)) {
         continue;
       }
-      auto sourceTargetPairs = inst->source_target_pairs();
-      if (!IsForwardCycle(sourceTargetPairs) &&
-          !IsBackwardCycle(sourceTargetPairs)) {
+      SourceTargetPairs::CycleType cycleType =
+          GetCycleTypeAndIndices(inst->source_target_pairs()).first;
+
+      if (cycleType == CycleType::kUnknown) {
         continue;
       }
-
-      VLOG(2) << "Collective permute with cycle: " << inst->ToString();
-
-      int64_t max_device_num = -1;
-      for (auto [source, target] : sourceTargetPairs) {
-        max_device_num = std::max(std::max(source, target), max_device_num);
-      }
-      int64_t num_devices = max_device_num + 1;
 
       HloInstruction* whileOp = inst->parent()->WhileCallInstruction();
       if (whileOp == nullptr) {
@@ -99,8 +111,10 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
         continue;
       }
       if (!whileOp->frontend_attributes().map().contains(
-              "is_pipelined_while_loop"))
+              "is_pipelined_while_loop")) {
         continue;
+      }
+
       TF_ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
                           whileOp->backend_config<WhileLoopBackendConfig>());
       if (!config.has_known_trip_count()) {
@@ -127,34 +141,21 @@ absl::StatusOr<bool> CollectivePermuteValidIterationAnnotator::Run(
       // where offset is `number of microbatches * CR - 1`. We know that
       // `trip_count = number_of_microbatches * CR + num_devices - 1` So, offset
       // = number_of_microbatches * CR - 1 = trip_count - num_devices.
+      SourceTargetPairs sourceTargetPairs(inst->source_target_pairs());
+      int64_t num_devices = sourceTargetPairs.GetMaxDeviceNum() + 1;
       int64_t offset = trip_count - num_devices;
-
-      std::vector<std::pair<int64_t, int64_t>> sendRecvValidation(
-          sourceTargetPairs.size());
-
-      for (size_t currIdx = 0; currIdx < sourceTargetPairs.size(); currIdx++) {
-        sendRecvValidation[currIdx] = {currIdx, currIdx + offset};
+      SourceTargetPairs sendRecvValidation;
+      for (int64_t currIdx = 0; currIdx < sourceTargetPairs.size(); currIdx++) {
+        sendRecvValidation.emplace_back(currIdx, currIdx + offset);
       }
 
-      if (IsBackwardCycle(sourceTargetPairs)) {
-        std::reverse(sendRecvValidation.begin(), sendRecvValidation.end());
+      if (cycleType == CycleType::kBackward) {
+        std::reverse(sendRecvValidation.data().begin(),
+                     sendRecvValidation.data().end());
       }
 
-      xla::FrontendAttributes attributes;
-      std::string iteration_instances =
-          "{" +
-          absl::StrJoin(sendRecvValidation, ",",
-                        [](std::string* out, std::pair<int64_t, int64_t> item) {
-                          absl::StrAppend(out, "{", item.first, ",",
-                                          item.second, "}");
-                        }) +
-          "}";
-      (*attributes.mutable_map())[kSendRecvValidationAttr] =
-          iteration_instances;
-
-      inst->add_frontend_attributes(attributes);
-      VLOG(1) << "Adding " << kSendRecvValidationAttr << " to " << inst->name()
-              << ": " << iteration_instances;
+      inst->set_frontend_attribute(kSendRecvValidationAttr,
+                                   sendRecvValidation.ToString());
       changed = true;
     }
   }

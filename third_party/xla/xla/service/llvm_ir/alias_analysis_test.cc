@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {

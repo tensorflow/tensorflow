@@ -21,7 +21,8 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
-// The attribute name for attributes in MHLO ops.
+// TODO(b/393406516): [Shardy] Change Attributes names from *mhlo* to
+// *stablehlo*
 inline constexpr llvm::StringRef kMhloAttributesAttr = "mhlo.attributes";
 
 // The attribute name for xla::HloSharding.
@@ -42,26 +43,34 @@ inline constexpr llvm::StringRef kSPMDShardToFullShapeCallTargetName =
 inline constexpr llvm::StringRef kPythonCpuCallbackCustomCallTargetName =
     "xla_python_cpu_callback";
 
+// The target name of the FFI Python CPU callback custom call.
+inline constexpr llvm::StringRef kFFIPythonCpuCallbackCustomCallTargetName =
+    "xla_ffi_python_cpu_callback";
+
 // The target name of the Python GPU callback custom call.
 inline constexpr llvm::StringRef kPythonGpuCallbackCustomCallTargetName =
     "xla_python_gpu_callback";
+
+// The target name of the FFI Python GPU callback custom call.
+inline constexpr llvm::StringRef kFFIPythonGpuCallbackCustomCallTargetName =
+    "xla_ffi_python_gpu_callback";
 
 // The attribute name for backend config.
 inline constexpr llvm::StringRef kXlaBackendConfigAttr = "backend_config";
 
 // Attribute name for temporarily storing the Shardy sharding during HLO
 // sdy-round-trip. It cannot match the name `kShardingAttr` ("sdy.sharding"), as
-// during sdy-round-trip, going from HLO to MHLO, the code removes attributes
-// in the `frontend_attributes` field, making them top level. And Shardy
-// verification expects `kShardingAttr` to be of type
+// during sdy-round-trip, going from HLO to StableHLO, the code removes
+// attributes in the `frontend_attributes` field, making them top level. And
+// Shardy verification expects `kShardingAttr` to be of type
 // TensorShardingAttr/TensorShardingPerValueAttr - not a StringAttr.
 inline constexpr llvm::StringRef kShardingRoundTripAttr = "xla.sdy.sharding";
 
 // Attribute name for temporarily storing the Shardy sharding rule during HLO
 // sdy-round-trip. It cannot match the name `kShardingRuleAttr`
-// ("sdy.sharding_rule"), as during sdy-round-trip, going from HLO to MHLO, the
-// code removes attributes in the `frontend_attributes` field, making them top
-// level. And Shardy verification expects `kShardingRuleAttr` to be of type
+// ("sdy.sharding_rule"), as during sdy-round-trip, going from HLO to StableHLO,
+// the code removes attributes in the `frontend_attributes` field, making them
+// top level. And Shardy verification expects `kShardingRuleAttr` to be of type
 // OpShardingRuleAttr - not a StringAttr.
 inline constexpr llvm::StringRef kShardingRuleRoundTripAttr =
     "xla.sdy.sharding_rule";
@@ -88,7 +97,7 @@ inline constexpr llvm::StringRef kShardingGroupIdAttr =
 inline constexpr llvm::StringRef kFrontendAttributesAttr =
     "mhlo.frontend_attributes";
 
-// Attribute name for determining whether we need to import MHLO shardings,
+// Attribute name for determining whether we need to import StableHLO shardings,
 // i.e., the input module doesn't contain SDY shardings as frontend attributes.
 inline constexpr llvm::StringRef kImportMhloShardings =
     "xla.sdy.import_mhlo_shardings";

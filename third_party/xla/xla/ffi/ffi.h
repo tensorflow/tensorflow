@@ -588,6 +588,17 @@ struct CtxDecoding<PlatformStream<T>> {
   }
 };
 
+template <>
+struct CtxDecoding<RunId> {
+  using Type = RunId;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return RunId{api->internal_api->XLA_FFI_INTERNAL_RunId_Get(ctx)};
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // UserData
 //===----------------------------------------------------------------------===//

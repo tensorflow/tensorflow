@@ -21,14 +21,19 @@ limitations under the License.
 #include <exception>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -65,6 +70,32 @@ namespace nb = nanobind;
 namespace xla {
 
 namespace {
+
+absl::StatusOr<std::vector<absl::Cord>> StringDTypeArrayToCords(
+    PyArrayObject* py_array_obj) {
+  if (PyArray_SIZE(py_array_obj) == 0) {
+    return absl::InvalidArgumentError("empty numpy array");
+  }
+
+  std::vector<absl::Cord> cords;
+  cords.reserve(PyArray_SIZE(py_array_obj));
+
+  auto iter =
+      nb::steal(PyArray_IterNew(reinterpret_cast<PyObject*>(py_array_obj)));
+  while (PyArray_ITER_NOTDONE(iter.ptr())) {
+    auto* iter_data = PyArray_ITER_DATA(iter.ptr());
+    auto* item = PyArray_GETITEM(py_array_obj, static_cast<char*>(iter_data));
+    if (!item) {
+      return absl::InternalError(
+          "Failed to get elements out of the ndarray iter.");
+    }
+    Py_ssize_t len;
+    auto str = PyUnicode_AsUTF8AndSize(item, &len);
+    cords.push_back(absl::Cord(absl::string_view(str, len)));
+    PyArray_ITER_NEXT(iter.ptr());
+  }
+  return cords;
+}
 
 using DevicePutFunc = std::function<absl::StatusOr<DevicePutResultFn>(
     nb::handle, ifrt::Client*, ifrt::Device*, const DevicePutOptions& options,
@@ -184,6 +215,9 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyScalar(
   } else if (std::is_same<T, bfloat16>()) {
     PyArray_ScalarAsCtype(h.ptr(), &data.template emplace<2>());
     type = BF16;
+  } else if (std::is_same<T, tsl::float4_e2m1fn>()) {
+    PyArray_ScalarAsCtype(h.ptr(), &data.template emplace<2>());
+    type = F4E2M1FN;
   } else if (std::is_same<T, tsl::float8_e3m4>()) {
     PyArray_ScalarAsCtype(h.ptr(), &data.template emplace<2>());
     type = F8E3M4;
@@ -205,6 +239,9 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyScalar(
   } else if (std::is_same<T, tsl::float8_e5m2fnuz>()) {
     PyArray_ScalarAsCtype(h.ptr(), &data.template emplace<2>());
     type = F8E5M2FNUZ;
+  } else if (std::is_same<T, tsl::float8_e8m0fnu>()) {
+    PyArray_ScalarAsCtype(h.ptr(), &data.template emplace<2>());
+    type = F8E8M0FNU;
   } else if (std::is_same<T, SquashedT>() || !options.squash_64bit_types) {
     PyArray_ScalarAsCtype(h.ptr(), &data.template emplace<0>());
     type = primitive_util::NativeToPrimitiveType<T>();
@@ -246,10 +283,50 @@ absl::StatusOr<DevicePutResultFn> HandleNumpyScalar(
   };
 }
 
+absl::StatusOr<DevicePutResultFn> HandleStringNumpyArray(
+    nb::handle h, ifrt::Client* client, ifrt::Device* to_device,
+    const DevicePutOptions& options, ifrt::MemoryKind to_memory_kind) {
+  xla::nb_numpy_ndarray array = nb::cast<xla::nb_numpy_ndarray>(h);
+  auto py_array_obj = reinterpret_cast<PyArrayObject*>(array.ptr());
+  TF_ASSIGN_OR_RETURN(auto cords, StringDTypeArrayToCords(py_array_obj));
+
+  // Assemble all the parameters of MakeArrayFromHostBuffer
+  void* data = cords.data();
+  ifrt::Shape shape(
+      absl::MakeSpan(static_cast<const int64_t*>(array.shape()), array.ndim()));
+  std::shared_ptr<xla::ifrt::Sharding> sharding =
+      xla::ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind);
+
+  auto on_done_with_host_buffer = [cords = std::move(cords)] {};
+
+  return [client, data = data, shape = std::move(shape),
+          sharding = std::move(sharding),
+          on_done_with_host_buffer =
+              std::move(on_done_with_host_buffer)]() mutable
+             -> absl::StatusOr<DevicePutResult> {
+    TF_ASSIGN_OR_RETURN(
+        auto ifrt_array,
+        client->MakeArrayFromHostBuffer(
+            data, ifrt::DType(ifrt::DType::kString), std::move(shape),
+            /*byte_strides=*/std::nullopt, std::move(sharding),
+            ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            std::move(on_done_with_host_buffer)));
+
+    return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
+  };
+}
+
 absl::StatusOr<DevicePutResultFn> HandleNumpyArray(
     nb::handle h, ifrt::Client* client, ifrt::Device* to_device,
     const DevicePutOptions& options, ifrt::MemoryKind to_memory_kind) {
   xla::nb_numpy_ndarray array = nb::cast<xla::nb_numpy_ndarray>(h);
+
+  // String numpy arrays require substantially different processing.
+  if (array.dtype().char_() == (int)'T' || array.dtype().kind() == 'T') {
+    return HandleStringNumpyArray(h, client, to_device, options,
+                                  to_memory_kind);
+  }
+
   TF_ASSIGN_OR_RETURN(PrimitiveType type, DtypeToPrimitiveType(array.dtype()));
 
   PrimitiveType squashed_type;
@@ -398,6 +475,10 @@ absl::StatusOr<DevicePutResultFn> DevicePut(nb::handle arg,
         (*p)[dtypes.np_uint16.ptr()] = HandleNumpyScalar<uint16_t>;
         (*p)[dtypes.np_uint32.ptr()] = HandleNumpyScalar<uint32_t>;
         (*p)[dtypes.np_uint64.ptr()] = HandleNumpyScalar<uint64_t, uint32_t>;
+        if (dtypes.np_float4_e2m1fn.has_value()) {
+          (*p)[dtypes.np_float4_e2m1fn->ptr()] =
+              HandleNumpyScalar<tsl::float4_e2m1fn>;
+        }
         if (dtypes.np_float8_e3m4.has_value()) {
           (*p)[dtypes.np_float8_e3m4->ptr()] =
               HandleNumpyScalar<tsl::float8_e3m4>;
@@ -415,6 +496,10 @@ absl::StatusOr<DevicePutResultFn> DevicePut(nb::handle arg,
             HandleNumpyScalar<tsl::float8_e4m3fnuz>;
         (*p)[dtypes.np_float8_e5m2fnuz.ptr()] =
             HandleNumpyScalar<tsl::float8_e5m2fnuz>;
+        if (dtypes.np_float8_e8m0fnu.has_value()) {
+          (*p)[dtypes.np_float8_e8m0fnu->ptr()] =
+              HandleNumpyScalar<tsl::float8_e8m0fnu>;
+        }
         (*p)[dtypes.np_bfloat16.ptr()] = HandleNumpyScalar<bfloat16>;
         (*p)[dtypes.np_float16.ptr()] = HandleNumpyScalar<half>;
         (*p)[dtypes.np_float32.ptr()] = HandleNumpyScalar<float>;
@@ -595,8 +680,10 @@ absl::StatusOr<PyArgSignature> PyArgSignatureOfValue(nb::handle arg,
         (*p)[dtypes.np_uint32.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_uint64.ptr()] = np_uint64_handler;
         // TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+        // (*p)[dtypes.np_float4_e2m1fn.ptr()] = numpy_array_handler;
         // (*p)[dtypes.np_float8_e3m4.ptr()] = numpy_array_handler;
         // (*p)[dtypes.np_float8_e4m3.ptr()] = numpy_array_handler;
+        // (*p)[dtypes.np_float8_e8m0fnu.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float8_e4m3fn.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float8_e4m3b11fnuz.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float8_e5m2.ptr()] = numpy_array_handler;

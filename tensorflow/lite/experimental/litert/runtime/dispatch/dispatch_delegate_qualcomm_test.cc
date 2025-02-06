@@ -26,13 +26,13 @@
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_compiled_model_options.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_compiled_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
-#include "tensorflow/lite/experimental/litert/core/model/model_buffer.h"
 #include "tensorflow/lite/experimental/litert/runtime/external_litert_buffer_context.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
@@ -55,6 +55,9 @@ TEST(DispatchDelegate, QualcommCpuBuffer) {
   auto& rt = **runtime;
   auto& interpreter = rt.Interpreter();
 
+  auto env = litert::Environment::Create({});
+  ASSERT_TRUE(env);
+
   litert::internal::ExternalLiteRtBufferContext buffer_context;
   interpreter.SetExternalContext(kTfLiteLiteRtBufferContext, &buffer_context);
 
@@ -63,11 +66,12 @@ TEST(DispatchDelegate, QualcommCpuBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
-  auto dispatch_delegate_options = CreateDispatchDelegateOptionsPtr();
+  auto dispatch_delegate_options =
+      CreateDispatchDelegateOptionsPtr(*env->Get());
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
-  auto dispatch_delegate =
-      CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
+  auto dispatch_delegate = CreateDispatchDelegatePtr(
+      *env->Get(), std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -118,6 +122,8 @@ TEST(DispatchDelegate, QualcommHwBuffer) {
   ASSERT_TRUE(runtime) << "Failed to initialize tflite interpreter";
   auto& rt = **runtime;
   auto& interpreter = rt.Interpreter();
+  auto env = litert::Environment::Create({});
+  ASSERT_TRUE(env);
 
   litert::internal::ExternalLiteRtBufferContext buffer_context;
   interpreter.SetExternalContext(kTfLiteLiteRtBufferContext, &buffer_context);
@@ -127,11 +133,12 @@ TEST(DispatchDelegate, QualcommHwBuffer) {
   EXPECT_EQ(interpreter.outputs().size(), 1);
   ASSERT_EQ(interpreter.execution_plan().size(), 1);
 
-  auto dispatch_delegate_options = CreateDispatchDelegateOptionsPtr();
+  auto dispatch_delegate_options =
+      CreateDispatchDelegateOptionsPtr(*env->Get());
   LiteRtDispatchDelegateAddAllocBaseOption(dispatch_delegate_options.get(),
                                            rt.Flatbuffer().Buf().Data());
-  auto dispatch_delegate =
-      CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
+  auto dispatch_delegate = CreateDispatchDelegatePtr(
+      *env->Get(), std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
@@ -232,8 +239,14 @@ TEST(DispatchDelegate, CompiledModel) {
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
                   "Qualcomm HTP";
 #endif
+  auto options = CompiledModel::Options::Create();
+  ASSERT_TRUE(options);
+  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAcceleratorCpu));
 
-  auto res_compiled_model = CompiledModel::Create(*model);
+  auto env = litert::Environment::Create({});
+  ASSERT_TRUE(env);
+  auto res_compiled_model =
+      CompiledModel::Create(*env, *model, std::move(*options));
   ASSERT_TRUE(res_compiled_model) << "Failed to initialize CompiledModel";
   auto& compiled_model = *res_compiled_model;
 

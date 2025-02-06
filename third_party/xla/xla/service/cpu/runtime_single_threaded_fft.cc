@@ -21,10 +21,10 @@ limitations under the License.
 #include "xla/service/cpu/runtime_fft.h"
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_DuccSingleThreadedFft(
-    const void* /*run_options_ptr*/, void* out, void* operand, int32_t fft_type,
+    const void* /*thread_pool_ptr*/, void* out, void* operand, int32_t fft_type,
     int32_t double_precision, int32_t fft_rank, const int64_t* input_shape,
     const int64_t* fft_length) {
   return __xla_cpu_runtime_DuccFft(
-      /*run_options_ptr=*/nullptr, out, operand, fft_type, double_precision,
+      /*thread_pool_ptr=*/nullptr, out, operand, fft_type, double_precision,
       fft_rank, input_shape, fft_length);
 }

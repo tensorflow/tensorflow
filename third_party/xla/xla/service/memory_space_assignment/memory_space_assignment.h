@@ -71,7 +71,7 @@ Classes
     1 HloBuffer; however, many exceptions exist. For example, tensors that are
     modified by a while loop have their HloValues share an HloBuffer, for the
     HloValues that come immediately before, during, and immediately after the
-    loop. HloBuffers are shared between HloValues wherever their is aliasing,
+    loop. HloBuffers are shared between HloValues wherever there is aliasing,
     whether implicit by the nature of the instruction (e.g.,
     dynamic-update-slice) or explicit (e.g., fusion input-output aliasing).
 
@@ -80,8 +80,9 @@ Classes
     corresponds to an HloValue.
 
   - AllocationValue: An AllocationValue is defined by an HloValue, and *one* of
-    its HloPositions.
-    * We do not create AllocationValues for non-trivial HloPositions, e.g., ones
+    its HloPositions. Note that a given HloValue may be associated with multiple
+    AllocationValues in this way.
+    * We do not create AllocationValues for trivial HloPositions, e.g., ones
       defined by Tuple, GetTupleElement, and Bitcast instructions.
     * The HloPosition used to define the AllocationValue is referred to as the
       AllocationValue's defining position.
@@ -144,14 +145,14 @@ Classes
 
 Useful logging and error messages
 
-  - Live range too long: The live range of a use segement is too long to for an
-    alternate memory no copy, i.e., its longer than we want to keep a buffer in
-    alternate memory wihtout being used.
+  - Live range too long: The live range of a use segment is too long for a
+    no-copy allocation in alternate memory; i.e., it is longer than we want to
+    keep a buffer in alternate memory without being used.
     * If the CostAnalysisPrefetchIntervalPicker is used, which is the default,
       live range too long is governed by the picker's
       max_overlap_to_mem_size_async_copy_ratio argument.
 
-  - Live range too short: The live range of a use segement is too short to
+  - Live range too short: The live range of a use segment is too short to
     prefetch a buffer to alternate memory, according to some heuristic and not
     based on limited copy resource.
     * If the CostAnalysisPrefetchIntervalPicker is used, which is the default,
@@ -160,7 +161,7 @@ Useful logging and error messages
 
   - "Finding allocation for": Magical logging phrase indicating the point in
     time where we are are trying to determine how to update an AllocationValue's
-    AllocationSequenece, for a particular use segment.
+    AllocationSequence, for a particular use segment.
 
   - To log the alternate memory allocations that MSA made at a given schedule
     time:
@@ -171,7 +172,7 @@ Useful logging and error messages
         Initial resource[100] = 1.0 (fusion.1)
       - That tells us that the fusion.1 has schedule time 100.
     * Uncomment the line in memory_space_assignment.cc labeled
-      DEBUG_ALLOCATIONS_AT, and use time 100.
+      DEBUG_LOG_ALLOCATIONS_AT, and use time 100.
 */
 
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_H_
@@ -180,7 +181,6 @@ Useful logging and error messages
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -188,17 +188,16 @@ Useful logging and error messages
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
-#include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
-#include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
 #include "xla/util.h"
@@ -322,6 +321,8 @@ class MemorySpaceAssignment {
   absl::Status VerifyAndExportHeapSimulatorTrace(
       const HloAliasAnalysis& alias_analysis,
       std::vector<int64_t>* alt_mem_bytes_occupied = nullptr);
+
+  static constexpr absl::string_view kName = "memory-space-assignment";
 
  protected:
   // Main driver of the memory space assignment pass.

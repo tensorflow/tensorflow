@@ -56,6 +56,11 @@ class CustomCallThunk final : public Thunk {
 
   BufferUses buffer_uses() const final;
 
+  const std::string& target_name() const { return target_name_; }
+  const OpBuffers& op_buffers() const { return op_buffers_; }
+  const CustomCallApiVersion& api_version() const { return api_version_; }
+  const std::string& backend_config() const { return backend_config_; }
+
  private:
   CustomCallThunk(Info info, absl::string_view target_name,
                   OpBuffers op_buffers, CustomCallApiVersion api_version,

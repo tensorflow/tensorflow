@@ -20,10 +20,14 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_ffi_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_ffi_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 
@@ -46,8 +50,12 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
 }
 
 PJRT_Error* PJRT_ExecuteContext_Create(PJRT_ExecuteContext_Create_Args* args) {
-  return new PJRT_Error{absl::UnimplementedError(
-      "ExecuteContext not supported for CPU execution.")};
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_ExecuteContext_Create_Args",
+      PJRT_ExecuteContext_Create_Args_STRUCT_SIZE, args->struct_size));
+  auto execute_context = std::make_unique<xla::ExecuteContext>();
+  args->context = pjrt::CreateWrapperExecuteContext(std::move(execute_context));
+  return nullptr;
 }
 
 PJRT_Error* PJRT_CpuDeviceTopology_Create(
@@ -64,12 +72,15 @@ const PJRT_Api* GetCpuPjrtApi() {
       pjrt::CreateMemoryDescriptionsExtension(
           reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension));
 
+  static PJRT_FFI_Extension ffi_extension = pjrt::CreateFfiExtension(
+      reinterpret_cast<PJRT_Extension_Base*>(&memory_descriptions_extension));
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::cpu_plugin::PJRT_Client_Create,
       pjrt::cpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::cpu_plugin::PJRT_CpuDeviceTopology_Create,
       pjrt::PJRT_Plugin_Initialize_NoOp,
-      reinterpret_cast<PJRT_Extension_Base*>(&memory_descriptions_extension),
+      reinterpret_cast<PJRT_Extension_Base*>(&ffi_extension),
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 

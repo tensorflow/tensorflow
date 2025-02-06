@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/c/tf_status.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace tsl {
 // Set the attribute of "tf_status" from the attributes of "status".

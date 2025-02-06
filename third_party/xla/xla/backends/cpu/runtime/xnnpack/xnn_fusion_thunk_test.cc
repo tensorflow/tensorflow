@@ -31,8 +31,13 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 namespace {
@@ -77,7 +82,16 @@ static absl::StatusOr<xnn_subgraph_t> CreateBinaryAdd(
   return subgraph;
 }
 
-TEST(XnnFusionThunkTest, ElementwiseAdd) {
+class XnnFusionThunkTest : public testing::TestWithParam<bool> {
+ protected:
+  bool use_threadpool() const { return GetParam(); }
+};
+
+TEST_P(XnnFusionThunkTest, ElementwiseAdd) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
+                                 threads.NumThreads());
+
   auto lhs = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0, 4.0});
   auto rhs = LiteralUtil::CreateR1<float>({4.0, 3.0, 2.0, 1.0});
   auto out = LiteralUtil::CreateR1<float>({0.0, 0.0, 0.0, 0.0});
@@ -95,12 +109,14 @@ TEST(XnnFusionThunkTest, ElementwiseAdd) {
   XnnFusionThunk::Argument rhs_arg = {rhs_slice, shape};
   XnnFusionThunk::Result out_res = {out_slice, shape};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto thunk,
-                          XnnFusionThunk::Create({"fusion"}, {lhs_arg, rhs_arg},
-                                                 {out_res}, &CreateBinaryAdd));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, XnnFusionThunk::Create(
+                      XnnFusionThunk::Options{use_threadpool()}, {"fusion"},
+                      {lhs_arg, rhs_arg}, {out_res}, &CreateBinaryAdd));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
+  params.intra_op_threadpool = use_threadpool() ? &device : nullptr;
 
   auto execute_event = thunk->Execute(params);
   tsl::BlockUntilReady(execute_event);
@@ -108,6 +124,9 @@ TEST(XnnFusionThunkTest, ElementwiseAdd) {
 
   EXPECT_EQ(out, LiteralUtil::CreateR1<float>({5.0, 5.0, 5.0, 5.0}));
 }
+
+INSTANTIATE_TEST_SUITE_P(XnnFusion, XnnFusionThunkTest,
+                         testing::Values(true, false));
 
 }  // namespace
 }  // namespace xla::cpu

@@ -20,7 +20,7 @@ limitations under the License.
 
 // TODO(ahentz): This is not strictly required here but, for historical
 // reasons, many people depend on cpu_info.h in order to use kLittleEndian.
-#include "tsl/platform/byte_order.h"
+#include "xla/tsl/platform/byte_order.h"
 #include "tsl/platform/platform.h"
 
 #if defined(_MSC_VER)

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "nanobind/nanobind.h"
@@ -69,8 +70,19 @@ class PyHostValue {
       std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array);
 
  private:
+  absl::Status CopyStringArrayToHostAsync(
+      std::optional<Shape>& dynamic_shape_holder, ifrt::Array* ifrt_array);
+
+  absl::Status ConvertStringArrayContentsToNumpyArray(ifrt::Array* ifrt_array);
+
   ifrt::Future<> ready_;
   nb_numpy_ndarray value_;
+
+  // Optional field, only used for arrays of type kString. This vector of cords
+  // serves as input buffer for the CopyToHostBuffer call. It holds these
+  // contents until it is lazily converted it to a numpy array when the user
+  // calls `AsNumPyArray`.
+  std::shared_ptr<std::vector<absl::Cord>> string_array_contents_;
 };
 
 // Private to PyArray, but you cannot forward declare member classes.
@@ -292,13 +304,19 @@ class PyArray : public nanobind::object {
       bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics,
       bool jax_enable_x64);
 
+  static absl::StatusOr<PyArray> ReorderShards(
+      PyArray x, nanobind::object dst_sharding,
+      ifrt::ArrayCopySemantics array_copy_semantics);
+
   static absl::Status BatchedBlockUntilReady(
       std::vector<nanobind::object> objs);
 
  private:
   absl::StatusOr<PyArray> AssertUnsharded(absl::string_view api);
 
-  void CheckAndRearrange();
+  nanobind::object CheckAndRearrange(absl::Span<const PyArray> py_arrays,
+                                     nanobind::object sharding,
+                                     nanobind::object aval);
 
   void SetIfrtArray(tsl::RCReference<ifrt::Array> ifrt_array);
 

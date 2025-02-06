@@ -15,21 +15,19 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTIL_FLATBUFFER_TOOLS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_UTIL_FLATBUFFER_TOOLS_H_
 
-#include <algorithm>
 #include <cstdint>
 #include <initializer_list>
-#include <iterator>
 #include <memory>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_consts.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -50,6 +48,12 @@ using TflElementType = ::tflite::TensorType;
 using TflOptions = ::tflite::BuiltinOptionsUnion;
 using TflSignature = ::tflite::SignatureDefT;
 using TflMetadata = ::tflite::MetadataT;
+
+using TflPackedModel = ::tflite::Model;
+using TflPackedSubgraph = ::tflite::SubGraph;
+using TflPackedOp = ::tflite::Operator;
+using TflPackedTensor = ::tflite::Tensor;
+using TflPackedBuffer = ::tflite::Buffer;
 
 using TflBufferPtr = std::unique_ptr<TflBuffer>;
 using TflModelPtr = std::unique_ptr<TflModel>;
@@ -112,6 +116,18 @@ struct TflShapeInfo {
         shape(tfl_tensor.shape.begin(), tfl_tensor.shape.end()),
         shape_signature(tfl_tensor.shape_signature.begin(),
                         tfl_tensor.shape_signature.end()) {}
+
+  explicit TflShapeInfo(const TflPackedTensor& tfl_tensor)
+      : has_rank(tfl_tensor.has_rank()) {
+    if (tfl_tensor.shape()) {
+      shape.assign(tfl_tensor.shape()->begin(), tfl_tensor.shape()->end());
+    }
+
+    if (tfl_tensor.shape_signature()) {
+      shape_signature.assign(tfl_tensor.shape_signature()->begin(),
+                             tfl_tensor.shape_signature()->end());
+    }
+  }
 };
 
 using TflTensorType = std::pair<TflElementType, TflShapeInfo>;
@@ -240,7 +256,8 @@ class FlatbufferWrapper {
  public:
   using Ptr = std::unique_ptr<FlatbufferWrapper>;
 
-  // Load flatbuffer from file.
+  // TODO Don't return a unique_ptr, this can just be a move only type, all the
+  // fields are unique_ptrs. Load flatbuffer from file.
   static Expected<Ptr> CreateFromTflFile(absl::string_view path);
 
   // Load flatbuffer from allocated buffer that will be copied.
@@ -259,10 +276,19 @@ class FlatbufferWrapper {
     return *fb_model_;
   }
 
+  // Packed schema object.
+  const TflPackedModel* PackedModel() const { return fb_model_->GetModel(); }
+
   // Unpack the contained flatbuffer.
   TflModelPtr Unpack() const {
     return TflModelPtr(fb_model_->GetModel()->UnPack());
   }
+
+  // Address of first byte of the raw model buffer.
+  const uint8_t* AllocBase() const { return Buf().Data(); }
+
+  // Default construct for compatibility.
+  FlatbufferWrapper() = default;
 
  private:
   FlatbufferWrapper(::tflite::FlatBufferModel::Ptr fb_model,

@@ -553,6 +553,7 @@ lit_test_suite(
             "kernel_reuse.hlo",
             "offload_scan_output.hlo",
             "pad_to_static.hlo",
+            "reduce_fold_zero_add.hlo",
             "rng_get_and_update_state.hlo",
             "single_instruction.hlo",
             "slice_to_dynamic.hlo",
@@ -611,9 +612,10 @@ lit_test_suite(
 #     name = "xla-opt",
 #     srcs = ["xla-opt.cc"],
 #     deps = [
-#         "//xla/backends/gpu/codegen/transforms:passes",
-#         "//xla/service/gpu/fusions/triton:xla_triton",
-#         "//xla/service/gpu/fusions/triton:xla_triton_passes",
+#         "//xla/backends/gpu/codegen/emitters/transforms:passes",
+#         "//xla/backends/gpu/codegen/triton:xla_triton",
+#         "//xla/backends/gpu/codegen/triton:xla_triton_passes",
+#         "//xla/codegen/emitters/transforms:passes",
 #         "@llvm-project//mlir:AllExtensions",
 #         "@llvm-project//mlir:MlirOptLib",
 #         "@triton//:AllPassesAndDialects",
@@ -734,9 +736,9 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu/transforms:sort_rewriter",
         "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

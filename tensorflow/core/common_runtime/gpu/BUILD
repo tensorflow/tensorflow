@@ -202,6 +202,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/stream_executor/gpu:gpu_init_impl",
+        "@local_xla//xla/stream_executor/integrations:stream_executor_allocator",
         "@local_xla//xla/tsl/framework:device_id_utils",
     ] + if_google(
         # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.
@@ -371,6 +372,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:ops_util",
         "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
+        "@local_xla//xla/stream_executor/integrations:stream_executor_allocator",
     ],
 )
 
@@ -414,15 +416,11 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime:core_cpu",
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
     ],

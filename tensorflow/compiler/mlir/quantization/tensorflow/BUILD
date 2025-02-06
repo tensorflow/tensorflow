@@ -463,6 +463,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:UBDialect",
         "@local_tsl//tsl/platform:str_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/mlir_hlo",

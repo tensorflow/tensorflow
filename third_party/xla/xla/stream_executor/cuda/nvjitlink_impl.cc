@@ -80,7 +80,6 @@ static absl::Status ToStatus(nvJitLinkResult status,
     }                                                                    \
   } while (false)
 
-
 static absl::StatusOr<std::string> nvJitLinkGetErrorLog(
     nvJitLinkHandle link_handle) {
   size_t size{};
@@ -139,7 +138,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
   // On Hopper, default to sm_90a so that all instructions can be used. But
   // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  absl::string_view extension = (cc.major == 9 && cc.minor == 0) ? "a" : "";
+  absl::string_view extension = ShouldUsePtxExtension(cc) ? "a" : "";
   std::string architecture = absl::StrCat("sm_", cc.major, cc.minor, extension);
   cli_args.emplace_back(absl::StrCat("-arch=", architecture));
 

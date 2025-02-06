@@ -16,13 +16,20 @@
 
 # Called like install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10"
 PIP="$1"
-PIP_INSTALL=("${PIP}" "install" "--prefer-binary" --upgrade)
+if [[ $PIP == *"-nogil" ]]; then
+  PYTHON="$PIP"
+  PIP_INSTALL=("${PYTHON}" -m pip install --upgrade)
+else
+  PIP_INSTALL=("${PIP}" "install" "--prefer-binary" --upgrade)
+  PYTHON="${PIP/pip/python}"
+fi
 
-PYTHON="${PIP/pip/python}"
 wget "https://bootstrap.pypa.io/get-pip.py"
 "${PYTHON}" "get-pip.py" --force-reinstall
 rm "get-pip.py"
-"${PYTHON}" -m ensurepip --upgrade
+if [[ $PYTHON != *"-nogil" ]]; then
+  "${PYTHON}" -m ensurepip --upgrade
+fi
 
 PYTHON_VERSION=$(echo ${PIP##*.})  # only the last number, eg. 10
 
@@ -37,12 +44,11 @@ JAX_PACKAGES=(
   "pillow>=9.1.0"
   "rich"
   "absl-py"
-  "portpicker"
   "six"
   "opt-einsum"
   "auditwheel"
   "typing_extensions"
-  "ml_dtypes>=0.4.0"
+  "ml_dtypes>=0.5.1"
   "importlib_metadata>=4.6"
   "flatbuffers"
   "build"
@@ -83,8 +89,13 @@ PACKAGES=(
 )
 
 # Get the latest version of pip so it recognize manylinux2010
-"${PIP}" "install" "--upgrade" "pip"
-"${PIP}" "install" "--upgrade" "setuptools" "virtualenv"
+if [[ $PYTHON == *"-nogil" ]]; then
+  "${PIP_INSTALL[@]}" "pip"
+  "${PIP_INSTALL[@]}" "setuptools" "virtualenv"
+else
+  "${PIP}" "install" "--upgrade" "pip"
+  "${PIP}" "install" "--upgrade" "setuptools" "virtualenv"
+fi
 
 if [[ "$2" == "jax" ]]; then
   "${PIP_INSTALL[@]}" "${JAX_PACKAGES[@]}"
@@ -95,11 +106,15 @@ fi
 if [[ "$2" == "jax" ]]; then
   # As of NumPy 2.0, wheels must be built against NumPy 2.0, even if we intend
   # to deploy them against Numpy 1.
-  "${PIP_INSTALL[@]}" "scipy>=1.13.1"
-  if [[ $((${PYTHON_VERSION} < 13)) ]]; then
-    "${PIP_INSTALL[@]}" "numpy~=2.0.0"
+  if [[ $PYTHON_VERSION == *"-nogil" ]]; then
+    "${PIP_INSTALL[@]}" "scipy>=1.15.0" "numpy~=2.2.1"
   else
-    "${PIP_INSTALL[@]}" "numpy~=2.1.0"
+    "${PIP_INSTALL[@]}" "scipy>=1.13.1" "portpicker"
+    if [[ $((${PYTHON_VERSION} < 13)) ]]; then
+      "${PIP_INSTALL[@]}" "numpy~=2.0.0"
+    else
+      "${PIP_INSTALL[@]}" "numpy~=2.1.0"
+    fi
   fi
 else
   # Special casing by version of Python

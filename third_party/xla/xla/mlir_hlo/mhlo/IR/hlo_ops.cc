@@ -51,6 +51,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/MathExtras.h"
 #include "mhlo/IR/hlo_ops.h.inc"
 #include "mhlo/IR/hlo_ops_common.h"
@@ -1211,6 +1212,29 @@ LogicalResult SparseDotOp::verify() {
                              hlo::dimSizesToString(inferredShape.getDims()),
                              "' is incompatible with return type of operation ",
                              resultType);
+  return success();
+}
+
+// ===----------------------------------------------------------------------===//
+// ExpOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ResultAccuracyAttr::verify(
+    ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError, APFloat atol,
+    APFloat rtol, int64_t ulps, ResultAccuracyModeAttr mode) {
+  return hlo::verifyResultAccuracyAttr(
+      emitError, std::move(atol), std::move(rtol), ulps,
+      stringifyResultAccuracyMode(mode.getValue()));
+}
+
+LogicalResult ExpOp::verify() {
+  if (auto attr = getResultAccuracyAttr()) {
+    if (failed(ResultAccuracyAttr::verify([&] { return emitError(); },
+                                          attr.getAtol(), attr.getRtol(),
+                                          attr.getUlps(), attr.getMode()))) {
+      return failure();
+    }
+  }
   return success();
 }
 
@@ -3111,6 +3135,7 @@ LogicalResult DynamicReshapeOp::verify() {
   if (!operandType.hasRank() || !resultType.hasRank() ||
       !outputShapeType.hasStaticShape())
     return success();
+
   return hlo::verifyDynamicReshapeOp(getLoc(), getOperand(), getOutputShape(),
                                      getResult());
 }
@@ -7210,6 +7235,20 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
                              << " aliases do not have compatible types, "
                              << argType << " vs. " << resultType;
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Custom unary op
+//===----------------------------------------------------------------------===//
+
+void ResultAccuracyAttr::print(AsmPrinter& odsPrinter) const {
+  hlo::printResultAccuracyAttr(odsPrinter, getAtol(), getRtol(), getUlps(),
+                               getMode());
+}
+
+Attribute ResultAccuracyAttr::parse(AsmParser& parser, Type type) {
+  return hlo::parseResultAccuracyAttr<ResultAccuracyAttr,
+                                      ResultAccuracyModeAttr>(parser, type);
 }
 
 // Each CrossProgramPrefetchAttr specifies a parameter and a ShapeIndex

@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
-#include "tsl/platform/macros.h"
 
 typedef tensorflow::monitoring::Gauge<int64_t, 2> TFGaugeMetric;
 static TFGaugeMetric* max_ids_per_partition_gauge_ = TFGaugeMetric::New(

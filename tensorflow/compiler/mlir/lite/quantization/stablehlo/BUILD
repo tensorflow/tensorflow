@@ -49,6 +49,6 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:status_matchers",
     ],
 )

@@ -154,18 +154,18 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "2a33eb922e6a4b55dfe9332ac61c8d4d128ae8f9e24e873e756a474e983d50a1",
-        strip_prefix = "XNNPACK-02764b305b430aec42c3df85ba32b9a3f8d6e3d4",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/02764b305b430aec42c3df85ba32b9a3f8d6e3d4.zip"),
+        sha256 = "435a5360d1c30b5130270afff32b398b239713e97f1aa7ea1e0a02c6c5247e17",
+        strip_prefix = "XNNPACK-6a834a09c53765bea56b8aea9a644a90564fe3a5",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/6a834a09c53765bea56b8aea9a644a90564fe3a5.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "8ba8cdb9f945941174d34d10eb4ad158ad1cbc1aef259de5ad992b0bbe85861f",
-        strip_prefix = "kleidiai-7e8c4baf953227fa447a2f345e5d6491a504aa56",
-        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/7e8c4baf953227fa447a2f345e5d6491a504aa56/kleidiai-7e8c4baf953227fa447a2f345e5d6491a504aa56.zip"),
+        sha256 = "f3ea4fce53f3b31076958dbff229f0048dae15bf454929673c78292a56279d52",
+        strip_prefix = "kleidiai-847ebd19d0192528659b0a0fa2c6057eed674c6a",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/847ebd19d0192528659b0a0fa2c6057eed674c6a/kleidiai-847ebd19d0192528659b0a0fa2c6057eed674c6a.zip"),
     )
 
     tf_http_archive(
@@ -184,19 +184,19 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "cpuinfo",
-        sha256 = "52e0ffd7998d8cb3a927d8a6e1145763744d866d2be09c4eccea27fc157b6bb0",
-        strip_prefix = "cpuinfo-cebb0933058d7f181c979afd50601dc311e1bf8c",
+        sha256 = "4bf314b3f04db2fd984fef38a7e278e702b74297ef0af592b73296edba02b9d4",
+        strip_prefix = "cpuinfo-8a1772a0c5c447df2d18edf33ec4603a8c9c04a6",
         patch_file = ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/cebb0933058d7f181c979afd50601dc311e1bf8c.zip"),
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/8a1772a0c5c447df2d18edf33ec4603a8c9c04a6.zip"),
     )
 
     tf_http_archive(
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "5f77784dc3ccbca7aca5ea0b5a6e31b95aa85023c5942d22be5fa8dd6c339d81",
-        strip_prefix = "cudnn-frontend-1.8.0",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.8.0.zip"),
+        sha256 = "59fb63e273c845cb85996d536194a7e2b22012810983cbbf06c4a46b09d17a32",
+        strip_prefix = "cudnn-frontend-1.10.0",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.10.0.zip"),
     )
 
     tf_http_archive(
@@ -248,6 +248,8 @@ def _tf_repositories():
         patch_file = [
             "//third_party/compute_library:compute_library.patch",
             "//third_party/compute_library:acl_thread_local_scheduler.patch",
+            "//third_party/compute_library:exclude_omp_scheduler.patch",
+            "//third_party/compute_library:include_string.patch",
         ],
         sha256 = "c4ca329a78da380163b2d86e91ba728349b6f0ee97d66e260a694ef37f0b0d93",
         strip_prefix = "ComputeLibrary-23.05.1",

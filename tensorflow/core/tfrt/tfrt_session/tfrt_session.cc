@@ -36,6 +36,8 @@ limitations under the License.
 #include "Eigen/ThreadPool"  // from @eigen_archive
 #include "llvm/ADT/STLExtras.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/local_session_selection.h"
@@ -70,8 +72,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime

@@ -48,14 +48,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/layout_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
@@ -566,6 +566,16 @@ TEST(XlaBuilderTest, BroadcastInDimWithDegeneratedDim) {
               GmockMatch(m::Broadcast(m::Reshape(m::Broadcast()))));
 }
 
+TEST(XlaBuilderTest, BroadcastInDimWithBoundedDim) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(const Shape shape, ParseShape("f32[2, <=3]"));
+  auto x = Parameter(&b, 0, shape, "x");
+  BroadcastInDim(x, {1, 2, 3},
+                 /*broadcast_dimensions=*/{1, 2});
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module), GmockMatch(m::Broadcast()));
+}
+
 TEST(XlaBuilderTest, BroadcastInDimWithNegativeSize) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 1, 4}), "x");
@@ -827,6 +837,15 @@ TEST(XlaBuilderTest, CollectivePermute) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
   CollectivePermute(x, {{0, 1}, {1, 2}, {2, 3}});
+  TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
+  EXPECT_EQ(GetRoot(*module)->opcode(), HloOpcode::kCollectivePermute);
+}
+
+TEST(XlaBuilderTest, CombinedCollectivePermute) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  auto y = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {5, 7}), "y");
+  MultiCollectivePermute({x, y}, {{0, 1}, {1, 2}, {2, 3}});
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   EXPECT_EQ(GetRoot(*module)->opcode(), HloOpcode::kCollectivePermute);
 }

@@ -1,4 +1,4 @@
-// RUN: xla-translate -hlo-text-to-mlir-hlo -split-input-file %s -o - | FileCheck %s
+// RUN: hlo-translate -hlo-to-mlir -emit-mhlo -split-input-file %s | FileCheck %s
 
 HloModule ragged_dot_non_contracting, entry_computation_layout={(f32[11,5]{1,0}, f32[3,5,7]{2,1,0}, s64[3]{0})->f32[11,7]{1,0}}
 

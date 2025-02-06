@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 
+#include <stdbool.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -36,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -43,34 +46,41 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/collectives/async_collective_creator.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/buffer_value.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
 #include "xla/service/gpu/model/sol_latency_estimator.h"
+#include "xla/service/gpu/transforms/async_collective_annotator.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/transforms/pgle_accuracy_checker.h"
 #include "xla/service/gpu/transforms/schedule_postprocessing.h"
 #include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/latency_hiding_scheduler.h"
+#include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/service/p2p_schedule_preparation.h"
 #include "xla/service/profile_guided_latency_estimator.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
+
+using tensorflow::profiler::ProfiledInstructionsProto;
 
 namespace {
 
@@ -78,7 +88,7 @@ bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCollectivePermuteStart:
-      return !IsSyncCollective(&instr);
+      return !IsGPUSyncCollective(instr);
     case HloOpcode::kAsyncStart:
       // Start async ops as early as possible to allow more concurrency.
       return true;
@@ -224,7 +234,7 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
   auto is_sync_start = [](const HloInstruction* instr) {
     return hlo_query::IsAsyncCollectiveStartOp(instr,
                                                /*include_send_recv=*/true) &&
-           IsSyncCollective(instr);
+           IsGPUSyncCollective(*instr);
   };
 
   for (HloInstruction* instr : input.instructions()) {
@@ -250,10 +260,8 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
   return result;
 }
 
-// Latency hiding scheduler support.
-
-SchedulerConfig GetSchedulerConfig(int64_t memory_limit,
-                                   int64_t collective_resource) {
+SchedulerConfig MakeGPUSchedulerConfig(int64_t memory_limit,
+                                       int64_t overlap_limit) {
   SchedulerConfig config;
   config.all_reduce_overlap_limit = 1;
   config.collective_broadcast_overlap_limit = 1;
@@ -262,7 +270,7 @@ SchedulerConfig GetSchedulerConfig(int64_t memory_limit,
   config.aggressive_scheduling_policies = true;
   config.schedule_send_recvs = true;
   config.memory_limit = memory_limit;
-  config.parallel_collective_overlap_limit = collective_resource;
+  config.parallel_collective_overlap_limit = overlap_limit;
 
   CHECK(config.collective_broadcast_overlap_limit <=
         config.parallel_collective_overlap_limit);
@@ -278,10 +286,10 @@ SchedulerConfig GetSchedulerConfig(int64_t memory_limit,
   return config;
 }
 
-tensorflow::profiler::ProfiledInstructionsProto GetProfileForFingerprint(
-    tensorflow::profiler::ProfiledInstructionsProto& profile,
-    absl::string_view fingerprint) {
-  tensorflow::profiler::ProfiledInstructionsProto result;
+namespace {
+ProfiledInstructionsProto FilterWithFingerprint(
+    const ProfiledInstructionsProto& profile, absl::string_view fingerprint) {
+  ProfiledInstructionsProto result;
   bool merge_remat_clones = false;
   for (const auto& cost : profile.costs()) {
     std::string new_cost_name = cost.name();
@@ -348,88 +356,104 @@ tensorflow::profiler::ProfiledInstructionsProto GetProfileForFingerprint(
   return merged_result;
 }
 
-std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
-    const HloModule& module, absl::string_view fingerprint) {
-  tensorflow::profiler::ProfiledInstructionsProto profile;
-
-  absl::string_view fdo_profile = module.config().fdo_profile();
-  // First attempt to read the profile from `fdo_profile` in ModuleConfig
-  if (!fdo_profile.empty()) {
-    // Attempt to parse it as a binary proto.
-    if (tsl::ParseProtoUnlimited(&profile, fdo_profile.data(),
-                                 fdo_profile.size())) {
-      LOG(INFO) << "Using PGLE profile for module from fdo_profile (binary)";
-      return GetProfileForFingerprint(profile, fingerprint);
-    }
-    // If not a binary proto, attempt to parse it as a text proto.
-    profile.Clear();
-    if (tsl::protobuf::TextFormat::ParseFromString(std::string(fdo_profile),
-                                                   &profile)) {
-      LOG(INFO) << "Using PGLE profile for module from fdo_profile (text)";
-      return GetProfileForFingerprint(profile, fingerprint);
-    }
-    LOG(ERROR) << "Unable to prase FDO profile: not a valid text or binary "
-                  "ProfiledInstructionsProto";
-  }
-
-  const std::string& pgle_profile_file_or_dir_path =
-      module.config()
-          .debug_options()
-          .xla_gpu_pgle_profile_file_or_directory_path();
-  if (pgle_profile_file_or_dir_path.empty()) {
+std::optional<ProfiledInstructionsProto> ProfileFromConfig(
+    const HloModuleConfig& config) {
+  if (config.fdo_profile().empty()) {
     return std::nullopt;
   }
+  ProfiledInstructionsProto profile;
+  absl::string_view from_config = config.fdo_profile();
+  LOG(INFO) << "Attempting to parse as a binary proto.";
+  if (profile.ParseFromArray(from_config.data(), from_config.size())) {
+    LOG(INFO) << "Using PGLE profile from fdo_profile (binary)";
+    return profile;
+  }
+  LOG(INFO) << "Not a binary proto, attempt to parse it as a text proto.";
+  profile.Clear();
+  if (tsl::protobuf::TextFormat::ParseFromString(
+          std::string(from_config),  // NOLINT copybara XLA Linux ARM64 breaks
+                                     // without this explicit conversion.
+          &profile)) {
+    LOG(INFO) << "Using PGLE profile from fdo_profile (text)";
+    return profile;
+  }
+  LOG(ERROR) << "Unable to parse fdo_profile: not a valid text or binary "
+                "ProfiledInstructionsProto";
+  return std::nullopt;
+}
+
+std::optional<ProfiledInstructionsProto> ProfileFromPath(
+    const HloModuleConfig& config, const std::string& path,
+    const bool as_text) {
   tsl::Env* env = tsl::Env::Default();
-  auto read_text_or_binary_profile = [&profile, env, fingerprint](
-                                         const std::string& text_path,
-                                         const std::string& binary_path)
-      -> std::optional<tensorflow::profiler::ProfiledInstructionsProto> {
-    if (env->FileExists(text_path).ok()) {
-      absl::Status s = tsl::ReadTextProto(env, text_path, &profile);
-      if (s.ok()) {
-        LOG(INFO) << "Using PGLE profile from " << text_path;
-        return GetProfileForFingerprint(profile, fingerprint);
-      } else {
-        LOG(ERROR) << "Unable to read PGLE text proto from " << text_path
-                   << ": " << s.message();
-      }
-      profile.Clear();
+  if (env->FileExists(path).ok()) {
+    ProfiledInstructionsProto profile;
+    absl::Status s = as_text ? tsl::ReadTextProto(env, path, &profile)
+                             : tsl::ReadBinaryProto(env, path, &profile);
+    if (s.ok()) {
+      LOG(INFO) << "Using PGLE profile from " << path;
+      return profile;
     }
-    if (env->FileExists(binary_path).ok()) {
-      absl::Status s = tsl::ReadBinaryProto(env, binary_path, &profile);
-      if (s.ok()) {
-        LOG(INFO) << "Using PGLE profile from " << binary_path;
-        return GetProfileForFingerprint(profile, fingerprint);
-      } else {
-        LOG(ERROR) << "Unable to read PGLE binary proto from " << binary_path
-                   << ": " << s.message();
-      }
-      profile.Clear();
-    }
+    LOG(ERROR) << "Tried but failed to parse PGLE proto from "
+               << (as_text ? "text" : "binary") << " file '" << path
+               << "'. Error message: " << s.message();
+  }
+  return std::nullopt;
+}
+
+std::optional<ProfiledInstructionsProto> ReadProfileFromSources(
+    const HloModuleConfig& config, absl::string_view fingerprint) {
+  if (auto profile = ProfileFromConfig(config); profile) {
+    return profile;
+  }
+
+  const std::string& path =
+      config.debug_options().xla_gpu_pgle_profile_file_or_directory_path();
+  if (path.empty()) {
     return std::nullopt;
-  };
+  }
+
+  ProfiledInstructionsProto profile;
+  tsl::Env* env = tsl::Env::Default();
 
   // If its a directory, use fingerprint to look for the profile for this
   // specific module.
-  if (env->IsDirectory(pgle_profile_file_or_dir_path).ok()) {
-    std::string pgle_profile_path_prefix =
-        absl::StrCat(pgle_profile_file_or_dir_path, "/", fingerprint);
-    return read_text_or_binary_profile(pgle_profile_path_prefix + ".pbtxt",
-                                       pgle_profile_path_prefix + ".pb");
+  if (env->IsDirectory(path).ok()) {
+    std::string file_name = absl::StrCat(path, "/", fingerprint);
+    if (auto profile = ProfileFromPath(config, file_name + ".pbtxt", true);
+        profile) {
+      return profile;
+    }
+    if (auto profile = ProfileFromPath(config, file_name + ".pb", false);
+        profile) {
+      return profile;
+    }
   }
 
-  // The pgle_profile_file_or_dir is a file. Attempt to read the profile as text
-  // proto or binary proto. Attempt to infer the file type based on the
-  // extension.
-  auto extension = tsl::io::Extension(pgle_profile_file_or_dir_path);
+  // Trie path as a file inferring the file type based on the extension.
+  auto extension = tsl::io::Extension(path);
   if (extension == "pbtxt") {
-    return read_text_or_binary_profile(pgle_profile_file_or_dir_path, "");
+    return ProfileFromPath(config, path, true);
   } else if (extension == "pb") {
-    return read_text_or_binary_profile("", pgle_profile_file_or_dir_path);
-  } else {
-    return read_text_or_binary_profile(pgle_profile_file_or_dir_path,
-                                       pgle_profile_file_or_dir_path);
+    return ProfileFromPath(config, path, false);
   }
+  return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<ProfiledInstructionsProto> ReadPGLEProfile(
+    const HloModuleConfig& config, absl::string_view fingerprint) {
+  auto profile = ReadProfileFromSources(config, fingerprint);
+  if (profile.has_value()) {
+    return FilterWithFingerprint(profile.value(), fingerprint);
+  }
+  return std::nullopt;
+}
+
+bool HasValidPGLEProfile(const HloModule& module,
+                         absl::string_view fingerprint) {
+  return ReadPGLEProfile(module.config(), fingerprint).has_value();
 }
 
 // Runs P2P schedule preparation prior any scheduling.
@@ -450,7 +474,7 @@ std::string TagWithFingerprint(HloModule* module) {
       HloPrintOptions::Canonical().set_print_backend_config(true));
   FrontendAttributes attributes;
   (*attributes.mutable_map())[std::string(kFingerprintBeforeLHS)] = fingerprint;
-  module->add_frontend_attributes(std::move(attributes));
+  module->add_frontend_attributes(attributes);
   VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("
           << module->unique_id() << ") = " << fingerprint;
   return fingerprint;
@@ -463,14 +487,14 @@ std::string TagWithFingerprint(HloModule* module) {
 std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     const HloModule& module, int pointer_size,
     const se::DeviceDescription& gpu_device_info, absl::string_view fingerprint,
-    const SchedulerConfig& config, HloPassPipeline& pipeline) {
+    const SchedulerConfig& config) {
   const DebugOptions& options = module.config().debug_options();
 
   auto gpu_latency_estimator =
       std::make_unique<GpuLatencyEstimator>(pointer_size);
 
   std::optional<tensorflow::profiler::ProfiledInstructionsProto> profile =
-      ReadPGLEProfile(module, fingerprint);
+      ReadPGLEProfile(module.config(), fingerprint);
 
   if (profile.has_value()) {
     auto aggregator = std::make_unique<GPUProfileStatisticsAggregator>();
@@ -479,12 +503,6 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
         std::move(aggregator));
     LOG(INFO) << "Found profile, using profile guided latency estimator";
     VLOG(1) << "Profile:\n" << profile->DebugString();
-    if (options.xla_gpu_pgle_accuracy_checker() ==
-            DebugOptions::PGLE_STRICTNESS_LEVEL_WARN ||
-        options.xla_gpu_pgle_accuracy_checker() ==
-            DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
-      pipeline.AddPass<PGLEAccuracyChecker>(*pg_latency_estimator);
-    }
     return pg_latency_estimator;
   }
 
@@ -510,37 +528,81 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
   return gpu_latency_estimator;
 }
 
+// Accuracy checker is only applied to PGO based latency estimators with
+// strictness level set to WARN or ERROR.
+bool NeedAccuracyChecker(const DebugOptions& options,
+                         const LatencyEstimator& latency_estimator) {
+  if (typeid(latency_estimator) !=
+      typeid(const ProfileGuidedLatencyEstimator)) {
+    return false;
+  }
+  DebugOptions::PGLEStrictnessLevel level =
+      options.xla_gpu_pgle_accuracy_checker();
+  return level == DebugOptions::PGLE_STRICTNESS_LEVEL_WARN ||
+         level == DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR;
+}
+
+// For now, only allow cublas gemm custom calls and triton gemm fusions to
+// be overlapped as the compute ops in the annotated scheduling groups.
+LegalizeSchedulingAnnotations::Config SchedulingAnnotationsConfig() {
+  LegalizeSchedulingAnnotations::Config annotation_config;
+  annotation_config.keep_sync_annotation = [](const HloInstruction* hlo) {
+    if (hlo == nullptr) {
+      return false;
+    }
+    if (hlo->IsCustomCall("__cublas$gemm")) {
+      return true;
+    }
+    if (hlo->opcode() == HloOpcode::kFusion && hlo->has_backend_config() &&
+        hlo->backend_config<GpuBackendConfig>().ok()) {
+      GpuBackendConfig gpu_config =
+          hlo->backend_config<GpuBackendConfig>().value();
+      return gpu_config.has_fusion_backend_config() &&
+             gpu_config.fusion_backend_config().kind() == kTritonGemmFusionKind;
+    }
+    return false;
+  };
+  return annotation_config;
+}
+
 // Adds necessary passes to perform latency hiding estimations for the
 // `pipeline`.
 absl::Status RunLatencyHidingSchedulerPasses(
     HloModule* module, int pointer_size, absl::string_view fingerprint,
     int64_t memory_limit, const se::DeviceDescription& gpu_device_info) {
-  SchedulerConfig config = GetSchedulerConfig(
+  HloPassPipeline pipeline("latency-hiding-scheduler");
+  const DebugOptions& options = module->config().debug_options();
+  pipeline.AddPass<LegalizeSchedulingAnnotations>(
+      SchedulingAnnotationsConfig());
+
+  SchedulerConfig config = MakeGPUSchedulerConfig(
       memory_limit,
-      module->config()
-          .debug_options()
-          .xla_gpu_experimental_parallel_collective_overlap_limit());
+      options.xla_gpu_experimental_parallel_collective_overlap_limit());
 
   auto shape_size_in_bytes = [pointer_size](const Shape& shape) {
     return GetSizeOfShape(shape, pointer_size);
   };
 
+  std::unique_ptr<LatencyEstimator> estimator = GetLatencyEstimator(
+      *module, pointer_size, gpu_device_info, fingerprint, config);
+
+  if (NeedAccuracyChecker(options, *estimator)) {
+    pipeline.AddPass<PGLEAccuracyChecker>(
+        dynamic_cast<ProfileGuidedLatencyEstimator&>(*estimator));
+  }
+
   auto async_tracker = std::make_unique<GpuAsyncTracker>(config);
-
-  HloPassPipeline pipeline("latency-hiding-scheduler");
-  std::unique_ptr<LatencyEstimator> latency_estimator = GetLatencyEstimator(
-      *module, pointer_size, gpu_device_info, fingerprint, config, pipeline);
-
   auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
-      shape_size_in_bytes, async_tracker.get(), latency_estimator.get(), config,
+      shape_size_in_bytes, async_tracker.get(), estimator.get(), config,
       /*target_scheduling_rule=*/nullptr,
-      /*early_target_scheduling_rule=*/nullptr, /*post_processing_fn=*/nullptr,
+      /*early_target_scheduling_rule=*/nullptr,
+      /*post_processing_fn=*/nullptr,
       /*scheduling_instruction_crosses_overlap_limit=*/
       GpuScheduleCrossesOverlapLimit);
 
   pipeline.AddPass<LatencyHidingScheduler>(
-      std::move(latency_estimator), std::move(async_tracker),
-      std::move(scheduler_core), shape_size_in_bytes);
+      std::move(estimator), std::move(async_tracker), std::move(scheduler_core),
+      shape_size_in_bytes);
   pipeline.AddPass<SchedulingInstructionAnnotator>();
   pipeline.AddPass<SchedulePostprocessing>();
 
@@ -552,11 +614,11 @@ absl::Status RunLatencyHidingSchedulerPasses(
 int64_t GetSchedulerMemoryLimit(const HloModule& module,
                                 const se::DeviceDescription& gpu_device_info,
                                 int pointer_size) {
-  // There is a "base" value which is either specified in HloModuleConfig (this
-  // value should take into account the fact that we need to leave some memory
-  // free for allocations that happen outside of XLA's allocator) or
-  // obtained from GPU device info (we scale down this value to leave some space
-  // for these outside XLA's allocator allocation).
+  // There is a "base" value which is either specified in HloModuleConfig
+  // (this value should take into account the fact that we need to leave some
+  // memory free for allocations that happen outside of XLA's allocator) or
+  // obtained from GPU device info (we scale down this value to leave some
+  // space for these outside XLA's allocator allocation).
   //
   // From that base value, subtract any input and output sizes (assuming they
   // are live throughout the execution) and then apply a slop factor.
@@ -596,7 +658,78 @@ int64_t GetSchedulerMemoryLimit(const HloModule& module,
   return limit;
 }
 
+bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint) {
+  bool enable_lhs =
+      module.config()
+          .debug_options()
+          .xla_gpu_enable_latency_hiding_scheduler() ||
+      IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module);
+  if (!enable_lhs && HasValidPGLEProfile(module, fingerprint)) {
+    LOG(WARNING)
+        << "Profile data detected but "
+           "`xla_gpu_enable_latency_hiding_scheduler` unset. To use it "
+           "compiler will run Latency Hiding Scheduler anyway.";
+    enable_lhs = true;
+  }
+  return enable_lhs;
+}
+
 }  // end namespace
+
+absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
+  HloPassPipeline pipeline("async-collective-conversion");
+
+  // Convert all collectives to their async form, and then annotate the ones
+  // that actually need to run asynchronously with a GPU specific backend
+  // config.
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_gather = HloPredicateTrue;
+  config.convert_all_reduce = HloPredicateTrue;
+  config.convert_all_to_all = HloPredicateTrue;
+  config.convert_collective_broadcast = HloPredicateTrue;
+  config.convert_collective_permute = HloPredicateTrue;
+  config.convert_ragged_all_to_all = HloPredicateTrue;
+  config.convert_reduce_scatter = HloPredicateTrue;
+  pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
+
+  absl::flat_hash_set<DebugOptions::CollectiveOpType> disabled_async_ops;
+  for (auto collective_op_type :
+       module->config().debug_options().xla_gpu_disable_async_collectives()) {
+    disabled_async_ops.insert(
+        static_cast<DebugOptions::CollectiveOpType>(collective_op_type));
+  }
+  auto convert_to_async = [&disabled_async_ops](const HloInstruction* inst) {
+    switch (inst->opcode()) {
+      case HloOpcode::kAllReduceStart:
+        return !disabled_async_ops.contains(DebugOptions::ALLREDUCE);
+      case HloOpcode::kCollectivePermuteStart:
+        return !disabled_async_ops.contains(DebugOptions::COLLECTIVEPERMUTE);
+      case HloOpcode::kAllGatherStart:
+        return !disabled_async_ops.contains(DebugOptions::ALLGATHER);
+      case HloOpcode::kAsyncStart: {
+        auto async_inst = Cast<HloAsyncInstruction>(inst);
+        switch (async_inst->async_wrapped_opcode()) {
+          case HloOpcode::kCollectiveBroadcast:
+            return !disabled_async_ops.contains(
+                DebugOptions::COLLECTIVEBROADCAST);
+          case HloOpcode::kReduceScatter:
+            return !disabled_async_ops.contains(DebugOptions::REDUCESCATTER);
+          case HloOpcode::kAllToAll:
+            return !disabled_async_ops.contains(DebugOptions::ALLTOALL);
+          case HloOpcode::kRaggedAllToAll:
+            return !disabled_async_ops.contains(DebugOptions::RAGGEDALLTOALL);
+          default:
+            return false;
+        }
+      }
+      default:
+        return false;
+    }
+  };
+  pipeline.AddPass<AsyncCollectiveAnnotator>(convert_to_async);
+
+  return pipeline.Run(module).status();
+}
 
 absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
@@ -611,23 +744,20 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
 
   // Module already has a schedule, do nothing.
   if (module->has_schedule()) {
+    VLOG(1) << "Module already has a schedule, do nothing.";
     return ScheduleMetadata{memory_limit};
   }
 
   // Run the scheduler which minimizes peak memory usage.
-  // We need to run it anyway because LHS relies on it track buffers. See
-  // `xla::BufferInfoTracker::BufferInfoTracker()`.
+  // We need to run it anyway because LHS relies on it.
+  // See `xla::LatencyHidingScheduler::Run`.
   TF_RETURN_IF_ERROR(RunP2PSchedulePreparation(module));
   TF_ASSIGN_OR_RETURN(
       HloSchedule schedule,
       ScheduleGpuModuleWithMemoryScheduler(module, pointer_size));
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
-  bool enable_latency_hiding_scheduler =
-      module->config()
-          .debug_options()
-          .xla_gpu_enable_latency_hiding_scheduler() ||
-      IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(*module);
+  bool enable_latency_hiding_scheduler = IsLHSEnabled(*module, fingerprint);
 
   // Run Latency Hiding Scheduler (LHS). It maximizes the compute-communication
   // overlap, potentially at the cost of memory usage.
@@ -641,14 +771,19 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
 
 absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
     const HloModule* module, int64_t pointer_size, int64_t* peak_memory_bytes) {
-  return ScheduleModule(
-      module,
-      [pointer_size](const BufferValue& buffer) {
-        return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
-      },
-      ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler,
-                                            PostProcessSchedule),
-      /*execution_threads=*/{}, /*peak_memory=*/peak_memory_bytes);
+  BufferValue::SizeFunction size_func =
+      [pointer_size](const BufferValue& buffer) -> int64_t {
+    const Shape& shape = buffer.shape();
+    if (shape.has_layout() &&
+        shape.layout().memory_space() == Layout::kHostMemorySpace) {
+      return static_cast<int64_t>(0);
+    }
+    return ShapeUtil::ByteSizeOf(shape, pointer_size);
+  };
+  ModuleSchedulerAlgorithm algorithm = ComputationSchedulerToModuleScheduler(
+      DefaultMemoryScheduler, PostProcessSchedule);
+  return ScheduleModule(module, size_func, algorithm,
+                        /*execution_threads=*/{}, peak_memory_bytes);
 }
 
 HloInstructionSequence PostProcessSchedule(

@@ -18,30 +18,31 @@
 #include <string>
 #include <vector>
 
+#include "neuron/api/NeuronAdapter.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/add_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/compiler/legalizations/operand_map.h"
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
 namespace litert::mediatek {
 
-Expected<NeuronModelPtr> CreateModel(const NeuronAdapter& neuron_adapter,
+Expected<NeuronModelPtr> CreateModel(const NeuronAdapterApi& neuron_adapter_api,
                                      const litert::Subgraph& partition,
                                      const std::string& model_name) {
-  auto model = neuron_adapter.CreateModel();
+  auto model = neuron_adapter_api.CreateModel();
   if (!model) {
     return model.Error();
   }
 
-  if (neuron_adapter.api().model_set_name(model->get(), model_name.c_str()) !=
-      NEURON_NO_ERROR) {
+  if (neuron_adapter_api.api().model_set_name(
+          model->get(), model_name.c_str()) != NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure, "Failed to set model name");
   }
 
-  OperandMap operand_map(neuron_adapter, model->get());
+  OperandMap operand_map(neuron_adapter_api, model->get());
 
   std::vector<uint32_t> input_indices;
   for (const auto& input : partition.Inputs()) {
@@ -61,7 +62,7 @@ Expected<NeuronModelPtr> CreateModel(const NeuronAdapter& neuron_adapter,
     output_indices.push_back(*operand_index);
   }
 
-  if (neuron_adapter.api().model_identify_inputs_and_outputs(
+  if (neuron_adapter_api.api().model_identify_inputs_and_outputs(
           model->get(), input_indices.size(), input_indices.data(),
           output_indices.size(), output_indices.data()) != NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
@@ -72,7 +73,8 @@ Expected<NeuronModelPtr> CreateModel(const NeuronAdapter& neuron_adapter,
     Expected<void> status;
     switch (op.Code()) {
       case kLiteRtOpCodeTflAdd:
-        status = LegalizeAddOp(neuron_adapter, model->get(), operand_map, op);
+        status =
+            LegalizeAddOp(neuron_adapter_api, model->get(), operand_map, op);
         break;
 
       default:
@@ -84,7 +86,7 @@ Expected<NeuronModelPtr> CreateModel(const NeuronAdapter& neuron_adapter,
     }
   }
 
-  if (neuron_adapter.api().model_finish(model->get()) != NEURON_NO_ERROR) {
+  if (neuron_adapter_api.api().model_finish(model->get()) != NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure, "Failed to finish model");
   }
 

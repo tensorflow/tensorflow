@@ -108,6 +108,7 @@ tf_staging/tensorflow/lite/experimental/acceleration/configuration/configuration
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/c/c_api.h:
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h:
 tf_staging/tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl:
+tf_staging/tensorflow/lite/experimental/litert/build_common/special_rule.bzl:
 tf_staging/tensorflow/lite/interpreter.h:
 tf_staging/tensorflow/lite/interpreter_builder.h:
 tf_staging/tensorflow/lite/ios/BUILD:
@@ -327,7 +328,6 @@ tf_staging/third_party/protobuf/BUILD:
 tf_staging/third_party/py/BUILD.tpl:
 tf_staging/third_party/py/BUILD:
 tf_staging/third_party/py/ml_dtypes/BUILD:
-tf_staging/third_party/py/ml_dtypes/LICENSE:
 tf_staging/third_party/py/non_hermetic/ml_dtypes/BUILD:
 tf_staging/third_party/py/non_hermetic/ml_dtypes/LICENSE:
 tf_staging/third_party/py/non_hermetic/numpy/BUILD:

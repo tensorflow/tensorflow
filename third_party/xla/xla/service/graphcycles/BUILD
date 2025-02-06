@@ -40,9 +40,9 @@ xla_cc_test(
     srcs = ["graphcycles_test.cc"],
     deps = [
         ":graphcycles",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/random",
-        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",

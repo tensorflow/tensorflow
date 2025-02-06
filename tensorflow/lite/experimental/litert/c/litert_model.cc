@@ -337,8 +337,8 @@ LiteRtStatus LiteRtGetWeightsBytes(LiteRtWeights weights, const void** addr,
   if (!weights || !addr || !size) {
     return kLiteRtStatusErrorInvalidArgument;
   }
-  *addr = weights->Buf().Data();
-  *size = weights->Buf().Size();
+  *addr = weights->Buffer().Data();
+  *size = weights->Buffer().Size();
   return kLiteRtStatusOk;
 }
 

@@ -44,12 +44,12 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_proto_cc",
         "@local_xla//xla/client:compile_only_client",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/pjrt:compile_options_proto_cc",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -75,12 +75,12 @@ tf_cc_test(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/stream_executor:platform",
         "@local_xla//xla/stream_executor:platform_manager",
         "@local_xla//xla/tsl/lib/monitoring:test_utils",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -97,17 +97,15 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tf2xla/api/v2/testing:compile_mlir",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
-        "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -153,7 +151,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:error_logging",
-        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -180,8 +178,8 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -212,9 +210,9 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:error_logging",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla/tsl/lib/monitoring:counter",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -259,7 +257,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:export_utils",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/compiler/mlir/tensorflow:verify_suitable_for_graph_export",
-        "//tensorflow/compiler/mlir/tensorflow/translate:export_tf_dialect_op",
         "//tensorflow/compiler/mlir/tensorflow/translate:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/utils:name_utils",
         "//tensorflow/core:core_cpu",
@@ -341,7 +338,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/translate:mlir_roundtrip_flags",
-        "//tensorflow/compiler/mlir/tensorflow/translate:upgrade_graph",
         "//tensorflow/compiler/mlir/tf2xla/internal:graph_to_tf_executor_util",
         "//tensorflow/compiler/mlir/tf2xla/internal:node_order",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow",
@@ -359,6 +355,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -367,8 +364,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 

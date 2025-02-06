@@ -16,7 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/sort_rewriter.h"
 
 #include <algorithm>
-#include <cstddef>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
@@ -202,8 +203,8 @@ std::optional<SortComputationAnalysis> AnalyzeSortOp(
   // For sorting in Numpy order, synthetic keys are materialized. The synthetic
   // keys and the original values are sorted as pairs.
   if (sort_analysis->sort_order == SortOrderType::kNumpyOrder) {
-    // TODO(tjoerg): Add support for dtypes besides bf16.
-    if (sort_key_type != BF16) {
+    if (sort_key_type != BF16 && sort_key_type != F16 && sort_key_type != F32 &&
+        sort_key_type != F64) {
       return std::nullopt;
     }
     // Sorting a pair of input tensors is not supported. The keys to sort on
@@ -211,8 +212,12 @@ std::optional<SortComputationAnalysis> AnalyzeSortOp(
     if (sort_op.operand_count() != 1) {
       return std::nullopt;
     }
-    sort_key_type = U16;
-    sort_value_type = BF16;
+    // Cub cannot sort the original keys directly, hence treat them as values in
+    // a key-value pair sort.
+    sort_value_type = sort_key_type;
+    // The synthetic keys used for sorting are unsigned integers.
+    sort_key_type = primitive_util::UnsignedIntegralTypeForBitWidth(
+        primitive_util::BitWidth(sort_key_type));
   }
   return SortComputationAnalysis{
       sort_analysis->key_operand, sort_analysis->descending,
@@ -241,13 +246,15 @@ HloInstruction* UnpackResultPair(HloSortInstruction* sort_op,
 
 // Add HLO ops to materialize sort keys for Numpy sort order from the sort op's
 // operand.
-HloInstruction* AddNumpySortKey(HloInstruction* operand) {
+HloInstruction* AddNumpySortKey(HloInstruction* operand, PrimitiveType key_type,
+                                PrimitiveType value_type) {
   Shape value_shape = operand->shape();
-  Shape key_shape = ShapeUtil::ChangeElementType(value_shape, U16);
+  int64_t bit_width = primitive_util::BitWidth(value_type);
+  Shape key_shape = ShapeUtil::ChangeElementType(value_shape, key_type);
   Shape pred_shape = ShapeUtil::ChangeElementType(value_shape, PRED);
   // Canonicalize zeros, i.e. replace -0 with +0.
   HloInstruction* const_zero = operand->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(BF16)));
+      HloInstruction::CreateConstant(LiteralUtil::Zero(value_type)));
   HloInstruction* broadcasted_zero = operand->AddInstruction(
       HloInstruction::CreateBroadcast(value_shape, const_zero, {}));
   HloInstruction* is_zero =
@@ -257,8 +264,9 @@ HloInstruction* AddNumpySortKey(HloInstruction* operand) {
       operand->AddInstruction(HloInstruction::CreateTernary(
           value_shape, HloOpcode::kSelect, is_zero, broadcasted_zero, operand));
   // Canonicalize NaNs, i.e. replace -NaN with NaN.
-  HloInstruction* const_nan = operand->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::NanValue(BF16).value()));
+  HloInstruction* const_nan =
+      operand->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::NanValue(value_type).value()));
   HloInstruction* broadcasted_nan = operand->AddInstruction(
       HloInstruction::CreateBroadcast(value_shape, const_nan, {}));
   // Only NaNs are not equal to themselves.
@@ -271,27 +279,23 @@ HloInstruction* AddNumpySortKey(HloInstruction* operand) {
   // To convert the input values into a radix-sortable bitwise representation,
   // the following transformations take place prior to sorting:
   // * For positive floating point values, the sign bit is inverted.
-  // * For negative floating point values, the full key is inverted.
+  // * For negative floating point values, the full key is inverted (kNot op).
   HloInstruction* is_negative =
       operand->AddInstruction(HloInstruction::CreateCompare(
           pred_shape, canonicalized_nans, broadcasted_zero,
           ComparisonDirection::kLt));
   HloInstruction* bitcast_convert = operand->AddInstruction(
       HloInstruction::CreateBitcastConvert(key_shape, canonicalized_nans));
-  HloInstruction* constant_8000 = operand->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint16_t>(32768)));
+  HloInstruction* constant_8000 =
+      operand->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0(key_type, pow(2, bit_width - 1))));
   HloInstruction* broadcasted_8000 = operand->AddInstruction(
       HloInstruction::CreateBroadcast(key_shape, constant_8000, {}));
   HloInstruction* inverted_sign =
       operand->AddInstruction(HloInstruction::CreateBinary(
           key_shape, HloOpcode::kXor, broadcasted_8000, bitcast_convert));
-  HloInstruction* constant_ffff = operand->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint16_t>(65535)));
-  HloInstruction* broadcasted_ffff = operand->AddInstruction(
-      HloInstruction::CreateBroadcast(key_shape, constant_ffff, {}));
-  HloInstruction* inverted_bits =
-      operand->AddInstruction(HloInstruction::CreateBinary(
-          key_shape, HloOpcode::kXor, broadcasted_ffff, bitcast_convert));
+  HloInstruction* inverted_bits = operand->AddInstruction(
+      HloInstruction::CreateUnary(key_shape, HloOpcode::kNot, bitcast_convert));
   HloInstruction* sort_keys = operand->AddInstruction(
       HloInstruction::CreateTernary(key_shape, HloOpcode::kSelect, is_negative,
                                     inverted_bits, inverted_sign));
@@ -336,7 +340,9 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   // original input as values.
   if (sort_analysis.sort_order == SortOrderType::kNumpyOrder) {
     sorting_pairs = true;
-    keys = AddNumpySortKey(sort_op->mutable_operand(sort_analysis.key_operand));
+    keys = AddNumpySortKey(sort_op->mutable_operand(sort_analysis.key_operand),
+                           sort_analysis.key_type,
+                           sort_analysis.value_type.value());
     values = sort_op->mutable_operand(sort_analysis.key_operand);
   }
 

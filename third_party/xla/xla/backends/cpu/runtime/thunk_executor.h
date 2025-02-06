@@ -44,6 +44,8 @@ namespace internal {
 // Clang does not allow defining a nested struct with member initializer, as
 // a workaround we define a struct in internal namespace and create an alias.
 struct ThunkExecutorOptions {
+  enum class ReadyQueueType { kFifo, kLifo, kPriority };
+
   // If all thunks in a sequence use buffers of size less than or equal to the
   // given threshold, we mark execution as sequential, as concurrency overheads
   // will likely dominate the overall execution time.
@@ -54,9 +56,8 @@ struct ThunkExecutorOptions {
   // the overall execution time.
   size_t execute_sequential_num_thunks_threshold = 8;
 
-  // Use priority ready queue to execute nodes according to their priority. By
-  // default we use FIFO ready queue.
-  bool use_priority_ready_queue = false;
+  // The type of a queue for ready thunks.
+  ReadyQueueType ready_queue_type = ReadyQueueType::kFifo;
 };
 }  // namespace internal
 
@@ -111,6 +112,8 @@ class ThunkExecutor {
   // If any of the thunks failed, the event will be in error state.
   tsl::AsyncValueRef<ExecuteEvent> Execute(const Thunk::ExecuteParams& params);
 
+  const ThunkSequence& thunk_sequence() const { return thunk_sequence_; }
+
   absl::Span<const NodeDef> nodes_defs() const { return nodes_defs_; }
   const NodeDef& node_def(NodeId id) const { return nodes_defs_[id]; }
 
@@ -142,6 +145,25 @@ class ThunkExecutor {
    private:
     absl::InlinedVector<NodeId, 8> queue_;
     size_t head_ = 0;
+  };
+
+  // A ready queue that executes nodes in LIFO order.
+  class LifoReadyQueue {
+   public:
+    explicit LifoReadyQueue(absl::Span<const NodeId> ready_nodes);
+
+    void Push(NodeId id);
+
+    NodeId Pop();
+    LifoReadyQueue PopHalf();
+
+    size_t Size() const;
+    bool Empty() const;
+
+    LifoReadyQueue CreateEmptyReadyQueue() const;
+
+   private:
+    absl::InlinedVector<NodeId, 8> queue_;
   };
 
   // A ready queue that executes nodes sorted by NodeDef priority.
@@ -201,7 +223,9 @@ class ThunkExecutor {
 
     // We use indirection via NodeStorage to be able to allocate uninitialized
     // memory and do not pay the cost of default initializing all nodes.
-    using NodeStorage = std::aligned_storage_t<sizeof(Node), alignof(Node)>;
+    struct NodeStorage {
+      alignas(Node) std::byte data[sizeof(Node)];
+    };
 
     ExecuteState(ThunkExecutor* executor, Thunk::TaskRunner* runner);
 
@@ -213,6 +237,8 @@ class ThunkExecutor {
     ThunkExecutor* executor;
     Thunk::TaskRunner* runner;
 
+    // Note: using alignas(Node) here instead of in NodeStorage does not work:
+    // `nodes` would be aligned, but not its elements.
     absl::FixedArray<NodeStorage> nodes;
     tsl::AsyncValueRef<ExecuteEvent> execute_event;
 

@@ -96,10 +96,10 @@ limitations under the License.
 #ifdef GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_solver_context.h"
 #endif  // GOOGLE_CUDA
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/fusions/fusions.h"
-#include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -185,8 +185,7 @@ namespace gpu {
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
       send_recv_events_(std::make_shared<SendRecvAsyncEvents>()),
-      copy_events_(std::make_shared<CopyThunk::AsyncEvents>()),
-      elemental_emitter_(*ir_emitter_context, &b_) {}
+      copy_events_(std::make_shared<CopyThunk::AsyncEvents>()) {}
 
 std::unique_ptr<IrEmitterUnnested> IrEmitterUnnested::Create(
     IrEmitterContext* ir_emitter_context) {
@@ -1505,12 +1504,44 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
   return absl::OkStatus();
 }
 
+absl::Status IrEmitterUnnested::EmitAsyncComputation(
+    const HloInstruction* instr) {
+  const HloInstruction* wrapped = instr->async_wrapped_instruction();
+  const ExecutionStreamAssignment& stream_assignment =
+      ir_emitter_context_->execution_stream_assignment();
+  TF_ASSIGN_OR_RETURN(auto stream,
+                      stream_assignment.GetSyncExecutionStreamId(wrapped));
+  TF_RET_CHECK(wrapped->called_computations().size() == 1);
+  auto computation = wrapped->called_computations().front();
+  auto ir_emitter = IrEmitterUnnested::Create(ir_emitter_context_);
+  TF_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(computation));
+  std::unique_ptr<SequentialThunk> thunk_sequence =
+      ir_emitter->ConsumeThunkSequence();
+  for (auto& thunk : thunk_sequence->thunks()) {
+    thunk->set_execution_stream_id(stream);
+  }
+  auto* async_start = Cast<HloAsyncInstruction>(instr);
+  TF_ASSIGN_OR_RETURN(
+      ExecutionStreamAssignment::AsyncExecutionStreamIds async_streams,
+      stream_assignment.GetAsyncExecutionStreamIds(async_start));
+  // We launch the thunk sequence computation on a concurrent stream.
+  // The concurrent stream needs to first wait until the main stream has
+  // finished calculating any values that may be used as input.
+  // We enforce this by inlining a `WaitForStreams` thunk on the main
+  // stream.
+  AddThunkToThunkSequence(std::make_unique<WaitForStreamsThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      async_streams.destination_stream_id, async_streams.source_stream_id));
+  AddThunkToThunkSequence(std::move(thunk_sequence));
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
   const se::DeviceDescription& device_info =
       ir_emitter_context_->gpu_device_info();
   const HloFusionAnalysis fusion_analysis =
       HloFusionAnalysis::Create(*instr, device_info);
-
+  VLOG(3) << "IrEmitterUnnested::EmitFusion:start";
   std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(HloFusionInfo(
       fusion_analysis, instr, &ir_emitter_context_->buffer_assignment()));
   TF_ASSIGN_OR_RETURN(auto result, emitter->Emit(*ir_emitter_context_, *instr));
@@ -1523,6 +1554,7 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
     thunk->set_execution_stream_id(execution_stream_id);
     AddThunkToThunkSequence(std::move(thunk));
   }
+  VLOG(3) << "IrEmitterUnnested::EmitFusion:complete";
   return absl::OkStatus();
 }
 
@@ -1815,46 +1847,61 @@ absl::Status IrEmitterUnnested::EmitReplicaOrPartitionId(
 
 absl::Status IrEmitterUnnested::EmitCollectivePermute(
     const HloCollectivePermuteInstruction* instr) {
-  TF_RET_CHECK(instr->operand_count() == 1);
-  auto* operand = instr->operand(0);
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
-                      GetAllocationSliceForHlo(operand));
   // First output is aliased.
   TF_RET_CHECK(
       instr->shape().IsTuple() && instr->shape().tuple_shapes_size() == 2 &&
       Shape::Equal().IgnoreMemorySpaceInLayout()(
           instr->shape().tuple_shapes(0), instr->shape().tuple_shapes(1)));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
-                      GetAllocationSliceForHlo(instr, {1}));
 
-  const Shape shape = operand->shape();
   const auto& hlo_config = ir_emitter_context_->hlo_module().config();
   const int64_t replica_count = hlo_config.replica_count();
   const int64_t partition_count = hlo_config.num_partitions();
-  const int64_t src_memory_space = shape.layout().memory_space();
-  const int64_t dst_memory_space =
-      instr->shape().tuple_shapes(1).layout().memory_space();
 
-  if (NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
-                                                    partition_count)) {
-    // For a degenerate collective permute, just generate a copy thunk.
-    AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr),
-        /*source_buffer=*/source_slice,
-        /*destination_buffer=*/result_slice,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
-    // Signal that start thunk not created with nullptr.
-    GetCollectivesAsyncEvents().try_emplace(instr, nullptr);
-  } else {
-    const NcclCollectiveThunk::Buffer buffer = {
-        /*element_count=*/ShapeUtil::ElementsIn(shape),
-        /*source_buffer=*/source_slice,
-        /*destination_buffer=*/result_slice,
-        /*source_memory_space=*/src_memory_space,
-        /*destination_memory_space=*/dst_memory_space};
+  auto operands = instr->operands();
+  std::vector<NcclCollectiveThunk::Buffer> buffers;
+  for (int oprd_idx = 0; oprd_idx < operands.size(); ++oprd_idx) {
+    const auto operand = operands.at(oprd_idx);
+    const ShapeIndex nested_shape_idx = {1, oprd_idx}, normal_shape_idx = {1};
+    const Shape operand_shape = operand->shape();
+    const Shape result_shape = instr->shape().tuple_shapes(1);
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                        GetAllocationSliceForHlo(
+                            instr, result_shape.IsTuple() ? nested_shape_idx
+                                                          : normal_shape_idx));
+
+    const int64_t src_memory_space = operand_shape.layout().memory_space();
+    const int64_t dst_memory_space =
+        (result_shape.IsTuple())
+            ? result_shape.tuple_shapes(0).layout().memory_space()
+            : result_shape.layout().memory_space();
+
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
+                        GetAllocationSliceForHlo(operand));
+    if (NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
+                                                      partition_count)) {
+      // For a degenerate collective permute, just generate a copy thunk.
+      AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
+          Thunk::ThunkInfo::WithProfileAnnotation(instr),
+          /*source_buffer=*/source_slice,
+          /*destination_buffer=*/result_slice,
+          /*mem_size=*/ShapeUtil::ByteSizeOf(operand_shape)));
+      // Signal that start thunk not created with nullptr.
+      GetCollectivesAsyncEvents().try_emplace(instr, nullptr);
+    } else {
+      const NcclCollectiveThunk::Buffer buffer = {
+          /*element_count=*/ShapeUtil::ElementsIn(operand_shape),
+          /*source_buffer=*/source_slice,
+          /*destination_buffer=*/result_slice,
+          /*source_memory_space=*/src_memory_space,
+          /*destination_memory_space=*/dst_memory_space};
+      buffers.push_back(buffer);
+    }
+  }
+  if (!NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
+                                                     partition_count)) {
     auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
-        partition_count, buffer,
+        partition_count, buffers,
         ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
     GetCollectivesAsyncEvents().try_emplace(instr, thunk->async_events());
     AddThunkToThunkSequence(std::move(thunk));
@@ -2563,6 +2610,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         case HloOpcode::kCollectiveBroadcast:
           return EmitNcclAsyncDone(Thunk::kNcclCollectiveBroadcastDone, instr);
         case HloOpcode::kFusion:
+        case HloOpcode::kCall:
         case HloOpcode::kCustomCall: {
           // Wait until the concurrent stream has finished.
           auto* async_done = Cast<HloAsyncInstruction>(instr);
@@ -2633,6 +2681,9 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
               streams.destination_stream_id, streams.source_stream_id));
           return EmitFusion(Cast<HloFusionInstruction>(wrapped));
         }
+        case HloOpcode::kCall: {
+          return EmitAsyncComputation(instr);
+        }
         case HloOpcode::kCustomCall: {
           return EmitAsyncCustomCallStart(instr);
         }
@@ -2695,6 +2746,7 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         return EmitSliceToDynamic(custom_call);
       }
       if (instr->custom_call_target() == "__gpu$xla.gpu.triton") {
+        // TODO(slebedev): Remove this after June 15th 2025.
         return EmitTritonCustomCall(custom_call);
       }
       if (instr->custom_call_target() == kNopCustomCallTarget) {

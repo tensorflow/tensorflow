@@ -1,7 +1,3 @@
-#include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/fft.h"
 /* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,19 +25,25 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/allocator_stats.h"
+#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/test.h"
 
 namespace stream_executor {
 
@@ -63,15 +65,8 @@ class MockStreamExecutor : public StreamExecutor {
   MOCK_METHOD(DeviceMemoryBase, Allocate, (uint64_t size, int64_t memory_space),
               (override));
   MOCK_METHOD(void, Deallocate, (DeviceMemoryBase * mem), (override));
-  MOCK_METHOD(void*, UnifiedMemoryAllocate, (uint64_t size), (override));
-  MOCK_METHOD(void, UnifiedMemoryDeallocate, (void* mem), (override));
-  MOCK_METHOD(absl::StatusOr<void*>, CollectiveMemoryAllocate, (uint64_t size),
-              (override));
-  MOCK_METHOD(absl::Status, CollectiveMemoryDeallocate, (void* mem),
-              (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<MemoryAllocation>>,
               HostMemoryAllocate, (uint64_t size), (override));
-  MOCK_METHOD(void, HostMemoryDeallocate, (void* mem), (override));
   MOCK_METHOD(bool, SynchronizeAllActivity, (), (override));
   MOCK_METHOD(absl::Status, SynchronousMemZero,
               (DeviceMemoryBase * location, uint64_t size), (override));
@@ -116,6 +111,8 @@ class MockStreamExecutor : public StreamExecutor {
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<EventBasedTimer>>,
               CreateEventBasedTimer, (Stream * stream, bool use_delay_kernel),
               (override));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<MemoryAllocator>>,
+              CreateMemoryAllocator, (MemoryType type), (override));
 };
 
 }  // namespace stream_executor

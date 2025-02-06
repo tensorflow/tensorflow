@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/service/gpu/amdgpu_compiler.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -62,6 +63,7 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -131,11 +133,14 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   // tf2xla bridge, DepthwiseConvolutionConverter and ConvRewriter
   // introduces reshapes and transposes that can be eliminated using
   // AlgebraicSimplifier  We run algsimp to a fixed point.
-  AlgebraicSimplifierOptions options =
+  AlgebraicSimplifierOptions algsimp_options =
       GetAlgebraicSimplifierOptions(hlo_module->config());
-  options.set_enable_conv_operand_swap(false);
-  options.set_enable_unconditional_reduce_of_concat_replacement(false);
-  pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(options, gpu_version);
+  algsimp_options.set_supports_non_canonical_dots(false);
+  algsimp_options.set_enable_conv_operand_swap(false);
+  algsimp_options.set_enable_conv_add_multiply_reorder(true);
+  algsimp_options.set_enable_unconditional_reduce_of_concat_replacement(false);
+  pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
+                                                       gpu_version);
 
   // tf2xla bridge, DepthwiseConvolutionConverter, ConvRewriter, and
   // CudnnSimplifyPadding introduce reshapes and transposes.  Run ReshapeMover
@@ -145,7 +150,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
     ReshapeMoverOptions reshape_mover_options;
     reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
     pipeline.AddPass<ReshapeMover>(reshape_mover_options);
-    pipeline.AddPass<GpuAlgebraicSimplifier>(options, gpu_version);
+    pipeline.AddPass<GpuAlgebraicSimplifier>(algsimp_options, gpu_version);
   }();
 
   // The reshapes and transposes can possibly be eliminated using
@@ -156,7 +161,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
           "simplify_after_conv_canonicalization")] {
     pipeline.AddPass<ConvertMover>();
-    pipeline.AddPass<GpuAlgebraicSimplifier>(options, gpu_version);
+    pipeline.AddPass<GpuAlgebraicSimplifier>(algsimp_options, gpu_version);
   }();
 
   // ConvRewriter, ConvPaddingLegalization and
@@ -239,7 +244,8 @@ absl::StatusOr<GpuCompiler::BackendCompileResult>
 AMDGPUCompiler::CompileTargetBinary(
     const HloModuleConfig& module_config, llvm::Module* llvm_module,
     const se::DeviceDescription& device_description, bool relocatable,
-    const HloModule* debug_module, const CompileOptions& options) {
+    const HloModule* debug_module, const CompileOptions& options,
+    std::optional<int> shard_number) {
   if (relocatable) {
     return Unimplemented("relocatable target binary is not implemented");
   }
@@ -271,5 +277,9 @@ absl::Status AMDGPUCompiler::AddGemmFusionAutotuningPasses(
   return absl::OkStatus();
 }
 
+std::vector<std::string> AMDGPUCompiler::GetLLVMCommandLineOptions(
+    const DebugOptions& debug_options) const {
+  return amdgpu::GetAMDGPUBackendOptions(debug_options);
+}
 }  // namespace gpu
 }  // namespace xla

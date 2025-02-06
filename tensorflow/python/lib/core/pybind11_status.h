@@ -52,7 +52,7 @@ inline PyObject* TFStatusToPyExc(const TF_Status* status) {
   return CodeToPyExc(TF_GetCode(status));
 }
 
-inline pybind11::dict StatusPayloadToDict(const Status& status) {
+inline pybind11::dict StatusPayloadToDict(const absl::Status& status) {
   pybind11::dict dict;
   const auto& payloads = errors::GetPayloads(status);
   for (auto& pair : payloads) {

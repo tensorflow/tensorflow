@@ -24,7 +24,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
 namespace litert::mediatek {
 
@@ -89,7 +89,7 @@ class OperandType : public NeuronOperandType {
 // /////////////////////////////////////////////////////////////////////////////
 
 Expected<uint32_t> OperandMap::Register(const NeuronOperandType& operand_type) {
-  if (neuron_adapter_.api().model_add_operand(model_, &operand_type) !=
+  if (neuron_adapter_api_.api().model_add_operand(model_, &operand_type) !=
       NEURON_NO_ERROR) {
     return Error(kLiteRtStatusErrorRuntimeFailure,
                  "Failed to register model operand");
@@ -111,7 +111,7 @@ Expected<uint32_t> OperandMap::Register(const Tensor& t) {
 
   if (t.HasWeights()) {
     auto weights = t.Weights().Bytes();
-    if (neuron_adapter_.api().model_set_operand_value(
+    if (neuron_adapter_api_.api().model_set_operand_value(
             model_, *operand_index, weights.data(), weights.size()) !=
         NEURON_NO_ERROR) {
       return Error(kLiteRtStatusErrorRuntimeFailure,

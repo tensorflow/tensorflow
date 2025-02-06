@@ -44,8 +44,8 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -148,7 +148,7 @@ class GemmFusionAutotunerImpl {
       absl::Span<const ExecutableCandidate> candidates);
 
   // Autotune and save the results to the autotuning cache.
-  absl::StatusOr<AutotuneCacheKeySet> Autotune(
+  absl::Status Autotune(
       AutotunerCompileUtil& compile_util,
       const BackendConfigs& gemm_config_sets,
       absl::flat_hash_map<AutotuneCacheKey, uint64_t> fusion_count_map);

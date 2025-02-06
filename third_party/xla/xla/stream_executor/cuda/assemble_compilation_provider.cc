@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/composite_compilation_provider.h"
 #include "xla/stream_executor/cuda/defer_relocatable_compilation_compilation_provider.h"
 #include "xla/stream_executor/cuda/driver_compilation_provider.h"
@@ -37,26 +38,26 @@ limitations under the License.
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/cuda/subprocess_compilation_provider.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace stream_executor::cuda {
 namespace {
 
 // Returns true if NvJitLink is supported and should be used.
-absl::Status HasNvJitLinkSupport(const xla::DebugOptions& debug_options) {
+absl::Status HasNvJitLinkSupport(const CompilationProviderOptions& options) {
   if (!IsLibNvJitLinkSupported()) {
     return absl::UnavailableError(
         "LibNvJitLink is not supported (disabled during compilation).");
   }
 
-  if (debug_options.xla_gpu_libnvjitlink_mode() ==
-      xla::DebugOptions::LIB_NV_JIT_LINK_MODE_DISABLED) {
+  if (options.nvjitlink_mode() ==
+      CompilationProviderOptions::NvJitLinkMode::kDisabled) {
     return absl::UnavailableError(
         "LibNvJitLink is disabled (explicitly disabled via flag).");
   }
 
-  if (debug_options.xla_gpu_libnvjitlink_mode() ==
-      xla::DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED) {
+  if (options.nvjitlink_mode() ==
+      CompilationProviderOptions::NvJitLinkMode::kEnabled) {
     VLOG(4) << "Considering NvJitLink since it was explicitly enabled.";
     return absl::OkStatus();
   }
@@ -74,13 +75,14 @@ absl::Status HasNvJitLinkSupport(const xla::DebugOptions& debug_options) {
 }
 
 // Returns true if LibNvPtxCompiler is supported and should be used.
-absl::Status HasNvptxCompilerSupport(const xla::DebugOptions& debug_options) {
+absl::Status HasNvptxCompilerSupport(
+    const CompilationProviderOptions& options) {
   if (!IsLibNvPtxCompilerSupported()) {
     return absl::UnavailableError(
         "LibNvPtxCompiler is not supported (disabled during compilation).");
   }
 
-  if (!debug_options.xla_gpu_enable_libnvptxcompiler()) {
+  if (!options.enable_libnvptxcompiler()) {
     return absl::UnavailableError(
         "LibNvPtxCompiler is disabled (explicitly disabled via flag).");
   }
@@ -92,15 +94,14 @@ absl::Status HasNvptxCompilerSupport(const xla::DebugOptions& debug_options) {
 // Returns an error if the user-set flags are not compatible with each other and
 // the build of XLA.
 absl::Status CheckIncompatibleFlagSettings(
-    const xla::DebugOptions& debug_options) {
-  if (debug_options.xla_gpu_libnvjitlink_mode() ==
-          xla::DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED &&
+    const CompilationProviderOptions& options) {
+  if (options.nvjitlink_mode() ==
+          CompilationProviderOptions::NvJitLinkMode::kEnabled &&
       !IsLibNvJitLinkSupported()) {
     return absl::UnavailableError("LibNvJitLink is not supported.");
   }
 
-  if (debug_options.xla_gpu_enable_libnvptxcompiler() &&
-      !IsLibNvPtxCompilerSupported()) {
+  if (options.enable_libnvptxcompiler() && !IsLibNvPtxCompilerSupported()) {
     return absl::UnavailableError("LibNvPtxCompiler is not supported.");
   }
 
@@ -130,10 +131,10 @@ std::string ToDebugString(const absl::StatusOr<T>& status_or) {
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<CompilationProvider>>
-AssembleCompilationProvider(const xla::DebugOptions& debug_options) {
+AssembleCompilationProvider(const CompilationProviderOptions& options) {
   // TODO(b/381059098): Simplify this logic
 
-  TF_RETURN_IF_ERROR(CheckIncompatibleFlagSettings(debug_options));
+  TF_RETURN_IF_ERROR(CheckIncompatibleFlagSettings(options));
 
   std::string decision_log;
   const auto append_to_decision_log = [&](absl::string_view decision) {
@@ -141,16 +142,16 @@ AssembleCompilationProvider(const xla::DebugOptions& debug_options) {
     absl::StrAppend(&decision_log, " - ", decision, "\n");
   };
 
-  const absl::Status has_nvjitlink = HasNvJitLinkSupport(debug_options);
+  const absl::Status has_nvjitlink = HasNvJitLinkSupport(options);
   append_to_decision_log(
       absl::StrCat("Has NvJitLink support: ", has_nvjitlink.message()));
 
-  const absl::Status has_nvptxcompiler = HasNvptxCompilerSupport(debug_options);
+  const absl::Status has_nvptxcompiler = HasNvptxCompilerSupport(options);
   append_to_decision_log(
       absl::StrCat("Has NvPtxCompiler support: ", has_nvptxcompiler.message()));
 
   const bool parallel_compilation_support_is_desired =
-      debug_options.xla_gpu_enable_llvm_module_compilation_parallelism();
+      options.enable_llvm_module_compilation_parallelism();
   append_to_decision_log(
       absl::StrCat("Parallel compilation support is desired: ",
                    parallel_compilation_support_is_desired));
@@ -187,12 +188,12 @@ AssembleCompilationProvider(const xla::DebugOptions& debug_options) {
   }
 
   absl::StatusOr<std::string> ptxas_path =
-      FindPtxAsExecutable(debug_options.xla_gpu_cuda_data_dir());
+      FindPtxAsExecutable(options.cuda_data_dir());
   absl::StatusOr<SemanticVersion> ptxas_version =
       GetToolVersionIfToolAvailable(ptxas_path);
 
   absl::StatusOr<std::string> nvlink_path =
-      FindNvlinkExecutable(debug_options.xla_gpu_cuda_data_dir());
+      FindNvlinkExecutable(options.cuda_data_dir());
   absl::StatusOr<SemanticVersion> nvlink_version =
       GetToolVersionIfToolAvailable(nvlink_path);
 
@@ -219,7 +220,7 @@ AssembleCompilationProvider(const xla::DebugOptions& debug_options) {
   }
 
   const bool has_driver_compilation_support =
-      debug_options.xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found();
+      options.enable_driver_compilation();
   append_to_decision_log(absl::StrCat("Driver compilation is enabled: ",
                                       has_driver_compilation_support));
 

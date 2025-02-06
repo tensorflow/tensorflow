@@ -496,9 +496,9 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
         return std::nullopt;
       }
     } else if (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kBitcast,
-                                HloOpcode::kTranspose, HloOpcode::kCopy>(hlo) ||
-               ((HloPredicateIsOp<HloOpcode::kBroadcast, HloOpcode::kSlice>(
-                   hlo)))) {
+                                HloOpcode::kTranspose, HloOpcode::kCopy,
+                                HloOpcode::kBroadcast, HloOpcode::kSlice>(
+                   hlo)) {
       // All these are accounted for separately as transformations of strides.
       hlo_to_cudnn[hlo] = operand(0);
     } else if (hlo->IsElementwise()) {

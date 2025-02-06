@@ -29,9 +29,9 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu_solver_context.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 

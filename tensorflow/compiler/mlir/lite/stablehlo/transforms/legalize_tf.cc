@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/utils/convert_op_folder.h"
 #include "xla/mlir_hlo/utils/hlo_utils.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/rng_alg.h"
@@ -73,7 +74,6 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tsl/platform/bfloat16.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 
 namespace mlir {
@@ -140,7 +140,7 @@ static DenseIntElementsAttr GetI64ElementsAttrForValue(int size, int64_t val,
 // accumulation over the given input type.
 Type GetSumAccumulationType(Type input_type) {
   MLIRContext *ctx = input_type.getContext();
-  if (input_type.isBF16() || input_type.isF16()) return FloatType::getF32(ctx);
+  if (input_type.isBF16() || input_type.isF16()) return Float32Type::get(ctx);
   if (input_type.isSignlessInteger(8) || input_type.isSignlessInteger(16))
     return IntegerType::get(ctx, 32);
   return input_type;
@@ -660,7 +660,7 @@ static Type ChangeTensorElementType(Builder *b, Type tensor_type,
 static Type GetAccumulationType(Type ty) {
   // Upcast 16 bit sum reductions to 32 bit to reduce the precision loss from
   // repeated floating point additions.
-  return (ty.isF16() || ty.isBF16()) ? FloatType::getF32(ty.getContext()) : ty;
+  return (ty.isF16() || ty.isBF16()) ? Float32Type::get(ty.getContext()) : ty;
 }
 
 //===----------------------------------------------------------------------===//
@@ -825,6 +825,22 @@ GatherDimensionNumbersAttr GetGatherDimNumsAttr(StringAttr attr,
   ::xla::GatherDimensionNumbers dims;
   if (!dims.ParseFromString(attr.getValue().str())) return {};
   return ::xla::ConvertGatherDimensionNumbers(dims, builder);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaScatter op utilities.
+//===----------------------------------------------------------------------===//
+
+bool HasValidScatterDims(StringAttr attr) {
+  ::xla::ScatterDimensionNumbers dims;
+  return dims.ParseFromString(attr.getValue().str());
+}
+
+ScatterDimensionNumbersAttr GetScatterDimNumsAttr(StringAttr attr,
+                                                  Builder *builder) {
+  ::xla::ScatterDimensionNumbers dims;
+  if (!dims.ParseFromString(attr.getValue().str())) return {};
+  return ::xla::ConvertScatterDimensionNumbers(dims, builder);
 }
 
 //===----------------------------------------------------------------------===//
@@ -6697,6 +6713,40 @@ class ConvertXlaReducePrecisionOp
   }
 };
 
+// Converts tf.XlaScatter to mhlo.Scatter
+class ConvertXlaScatterOp : public OpRewritePattern<TF::XlaScatterOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaScatterOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!HasValidScatterDims(op.getDimensionNumbersAttr())) {
+      return failure();
+    }
+    ScatterDimensionNumbersAttr dimension_numbers_attr =
+        GetScatterDimNumsAttr(op.getDimensionNumbersAttr(), &rewriter);
+
+    // Create the mhlo.scatter op.
+    Location loc = op.getLoc();
+    auto scatter_op = rewriter.create<mhlo::ScatterOp>(
+        loc, op.getType(), op.getOperand(), op.getScatterIndices(),
+        op.getUpdates(), dimension_numbers_attr, op.getIndicesAreSortedAttr(),
+        /*unique_indices=*/rewriter.getBoolAttr(false));
+
+    mlir::SymbolRefAttr func = op.getUpdateComputation();
+    auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
+        op->getParentOfType<mlir::ModuleOp>(), func));
+    auto func_ty = func_op.getFunctionType();
+    // Insert a call to the update function in the region of the mhlo op.
+    BuildBodyWithCall(rewriter, loc, func, func_ty,
+                      &scatter_op.getUpdateComputation());
+
+    rewriter.replaceOp(op, scatter_op.getResults());
+
+    return success();
+  }
+};
+
 class LowerYieldOp : public OpConversionPattern<TF::YieldOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -6794,7 +6844,6 @@ class LowerControlFlowOp : public OpConversionPattern<SrcOpT> {
 // version for now.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_legalize_tf.inc"
 
-// LINT.IfChange
 void PopulatePatterns(MLIRContext *context, RewritePatternSet *patterns) {
   populateWithGenerated(*patterns);
   // clang-format off
@@ -6877,6 +6926,7 @@ void PopulatePatterns(MLIRContext *context, RewritePatternSet *patterns) {
     ConvertXlaReduceScatterOp,
     ConvertXlaReduceWindowOp,
     ConvertXlaRngBitGeneratorOp,
+    ConvertXlaScatterOp,
     ConvertXlaSelectAndScatterOp,
     ConvertXlaSortOp,
     ConvertXlaVariadicReduceV2Op,
@@ -6898,7 +6948,6 @@ void PopulatePatterns(MLIRContext *context, RewritePatternSet *patterns) {
     LowerYieldOp>(context);
   // clang-format on
 }
-// LINT.ThenChange(:MlirAlwaysOps)
 }  // end namespace
 }  // end namespace mhlo
 

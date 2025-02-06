@@ -276,8 +276,7 @@ class DeviceNameUtils {
   static absl::Status DeviceNameToCpuDeviceName(const std::string& device_name,
                                                 std::string* host_device_name);
 
-  static bool CompareFullNames(const absl::string_view& a,
-                               const absl::string_view& b) {
+  static bool CompareFullNames(absl::string_view a, absl::string_view b) {
     ParsedName parsed_a;
     ParsedName parsed_b;
     bool a_status = ParseFullName(a, &parsed_a);
