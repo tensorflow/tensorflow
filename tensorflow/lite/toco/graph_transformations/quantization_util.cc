@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/graph_transformations/quantization_util.h"
 
+#include <cmath>
+#include <cstddef>
+#include <limits>
 #include <memory>
 #include <string>
 

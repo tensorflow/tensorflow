@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <initializer_list>
+#include <memory>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
