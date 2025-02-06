@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "nanobind/nanobind.h"
@@ -143,6 +144,18 @@ GetIfrtConcreteEvenSharding(nb::handle sharding, xla::ifrt::DType dtype,
   return xla::ifrt::ConcreteEvenSharding::Create(
       std::move(device_list), std::move(memory_kind), shape,
       /*shard_shape=*/std::move(shard_shape));
+}
+
+// Converts a JAX Sharding into `xla::ifrt::ConcreteSharding`.
+absl::StatusOr<std::shared_ptr<const xla::ifrt::Sharding>>
+GetIfrtConcreteSharding(nb::handle sharding, const xla::ifrt::Shape& shape,
+                        std::vector<xla::ifrt::Shape> shard_shapes) {
+  TF_ASSIGN_OR_RETURN(tsl::RCReference<xla::ifrt::DeviceList> device_list,
+                      GetIfrtDeviceList(sharding));
+  xla::ifrt::MemoryKind memory_kind = GetMemoryKind(sharding.ptr());
+  return xla::ifrt::ConcreteSharding::Create(
+      std::move(device_list), std::move(memory_kind), shape,
+      /*shard_shapes=*/std::move(shard_shapes));
 }
 
 }  // namespace xla
