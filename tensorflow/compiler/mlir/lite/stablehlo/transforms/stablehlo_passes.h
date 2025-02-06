@@ -37,6 +37,9 @@ std::unique_ptr<Pass> createFuseConvolutionPass();
 // Applies various optimizations on MHLO IR.
 std::unique_ptr<Pass> createOptimizePass();
 
+// Applies various optimizations on MHLO IR.
+std::unique_ptr<Pass> createStablehloOptimizePass();
+
 // Finds quantization patterns and compose them to uniform
 // quantized types.
 std::unique_ptr<OperationPass<ModuleOp>>

@@ -182,3 +182,8 @@ def StablehloUnfuseBatchNormPass : Pass<"stablehlo-unfuse-batch-norm", "mlir::fu
   let summary = "Unfuses stablehlo.batch_norm_(inference,training) ops into stablehlo arithmetic ops.";
   let dependentDialects = ["stablehlo::StablehloDialect", "TF::TensorFlowDialect", "mlir::shape::ShapeDialect"];
 }
+
+def StablehloFuseConvolutionPass : Pass<"stablehlo-fuse-convolution", "mlir::func::FuncOp"> {
+  let summary = "Fuses stablehlo.convolution and binary element-wise ops.";
+  let dependentDialects = ["stablehlo::StablehloDialect"];
+}
