@@ -227,8 +227,8 @@ static void DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar) {
   SetArgvFromEnv(envvar, env_argv);
 
   if (env_argv->argc != 1) {
+    auto unknown_flags = absl::MakeSpan(env_argv->argv).first(env_argv->argc);
     // Skip the first argv, which is the fake argv[0].
-    auto unknown_flags = absl::MakeSpan(env_argv->argv);
     unknown_flags.remove_prefix(1);
     LOG(QFATAL) << "Unknown flag" << (unknown_flags.size() > 1 ? "s" : "")
                 << " in " << envvar << ": "
