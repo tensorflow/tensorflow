@@ -166,10 +166,10 @@ LiteRtStatus ConvertTensor(const litert::Tensor& litert_tensor,
       }
       quantize_params.emplace<::qnn::AxisScaleOffsetQuantizeParamsWrapper>(
           per_channel_quant.quantized_dimension,
-          std::span<const float>{per_channel_quant.scales,
-                                 per_channel_quant.num_channels},
-          std::span<const std::int32_t>{zero_points.data(),
-                                        zero_points.size()});
+          absl::Span<const float>{per_channel_quant.scales,
+                                  per_channel_quant.num_channels},
+          absl::Span<const std::int32_t>{zero_points.data(),
+                                         zero_points.size()});
       break;
     }
     case kLiteRtQuantizationBlockWise: {
