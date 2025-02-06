@@ -27,6 +27,12 @@ message PerfEnv {
   // The ridge point of roofline model in FLOP/Byte. (i.e., minimum operational
   // intensity required to achieve maximum performance).
   double ridge_point = 3;
+  // Whether the device has CMEM.
+  bool has_cmem = 6;
+  // Whether the device has merged VMEM (with CMEM).
+  bool has_merged_vmem = 7;
+  // Whether megacore is used.
+  bool has_megacore = 8;
 }
 
 // Result proto for host-independent job information.

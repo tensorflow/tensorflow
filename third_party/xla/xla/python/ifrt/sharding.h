@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
@@ -156,6 +157,12 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const = 0;
 
+  template <typename H>
+  friend H AbslHashValue(H h, const Sharding& value) {
+    value.Hash(absl::HashState::Create(&h));
+    return std::move(h);
+  }
+
   // Deserializes `ShardingProto` into `Sharding`.
   // Note that `Sharding` serialization uses `SerDes` to handle an open set of
   // `Sharding` subclasses. See `serdes.h`.
@@ -191,6 +198,8 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
  protected:
   Sharding(tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
            bool is_fully_replicated);
+
+  virtual void Hash(absl::HashState state) const = 0;
 
   tsl::RCReference<DeviceList> devices_;
   MemoryKind memory_kind_;
@@ -259,6 +268,8 @@ class SingleDeviceSharding final
       : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(
             BasicDeviceList::Create({device}), memory_kind,
             /*is_fully_replicated=*/true) {}
+
+  void Hash(absl::HashState state) const override;
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between
@@ -313,6 +324,8 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
  private:
   explicit OpaqueSharding(tsl::RCReference<DeviceList> devices,
                           MemoryKind memory_kind);
+
+  void Hash(absl::HashState state) const override;
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between
@@ -419,8 +432,11 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
                    DynamicShape dynamic_shape,
                    std::vector<DynamicShape> shard_dynamic_shapes);
 
+  void Hash(absl::HashState state) const override;
+
   std::variant<Shape, DynamicShape> shape_;
   std::variant<std::vector<Shape>, std::vector<DynamicShape>> shard_shapes_;
+  std::optional<Shape> shard_shape_;
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between
@@ -491,6 +507,8 @@ class ConcreteEvenSharding
                        MemoryKind memory_kind, Shape shape, Shape shard_shape,
                        bool is_fully_replicated);
 
+  void Hash(absl::HashState state) const override;
+
   Shape shape_;
   Shape shard_shape_;
 };
@@ -546,6 +564,8 @@ class ShardingParamSharding
   ShardingParamSharding(ShardingParam sharding_param,
                         tsl::RCReference<DeviceList> devices,
                         MemoryKind memory_kind);
+
+  void Hash(absl::HashState state) const override;
 
   ShardingParam sharding_param_;
 };

@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_COMPILER_H_
 #define XLA_SERVICE_LLVM_COMPILER_H_
 
+#include <functional>
+#include <memory>
+#include <vector>
+
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"

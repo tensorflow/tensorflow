@@ -15,15 +15,14 @@ limitations under the License.
 
 #include "xla/mlir/utils/error_util.h"
 
-#include <string>
-
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace mlir {
 namespace {

@@ -109,12 +109,12 @@ mlir::mhlo::DotAlgorithmAttr ConvertDotAlgorithm(
   bool allowImpreciseAccumulation = false;
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32: {
-      lhs = rhs = builder->getFloat8E5M2Type();
+      lhs = rhs = builder->getType<mlir::Float8E5M2Type>();
       accum = builder->getF32Type();
       break;
     }
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM: {
-      lhs = rhs = builder->getFloat8E5M2Type();
+      lhs = rhs = builder->getType<mlir::Float8E5M2Type>();
       accum = builder->getF32Type();
       allowImpreciseAccumulation = true;
       break;
@@ -187,6 +187,18 @@ mlir::mhlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
       arrayref(dnums.rhs_batch_dimensions()),
       arrayref(dnums.lhs_contracting_dimensions()),
       arrayref(dnums.rhs_contracting_dimensions()));
+}
+
+mlir::mhlo::RaggedDotDimensionNumbersAttr ConvertRaggedDotDimensionNumbers(
+    const RaggedDotDimensionNumbers& dnums, mlir::Builder* builder) {
+  auto arrayref = [](absl::Span<const int64_t> array) {
+    return llvm::ArrayRef<int64_t>{array.data(), array.size()};
+  };
+  return mlir::mhlo::RaggedDotDimensionNumbersAttr::get(
+      builder->getContext(),
+      ConvertDotDimensionNumbers(dnums.dot_dimension_numbers(), builder),
+      arrayref(dnums.lhs_ragged_dimensions()),
+      arrayref(dnums.rhs_group_dimensions()));
 }
 
 mlir::mhlo::ConvDimensionNumbersAttr ConvertConvDimensionNumbers(

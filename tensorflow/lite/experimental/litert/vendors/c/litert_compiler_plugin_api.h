@@ -40,6 +40,9 @@ typedef LiteRtStatus (*LiteRtCreateCompilerPluginT)(LiteRtCompilerPlugin*);
 
 typedef void (*LiteRtDestroyCompilerPluginT)(LiteRtCompilerPlugin);
 
+typedef LiteRtStatus (*LiteRtGetCompilerPluginSupportedHardwareT)(
+    LiteRtCompilerPlugin, LiteRtHwAccelerators*);
+
 typedef LiteRtStatus (*LiteRtGetNumCompilerPluginSupportedSocModelsT)(
     LiteRtCompilerPlugin, LiteRtParamIndex*);
 
@@ -47,21 +50,25 @@ typedef LiteRtStatus (*LiteRtGetCompilerPluginSupportedSocModelT)(
     LiteRtCompilerPlugin, LiteRtParamIndex soc_model_idx,
     const char** soc_moel_idx);
 
-typedef LiteRtStatus (*LiteRtCompilerPluginPartitionModelT)(
-    LiteRtCompilerPlugin, LiteRtModel model, LiteRtOpList selected_ops);
+typedef LiteRtStatus (*LiteRtCompilerPluginPartitionT)(
+    LiteRtCompilerPlugin, LiteRtSubgraph subgraph, LiteRtOpList selected_ops);
 
 typedef LiteRtStatus (*LiteRtCompilerPluginCompileT)(
-    LiteRtCompilerPlugin, const char* soc_model, LiteRtSubgraphArray partitions,
-    LiteRtParamIndex num_partitions, LiteRtCompiledResult* compiled_result);
+    LiteRtCompilerPlugin, const char* soc_model, LiteRtModel partitions,
+    LiteRtCompiledResult* compiled_result);
 
 typedef void (*LiteRtDestroyCompiledResultT)(LiteRtCompiledResult);
 
 typedef LiteRtStatus (*LiteRtGetCompiledResultByteCodeT)(
-    LiteRtCompiledResult, const void** byte_code, size_t* byte_code_size);
+    LiteRtCompiledResult, LiteRtParamIndex byte_code_idx,
+    const void** byte_code, size_t* byte_code_size);
+
+typedef LiteRtStatus (*LiteRtCompiledResultNumByteCodeModulesT)(
+    LiteRtCompiledResult, LiteRtParamIndex* num_byte_code);
 
 typedef LiteRtStatus (*LiteRtGetCompiledResultCallInfoT)(
     LiteRtCompiledResult, LiteRtParamIndex call_idx, const void** call_info,
-    size_t* call_info_size);
+    size_t* call_info_size, LiteRtParamIndex* byte_code_idx);
 
 typedef LiteRtStatus (*LiteRtGetNumCompiledResultCallsT)(
     LiteRtCompiledResult, LiteRtParamIndex* num_calls);
@@ -77,22 +84,63 @@ struct LiteRtCompilerPluginApi {
   LiteRtCreateCompilerPluginT create_compiler_plugin;
   LiteRtDestroyCompilerPluginT destroy_compiler_plugin;
 
+  LiteRtGetCompilerPluginSupportedHardwareT
+      get_compiler_plugin_supported_hardware;
   LiteRtGetNumCompilerPluginSupportedSocModelsT
       get_num_compiler_plugin_supported_models;
   LiteRtGetCompilerPluginSupportedSocModelT
       get_compiler_plugin_supported_soc_model;
 
-  LiteRtCompilerPluginPartitionModelT compiler_plugin_partition_model;
+  LiteRtCompilerPluginPartitionT compiler_plugin_partition;
   LiteRtCompilerPluginCompileT compiler_plugin_compile;
 
   LiteRtDestroyCompiledResultT destroy_compiled_result;
   LiteRtGetCompiledResultByteCodeT get_compiled_result_byte_code;
+  LiteRtCompiledResultNumByteCodeModulesT get_compiled_result_num_byte_code;
   LiteRtGetCompiledResultCallInfoT get_compiled_result_call_info;
   LiteRtGetNumCompiledResultCallsT get_compiled_result_num_calls;
 };
 
 #ifdef __cplusplus
 }
+
+#include "absl/strings/string_view.h"
+
+static constexpr absl::string_view kLiteRtGetCompilerPluginVersion =
+    "LiteRtGetCompilerPluginVersion";
+
+static constexpr absl::string_view kLiteRtGetCompilerPluginSupportedHardware =
+    "LiteRtGetCompilerPluginSupportedHardware";
+
+static constexpr absl::string_view kLiteRtGetCompilerPluginSocManufacturer =
+    "LiteRtGetCompilerPluginSocManufacturer";
+static constexpr absl::string_view
+    kLiteRtGetNumCompilerPluginSupportedSocModels =
+        "LiteRtGetNumCompilerPluginSupportedSocModels";
+static constexpr absl::string_view kLiteRtGetCompilerPluginSupportedSocModel =
+    "LiteRtGetCompilerPluginSupportedSocModel";
+
+static constexpr absl::string_view kLiteRtCreateCompilerPlugin =
+    "LiteRtCreateCompilerPlugin";
+static constexpr absl::string_view kLiteRtDestroyCompilerPlugin =
+    "LiteRtDestroyCompilerPlugin";
+
+static constexpr absl::string_view kLiteRtCompilerPluginPartition =
+    "LiteRtCompilerPluginPartition";
+static constexpr absl::string_view kLiteRtCompilerPluginCompile =
+    "LiteRtCompilerPluginCompile";
+
+static constexpr absl::string_view kLiteRtDestroyCompiledResult =
+    "LiteRtDestroyCompiledResult";
+static constexpr absl::string_view kLiteRtGetCompiledResultByteCode =
+    "LiteRtGetCompiledResultByteCode";
+static constexpr absl::string_view kLiteRtCompiledResultNumByteCodeModules =
+    "LiteRtCompiledResultNumByteCodeModules";
+static constexpr absl::string_view kLiteRtGetCompiledResultCallInfo =
+    "LiteRtGetCompiledResultCallInfo";
+static constexpr absl::string_view kLiteRtGetNumCompiledResultCalls =
+    "LiteRtGetNumCompiledResultCalls";
+
 #endif  // __cplusplus
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_VENDORS_C_LITERT_COMPILER_PLUGIN_API_H_

@@ -18,11 +18,12 @@ limitations under the License.
 #include "xla/tsl/lib/io/block.h"
 #include "xla/tsl/lib/io/cache.h"
 #include "xla/tsl/lib/io/format.h"
+#include "xla/tsl/lib/io/iterator.h"
 #include "xla/tsl/lib/io/table_options.h"
 #include "xla/tsl/lib/io/two_level_iterator.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/coding.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 
 namespace tsl {
 namespace table {
@@ -88,7 +89,7 @@ static void DeleteBlock(void* arg, void* ignored) {
   delete reinterpret_cast<Block*>(arg);
 }
 
-static void DeleteCachedBlock(const absl::string_view&, void* value) {
+static void DeleteCachedBlock(absl::string_view, void* value) {
   Block* block = reinterpret_cast<Block*>(value);
   delete block;
 }
@@ -101,7 +102,7 @@ static void ReleaseBlock(void* arg, void* h) {
 
 // Convert an index iterator value (i.e., an encoded BlockHandle)
 // into an iterator over the contents of the corresponding block.
-Iterator* Table::BlockReader(void* arg, const absl::string_view& index_value) {
+Iterator* Table::BlockReader(void* arg, absl::string_view index_value) {
   Table* table = reinterpret_cast<Table*>(arg);
   Cache* block_cache = table->rep_->options.block_cache;
   Block* block = nullptr;
@@ -158,17 +159,17 @@ Iterator* Table::NewIterator() const {
                              &Table::BlockReader, const_cast<Table*>(this));
 }
 
-absl::Status Table::InternalGet(const absl::string_view& k, void* arg,
-                                void (*saver)(void*, const absl::string_view&,
-                                              const absl::string_view&)) {
+absl::Status Table::InternalGet(absl::string_view key, void* arg,
+                                void (*handle_result)(void*, absl::string_view,
+                                                      absl::string_view)) {
   absl::Status s;
   Iterator* iiter = rep_->index_block->NewIterator();
-  iiter->Seek(k);
+  iiter->Seek(key);
   if (iiter->Valid()) {
     Iterator* block_iter = BlockReader(this, iiter->value());
-    block_iter->Seek(k);
+    block_iter->Seek(key);
     if (block_iter->Valid()) {
-      (*saver)(arg, block_iter->key(), block_iter->value());
+      (*handle_result)(arg, block_iter->key(), block_iter->value());
     }
     s = block_iter->status();
     delete block_iter;
@@ -180,7 +181,7 @@ absl::Status Table::InternalGet(const absl::string_view& k, void* arg,
   return s;
 }
 
-uint64 Table::ApproximateOffsetOf(const absl::string_view& key) const {
+uint64 Table::ApproximateOffsetOf(absl::string_view key) const {
   Iterator* index_iter = rep_->index_block->NewIterator();
   index_iter->Seek(key);
   uint64 result;

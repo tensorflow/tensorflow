@@ -19,7 +19,6 @@ limitations under the License.
 #include <ostream>
 #include <queue>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -41,8 +40,8 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 

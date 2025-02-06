@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace port {

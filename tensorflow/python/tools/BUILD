@@ -399,7 +399,6 @@ py_strict_library(
         "//tensorflow/python/tpu:tpu_py",
         "//tensorflow/python/util:compat",
     ] + if_google([
-        "//learning/brain/contrib/hub/public/file:tfhub_file_register",
         "//tensorflow/core/tfrt/tfrt_session",
         "//tensorflow_text:tensorflow_text",
     ]),
@@ -502,7 +501,6 @@ genrule(
     name = "create_models_for_aot_compile",
     outs = EMITTED_AOT_SAVE_MODEL_OBJECTS,
     cmd = (
-        "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
         "$(location :make_aot_compile_models) --out_dir $(@D)"
     ),
     tags = ["no_rocm"],

@@ -23,7 +23,7 @@ load(
     "if_rocm",
 )
 load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "//xla/tsl/platform:rules_cc.bzl",
     "cc_binary",
     "cc_library",
     "cc_shared_library",
@@ -35,7 +35,6 @@ load(
 load(
     "@local_tsl//third_party/py/rules_pywrap:pywrap.bzl",
     "use_pywrap_rules",
-    _pybind_extension = "pybind_extension",
 )
 
 # Internally this loads a macro, but in OSS this is a function
@@ -543,7 +542,7 @@ def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], comp
 #
 # For:
 #   * Eigen: it's a header-only library.  Add it directly to your deps.
-#   * GRPC: add a direct dep on @com_github_grpc_grpc//:grpc++_public_hdrs.
+#   * GRPC: add a direct dep on @com_github_grpc_grpc//:grpc++.
 #
 def custom_op_cc_header_only_library(name, deps = [], includes = [], extra_deps = [], compatible_with = None, **kwargs):
     _transitive_hdrs(
@@ -838,4 +837,4 @@ def tsl_extra_config_settings_targets():
     return []
 
 # TODO(b/356020232): remove after migration is done
-tsl_pybind_extension = _pybind_extension if use_pywrap_rules() else tsl_pybind_extension_opensource
+tsl_pybind_extension = tsl_pybind_extension_opensource

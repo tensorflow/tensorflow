@@ -1,8 +1,8 @@
 """Macro that creates external repositories for remote config."""
 
-load("//third_party/gpus:rocm_configure.bzl", "remote_rocm_configure")
-load("//third_party/py:python_configure.bzl", "local_python_configure", "remote_python_configure")
-load("//third_party/remote_config:remote_platform_configure.bzl", "remote_platform_configure")
+load("@local_tsl//third_party/gpus:rocm_configure.bzl", "remote_rocm_configure")
+load("@local_tsl//third_party/py:python_configure.bzl", "local_python_configure", "remote_python_configure")
+load("@local_tsl//third_party/remote_config:remote_platform_configure.bzl", "remote_platform_configure")
 load("//tools/toolchains/remote_config:containers.bzl", "containers")
 
 def _container_image_uri(container_name):
@@ -92,10 +92,24 @@ def _tensorflow_local_config(name):
         platform_constraint = "@%s_config_platform//:platform_constraint" % name,
     )
 
+def _ml_build_rbe_config(container_image):
+    exec_properties = {
+        "container-image": container_image,
+        "Pool": "default",
+    }
+
+    remote_platform_configure(
+        name = "ml_build_config_platform",
+        platform = "linux",
+        platform_exec_properties = exec_properties,
+    )
+
 tensorflow_rbe_config = _tensorflow_rbe_config
 tensorflow_rbe_win_config = _tensorflow_rbe_win_config
 tensorflow_local_config = _tensorflow_local_config
+ml_build_rbe_config = _ml_build_rbe_config
 
+# TODO(b/369382309): Remove this once ml_build_rbe_config is used everywhere.
 # Streamlined platform configuration for the SIG Build containers.
 # See //tensorflow/tools/tf_sig_build_dockerfiles
 # These containers do not support ROCm and all have CUDA.

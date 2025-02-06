@@ -1,8 +1,5 @@
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:pytype.default.bzl", "pytype_strict_library")
 load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")
 load(
@@ -14,9 +11,12 @@ load(
     "//xla/tsl:tsl.bzl",
     "if_cuda_or_rocm",
     "if_google",
+    "if_oss",
     "internal_visibility",
 )
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_pybind_extension")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -44,7 +44,7 @@ pytype_strict_library(
     deps = [
         ":xla_extension",  # buildcleaner: keep
     ] + if_google([
-        "@ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes",
         "//third_party/py/numpy",
     ]),
 )
@@ -93,7 +93,7 @@ py_strict_library(
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
-        "@ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes",
     ] + if_google(["//third_party/py/numpy"]),
 )
 
@@ -116,7 +116,7 @@ py_strict_test(
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
-        "@ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes",
     ] + if_google(["//third_party/py/numpy"]) + xla_py_test_deps(),
 )
 
@@ -153,7 +153,7 @@ py_strict_test(
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
-        "@ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes",
     ] + if_google(
         [
             ":xla_gpu_extension",
@@ -202,7 +202,6 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = [":friends"],
     deps = [
-        ":nb_helpers",
         ":nb_numpy",
         "//xla:literal",
         "//xla:shape_util",
@@ -263,6 +262,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@nanobind",
@@ -309,6 +309,7 @@ cc_library(
         "py_program.cc",
         "py_values.cc",
         "sharding.cc",
+        "to_ifrt_sharding.cc",
     ],
     hdrs = [
         "py_array.h",
@@ -323,15 +324,13 @@ cc_library(
         "py_values.h",
         "sharded_device_array.h",
         "sharding.h",
+        "to_ifrt_sharding.h",
     ],
     compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     features = ["-use_header_modules"],
     deps = [
         ":aggregate_profile",
@@ -351,6 +350,7 @@ cc_library(
         # placeholder for index annotation deps
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -361,6 +361,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -385,6 +386,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:host_callback",
+        "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:lru_cache",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
@@ -400,6 +402,7 @@ cc_library(
         "//xla/pjrt/distributed:client",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
+        "//xla/python/ifrt:custom_call_program",
         "//xla/python/ifrt:plugin_program",
         "//xla/python/ifrt:plugin_program_serdes",
         "//xla/python/ifrt/hlo:hlo_program",
@@ -418,6 +421,7 @@ cc_library(
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/python/lib/core:numpy",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
@@ -462,6 +466,7 @@ cc_library(
         "//xla/pjrt:host_callback",
         "//xla/pjrt:transpose",
         "//xla/service:custom_call_status",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
@@ -470,7 +475,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_config_python//:python_headers",  # buildcleaner: keep
-        "@local_tsl//tsl/platform:statusor",
         "@nanobind",
     ],
 )
@@ -500,12 +504,15 @@ cc_library(
         "//xla:comparison_util",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:host_callback",
+        "//xla/pjrt:transpose",
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
         "//xla/service:platform_util",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@nanobind",
     ] + if_rocm(
@@ -580,6 +587,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -587,6 +595,7 @@ cc_library(
         "@nanobind",
         "@local_config_python//:python_headers",  # build_cleaner: keep
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:status_casters",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/profiler/lib:traceme",
@@ -598,6 +607,7 @@ cc_library(
     srcs = ["inspect_sharding.cc"],
     hdrs = ["inspect_sharding.h"],
     deps = [
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_sharding_helper",
         "//xla/service/spmd:spmd_partitioner",
@@ -629,6 +639,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -693,6 +706,7 @@ cc_library(
         "//xla/hlo/builder/lib:sorting",
         "//xla/hlo/builder/lib:svd",
         "//xla/pjrt:status_casters",
+        "//xla/service:hlo_proto_cc",
     ],
 )
 
@@ -722,7 +736,6 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/status",
@@ -897,8 +910,10 @@ cc_library(
     deps = [
         ":refine_polymorphic_shapes",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:FuncDialect",
@@ -970,6 +985,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
         "@local_tsl//tsl/profiler/lib:profiler_interface",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
 )
 
@@ -1010,6 +1026,9 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -1075,6 +1094,7 @@ cc_library(
         "@nanobind",
         "@local_config_python//:python_headers",
         "//xla/pjrt:lru_cache",
+        "//xla/tsl/platform:logging",
     ],
 )
 
@@ -1089,6 +1109,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":dlpack",
         ":nb_absl_span",
         ":nb_helpers",
         ":nb_numpy",
@@ -1099,7 +1120,6 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -1122,9 +1142,10 @@ cc_library(
         "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/transforms:flatten_call_graph",
-        "//xla/hlo/transforms:hlo_dce",
-        "//xla/hlo/transforms:tuple_simplifier",
+        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:tuple_simplifier",
+        "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:status_casters",
@@ -1146,20 +1167,6 @@ cc_library(
 tf_proto_library(
     name = "py_host_callback_proto",
     srcs = ["py_host_callback.proto"],
-)
-
-# If this flag is enabled, it sets RPATH on the xla_extension to values that are suitable for
-# finding NVIDIA's CUDA libraries when they are installed as pip packages.
-bool_flag(
-    name = "jax_cuda_pip_rpaths",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "use_jax_cuda_pip_rpaths",
-    flag_values = {
-        ":jax_cuda_pip_rpaths": "True",
-    },
 )
 
 cc_library(
@@ -1212,9 +1219,12 @@ tsl_pybind_extension(
         ":gpu_support",
         ":logging",
         ":py_client",
-        # placeholder for index annotation deps
+        # placeholder for index annotation deps  # buildcleaner: keep
+        "@com_google_absl//absl/strings:string_view",
         "@nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
+        "//xla/pjrt:status_casters",
+        "//xla/pjrt:triton",
     ],
 )
 
@@ -1226,18 +1236,6 @@ tsl_pybind_extension(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    linkopts = select({
-        ":use_jax_cuda_pip_rpaths": [
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_cupti/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_runtime/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cublas/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cufft/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cudnn/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/cusolver/lib",
-            "-Wl,-rpath,$$ORIGIN/../nvidia/nccl/lib",
-        ],
-        "//conditions:default": [],
-    }),
     pytype_deps = [
         "//third_party/py/numpy",
     ],
@@ -1288,6 +1286,7 @@ tsl_pybind_extension(
         "//xla:shape_util",
         "//xla:types",
         "//xla:util",
+        "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/ffi:ffi_api",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:mlir_to_hlo",
@@ -1300,12 +1299,13 @@ tsl_pybind_extension(
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:status_casters",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/cpu:cpu_client",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/pjrt/distributed:service",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/python/ifrt",
         "//xla/python/ifrt:plugin_program",
         "//xla/python/ifrt:plugin_program_serdes",
@@ -1313,7 +1313,6 @@ tsl_pybind_extension(
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",
         "//xla/python/pjrt_ifrt:xla_ifrt",
-        "//xla/service/cpu:collectives_interface",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/distributed_runtime/preemption:preemption_sync_manager",
         "//xla/tsl/platform/cloud:gcs_file_system",
@@ -1325,22 +1324,22 @@ tsl_pybind_extension(
     ] + select({
         # gloo tcp transport only builds on linux
         "//xla/tsl:macos": [
-            "//xla/pjrt/cpu:gloo_collectives",
-            "//xla/pjrt/cpu:gloo_kv_store",
+            "//xla/backends/cpu/collectives:gloo_collectives",
+            "//xla/backends/cpu/collectives:gloo_kv_store",
             "@gloo//:transport_uv",
         ],
         "//xla/tsl:windows": [],
         "//conditions:default": [
-            "//xla/pjrt/cpu:gloo_collectives",
-            "//xla/pjrt/cpu:gloo_kv_store",
+            "//xla/backends/cpu/collectives:gloo_collectives",
+            "//xla/backends/cpu/collectives:gloo_kv_store",
+            "//xla/python/transfer:py_socket_transfer",
             "@gloo//:transport_tcp",
         ],
     }) + select({
         # mpitrampoline does not build on windows
         "//xla/tsl:windows": [],
-        "//conditions:default": [
-            "//xla/pjrt/cpu:mpi_collectives",
-        ],
+        # we support MPI collectives only in OSS builds
+        "//conditions:default": if_oss(["//xla/backends/cpu/collectives:mpi_collectives"]),
     }),
 )
 
@@ -1374,15 +1373,15 @@ xla_cc_test(
     srcs = ["xplane_to_profile_instructions_test.cc"],
     deps = [
         ":xplane_to_profile_instructions",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:hlo_proto_cc",
-        "//xla/tests:verified_hlo_module",
         "//xla/tsl/profiler/convert:xla_op_utils",
         "//xla/tsl/profiler/rpc/client:save_profile",
         "//xla/tsl/profiler/utils:file_system_utils",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc_impl",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
@@ -1398,7 +1397,6 @@ cc_library(
 
 cc_library(
     name = "nb_helpers",
-    srcs = ["nb_helpers.cc"],
     hdrs = ["nb_helpers.h"],
     compatible_with = [],
     copts = ["-fexceptions"],
@@ -1418,10 +1416,12 @@ cc_library(
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
     deps = [
-        "//xla/tsl/python/lib/core:numpy",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@local_config_python//:python_headers",
         "@nanobind",
+        # copybara:uncomment "//third_party/py/numpy:multiarray",
+        "@local_config_python//:python_headers",
+        "//xla/tsl/python/lib/core:numpy",
     ],
 )
 
@@ -1491,8 +1491,8 @@ xla_cc_test(
     deps = [
         ":aggregate_profile",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc_impl",
     ],
@@ -1514,6 +1514,21 @@ py_strict_test(
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/logging",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ] + xla_py_test_deps(),
+)
+
+py_strict_test(
+    name = "xla_compiler_test",
+    srcs = ["xla_compiler_test.py"],
+    main = "xla_compiler_test.py",
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":xla_extension",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ] + xla_py_test_deps(),

@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <numeric>
 #include <stack>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -60,10 +59,10 @@ int64_t WhileLoopPipelineUnroller::ComputeWhileLoopPipelineDepth(
       int64_t input_index = operand->tuple_index();
       if (input_index != output_index) {
         // Don't try to analyze loops with complicated permutation patterns.
-        if (loop_permutations.contains(input_index)) {
-          return 1;
+        // TODO(vsytch): analyze loops with complicated permutation patterns.
+        if (!loop_permutations.contains(input_index)) {
+          loop_permutations.emplace(input_index, output_index);
         }
-        loop_permutations.emplace(input_index, output_index);
       }
     }
   }
@@ -111,7 +110,7 @@ int64_t WhileLoopPipelineUnroller::ComputeWhileLoopPipelineDepth(
 
 absl::StatusOr<bool> WhileLoopPipelineUnroller::Run(
     HloModule* module,
-    const absl::flat_hash_set<std::string_view>& execution_threads) {
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<std::pair<HloInstruction*, int64_t>> while_instructions;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {

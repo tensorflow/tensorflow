@@ -17,6 +17,12 @@ limitations under the License.
 // --output_file_path=/tmp/output.pbtxt
 // --optimization_pass=NameOfGraphOptimizationPass
 
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -25,8 +31,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/optimization/optimization_pass_runner.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {

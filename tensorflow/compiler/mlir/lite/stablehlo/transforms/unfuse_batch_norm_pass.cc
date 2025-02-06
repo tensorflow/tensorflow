@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -248,8 +249,7 @@ class UnfuseMhloBatchNormPass
     RewritePatternSet patterns(&getContext());
     patterns.add<UnfuseBatchNormTrainingPattern>(&getContext());
     patterns.add<UnfuseBatchNormInferencePattern>(&getContext());
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
   }

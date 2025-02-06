@@ -19,15 +19,16 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/xla_data.pb.h"

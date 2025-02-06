@@ -14,7 +14,10 @@
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+    default_visibility = [
+        # copybara:uncomment "//third_party/mediapipe/calculators/tensor:__subpackages__",
+        "//tensorflow/lite/experimental/litert:__subpackages__",
+    ],
 )
 
 cc_library(
@@ -22,6 +25,7 @@ cc_library(
     srcs = ["flatbuffer_tools.cc"],
     hdrs = [
         "flatbuffer_tools.h",
+        "//tensorflow/lite/experimental/litert/cc:litert_consts.h",
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite:allocation",
@@ -29,9 +33,11 @@ cc_library(
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
+        "//tensorflow/lite/experimental/litert/cc:litert_detail",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
         "//tensorflow/lite/experimental/litert/core:filesystem",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@flatbuffers//:runtime_cc",
@@ -49,6 +55,7 @@ cc_test(
         ":flatbuffer_tools",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

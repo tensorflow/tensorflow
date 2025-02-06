@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -41,22 +40,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_lexer.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -428,6 +427,21 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
   %constant = f32[] constant(2.1), sharding={maximal device=0}
   %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={{maximal device=1}, {replicated}, {replicated}}, control-predecessors={%recv}
   %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}
+}
+
+)"
+},
+{
+"SendRecvWoChannelID",
+R"(HloModule SendRecvWoChannelID_module, entry_computation_layout={()->(f32[], token[])}
+
+ENTRY %computation () -> (f32[], token[]) {
+  %token0 = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token0)
+  ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv)
+  %constant = f32[] constant(2.1)
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0)
+  %send-done = token[] send-done((f32[], u32[], token[]) %send)
 }
 
 )"
@@ -1517,18 +1531,6 @@ ENTRY %test (p: f32[100]) -> u32[100] {
 },
 
 {
-"MetadataPreserveLayout",
-R"(HloModule test, entry_computation_layout={(f32[100]{0})->u32[100]{0}}
-
-ENTRY %test (p: f32[100]) -> u32[100] {
-  %p = f32[100]{0} parameter(0)
-  ROOT %root = u32[100]{0} bitcast-convert(f32[100]{0} %p), metadata={op_type="a" op_name="b" source_file="c" source_line=1 profile_type={1} deduplicated_name="d" preserve_layout=true}
-}
-
-)"
-},
-
-{
 "OriginalValue",
 R"(HloModule test, entry_computation_layout={(f32[], f32[3]{0}, f32[2,3]{1,0})->((f32[], f32[3]{0}), f32[2,3]{1,0})}
 
@@ -2265,6 +2267,20 @@ ENTRY CollectivePermute {
 )",
 /*replica_count=*/4
 },
+// combined collective-permute
+{
+"CombinedCollectivePermute",
+R"(HloModule CombinedCollectivePermute, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}, replica_count=4
+
+ENTRY CollectivePermute {
+  input.0 = f32[128,32]{0,1} parameter(0)
+  input.1 = f32[128,32]{0,1} parameter(1)
+  ROOT root = (f32[128,32]{0,1}, f32[128,32]{0,1}) collective-permute(input.0, input.1), source_target_pairs={{0,1},{1,2},{2,3}}
+}
+
+)",
+/*replica_count=*/4
+},
 // collective-permute with in-place updates
 {
 "CollectivePermuteInPlaceUpdate",
@@ -2279,6 +2295,25 @@ ENTRY CollectivePermuteInPlaceUpdate {
   constant.2 = s32[] constant(64)
   tuple.2 = (s32[], s32[]) tuple(constant.1, constant.2)
   ROOT root = f32[128,128]{0,1} collective-permute(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{128,32}}
+}
+
+)",
+/*replica_count=*/4
+},
+// collective-permute with in-place updates 3-dimensional
+{
+"CollectivePermuteInPlaceUpdate3D",
+R"(HloModule CollectivePermuteInPlaceUpdate3D, entry_computation_layout={(f32[128,128,32]{0,1,2})->f32[128,128,128]{0,1,2}}, replica_count=4
+
+ENTRY CollectivePermuteInPlaceUpdate {
+  input = f32[128,128,32]{0,1,2} parameter(0)
+  constant = f32[] constant(1)
+  output = f32[128,128,128]{0,1,2} broadcast(constant), dimensions={}
+  constant.1 = s32[] constant(0)
+  tuple.1 = (s32[], s32[], s32[]) tuple(constant.1, constant.1, constant.1)
+  constant.2 = s32[] constant(64)
+  tuple.2 = (s32[], s32[], s32[]) tuple(constant.1, constant.1, constant.2)
+  ROOT root = f32[128,128,128]{0,1,2} collective-permute(input, output, tuple.1, tuple.2), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{128,128,32}}
 }
 
 )",
@@ -2373,6 +2408,21 @@ ENTRY CollectivePermuteStartAndDone {
   input = f32[128,32]{0,1} parameter(0)
   collective-permute-start.1 = (f32[128,32]{0,1}, f32[128,32]{0,1}, u32[], u32[]) collective-permute-start(input), source_target_pairs={{0,1},{1,2},{2,3}}
   ROOT collective-permute-done.1 = f32[128,32]{0,1} collective-permute-done(collective-permute-start.1)
+}
+
+)",
+/*replica_count=*/4
+},
+// combined collective-permute-start and -done
+{
+"CombinedCollectivePermuteStartAndDone",
+R"(HloModule CombinedCollectivePermuteStartAndDone, entry_computation_layout={(f32[128,32]{0,1}, f32[128,32]{0,1})->(f32[128,32]{0,1}, f32[128,32]{0,1})}, replica_count=4
+
+ENTRY CombinedCollectivePermuteStartAndDone {
+  input.0 = f32[128,32]{0,1} parameter(0)
+  input.1 = f32[128,32]{0,1} parameter(1)
+  collective-permute-start.1 = ((f32[128,32]{0,1}, f32[128,32]{0,1}), (f32[128,32]{0,1}, f32[128,32]{0,1})) collective-permute-start(input.0, input.1), source_target_pairs={{0,1},{1,2},{2,3}}
+  ROOT collective-permute-done.1 = (f32[128,32]{0,1}, f32[128,32]{0,1}) collective-permute-done(collective-permute-start.1)
 }
 
 )",
@@ -2763,6 +2813,8 @@ class HloParameterizedParserTest
   // the string, asserts that it succeeded, stringifies the parsed module, and
   // checks that it equals the original string.
   void ExpectEqual() {
+    VLOG(3) << "Running HloParameterizedParserTest with short_form = "
+            << short_form << ", proto_round_trip = " << proto_round_trip;
     std::unique_ptr<HloModule> module;
     const std::string& original = GetParam().module_string;
     HloModuleConfig config;
@@ -3357,23 +3409,6 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
                   "unexpected attribute \"calls\"");
 }
 
-TEST_F(HloParserTest, MissingAttribute) {
-  const std::string original = R"(HloModule missing_attr_module
-
-ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %token0 = token[] after-all()
-  %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15
-  %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
-  ROOT %constant = f32[] constant(-2.1)
-  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0)
-  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
-}
-
-)";
-  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
-                  "attribute channel_id is expected but not seen");
-}
-
 TEST_F(HloParserTest, PredecessorUndefined) {
   const std::string original = R"(HloModule pre_not_found_module
 
@@ -3489,8 +3524,36 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 })";
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
-      ParseAndReturnUnverifiedModule(
-          original, {}, HloParserOptions().set_fill_missing_layouts(false));
+      ParseAndReturnUnverifiedModule(original, {},
+                                     HloParserOptions()
+                                         .set_fill_missing_layouts(false)
+                                         .set_keep_module_auto_layouts(false));
+  TF_ASSERT_OK(module.status());
+  // Do not set the default layout.
+  EXPECT_FALSE(module.value()->entry_computation_layout().AnyLayoutSet());
+}
+
+TEST_F(HloParserTest, EntryComputationLayoutDefinedThroughAutoLayout) {
+  const std::string original = R"(
+HloModule layout_defined, entry_computation_layout={(f32[8,16,256]) -> f32[8,16]}
+
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
+  input = f32[8,16,256]{0,1,2} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{0,1} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(original, {},
+                                     HloParserOptions()
+                                         .set_fill_missing_layouts(true)
+                                         .set_keep_module_auto_layouts(true));
   TF_ASSERT_OK(module.status());
   // Do not set the default layout.
   EXPECT_FALSE(module.value()->entry_computation_layout().AnyLayoutSet());
@@ -3513,8 +3576,10 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 })";
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
-      ParseAndReturnUnverifiedModule(
-          original, {}, HloParserOptions().set_fill_missing_layouts(true));
+      ParseAndReturnUnverifiedModule(original, {},
+                                     HloParserOptions()
+                                         .set_fill_missing_layouts(true)
+                                         .set_keep_module_auto_layouts(false));
   TF_ASSERT_OK(module.status());
   EXPECT_THAT(module.value()
                   ->entry_computation_layout()
@@ -3541,8 +3606,10 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 })";
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
-      ParseAndReturnUnverifiedModule(
-          original, {}, HloParserOptions().set_fill_missing_layouts(true));
+      ParseAndReturnUnverifiedModule(original, {},
+                                     HloParserOptions()
+                                         .set_fill_missing_layouts(true)
+                                         .set_keep_module_auto_layouts(false));
   TF_ASSERT_OK(module.status());
   EXPECT_THAT(module.value()
                   ->entry_computation_layout()
@@ -4720,7 +4787,7 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
 }
 
 TEST_F(HloParserTest, ParseInvalidDimLevel) {
-  constexpr std::string_view shape_string = "f32[123]{0:D(D+~)}";
+  constexpr absl::string_view shape_string = "f32[123]{0:D(D+~)}";
   absl::StatusOr<Shape> result = ParseShape(shape_string);
   ASSERT_THAT(
       result.status(),
@@ -5727,6 +5794,20 @@ ENTRY %test {
                                      HasSubstr("expects instruction shape")));
 }
 
+TEST_F(HloParserTest, EmptyLeafInOriginalValue) {
+  const std::string hlo_string = R"(HloModule test
+
+ENTRY %test {
+  ROOT op = ((f32[], f32[3]{0}), f32[2,3]) parameter(0),  origin={(({}, {"v2"}), {"v3"})}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  ExpectHasSubstr(module->ToString(HloPrintOptions::ShortParsable()),
+                  "origin={(({}, {\"v2\"}), {\"v3\"})}");
+}
+
 TEST_F(HloParserTest, TranscendentalAccuracyMode) {
   constexpr absl::string_view hlo_string = R"(
   HloModule exponential_hw
@@ -5740,8 +5821,7 @@ TEST_F(HloParserTest, TranscendentalAccuracyMode) {
   expected_result_accuracy.set_mode(ResultAccuracy::HIGHEST);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
-  auto* unary = Cast<HloUnaryInstruction>(
-      module->entry_computation()->root_instruction());
+  auto* unary = module->entry_computation()->root_instruction();
   EXPECT_TRUE(protobuf_util::ProtobufEquals(unary->result_accuracy(),
                                             expected_result_accuracy));
 }
@@ -5778,8 +5858,7 @@ TEST_F(HloParserTest, TranscendentalAccuracyRtol) {
   *expected_result_accuracy.mutable_tolerance() = tolerance;
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
-  auto* unary = Cast<HloUnaryInstruction>(
-      module->entry_computation()->root_instruction());
+  auto* unary = module->entry_computation()->root_instruction();
   EXPECT_TRUE(protobuf_util::ProtobufEquals(unary->result_accuracy(),
                                             expected_result_accuracy));
 }
@@ -5826,8 +5905,7 @@ TEST_F(HloParserTest, TranscendentalAccuracyNoConfig) {
   ResultAccuracy default_result_accuracy;
   default_result_accuracy.set_mode(ResultAccuracy::DEFAULT);
   EXPECT_TRUE(protobuf_util::ProtobufEquals(
-      Cast<HloUnaryInstruction>(module->entry_computation()->root_instruction())
-          ->result_accuracy(),
+      module->entry_computation()->root_instruction()->result_accuracy(),
       default_result_accuracy));
 }
 

@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
@@ -78,16 +77,19 @@ class CollectiveThunk : public Thunk {
 
   const OpParams& op_params() const { return op_params_; }
 
+  const OpBuffers& op_buffers() const { return op_buffers_; }
+
+  const OpResources& op_resources() const { return op_resources_; }
+
   // Resolves operation's device memory from the buffers and buffer allocations.
   absl::StatusOr<OpDeviceMemory> GetOpDeviceMemory(const ExecuteParams& params);
 
   BufferUses buffer_uses() const final;
   ResourceUses resource_uses() const final;
 
- protected:
   // Callback for collective thunk implementations.
-  using Callback = absl::AnyInvocable<absl::Status(
-      const RendezvousKey& key, CollectivesCommunicator& comm)>;
+  using Callback = absl::AnyInvocable<absl::Status(const RendezvousKey& key,
+                                                   Communicator& comm)>;
 
   static bool IsDataTypeSupportedByCollectiveReduce(PrimitiveType datatype);
 

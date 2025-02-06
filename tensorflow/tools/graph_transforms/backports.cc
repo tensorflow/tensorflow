@@ -26,9 +26,9 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Switch any ConcatV2 nodes to the v1 version, swapping the input order.
-Status BackportConcatV2Transform(const GraphDef& input_graph_def,
-                                 const TransformFuncContext& context,
-                                 GraphDef* output_graph_def) {
+absl::Status BackportConcatV2Transform(const GraphDef& input_graph_def,
+                                       const TransformFuncContext& context,
+                                       GraphDef* output_graph_def) {
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def, {"ConcatV2"},
       [](const NodeMatch& match, const std::set<string>& input_nodes,
@@ -50,19 +50,19 @@ Status BackportConcatV2Transform(const GraphDef& input_graph_def,
         // Tidx attribute must be deleted because it's not used in Concat.
         concat_node.mutable_attr()->erase("Tidx");
         new_nodes->push_back(concat_node);
-        return OkStatus();
+        return absl::OkStatus();
       },
       {true}, output_graph_def));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("backport_concatv2", BackportConcatV2Transform);
 
 // Switch any TensorArrayV3 nodes to the v2 version, removing the second output.
-Status BackportTensorArrayV3Transform(const GraphDef& input_graph_def,
-                                      const TransformFuncContext& context,
-                                      GraphDef* output_graph_def) {
+absl::Status BackportTensorArrayV3Transform(const GraphDef& input_graph_def,
+                                            const TransformFuncContext& context,
+                                            GraphDef* output_graph_def) {
   std::map<string, string> inputs_to_rename;
   GraphDef replaced_graph_def;
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
@@ -100,7 +100,7 @@ Status BackportTensorArrayV3Transform(const GraphDef& input_graph_def,
 
         new_nodes->push_back(tensor_array_v2_node);
         new_nodes->push_back(replacement_flow_node);
-        return OkStatus();
+        return absl::OkStatus();
       },
       {true}, &replaced_graph_def));
   // Update the graph so that any nodes that referred to removed inputs now
@@ -121,10 +121,10 @@ Status BackportTensorArrayV3Transform(const GraphDef& input_graph_def,
         NodeDef v2_node = v3_node;
         v2_node.set_op(v3_node.op().substr(0, v3_node.op().size() - 1) + "2");
         new_nodes->push_back(v2_node);
-        return OkStatus();
+        return absl::OkStatus();
       },
       {true}, output_graph_def));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("backport_tensor_array_v3",

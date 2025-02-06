@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/constants.h"
 
+#include <cstdint>
 #include <limits>
 
+#include <gtest/gtest.h>
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/xla_data.pb.h"

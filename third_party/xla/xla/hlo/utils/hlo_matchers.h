@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -284,6 +284,7 @@ HLO_MATCHER(BitcastConvert);
 HLO_MATCHER(Broadcast);
 HLO_MATCHER(Call);
 HLO_MATCHER(Ceil);
+HLO_MATCHER(Cholesky);
 HLO_MATCHER(Clamp);
 HLO_MATCHER(CollectiveBroadcast);
 HLO_MATCHER(CollectivePermute);
@@ -353,6 +354,7 @@ HLO_MATCHER(Subtract);
 HLO_MATCHER(Tan);
 HLO_MATCHER(Tanh);
 HLO_MATCHER(Transpose);
+HLO_MATCHER(TriangularSolve);
 HLO_MATCHER(Tuple);
 HLO_MATCHER(While);
 HLO_MATCHER(Xor);

@@ -55,12 +55,15 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_event_mgr",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/stream_executor:device_memory",
         "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
+        "@local_xla//xla/stream_executor/integrations:stream_executor_allocator",
         "@local_xla//xla/tsl/framework:device_id_utils",
     ],
     alwayslink = 1,
@@ -131,6 +134,7 @@ cc_library(
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ] + if_static([
@@ -155,10 +159,10 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:bfc_allocator",
-        "//tensorflow/core/common_runtime/device:device_id",
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
+        "@local_xla//xla/tsl/framework:allocator",
         "@local_xla//xla/tsl/framework:bfc_allocator",
     ],
 )
@@ -175,9 +179,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime/device:device_id",
-        "//tensorflow/core/common_runtime/device:device_mem_allocator",
         "//tensorflow/core/framework:allocator",
+        "@local_xla//xla/tsl/framework:allocator",
     ],
 )
 
@@ -193,6 +196,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -213,6 +217,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@local_xla//xla/stream_executor:platform_manager",
     ],
     alwayslink = 1,

@@ -93,7 +93,12 @@ absl::Status UpdateControlDependencies(HloInstruction* original,
     if (it == cloned_map.end()) {
       continue;
     }
-    TF_RETURN_IF_ERROR(it->second->AddControlDependencyTo(new_instr));
+    // Only update add control dependencies between ops outside of the loop or
+    // within the loop body. If the control dependency crosses the loop boundary
+    // it is enforced by the loop structure.
+    if (it->second->parent() == new_instr->parent()) {
+      TF_RETURN_IF_ERROR(it->second->AddControlDependencyTo(new_instr));
+    }
   }
   return absl::OkStatus();
 }
@@ -143,7 +148,7 @@ std::optional<int> GetSlicedDimension(
 
 bool CheckIndexIsMonotonic(
     const HloInstruction* index,
-    const absl::flat_hash_map<const HloInstruction*, Range>& induction_map) {
+    absl::flat_hash_map<const HloInstruction*, Range>& induction_map) {
   // Because the only math operations supported by RecursivelyIdentifyRange()
   // are only sub/add then checking that we can compute the range here is enough
   // to guarantee that the index is monotonic if the base index is monotonic. If
@@ -151,7 +156,7 @@ bool CheckIndexIsMonotonic(
   // sophisticated check for monotonicity.
   Range range = RecursivelyIdentifyRange(index, induction_map);
   VLOG(6) << "Range for: " << index->ToString() << " " << range.ToString();
-  return !range.IsEmpty() && range.IsLinear();
+  return !range.IsEmpty() && range.IsBounded() && range.IsLinear();
 }
 
 // Check that the parameter is only used in a pattern param -> gte ->
@@ -337,7 +342,7 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
                             HloOpcode::kPad, HloOpcode::kCollectivePermute,
                             HloOpcode::kConvert, HloOpcode::kReshape,
                             HloOpcode::kAllReduce, HloOpcode::kTranspose,
-                            HloOpcode::kBroadcast>(i) ||
+                            HloOpcode::kBroadcast, HloOpcode::kAllGather>(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
            i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep) ||
            i->IsCustomCall(CollectivePipeliner::kSunkByPreviousStep);
@@ -698,7 +703,9 @@ template <typename Comp>
 absl::StatusOr<HloInstruction*> CloneBackwardChain(
     Comp& target_computation, const WhileMoveInfo& move_info,
     InstructionMap& clone_map, int64_t loop_iter_idx, int64_t& next_channel_id,
-    LoopVariantParameterInfo* loop_variant_parameter_info = nullptr) {
+    LoopVariantParameterInfo* loop_variant_parameter_info = nullptr,
+    CollectivePipeliner::HloPostprocessor postprocess_pipelined_ops =
+        std::nullopt) {
   std::vector<HloInstruction*> to_clone(move_info.formatting_ops.begin(),
                                         move_info.formatting_ops.end());
   to_clone.push_back(move_info.collectives_to_move[0]);
@@ -715,6 +722,9 @@ absl::StatusOr<HloInstruction*> CloneBackwardChain(
     TF_RETURN_IF_ERROR(UpdateControlDependencies(chain_op, cloned, clone_map));
     UpdateInstructionChannelId(cloned, next_channel_id);
     clone_map[chain_op] = cloned;
+    if (postprocess_pipelined_ops.has_value()) {
+      TF_RETURN_IF_ERROR((*postprocess_pipelined_ops)(cloned));
+    }
     last_cloned = cloned;
     if (loop_variant_parameter_info != nullptr &&
         chain_op->opcode() == HloOpcode::kGetTupleElement &&
@@ -779,8 +789,7 @@ class WhileLoopAnalysis {
       CollectivePipeliner::PipeliningDirection direction,
       int64_t level_to_operate_on,
       const absl::flat_hash_map<int64_t, int64_t>& parameter_gtes_count,
-      const absl::flat_hash_map<const HloInstruction*, Range>& index_ranges)
-      const;
+      absl::flat_hash_map<const HloInstruction*, Range>& index_ranges) const;
 
   // Merges the new collective (instr) with the existing one stored in
   // move_infos_[indices_to_merge[0]]. indices_to_merge.size() should be 1.
@@ -971,8 +980,7 @@ WhileLoopAnalysis::IsSupportedDynamicUpdateSlice(
     CollectivePipeliner::PipeliningDirection direction,
     int64_t level_to_operate_on,
     const absl::flat_hash_map<int64_t, int64_t>& parameter_gtes_count,
-    const absl::flat_hash_map<const HloInstruction*, Range>& index_ranges)
-    const {
+    absl::flat_hash_map<const HloInstruction*, Range>& index_ranges) const {
   HloComputation* while_body = while_->while_body();
   const HloInstruction* loop_parameter =
       while_body->parameter_instructions()[0];
@@ -1913,6 +1921,9 @@ absl::Status TransformLoopForward(
           formatting_op->CloneWithNewOperands(formatting_op->shape(),
                                               new_operands));
       cloned_map[formatting_op] = processed;
+      if (post_processing_fn.has_value()) {
+        TF_RETURN_IF_ERROR((*post_processing_fn)(processed));
+      }
     }
     return processed;
   };
@@ -2721,10 +2732,11 @@ static absl::Status TransformLoopBackward(
         loop_analysis.GetMoveInfos()[i].collectives_to_move[0];
     TF_ASSIGN_OR_RETURN(
         new_init_operands[idx],
-        CloneBackwardChain(*while_loop->parent(),
-                           loop_analysis.GetMoveInfos()[i], chain_clone_map,
-                           *loop_analysis.GetLoopIterationIdx(),
-                           next_channel_id));
+        CloneBackwardChain(
+            *while_loop->parent(), loop_analysis.GetMoveInfos()[i],
+            chain_clone_map, *loop_analysis.GetLoopIterationIdx(),
+            next_channel_id, /*loop_variant_parameter_info=*/nullptr,
+            post_processing_fn));
 
     if (post_processing_fn.has_value()) {
       TF_RETURN_IF_ERROR((*post_processing_fn)(new_init_operands[idx]));
@@ -2774,11 +2786,11 @@ static absl::Status TransformLoopBackward(
     if (it != collective_to_move_map.end()) {
       TF_ASSIGN_OR_RETURN(
           cloned_instr,
-          CloneBackwardChain(body_builder,
-                             loop_analysis.GetMoveInfos()[it->second],
-                             collective_to_move_clone_map,
-                             *loop_analysis.GetLoopIterationIdx(),
-                             next_channel_id, &loop_variant_parameter_info));
+          CloneBackwardChain(
+              body_builder, loop_analysis.GetMoveInfos()[it->second],
+              collective_to_move_clone_map,
+              *loop_analysis.GetLoopIterationIdx(), next_channel_id,
+              &loop_variant_parameter_info, post_processing_fn));
 
       if (post_processing_fn.has_value()) {
         TF_RETURN_IF_ERROR((*post_processing_fn)(cloned_instr));

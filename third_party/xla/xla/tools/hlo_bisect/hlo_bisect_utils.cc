@@ -35,9 +35,9 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/prepare_reference_module.h"
+#include "xla/tsl/platform/subprocess.h"
 #include "xla/util.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/subprocess.h"
 
 namespace xla {
 namespace bisect {
@@ -146,6 +146,7 @@ absl::Status DumpHloModule(HloModule* module, const std::string& file_name,
         env, file_path,
         module->ToString(HloPrintOptions::Canonical()
                              .set_print_large_constants(true)
+                             .set_print_backend_config(true)
                              .set_compact_operands(false))));
   } else if (output_format == "pb") {
     std::string path;
@@ -265,6 +266,7 @@ absl::StatusOr<bool> ScriptChecker::Run(const HloModule& module) {
   std::string hlo_contents =
       module.ToString(HloPrintOptions::Canonical()
                           .set_print_large_constants(true)
+                          .set_print_backend_config(true)
                           .set_compact_operands(false));
 
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(env, hlo_path, hlo_contents));

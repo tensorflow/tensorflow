@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 
+#include <cstdint>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"

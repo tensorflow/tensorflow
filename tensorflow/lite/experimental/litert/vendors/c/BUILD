@@ -23,8 +23,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
-        "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/cc:litert_macros",
     ],
 )
 
@@ -35,6 +33,7 @@ cc_library(
         ":litert_compiler_plugin",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_model",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -45,7 +44,9 @@ cc_library(
         "litert_dispatch_api.h",
     ],
     deps = [
+        "//tensorflow/lite/experimental/litert/c:litert_any",
         "//tensorflow/lite/experimental/litert/c:litert_common",
+        "//tensorflow/lite/experimental/litert/c:litert_event",
         "//tensorflow/lite/experimental/litert/c:litert_model",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/litert/runtime/dispatch",

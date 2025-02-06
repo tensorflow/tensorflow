@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
 
 #define EIGEN_USE_THREADS
 
@@ -32,7 +33,6 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/executable_run_options.h"
 #include "xla/service/custom_call_status_internal.h"
-#include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/logging.h"
 
 using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
@@ -91,7 +91,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
   std::vector<XlaCustomCallStatus> statuses(num_partitions);
 
   // Dispatch 'num_partitions - 1' compute functions to run in parallel.
-  tsl::BlockingCounter bc(num_partitions - 1);
+  absl::BlockingCounter bc(num_partitions - 1);
   for (int32_t i = 1; i < num_partitions; ++i) {
     const int64_t offset = i * stride;
     run_options->intra_op_thread_pool()->enqueueNoNotification(

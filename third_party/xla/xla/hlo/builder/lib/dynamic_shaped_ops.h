@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_HLO_BUILDER_LIB_DYNAMIC_SHAPED_OPS_H_
 #define XLA_HLO_BUILDER_LIB_DYNAMIC_SHAPED_OPS_H_
 
+#include <cstdint>
+
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/lib/constants.h"

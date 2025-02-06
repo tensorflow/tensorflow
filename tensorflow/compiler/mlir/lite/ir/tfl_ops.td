@@ -3284,7 +3284,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   let description = [{
     Computes element-wise softmax activations with the following formula
 
-      exp(input) / tf.reduce_sum(exp(input * beta), dim)
+      exp(input * beta) / tf.reduce_sum(exp(input * beta), dim)
   }];
 
   let arguments = (
@@ -3981,7 +3981,7 @@ def TFL_CastOp : TFL_Op<"cast", [
 
   let hasFolder = 1;
 }
-// LINT.ThenChange(//tensorflow/compiler/mlir/lite/transforms/while_loop_outline_pass.cc)
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/transforms/tf_legalizations/while_loop_outline_pass.cc)
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
                      SameOperandsAndResultsScale,

@@ -18,11 +18,11 @@ limitations under the License.
 #include "xla/tsl/lib/io/record_reader.h"
 #include "xla/tsl/lib/io/record_writer.h"
 #include "xla/tsl/lib/random/simple_philox.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/coding.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/str_util.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace io {

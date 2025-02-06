@@ -29,13 +29,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 #include "tensorflow/compiler/mlir/lite/types.pb.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/tools/parsers.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "tensorflow/core/graph/graph.h"
 
 namespace tensorflow {
 
@@ -83,9 +87,15 @@ absl::Status ConvertGraphDefToTFLiteFlatBuffer(
 
   // Register all custom ops, including user-specified custom ops.
   TF_RETURN_IF_ERROR(internal::RegisterAllCustomOps(converter_flags));
-
-  TF_ASSIGN_OR_RETURN(auto module, ConvertGraphdefToMlir(input, debug_info,
-                                                         specs, context.get()));
+  GraphConstructorOptions options;
+  options.allow_internal_ops = true;
+  options.upgrade_legacy = specs.upgrade_legacy;
+  Graph graph(OpRegistry::Global());
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(options, input, &graph));
+  TF_ASSIGN_OR_RETURN(
+      auto module,
+      tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+          graph, debug_info, graph.flib_def(), specs, context.get()));
 
   mlir::TFL::PassConfig pass_config(quant_specs);
   bool emit_builtin_tflite_ops = !converter_flags.force_select_tf_ops();

@@ -127,6 +127,8 @@ Expected<void> Southbound::LoadSymbols(
        thrInvocationContextAttachInputBufferSyncFence);
   Load(api_->thr_invocation_context_get_output_buffer_sync_fence,
        thrInvocationContextGetOutputBufferSyncFence);
+  Load(api_->thr_invocation_context_detach_input_buffer_sync_fence,
+       thrInvocationContextDetachInputBufferSyncFence);
 
   Load(api_->thr_invocation_context_query_node_scratch_pad,
        thrInvocationContextQueryNodeScratchPad);

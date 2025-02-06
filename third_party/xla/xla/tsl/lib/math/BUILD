@@ -1,9 +1,9 @@
-load(
-    "@local_tsl//tsl/platform:build_config.bzl",
-    "tsl_cc_test",
-)
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -29,11 +29,11 @@ tsl_cc_test(
     ],
     deps = [
         ":math_util",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/platform:types",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:types",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

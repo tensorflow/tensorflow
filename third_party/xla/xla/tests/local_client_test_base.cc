@@ -25,12 +25,15 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/map_util.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/stream_pool.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/test_helpers.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -200,12 +203,15 @@ absl::StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
       build_options.device_ordinal() == -1 ? 0 : build_options.device_ordinal();
   auto* stream = run_options.stream();
   if (!stream) {
-    stream = local_client_->mutable_backend()
-                 ->BorrowStream(device_ordinal)
-                 .value()
-                 .get();
+    std::unique_ptr<stream_executor::Stream, xla::StreamPool::PtrDeleter>
+        stream_borrowed = local_client_->mutable_backend()
+                              ->BorrowStream(device_ordinal)
+                              .value();
+    TF_RETURN_IF_ERROR(stream_borrowed->BlockHostUntilDone());
+  } else {
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+
   return std::move(ret);
 }
 

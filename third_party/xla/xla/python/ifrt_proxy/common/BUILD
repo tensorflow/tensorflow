@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-# copybara:uncomment load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-
-load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "default_ifrt_proxy_visibility", "ifrt_proxy_cc_test")
+load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "cc_library", "default_ifrt_proxy_visibility", "ifrt_proxy_cc_test")
 load("//xla/tsl:tsl.bzl", "if_google")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
+# copybara:uncomment load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -103,6 +102,10 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:sharding_serdes",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -110,7 +113,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:statusor",
     ] + if_google(["@com_google_absl//absl/types:source_location"]),
 )
 
@@ -121,10 +123,10 @@ ifrt_proxy_cc_test(
         ":types",
         ":types_proto_cc",
         "//xla/pjrt:pjrt_common",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -140,13 +142,13 @@ cc_library(
     deps = [
         ":array_util_proto_cc",
         "//xla/python/ifrt",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -156,11 +158,11 @@ ifrt_proxy_cc_test(
     deps = [
         ":array_util",
         "//xla/python/ifrt",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -171,6 +173,7 @@ cc_library(
         "//xla/python/ifrt:plugin_program_serdes",
         "//xla/python/ifrt/hlo:hlo_program_serdes",
         "//xla/python/ifrt/ir:ifrt_ir_program_serdes",
+        "//xla/python/pjrt_ifrt:xla_sharding_serdes",
     ],
     alwayslink = True,
 )
@@ -181,10 +184,10 @@ cc_library(
     hdrs = ["proto_util.h"],
     deps = [
         ":ifrt_service_proto_cc",
+        "//xla/tsl/platform:status_to_from_proto",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:status_to_from_proto",
     ],
 )
 

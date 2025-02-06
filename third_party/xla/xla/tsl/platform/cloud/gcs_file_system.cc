@@ -17,8 +17,11 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <memory>
+
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "tsl/platform/retrying_file_system.h"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -34,7 +37,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tsl/platform/file_statistics.h"
+#include "xla/tsl/platform/file_statistics.h"
 #include "tsl/platform/strcat.h"
 #ifdef _WIN32
 #include <io.h>  // for _mktemp
@@ -46,8 +49,8 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/google_auth_provider.h"
 #include "xla/tsl/platform/cloud/ram_file_block_cache.h"
 #include "xla/tsl/platform/cloud/time_util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"
@@ -258,7 +261,7 @@ absl::Status GetInt64Value(const Json::Value& parent, const char* name,
     return absl::OkStatus();
   }
   if (result_value.isString() &&
-      strings::safe_strto64(result_value.asCString(), result)) {
+      absl::SimpleAtoi(result_value.asCString(), result)) {
     return absl::OkStatus();
   }
   return errors::Internal(
@@ -818,12 +821,13 @@ string ZoneToRegion(string* zone) {
 
 }  // namespace
 
-GcsFileSystem::GcsFileSystem(bool make_default_cache) {
+GcsFileSystem::GcsFileSystem(bool make_default_cache,
+                             GcsCacheOptions cache_options) {
   uint64 value;
-  block_size_ = kDefaultBlockSize;
-  size_t max_bytes = kDefaultMaxCacheSize;
+  block_size_ = cache_options.block_size;
+  size_t max_bytes = cache_options.max_bytes;
 
-  uint64 max_staleness = kDefaultMaxStaleness;
+  uint64 max_staleness = cache_options.max_staleness_secs;
 
   http_request_factory_ = std::make_shared<CurlHttpRequest::Factory>();
   compute_engine_metadata_client_ =
@@ -1253,7 +1257,7 @@ absl::Status GcsFileSystem::RequestUploadSessionStatus(
     std::vector<int64_t> range_parts;
     for (const std::string& range_str : range_strs) {
       int64_t tmp;
-      if (strings::safe_strto64(range_str, &tmp)) {
+      if (absl::SimpleAtoi(range_str, &tmp)) {
         range_parts.push_back(tmp);
       } else {
         return return_error(gcs_path, "Range header '" + received_range +
@@ -2189,8 +2193,8 @@ absl::Status GcsFileSystem::CreateHttpRequest(
   return absl::OkStatus();
 }
 
-RetryingGcsFileSystem::RetryingGcsFileSystem()
-    : RetryingFileSystem(std::make_unique<GcsFileSystem>(),
+RetryingGcsFileSystem::RetryingGcsFileSystem(GcsCacheOptions cache_options)
+    : RetryingFileSystem(std::make_unique<GcsFileSystem>(cache_options),
                          RetryConfig(GetGcsRetryConfig())) {}
 
 }  // namespace tsl

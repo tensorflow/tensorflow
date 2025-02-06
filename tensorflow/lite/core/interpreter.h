@@ -77,6 +77,10 @@ class TestDelegation;  // Class for friend declarations.
 namespace interpreter_wrapper {
 class InterpreterWrapper;  // Class for friend declarations.
 }  // namespace interpreter_wrapper
+
+namespace model_builder {
+class ModelBuilder;
+}  // namespace model_builder
 #endif  // DOXYGEN_SKIP
 
 /// An interpreter for a graph of nodes that input and output from tensors.
@@ -122,6 +126,8 @@ class InterpreterBuilder;  // Class for friend declarations.
 
 class Interpreter {
  public:
+  using Ptr = std::unique_ptr<Interpreter>;
+
   // Instantiate an interpreter. All errors associated with reading and
   // processing this model will be forwarded to the error_reporter object.
   //
@@ -806,6 +812,7 @@ class Interpreter {
   friend class tflite::impl::InterpreterBuilder;
 #ifndef DOXYGEN_SKIP
   friend class tflite::InterpreterTest;
+  friend class tflite::model_builder::ModelBuilder;
   friend class tflite::SingleOpModel;
   friend class tflite::delegates::InterpreterUtils;
   friend class tflite::delegates::test_utils::TestDelegation;

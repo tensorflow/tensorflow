@@ -1,0 +1,16 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize | FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  %iota = f32[10,20,30] iota(), iota_dimension=2
+  %copy = f32[10,20,30] copy(%iota)
+  %bitcast = s32[10,20,30] bitcast-convert(%copy)
+  %broadcast = s32[2,10,3,20,5,30,7] broadcast(%bitcast),
+    dimensions={1,3,5}
+  %reshape = s32[20,60,150,7] reshape(%broadcast)
+  %reverse = s32[20,60,150,7] reverse(%reshape), dimensions={2,3}
+  ROOT %transpose = s32[60,20,7,150] transpose(%reverse),
+    dimensions={1,0,3,2}
+}
+// CHECK-COUNT-2: func.func
+// CHECK-NOT:     func.func

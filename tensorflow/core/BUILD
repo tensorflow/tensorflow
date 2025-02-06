@@ -68,6 +68,8 @@ load(
     "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
 )
+
+# Placeholder: load java_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -158,6 +160,7 @@ package_group(
     name = "friends",
     packages = if_google([
         "//learning/brain/...",
+        "//third_party/car/...",
         "//tensorflow/...",
         "@tf_runtime//...",
         "//third_party/tf_runtime_google/...",
@@ -246,6 +249,7 @@ cc_library(
         "@local_tsl//tsl/platform:lib_proto_parsing_hdrs",
     ],
     copts = tf_copts(),
+    visibility = ["//visibility:public"],
     deps = tf_lib_proto_parsing_deps() + [
         ":platform_base",
         "//tensorflow/core/lib/core:errors",
@@ -263,7 +267,6 @@ cc_library(
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/strings",
-        "@double_conversion//:double-conversion",
     ],
 )
 
@@ -495,21 +498,15 @@ cc_library(
         "@local_xla//xla/tsl/platform/default:logging.h",
     ],
     visibility = ["//visibility:public"],
-    deps =
-        # copybara:uncomment_begin
-        # if_mobile(["@nsync//:nsync_cpp"]) +
-        # copybara:uncomment_end_uncomment_begin
-        # ["@nsync//:nsync_cpp"] +
-        # copybara:comment_end
-        [
-            "@eigen_archive//:eigen3",
-            "//tensorflow/core/platform:dynamic_annotations",
-            "//tensorflow/core/platform:platform_port",
-            "//tensorflow/core/platform:thread_annotations",
-            "//tensorflow/core/platform:mutex",
-            "@local_xla//xla/tsl/framework:fixedpoint_types",
-            "//tensorflow/core/platform:types",
-        ],
+    deps = [
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:types",
+        "@eigen_archive//:eigen3",
+        "@local_xla//xla/tsl/framework:fixedpoint_types",
+    ],
 )
 
 # One target for all user ops.
@@ -1086,6 +1083,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -1267,6 +1265,7 @@ cc_library(
             "-lpthread",
         ],
     }),
+    visibility = ["//visibility:public"],
     deps = tf_additional_lib_deps() + [
         "//tensorflow/core/platform/default/build_config:platformlib",
         "@com_google_absl//absl/base:core_headers",
@@ -1275,8 +1274,9 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
-        "@ml_dtypes//:float8",
-        "@ml_dtypes//:intn",
+        "@ml_dtypes_py//ml_dtypes:float8",
+        "@ml_dtypes_py//ml_dtypes:intn",
+        "@ml_dtypes_py//ml_dtypes:mxfloat",
     ] + if_static([":lib_internal_impl"]),
 )
 
@@ -1303,8 +1303,9 @@ cc_library(
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
-        "@ml_dtypes//:float8",
-        "@ml_dtypes//:intn",
+        "@ml_dtypes_py//ml_dtypes:float8",
+        "@ml_dtypes_py//ml_dtypes:intn",
+        "@ml_dtypes_py//ml_dtypes:mxfloat",
     ],
 )
 
@@ -1449,11 +1450,11 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
-        "@double_conversion//:double-conversion",
         "@eigen_archive//:eigen3",
         "@local_xla//xla/tsl/lib/math:math_util",
-        "@ml_dtypes//:float8",
-        "@ml_dtypes//:intn",
+        "@ml_dtypes_py//ml_dtypes:float8",
+        "@ml_dtypes_py//ml_dtypes:intn",
+        "@ml_dtypes_py//ml_dtypes:mxfloat",
         "@snappy",
         "@zlib",
     ] + select({
@@ -1488,6 +1489,7 @@ cc_library(
         "@local_xla//xla/service/gpu:backend_configs_cc_impl",
         "@local_xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
         "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
+        "@local_xla//xla/stream_executor/cuda:cuda_compute_capability_proto_cc_impl",
         "//tensorflow/lite/toco:toco_flags_proto_cc_impl",
         "//tensorflow/lite/toco:model_flags_proto_cc_impl",
         "//tensorflow/lite/toco:types_proto_cc_impl",
@@ -1513,6 +1515,7 @@ alias(
 alias(
     name = "jpeg_internal",
     actual = "//tensorflow/core/lib/jpeg:jpeg_internal",
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -1614,6 +1617,7 @@ tf_cuda_library(
     name = "framework_internal",
     srcs = [":framework_internal_private_headers"],
     hdrs = [":framework_internal_public_headers"],
+    visibility = ["//visibility:public"],
     deps = [
         ":framework_internal_headers_lib",
         ":lib",
@@ -1874,7 +1878,7 @@ cc_library(
 # Main program for tests
 alias(
     name = "test_main",
-    actual = "@local_tsl//tsl/platform:test_main",
+    actual = "@local_xla//xla/tsl/platform:test_main",
     visibility = ["//tensorflow:internal"],
 )
 

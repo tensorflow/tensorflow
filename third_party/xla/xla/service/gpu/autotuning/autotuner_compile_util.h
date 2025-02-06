@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -61,10 +60,7 @@ class AutotunerCompileUtil {
           const DebugOptions&)>;
 
   // Generates a compile util for a platform associated with the `stream`.
-  //
-  // Returns an empty optional if the AutotuneConfig is deviceless, as
-  // autotuning is impossible in that case.
-  static absl::StatusOr<std::optional<AutotunerCompileUtil>> Create(
+  static absl::StatusOr<AutotunerCompileUtil> Create(
       const AutotuneConfig& config, const DebugOptions& opts);
 
   struct ProfilingOutput {
@@ -79,9 +75,8 @@ class AutotunerCompileUtil {
   // `extractor`.
   //
   // Runs the resulting executable with the given extractor, cached with
-  // `(cache_key, config)`. Returns `std::nullopt` on expected failure, bad
-  // `Status` otherwise.
-  absl::StatusOr<std::optional<ProfilingOutput>> ProfileExecutable(
+  // `(cache_key, config)`.
+  absl::StatusOr<ProfilingOutput> ProfileExecutable(
       Executable* executable, se::Stream* stream,
       absl::Span<se::DeviceMemoryBase const> input_buffers,
       absl::Span<Shape const> input_shapes);

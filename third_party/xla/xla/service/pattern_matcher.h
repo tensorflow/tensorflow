@@ -2436,7 +2436,7 @@ class HloInstructionPattern {
   }
 
   // Because we only specify the shape's element type and dims, this is
-  // effectivley checking shape-compatible-to, not shape-equal-to.  Perhaps this
+  // effectively checking shape-compatible-to, not shape-equal-to.  Perhaps this
   // function should be called WithShapeCompatibleTo, but the short name is
   // nice, and there's no ambiguity because there's no layout in the args!
   constexpr auto WithShape(PrimitiveType ty, absl::Span<const int64_t> dims) {

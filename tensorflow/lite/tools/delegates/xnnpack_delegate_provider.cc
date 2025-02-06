@@ -15,6 +15,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"

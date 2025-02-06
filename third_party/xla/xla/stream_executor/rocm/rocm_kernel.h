@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace stream_executor::gpu {
 
@@ -60,6 +60,10 @@ class RocmKernel : public Kernel {
   absl::StatusOr<KernelMetadata> GetKernelMetadata();
 
  private:
+  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
+                      const std::optional<ClusterDim> &cluster_dims,
+                      Stream *stream, const KernelArgs &args) override;
+
   StreamExecutor* executor_ = nullptr;
 
   hipFunction_t rocm_function_ = nullptr;  // wrapped HIP kernel handle

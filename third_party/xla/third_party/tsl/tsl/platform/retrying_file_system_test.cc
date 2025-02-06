@@ -18,8 +18,8 @@ limitations under the License.
 #include <fstream>
 
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/str_util.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace {

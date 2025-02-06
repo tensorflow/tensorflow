@@ -326,13 +326,13 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     } else {
       container = "_tensor_arrays";
       const auto& resource = ctx->input(0).flat<ResourceHandle>()(0);
-      if (StringPiece(resource.name()).substr(0, container.size()) !=
+      if (absl::string_view(resource.name()).substr(0, container.size()) !=
           container) {
         return errors::InvalidArgument("Wrong input container. ",
                                        resource.name());
       }
       tensor_array_name =
-          string(StringPiece(resource.name()).substr(container.size()));
+          string(absl::string_view(resource.name()).substr(container.size()));
     }
 
     auto output_handle = tensor_array_output_handle->flat<tstring>();

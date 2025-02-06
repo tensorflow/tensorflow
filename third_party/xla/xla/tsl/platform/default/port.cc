@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/base/internal/sysinfo.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/profile_utils/cpu_utils.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/host_info.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/numa.h"
 #include "tsl/platform/snappy.h"
-#include "tsl/platform/types.h"
 
 #if defined(__linux__)
 #include <sched.h>
@@ -47,7 +47,7 @@ limitations under the License.
 #endif
 
 #if TENSORFLOW_USE_NUMA
-#include "hwloc.h/"
+#include "hwloc.h"
 #endif
 
 #if defined(__ANDROID__) && (defined(__i386__) || defined(__x86_64__))

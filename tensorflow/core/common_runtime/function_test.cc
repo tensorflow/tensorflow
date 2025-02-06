@@ -74,7 +74,7 @@ absl::Status GetOpSig(const string& op, const OpDef** sig) {
 }
 
 void HasError(const absl::Status& s, const error::Code code,
-              StringPiece substr) {
+              absl::string_view substr) {
   EXPECT_EQ(s.code(), code) << s;
   EXPECT_TRUE(absl::StrContains(s.message(), substr))
       << s << ", expected substring " << substr;

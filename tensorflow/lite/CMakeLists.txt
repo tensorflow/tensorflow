@@ -101,7 +101,7 @@ else()
   set(FLATC_TARGET "flatbuffers-flatc")
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(_TFLITE_ENABLE_RUY "${TFLITE_ENABLE_RUY}")
 if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
@@ -599,7 +599,7 @@ if(_TFLITE_ENABLE_RUY)
 endif()
 populate_tflite_source_vars("kernels"
   TFLITE_KERNEL_SRCS
-  FILTER "(.*_test_util_internal|test_.*|.*_ops_wrapper)\\.(cc|h)"
+  FILTER "([^/]*_test_util_internal|test_[^/]*|[^/]*_ops_wrapper)\\.(cc|h)$"
 )
 populate_tflite_source_vars("kernels/internal" TFLITE_KERNEL_INTERNAL_SRCS)
 populate_tflite_source_vars("kernels/internal/optimized"
@@ -622,7 +622,7 @@ populate_tflite_source_vars("kernels/internal/reference/sparse_ops"
 )
 populate_tflite_source_vars("kernels/internal/optimized/4bit"
   TFLITE_KERNEL_INTERNAL_OPT_4BIT_SRCS
-  FILTER "(.*neon.*|.*sse.*)\\.(cc|h)"
+  FILTER "(.*neon_.*|.*sse_.*)\\.(cc|h)"
 )
 set(TFLITE_PROFILER_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc

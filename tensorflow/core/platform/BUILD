@@ -161,7 +161,7 @@ cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["@local_tsl//tsl/platform:byte_order"],
+    deps = ["@local_xla//xla/tsl/platform:byte_order"],
 )
 
 cc_library(
@@ -199,7 +199,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
-        "@local_tsl//tsl/platform:crash_analysis",
+        "@local_xla//xla/tsl/platform:crash_analysis",
     ],
 )
 
@@ -255,7 +255,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
-        "@local_tsl//tsl/platform:dynamic_annotations",
+        "@local_xla//xla/tsl/platform:dynamic_annotations",
     ],
 )
 
@@ -586,7 +586,7 @@ cc_library(
 cc_library(
     name = "prefetch",
     hdrs = ["prefetch.h"],
-    deps = ["@local_tsl//tsl/platform:prefetch"],
+    deps = ["@local_xla//xla/tsl/platform:prefetch"],
 )
 
 cc_library(
@@ -642,7 +642,7 @@ cc_library(
 cc_library(
     name = "intrusive_ptr",
     hdrs = ["intrusive_ptr.h"],
-    deps = ["@local_tsl//tsl/platform:intrusive_ptr"],
+    deps = ["@local_xla//xla/tsl/platform:intrusive_ptr"],
 )
 
 cc_library(
@@ -658,7 +658,7 @@ cc_library(
     textual_hdrs = ["resource.h"],
     deps = [
         ":stringpiece",
-        "@local_tsl//tsl/platform:resource",
+        "@local_xla//xla/tsl/platform:resource",
     ],
 )
 
@@ -667,7 +667,7 @@ cc_library(
     testonly = 1,
     textual_hdrs = ["resource_loader.h"],
     deps = [
-        "@local_tsl//tsl/platform:resource_loader",
+        "@local_xla//xla/tsl/platform:resource_loader",
     ],
 )
 
@@ -675,7 +675,7 @@ cc_library(
     name = "rocm_rocdl_path",
     textual_hdrs = ["rocm_rocdl_path.h"],
     deps = [
-        "@local_tsl//tsl/platform:rocm_rocdl_path",
+        "@local_xla//xla/tsl/platform:rocm_rocdl_path",
     ],
 )
 
@@ -735,7 +735,7 @@ cc_library(
     name = "stack_frame",
     hdrs = ["stack_frame.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["@local_tsl//tsl/platform:stack_frame"],
+    deps = ["@local_xla//xla/tsl/platform:stack_frame"],
 )
 
 cc_library(
@@ -810,6 +810,7 @@ cc_library(
     hdrs = ["stringpiece.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/platform:stringpiece",
     ],
 )
@@ -840,7 +841,7 @@ cc_library(
         "subprocess.h",
     ],
     deps = [
-        "@local_tsl//tsl/platform:subprocess",
+        "@local_xla//xla/tsl/platform:subprocess",
     ],
 )
 
@@ -950,6 +951,7 @@ cc_library(
         ":bfloat16",
         ":platform",
         ":tstring",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:types",
         "@local_xla//xla/tsl/framework:device_type",
     ],
@@ -1122,7 +1124,7 @@ cc_library(
     name = "test_main",
     testonly = 1,
     deps = [
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1152,6 +1154,8 @@ cc_library(
     deps = [
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 
@@ -1219,7 +1223,7 @@ tf_cc_tests(
         "//tensorflow/core:lib_test_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:logging",
         "@zlib",
     ],
 )
@@ -1251,7 +1255,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@local_tsl//tsl/platform:resource_loader",
+        "@local_xla//xla/tsl/platform:resource_loader",
     ],
 )
 
@@ -1300,6 +1304,9 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

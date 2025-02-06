@@ -25,11 +25,11 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla::gpu::kernel::gemm_universal {
 
@@ -76,8 +76,8 @@ static void BM_RowMajorGemm(benchmark::State& state) {
       custom_kernel.shared_memory_bytes());
 
   for (auto s : state) {
-    TF_CHECK_OK(stream->Launch(custom_kernel.thread_dims(),
-                               custom_kernel.block_dims(), *gemm, args));
+    TF_CHECK_OK(gemm->Launch(custom_kernel.thread_dims(),
+                             custom_kernel.block_dims(), stream.get(), args));
     TF_CHECK_OK(stream->BlockHostUntilDone());
   }
 }

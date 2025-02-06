@@ -20,6 +20,8 @@ limitations under the License.
 #include <set>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/client/local_client.h"
@@ -28,9 +30,9 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/service/service.h"
 #include "xla/stream_executor/platform.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 

@@ -15,9 +15,16 @@ limitations under the License.
 
 #include "tensorflow/examples/speech_commands/accuracy_utils.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <fstream>
 #include <iomanip>
+#include <ios>
+#include <limits>
+#include <string>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -43,7 +50,7 @@ absl::Status ReadGroundTruthFile(
       continue;
     }
     float timestamp;
-    if (!tensorflow::strings::safe_strtof(pieces[1], &timestamp)) {
+    if (!absl::SimpleAtof(pieces[1], &timestamp)) {
       return tensorflow::errors::InvalidArgument(
           "Wrong number format at line: ", line);
     }

@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/broadcast_to_spmd_expander.h"
 
+#include <cstdint>
 #include <string>
-#include <utility>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"

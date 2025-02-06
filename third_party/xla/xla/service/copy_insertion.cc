@@ -1693,6 +1693,8 @@ class CopyRemover {
               << copy_node.src->value->ToShortString() << ") in its buffer";
       bool live_range_before =
           // Live range of d_0, ..., d_{y-1} must be before s_0;
+          // Since copy_node.src is tail for this if branch, copy_node.src->next
+          // is s0 because the list is circularly linked.
           CheckLiveRangeBefore(Prev(*copy_node.dest), copy_node.src->next) &&
           // Live range of 'last_src' must be before next_dest d_{y+1}.
           CheckLiveRangeBefore(copy_node.src, Next(*copy_node.dest));

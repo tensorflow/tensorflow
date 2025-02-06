@@ -104,9 +104,9 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -382,7 +382,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:errors",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -407,8 +407,8 @@ tf_cc_test(
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
+        "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
@@ -469,8 +469,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:env",
+        "@local_xla//xla/tsl/platform:logging",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -509,7 +509,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:status_matchers",
     ],
 )
 
@@ -751,8 +751,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -840,8 +840,19 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/platform:env",
+        "@local_xla//xla/tsl/platform:env",
     ],
+)
+
+cc_library(
+    name = "test_data_transfer",
+    testonly = True,
+    srcs = ["test_data_transfer.cc"],
+    deps = [
+        ":data_transfer",
+        "@com_google_absl//absl/status",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -872,8 +883,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -1047,8 +1058,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:platform_port",
+        "@local_xla//xla/tsl/platform:errors",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -1134,7 +1145,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:status_to_from_proto",
+        "@local_xla//xla/tsl/platform:status_to_from_proto",
         "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ] + tf_grpc_cc_dependencies(),
 )
@@ -1163,8 +1174,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:mutex",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:thread_annotations",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -1180,6 +1191,6 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/platform:status_matchers",
     ],
 )

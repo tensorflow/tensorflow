@@ -56,9 +56,9 @@ class ParseExampleOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* names;
     const Tensor* serialized;
-    std::vector<StringPiece> dense_keys_t;
-    std::vector<StringPiece> sparse_keys_t;
-    std::vector<StringPiece> ragged_keys_t;
+    std::vector<absl::string_view> dense_keys_t;
+    std::vector<absl::string_view> sparse_keys_t;
+    std::vector<absl::string_view> ragged_keys_t;
     OpInputList dense_defaults;
 
     // Grab the inputs.
@@ -102,8 +102,8 @@ class ParseExampleOp : public OpKernel {
 
  protected:
   // Copies keys from tensor to std::vector<string>.
-  absl::Status GetTensorKeys(OpKernelContext* ctx, StringPiece input_name,
-                             std::vector<StringPiece>* keys) const {
+  absl::Status GetTensorKeys(OpKernelContext* ctx, absl::string_view input_name,
+                             std::vector<absl::string_view>* keys) const {
     const Tensor* key_t;
     TF_RETURN_IF_ERROR(ctx->input(input_name, &key_t));
     keys->reserve(key_t->NumElements());
@@ -115,8 +115,9 @@ class ParseExampleOp : public OpKernel {
   }
 
   // Copies keys from OpInputList of scalar to std::vector<string>.
-  absl::Status GetInputListKeys(OpKernelContext* ctx, StringPiece input_name,
-                                std::vector<StringPiece>* keys) const {
+  absl::Status GetInputListKeys(OpKernelContext* ctx,
+                                absl::string_view input_name,
+                                std::vector<absl::string_view>* keys) const {
     OpInputList key_list;
     TF_RETURN_IF_ERROR(ctx->input_list(input_name, &key_list));
     keys->reserve(key_list.size());
@@ -130,9 +131,9 @@ class ParseExampleOp : public OpKernel {
   absl::Status CheckInputShapes(
       const Tensor* serialized, const Tensor* names,
       const OpInputList& dense_defaults,
-      const std::vector<StringPiece>& dense_keys_t,
-      const std::vector<StringPiece>& sparse_keys_t,
-      const std::vector<StringPiece>& ragged_keys_t) const {
+      const std::vector<absl::string_view>& dense_keys_t,
+      const std::vector<absl::string_view>& sparse_keys_t,
+      const std::vector<absl::string_view>& ragged_keys_t) const {
     if (op_version_ == 2) {
       if (TensorShapeUtils::IsMatrixOrHigher(serialized->shape())) {
         return errors::InvalidArgument(
@@ -211,9 +212,9 @@ class ParseExampleOp : public OpKernel {
 
   // Populates the FastParseExampleConfig from keys & defaults.
   example::FastParseExampleConfig MakeConfig(
-      const std::vector<StringPiece>& dense_keys_t,
-      const std::vector<StringPiece>& sparse_keys_t,
-      const std::vector<StringPiece>& ragged_keys_t,
+      const std::vector<absl::string_view>& dense_keys_t,
+      const std::vector<absl::string_view>& sparse_keys_t,
+      const std::vector<absl::string_view>& ragged_keys_t,
       const OpInputList& dense_defaults) const {
     example::FastParseExampleConfig config;
     config.dense.reserve(attrs_.num_dense);

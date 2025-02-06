@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
 #include <memory>
-#include <numeric>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"

@@ -33,9 +33,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
-#include "xla/layout.h"
 #include "xla/pjrt/pjrt_future.h"
-#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -47,9 +45,9 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -122,46 +120,6 @@ CreateNonReadyTestArray(
                                                std::move(on_done_with_buffer)));
 
   return std::make_pair(std::move(array), std::move(buffers_promise));
-}
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// Tests related to BasicStringArrayLayout.
-//
-
-TEST(BasicStringArrayLayoutTest, Serialize) {
-  BasicStringArrayLayout layout;
-  // Seerialize currently has no state to serialize, and so the returned value
-  // should be an empty string.
-  EXPECT_TRUE(layout.Serialize().empty());
-}
-
-TEST(BasicStringArrayLayoutTest, ToString) {
-  BasicStringArrayLayout layout;
-  auto output_str = layout.ToString();
-  EXPECT_THAT(output_str, HasSubstr("major-to-minor"));
-}
-
-TEST(BasicStringArrayLayoutTest, Equality) {
-  BasicStringArrayLayout layout_1;
-
-  // In the equality comparisons below, use the PjRtLayout interface for the
-  // second object so we can avoid the error: `ambiguity is between a regular
-  // call to this operator and a call with the argument order reversed`.
-
-  // Any two BasicStringArrayLayouts are equal.
-  BasicStringArrayLayout layout_2;
-  const PjRtLayout& layout_3 = layout_2;
-  EXPECT_EQ(layout_1, layout_3);
-
-  // In the next test, EXPECT_NE is not used because the version of EXCEPT_NE
-  // available in the open sourced libraries requires the operator `!=` to be
-  // overloaded.
-
-  // Non-BasicStringArrayLayouts are not equal to BasicStringArrayLayouts.
-  xla::PjRtXlaLayout layout_6((xla::Layout()));
-  const PjRtLayout& layout_7 = layout_6;
-  EXPECT_FALSE(layout_7 == layout_1);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -373,8 +331,7 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
   // MakeArrayFromHostBuffer should check and fail if the requested
   // HostBufferSemantics is not supported.
   for (Client::HostBufferSemantics host_buffer_semantics :
-       {Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
-        Client::HostBufferSemantics::kImmutableZeroCopy,
+       {Client::HostBufferSemantics::kImmutableZeroCopy,
         Client::HostBufferSemantics::kMutableZeroCopy}) {
     SCOPED_TRACE(
         absl::StrCat("host_buffer_semantics: ", host_buffer_semantics));
@@ -907,19 +864,6 @@ TEST(FullyReplicatedShardTest, SuccessMultiDeviceShardedArray) {
   EXPECT_THAT(replicated_buffers[0], ElementsAre(kReplicatedContents));
 }
 
-TEST(FullyReplicatedShardTest, FailsWithNonFullyReplicatedArrays) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-
-  // Make a BasicStringArray with two shards - not fully replicated.
-  const std::vector<std::string> per_shard_contents({"abc", "def"});
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto array, MakeShardedStringTestArray(client.get(), per_shard_contents,
-                                             /*is_fully_replicated=*/false));
-
-  EXPECT_THAT(array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
-}
-
 TEST(FullyReplicatedShardTest, FailsAfterDeletion) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
@@ -948,13 +892,6 @@ TEST(LayoutTest, Success) {
       CreateTestArray(client.get(),
                       Future<BasicStringArray::Buffers>(std::move(buffers)),
                       std::move(on_done_with_buffer)));
-
-  // The number of dimensions for the testArray should be 1. Typical usage of
-  // BasicStringArrayLayout does not require an accessor to retrieve the number
-  // of dimensions. Instead of adding a test only method, we could just check
-  // the serialized layout.
-  TF_ASSERT_OK_AND_ASSIGN(auto layout, array->layout());
-  EXPECT_TRUE(layout->Serialize().empty());
 }
 
 TEST(LayoutTest, FailsAfterDeletion) {
@@ -969,8 +906,6 @@ TEST(LayoutTest, FailsAfterDeletion) {
                       std::move(on_done_with_buffer)));
 
   array->Delete();
-
-  EXPECT_THAT(array->layout(), StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 /////////////////////////////////////////////////////////////////////////////

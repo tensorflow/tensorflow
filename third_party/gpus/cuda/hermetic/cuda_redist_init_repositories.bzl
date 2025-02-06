@@ -297,7 +297,21 @@ def _download_redistribution(repository_ctx, arch_key, path_prefix):
     repository_ctx.delete(file_name)
 
 def _get_platform_architecture(repository_ctx):
-    host_arch = repository_ctx.os.arch
+    target_arch = get_env_var(repository_ctx, "CUDA_REDIST_TARGET_PLATFORM")
+
+    # We use NVCC compiler as the host compiler.
+    if target_arch and repository_ctx.name != "cuda_nvcc":
+        if target_arch in OS_ARCH_DICT.keys():
+            host_arch = target_arch
+        else:
+            fail(
+                "Unsupported architecture: {arch}, use one of {supported}".format(
+                    arch = target_arch,
+                    supported = OS_ARCH_DICT.keys(),
+                ),
+            )
+    else:
+        host_arch = repository_ctx.os.arch
 
     if host_arch == "aarch64":
         uname_result = repository_ctx.execute(["uname", "-a"]).stdout
@@ -379,6 +393,7 @@ cuda_repo = repository_rule(
         "HERMETIC_CUDA_VERSION",
         "TF_CUDA_VERSION",
         "LOCAL_CUDA_PATH",
+        "CUDA_REDIST_TARGET_PLATFORM",
     ],
 )
 
@@ -464,6 +479,7 @@ cudnn_repo = repository_rule(
         "HERMETIC_CUDA_VERSION",
         "TF_CUDA_VERSION",
         "LOCAL_CUDNN_PATH",
+        "CUDA_REDIST_TARGET_PLATFORM",
     ],
 )
 

@@ -80,15 +80,28 @@ class PjRtCApiDeviceDescription : public PjRtDeviceDescription {
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override;
 
+  absl::Span<const PjRtMemorySpaceDescription* const> memory_spaces()
+      const override;
+
+  absl::StatusOr<const PjRtMemorySpaceDescription*> default_memory_space()
+      const override;
+
  private:
   const PJRT_Api* c_api_;
   // `device_description_` is owned by the `PJRT_Client` wrapped by `client_`
   PJRT_DeviceDescription* device_description_;
   // Device specific attributes with corresponding values.
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
+  mutable std::vector<PjRtMemorySpaceDescription> memory_space_descriptions_;
+  mutable std::vector<PjRtMemorySpaceDescription*>
+      memory_space_description_pointers_;
+  mutable absl::StatusOr<PjRtMemorySpaceDescription*>
+      default_memory_space_description_;
 
   // Initializes device specific attributes.
   void InitAttributes();
+  // Initialize device specific memory descriptions.
+  void InitMemoryDescriptions() const;
 };
 
 class PjRtCApiMemorySpace : public PjRtMemorySpace {
@@ -308,7 +321,7 @@ class PjRtCApiClient : public PjRtClient {
       std::optional<CompileOptions> options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtDevice* device) override {
+      const Shape& shape, PjRtMemorySpace* memory_space) override {
     return Unimplemented(
         "PJRT C API does not support CreateUninitializedBuffer. Please report "
         "an issue at https://github.com/google/jax/issues if you need this "
@@ -318,37 +331,25 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
 
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(
+      absl::Span<const ShapeSpec> shape_specs,
+      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+      PjRtDevice* device) override;
+
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) override {
-    return Unimplemented(
-        "PJRT C API does not support CreateBuffersForAsyncHostToDevice. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
-        "this feature.");
-  }
+  CreateBuffersForAsyncHostToDevice(
+      absl::Span<const ShapeSpec> shape_specs,
+      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+      PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtMemorySpace* memory_space) override {
-    return Unimplemented(
-        "PJRT C API does not support CreateBuffersForAsyncHostToDevice. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
-        "this feature.");
-  }
+                                    PjRtDevice* device) override;
 
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtDevice* device) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtDevice* device, const Layout* device_layout) override;
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -358,7 +359,7 @@ class PjRtCApiClient : public PjRtClient {
       PjRtMemorySpace* memory_space, const Layout* device_layout) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device) override {
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space) override {
     return Unimplemented(
         "PJRT C API does not support BufferFromHostLiteral. Please report an "
         "issue at https://github.com/google/jax/issues if you need this "
@@ -366,7 +367,7 @@ class PjRtCApiClient : public PjRtClient {
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
-      void* device_ptr, const Shape& shape, PjRtDevice* device,
+      void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
 
@@ -393,27 +394,15 @@ class PjRtCApiClient : public PjRtClient {
         "this feature.");
   }
 
-  absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
-    return Unimplemented(
-        "PJRT C API does not support CreateChannelHandle. Please report an "
-        "issue at https://github.com/google/jax/issues if you need this "
-        "feature.");
-  }
-
-  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return Unimplemented(
-        "PJRT C API does not support CreateDeviceToHostChannelHandle. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
-        "this feature.");
-  }
-
   absl::Status Defragment() override {
     return Unimplemented(
         "PJRT C API does not support Defragment. Please report an issue at "
         "https://github.com/google/jax/issues if you need this feature.");
   }
 
-  bool SupportsSendRecvCallbacks() const override { return true; }
+  absl::Status DmaMap(void* data, size_t size) override;
+
+  absl::Status DmaUnmap(void* data) override;
 
   const PJRT_Api* pjrt_c_api() const;
 
@@ -456,8 +445,6 @@ class PjRtCApiClient : public PjRtClient {
   std::vector<PjRtDevice*> addressable_devices_;
   absl::flat_hash_map<PJRT_Device*, PjRtCApiDevice*> c_to_cpp_device_map_;
   std::vector<std::unique_ptr<PjRtCApiMemorySpace>> owned_memory_spaces_;
-  // TODO(yueshengys): Add a `memory_spaces_` member when global memories are
-  // supported.
   std::vector<PjRtMemorySpace*> addressable_memory_spaces_;
   absl::flat_hash_map<PJRT_Memory*, PjRtCApiMemorySpace*> c_to_cpp_memory_map_;
   // There may be an error fetching the topology desc via the C API
@@ -479,14 +466,12 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   absl::Span<const int64_t> dimensions() const override;
 
-  std::unique_ptr<PjRtLayout> layout() const override;
+  std::shared_ptr<const PjRtLayout> layout() const override;
 
   // PJRT C API doesn't support tuple buffers.
   bool IsTuple() const override { return false; }
 
-  const Shape& on_device_shape() const override {
-    LOG(FATAL) << "PjRtBuffer::on_device_shape() not implemented in PJRT C API";
-  }
+  const Shape& on_device_shape() const override;
 
   bool has_dynamic_dimensions() const override;
 
@@ -494,10 +479,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   absl::StatusOr<std::vector<int64_t>> logical_dimensions() override;
 
-  absl::StatusOr<Shape> logical_on_device_shape() override {
-    LOG(FATAL) << "PjRtBuffer::on_logical_device_shape() not implemented in "
-                  "PJRT C API";
-  }
+  absl::StatusOr<Shape> logical_on_device_shape() override;
 
   PjRtMemorySpace* memory_space() const override;
 
@@ -527,9 +509,6 @@ class PjRtCApiBuffer : public PjRtBuffer {
   }
 
   bool IsDeleted() override;
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
-      PjRtDevice* dst_device) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
@@ -577,12 +556,14 @@ class PjRtCApiBuffer : public PjRtBuffer {
   // we set on `readiness_event` modifies `readiness_promise_`.
   std::shared_ptr<PjRtFuture<>::Promise> readiness_promise_;
   // Set and cached the first time layout() is called.
-  mutable std::optional<PjRtXlaLayout> layout_;
+  mutable std::shared_ptr<const PjRtLayout> layout_;
   // Set and cached the first time is_dynamic_dimension() is called.
   mutable std::optional<absl::InlinedVector<bool, InlineRank()>>
       is_dynamic_dimension_;
   // Used to synchronize concurrent setting of cached values.
   mutable absl::Mutex mu_;
+  // Cached result of on_device_shape();
+  mutable std::optional<Shape> on_device_shape_;
 };
 
 class PjRtCApiExternalReference : public PjRtBuffer::ExternalReference {

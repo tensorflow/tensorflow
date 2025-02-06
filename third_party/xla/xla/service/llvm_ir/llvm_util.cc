@@ -27,6 +27,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -48,6 +50,7 @@ limitations under the License.
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Alignment.h"
@@ -71,10 +74,10 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/byte_order.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/byte_order.h"
-#include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
@@ -183,21 +186,23 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 }
 
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
-                                  llvm::Module* module) {
+                                  llvm::LLVMContext& context) {
   switch (element_type) {
     case S2:
     case U2:
-      return llvm::Type::getIntNTy(module->getContext(), 2);
+      return llvm::Type::getIntNTy(context, 2);
     case S4:
     case U4:
-      return llvm::Type::getIntNTy(module->getContext(), 4);
+      return llvm::Type::getIntNTy(context, 4);
     case PRED:
     case S8:
     case U8:
-      return llvm::Type::getInt8Ty(module->getContext());
+      return llvm::Type::getInt8Ty(context);
     case S16:
     case U16:
-      return llvm::Type::getInt16Ty(module->getContext());
+      return llvm::Type::getInt16Ty(context);
+    case F4E2M1FN:
+      return llvm::Type::getIntNTy(context, 4);
     case F8E5M2:
     case F8E5M2FNUZ:
     case F8E4M3:
@@ -205,25 +210,25 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     case F8E4M3B11FNUZ:
     case F8E4M3FNUZ:
     case F8E3M4:
+    case F8E8M0FNU:
       // We represent F8 as an int since there is no LLVM F8 dtype.
-      return llvm::Type::getInt8Ty(module->getContext());
+      return llvm::Type::getInt8Ty(context);
     case BF16:
-      return llvm::Type::getBFloatTy(module->getContext());
+      return llvm::Type::getBFloatTy(context);
     case F16:
-      return llvm::Type::getHalfTy(module->getContext());
+      return llvm::Type::getHalfTy(context);
     case S32:
     case U32:
-      return llvm::Type::getInt32Ty(module->getContext());
+      return llvm::Type::getInt32Ty(context);
     case S64:
     case U64:
-      return llvm::Type::getInt64Ty(module->getContext());
+      return llvm::Type::getInt64Ty(context);
     case F32:
-      return llvm::Type::getFloatTy(module->getContext());
+      return llvm::Type::getFloatTy(context);
     case F64:
-      return llvm::Type::getDoubleTy(module->getContext());
+      return llvm::Type::getDoubleTy(context);
     case C64: {
-      auto cplx_t =
-          llvm::StructType::getTypeByName(module->getContext(), "complex64");
+      auto cplx_t = llvm::StructType::getTypeByName(context, "complex64");
       if (cplx_t == nullptr) {
         // C++ standard dictates the memory layout of std::complex is contiguous
         // real followed by imaginary. C++11 section 26.4 [complex.numbers]:
@@ -233,31 +238,28 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
         // z, and reinterpret_cast<cv T(&)[2]>(z)[1] shall designate the
         // imaginary part of z.
         return llvm::StructType::create(
-            {llvm::Type::getFloatTy(module->getContext()),
-             llvm::Type::getFloatTy(module->getContext())},
+            {llvm::Type::getFloatTy(context), llvm::Type::getFloatTy(context)},
             "complex64", /*isPacked=*/true);
       }
       return cplx_t;
     }
     case C128: {
-      auto cplx_t =
-          llvm::StructType::getTypeByName(module->getContext(), "complex128");
+      auto cplx_t = llvm::StructType::getTypeByName(context, "complex128");
       if (cplx_t == nullptr) {
-        return llvm::StructType::create(
-            {llvm::Type::getDoubleTy(module->getContext()),
-             llvm::Type::getDoubleTy(module->getContext())},
-            "complex128", /*isPacked=*/true);
+        return llvm::StructType::create({llvm::Type::getDoubleTy(context),
+                                         llvm::Type::getDoubleTy(context)},
+                                        "complex128", /*isPacked=*/true);
       }
       return cplx_t;
     }  // A Tuple contains an array of pointers. Use i8*.
     case TUPLE:
     // An Opaque is like a void*, use i8*.
     case OPAQUE_TYPE:
-      return llvm::PointerType::getUnqual(module->getContext());
+      return llvm::PointerType::getUnqual(context);
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs
       // some placeholder type, so use int8_t*.
-      return llvm::PointerType::getUnqual(module->getContext());
+      return llvm::PointerType::getUnqual(context);
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }
@@ -278,8 +280,9 @@ int GetSizeInBits(llvm::Type* type) {
   return bits;
 }
 
-llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
-  llvm::Type* result_type = PrimitiveTypeToIrType(shape.element_type(), module);
+llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
+  llvm::Type* result_type =
+      PrimitiveTypeToIrType(shape.element_type(), context);
   if (shape.IsTuple()) {
     // A tuple buffer is an array of pointers.
     result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
@@ -471,8 +474,8 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
   }
   // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
   // arrays. So we extend it to i8 so that it's addressable.
-  return b->CreateZExt(comparison_result, llvm_ir::PrimitiveTypeToIrType(
-                                              PRED, ModuleFromIRBuilder(b)));
+  return b->CreateZExt(comparison_result,
+                       llvm_ir::PrimitiveTypeToIrType(PRED, b->getContext()));
 }
 
 // Internal helper that is called from emitted code to log an int64_t value with
@@ -606,16 +609,6 @@ void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder) {
   }
 }
 
-llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
-                       llvm::IRBuilderBase* builder) {
-  auto size = rotand->getType()->getPrimitiveSizeInBits();
-  auto size_value = builder->getIntN(size, size);
-  auto mod = [=](llvm::Value* x) { return builder->CreateURem(x, size_value); };
-  return builder->CreateOr(
-      builder->CreateShl(rotand, mod(builder->CreateSub(size_value, rotor))),
-      builder->CreateLShr(rotand, mod(rotor)));
-}
-
 int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   unsigned pointer_size = data_layout.getPointerSize();
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
@@ -699,8 +692,8 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
   std::string suffix =
-      absl::StrCat("ir-", optimized ? "with" : "no", "-opt",
-                   filename_suffix.empty() ? "" : ".", filename_suffix);
+      absl::StrCat(filename_suffix, filename_suffix.empty() ? "" : ".", "ir-",
+                   optimized ? "with" : "no", "-opt");
   DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
                           DumpToString(&llvm_module));
 }
@@ -732,27 +725,6 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   }
 
   return function;
-}
-
-std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilderBase* b,
-                                                    llvm::Value* src0,
-                                                    llvm::Value* src1) {
-  CHECK_EQ(src0->getType()->getPrimitiveSizeInBits(), 32);
-  CHECK_EQ(src1->getType()->getPrimitiveSizeInBits(), 32);
-  llvm::Type* int64_ty = b->getInt64Ty();
-  src0 = b->CreateZExt(src0, int64_ty);
-  src1 = b->CreateZExt(src1, int64_ty);
-  return SplitInt64ToInt32s(b, b->CreateMul(src0, src1));
-}
-
-std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
-    llvm::IRBuilderBase* b, llvm::Value* value_64bits) {
-  CHECK_EQ(value_64bits->getType()->getPrimitiveSizeInBits(), 64);
-  llvm::Type* int32_ty = b->getInt32Ty();
-  llvm::Value* low_32bits = b->CreateTrunc(value_64bits, int32_ty);
-  llvm::Value* high_32bits =
-      b->CreateTrunc(b->CreateLShr(value_64bits, 32), int32_ty);
-  return std::make_pair(low_32bits, high_32bits);
 }
 
 unsigned GetGlobalMemoryAddressSpace() { return 1; }

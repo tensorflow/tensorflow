@@ -34,9 +34,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/service/constant_value.h"
+#include "xla/service/value_range.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -44,6 +46,8 @@ namespace {
 class WhileLoopAnalysisTest : public HloHardwareIndependentTestBase {
  protected:
   [[nodiscard]] absl::StatusOr<int64_t> MakeWhileLoopAndGetTripCount(
+      int init, int limit, int step, ComparisonDirection dir);
+  [[nodiscard]] absl::StatusOr<Range> MakeWhileLoopAndGetRange(
       int init, int limit, int step, ComparisonDirection dir);
 };
 
@@ -97,6 +101,53 @@ absl::StatusOr<int64_t> WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(
   CHECK(trip_count.has_value());
 
   return *trip_count;
+}
+
+absl::StatusOr<Range> WhileLoopAnalysisTest::MakeWhileLoopAndGetRange(
+    int init, int limit, int step, ComparisonDirection dir) {
+  std::string hlo_string_template = R"(
+  HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], s32[]) parameter(0)
+      val = f32[2] get-tuple-element(p_body), index=0
+      index = s32[] get-tuple-element(p_body), index=1
+      one = s32[] constant({{STEP}})
+      inc = s32[] add(index, one)
+      ROOT root = (f32[2], s32[]) tuple(val, inc)
+    }
+
+    condition {
+      p_cond = (f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=1
+      const = s32[] constant({{LIMIT}})
+      ROOT result = pred[] compare(gte, const), direction={{COMP_DIR}}
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = s32[] constant({{INIT}})
+      while_init = (f32[2], s32[]) tuple(param.0, param.1)
+      ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
+    }
+  )";
+
+  std::string hlo_string =
+      absl::StrReplaceAll(hlo_string_template,
+                          {{"{{INIT}}", absl::StrCat(init)},
+                           {"{{LIMIT}}", absl::StrCat(limit)},
+                           {"{{STEP}}", absl::StrCat(step)},
+                           {"{{COMP_DIR}}", ComparisonDirectionToString(dir)}});
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  std::optional<Range> range = MatchTrivialLoopRange(while_op);
+
+  CHECK(range.has_value());
+
+  return *range;
 }
 
 TEST_F(WhileLoopAnalysisTest, SingleIterationUpperBound) {
@@ -241,6 +292,50 @@ int CalculateTripCount(int init, int limit, int step, ComparisonDirection dir) {
                << ComparisonDirectionToString(dir);
   }
   return trip_count;
+}
+
+bool RangeEqualIgnoreBitwidth(const Range& range, int init, int limit,
+                              int step) {
+  auto range_min = [](const Range& r) {
+    return r.min().IsSigned() ? r.min().GetSignedValue()
+                              : r.min().GetUnsignedValue();
+  };
+  auto range_max = [](const Range& r) {
+    return r.max()->IsSigned() ? r.max()->GetSignedValue()
+                               : r.max()->GetUnsignedValue();
+  };
+  return range_min(range) == init && range_max(range) == limit &&
+         range.step()->GetSignedValue() == step;
+}
+
+TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialRange) {
+  // LT cases
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 42, 1, ComparisonDirection::kLt).value(), 0,
+      41, 1));
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 42, 2, ComparisonDirection::kLt).value(), 0,
+      40, 2));
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 42, 5, ComparisonDirection::kLt).value(), 0,
+      40, 5));
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 40, 5, ComparisonDirection::kLt).value(), 0,
+      35, 5));
+
+  // LE cases
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 42, 1, ComparisonDirection::kLe).value(), 0,
+      42, 1));
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 42, 2, ComparisonDirection::kLe).value(), 0,
+      42, 2));
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 42, 5, ComparisonDirection::kLe).value(), 0,
+      40, 5));
+  EXPECT_TRUE(RangeEqualIgnoreBitwidth(
+      MakeWhileLoopAndGetRange(0, 40, 5, ComparisonDirection::kLe).value(), 0,
+      40, 5));
 }
 
 TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {
@@ -459,6 +554,72 @@ TEST_F(WhileLoopAnalysisTest, NonScalarUpdateOp) {
   const HloInstruction* while_op =
       module->entry_computation()->root_instruction();
   EXPECT_EQ(ComputeWhileLoopTripCount(while_op), std::nullopt);
+}
+
+TEST_F(WhileLoopAnalysisTest, UpdateOnIndVarCopySuccess) {
+  const char* hlo = R"(
+    HloModule test, replica_count=2
+    body {
+      param.0 = (s32[], s32[]) parameter(0)
+      p0.1 = s32[] get-tuple-element(param.0), index=0
+      p1.1 = s32[] get-tuple-element(param.0), index=1
+      copy0.1 = s32[] copy(p0.1)
+      const = s32[] constant(1)
+      add = s32[] add(copy0.1, const)
+      ROOT tuple = (s32[], s32[]) tuple(add, p1.1)
+    }
+    condition {
+      param.2 = (s32[], s32[]) parameter(0)
+      p0.2 = s32[] get-tuple-element(param.2), index=0
+      c4 = s32[] constant(4)
+      ROOT compare = pred[] compare(p0.2, c4), direction=LT
+    }
+    ENTRY entry {
+      c0 = s32[] constant(0)
+      data = s32[] parameter(0)
+      tuple = (s32[], s32[]) tuple(c0, data)
+      ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  const HloInstruction* while_op =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(*ComputeWhileLoopTripCount(while_op), 4);
+}
+
+TEST_F(WhileLoopAnalysisTest, IndVarInitialiationNotConstantSuccess) {
+  const char* hlo = R"(
+    HloModule test, replica_count=2
+    body {
+      param.0 = (s32[], s32[]) parameter(0)
+      p0.1 = s32[] get-tuple-element(param.0), index=0
+      p1.1 = s32[] get-tuple-element(param.0), index=1
+      const = s32[] constant(1)
+      add = s32[] add(p0.1, const)
+      ROOT tuple = (s32[], s32[]) tuple(add, p1.1)
+    }
+    condition {
+      param.2 = (s32[], s32[]) parameter(0)
+      p0.2 = s32[] get-tuple-element(param.2), index=0
+      c4 = s32[] constant(4)
+      ROOT compare = pred[] compare(p0.2, c4), direction=LT
+    }
+    ENTRY entry {
+      c0 = s32[] constant(0)
+      copy0.0 = s32[] copy(c0)
+      data = s32[] parameter(0)
+      tuple = (s32[], s32[]) tuple(copy0.0, data)
+      ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  const HloInstruction* while_op =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(*ComputeWhileLoopTripCount(while_op), 4);
 }
 
 TEST_F(WhileLoopAnalysisTest, FusedUpdateOp) {
@@ -856,6 +1017,47 @@ TEST_F(WhileLoopAnalysisTest,
   EXPECT_EQ(*indvar_idx, 0);
   std::optional<int64_t> trip_count = ComputeWhileLoopTripCount(while_op);
   EXPECT_EQ(trip_count, std::nullopt);
+}
+
+TEST_F(WhileLoopAnalysisTest, GetIndvarIndexShouldWorkWhenParamIsCopied) {
+  const char* hlo = R"(
+    HloModule test
+
+    fused_copy {
+      param.1 = (s32[],s32[]) parameter(0)
+      ROOT copy = (s32[], s32[]) copy(param.1)
+    }
+
+    body {
+      param.1 = (s32[], s32[]) parameter(0)
+      copy_fusion = (s32[], s32[]) fusion(param.1), kind=kInput, calls=fused_copy
+      iter.1 = s32[] get-tuple-element(copy_fusion), index=0
+      c.1 = s32[] constant(1)
+      add.1 = s32[] add(iter.1, c.1)
+      data.1 = s32[] get-tuple-element(copy_fusion), index=1
+      ROOT tuple = (s32[], s32[]) tuple(add.1, data.1)
+    }
+
+    condition {
+      param = (s32[], s32[]) parameter(0)
+      iter = s32[] get-tuple-element(param), index=0
+      c.10 = s32[] constant(10)
+      ROOT compare = pred[] compare(iter, c.10), direction=LT
+    }
+
+    ENTRY main {
+      c0 = s32[] constant(0)
+      data = s32[] parameter(0)
+      tuple = (s32[], s32[]) tuple(c0, data)
+      ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  EXPECT_EQ(GetLoopInductionVarTupleIdx(while_op), 0);
 }
 
 }  // namespace

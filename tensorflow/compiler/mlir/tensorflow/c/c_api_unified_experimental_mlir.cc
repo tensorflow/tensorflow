@@ -60,6 +60,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -69,8 +71,6 @@ limitations under the License.
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/refcount.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TF {
@@ -118,8 +118,7 @@ class MlirTensor : public TracingTensorHandle {
     return type;
   }
 
-  tensorflow::Status Shape(
-      tensorflow::PartialTensorShape* shape) const override {
+  absl::Status Shape(tensorflow::PartialTensorShape* shape) const override {
     // TODO(b/173074167): Implement this and enable tests in
     // unified_api_test.cc.
     return Unimplemented("MlirTensor::Shape is not implemented yet.");

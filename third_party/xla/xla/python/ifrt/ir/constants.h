@@ -57,6 +57,11 @@ inline constexpr llvm::StringLiteral kIfrtMemoryKindAttrName =
 inline constexpr llvm::StringLiteral kIfrtEntryFunctionAttrName =
     "ifrt.entry_function";
 
+// Name of UnitAttr on CallOp used to indicate that an atom program was
+// partitioned by the Sdy partitioner.
+inline constexpr llvm::StringLiteral kIsSdyPartitioned =
+    "ifrt.is_sdy_partitioned";
+
 inline constexpr llvm::StringLiteral kCalleeMainFuncName = "main";
 
 // Name of StringAttr used to store the HloSharding.
@@ -64,6 +69,8 @@ inline constexpr llvm::StringLiteral kHloShardingAttrName = "mhlo.sharding";
 // Name of StringAttr used to store memory kind.
 inline constexpr llvm::StringLiteral kHloMemoryKindAttrName =
     "mhlo.memory_kind";
+// Name of StringAttr used to store layout mode.
+inline constexpr llvm::StringLiteral kHloLayoutAttrName = "mhlo.layout_mode";
 
 inline constexpr llvm::StringLiteral kIfrtModuleTypeAttrName =
     "ifrt.module_type";

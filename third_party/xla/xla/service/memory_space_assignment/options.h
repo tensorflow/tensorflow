@@ -24,11 +24,15 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation_value.h"
@@ -39,6 +43,7 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/memory_space_assignment/slice.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
@@ -63,9 +68,37 @@ using WindowPrefetchNotifyOperandAppendedFunction =
     std::function<void(HloInstruction*, int64_t, int64_t)>;
 using IsAsyncSliceImplementedFunction =
     std::function<bool(const HloInstruction*)>;
+using InitSplitTreeFn = std::function<ShapeTree<int64_t>(
+    const HloInstruction*,
+    absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*)>;
+using DetermineSplitDimensionFunction =
+    std::function<std::optional<SplitConfig>(
+        const HloValue&,
+        absl::flat_hash_map<const HloInstruction*, ShapeTree<int64_t>>*)>;
+using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
+    const HloInstruction* instruction, int64_t split_dim)>;
+using ShapeSizeFn = std::function<int64_t(const Shape&)>;
+
+// MSA allows for custom post-allocation transformations. When a post-allocation
+// transformation is performed on an instruction, this result is returned. It
+// tells MSA:
+//  1. A list of instructions that MSA should delete.
+//  2. A list of HloUses that the transformation replaced.
+//
+// This information is then processed via
+// FixAllocationSequenceAfterPostAllocationTransformation call.
+struct PostAllocationTransformationUpdate {
+  std::vector<HloInstruction*> to_be_removed;
+  absl::flat_hash_map<HloUse, HloUse> update_use_map;
+
+  std::string ToString() const;
+};
 
 // The different options to be passed to the Run() API.
 struct Options {
+  // The backend-specific integer value that describes the default memory.
+  int64_t default_memory_space = 0;
+
   // Backend-specific integer value that describes the alternate memory.
   int64_t alternate_memory_space = 0;
 
@@ -87,6 +120,8 @@ struct Options {
 
   // Size function for buffer values.
   BufferValue::SizeFunction size_fn;
+
+  ShapeSizeFn shape_size_fn;
 
   std::function<Shape(const Shape&)> get_equivalent_s8_shape_fn;
 
@@ -144,6 +179,47 @@ struct Options {
   // AllocateSegment().
   std::function<void(AllocationRequest&)>
       allocation_request_modifier_testing_fn = nullptr;
+
+  // This function chooses a dimension to split the given HloValue on. Splitting
+  // will be disabled if this function is not provided.
+  DetermineSplitDimensionFunction determine_split_dimension_fn = nullptr;
+
+  // This function sets up a split tree, based on an instruction's shape, with
+  // kAny as the default. Splitting will be disabled if this function is not
+  // provided.
+  InitSplitTreeFn init_split_tree_fn = nullptr;
+
+  // Determines the appropriate output split for a bitcast given an input split.
+  // Splitting will be disabled if this function is not provided.
+  BitcastSplitFn bitcast_split_fn = nullptr;
+
+  // Dimension number indicating no split is present.
+  int64_t replicated_split_dimension = -1;
+
+  // Dimension number indicating any split is allowable.
+  int64_t any_split_dimension = -2;
+
+  // Applies post-allocation transformations to the given instruction. This
+  // function is called after the allocations are found in the MsaAlgorithm. It
+  // is called on each instruction I that meets the following conditions:
+  // 1. I is called from a non-fusion computation
+  // 2. I's operands are not in alternate memory
+  // 3. I is not successfully converted to async instruction.
+  // 4. I's operands don't have in-place users, e.g., a dynamic-update-slice.
+  //
+  // The transformation function is allowed to do the following:
+  //  1. Mark instructions for removal.
+  //  2. Modify existing instructions.
+  //
+  // This transformation is NOT allowed to:
+  //  1. Directly remove instructions (or nullify them).
+  //  2. Add new instructions.
+  //
+  // Note that it is up to the transformation function to ensure that the
+  // changes to the module preserves the semantics of the original program.
+  std::function<absl::StatusOr<PostAllocationTransformationUpdate>(
+      HloInstruction*)>
+      post_allocation_transformation_fn;
 
   // If true, we will try to reduce scoped allocation buffer size for all
   // instructions if their operand/output has been allocated in alternate

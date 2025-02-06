@@ -320,4 +320,13 @@ TEST(OwningBufferRefTest, TupleRelease) {
   delete[] data;
 }
 
+TEST(OwningBufferRefTest, Assign) {
+  auto const_buf = MakeConstFbData(kData);
+  OwningBufferRef buf;
+  buf.Assign(const_buf.data(), const_buf.size());
+  buf.WriteInto("SOME");
+  EXPECT_EQ(buf.StrView(), "SOMERawBuffer");
+  EXPECT_EQ(FbBufToStr(const_buf), "SomeRawBuffer");
+}
+
 }  // namespace

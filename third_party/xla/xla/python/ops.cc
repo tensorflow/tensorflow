@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_helpers.h"
 #include "xla/python/types.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace nb = nanobind;
@@ -67,7 +68,7 @@ struct type_caster<xla::ConvolutionDimensionNumbers> {
       const_name("xla::ConvolutionDimensionNumbers"));
 
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       value.set_input_batch_dimension(
           cast<int64_t>(getattr(handle, "input_batch_dimension")));
@@ -147,7 +148,7 @@ struct type_caster<xla::GatherDimensionNumbers> {
                                   const_name("xla::GatherDimensionNumbers"));
 
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       std::vector<int64_t> dims;
       dims = cast<std::vector<int64_t>>(getattr(handle, "offset_dims"));
@@ -179,7 +180,7 @@ struct type_caster<xla::ScatterDimensionNumbers> {
                                   const_name("xla::ScatterDimensionNumbers"));
 
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       std::vector<int64_t> dims;
       dims = cast<std::vector<int64_t>>(getattr(handle, "update_window_dims"));
@@ -212,7 +213,7 @@ struct type_caster<xla::ReplicaGroup> {
                                   const_name("xla::ReplicaGroup"));
 
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       auto dims = cast<std::vector<int64_t>>(getattr(handle, "replica_ids"));
       std::copy(dims.begin(), dims.end(),
@@ -232,7 +233,7 @@ struct type_caster<xla::PaddingConfig> {
                                   const_name("xla::PaddingConfig"));
 
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       sequence dimensions = borrow<sequence>(getattr(handle, "dimensions"));
 
@@ -260,7 +261,7 @@ struct type_caster<xla::PrecisionConfig> {
                                   const_name("xla::PrecisionConfig"));
 
   // PyObject -> C++ conversion.
-  bool from_python(handle handle, uint8_t, cleanup_list*) {
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
     try {
       if (handle.is_none()) {
         return true;
@@ -273,6 +274,31 @@ struct type_caster<xla::PrecisionConfig> {
         value.add_operand_precision(
             cast<xla::PrecisionConfig::Precision>(operand_precision));
       }
+      return true;
+    } catch (...) {
+      return false;
+    }
+  }
+};
+
+template <>
+struct type_caster<xla::ResultAccuracy> {
+ public:
+  NB_TYPE_CASTER_FROM_PYTHON_ONLY(xla::ResultAccuracy,
+                                  const_name("xla::ResultAccuracy"));
+  // PyObject -> C++ conversion.
+  bool from_python(handle handle, uint8_t, cleanup_list*) noexcept {
+    try {
+      if (handle.is_none()) {
+        return true;
+      }
+      xla::ResultAccuracy::Mode mode =
+          cast<xla::ResultAccuracy::Mode>(getattr(handle, "mode"));
+      value.set_mode(mode);
+      xla::ResultAccuracy::Tolerance* tolerance = value.mutable_tolerance();
+      tolerance->set_atol(cast<float>(getattr(handle, "atol")));  // NOLINT
+      tolerance->set_rtol(cast<float>(getattr(handle, "rtol")));
+      tolerance->set_ulps(cast<int>(getattr(handle, "ulps")));
       return true;
     } catch (...) {
       return false;
@@ -371,7 +397,8 @@ void BuildOpsSubmodule(nb::module_& m) {
   ops.def("Clamp", &Clamp, nb::arg("min"), nb::arg("operand"), nb::arg("max"));
   ops.def("Collapse", &Collapse, nb::arg("operand"), nb::arg("dimensions"));
   ops.def("CollectivePermute", &CollectivePermute, nb::arg("operand"),
-          nb::arg("source_target_pairs"), nb::arg("channel_id") = std::nullopt);
+          nb::arg("source_target_pairs"), nb::arg("channel_id") = std::nullopt,
+          nb::arg("inplace") = false);
   ops.def("ConcatInDim", &ConcatInDim, nb::arg("builder"), nb::arg("operands"),
           nb::arg("dimension"));
   ops.def("Conditional",
@@ -549,6 +576,9 @@ void BuildOpsSubmodule(nb::module_& m) {
   ops.def("Map", &Map, nb::arg("builder"), nb::arg("operands"),
           nb::arg("computation"), nb::arg("dimensions"),
           nb::arg("static_operands") = nb::list());
+  ops.def("MultiCollectivePermute", &MultiCollectivePermute,
+          nb::arg("operands"), nb::arg("source_target_pairs"),
+          nb::arg("channel_id") = std::nullopt, nb::arg("inplace") = false);
   ops.def("NextAfter", &NextAfter, nb::arg("from"), nb::arg("to"));
   ops.def("OutfeedWithToken", &OutfeedWithToken, nb::arg("operand"),
           nb::arg("token"), nb::arg("shape_with_layout"),
@@ -716,6 +746,9 @@ void BuildOpsSubmodule(nb::module_& m) {
   ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta, nb::arg("a"),
           nb::arg("b"), nb::arg("x"));
   ops.def("Zeta", &Zeta, nb::arg("x"), nb::arg("q"));
+  ops.def("Exp", static_cast<XlaOp (*)(XlaOp, const ResultAccuracy&)>(&Exp),
+          nb::arg("operand"), nb::arg("result_accuracy"));
+  ops.def("Exp", static_cast<XlaOp (*)(XlaOp)>(&Exp), nb::arg("operand"));
 
 #define BINARY_OP(op)                                                  \
   ops.def(                                                             \
@@ -754,7 +787,6 @@ void BuildOpsSubmodule(nb::module_& m) {
   UNARY_OP(PopulationCount);
   UNARY_OP(Clz);
   UNARY_OP(Abs);
-  UNARY_OP(Exp);
   UNARY_OP(Expm1);
   UNARY_OP(Floor);
   UNARY_OP(Ceil);
@@ -794,6 +826,6 @@ void BuildOpsSubmodule(nb::module_& m) {
   UNARY_OP(Conj);
   UNARY_OP(OptimizationBarrier);
 #undef UNARY_OP
-}
+}  // NOLINT(readability/fn_size)
 
 }  // namespace xla

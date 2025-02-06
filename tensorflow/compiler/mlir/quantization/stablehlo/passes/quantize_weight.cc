@@ -151,7 +151,7 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
 
     TensorType old_result_type =
         mlir::dyn_cast<TensorType>(op.getResult().getType());
-    const FloatType quantized_type = FloatType::getF16(op.getContext());
+    const FloatType quantized_type = Float16Type::get(op.getContext());
     const ShapedType new_result_type = old_result_type.clone(quantized_type);
 
     // Insert ConvertOp if it does not exist yet. Otherwise, just rewire without
@@ -231,7 +231,7 @@ void QuantizeWeightPass::runOnOperation() {
 
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 
-  if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+  if (failed(applyPatternsGreedily(func, frozen_patterns))) {
     signalPassFailure();
   }
 }

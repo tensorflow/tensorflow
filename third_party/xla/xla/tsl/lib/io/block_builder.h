@@ -20,8 +20,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace table {
@@ -37,7 +37,7 @@ class BlockBuilder {
 
   // REQUIRES: Finish() has not been called since the last call to Reset().
   // REQUIRES: key is larger than any previously added key
-  void Add(const absl::string_view& key, const absl::string_view& value);
+  void Add(absl::string_view key, absl::string_view value);
 
   // Finish building the block and return a slice that refers to the
   // block contents.  The returned slice will remain valid for the

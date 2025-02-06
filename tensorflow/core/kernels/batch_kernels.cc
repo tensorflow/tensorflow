@@ -118,8 +118,7 @@ int32 NumBatchThreadsFromEnvironmentWithDefault(int default_num_batch_threads) {
   int32_t num;
   const char* val = std::getenv("TF_NUM_BATCH_THREADS");
 
-  return (val && strings::safe_strto32(val, &num)) ? num
-                                                   : default_num_batch_threads;
+  return (val && absl::SimpleAtoi(val, &num)) ? num : default_num_batch_threads;
 }
 
 static thread::ThreadPool* GetOrCreateBatchThreadsPool() {

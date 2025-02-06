@@ -62,6 +62,7 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
 
   float ScalingRatio(const HloInstruction& hlo) const;
   int64_t NumOfDevices(const HloInstruction& hlo) const;
+  float BytesTransferred(const HloInstruction& hlo) const;
 
   absl::Status HandleCustomCall(const HloInstruction* call) override;
 
@@ -72,6 +73,11 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   absl::Status HandleConcatenate(const HloInstruction* hlo) override;
   absl::Status HandleAllReduce(const HloInstruction* allreduce) override;
   absl::Status HandleReduce(const HloInstruction* hlo) override;
+  absl::Status HandleAllReduceStart(const HloInstruction* hlo) override;
+  absl::Status HandleAllGather(const HloInstruction* hlo) override;
+  absl::Status HandleAllGatherStart(const HloInstruction* hlo) override;
+  absl::Status HandleAsyncStart(const HloInstruction* hlo) override;
+  absl::Status HandleReduceScatter(const HloInstruction* hlo) override;
 
   // Estimate the total size of IR accounting for both duplication
   // of producer code by consumer and the total number of basic blocks.

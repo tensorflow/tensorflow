@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CLIENT_COMPILE_ONLY_CLIENT_H_
 #define XLA_CLIENT_COMPILE_ONLY_CLIENT_H_
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 

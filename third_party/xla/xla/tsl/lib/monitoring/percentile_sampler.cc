@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tsl/lib/monitoring/types.h"
-#include "tsl/platform/env_time.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/env_time.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/types.h"
 
 // We replace this implementation with a null implementation for mobile
 // platforms.

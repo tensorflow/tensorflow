@@ -15,9 +15,9 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_FILE_TEST_UTIL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_FILE_TEST_UTIL_H_
 
+#include <cstdint>
 #include <functional>
 
-#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 
@@ -38,8 +38,13 @@ bool EqualsFbTensorType(const TensorType& litert_tensor_type,
 // Compare litert op to flatbuffer op along with their input/output tensors
 // types and quantization. Takes a callback to lookup tfl tensors the indices
 // within the tfl op.
-bool EqualsFbOp(const Op& litert_op, const TflOp& tfl_op,
+bool EqualsFbOp(const LiteRtOpT& litert_op, const TflOp& tfl_op,
                 GetTflTensor get_tfl_tensor);
+
+// Compare litert tensor to flatbuffer tensor for having same types and
+// quantization.
+bool EqualsFbTensor(const LiteRtTensorT& litert_tensor,
+                    const TflTensor& tfl_tensor);
 
 }  // namespace litert::internal
 

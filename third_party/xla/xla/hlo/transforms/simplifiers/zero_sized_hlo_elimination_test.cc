@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -65,9 +64,10 @@ TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateParameter) {
 
 TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateSideEffects) {
   auto token = builder_.AddInstruction(HloInstruction::CreateToken());
-  auto send = builder_.AddInstruction(
-      HloInstruction::CreateSend(zero_sized_param_, token, 0));
-  builder_.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder_.AddInstruction(HloInstruction::CreateSend(
+      zero_sized_param_, token, /*channel_id*/ 0, /*is_host_transfer=*/false));
+  builder_.AddInstruction(HloInstruction::CreateSendDone(
+      send, send->channel_id(), /*is_host_transfer=*/false));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
   EXPECT_FALSE(changed);
 }

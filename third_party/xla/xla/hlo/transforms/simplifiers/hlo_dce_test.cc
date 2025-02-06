@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 
-#include <cstdint>
 #include <memory>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -29,10 +29,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -82,9 +82,10 @@ TEST_F(HloDceTest, InstructionsWithSideEffect) {
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send = builder.AddInstruction(
-      HloInstruction::CreateSend(constant, token, /*channel_id=*/0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      constant, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, send->channel_id(), /*is_host_transfer=*/false));
   builder.AddInstruction(HloInstruction::CreateTuple({}));
 
   auto module = CreateNewVerifiedModule();

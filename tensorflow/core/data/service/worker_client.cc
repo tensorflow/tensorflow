@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
 
 namespace tensorflow {
@@ -64,7 +64,8 @@ CreateDataServiceWorkerClient(
     Allocator* allocator) {
   auto client = std::make_unique<DataServiceWorkerClient>(
       info.address(), dispatcher_protocol, info.protocol(),
-      accelerator_device_info, allocator);
+      info.fall_back_to_grpc_at_get_element_time(), accelerator_device_info,
+      allocator);
   TF_RETURN_IF_ERROR(client->Initialize());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       client->CheckCompatibility(info.compatibility_info()),

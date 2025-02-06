@@ -22,6 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
@@ -37,9 +40,9 @@ namespace xla {
 Shape::Shape() = default;
 Shape::~Shape() = default;
 Shape::Shape(const Shape&) = default;
-Shape::Shape(Shape&&) = default;
+Shape::Shape(Shape&&) noexcept = default;
 Shape& Shape::operator=(const Shape&) = default;
-Shape& Shape::operator=(Shape&&) = default;
+Shape& Shape::operator=(Shape&&) noexcept = default;
 
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());

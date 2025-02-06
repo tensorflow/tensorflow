@@ -15,19 +15,20 @@ limitations under the License.
 #include "xla/backends/profiler/cpu/host_tracer.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/backends/cpu/host_tracer_utils.h"
 #include "xla/tsl/profiler/backends/cpu/threadpool_listener.h"
 #include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
-#include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/profiler_collection.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -35,6 +36,8 @@ limitations under the License.
 namespace xla {
 namespace profiler {
 namespace {
+
+#define TRACEME_FILTER_DEFAULT_MASK std::numeric_limits<uint64_t>::max()
 
 // Controls TraceMeRecorder and converts TraceMeRecorder::Events into XEvents.
 //
@@ -70,7 +73,8 @@ class HostTracer : public tsl::profiler::ProfilerInterface {
 };
 
 HostTracer::HostTracer(int host_trace_level)
-    : host_trace_level_(host_trace_level), filter_mask_(0xffffffffffffffff) {}
+    : host_trace_level_(host_trace_level),
+      filter_mask_(TRACEME_FILTER_DEFAULT_MASK) {}
 
 HostTracer::HostTracer(int host_trace_level, uint64_t filter_mask)
     : host_trace_level_(host_trace_level), filter_mask_(filter_mask) {}

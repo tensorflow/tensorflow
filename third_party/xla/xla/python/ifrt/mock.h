@@ -25,11 +25,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -52,8 +54,8 @@ limitations under the License.
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
-#include "xla/test.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -76,7 +78,7 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(const Sharding&, sharding, (), (const, final));
   MOCK_METHOD(absl::Nonnull<std::shared_ptr<const Sharding>>,
               shared_ptr_sharding, (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<PjRtLayout>>, layout, (),
+  MOCK_METHOD(absl::StatusOr<std::shared_ptr<const PjRtLayout>>, layout, (),
               (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
               DisassembleIntoSingleDeviceArrays, (ArrayCopySemantics semantics),
@@ -173,10 +175,10 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<Topology>>, GetTopologyForDevices,
               (const tsl::RCReference<xla::ifrt::DeviceList>& devices),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::PjRtLayout>>,
-              GetDefaultLayoutForDevice,
+  MOCK_METHOD(absl::StatusOr<std::shared_ptr<const PjRtLayout>>,
+              GetDefaultLayout,
               (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
-               xla::ifrt::Device* device),
+               xla::ifrt::Device* device, xla::ifrt::MemoryKind memory_kind),
               (const, final));
   // LINT.ThenChange(mock.cc:MockClientDelegation)
 
@@ -264,9 +266,9 @@ class MockExecutable : public llvm::RTTIExtends<MockExecutable, Executable> {
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
               GetParameterLayouts, (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
               GetOutputLayouts, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>,
               GetHloModules, (), (const, final));
@@ -293,9 +295,9 @@ class MockLoadedExecutable
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
               GetParameterLayouts, (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>,
               GetOutputLayouts, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
               GetOutputMemoryKinds, (), (const, final));
@@ -385,6 +387,7 @@ class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
               (std::optional<tsl::RCReference<DeviceList>> devices,
                std::optional<MemoryKind> memory_kind),
               (const final));
+  MOCK_METHOD(void, Hash, (absl::HashState), (const final));
 
   std::string DebugString() const final { return "MockSharding"; }
 

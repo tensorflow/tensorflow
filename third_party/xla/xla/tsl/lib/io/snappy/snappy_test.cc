@@ -21,8 +21,8 @@ limitations under the License.
 #include "xla/tsl/lib/io/snappy/snappy_inputbuffer.h"
 #include "xla/tsl/lib/io/snappy/snappy_inputstream.h"
 #include "xla/tsl/lib/io/snappy/snappy_outputbuffer.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 

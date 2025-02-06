@@ -936,7 +936,7 @@ absl::Status AddControlEdges(const PartitionOptions& opts,
 // If 'ndef' is a Send or Recv, fills its attr send_device_incarnation
 // if possible.
 void SetIncarnation(const PartitionOptions& opts, NodeDef* ndef) {
-  StringPiece op(ndef->op());
+  absl::string_view op(ndef->op());
   if (op != "_Send" && op != "_Recv") {
     // Not related to send/recv.
     return;

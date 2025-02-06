@@ -25,6 +25,7 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
+#include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "tsl/platform/unbounded_work_queue.h"
 
 namespace xla {

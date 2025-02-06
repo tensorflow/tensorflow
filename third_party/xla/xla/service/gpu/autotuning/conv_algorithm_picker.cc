@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -67,14 +66,14 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
@@ -346,7 +345,7 @@ void PrintPlatformInfo(const se::Stream* stream) {
 // "input/output" or "scratch".
 absl::StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
                                    se::Stream* stream, absl::string_view name,
-                                   std::string_view instr_str,
+                                   absl::string_view instr_str,
                                    AutotuneResult* result) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
@@ -456,8 +455,7 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
 
   // Get canonical HLO.
   std::string canonical_hlo(
-      AutotuneCacheKey(config.GetExecutor()->GetDeviceDescription(), *instr)
-          .GetHlo());
+      AutotuneCacheKey(config.GetDeviceDescription(), *instr).GetHlo());
 
   TF_ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
 
@@ -584,10 +582,14 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
                         "Disqualified for implicit RELU.");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      se::RedzoneAllocator scratch_allocator,
-      AutotunerUtil::CreateRedzoneAllocator(
-          config_, runtime_arguments.hlo_module_config.debug_options()));
+  TF_ASSIGN_OR_RETURN(se::Stream * stream, config_.GetStream());
+  se::RedzoneAllocator scratch_allocator(
+      stream, config_.GetAllocator(),
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+      /*redzone_size=*/config_.should_check_correctness()
+          ? runtime_arguments.hlo_module_config.debug_options()
+                .xla_gpu_redzone_padding_bytes()
+          : 0);
 
   se::dnn::ProfileResult profile_result;
   VLOG(4) << "Trying algorithm " << alg.ToString() << " for " << instr_str;
@@ -625,8 +627,6 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
       runtime_arguments.rz_buffers.input_buffers();
   std::vector<se::DeviceMemoryBase> result_buffers =
       runtime_arguments.rz_buffers.output_buffers();
-
-  TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
 
   // Dry-run to warmup the plan.
   launch_status = RunGpuConv(config, operand_buffers, result_buffers,

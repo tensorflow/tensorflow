@@ -107,8 +107,8 @@ BaseRemoteRendezvous::~BaseRemoteRendezvous() {
 // Returns true if "device_name" is a valid full name of local device
 // of the "worker". This helper is purely based on the worker name
 // and device name and does no lookups in the worker->device_mgr.
-static bool IsLocalDevice(const StringPiece worker_name,
-                          const StringPiece device_name) {
+static bool IsLocalDevice(const absl::string_view worker_name,
+                          const absl::string_view device_name) {
   return absl::StartsWith(device_name, worker_name);
 }
 

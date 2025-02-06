@@ -15,7 +15,9 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MODEL_PREDICATES_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MODEL_PREDICATES_H_
 
+#include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"

@@ -339,7 +339,7 @@ bool ParseRingOrder(const string& gpu_ring_order_str, TaskDeviceMap* tdm) {
   for (int32_t rank = 0;
        rank < static_cast<int32>(split_gpu_ring_order_str.size()); ++rank) {
     int32_t tmp;
-    if (strings::safe_strto32(split_gpu_ring_order_str[rank], &tmp)) {
+    if (absl::SimpleAtoi(split_gpu_ring_order_str[rank], &tmp)) {
       gpu_ranks[tmp] = rank;
     } else {
       return false;

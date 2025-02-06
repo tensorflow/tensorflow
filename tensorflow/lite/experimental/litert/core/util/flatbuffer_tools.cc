@@ -17,7 +17,9 @@
 #include <algorithm>
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 
@@ -156,6 +158,14 @@ Expected<BufferRef<uint8_t>> GetTflBuffer(const TflModel& tfl_model,
   return *buffer;
 }
 
+Expected<const TflBuffer*> GetBuffer(const TflModel& tfl_model,
+                                     uint32_t buffer_ind) {
+  if (buffer_ind >= tfl_model.buffers.size()) {
+    return Error(kLiteRtStatusErrorIndexOOB);
+  }
+  return tfl_model.buffers.at(buffer_ind).get();
+}
+
 Expected<TflBufferPtr> TakeBuffer(TflModel& tfl_model, uint32_t buffer_ind) {
   if (buffer_ind >= tfl_model.buffers.size()) {
     return Error(kLiteRtStatusErrorIndexOOB);
@@ -235,13 +245,24 @@ bool IsCustomQuantized(const TflQuantization* tfl_quantization) {
                                  tflite::QuantizationDetails_CustomQuantization;
 }
 
-Expected<std::pair<int64_t, float>> AsPerTensorQparams(
+Expected<TflPerTensorQParams> AsPerTensorQparams(
     const TflQuantization* tfl_quantization) {
   if (!IsPerTensorQuantized(tfl_quantization)) {
     return Error(kLiteRtStatusErrorInvalidArgument);
   }
   return std::make_pair(tfl_quantization->zero_point.front(),
                         tfl_quantization->scale.front());
+}
+
+Expected<TflPerChannelQParams> AsPerChannelQparams(
+    const TflQuantization* tfl_quantization) {
+  if (!IsPerChannelQuantized(tfl_quantization)) {
+    return Error(kLiteRtStatusErrorInvalidArgument);
+  }
+  return TflPerChannelQParams(tfl_quantization->quantized_dimension,
+                              tfl_quantization->zero_point.size(),
+                              tfl_quantization->zero_point,
+                              tfl_quantization->scale);
 }
 
 ::tflite::Allocation::Ptr MakeAllocation(BufferRef<uint8_t> buf) {
@@ -284,6 +305,24 @@ Expected<FlatbufferWrapper::Ptr> FlatbufferWrapper::CreateFromTflFile(
     return buf.Error();
   }
   return FlatbufferWrapper::CreateFromBuffer(std::move(*buf));
+}
+
+OwningBufferRef<uint8_t> SerializeFlatbuffer(const TflModel& tfl_model) {
+  flatbuffers::FlatBufferBuilder b;
+  auto model_offset = tflite::Model::Pack(b, &tfl_model);
+  tflite::FinishModelBuffer(b, model_offset);
+
+  OwningBufferRef<uint8_t> buffer;
+  auto [new_buf, new_size, new_offset] = buffer.GetWeak();
+  new_buf = b.ReleaseRaw(new_size, new_offset);
+
+  return buffer;
+}
+
+OwningBufferRef<uint8_t> SerializeFlatbuffer(
+    const FlatbufferWrapper& flatbuffer) {
+  auto tfl_model = flatbuffer.Unpack();
+  return SerializeFlatbuffer(*tfl_model);
 }
 
 }  // namespace litert::internal

@@ -17,22 +17,15 @@ limitations under the License.
 #define XLA_CODEGEN_KERNEL_SPEC_H_
 
 #include <cstddef>
-#include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla {
-
-// KernelSource is a base class for generated kernel source. Concrete types of
-// kernel source are backends specific, i.e. on GPU backend it can be PTX (if
-// already compiled) or an LLVM IR (if XLA itself will compile it to PTX).
-class KernelSource {
- public:
-  virtual ~KernelSource() = default;
-};
 
 // KernelSpec is a specification of an XLA kernel produced by the XLA codegen.
 // At XLA compilation time, backends instantiates kernel specification into run
@@ -42,12 +35,18 @@ class KernelSpec {
  public:
   using BufferUses = absl::InlinedVector<BufferUse, 8>;
 
-  KernelSpec(se::ClusterDim cluster_dim, se::BlockDim block_dim,
-             se::ThreadDim thread_dim, std::optional<size_t> scratch_bytes,
+  KernelSpec(absl::string_view name, se::ThreadDim thread_dim,
              BufferUses buffer_uses,
-             std::shared_ptr<KernelSource> kernel_source);
+             std::optional<size_t> scratch_bytes = std::nullopt);
 
-  virtual ~KernelSpec() = default;
+  KernelSpec(absl::string_view name, se::ClusterDim cluster_dim,
+             se::BlockDim block_dim, se::ThreadDim thread_dim,
+             BufferUses buffer_uses,
+             std::optional<size_t> scratch_bytes = std::nullopt);
+
+  // Get the backend specific name of the kernel.
+  // Thus may be used to identify the kernel in the backend specific runtime.
+  const std::string& name() const { return name_; }
 
   // Kernel launch dimensions define how the kernel execution must be
   // parallelized. The meaning of these dimensions is backend specific, i.e.
@@ -71,16 +70,13 @@ class KernelSpec {
   // Buffers (buffer allocation slices) used by the kernel.
   const BufferUses& buffer_uses() const { return buffer_uses_; }
 
-  // Compiled kernel source (backend specific).
-  std::shared_ptr<KernelSource> kernel_source() const { return kernel_source_; }
-
  private:
+  std::string name_;
   se::ClusterDim cluster_dim_;
   se::BlockDim block_dim_;
   se::ThreadDim thread_dim_;
-  std::optional<size_t> scratch_bytes_;
   BufferUses buffer_uses_;
-  std::shared_ptr<KernelSource> kernel_source_;
+  std::optional<size_t> scratch_bytes_;
 };
 
 }  // namespace xla

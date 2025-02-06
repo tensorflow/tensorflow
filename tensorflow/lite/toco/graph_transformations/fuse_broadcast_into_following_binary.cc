@@ -52,9 +52,9 @@ bool IsBroadcastingOp(const Model& model, Operator* op) {
 // Finds an operation that looks like a broadcast (concat of the same sources
 // along the last dimension) and drops it by relying on the ability of certain
 // binary ops to perform an implicit broadcast.
-::tensorflow::Status FuseBroadcastIntoFollowingBinary::Run(Model* model,
-                                                           std::size_t op_index,
-                                                           bool* modified) {
+absl::Status FuseBroadcastIntoFollowingBinary::Run(Model* model,
+                                                   std::size_t op_index,
+                                                   bool* modified) {
   *modified = false;
   const auto binary_it = model->operators.begin() + op_index;
   auto* binary_op = binary_it->get();

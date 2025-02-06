@@ -51,10 +51,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -72,17 +72,17 @@ absl::Status ValidateArrayCreationInput(
   if (pjrt_buffers.empty()) {
     return InvalidArgument("pjrt_buffers must be non-empty");
   }
-  if (sharding->devices()->size() != pjrt_buffers.size()) {
+  absl::Span<Device* const> sharding_devices =
+      sharding->devices()->AddressableDeviceList()->devices();
+  if (sharding_devices.size() != pjrt_buffers.size()) {
     return InvalidArgument("device and buffer counts mismatch: %d vs. %d",
-                           sharding->devices()->size(), pjrt_buffers.size());
+                           sharding_devices.size(), pjrt_buffers.size());
   }
 
   // Canonicalize memory kind in case it hasn't been done before.
-  MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
-      sharding->memory_kind(), sharding->devices()->devices().front());
-  const absl::Span<Device* const> sharding_devices =
-      sharding->devices()->devices();
-  for (int i = 0; i < sharding->devices()->size(); ++i) {
+  MemoryKind canonicalized_sharding_memory_kind =
+      CanonicalizeMemoryKind(sharding->memory_kind(), sharding_devices.front());
+  for (int i = 0; i < sharding_devices.size(); ++i) {
     PjRtCompatibleDevice* device =
         llvm::dyn_cast<PjRtCompatibleDevice>(sharding_devices[i]);
     if (!device) {
@@ -426,15 +426,13 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
     TF_ASSIGN_OR_RETURN(Device * buffer_device,
                         client_->LookupPjRtDevice(pjrt_buffers_[i]->device()));
     bool devices_equal = buffer_device == new_sharding_devices[i];
-    bool memories_supported = pjrt_buffers_[i]->memory_space() != nullptr;
     bool memory_kind_equal =
-        new_sharding_has_memory_kind && memories_supported &&
+        new_sharding_has_memory_kind &&
         pjrt_buffers_[i]->memory_space()->kind() ==
             canonicalized_sharding_memory_kind.memory_kind();
 
     // No need for data transfer.
-    if (devices_equal && (!new_sharding_has_memory_kind ||
-                          !memories_supported || memory_kind_equal)) {
+    if (devices_equal && (!new_sharding_has_memory_kind || memory_kind_equal)) {
       switch (semantics) {
         case ArrayCopySemantics::kAlwaysCopy:
           // HBM is the only thing that doesn't support same-device copy and
@@ -480,38 +478,30 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
         return InvalidArgument("Cannot copy array to non-addressable device %s",
                                pjrt_device->DebugString());
       }
-      // Use `PjRtBuffer::CopyToMemorySpace` instead of
-      // `PjRtBuffer::CopyToDevice` when memories are supported. Because the
-      // semantics of the latter one is to copy to the default memory space of
-      // the device.
-      if (new_sharding_has_memory_kind && memories_supported) {
+      PjRtMemorySpace* pjrt_memory_space = nullptr;
+      if (new_sharding_has_memory_kind) {
         TF_ASSIGN_OR_RETURN(
             auto memory,
             GetMemorySpaceFromMemoryKind(new_sharding_devices[i],
                                          canonicalized_sharding_memory_kind));
         PjRtMemory* pjrt_memory = llvm::dyn_cast<PjRtMemory>(memory);
         TF_RET_CHECK(pjrt_memory != nullptr);
-        TF_ASSIGN_OR_RETURN(
-            std::unique_ptr<PjRtBuffer> copied_buffer,
-            pjrt_buffers_[i]->CopyToMemorySpace(pjrt_memory->pjrt_memory()));
-        if (semantics == ArrayCopySemantics::kDonateInput) {
-          if (!memory_kind_equal) {
-            return Unimplemented(
-                "Donation across different memory kinds is not implemented.");
-          }
-          pjrt_buffers_[i] = nullptr;
-        }
-        buffers.push_back(std::move(copied_buffer));
+        pjrt_memory_space = pjrt_memory->pjrt_memory();
       } else {
-        // Use `PjRtBuffer::CopyToDevice` when memories are not supported.
-        TF_ASSIGN_OR_RETURN(
-            std::unique_ptr<xla::PjRtBuffer> copied_buffer,
-            pjrt_buffers_[i]->CopyToDevice(pjrt_device->pjrt_device()));
-        if (semantics == ArrayCopySemantics::kDonateInput) {
-          pjrt_buffers_[i] = nullptr;
-        }
-        buffers.push_back(std::move(copied_buffer));
+        TF_ASSIGN_OR_RETURN(pjrt_memory_space,
+                            pjrt_device->pjrt_device()->default_memory_space());
       }
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<PjRtBuffer> copied_buffer,
+          pjrt_buffers_[i]->CopyToMemorySpace(pjrt_memory_space));
+      if (semantics == ArrayCopySemantics::kDonateInput) {
+        if (!memory_kind_equal) {
+          return Unimplemented(
+              "Donation across different memory kinds is not implemented.");
+        }
+        pjrt_buffers_[i] = nullptr;
+      }
+      buffers.push_back(std::move(copied_buffer));
     }
   }
   return std::visit(
@@ -553,7 +543,7 @@ bool PjRtArray::IsDeleted() const {
 
 std::string PjRtArray::DebugString() const {
   DCHECK(this);
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout_ptr = layout();
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout_ptr = layout();
   std::string layout_str =
       layout_ptr.ok() ? (*layout_ptr)->ToString() : "<unknown>";
 
@@ -566,12 +556,12 @@ std::string PjRtArray::DebugString() const {
 
 // TODO(b/330198879): populate layout at construction instead of accessing PJRT
 // buffer directly for consistency with Pathways.
-absl::StatusOr<std::unique_ptr<PjRtLayout>> PjRtArray::layout() const {
+absl::StatusOr<std::shared_ptr<const PjRtLayout>> PjRtArray::layout() const {
   CHECK(!pjrt_buffers_.empty());
-  std::unique_ptr<PjRtLayout> layout = pjrt_buffers_[0]->layout();
+  std::shared_ptr<const PjRtLayout> layout = pjrt_buffers_[0]->layout();
 #ifndef NDEBUG
   for (int i = 1; i < pjrt_buffers_.size(); ++i) {
-    std::unique_ptr<PjRtLayout> layout_i = pjrt_buffers_[i]->layout();
+    std::shared_ptr<const PjRtLayout> layout_i = pjrt_buffers_[i]->layout();
     DCHECK(*layout == *layout_i)
         << "PjRtArray has mismatched layouts across shards! "
         << "shard 0: " << layout->ToString() << ", shard " << i << ": "

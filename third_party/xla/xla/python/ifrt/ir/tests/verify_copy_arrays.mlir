@@ -179,3 +179,19 @@ func.func @requires_outputs_with_same_memory_kind(%arg0: !array0)
     : (!array0, !array0) -> (!array1, !array2)
   return
 }
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1],
+                      layout = "auto">
+!array1 = !ifrt.array<tensor<2x4xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [2,3],
+                      layout = "auto">
+func.func @no_auto_layout(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CopyArrays' op does not allow input arrays with `auto` layout}}
+  %0, %ctrl = ifrt.CopyArrays(%arg0) {donated=true}
+    : (!array0) -> (!array1)
+  return
+}

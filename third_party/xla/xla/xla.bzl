@@ -6,13 +6,13 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "if_static",
-    "tf_exec_properties",
-)
-load(
     "//xla/tsl:tsl.bzl",
     "tsl_copts",
+)
+load(
+    "//xla/tsl/platform:build_config_root.bzl",
+    "if_static",
+    "tf_exec_properties",
 )
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -45,7 +45,9 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     Label("//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl"),
     Label("//xla/stream_executor:device_description_proto_cc_impl"),
     Label("//xla/stream_executor:stream_executor_impl"),
+    Label("//xla/stream_executor/cuda:cuda_compute_capability_proto_cc_impl"),
     Label("//xla/stream_executor/gpu:gpu_init_impl"),
+    Label("//xla/backends/cpu/runtime:thunk_proto_cc_impl"),
     "@com_google_protobuf//:protobuf",
     "//xla/tsl/framework:allocator_registry_impl",
     "//xla/tsl/framework:allocator",
@@ -91,7 +93,7 @@ def xla_bzl_library(name = "xla_bzl_library"):
         deps = [
             "//xla/tsl:tsl_bzl",
             "@local_config_rocm//rocm:build_defs_bzl",
-            "@local_tsl//tsl/platform:build_config_root_bzl",
+            "//xla/tsl/platform:build_config_root_bzl",
             "//xla/tsl/platform/default:cuda_build_defs_bzl",
             "@bazel_skylib//:bzl_library",
         ],

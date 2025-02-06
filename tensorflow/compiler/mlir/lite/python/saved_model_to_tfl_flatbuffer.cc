@@ -43,20 +43,20 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
 using tensorflow::quantization::PyFunctionLibrary;
 
-Status HandleInputOutputArraysWithModule(
+absl::Status HandleInputOutputArraysWithModule(
     const tflite::ModelFlags& model_flags,
     mlir::OwningOpRef<mlir::ModuleOp>* module) {
   mlir::func::FuncOp entry_function = nullptr;
@@ -132,7 +132,7 @@ Status HandleInputOutputArraysWithModule(
   return absl::OkStatus();
 }
 
-Status ConvertSavedModelToTFLiteFlatBuffer(
+absl::Status ConvertSavedModelToTFLiteFlatBuffer(
     const tflite::ModelFlags& model_flags,
     tflite::ConverterFlags& converter_flags, std::string* result,
     const PyFunctionLibrary* quantization_py_function_lib) {
@@ -217,6 +217,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   pass_config.model_origin_framework = converter_flags.model_origin_framework();
   pass_config.canonicalizing_inf_as_min_max_float =
       converter_flags.canonicalizing_inf_as_min_max_float();
+
+  pass_config.quant_specs.strict_qdq_mode = converter_flags.strict_qdq_mode();
 
   if (converter_flags.qdq_conversion_mode() == "STATIC") {
     pass_config.quant_specs.qdq_conversion_mode =

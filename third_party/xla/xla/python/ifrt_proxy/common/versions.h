@@ -26,7 +26,7 @@ namespace protocol_version {
 inline constexpr int kClientMin = 3;
 
 // The minimum protocol_version that the current server code understands.
-inline constexpr int kServerMin = 1;
+inline constexpr int kServerMin = 3;
 
 enum {
   // Versions kAncient are named and are only referred to by their numbers. See
@@ -36,6 +36,11 @@ enum {
   // kClientHandlesOptimization2 introduces a set of performance optimizations
   // where the client generates array handles.
   kClientHandlesOptimization2,
+
+  // kClientHandlesExecutableOptimization introduces a set of performance
+  // optimizations where the client generates array handles for operations
+  // related to LoadedExecutable.
+  kClientHandlesExecutableOptimization,
 
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.

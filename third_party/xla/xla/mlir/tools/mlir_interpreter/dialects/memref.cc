@@ -198,7 +198,7 @@ InterpreterValue ExpandShape(InterpreterState& state, memref::ExpandShapeOp op,
   out_view.strides.clear();
   out_view.sizes = llvm::to_vector(out_ty.getShape());
   int64_t dummy;
-  if (!getStridesAndOffset(out_ty, out_view.strides, dummy).succeeded()) {
+  if (!out_ty.getStridesAndOffset(out_view.strides, dummy).succeeded()) {
     if (input_view.strides != BufferView::GetDefaultStrides(input_view.sizes)) {
       state.AddFailure("unsupported strides");
       return {};

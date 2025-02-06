@@ -136,8 +136,8 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
 
 }  // namespace
 
-::tensorflow::Status IdentifyLstmCell::Run(Model* model, std::size_t op_index,
-                                           bool* modified) {
+absl::Status IdentifyLstmCell::Run(Model* model, std::size_t op_index,
+                                   bool* modified) {
   *modified = false;
   // This LSTM cell identification method is not invariant to commutation of
   // commutative operator inputs. For example, if input[0] and input[1] of the

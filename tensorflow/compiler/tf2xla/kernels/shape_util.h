@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <limits>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/status.h"

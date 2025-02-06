@@ -18,12 +18,12 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -65,8 +66,11 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/tracked_device_buffer.h"
+#include "xla/pjrt/worker_thread.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
@@ -114,7 +118,6 @@ limitations under the License.
 #endif
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/util.h"
 
@@ -495,6 +498,17 @@ class AsyncHostToDeviceTransferManager
 
 static std::optional<stream_executor::GpuTargetConfigProto>
 GetTargetConfigForDevices(absl::Span<PjRtDevice* const> devices) {
+  // Temporary ability to disable TargetConfig via env var until
+  // internal tests can be fixed.
+  const char* disable_target_config_str =
+      std::getenv("PJRT_GPU_SE_DISABLE_TARGET_CONFIG");
+  int disable_target_config = 0;
+  if (disable_target_config_str &&
+      absl::SimpleAtoi(disable_target_config_str, &disable_target_config)) {
+    if (disable_target_config == 1) {
+      return std::nullopt;
+    }
+  }
   for (const PjRtDevice* device : devices) {
     LocalDeviceState* local_device_state =
         tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
@@ -531,6 +545,7 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     std::shared_ptr<const GpuTopology> gpu_topology)
     : xla::PjRtStreamExecutorClient(
           platform_name, client, std::move(devices), process_index,
+          /*memory_spaces=*/{},  // Initialized below.
           std::move(allocator), std::move(host_memory_allocator),
           should_stage_host_to_device_transfers, std::move(gpu_run_options)),
       topology_(xla::StreamExecutorGpuTopologyDescription(
@@ -546,7 +561,7 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     auto memory_space =
         std::make_unique<StreamExecutorGpuHbmMemorySpace>(id, device);
     tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
-        memory_space.get());
+        memory_space.get(), /*is_default=*/true);
     owned_memory_spaces_.push_back(std::move(memory_space));
     auto pinned =
         std::make_unique<PinnedHostMemorySpace>(basePinnedId + id, device);
@@ -1010,8 +1025,9 @@ GetStreamExecutorGpuDeviceAllocator(
   }
 
   for (const auto& ordinal_and_device : addressable_devices) {
-    auto host_allocator =
-        GetGpuHostAllocator(ordinal_and_device.second->executor());
+    TF_ASSIGN_OR_RETURN(
+        auto host_allocator,
+        GetGpuHostAllocator(ordinal_and_device.second->executor()));
     allocators.emplace_back(std::move(host_allocator),
                             ordinal_and_device.second->compute_stream(),
                             /*memory_space=*/
@@ -1062,12 +1078,12 @@ void NameDeviceAndLauncherThread(const LocalTopologyProto& node,
 }  // namespace
 
 absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
-    std::string_view platform_name,
+    absl::string_view platform_name,
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int node_id, int num_nodes,
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
-    std::optional<std::string_view> mock_gpu_topology,
+    std::optional<absl::string_view> mock_gpu_topology,
     absl::Duration get_local_topology_timeout,
     absl::Duration get_global_topology_timeout) {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
@@ -1175,8 +1191,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   if (num_nodes > 1) {
     auto nccl_id_store = std::make_shared<NcclIdStore>(node_id, device_to_node,
                                                        std::move(kv_store));
-    gpu_executable_run_options->set_nccl_clique_id_callback(
-        [nccl_id_store](const gpu::NcclCliqueKey& key) {
+    gpu_executable_run_options->set_clique_id_callback(
+        [nccl_id_store](const CliqueKey& key) {
           return nccl_id_store->GetNcclUniqueId(key);
         });
   }
@@ -1295,13 +1311,21 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
                       GetStreamExecutorGpuDeviceAllocator(
                           xla_client->platform(), options.allocator_config,
                           local_device_states));
-  auto host_memory_allocator =
-      GetGpuHostAllocator(local_device_states.begin()->second->executor());
+  TF_ASSIGN_OR_RETURN(
+      auto host_memory_allocator,
+      GetGpuHostAllocator(local_device_states.begin()->second->executor()));
 
   auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
   if (options.enable_mock_nccl) {
-    gpu_run_options->set_enable_mock_nccl_collectives();
+    gpu_run_options->set_enable_mock_collectives();
   }
+
+  static const bool xla_gpu_require_exclusive_lock =
+      xla::GetDebugOptionsFromFlags().xla_gpu_require_exclusive_lock();
+  if (xla_gpu_require_exclusive_lock) {
+    gpu_run_options->set_requires_exclusive_lock_on_gpu();
+  }
+
   std::shared_ptr<KeyValueStoreInterface> kv_store = options.kv_store;
   if (options.enable_mock_nccl) {
     kv_store = std::make_shared<InMemoryKeyValueStore>();

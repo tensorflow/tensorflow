@@ -115,6 +115,16 @@ struct ZeroProvider {
   NativeT<kType> operator()() const { return static_cast<NativeT<kType>>(0); }
 };
 
+// Use template specialization for the E8M0 type, as it has no zero
+// representation, so static_cast<> returns NaN. The actual zero-like value
+// is 2^-127.
+template <>
+struct ZeroProvider<F8E8M0FNU> {
+  NativeT<F8E8M0FNU> operator()() const {
+    return Eigen::numext::bit_cast<NativeT<F8E8M0FNU>>('\0');
+  }
+};
+
 template <PrimitiveType kType>
 struct OneProvider {
   NativeT<kType> operator()() const { return static_cast<NativeT<kType>>(1); }
@@ -470,6 +480,11 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 /* static */ Literal LiteralUtil::ConvertS32ToF32(
     const LiteralSlice& s32_literal) {
   return ConvertType<int32_t, float>(s32_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertS32ToS1(
+    const LiteralSlice& s32_literal) {
+  return ConvertType<int32_t, tsl::int1>(s32_literal);
 }
 
 /* static */ Literal LiteralUtil::CreateToken() {

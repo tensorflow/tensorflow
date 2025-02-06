@@ -240,6 +240,12 @@ class IfrtToVifrtTypeConverter : public VifrtTypeConverterBuiltin {
         memory_kind_attr =
             mlir::StringAttr::get(array.getContext(), kVifrtDefaultString);
       };
+      mlir::StringAttr layout_attr = array.getLayoutAttr();
+      if (!layout_attr) {
+        // Use a default string value to indicate that layout was not set.
+        layout_attr =
+            mlir::StringAttr::get(array.getContext(), kVifrtDefaultString);
+      }
       auto sharding_attr = convertGeneric(array.getShardingAttr(), this);
       if (!sharding_attr) {
         LLVM_DEBUG(llvm::dbgs() << "Failed to convert sharding: "
@@ -255,7 +261,7 @@ class IfrtToVifrtTypeConverter : public VifrtTypeConverterBuiltin {
       }
       return VifrtArrayV1Type::get(array.getContext(), array.getShape(),
                                    sharding_attr, devices_attr,
-                                   memory_kind_attr);
+                                   memory_kind_attr, layout_attr);
     });
     addConversion([](IfrtControlType type) -> mlir::Type {
       return VifrtControlV1Type::get(type.getContext());
@@ -343,14 +349,17 @@ class IfrtToVifrtOpConverter : public mlir::OpConversionPattern<IfrtOpTy> {
     llvm::DenseSet<mlir::StringAttr> already_converted_attrs;
     if constexpr (std::is_same<IfrtOpTy, CallOp>::value) {
       auto call_op = static_cast<CallOp>(ifrt_op);
-      // Convert the callee from SymbolRefAttr to SymbolNameAttr so that DCE
+      // Convert the callee from SymbolRefAttr to StringAttr so that DCE
       // can remove the atom programs, which have independently legalized to
-      // VHLO.
-      std::string symbol_ref_str;
-      {
-        llvm::raw_string_ostream os(symbol_ref_str);
-        call_op.getCalleeAttr().print(os);
-      }
+      // VHLO. Manually to the conversion by merging RootReference and
+      // NestedReferences to avoid string escaping.
+      std::string symbol_ref_str = absl::StrCat(
+          "@", call_op.getCalleeAttr().getRootReference().getValue().str(),
+          absl::StrJoin(
+              call_op.getCalleeAttr().getNestedReferences(), "",
+              [](std::string* out, const mlir::FlatSymbolRefAttr& symbol_ref) {
+                absl::StrAppend(out, "::@", symbol_ref.getValue().str());
+              }));
       vifrt_attrs.push_back(
           {call_op.getCalleeAttrName(),
            mlir::StringAttr::get(call_op.getContext(), symbol_ref_str)});

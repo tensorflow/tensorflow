@@ -174,28 +174,27 @@ void GenerateScatterShardingFromOperands(
     return;
   }
 
-  absl::InlinedVector<int64_t, 1> output_parallel_dims =
-      scatter_parallel_dims->operand_dims;
   // Infer output sharding from scatter operand sharding.
   const Shape& shape = scatter->shape();
   scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
-          data_sharding, shape, absl::MakeConstSpan(output_parallel_dims),
-          absl::MakeConstSpan(output_parallel_dims)));
+          data_sharding, shape,
+          absl::MakeConstSpan(scatter_parallel_dims->operand_dims),
+          absl::MakeConstSpan(scatter_parallel_dims->operand_dims)));
 
   // Infer output sharding from scatter indices sharding.
   scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
           indices_sharding, shape,
           absl::MakeConstSpan(scatter_parallel_dims->indices_dims),
-          absl::MakeConstSpan(output_parallel_dims)));
+          absl::MakeConstSpan(scatter_parallel_dims->operand_dims)));
 
   // Infer output sharding from scatter update sharding.
   scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
           update_sharding, shape,
           absl::MakeConstSpan(scatter_parallel_dims->output_dims),
-          absl::MakeConstSpan(output_parallel_dims)));
+          absl::MakeConstSpan(scatter_parallel_dims->operand_dims)));
 
   for (const HloSharding& scatter_sharding : scatter_shardings) {
     yield_sharding(data_sharding, indices_sharding, update_sharding,
@@ -265,7 +264,7 @@ BuildStrategyAndCost(
       // usually "follows" other instruction's sharding. If the instruction it
       // follows is an intermediate instruction, it may be able to choose
       // unevenly sharded strategiyes. Usually if we constraint input's sharding
-      // strategies, outputs would be constrained as welll, but if outputs are
+      // strategies, outputs would be constrained as well, but if outputs are
       // still unevely sharded in some cases, we need to fix the implementation
       // in auto sharding.
       only_allow_divisible = option.only_allow_divisible_input_output;
@@ -287,7 +286,7 @@ BuildStrategyAndCost(
           // We use this following relationship to ensure that the input tuple
           // of the while loop, and the parameter of the body of that while
           // loop. Therefore, this followinf relationship is necessary for
-          // correctness, and is not merely an optmization.
+          // correctness, and is not merely an optimization.
           is_follow_necessary_for_correctness = true;
           for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
             std::unique_ptr<StrategyGroup> child_strategies =

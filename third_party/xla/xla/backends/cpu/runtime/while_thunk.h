@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -46,6 +47,12 @@ class WhileThunk final : public Thunk {
 
   BufferUses buffer_uses() const final;
   ResourceUses resource_uses() const final;
+
+  const ThunkExecutor& cond_executor() const { return cond_executor_; }
+  const ThunkExecutor& body_executor() const { return body_executor_; }
+  const BufferAllocation::Slice& cond_buffer() const { return cond_buffer_; }
+
+  std::optional<int64_t> trip_count() const { return trip_count_; }
 
  private:
   WhileThunk(Info info, BufferAllocation::Slice cond_buffer,

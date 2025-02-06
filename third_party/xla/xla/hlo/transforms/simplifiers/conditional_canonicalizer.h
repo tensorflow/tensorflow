@@ -17,14 +17,17 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
-// Canonicalize output of conditionals, make non-tuple outputs into tuple with
-// single element output. After this pass, all conditional instructions have
-// tuple outputs.
+// Canonicalize input and output of conditionals, make non-tuple inputs/outputs
+// into tuple with single element input/output. After this pass, all conditional
+// instructions have tuple inputs/outputs.
 class ConditionalCanonicalizer : public HloModulePass {
  public:
   absl::string_view name() const override {

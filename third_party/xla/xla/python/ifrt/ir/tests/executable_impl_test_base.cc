@@ -49,7 +49,7 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -163,9 +163,7 @@ IfrtIrExecutableImplTestBase::PickDevices(int count) {
   absl::Span<Device* const> devices = client_->devices();
   TF_RET_CHECK(count <= devices.size())
       << "Requested " << count << " devices. Only have " << devices.size();
-  auto picked = devices.first(count);
-  return BasicDeviceList::Create(
-      BasicDeviceList::Devices(picked.begin(), picked.end()));
+  return BasicDeviceList::Create(devices.first(count));
 }
 
 }  // namespace test_util

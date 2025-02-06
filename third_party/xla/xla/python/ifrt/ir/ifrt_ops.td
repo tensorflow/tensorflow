@@ -188,6 +188,8 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
     Variadic<Ifrt_ControlType>:$control_inputs,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
     SymbolRefAttr:$callee,
     Ifrt_DevicesAttr:$devices,
     DefaultValuedAttr<Ifrt_IoAliasesAttr, "{}">:$io_aliases,
@@ -229,6 +231,8 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
     Variadic<Ifrt_ControlType>:$control_inputs,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs,
     SymbolRefAttr:$callee,
     DefaultValuedAttr<Ifrt_IoAliasesAttr, "{}">:$io_aliases,
     DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$donated_input_indices);

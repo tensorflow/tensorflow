@@ -35,11 +35,9 @@ void PluggableDeviceContext::CopyCPUTensorToDevice(
       cpu_tensor, this, device, device_tensor, done, sync_dst_compute);
 }
 
-void PluggableDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                                                   StringPiece tensor_name,
-                                                   Device* device,
-                                                   Tensor* cpu_tensor,
-                                                   StatusCallback done) {
+void PluggableDeviceContext::CopyDeviceTensorToCPU(
+    const Tensor* device_tensor, absl::string_view tensor_name, Device* device,
+    Tensor* cpu_tensor, StatusCallback done) {
   PluggableDeviceUtil::CopyPluggableDeviceTensorToCPU(
       device, this, device_tensor, cpu_tensor, done);
 }

@@ -24,12 +24,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -600,8 +602,8 @@ TEST_F(CommandBufferSchedulingTest, PrepareCommandBuffer) {
   std::vector<HloInstruction*> instructions;
   HloInstructionSequence seq;
   for (HloInstruction* inst : module->entry_computation()->instructions()) {
-    if (inst->opcode() == HloOpcode::kFusion ||
-        inst->opcode() == HloOpcode::kGetTupleElement) {
+    if (HloPredicateIsOp<HloOpcode::kFusion, HloOpcode::kGetTupleElement>(
+            inst)) {
       seq.push_back(inst);
     }
     instructions.push_back(inst);
@@ -1091,7 +1093,7 @@ TEST_F(CommandBufferSchedulingTest, AsyncFusion) {
 TEST_F(CommandBufferSchedulingTest, AsyncAlltoAll) {
   const char* hlo = R"(
     HloModule m, is_scheduled=true
-    
+
     async_computation.1 {
     param.1 = f32[4,8,128]{2,1,0} parameter(0)
     ROOT all-to-all.1 = f32[4,8,128]{2,1,0} all-to-all(param.1), channel_id=1, dimensions={1}
@@ -1099,7 +1101,7 @@ TEST_F(CommandBufferSchedulingTest, AsyncAlltoAll) {
 
     ENTRY main {
     param.0 = f32[4,8,128]{2,1,0} parameter(0)
-    all-to-all-start = ((f32[4,8,128]{2,1,0}), f32[4,8,128]{2,1,0}) async-start(param.0), calls=async_computation.1 
+    all-to-all-start = ((f32[4,8,128]{2,1,0}), f32[4,8,128]{2,1,0}) async-start(param.0), calls=async_computation.1
     ROOT all-to-all-done = f32[4,8,128]{2,1,0} async-done(all-to-all-start)
     })";
 
@@ -1158,7 +1160,11 @@ TEST_F(CommandBufferSchedulingTest, DynamicSliceFusionDynamicSlicing) {
     HloModuleConfig config(m_clone->config());
     config.set_debug_options(options);
     m_clone->set_config(config);
-    TF_ASSIGN_OR_RETURN(auto exec, CreateExecutable(std::move(m_clone), false));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> wrapped_exec,
+                        CreateExecutable(std::move(m_clone), false));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> exec,
+                        test_runner_as_hlo_runner().ExecutableFromWrapped(
+                            std::move(wrapped_exec)));
     auto gpu_exec = std::unique_ptr<GpuExecutable>(
         static_cast<GpuExecutable*>(exec.release()));
     TF_RET_CHECK(llvm::any_of(gpu_exec->GetThunk().thunks(),
@@ -1226,7 +1232,11 @@ TEST_F(CommandBufferSchedulingTest, DynamicSliceFusionStaticSlicing) {
     HloModuleConfig config(m_clone->config());
     config.set_debug_options(options);
     m_clone->set_config(config);
-    TF_ASSIGN_OR_RETURN(auto exec, CreateExecutable(std::move(m_clone), false));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> wrapped_exec,
+                        CreateExecutable(std::move(m_clone), false));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> exec,
+                        test_runner_as_hlo_runner().ExecutableFromWrapped(
+                            std::move(wrapped_exec)));
     return std::unique_ptr<GpuExecutable>(
         static_cast<GpuExecutable*>(exec.release()));
   };

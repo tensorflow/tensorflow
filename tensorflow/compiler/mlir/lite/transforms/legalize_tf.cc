@@ -1103,7 +1103,7 @@ void LegalizeTFPass::runOnOperation() {
   if (!applyPatterns(func, target, stage1FrozenPatterns)) {
     return signalPassFailure();
   }
-  // Explict BroadcastTo addition for left-over broadcast-able ops.
+  // Explicit BroadcastTo addition for left-over broadcast-able ops.
   // The following pattern matchings should be done after the other legalization
   // rules in order not to add unnecessary BroadcastTo ops.
   RewritePatternSet stage2Patterns(&getContext());

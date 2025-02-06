@@ -22,7 +22,9 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_target_cpu")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_friends", "tfcompile_target_cpu")
+
+visibility(tfcompile_friends())
 
 def _tfcompile_model_library_rule_impl(ctx):
     header_file = ctx.outputs.header_out
@@ -212,7 +214,6 @@ def _tf_library(
             ] + freeze_saver_srcs,
             outs = [freeze_file],
             cmd = (
-                "PYWRAP_TARGET='//tensorflow/python:_pywrap_tensorflow' " +
                 "CUDA_VISIBLE_DEVICES='' " +
                 "$(location " +
                 "//tensorflow/python/tools:freeze_graph)" +
@@ -479,6 +480,9 @@ def tf_library(
                       gen_benchmark=True.
     The output header is called <name>.h.
 
+    Deprecated:
+      tfcompile is deprecated (b/389018081). As an alternative, consider using
+      XLA:CPU's AOT capabilities directly.
     Args:
       name: The name of the build rule.
       graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt'

@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tsl/platform/grpc_credentials.h"
+#include "xla/tsl/platform/grpc_credentials.h"
 
 #include <memory>
 
 #include "absl/log/check.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/security/server_credentials.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace tsl {
 

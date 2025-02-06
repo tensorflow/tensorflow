@@ -61,8 +61,9 @@ int main(int argc, char* argv[]) {
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("module_file", &options.module_path,
                 "The path to the HLO, MHLO or StableHLO file"),
-      tsl::Flag("output_file", &options.output_path,
-                "The path to the output file"),
+      tsl::Flag("output_file", &options.output_file,
+                "The path to the output file. Required if --result_output_file "
+                "is not set."),
       tsl::Flag("platform", &options.platform,
                 "The platform on which the built executable runs"),
       tsl::Flag("gpu_target_config",
@@ -95,7 +96,8 @@ int main(int argc, char* argv[]) {
                 "Whether to wait for uploads to a symbol repository to "
                 "complete. See export_hlo.h for more on uploads."),
       tsl::Flag("result_output_file", &options.result_output_file,
-                "File to write a serialized xla.CompilationResult proto to."),
+                "File to write a serialized xla.CompilationResult proto to. "
+                "Required if --output_file is not set."),
   };
 
   tsl::string usage = xla::xla_compile::kUsageHeader;

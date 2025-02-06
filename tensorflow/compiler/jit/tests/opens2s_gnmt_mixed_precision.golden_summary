@@ -1,8 +1,8 @@
-Clustered nodes: 2342
-Unclustered nodes: 4264
+Clustered nodes: 2385
+Unclustered nodes: 4221
 Number of clusters: 30
 
-unclustered size 4264
+unclustered size 4221
  Add 17
  AddN 1
  All 1
@@ -14,7 +14,7 @@ unclustered size 4264
  BroadcastGradientArgs 44
  Cast 38
  ConcatV2 3
- Const 918
+ Const 875
  ControlTrigger 5
  Enter 874
  Equal 4
@@ -224,7 +224,7 @@ cluster 12 size 6
  Const 2
  GreaterEqual 1
  LogicalOr 1
-cluster 15 size 590
+cluster 15 size 614
  Add 22
  AddN 41
  BatchMatMulV2 2
@@ -232,7 +232,7 @@ cluster 15 size 590
  BroadcastGradientArgs 4
  ConcatOffset 1
  ConcatV2 14
- Const 175
+ Const 199
  DynamicStitch 1
  FloorDiv 1
  MatMul 20
@@ -263,7 +263,7 @@ cluster 16 size 22
  Sigmoid 3
  Split 1
  Tanh 2
-cluster 17 size 57
+cluster 17 size 60
  Add 2
  AddN 4
  BiasAddGrad 1
@@ -271,7 +271,7 @@ cluster 17 size 57
  Cast 2
  ConcatOffset 1
  ConcatV2 1
- Const 5
+ Const 8
  MatMul 2
  Mul 6
  NoOp 2
@@ -294,7 +294,7 @@ cluster 18 size 22
  Sigmoid 3
  Split 1
  Tanh 2
-cluster 19 size 57
+cluster 19 size 60
  Add 2
  AddN 4
  BiasAddGrad 1
@@ -302,7 +302,7 @@ cluster 19 size 57
  Cast 2
  ConcatOffset 1
  ConcatV2 1
- Const 5
+ Const 8
  MatMul 2
  Mul 6
  NoOp 2
@@ -340,7 +340,7 @@ cluster 22 size 28
  Snapshot 1
  Split 1
  Tanh 2
-cluster 23 size 410
+cluster 23 size 423
  Add 12
  AddN 28
  BiasAddGrad 6
@@ -348,7 +348,7 @@ cluster 23 size 410
  Cast 12
  ConcatOffset 6
  ConcatV2 6
- Const 36
+ Const 49
  MatMul 12
  Mul 48
  NoOp 13

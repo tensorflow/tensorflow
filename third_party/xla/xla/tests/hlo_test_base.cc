@@ -15,62 +15,36 @@ limitations under the License.
 
 #include "xla/tests/hlo_test_base.h"
 
-#include <algorithm>
-#include <cstdint>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
-#include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module_group.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/utils/hlo_query.h"
-#include "xla/literal.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/backend.h"
-#include "xla/service/computation_placer.h"
-#include "xla/service/executable.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
-#include "xla/service/hlo_verifier.h"
 #include "xla/service/platform_util.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tests/filecheck.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/new_hlo_test_base.h"
+#include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
-#include "xla/tests/test_utils.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -120,10 +94,10 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
                          bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier,
                          HloPredicate instruction_can_change_layout_func)
-    : NewHloTestBase(
+    : HloRunnerAgnosticReferenceMixin<HloRunnerAgnosticTestBase>(
+          /*reference_runner=*/GetHloRunnerForReference(reference_platform)
+              .value(),
           /*test_runner=*/GetHloRunnerForTest(test_platform).value(),
-          /*reference_runner=*/
-          GetHloRunnerForReference(reference_platform).value(),
           verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier),
       test_platform_(test_platform) {}
 
@@ -200,12 +174,16 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
+  // TODO - b/391868033: Remove calls to UpdateEntryComputationLayout.
+  UpdateEntryComputationLayout(module.get());
   return backend().compiler()->RunHloPasses(
       std::move(module), backend().default_stream_executor(), GetAllocator());
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
     std::unique_ptr<HloModule> hlo_module) {
+  // TODO - b/391868033: Remove calls to UpdateEntryComputationLayout.
+  UpdateEntryComputationLayout(hlo_module.get());
   return backend().compiler()->RunHloPasses(std::move(hlo_module),
                                             backend().default_stream_executor(),
                                             GetAllocator());

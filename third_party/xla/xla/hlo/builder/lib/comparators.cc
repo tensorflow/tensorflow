@@ -74,8 +74,8 @@ XlaComputation CreateScalarComparisonComputation(
                                absl::StrCat("p.", parameter_count, ".lhs"));
     auto rhs_param = Parameter(b.get(), parameter_count * 2 + 1, scalar_shape,
                                absl::StrCat("p.", parameter_count, ".rhs"));
-    lhs_params.emplace_back(lhs_param);
-    rhs_params.emplace_back(rhs_param);
+    lhs_params.push_back(lhs_param);
+    rhs_params.push_back(rhs_param);
     if (generators[parameter_count].has_value()) {
       last_generator_index = parameter_count;
     }

@@ -65,8 +65,9 @@ struct CallOptions {
 
   using BackendOptions = std::variant<std::monostate, CpuOptions, GpuOptions>;
 
+  xla::RunId run_id = xla::RunId{-1};
   int32_t device_ordinal = -1;
-  BackendOptions backend_options = {};
+  BackendOptions backend_options;
 
   const HloComputation* called_computation = nullptr;
   const ExecutionContext* execution_context = nullptr;

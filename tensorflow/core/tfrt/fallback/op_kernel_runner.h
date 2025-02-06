@@ -18,13 +18,21 @@ limitations under the License.
 #include <assert.h>
 #include <stddef.h>
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/device.h"
@@ -88,6 +96,9 @@ class OpKernelRunner {
   explicit operator bool() const { return op_kernel_ != nullptr; }
 
   void Run(OpKernelContext* context) const {
+    if (op_kernel_ == nullptr) {
+      LOG(ERROR) << "Op " << op_name_ << " is unvailable for execution.";
+    }
     DVLOG(1) << "KernelFallbackExecuteCompat Running Op: "
              << op_kernel_->def().DebugString()
              << ", on Device: " << context->device()->name();
@@ -121,11 +132,12 @@ class OpKernelRunner {
 
  private:
   explicit OpKernelRunner(
-      tensorflow::Device* device,
+      absl::string_view op_name, tensorflow::Device* device,
       tensorflow::FunctionLibraryRuntime* function_library_runtime,
       std::unique_ptr<OpKernel> op_kernel);
 
   std::unique_ptr<OpKernel> op_kernel_;
+  std::string op_name_;
   absl::Span<const AllocatorAttributes> input_alloc_attrs_;
   absl::Span<const AllocatorAttributes> output_alloc_attrs_;
 

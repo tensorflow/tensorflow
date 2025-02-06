@@ -30,13 +30,15 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/integrations/stream_executor_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/bfc_allocator.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/util/env_var.h"
-#include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
@@ -46,10 +48,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/platform/types.h"
 
 #if GOOGLE_CUDA
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
@@ -120,11 +120,18 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
 
   bool use_unified_memory = (options.per_process_gpu_memory_fraction() > 1.0 ||
                              options.experimental().use_unified_memory());
-  return absl::WrapUnique(new se::DeviceMemAllocator(
-      executor, platform_device_id,
-      use_unified_memory ? stream_executor::MemoryType::kUnified
-                         : stream_executor::MemoryType::kDevice,
-      alloc_visitors, {}));
+  if (use_unified_memory) {
+    auto unified_memory_allocator =
+        executor->CreateMemoryAllocator(stream_executor::MemoryType::kUnified)
+            .value();
+    return std::make_unique<se::StreamExecutorAllocator>(
+        std::move(unified_memory_allocator),
+        stream_executor::MemoryType::kUnified, platform_device_id.value(),
+        alloc_visitors);
+  } else {
+    return std::make_unique<se::DeviceMemAllocator>(
+        executor, platform_device_id, alloc_visitors);
+  }
 }
 
 Allocator* GPUProcessState::GetGPUAllocator(
@@ -358,8 +365,11 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
     while (gpu_host_free_visitors_.size() <= numa_node) {
       gpu_host_free_visitors_.push_back({});
     }
-    SubAllocator* sub_allocator = new DeviceHostAllocator(
-        se, numa_node, gpu_host_alloc_visitors_[numa_node],
+    auto host_memory_allocator =
+        se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+    SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
+        std::move(host_memory_allocator), stream_executor::MemoryType::kHost,
+        numa_node, gpu_host_alloc_visitors_[numa_node],
         gpu_host_free_visitors_[numa_node]);
 
     tsl::BFCAllocator::Options allocator_opts;

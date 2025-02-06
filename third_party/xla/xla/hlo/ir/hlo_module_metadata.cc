@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_metadata.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
@@ -24,10 +25,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/metrics.pb.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 

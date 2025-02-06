@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/sorting.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/status/statusor.h"

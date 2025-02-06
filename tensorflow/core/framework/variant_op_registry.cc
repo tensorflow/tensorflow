@@ -63,7 +63,7 @@ UnaryVariantOpRegistry* UnaryVariantOpRegistryGlobal() {
 }
 
 UnaryVariantOpRegistry::VariantDecodeFn* UnaryVariantOpRegistry::GetDecodeFn(
-    StringPiece type_name) {
+    absl::string_view type_name) {
   auto found = decode_fns.find(type_name);
   if (found == decode_fns.end()) return nullptr;
   return &found->second;
@@ -76,7 +76,7 @@ void UnaryVariantOpRegistry::RegisterDecodeFn(
   CHECK_EQ(existing, nullptr)
       << "Unary VariantDecodeFn for type_name: " << type_name
       << " already registered";
-  decode_fns.insert(std::pair<StringPiece, VariantDecodeFn>(
+  decode_fns.insert(std::pair<absl::string_view, VariantDecodeFn>(
       GetPersistentStringPiece(type_name), decode_fn));
 }
 

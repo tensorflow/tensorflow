@@ -16,8 +16,8 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dot_normalizer.h"
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"

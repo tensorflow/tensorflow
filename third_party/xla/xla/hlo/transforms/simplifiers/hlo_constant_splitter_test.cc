@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
-#include "xla/test.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -236,7 +235,7 @@ TEST_F(HloConstantSplitterTest, NoSplittingSideEffectExpressions) {
 
   // The HloConstantSplitter pass duplicates several constant expressions. Then
   // the DCE pass removes the dead instructions. Although the flag changed is
-  // true, we do not alter the module in essense.
+  // true, we do not alter the module in essence.
   EXPECT_TRUE(changed);
   EXPECT_EQ(count_before, count_after_dce);
   int64_t rng_count = 0;

@@ -66,7 +66,7 @@ tf_cc_shared_object(
         ],
         if_true = [
             ":test_file_system_stripped",
-            "//tensorflow/python:_pywrap_tensorflow_common",
+            "//tensorflow/python:tensorflow_common_framework",
         ],
     ) + ["@com_google_protobuf//:protobuf_headers"],
 )
@@ -425,14 +425,20 @@ py_strict_library(
     name = "dtypes",
     srcs = ["dtypes.py"],
     srcs_version = "PY3",
-    visibility = visibility + [
-        "//smartass:__subpackages__",
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/mlperf:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + [
+    # "//smartass:__subpackages__",
+    # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    # "//third_party/mlperf:__subpackages__",
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:internal",
+    # "//tensorflow_models:__subpackages__",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":_dtypes",
         # copybara:uncomment_begin(google-only)
@@ -446,7 +452,7 @@ py_strict_library(
         "//tensorflow/python/types:doc_typealias",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "@ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes",
     ],
 )
 
@@ -457,12 +463,18 @@ py_strict_library(
         "errors_impl.py",
     ],
     srcs_version = "PY3",
-    visibility = visibility + [
-        "//smartass/brain/ops:__subpackages__",
-        "//tensorflow:internal",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + [
+    # "//smartass/brain/ops:__subpackages__",
+    # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":c_api_util",
         "//tensorflow/core:protos_all_py",
@@ -481,6 +493,7 @@ py_strict_library(
         "error_interpolation.py",
     ],
     srcs_version = "PY3",
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/util:tf_stack",
@@ -592,7 +605,13 @@ py_strict_library(
         "graph_util_impl.py",
     ],
     srcs_version = "PY3",
-    visibility = visibility + ["//tensorflow:internal"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + ["//tensorflow:internal"],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":_proto_comparators",
         ":dtypes",
@@ -609,11 +628,17 @@ py_strict_library(
         "convert_to_constants.py",
     ],
     srcs_version = "PY3",
-    visibility = visibility + [
-        "//learning/deepmind/deepfunc:__subpackages__",
-        "//platforms/darwinn:__subpackages__",
-        "//tensorflow:internal",
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + [
+    # "//learning/deepmind/deepfunc:__subpackages__",
+    # "//platforms/darwinn:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":dtypes",
         ":errors",
@@ -769,6 +794,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_py_context_manager.pyi",
     ],
+    starlark_only = True,
     deps = [
         ":py_context_manager",
         "//third_party/python_runtime:headers",
@@ -818,6 +844,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_op_def_util.pyi",
     ],
+    starlark_only = True,
     deps = if_pywrap(
         if_false = [":op_def_util_headers"],
         if_true = [":op_def_util_cc"],
@@ -900,6 +927,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_python_api_parameter_converter.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
@@ -1010,6 +1038,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_python_api_info.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
@@ -1167,6 +1196,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_python_tensor_converter.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/core:framework",
@@ -1223,14 +1253,20 @@ pytype_strict_library(
     name = "ops",  # "ops" is already the name of a deprecated target
     srcs = ["ops.py"],
     srcs_version = "PY3",
-    visibility = visibility + [
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/mlperf:__subpackages__",
-        "//third_party/py/tf_agents:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + [
+    # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    # "//third_party/mlperf:__subpackages__",
+    # "//third_party/py/tf_agents:__subpackages__",
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:internal",
+    # "//tensorflow_models:__subpackages__",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":c_api_util",
         ":composite_tensor",
@@ -2073,11 +2109,17 @@ py_strict_library(
 py_strict_library(
     name = "tensor_spec",
     srcs = ["tensor_spec.py"],
-    visibility = visibility + [
-        "//tensorflow:internal",
-        "//third_party/py/reverb:__subpackages__",
-        "//third_party/py/tf_agents:__subpackages__",
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + [
+    # "//third_party/py/reverb:__subpackages__",
+    # "//third_party/py/tf_agents:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":tensor",
     ],
@@ -2087,11 +2129,17 @@ py_strict_library(
     name = "tensor_util",
     srcs = ["tensor_util.py"],
     srcs_version = "PY3",
-    visibility = visibility + [
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + [
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:internal",
+    # "//tensorflow_models:__subpackages__",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":dtypes",
         ":errors",
@@ -2138,14 +2186,20 @@ pytype_strict_library(
     name = "test_lib",
     srcs = ["test_util.py"],
     srcs_version = "PY3",
-    visibility = visibility + [
-        "//tensorflow:internal",
-        "//tensorflow_model_optimization:__subpackages__",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/py/neural_structured_learning:__subpackages__",
-        "//third_party/py/tf_agents:__subpackages__",
-        "//third_party/py/tf_keras:__subpackages__",
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility + [
+    # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    # "//third_party/py/neural_structured_learning:__subpackages__",
+    # "//third_party/py/tf_agents:__subpackages__",
+    # "//third_party/py/tf_keras:__subpackages__",
+    # "//tensorflow:internal",
+    # "//tensorflow_model_optimization:__subpackages__",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":_test_metrics_util",
         ":config",
@@ -3153,6 +3207,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_errors_test_helper.pyi",
     ],
+    starlark_only = True,
     deps = [
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core/platform:status",

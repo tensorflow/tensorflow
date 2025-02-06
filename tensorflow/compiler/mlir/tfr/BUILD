@@ -261,7 +261,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla:test",
+        "@local_xla//xla/hlo/testlib:test",
     ],
 )
 
@@ -272,6 +272,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "tfr_wrapper.pyi",
     ],
+    starlark_only = True,
     visibility = [
         "//tensorflow/python:__pkg__",
     ],

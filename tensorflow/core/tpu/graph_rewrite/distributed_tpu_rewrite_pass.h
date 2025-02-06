@@ -118,6 +118,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "xla/service/computation_placer.h"

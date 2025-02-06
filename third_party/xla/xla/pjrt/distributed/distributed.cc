@@ -23,7 +23,7 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/service.h"
-#include "tsl/platform/grpc_credentials.h"
+#include "xla/tsl/platform/grpc_credentials.h"
 
 namespace xla {
 

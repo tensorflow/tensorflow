@@ -24,11 +24,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/kernels.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tsl/platform/thread_annotations.h"
 

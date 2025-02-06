@@ -99,9 +99,16 @@ litert_test(
         # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
         "nosan",
     ],
+    # This test can be run only on Android and Linux.
+    target_compatible_with = select({
+        "@platforms//os:android": [],
+        "@platforms//os:linux": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         ":qnn_manager",
         "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:matchers_oss",
         "//tensorflow/lite/experimental/litert/vendors/qualcomm/tools:dump",
     ],
 )
@@ -113,7 +120,6 @@ cc_library(
     deps = [
         ":qnn_manager",
         ":qnn_tensor",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_common",
@@ -127,9 +133,7 @@ cc_library(
     srcs = ["qnn_tensor.cc"],
     hdrs = ["qnn_tensor.h"],
     deps = [
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/strings:string_view",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_common",

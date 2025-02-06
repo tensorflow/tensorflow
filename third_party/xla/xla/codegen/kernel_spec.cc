@@ -16,24 +16,29 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 
 #include <cstddef>
-#include <memory>
 #include <optional>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla {
 
-KernelSpec::KernelSpec(se::ClusterDim cluster_dim, se::BlockDim block_dim,
-                       se::ThreadDim thread_dim,
-                       std::optional<size_t> scratch_bytes,
+KernelSpec::KernelSpec(absl::string_view name, se::ThreadDim thread_dim,
                        BufferUses buffer_uses,
-                       std::shared_ptr<KernelSource> kernel_source)
-    : cluster_dim_(cluster_dim),
+                       std::optional<size_t> scratch_bytes)
+    : KernelSpec(name, se::ClusterDim(), se::BlockDim(), thread_dim,
+                 std::move(buffer_uses), std::move(scratch_bytes)) {}
+
+KernelSpec::KernelSpec(absl::string_view name, se::ClusterDim cluster_dim,
+                       se::BlockDim block_dim, se::ThreadDim thread_dim,
+                       BufferUses buffer_uses,
+                       std::optional<size_t> scratch_bytes)
+    : name_(name),
+      cluster_dim_(cluster_dim),
       block_dim_(block_dim),
       thread_dim_(thread_dim),
-      scratch_bytes_(scratch_bytes),
       buffer_uses_(std::move(buffer_uses)),
-      kernel_source_(std::move(kernel_source)) {}
+      scratch_bytes_(scratch_bytes) {}
 
 }  // namespace xla

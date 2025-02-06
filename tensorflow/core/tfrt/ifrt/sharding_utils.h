@@ -29,10 +29,10 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace ifrt_serving {

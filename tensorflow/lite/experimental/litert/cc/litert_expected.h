@@ -17,11 +17,13 @@
 
 #include <initializer_list>
 #include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
 #include <type_traits>
 #include <utility>
 
 #include "absl/log/absl_check.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 
@@ -37,10 +39,11 @@ namespace litert {
 // as an error message.
 class Error {
  public:
-  // Construct Unexpected from status and optional error message. NOTE:
-  // kLiteRtStatusOk should not be passed to Unexpected.
-  explicit Error(LiteRtStatus status, absl::string_view message = "")
-      : status_(status), message_(message) {
+  // Construct Unexpected from status and optional error message.
+  //
+  // NOTE: kLiteRtStatusOk should not be passed to Unexpected.
+  explicit Error(LiteRtStatus status, std::string message = "")
+      : status_(status), message_(std::move(message)) {
     ABSL_DCHECK(status != kLiteRtStatusOk);
   }
 
@@ -48,11 +51,19 @@ class Error {
   constexpr LiteRtStatus Status() const { return status_; }
 
   // Get the error message, empty string if none was attached.
-  constexpr absl::string_view Message() const { return message_; }
+  const std::string& Message() const { return message_; }
+
+  friend std::ostream& operator<<(std::ostream& stream, const Error& error) {
+    stream << '(' << LiteRtGetStatusString(error.Status()) << ')';
+    if (!error.Message().empty()) {
+      stream << ' ' << error.Message();
+    }
+    return stream;
+  }
 
  private:
   LiteRtStatus status_;
-  absl::string_view message_;
+  std::string message_;
 };
 
 class Unexpected {
@@ -62,7 +73,7 @@ class Unexpected {
       : error_(std::forward<Args>(args)...) {}
 
   // Allow for implicit conversion from convertible Error value inplace.
-  // NOLINTNEXTLINE
+  // NOLINTNEXTLINE(*-explicit-constructor)
   Unexpected(class Error&& e) : error_(std::move(e)) {}
 
   Unexpected(Unexpected&& other) = default;
@@ -81,14 +92,13 @@ class Unexpected {
   class Error error_;
 };
 
-// Utility for generic return values that may be a statused failure.
-// Expecteds store and own the lifetime of either an Unexpected, or a T.
-// T may be any type, primitive or non-primitive.
+// Utility for generic return values that may be a statused failure. Expecteds
+// store and own the lifetime of either an Unexpected, or a T. T may be any
+// type, primitive or non-primitive.
 //
-// No dynamic allocations occur during initialization,
-// so the underlying T is only movable (as opposed to something like "release").
-// Arguments should be constructed inplace at the time of initilizing
-// the expcted if possible.
+// No dynamic allocations occur during initialization, so the underlying T is
+// only movable (as opposed to something like "release"). Arguments should be
+// constructed in place at the time of initializing the expected if possible.
 //
 // Unexpected&& and T&& may be implicitly casted
 // to an Expected. For example,
@@ -113,21 +123,20 @@ class Expected {
   explicit Expected(Args&&... args)
       : has_value_(true), value_(std::forward<Args>(args)...) {}
 
+  // NOLINTBEGIN(*-explicit-constructor)
+
   // Allow for implicit conversion from convertible T value inplace.
-  // NOLINTNEXTLINE
   Expected(const T& t) : has_value_(true), value_(t) {}
-  // NOLINTNEXTLINE
   Expected(T&& t) : has_value_(true), value_(std::move(t)) {}
 
   // Construct from Unexpected inplace.
 
   // Allow for implicit conversion from Error.
-  // NOLINTNEXTLINE
   Expected(const Unexpected& err) : has_value_(false), unexpected_(err) {}
-  // NOLINTNEXTLINE
   Expected(Unexpected&& err) : has_value_(false), unexpected_(std::move(err)) {}
-  // NOLINTNEXTLINE
   Expected(const class Error& e) : has_value_(false), unexpected_(e) {}
+
+  // NOLINTEND(*-explicit-constructor)
 
   // Copy/move
 
@@ -150,7 +159,7 @@ class Expected {
 
   Expected& operator=(Expected&& other) {
     if (this != &other) {
-      ~Expected();
+      this->~Expected();
       has_value_ = other.has_value_;
       if (HasValue()) {
         value_ = std::move(other.Value());
@@ -261,74 +270,48 @@ class Expected<void> {
  public:
   // Implicit construction is used to simplify returning a valid value, e.g., in
   // "return {};"
-  Expected() : has_value_(true) {}
+  Expected() : unexpected_(std::nullopt) {}
+
+  // NOLINTBEGIN(*-explicit-constructor)
 
   // Construct from Unexpected inplace.
+  Expected(const Unexpected& err) : unexpected_(err) {}
+  Expected(Unexpected&& err) : unexpected_(std::move(err)) {}
 
   // Allow for implicit conversion from Error.
-  // NOLINTNEXTLINE
-  Expected(const Unexpected& err) : has_value_(false), unexpected_(err) {}
-  // NOLINTNEXTLINE
-  Expected(Unexpected&& err) : has_value_(false), unexpected_(std::move(err)) {}
-  // NOLINTNEXTLINE
-  Expected(const Error& e) : has_value_(false), unexpected_(e) {}
+  Expected(const Error& e) : unexpected_(e) {}
 
-  ~Expected() {
-    if (!has_value_) {
-      unexpected_.~Unexpected();
-    }
-  }
-
-  Expected& operator=(Expected&& other) {
-    if (this != &other) {
-      Expected::~Expected();
-      has_value_ = other.has_value_;
-      unexpected_ = std::move(other.unexpected_);
-    }
-    return *this;
-  }
-
-  Expected& operator=(const Expected& other) {
-    if (this != &other) {
-      Expected::~Expected();
-      has_value_ = other.has_value_;
-      unexpected_ = other.unexpected_;
-    }
-    return *this;
-  }
+  // NOLINTEND(*-explicit-constructor)
 
   // Observer for Unexpected, program exits if it doesn't have one.
   const class Error& Error() const& {
     CheckNoVal();
-    return unexpected_.Error();
+    return unexpected_->Error();
   }
 
   class Error& Error() & {
     CheckNoVal();
-    return unexpected_.Error();
+    return unexpected_->Error();
   }
 
   const class Error&& Error() const&& {
     CheckNoVal();
-    return std::move(unexpected_.Error());
+    return std::move(unexpected_->Error());
   }
 
   class Error&& Error() && {
     CheckNoVal();
-    return std::move(unexpected_.Error());
+    return std::move(unexpected_->Error());
   }
 
   // Does this expected contain a T Value. It contains an unexpected if not.
-  bool HasValue() const { return has_value_; }
+  bool HasValue() const { return !unexpected_.has_value(); }
 
   // Convert to bool for HasValue.
   explicit operator bool() const { return HasValue(); }
 
  private:
-  bool has_value_;
-  union {
-    Unexpected unexpected_;
-  };
+  std::optional<Unexpected> unexpected_;
   void CheckNoVal() const { ABSL_CHECK(!HasValue()); }
   void CheckVal() const { ABSL_CHECK(HasValue()); }
 };

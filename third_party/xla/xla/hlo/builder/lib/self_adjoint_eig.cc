@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/self_adjoint_eig.h"
 
-#include <memory>
+#include <cstdint>
 #include <string>
 #include <vector>
 

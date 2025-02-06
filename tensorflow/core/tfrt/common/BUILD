@@ -1,5 +1,5 @@
 load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "@local_xla//xla/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
@@ -190,10 +190,10 @@ tf_cc_test(
         ":pjrt_state",
         ":pjrt_util",
         "//tensorflow/core:framework",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
         "@local_xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "@local_xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "@local_xla//xla/tsl/lib/core:status_test_util",
@@ -217,8 +217,8 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test_main",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/service:gpu_plugin",
         "@local_xla//xla/tsl/lib/core:status_test_util",

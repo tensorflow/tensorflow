@@ -30,6 +30,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"

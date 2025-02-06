@@ -15,11 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_CAPTURED_FUNCTION_H_
 #define TENSORFLOW_CORE_DATA_CAPTURED_FUNCTION_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -47,8 +52,8 @@ class InstantiatedCapturedFunction;
 absl::Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
-    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
-    std::unique_ptr<IteratorBase>* out_iterator);
+    const InstantiatedCapturedFunction& inst_captured_func,
+    absl::string_view prefix, std::unique_ptr<IteratorBase>* out_iterator);
 
 // Creates an iterator for a dataset which is created by applying the given
 // function to the given input element. Pass non-null `node` to record
@@ -56,8 +61,8 @@ absl::Status MakeIteratorFromInputElement(
 absl::Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
-    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
-    std::unique_ptr<IteratorBase>* out_iterator,
+    const InstantiatedCapturedFunction& inst_captured_func,
+    absl::string_view prefix, std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node);
 
 struct ShortCircuitInfo {

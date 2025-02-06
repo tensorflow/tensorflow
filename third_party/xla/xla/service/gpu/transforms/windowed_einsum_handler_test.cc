@@ -26,9 +26,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
@@ -115,7 +115,7 @@ ENTRY test_main {
   HloComputation* ag_loop_body = ag_loop->while_body();
   int64_t dot_count = 0;
   for (HloInstruction* inst : ag_loop_body->MakeInstructionPostOrder()) {
-    if (inst->opcode() == HloOpcode::kDot) {
+    if (HloPredicateIsOp<HloOpcode::kDot>(inst)) {
       dot_count++;
       EXPECT_GT(inst->backend_config<GpuBackendConfig>()->operation_queue_id(),
                 0);
@@ -198,7 +198,7 @@ ENTRY main.9_spmd {
   HloComputation* rs_loop_body = rs_loop->while_body();
   int64_t dot_count = 0;
   for (HloInstruction* inst : rs_loop_body->MakeInstructionPostOrder()) {
-    if (inst->opcode() == HloOpcode::kDot) {
+    if (HloPredicateIsOp<HloOpcode::kDot>(inst)) {
       dot_count++;
       EXPECT_GT(inst->backend_config<GpuBackendConfig>()->operation_queue_id(),
                 0);
@@ -282,7 +282,7 @@ ENTRY main.12_spmd {
   HloComputation* while_body = while_loop->while_body();
   int64_t dot_count = 0;
   for (HloInstruction* ins : while_body->MakeInstructionPostOrder()) {
-    if (ins->opcode() == HloOpcode::kDot) {
+    if (HloPredicateIsOp<HloOpcode::kDot>(ins)) {
       dot_count++;
       EXPECT_GT(ins->backend_config<GpuBackendConfig>()->operation_queue_id(),
                 0);
@@ -387,6 +387,9 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,32768]{3,2,1,0} add(bf16[1,4,2048,32768]{3,2,
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                           RunFileCheck(module->ToString(), kExpected));
@@ -459,6 +462,9 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,8192]{3,2,1,0} add(bf16[1,4,2048,8192]{3,2,1,
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                           RunFileCheck(module->ToString(), kExpected));
@@ -541,6 +547,9 @@ CHECK: ROOT {{.*}} = bf16[1,4,2048,32768]{3,2,1,0} add(bf16[1,4,2048,32768]{3,2,
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
@@ -625,6 +634,9 @@ CHECK: ROOT {{.*}} = bf16[1,4,1,1,2048,8192]{5,4,3,2,1,0} reshape(bf16[1,4,1,204
 
   WindowedEinsumHandler gpu_handler;
   bool changed;
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_alltoall_windowed_einsum(true);
   TF_ASSERT_OK_AND_ASSIGN(changed, gpu_handler.Run(module.get()));
   EXPECT_TRUE(changed);
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
@@ -825,11 +837,11 @@ ENTRY main.9_spmd {
   constant.20 = u32[] constant(0)
   scale_lhs = f32[] parameter(3)
   scale_lhs_bcast = f32[2,2048,24576]{2,1,0} broadcast(scale_lhs), dimensions={}
-  lhs_bf16 = f32[2,2048,24576]{2,1,0} convert(param.8)  
+  lhs_bf16 = f32[2,2048,24576]{2,1,0} convert(param.8)
   lhs_scaled = f32[2,2048,24576]{2,1,0} multiply(lhs_bf16, scale_lhs_bcast)
   scale_rhs = f32[] parameter(4)
   scale_rhs_bcast = f32[24576,24576]{1,0} broadcast(scale_rhs), dimensions={}
-  rhs_bf16 = f32[24576,24576]{1,0} convert(param.6)  
+  rhs_bf16 = f32[24576,24576]{1,0} convert(param.6)
   rhs_scaled = f32[24576,24576]{1,0} multiply(rhs_bf16, scale_rhs_bcast)
   tuple.3 = (f32[2,2048,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,512,24576]{2,1,0}, f32[2,512,24576]{2,1,0}, u32[]) tuple(lhs_scaled, rhs_scaled, param.7, param.7, constant.20)
   while.1 = (f32[2,2048,24576]{2,1,0}, f32[24576,24576]{1,0}, f32[2,512,24576]{2,1,0}, f32[2,512,24576]{2,1,0}, u32[]) while(tuple.3), condition=windowed_dot_general_cond_rs, body=windowed_dot_general_body_rs

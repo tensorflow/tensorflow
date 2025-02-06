@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/tsl/framework/serving_device_selector.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 namespace tsl {
 
 namespace test_util {

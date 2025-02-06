@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/builder/lib/svd.h"
 
-#include <memory>
+#include <cstdint>
 #include <numeric>
 #include <utility>
 #include <vector>
@@ -736,7 +736,7 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopFn(
   return values;
 }
 
-// Sort singular values in decending order, and make sure they are non-negative
+// Sort singular values in descending order, and make sure they are non-negative
 // by flipping the signs of negative diagonal values and transferring the signs
 // to V. And for numeric stability, renormalize U and V.
 absl::StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(

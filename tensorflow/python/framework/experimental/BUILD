@@ -21,16 +21,20 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_unified_api.pyi",
     ],
+    starlark_only = True,
     visibility = [
         "//tensorflow/python:__pkg__",
     ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )
@@ -39,6 +43,7 @@ tf_python_pybind_extension(
     name = "_tape",
     srcs = ["tape.cc"],
     features = ["-layering_check"],
+    starlark_only = True,
     visibility = [
         "//tensorflow/python:__pkg__",
     ],
@@ -49,6 +54,8 @@ tf_python_pybind_extension(
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
     ] + if_pywrap(
         if_true = [
@@ -66,6 +73,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_math_ops.pyi",
     ],
+    starlark_only = True,
     visibility = [
         "//tensorflow/python:__pkg__",
     ],
@@ -93,6 +101,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_nn_ops.pyi",
     ],
+    starlark_only = True,
     visibility = [
         "//tensorflow/python:__pkg__",
     ],

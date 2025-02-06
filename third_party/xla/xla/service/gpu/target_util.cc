@@ -24,6 +24,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -393,11 +394,12 @@ llvm::CallInst* EmitDeviceFunctionCall(
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   for (PrimitiveType input_type : input_types) {
     ir_input_types.push_back(
-        llvm_ir::PrimitiveTypeToIrType(input_type, module));
+        llvm_ir::PrimitiveTypeToIrType(input_type, b->getContext()));
   }
   llvm::FunctionType* callee_type = llvm::FunctionType::get(
-      llvm_ir::PrimitiveTypeToIrType(output_type, module),  // Return type.
-      ir_input_types,                                       // Parameter types.
+      llvm_ir::PrimitiveTypeToIrType(output_type,
+                                     b->getContext()),  // Return type.
+      ir_input_types,                                   // Parameter types.
       false);  // No variadic arguments.
 
   // Declares the callee if it is not declared already.
@@ -460,15 +462,8 @@ void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
                                  llvm::IRBuilderBase* b) {
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   if (target_triple.isNVPTX()) {
-    // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
-    // treats function as a CUDA kernel.
-    llvm::LLVMContext& context = module->getContext();
-    llvm::NamedMDNode* nvvm_annotations_node =
-        module->getOrInsertNamedMetadata("nvvm.annotations");
-    nvvm_annotations_node->addOperand(llvm::MDNode::get(
-        context, {llvm::ConstantAsMetadata::get(func),
-                  llvm::MDString::get(context, "kernel"),
-                  llvm::ConstantAsMetadata::get(b->getInt32(1))}));
+    // Attach information so NVPTX can recognize function as a CUDA kernel.
+    func->setCallingConv(llvm::CallingConv::PTX_Kernel);
 
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
     // Attach information so AMDGPU can recognize function as a AMDGPU kernel.

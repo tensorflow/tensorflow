@@ -16,11 +16,14 @@
 
 #include <cstdint>
 #include <initializer_list>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 
@@ -153,6 +156,13 @@ TEST(UnexpectedTest, WithMessage) {
   EXPECT_EQ(err.Error().Message(), "MESSAGE");
 }
 
+TEST(UnexpectedTest, WithLocalMessageString) {
+  // Message is a string with scoped lifetime.
+  Unexpected err(kErrorStatus, absl::StrCat("MESSAGE", 1));
+  EXPECT_EQ(err.Error().Status(), kErrorStatus);
+  EXPECT_EQ(err.Error().Message(), "MESSAGE1");
+}
+
 Expected<OwningBufferRef<uint8_t>> Go() {
   std::string data = "21234";
   OwningBufferRef<uint8_t> buf(data.c_str());
@@ -184,6 +194,13 @@ TEST(ExpectedWithNoValue, WithError) {
   EXPECT_FALSE(expected.HasValue());
   EXPECT_EQ(expected.Error().Status(), kErrorStatus);
   EXPECT_EQ(expected.Error().Message(), "MESSAGE");
+}
+
+TEST(ExpectedWithNoValue, OStreamOutput) {
+  Expected<void> expected(Unexpected(kErrorStatus, "MESSAGE"));
+  std::ostringstream oss;
+  oss << expected.Error();
+  EXPECT_THAT(oss.str(), testing::HasSubstr("MESSAGE"));
 }
 
 }  // namespace

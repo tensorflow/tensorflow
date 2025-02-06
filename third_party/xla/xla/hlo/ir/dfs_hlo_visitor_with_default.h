@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace xla {
 
@@ -360,7 +360,8 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
             << "\n  new: " << new_instruction->ToString();
     absl::StatusOr<bool> changed_or =
         old_instruction->parent()->ReplaceInstruction(
-            old_instruction, new_instruction, preserve_sharding);
+            old_instruction, new_instruction, preserve_sharding,
+            /*relay_control_dependency=*/true);
     if (ABSL_PREDICT_TRUE(changed_or.ok())) {
       changed_ |= changed_or.value();
     }
@@ -380,6 +381,7 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
 
   // Mark the computation as having changed.
   void MarkAsChanged() { changed_ = true; }
+  void MarkAsMaybeChanged(bool changed) { changed_ |= changed; }
 
  private:
   bool changed_ = false;

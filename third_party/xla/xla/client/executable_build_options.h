@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 #define XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -33,8 +35,8 @@ limitations under the License.
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/threadpool.h"
 
 namespace stream_executor {
 

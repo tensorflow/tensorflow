@@ -17,9 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -28,42 +29,63 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace hlo_query {
 
 bool IsCollectiveCommunicationOp(HloOpcode op) {
-  return op == HloOpcode::kAllReduce || op == HloOpcode::kAllGather ||
-         op == HloOpcode::kAllToAll || op == HloOpcode::kRaggedAllToAll ||
-         op == HloOpcode::kCollectivePermute ||
-         op == HloOpcode::kCollectiveBroadcast ||
-         op == HloOpcode::kReduceScatter || op == HloOpcode::kAllReduceStart ||
-         op == HloOpcode::kAllGatherStart ||
-         op == HloOpcode::kCollectivePermuteStart;
+  switch (op) {
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kCollectivePermuteStart:
+      return true;
+    default:
+      return false;
+  }
 }
 
 bool IsAsyncCollectiveStartOp(const HloInstruction* instruction,
                               bool include_send_recv) {
   HloOpcode op = instruction->opcode();
-  if (op == HloOpcode::kAsyncStart) {
-    return IsCollectiveCommunicationOp(instruction->async_wrapped_opcode());
+  switch (op) {
+    case HloOpcode::kAsyncStart:
+      return IsCollectiveCommunicationOp(instruction->async_wrapped_opcode());
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kCollectivePermuteStart:
+      return true;
+    case HloOpcode::kSend:
+    case HloOpcode::kRecv:
+      return include_send_recv;
+    default:
+      return false;
   }
-  return op == HloOpcode::kAllReduceStart || op == HloOpcode::kAllGatherStart ||
-         op == HloOpcode::kCollectivePermuteStart ||
-         (include_send_recv &&
-          (op == HloOpcode::kSend || op == HloOpcode::kRecv));
 }
 
 bool IsAsyncCollectiveDoneOp(const HloInstruction* instruction,
                              bool include_send_recv) {
   HloOpcode op = instruction->opcode();
-  if (op == HloOpcode::kAsyncDone) {
-    return IsCollectiveCommunicationOp(instruction->async_wrapped_opcode());
+  switch (op) {
+    case HloOpcode::kAsyncDone:
+      return IsCollectiveCommunicationOp(instruction->async_wrapped_opcode());
+    case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllGatherDone:
+    case HloOpcode::kCollectivePermuteDone:
+      return true;
+    case HloOpcode::kSendDone:
+    case HloOpcode::kRecvDone:
+      return include_send_recv;
+    default:
+      return false;
   }
-  return op == HloOpcode::kAllReduceDone || op == HloOpcode::kAllGatherDone ||
-         op == HloOpcode::kCollectivePermuteDone ||
-         (include_send_recv &&
-          (op == HloOpcode::kSendDone || op == HloOpcode::kRecvDone));
 }
 
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {
@@ -302,17 +324,6 @@ HloInstruction* FindInstruction(const HloComputation* computation,
     if (instruction->opcode() == opcode) return instruction;
   }
   return nullptr;
-}
-
-float ExecTimeOptimizationEffort(const HloModule& module) {
-  float flag_exec_effort =
-      module.config()
-          .debug_options()
-          .xla_experimental_exec_time_optimization_effort();
-  if (flag_exec_effort != 0.0) {
-    return flag_exec_effort;
-  }
-  return module.config().exec_time_optimization_effort();
 }
 
 }  // namespace hlo_query

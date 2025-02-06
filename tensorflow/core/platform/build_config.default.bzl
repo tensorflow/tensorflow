@@ -23,7 +23,6 @@ def tf_dtensor_tpu_dependencies():
 
 def tf_additional_binary_deps():
     return [
-        "@nsync//:nsync_cpp",
         # TODO(allenl): Split these out into their own shared objects. They are
         # here because they are shared between contrib/ op shared objects and
         # core.
@@ -33,7 +32,7 @@ def tf_additional_binary_deps():
         Label("@local_xla//xla/stream_executor:cuda_platform"),
     ]) + if_rocm([
         "@local_xla//xla/stream_executor:rocm_platform",
-        "@local_xla//xla/stream_executor/rocm:rocm_rpath",
+        "@local_config_rocm//rocm:rocm_rpath",
     ]) + if_mkl_ml([
         Label("@local_xla//xla/tsl/mkl:intel_binary_blob"),
     ])

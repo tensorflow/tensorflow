@@ -31,11 +31,11 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace {
@@ -136,6 +136,10 @@ class TestCoordinationClient : public CoordinationClient {
               (override));
   MOCK_METHOD(void, CancelBarrierAsync,
               (const CancelBarrierRequest*, CancelBarrierResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, GetAliveTasksAsync,
+              (const GetAliveTasksRequest*, GetAliveTasksResponse*,
                StatusCallback),
               (override));
   MOCK_METHOD(void, GetTaskStateAsync,

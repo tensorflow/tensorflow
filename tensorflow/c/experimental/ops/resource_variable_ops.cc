@@ -17,16 +17,20 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/ops/resource_variable_ops.h"
 
+#include <cstring>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/tracing_utils.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
 
 using tensorflow::tracing::MaybeSetOpName;
 

@@ -68,7 +68,7 @@ class CudnnGraph : public dnn::DnnGraph {
                        int64_t local_device_ordinal) const override;
   const cudnn_frontend::graph::Graph& Graph() const { return graph_; }
   void InitDropoutState(int64_t local_device_count, int64_t seed,
-                        int64_t increment) {
+                        int64_t increment) override {
     dropout_rng_seed_ = seed;
     current_dropout_rng_offset_ = std::vector<int64_t>(local_device_count, 0);
     dropout_rng_offset_increment_ = increment;
@@ -557,7 +557,7 @@ class CudnnSupport : public dnn::DnnSupport {
 #if CUDNN_VERSION >= 8100
   // Loads complete graph from its serialized representation.
   absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> DeserializeGraph(
-      absl::string_view serialized_data) const override;
+      Stream& stream, absl::string_view serialized_data) const override;
 #endif  // CUDNN_VERSION >= 8100
 
  private:
@@ -707,7 +707,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
     const std::optional<dnn::TensorDescriptor> stats_descriptor, double scale,
     const bool use_dropout, const std::optional<double> dropout_rate,
-    const dnn::FMHAMaskKind mask_type, const int sliding_window_length);
+    const dnn::FMHAMaskKind mask_type, const int sliding_window_length,
+    const int max_seg_per_batch);
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
     dnn::DnnSupport& dnn_support,
@@ -730,7 +731,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
     double scale, bool use_dropout, bool use_bias,
     const dnn::FMHAMaskKind mask_type, bool force_deterministic,
-    const int sliding_window_length);
+    const int sliding_window_length, const int max_seg_per_batch);
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
     dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,
@@ -741,6 +742,13 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
     const dnn::TensorDescriptor& dq_desc, const dnn::TensorDescriptor& dk_desc,
     const dnn::TensorDescriptor& dv_desc, double scale,
     dnn::FMHAMaskKind mask_type);
+
+absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
+    dnn::DnnSupport& dnn_support, const dnn::TensorDescriptor& lhs_data,
+    const dnn::TensorDescriptor& lhs_scale,
+    const dnn::TensorDescriptor& rhs_data,
+    const dnn::TensorDescriptor& rhs_scale, dnn::DataType result_type,
+    int block_size);
 
 }  // namespace gpu
 }  // namespace stream_executor

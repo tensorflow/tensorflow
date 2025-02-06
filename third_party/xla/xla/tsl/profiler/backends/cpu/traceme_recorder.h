@@ -23,8 +23,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tsl/platform/macros.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace profiler {
@@ -72,7 +72,7 @@ class TraceMeRecorder {
     int64_t end_time;
   };
   struct ThreadInfo {
-    uint32 tid;
+    int64_t tid;
     std::string name;
   };
   struct ThreadEvents {

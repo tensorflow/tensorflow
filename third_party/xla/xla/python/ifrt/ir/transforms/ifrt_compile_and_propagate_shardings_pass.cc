@@ -513,7 +513,11 @@ IfrtCompileAndPropagateShardingsPass::PropagateShardings(
       callee.setArgAttr(idx, kHloShardingAttrName,
                         builder.getStringAttr(hlo_sharding.value().ToString()));
       auto new_array_type = builder.getType<IfrtArrayType>(
-          array_type.getShape(), input_shardings[idx], array_type.getDevices());
+          array_type.getShape(),
+          IfrtShardingParamAttr::get(builder.getContext(),
+                                     input_shardings[idx]),
+          array_type.getDevicesAttr(), array_type.getMemoryKindAttr(),
+          array_type.getLayoutAttr());
       input.setType(new_array_type);
     }
   }
@@ -548,8 +552,11 @@ IfrtCompileAndPropagateShardingsPass::PropagateShardings(
     if (mlir::isa<IfrtUnspecifiedShardingAttr>(array_type.getShardingAttr())) {
       replace_call_op = true;
       auto new_array_type = builder.getType<IfrtArrayType>(
-          array_type.getShape(), output_shardings[idx],
-          array_type.getDevices());
+          array_type.getShape(),
+          IfrtShardingParamAttr::get(builder.getContext(),
+                                     output_shardings[idx]),
+          array_type.getDevicesAttr(), array_type.getMemoryKindAttr(),
+          array_type.getLayoutAttr());
       new_call_op_result_types.push_back(new_array_type);
     } else {
       new_call_op_result_types.push_back(output.getType());
@@ -563,6 +570,8 @@ IfrtCompileAndPropagateShardingsPass::PropagateShardings(
         /*control_output=*/builder.getType<IfrtControlType>(),
         /*inputs=*/call_op.getInputs(),
         /*control_inputs=*/call_op.getControlInputs(),
+        /*args_attrs=*/call_op.getArgAttrsAttr(),
+        /*res_attrs=*/call_op.getResAttrsAttr(),
         /*callee=*/call_op.getCallee(),
         /*devices=*/call_op.getDevices(),
         /*io_aliases=*/call_op.getIoAliases(),
@@ -606,7 +615,8 @@ void IfrtCompileAndPropagateShardingsPass::ReplaceCallOpWithCallLoadedOp(
   builder.setInsertionPointAfter(call_op);
   auto call_loaded_op = builder.create<CallLoadedExecutableOp>(
       call_op.getLoc(), call_op.getResultTypes(), call_op.getInputs(),
-      call_op.getControlInputs(), loaded_exec_op_callee, call_op.getIoAliases(),
+      call_op.getControlInputs(), call_op.getArgAttrsAttr(),
+      call_op.getResAttrsAttr(), loaded_exec_op_callee, call_op.getIoAliases(),
       call_op.getDonatedInputIndices());
   call_op.replaceAllUsesWith(call_loaded_op.getResults());
   call_op.erase();

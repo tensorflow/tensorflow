@@ -335,6 +335,19 @@ func.func @attr_type_extensions_bounds(
   func.return %arg0 : tensor<?x?xf32, #mhlo.type_extensions<bounds = [16, ?]>>
 }
 
+// -----
+
+// CHECK-LABEL: "attr_result_accuracy_mode"
+func.func @attr_result_accuracy_mode(%arg0: tensor<f32>) -> tensor<f32> {
+  %0 = "mhlo.exponential"(%arg0) {
+    // CHECK: result_accuracy = #stablehlo.result_accuracy<ulps = 10, mode = #stablehlo.result_accuracy_mode<TOLERANCE>>
+    result_accuracy = #mhlo.result_accuracy<atol = 0.000000e+00, rtol = 0.000000e+00, ulps = 10, mode = #mhlo.result_accuracy_mode<TOLERANCE>>
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
 // ============ OPS ============
 
 // CHECK-LABEL: "op_abs"
@@ -1724,6 +1737,23 @@ func.func @op_xor(%arg0: tensor<i1>, %arg1: tensor<i1>) -> tensor<i1> {
   // CHECK: "stablehlo.xor"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) : (tensor<i1>, tensor<i1>) -> tensor<i1>
   %0 = "mhlo.xor"(%arg0, %arg1) : (tensor<i1>, tensor<i1>) -> tensor<i1>
   func.return %0 : tensor<i1>
+}
+
+// ============ BOUNDED DYNAMISM ============
+
+// CHECK-LABEL: bounded_dynamism_reshape
+func.func @bounded_dynamism_reshape(%arg0: tensor<?x1xi64, #mhlo.type_extensions<bounds = [7, ?]>>) -> tensor<?xi64, #mhlo.type_extensions<bounds = [7]>> {
+  // CHECK: stablehlo.reshape{{.*}}tensor<?xi64, #stablehlo.bounds<7>>
+  %0 = "mhlo.reshape"(%arg0) : (tensor<?x1xi64, #mhlo.type_extensions<bounds = [7, ?]>>)
+       -> tensor<?xi64, #mhlo.type_extensions<bounds = [7]>>
+  return %0 : tensor<?xi64, #mhlo.type_extensions<bounds = [7]>>
+}
+
+// CHECK-LABEL: bounded_dynamism_broadcast_in_dim
+func.func @bounded_dynamism_broadcast_in_dim(%arg0: tensor<1x?xf32, #mhlo.type_extensions<bounds = [?, 5]>>) -> tensor<2x1x?xf32, #mhlo.type_extensions<bounds = [?, ?, 5]>> {
+  // CHECK: stablehlo.broadcast_in_dim{{.*}}tensor<2x1x?xf32, #stablehlo.bounds<?, ?, 5>>
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x?xf32, #mhlo.type_extensions<bounds = [?, 5]>>) -> tensor<2x1x?xf32, #mhlo.type_extensions<bounds = [?, ?, 5]>>
+  return %0 : tensor<2x1x?xf32, #mhlo.type_extensions<bounds = [?, ?, 5]>>
 }
 
 // ============ TYPES ============

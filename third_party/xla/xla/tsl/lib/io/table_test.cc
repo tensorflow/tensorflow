@@ -27,10 +27,10 @@ limitations under the License.
 #include "xla/tsl/lib/io/iterator.h"
 #include "xla/tsl/lib/io/table_builder.h"
 #include "xla/tsl/lib/random/simple_philox.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/snappy.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace table {
@@ -117,7 +117,7 @@ class StringSink : public WritableFile {
 
 class StringSource : public RandomAccessFile {
  public:
-  explicit StringSource(const absl::string_view& contents)
+  explicit StringSource(absl::string_view contents)
       : contents_(contents.data(), contents.size()), bytes_read_(0) {}
 
   ~StringSource() override {}
@@ -158,7 +158,7 @@ class Constructor {
   explicit Constructor() : data_(STLLessThan()) {}
   virtual ~Constructor() {}
 
-  void Add(const string& key, const absl::string_view& value) {
+  void Add(const string& key, absl::string_view value) {
     data_[key] = string(value);
   }
 
@@ -242,7 +242,7 @@ class TableConstructor : public Constructor {
 
   Iterator* NewIterator() const override { return table_->NewIterator(); }
 
-  uint64 ApproximateOffsetOf(const absl::string_view& key) const {
+  uint64 ApproximateOffsetOf(absl::string_view key) const {
     return table_->ApproximateOffsetOf(key);
   }
 

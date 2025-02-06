@@ -16,20 +16,17 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_SORT_THUNK_H_
 #define XLA_BACKENDS_CPU_RUNTIME_SORT_THUNK_H_
 
-#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
+#include "absl/base/call_once.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
@@ -65,6 +62,15 @@ class SortThunk final : public Thunk {
 
   BufferUses buffer_uses() const final;
 
+  std::optional<SortDirection> direction() const { return direction_; }
+  int64_t dimension() const { return dimension_; }
+  bool is_stable() const { return is_stable_; }
+  const std::vector<Input>& inputs() const { return inputs_; }
+
+  const std::string& comparator_name() const { return comparator_name_; }
+
+  bool has_less_than() const { return less_than_.ok(); }
+
  private:
   SortThunk(Info info, absl::Span<const Input> inputs, int64_t dimension,
             bool is_stable, LessThan less_than,
@@ -84,9 +90,8 @@ class SortThunk final : public Thunk {
   std::string comparator_name_;
 
   // Lazily resolved LessThan comparator function.
-  absl::Mutex mutex_;
-  std::optional<LessThan> less_than_ ABSL_GUARDED_BY(mutex_);
-  std::atomic<LessThan*> less_than_ptr_;  // pointer to `less_than_`
+  absl::once_flag less_than_init_flag_;
+  absl::StatusOr<LessThan> less_than_;
 };
 
 }  // namespace xla::cpu

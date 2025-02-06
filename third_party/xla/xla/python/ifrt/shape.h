@@ -117,6 +117,11 @@ class BoundedDynamicShapeTag {
     return !(*this == other);
   }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const BoundedDynamicShapeTag& value) {
+    return H::combine(std::move(h), value.dynamic_dims_);
+  }
+
   // Constructs `BoundedDynamicShapeTag` from `BoundedDynamicShapeTagProto`.
   static absl::StatusOr<BoundedDynamicShapeTag> FromProto(
       const BoundedDynamicShapeTagProto& proto);
@@ -162,6 +167,12 @@ class DynamicShape {
 
   // Returns whether a certain dimension in the shape is dynamic.
   bool IsDynamicDim(int dimension) const;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const DynamicShape& value) {
+    return H::combine(std::move(h), value.shape_,
+                      std::get<BoundedDynamicShapeTag>(value.tag_));
+  }
 
   // Constructs `DynamicShape` from `DynamicShapeProto`.
   static absl::StatusOr<DynamicShape> FromProto(const DynamicShapeProto& proto);

@@ -13,6 +13,8 @@
 
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
+#include <sstream>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/litert/test/common.h"

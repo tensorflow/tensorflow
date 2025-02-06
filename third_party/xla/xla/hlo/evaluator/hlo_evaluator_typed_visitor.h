@@ -1716,12 +1716,14 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 // instantiating it.  We explicitly instantiate this class in the various
 // hlo_evaluator_typed_visitor*.cc files.
 extern template class HloEvaluatorTypedVisitor<bool>;
+extern template class HloEvaluatorTypedVisitor<u1, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<u2, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<u4, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint8_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint16_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint32_t, uint64_t>;
 extern template class HloEvaluatorTypedVisitor<uint64_t>;
+extern template class HloEvaluatorTypedVisitor<s1, int64_t>;
 extern template class HloEvaluatorTypedVisitor<s2, int64_t>;
 extern template class HloEvaluatorTypedVisitor<s4, int64_t>;
 extern template class HloEvaluatorTypedVisitor<int8_t, int64_t>;
@@ -1734,6 +1736,7 @@ extern template class HloEvaluatorTypedVisitor<double>;
 extern template class HloEvaluatorTypedVisitor<complex64>;
 extern template class HloEvaluatorTypedVisitor<complex128>;
 extern template class HloEvaluatorTypedVisitor<bfloat16, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float4_e2m1fn, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>;
@@ -1741,6 +1744,7 @@ extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3b11fnuz, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m2fnuz, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fnuz, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e3m4, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e8m0fnu, float>;
 
 }  // namespace xla
 

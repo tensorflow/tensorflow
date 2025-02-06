@@ -18,20 +18,77 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
+#include "xla/service/hlo_runner.h"
+#include "xla/service/instruction_fusion.h"
+#include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
+namespace {
 
 using ::testing::ElementsAre;
 
-using GpuFusibleTest = HloTestBase;
+auto MakeDeviceDescription() {
+  stream_executor::DeviceDescription device_description{
+      stream_executor::GpuDeviceInfoProto{}};
+  device_description.set_threads_per_warp(32);
+  return device_description;
+}
+
+class GpuFusibleTest : public HloRunnerAgnosticTestBase {
+ public:
+  GpuFusibleTest()
+      : HloRunnerAgnosticTestBase(
+            std::make_unique<HloRunner>(
+                PlatformUtil::GetDefaultPlatform().value())),
+        device_description_(MakeDeviceDescription()) {}
+
+  bool IsReduceInputFusion(const HloInstruction& instr) const {
+    return ::xla::gpu::IsReduceInputFusion(instr, device_description_);
+  }
+
+  bool IsInputFusibleReduction(const HloInstruction& instr) const {
+    return ::xla::gpu::IsInputFusibleReduction(instr, device_description_);
+  }
+
+  FusionDecision IsProducerMultiOutputFusible(
+      const HloInstruction& producer) const {
+    return ::xla::gpu::IsProducerMultiOutputFusible(producer,
+                                                    device_description_);
+  }
+
+  bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) const {
+    return ::xla::gpu::IsFusibleAsMultiOutputFusionRoot(instr,
+                                                        device_description_);
+  }
+
+  FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
+                                           const HloInstruction* hero2) const {
+    return ::xla::gpu::FusionHeroesAreCompatible(hero1, hero2,
+                                                 device_description_);
+  }
+
+  FusionDecision ShapesCompatibleForMultiOutputFusion(
+      const HloInstruction& instr1, const HloInstruction& instr2) const {
+    return ::xla::gpu::ShapesCompatibleForMultiOutputFusion(
+        instr1, instr2, device_description_);
+  }
+
+  const se::DeviceDescription& device_description() const {
+    return device_description_;
+  }
+
+ private:
+  const se::DeviceDescription device_description_;
+};
 
 const char kModulePrefix[] = R"(
     HloModule test_module
@@ -348,7 +405,6 @@ TEST_F(GpuFusibleTest, IsReduceInputFusion_ElementalReduction) {
     ENTRY entry {
       c0 = f32[] parameter(0)
       p1 = f32[8,512,5,16,1,1]{5,4,3,2,1,0} parameter(1)
-      // Reduction lowered by GpuElementalIrEmitter.
       ROOT reduce = f32[512,5,1,1]{3,2,1,0} reduce(p1, c0), dimensions={3,0},
         to_apply=scalar_add
     })"))
@@ -1239,7 +1295,7 @@ ENTRY computation {
                     .value();
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* producer = root->operand(0);
-  EXPECT_EQ(ChooseFusionKind(*producer, *root),
+  EXPECT_EQ(ChooseFusionKind(*producer, *root, device_description()),
             HloInstruction::FusionKind::kInput);
 }
 
@@ -1454,9 +1510,16 @@ TEST_F(GpuFusibleTest, GetFusibleComputations) {
       c0 = f32[] constant(0)
       ROOT bc = f32[128] broadcast(c0), dimensions={}
     }
+    body_c {
+      p0 = f32[128,1024] parameter(0)
+      c0 = f32[] constant(0)
+      ROOT bc = f32[128] broadcast(c0), dimensions={}
+    }
     ENTRY main {
       p0 = s32[] parameter(0)
       p1 = f32[128,1024] parameter(1)
+      called = f32[128] call(p1), to_apply=body_c,
+        frontend_attributes={_xla_stream_annotation="1"}
       ROOT conditional = f32[128] conditional(p0, p1, p1),
         branch_computations={body_a, body_b}
     })"))
@@ -1464,7 +1527,9 @@ TEST_F(GpuFusibleTest, GetFusibleComputations) {
 
   // fused_reduce is already fused, scalar_add is not fusible.
   auto fusible = GetFusibleComputations(*module, {});
-  EXPECT_THAT(fusible, ElementsAre(module->GetComputationWithName("body_a"),
+  EXPECT_THAT(fusible, ElementsAre(module->GetComputationWithName("body_c"),
+                                   // From the conditional
+                                   module->GetComputationWithName("body_a"),
                                    module->GetComputationWithName("body_b"),
                                    module->entry_computation()));
 }
@@ -1480,7 +1545,7 @@ TEST_F(GpuFusibleTest, GetSharedMemoryUsage) {
       ROOT res = f32[1024,128,2]{2,1,0} fusion(p), kind=kInput, calls=wrapped_transpose
     })"))
                     .value();
-  FusionInfoCache cache;
+  FusionInfoCache cache(device_description());
   auto fusion = module->entry_computation()->root_instruction();
   EXPECT_EQ(cache.GetSharedMemoryUsage(*fusion), 32 * 33 * 2 * 4);
 }
@@ -1500,5 +1565,6 @@ e {
   EXPECT_TRUE(IsConsumerTheOnlyNonRootUser(p, n));
 }
 
+}  // namespace
 }  // namespace gpu
 }  // namespace xla

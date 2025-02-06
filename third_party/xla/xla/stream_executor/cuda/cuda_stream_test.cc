@@ -27,6 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
@@ -40,9 +41,8 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -51,7 +51,6 @@ namespace {
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
-using ::testing::IsEmpty;
 using ::tsl::testing::IsOk;
 
 class CudaStreamTest : public ::testing::Test {
@@ -220,7 +219,7 @@ TEST_F(CudaStreamTest, LaunchKernel) {
   EXPECT_THAT(stream->Memset32(&a, 1, kByteLength), IsOk());
   EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), IsOk());
   EXPECT_THAT(stream->MemZero(&c, kByteLength), IsOk());
-  EXPECT_THAT(stream->ThenLaunch(ThreadDim(), BlockDim(kLength), add, a, b, c),
+  EXPECT_THAT(add.Launch(ThreadDim(), BlockDim(kLength), stream.get(), a, b, c),
               IsOk());
 
   EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
@@ -255,7 +254,6 @@ TEST_F(CudaStreamTest, WaitForEvent) {
       stream->DoHostCallback([&callback_called]() { callback_called = true; }),
       IsOk());
 
-  EXPECT_FALSE(callback_called);
   EXPECT_THAT(stream->RecordEvent(&event), IsOk());
   EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
   EXPECT_TRUE(callback_called);
@@ -278,28 +276,35 @@ TEST_F(CudaStreamTest, WaitForOtherStream) {
     kAfterWaitForStream
   };
 
+  // This mutex is needed to make thread sanitizer happy since it can't
+  // instrument the barrier in CUDA binary libraries.
+  absl::Mutex mutex;
   std::vector<ExecutionStage> execution_order;
 
   // - stream1 waits for the event to be recorded and
   // - stream2 waits for stream1 to be done.
   // - Afterwards stream2 invokes the host callback.
-  EXPECT_THAT(stream1->DoHostCallback([&execution_order]() {
+  EXPECT_THAT(stream1->DoHostCallback([&]() {
+    absl::MutexLock lock(&mutex);
     execution_order.push_back(ExecutionStage::kBeforeWaitForEvent);
   }),
               IsOk());
   EXPECT_THAT(stream1->WaitFor(&event), IsOk());
-  EXPECT_THAT(stream1->DoHostCallback([&execution_order]() {
+  EXPECT_THAT(stream1->DoHostCallback([&]() {
+    absl::MutexLock lock(&mutex);
     execution_order.push_back(ExecutionStage::kAfterWaitForEvent);
   }),
               IsOk());
   EXPECT_THAT(stream2->WaitFor(stream1.get()), IsOk());
-  EXPECT_THAT(stream2->DoHostCallback([&execution_order]() {
+  EXPECT_THAT(stream2->DoHostCallback([&]() {
+    absl::MutexLock lock(&mutex);
     execution_order.push_back(ExecutionStage::kAfterWaitForStream);
   }),
               IsOk());
 
   EXPECT_THAT(stream1->RecordEvent(&event), IsOk());
   EXPECT_THAT(stream2->BlockHostUntilDone(), IsOk());
+  absl::MutexLock lock(&mutex);
   EXPECT_THAT(execution_order,
               ElementsAre(ExecutionStage::kBeforeWaitForEvent,
                           ExecutionStage::kAfterWaitForEvent,

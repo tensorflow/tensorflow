@@ -27,13 +27,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tsl/platform/errors.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {

@@ -16,9 +16,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device.h"
 
 #include <stdlib.h>
-#include <string.h>
 
-#include <algorithm>
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
@@ -27,9 +26,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
@@ -60,7 +62,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

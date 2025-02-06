@@ -58,7 +58,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
  public:
   RpcRecvTensorCall() : wi_(nullptr), dst_device_(nullptr) {}
 
-  void Init(WorkerInterface* wi, int64_t step_id, StringPiece key,
+  void Init(WorkerInterface* wi, int64_t step_id, absl::string_view key,
             AllocatorAttributes alloc_attrs, Device* dst_device,
             const Rendezvous::Args& recv_args, Rendezvous::DoneCallback done) {
     wi_ = wi;

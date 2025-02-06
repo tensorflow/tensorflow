@@ -1,4 +1,4 @@
-# RUN: xla-translate -split-input-file -hlo-to-mlir-hlo -mlir-print-debuginfo %s | FileCheck %s
+# RUN: hlo-translate -hlo-to-mlir -emit-mhlo -mlir-print-debuginfo -split-input-file %s | FileCheck %s
 
 # Checks no locations
 # CHECK: %0 = mhlo.after_all %arg0 {xla_shape = "token[]"} : !mhlo.token

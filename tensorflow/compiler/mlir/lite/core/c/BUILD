@@ -34,7 +34,11 @@ exports_files(
         "tflite_types.h",
     ],
     visibility = [
-        "//tensorflow/lite:__subpackages__",
+        # copybara:uncomment_begin(google-only)
+        # "//tensorflow/lite:__subpackages__",
+        # copybara:uncomment_end_and_comment_begin
+        "//visibility:public",
+        # copybara:comment_end
     ],
 )
 
@@ -45,9 +49,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    visibility = [
-        "//tensorflow/lite/ios:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 # LINT.IfChange(common)

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cmath>
 #include <complex>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -29,13 +30,13 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/service.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -95,9 +96,13 @@ class MathTypedTest : public MathTest {
     Tuple(&b, {IsFinite(x), IsInf(x), IsPosInf(x), IsNegInf(x), IsNan(x)});
 
     bool has_inf = std::numeric_limits<T>::has_infinity;
+    bool has_nan = std::numeric_limits<T>::has_quiet_NaN;
+    bool has_finite = !has_inf && !has_nan;
+    bool has_nan_only = !has_inf && has_nan;
+
     auto expected = LiteralUtil::MakeTupleOwned(
-        LiteralUtil::CreateR1<bool>(
-            {true, true, true, true, true, false, false, false, false}),
+        LiteralUtil::CreateR1<bool>({true, true, true, true, true, has_finite,
+                                     has_finite, has_finite, has_finite}),
         LiteralUtil::CreateR1<bool>({false, false, false, false, false, has_inf,
                                      has_inf, false, false}),
         LiteralUtil::CreateR1<bool>(
@@ -105,7 +110,8 @@ class MathTypedTest : public MathTest {
         LiteralUtil::CreateR1<bool>(
             {false, false, false, false, false, false, has_inf, false, false}),
         LiteralUtil::CreateR1<bool>({false, false, false, false, false,
-                                     !has_inf, !has_inf, true, true}));
+                                     has_nan_only, has_nan_only, has_nan,
+                                     has_nan}));
     ComputeAndCompareLiteral(&b, expected, {});
   }
 
@@ -118,10 +124,11 @@ class MathTypedTest : public MathTest {
         LiteralUtil::CreateR1<T>({T{-0.0}, T{0}, T{1}, T{-1}, inf, -inf, nan}),
         &b));
 
+    bool is_mx = std::is_same_v<T, tsl::float4_e2m1fn>;
     ComputeAndCompareLiteral(
         &b,
         LiteralUtil::CreateR1<bool>(
-            {has_negative_zero_v<T>, false, false, false, false, false, false}),
+            {has_negative_zero_v<T>, false, false, false, false, false, is_mx}),
         {}, error_spec_);
   }
 
@@ -136,6 +143,9 @@ class MathTypedTest : public MathTest {
   // For good measure, we also check pow with an exponent other than 0.5.
   void TestSqrtPowInequivalence() {
     SetFastMathDisabled(true);
+    if (std::is_same_v<T, tsl::float4_e2m1fn>) {
+      GTEST_SKIP() << "Skipping due to low precision";
+    }
 
     // Tests disable constant folding by default, but this test needs it
     // enabled, otherwise we don't tickle the bug we're trying to catch.
@@ -181,15 +191,19 @@ class MathTypedTest : public MathTest {
                       &b);
     Erf(x);
 
-    bool has_inf = std::numeric_limits<T>::has_infinity;
-    std::vector<T> expected = {
-        has_inf ? T(-1) : nan, has_inf ? T(1) : nan, T(-0), T(0), T(-1), T(1)};
+    bool inf_as_nan = !std::numeric_limits<T>::has_infinity &&
+                      std::numeric_limits<T>::has_quiet_NaN;
+    std::vector<T> expected = {inf_as_nan ? nan : T(-1),
+                               inf_as_nan ? nan : T(1),
+                               T(-0),
+                               T(0),
+                               T(-1),
+                               T(1)};
 
     ComputeAndCompareR1<T>(&b, expected, {}, error_spec_);
   }
 };
 
-// TODO(b/123355973): Add bfloat16 to TestTypes once it's working.
 using TestTypes =
     ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3, tsl::float8_e4m3fnuz,
                      tsl::float8_e4m3b11fnuz, tsl::float8_e5m2,
@@ -202,6 +216,10 @@ using TestTypes =
 #endif
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
                      double,
+#endif
+#ifndef XLA_TEST_BACKEND_TPU
+                     // TODO(b/385004399): Run tests on these types on TPU.
+                     tsl::float4_e2m1fn,
 #endif
                      float>;
 
@@ -219,15 +237,12 @@ XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfInvEdgeCases(); }
 XLA_TYPED_TEST(MathTypedTest, ErfEdgeCases) { this->TestErfEdgeCases(); }
 
 // Check that certain ops only support real, floating-point inputs.
-//
-// TODO(jlebar): Expand this test to cover more ops.
 XLA_TEST_F(MathTest, RealFpOnlyOps) {
   for (int64_t i = PrimitiveType_MIN; i <= PrimitiveType_MAX; ++i) {
     auto ty = static_cast<PrimitiveType>(i);
     SCOPED_TRACE(PrimitiveType_Name(ty));
     Shape shape;
     if (ty == U4 || ty == S4) {
-      // TODO(b/259306620): breaking MakeShape()
       continue;
     }
     if (primitive_util::IsArrayType(ty)) {

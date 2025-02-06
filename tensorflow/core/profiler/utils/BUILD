@@ -127,12 +127,14 @@ cc_library(
     hdrs = ["op_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":hlo_module_map",
         ":op_metrics_db_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler/convert:op_metrics_db_combiner",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/tsl/profiler/utils:tf_op_utils",
         "@local_xla//xla/tsl/profiler/utils:timespan",
     ],
@@ -162,10 +164,7 @@ cc_library(
     hdrs = ["xplane_schema.h"],
     copts = tf_profiler_copts(),
     visibility = [":friends"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/profiler/utils:xplane_schema",
-    ],
+    deps = ["@local_xla//xla/tsl/profiler/utils:xplane_schema"],
 )
 
 cc_library(
@@ -452,6 +451,7 @@ tf_cuda_library(
     ],
     visibility = [":friends"],
     deps = [
+        ":hlo_module_utils",
         ":hlo_proto_map",
         ":hlo_proto_to_module",
         "//tensorflow/core/platform:path",
@@ -464,13 +464,37 @@ tf_cuda_library(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_cost_analysis",
         "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
     ],
 )
 
 cc_library(
     name = "hlo_module_utils",
     hdrs = ["hlo_module_utils.h"],
-    deps = ["@local_xla//xla/hlo/ir:hlo"],
+    visibility = [
+        ":friends",
+        # copybara:uncomment "//tensorflow/compiler/mlir/lite/experimental/google/tooling/google:__subpackages__",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_module_utils_test",
+    srcs = ["hlo_module_utils_test.cc"],
+    deps = [
+        ":hlo_module_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/tests:hlo_test_base",
+    ],
 )
 
 cc_library(
@@ -488,6 +512,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tpu_step_breakdown_utils",
+    hdrs = ["tpu_step_breakdown_utils.h"],
+    visibility = [":friends"],
+    deps = ["//tensorflow/core/profiler/protobuf:steps_db_proto_cc"],
+)
+
+cc_library(
+    name = "tpu_step_details_utils",
+    hdrs = ["tpu_step_details_utils.h"],
+    visibility = [":friends"],
+    deps = ["//tensorflow/core/profiler/protobuf:tpu_input_pipeline_proto_cc"],
+)
+
 tf_cc_test(
     name = "xprof_gpu_cost_analysis_test",
     srcs = ["xprof_gpu_cost_analysis_test.cc"],
@@ -497,9 +535,9 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla:test_helpers",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/testlib:test_helpers",
         "@local_xla//xla/service:hlo_cost_analysis",
         "@local_xla//xla/service/gpu/model:hlo_op_profiles",
         "@local_xla//xla/tests:hlo_test_base",

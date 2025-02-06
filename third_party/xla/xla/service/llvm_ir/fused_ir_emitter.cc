@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
@@ -35,9 +36,9 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -109,7 +110,8 @@ FusedIrEmitter::IndexedGenerator FusedIrEmitter::HandleConstant(
       /*isExternallyInitialized=*/false);
   global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
 
-  llvm::Type* shape_type = llvm_ir::ShapeToIrType(constant.shape(), module);
+  llvm::Type* shape_type =
+      llvm_ir::ShapeToIrType(constant.shape(), module->getContext());
   IrArray array(global, shape_type, constant.shape());
 
   return [&, b, array = std::move(array)](const IrArray::Index& index) {
@@ -123,7 +125,8 @@ absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
   element_ir_types.reserve(tuple.operand_count());
   for (const HloInstruction* operand : tuple.operands()) {
     element_ir_types.push_back(llvm_ir::PrimitiveTypeToIrType(
-        operand->shape().element_type(), elemental_emitter_.module()));
+        operand->shape().element_type(),
+        elemental_emitter_.module()->getContext()));
   }
 
   llvm::IRBuilderBase* b = elemental_emitter_.b();

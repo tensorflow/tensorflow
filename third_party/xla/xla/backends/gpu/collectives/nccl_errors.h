@@ -16,16 +16,16 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_NCCL_ERRORS_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_ERRORS_H_
 
-#include "absl/strings/str_format.h"          // IWYU pragma: keep
-#include "xla/util.h"     // IWYU pragma: keep
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "absl/strings/str_format.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/util.h"  // IWYU pragma: keep
 
 //===----------------------------------------------------------------------===//
 // Collection of helper macros for handling NCCL errors.
 //===----------------------------------------------------------------------===//
 
 #define XLA_NCCL_STATUS(expr)                                         \
-  [](ncclResult_t s, std::string_view str) -> absl::Status {          \
+  [](ncclResult_t s, absl::string_view str) -> absl::Status {         \
     if (s == ncclSuccess) return absl::OkStatus();                    \
     return xla::Internal(                                             \
         "NCCL operation %s failed: %s. Last NCCL warning(error) log " \

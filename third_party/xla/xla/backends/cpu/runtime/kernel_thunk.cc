@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/kernel_thunk.h"
 
-#define EIGEN_USE_THREADS
-
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -25,32 +22,39 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
+#include "absl/base/call_once.h"
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
+#include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/codegen/kernel_spec.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 namespace internal {
@@ -111,16 +115,16 @@ template <int64_t num_arguments, int64_t num_results>
 KernelThunk<num_arguments, num_results>::KernelThunk(
     Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
-    absl::flat_hash_set<int64_t> invariant_arguments, std::string kernel_name,
-    se::ThreadDim thread_dim, std::optional<uint64_t> min_alignment)
-    : Thunk(Kind::kKernel, std::move(info)),
+    std::optional<absl::flat_hash_set<int64_t>> invariant_arguments,
+    std::string kernel_name, se::ThreadDim thread_dim,
+    std::optional<uint64_t> min_alignment)
+    : KernelThunkBase(Kind::kKernel, std::move(info)),
       invariant_arguments_(std::move(invariant_arguments)),
       num_kernel_args_(arguments_buffers.size() + results_buffers.size()),
       kernel_name_(std::move(kernel_name)),
       thread_dim_(thread_dim),
       min_alignment_(min_alignment),
-      call_once_(thread_dim_ == se::ThreadDim()),
-      kernel_ptr_(nullptr) {
+      call_once_(thread_dim_ == se::ThreadDim()) {
   // Resize storage for arguments and results buffers if it is dynamic.
   if constexpr (IsDynamic(num_arguments)) {
     arguments_buffers_.resize(arguments_buffers.size());
@@ -201,25 +205,28 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
     // TODO(abanas): Check also for overlapping buffers.
     TF_RETURN_IF_ERROR(
         CheckBufferAlignment(info(), min_alignment_.value_or(0), kernel_args));
-    TF_RETURN_IF_ERROR(CheckInvariantBuffersMemory(kernel_args));
+    if (invariant_arguments_.has_value()) {
+      TF_RETURN_IF_ERROR(CheckInvariantBuffersMemory(kernel_args));
+    }
   }
 
   // TODO(ezhulenev): Kernel ptr should be loaded as a part of Thunk
   // initialization stage.
-  Kernel* kernel = kernel_ptr_.load(std::memory_order_acquire);
+  absl::call_once(kernel_init_flag_, [&]() {
+    // Because thunks are owned by a parent CpuExecutable, we can safely assume
+    // that kernel pointer will not change after we find it the first time.
+    absl::StatusOr<FunctionLibrary::Kernel*> kernel_fn =
+        params.function_library->ResolveFunction<FunctionLibrary::Kernel>(
+            kernel_name_);
 
-  // Because thunks are owned by a parent CpuExecutable, we can safely assume
-  // that kernel pointer will not change after we find it the first time.
-  if (ABSL_PREDICT_FALSE(kernel == nullptr)) {
-    TF_ASSIGN_OR_RETURN(XLA_CPU_Kernel * kernel_fn,
-                        params.function_registry->FindKernel(kernel_name_));
-
-    absl::MutexLock lock(&mutex_);
-    if ((kernel = kernel_ptr_.load(std::memory_order_relaxed)) == nullptr) {
-      kernel = &kernel_.emplace(num_kernel_args_, kernel_fn);
-      kernel_ptr_.store(kernel, std::memory_order_release);
+    if (ABSL_PREDICT_TRUE(kernel_fn.ok())) {
+      kernel_.emplace(num_kernel_args_, *kernel_fn);
+    } else {
+      kernel_ = std::move(kernel_fn.status());
     }
-  }
+  });
+  TF_RETURN_IF_ERROR(kernel_.status());
+  Kernel* kernel = &kernel_.value();
 
   // Use a fast path if kernel called just once.
   if (ABSL_PREDICT_TRUE(call_once_)) {
@@ -231,10 +238,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
   // by scheduling tasks into it. HostKernel launch completion will
   // automatically signal KernelThunk execute completion.
   if (ABSL_PREDICT_TRUE(params.intra_op_threadpool)) {
-    return kernel->Launch(
-        thread_dim_, kernel_args, [&params](Kernel::Task task) {
-          params.intra_op_threadpool->getPool()->Schedule(std::move(task));
-        });
+    return kernel->Launch(thread_dim_, kernel_args, params.intra_op_threadpool);
   }
 
   TF_RETURN_IF_ERROR(kernel->Launch(thread_dim_, kernel_args));
@@ -252,9 +256,10 @@ template <int64_t num_arguments, int64_t num_results>
 absl::Status
 KernelThunk<num_arguments, num_results>::CheckInvariantBuffersMemory(
     const KernelArgs& kernel_args) const {
+  CHECK(invariant_arguments_.has_value());  // Crash OK
   if (ABSL_PREDICT_FALSE(VLOG_IS_ON(10))) {
     VLOG(10) << "Verify invariant buffers: ";
-    for (auto index : invariant_arguments_) {
+    for (auto index : *invariant_arguments_) {
       VLOG(10) << absl::StreamFormat("  invariant arg id: %d", index);
     }
   }
@@ -267,7 +272,7 @@ KernelThunk<num_arguments, num_results>::CheckInvariantBuffersMemory(
   // Verify all argument buffers.
   for (int64_t i = 0; i < arguments.size(); ++i) {
     const XLA_CPU_KernelArg& argument = arguments[i];
-    if (invariant_arguments_.contains(i)) {
+    if (invariant_arguments_->contains(i)) {
       // This argument should be read only, i.e. not one of the results.
       if (Contains(results, argument)) {
         return Internal("Mismatch in invariant buffers metadata");
@@ -308,7 +313,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
     std::string kernel_name, se::ThreadDim thread_dim,
-    absl::flat_hash_set<int64_t> invariant_arguments,
+    std::optional<absl::flat_hash_set<int64_t>> invariant_arguments,
     std::optional<uint64_t> min_alignment) {
   if (min_alignment.has_value() && !absl::has_single_bit(*min_alignment)) {
     return Internal("Host kernel %s minimum alignment %d is not a power of 2",
@@ -348,6 +353,25 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
       new KernelThunk(std::move(info), arguments_buffers, results_buffers,
                       std::move(invariant_arguments), std::move(kernel_name),
                       thread_dim, min_alignment));
+}
+
+absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
+    Thunk::Info info, const KernelSpec& kernel_spec,
+    std::optional<uint64_t> min_alignment) {
+  std::vector<BufferAllocation::Slice> arguments_buffers;
+  std::vector<BufferAllocation::Slice> results_buffers;
+
+  for (const BufferUse& buffer_use : kernel_spec.buffer_uses()) {
+    if (buffer_use.access() == BufferUse::kRead) {
+      arguments_buffers.push_back(buffer_use.slice());
+    } else {
+      results_buffers.push_back(buffer_use.slice());
+    }
+  }
+
+  return Create(std::move(info), arguments_buffers, results_buffers,
+                kernel_spec.name(), kernel_spec.thread_dim(), std::nullopt,
+                min_alignment);
 }
 
 }  // namespace xla::cpu

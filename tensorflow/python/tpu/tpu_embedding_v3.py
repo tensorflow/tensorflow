@@ -45,6 +45,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -94,7 +95,15 @@ class EmbeddingPipeliningContext(control_flow_ops.ControlFlowContext):
     super().__init__()
     self._name = "EmbeddingPipelinigContext"
     self._mode = attr_value_pb2.AttrValue(s=compat.as_bytes(mode))
-    self._enable = enable
+    recording_summaries = summary_ops_v2.is_recording_summaries()
+    if enable and recording_summaries:
+      logging.info(
+          "Embedding pipelining requested but summaries are being recorded:"
+          " Disabling embedding pipelining."
+      )
+      self._enable = False
+    else:
+      self._enable = enable
 
   def to_control_flow_context_def(
       self, context_def: Any, export_scope: Any = None
@@ -1883,7 +1892,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           table_vocab_size=total_vocab_size,
           feature_width=feature_width,
           table_name=table_name,
-          allow_id_dropping=True,  # TODO(pineapplejuice233): make this configurable.
+          allow_id_dropping=self._sparse_core_embedding_config.allow_id_dropping,
       )
       table_to_csr_format_tensor[table_name] = (
           PartitionedCsrFormatTensor(

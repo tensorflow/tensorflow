@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/real_imag_expander.h"
 
+#include "absl/status/statusor.h"
 #include "xla/literal_util.h"
 
 namespace xla {

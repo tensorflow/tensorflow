@@ -23,6 +23,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <queue>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -73,7 +75,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -82,8 +83,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/graph_to_tf_executor_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/node_order.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -102,6 +110,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -115,6 +124,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stack_frame.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
@@ -123,9 +133,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -181,6 +188,35 @@ class NameUniquifier : public OpOrArgNameMapper {
   const FunctionLibraryDefinition& flib_;
 };
 
+std::string LogGraphImportConfig(const GraphImportConfig& config) {
+  std::ostringstream ss;
+
+  ss << "graph_func_name: " << config.graph_func_name;
+  GraphImportConfig::InputArrays inputs;
+  ss << "\ninputs: ";
+  for (auto& it : inputs) {
+    ss << "\n\t" << it.first << " -> "
+       << DataTypeString(it.second.imported_dtype) << " "
+       << it.second.shape.DebugString();
+  }
+  ss << "\noutputs:";
+  for (auto& output : config.outputs) ss << " " << output;
+  ss << "\ncontrol_outputs:";
+  for (auto& output : config.control_outputs) ss << " " << output;
+  ss << "\nprune_unused_nodes: " << config.prune_unused_nodes;
+  ss << "\nconvert_legacy_fed_inputs: " << config.convert_legacy_fed_inputs;
+  ss << "\ngraph_as_function: " << config.graph_as_function;
+  ss << "\nupgrade_legacy: " << config.upgrade_legacy;
+  ss << "\nrestrict_functionalization_to_compiled_nodes: "
+     << config.restrict_functionalization_to_compiled_nodes;
+  ss << "\nenable_shape_inference: " << config.enable_shape_inference;
+  ss << "\nunconditionally_use_set_output_shapes: "
+     << config.unconditionally_use_set_output_shapes;
+  ss << "\nxla_compile_device_type: " << config.xla_compile_device_type;
+
+  return ss.str();
+}
+
 // Stateful helper class to import a TensorFlow model into an MLIR Module.
 //
 // This is the base class that contains common utilities shared between the
@@ -209,7 +245,7 @@ class ImporterBase {
         error_handler_(module.getContext()) {
     // Log import config.
     if (VLOG_IS_ON(1)) {
-      LOG(INFO) << "Importing with: " << specs.str();
+      LOG(INFO) << "Importing with: " << LogGraphImportConfig(specs);
       for (auto& it : *tf_name_to_mlir_name) {
         LOG(INFO) << "\t" << it.first << " -> " << it.second;
       }
@@ -838,7 +874,8 @@ absl::Status ImporterBase::AddNodesToShapeRefiner(
 
     // If it is the argument node, the shape handle is set explicitly, so it
     // can be propagated to the body nodes of the function.
-    if (StringPiece(node->type_string()) == FunctionLibraryDefinition::kArgOp) {
+    if (absl::string_view(node->type_string()) ==
+        FunctionLibraryDefinition::kArgOp) {
       auto* node_context = shape_refiner_->GetContext(node);
       DCHECK(node_context != nullptr);
       if (const AttrValue* attr = node->attrs().Find("shape")) {
@@ -2675,17 +2712,43 @@ absl::Status GraphDefImporter::GetControlRetsFromGraph(
   return absl::OkStatus();
 }
 
+bool IsCompiledNode(const Node* n) {
+  return n->attrs().Find(tensorflow::kTpuReplicateAttr) ||
+         n->attrs().Find(tensorflow::kCompileDeviceTypeAttr);
+}
+
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToTfExecutor(
     const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
     mlir::MLIRContext* context,
-    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name) {
+    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
+    const ConfigProto& config_proto,
+    tensorflow::TF2XLABridgeVersion bridge_version) {
+  if (bridge_version != tensorflow::TF2XLABridgeVersion::kNotBridgeUseCase) {
+    bool has_unsupported_features_in_mlir_bridge =
+        GraphHasUnsupportedFeaturesInMlirBridge(
+            graph, &flib_def, config_proto,
+            tensorflow::TF2XLABridgeVersion::kNominal,
+            /*single_core_inference_mode=*/false);
+    if (has_unsupported_features_in_mlir_bridge) {
+      LOG(WARNING)
+          << "Graph contains unsupported features in MLIR bridge. "
+          << "Use MLIR bridge at your own risk or disable MLIR bridge, e.g., "
+          << "tf.config.experimental.disable_mlir_bridge.";
+    }
+  }
+
   // TODO(jpienaar): Remove need to const_cast.
   if (specs.upgrade_legacy) {
-    TF_RETURN_IF_ERROR(
-        UpgradeLegacyGraph(const_cast<Graph*>(&graph),
-                           const_cast<FunctionLibraryDefinition*>(&flib_def),
-                           specs.restrict_functionalization_to_compiled_nodes));
+    NodeFilter node_filter = specs.restrict_functionalization_to_compiled_nodes
+                                 ? IsCompiledNode
+                                 : NodeFilter{};
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        FunctionalizeControlFlow(
+            const_cast<Graph*>(&graph),
+            const_cast<FunctionLibraryDefinition*>(&flib_def), node_filter,
+            /*include_functions=*/true),
+        tensorflow::kFunctionalizeControlFlowFailureMessage);
   }
 
   std::unordered_map<std::string, std::string> local_tf_name_to_mlir_name;

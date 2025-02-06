@@ -17,11 +17,14 @@ syntax = "proto3";
 
 package xla.ifrt;
 
+import "xla/python/ifrt/attribute_map.proto";
+
 message ExecuteOptionsProto {
   bool untuple_result = 2;
   int32 launch_id = 3;
   repeated int32 non_donatable_input_indices = 7;
   bool fill_status = 9;
+  AttributeMapProto custom_options = 10;
 
   reserved 1, 4 to 6, 8;
 }

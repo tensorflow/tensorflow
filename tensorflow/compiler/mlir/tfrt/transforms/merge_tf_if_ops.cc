@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iterator>
+#include <algorithm>
+#include <cassert>
+#include <memory>
+#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -266,8 +269,8 @@ class MergeTfIfOpsPass
       // the arguments from the wrapper function.
       auto call_op = builder.create<mlir::TF::PartitionedCallOp>(
           if_op.getLoc(), if_op.getResultTypes(), block->getArguments(),
-          get_branch(if_op), empty_string_attr, empty_string_attr,
-          empty_string_attr);
+          /*args_attrs=*/nullptr, /*res_attrs=*/nullptr, get_branch(if_op),
+          empty_string_attr, empty_string_attr, empty_string_attr);
 
       // The results are the concatenation of the original branches.
       results.append(call_op.getOutput().begin(), call_op.getOutput().end());

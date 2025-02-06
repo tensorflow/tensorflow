@@ -19,10 +19,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <variant>
 
 #include "absl/cleanup/cleanup.h"
-#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_description.h"

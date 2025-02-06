@@ -19,7 +19,7 @@ limitations under the License.
 #include <random>
 
 #include "xla/tsl/platform/cloud/http_request.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 
 namespace tsl {
 const int64_t kDefaultRefreshRateSecs = 60;

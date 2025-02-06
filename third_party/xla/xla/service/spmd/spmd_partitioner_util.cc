@@ -398,7 +398,7 @@ std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
   std::vector<int> perm;
   perm.reserve(rank + expand_tile_sizes.size());
   for (int64_t dim = 0; dim < rank; dim++) {
-    perm.emplace_back(dim);
+    perm.push_back(dim);
     if (expand_tile_dims_indices[dim] > -1) {
       perm.emplace_back(expand_tile_dims_indices[dim] + rank);
     }
@@ -530,7 +530,7 @@ std::optional<HloInstruction*> PadFromPartialReplicateShape(
     // If src sharding at this dimension is not partitioned, simply pad to
     // the desired shape.
     if (src_shard_count == 1) {
-      expand_dims_without_halo_exchange.emplace_back(dim);
+      expand_dims_without_halo_exchange.push_back(dim);
       continue;
     }
 
@@ -2239,30 +2239,58 @@ GatherScatterOperandsShardedAcrossParallelDims(
   return GatherScatterParallelDimSharding{new_index_shard, new_operand_shard};
 }
 
-int64_t FindRotateRightPattern(const HloInstruction* concat,
-                               const HloInstruction* lhs,
-                               const HloInstruction* rhs) {
+namespace {
+
+const HloInstruction* SkipCopyOperands(const HloInstruction* operand,
+                                       bool check_single_use = true) {
+  while (operand->user_count() == 1 && operand->opcode() == HloOpcode::kCopy) {
+    operand = operand->operand(0);
+  }
+  if (check_single_use && operand->user_count() != 1) {
+    return nullptr;
+  }
+  return operand;
+}
+
+}  // namespace
+
+std::optional<int64_t> FindRotateRightPattern(const HloInstruction* concat) {
+  if (concat->operand_count() != 2) {
+    return std::nullopt;
+  }
+  const HloInstruction* lhs = SkipCopyOperands(concat->operand(0));
+  const HloInstruction* rhs = SkipCopyOperands(concat->operand(1));
+  if (!lhs || !rhs) {
+    return std::nullopt;
+  }
+
   if (lhs->opcode() != HloOpcode::kSlice ||
       rhs->opcode() != HloOpcode::kSlice ||
       lhs->operand(0) != rhs->operand(0)) {
-    return -1;
+    return std::nullopt;
   }
   const HloInstruction* to_rotate = lhs->operand(0);
   if (!ShapeUtil::Compatible(to_rotate->shape(), concat->shape()) ||
       concat->sharding() != to_rotate->sharding()) {
-    return -1;
+    return std::nullopt;
   }
   const int64_t dim = concat->concatenate_dimension();
   if (lhs->slice_strides(dim) != 1 || rhs->slice_strides(dim) != 1 ||
       lhs->slice_starts(dim) != rhs->slice_limits(dim)) {
-    return -1;
+    return std::nullopt;
   }
   return lhs->shape().dimensions(dim);
 }
 
 std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
-    const HloInstruction* concat, const HloInstruction* lhs,
-    const HloInstruction* mid, const HloInstruction* rhs) {
+    const HloInstruction* concat) {
+  if (concat->operand_count() != 3) {
+    return std::nullopt;
+  }
+  const HloInstruction* lhs = SkipCopyOperands(concat->operand(0));
+  const HloInstruction* mid = SkipCopyOperands(concat->operand(1),
+                                               /*check_single_use=*/false);
+  const HloInstruction* rhs = SkipCopyOperands(concat->operand(2));
   if (!lhs || !mid || !rhs) {
     return std::nullopt;
   }
@@ -2294,9 +2322,7 @@ std::optional<PadWithWrapPattern> FindPadWithWrapPattern(
   if (lhs->opcode() != HloOpcode::kSlice ||
       rhs->opcode() != HloOpcode::kSlice || lhs->operand(0) != mid ||
       rhs->operand(0) != mid || lhs->slice_strides(dim) != 1 ||
-      rhs->slice_strides(dim) != 1 || lhs->sharding() != mid->sharding() ||
-      rhs->sharding() != mid->sharding() ||
-      lhs->sharding() != concat->sharding()) {
+      rhs->slice_strides(dim) != 1) {
     return std::nullopt;
   }
   pad_pattern.lhs_slice_start = lhs->slice_starts(dim);
@@ -2536,6 +2562,14 @@ CollectiveDeviceList ExpandPartitionGroupListAcrossReplicas(
   return CollectiveDeviceList(
       IotaReplicaGroupList(replica_group_count, partition_group_size,
                            new_reshape_dims, new_transpose_dims));
+}
+
+PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
+                                                   SpmdBuilder* b) {
+  HloInstruction* copy_hlo = b->AddInstruction(HloInstruction::CreateUnary(
+      phlo.hlo()->shape(), HloOpcode::kCopy, phlo.hlo()));
+  copy_hlo->copy_sharding(phlo.hlo());
+  return PartitionedHlo(copy_hlo, phlo.base_shape(), phlo.state());
 }
 
 }  // namespace spmd

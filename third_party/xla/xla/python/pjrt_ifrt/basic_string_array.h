@@ -46,22 +46,6 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-// Describes the layout of a `BasicStringArray`.
-class BasicStringArrayLayout : public PjRtLayout {
- public:
-  BasicStringArrayLayout() = default;
-  BasicStringArrayLayout(const BasicStringArrayLayout& other) = delete;
-
-  ~BasicStringArrayLayout() override = default;
-
-  std::string Serialize() const override;
-  std::string ToString() const override;
-  bool operator==(const PjRtLayout& other) const override;
-
- protected:
-  void Hash(absl::HashState state) const override;
-};
-
 // `BasicStringArray` implements an `ifrt::Array` by wrapping a local (aka host)
 // string buffer. This object is expected to live exclusively in the IFRT layer,
 // and thus is not specific to any particular backend. However, it is currently
@@ -121,7 +105,7 @@ class BasicStringArray final
     return sharding_;
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> layout() const override;
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override;
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;

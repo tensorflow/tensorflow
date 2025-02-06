@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -39,6 +38,8 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -63,7 +64,6 @@ limitations under the License.
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/nb_class_ptr.h"
-#include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -337,13 +338,17 @@ class CompileOnlyIfRtClient final
     return topology_;
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtLayout>> GetDefaultLayoutForDevice(
-      ifrt::DType dtype, absl::Span<const int64_t> dims,
-      ifrt::Device* device) const override {
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayout(
+      ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
+      ifrt::MemoryKind memory_kind) const override {
+    if (memory_kind == ifrt::MemoryKind(UnpinnedHostMemorySpace::kKind)) {
+      return std::make_shared<PjRtLayout>(
+          LayoutUtil::MakeDescendingLayout(dims.size()));
+    }
     TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
     TF_ASSIGN_OR_RETURN(xla::Layout layout,
                         topology_->GetDefaultLayout(element_type, dims));
-    return std::make_unique<PjRtXlaLayout>(std::move(layout));
+    return std::make_shared<PjRtLayout>(std::move(layout));
   }
 
  private:
@@ -371,7 +376,7 @@ class CompileOnlyPyClient : public PyClient {
   }
 
   absl::StatusOr<std::shared_ptr<ifrt::Executable>> CompileUnloaded(
-      std::string_view mlir_module, CompileOptions options,
+      absl::string_view mlir_module, CompileOptions options,
       std::vector<nb::capsule> host_callbacks) {
     if (!host_callbacks.empty()) {
       return Unimplemented(
@@ -396,8 +401,7 @@ class CompileOnlyPyClient : public PyClient {
                         PjRtCompile(std::move(options), module.get(),
                                     *ifrt_client->topology().description()));
     TF_ASSIGN_OR_RETURN(auto ifrt_executable,
-                        ifrt::PjRtExecutable::Create(std::move(executable),
-                                                     std::move(xla_options)));
+                        ifrt::PjRtExecutable::Create(std::move(executable)));
     return std::shared_ptr<ifrt::Executable>(std::move(ifrt_executable));
   }
 
@@ -421,7 +425,7 @@ void RegisterCompileOnlyClient(nb::module_& m) {
           [](CompileOnlyPyClient& self, nb::bytes mlir_module,
              CompileOptions options, std::vector<nb::capsule> host_callbacks) {
             return ValueOrThrow(self.CompileUnloaded(
-                std::string_view(mlir_module.c_str(), mlir_module.size()),
+                absl::string_view(mlir_module.c_str(), mlir_module.size()),
                 std::move(options), std::move(host_callbacks)));
           },
           nb::arg("computation"), nb::arg("compile_options") = CompileOptions(),

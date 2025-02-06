@@ -16,17 +16,21 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CC_LITERT_MODEL_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_format.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_consts.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_element_type.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
@@ -35,11 +39,14 @@
 
 namespace litert {
 
+using Dimensions = absl::InlinedVector<int32_t, kExpectedMaxTensorRank>;
+using Strides = absl::InlinedVector<uint32_t, kExpectedMaxTensorRank>;
+
 // Tensor layout. C++ equivalent to LiteRtLayout.
 class Layout {
  public:
-  explicit Layout(SmallVec<int32_t>&& dimensions,
-                  SmallVec<uint32_t>&& strides = SmallVec<uint32_t>())
+  explicit Layout(litert::Dimensions&& dimensions,
+                  litert::Strides&& strides = litert::Strides())
       : dimensions_(std::move(dimensions)), strides_(std::move(strides)) {}
 
   explicit Layout(const LiteRtLayout& layout)
@@ -82,8 +89,8 @@ class Layout {
   }
 
  private:
-  SmallVec<int32_t> dimensions_;
-  SmallVec<uint32_t> strides_;
+  litert::Dimensions dimensions_;
+  litert::Strides strides_;
 };
 
 // Type for tensors with known dimensions. C++ equivalent to
@@ -138,22 +145,36 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
   explicit Tensor(LiteRtTensor tensor)
       : internal::NonOwnedHandle<LiteRtTensor>(tensor) {}
 
+  enum ElementType ElementType() const {
+    if (TypeId() == kLiteRtUnrankedTensorType) {
+      return static_cast<enum ElementType>(UnrankedTensorType()->element_type);
+    } else {
+      return RankedTensorType()->ElementType();
+    }
+  }
+
   LiteRtTensorTypeId TypeId() const {
     LiteRtTensorTypeId type_id;
     internal::AssertOk(LiteRtGetTensorTypeId, Get(), &type_id);
     return type_id;
   }
 
-  LiteRtUnrankedTensorType UnrankedTensorType() const {
-    internal::AssertEq([&]() { return TypeId(); }, kLiteRtUnrankedTensorType);
+  Expected<LiteRtUnrankedTensorType> UnrankedTensorType() const {
+    if (TypeId() != kLiteRtUnrankedTensorType) {
+      return Error(kLiteRtStatusErrorInvalidArgument,
+                   "Not an unranked invalid tensor");
+    }
     LiteRtUnrankedTensorType unranked_tensor_type;
     internal::AssertOk(LiteRtGetUnrankedTensorType, Get(),
                        &unranked_tensor_type);
     return unranked_tensor_type;
   }
 
-  class RankedTensorType RankedTensorType() const {
-    internal::AssertEq([&]() { return TypeId(); }, kLiteRtRankedTensorType);
+  Expected<class RankedTensorType> RankedTensorType() const {
+    if (TypeId() != kLiteRtRankedTensorType) {
+      return Error(kLiteRtStatusErrorInvalidArgument,
+                   "Not a ranked tensor type");
+    }
     LiteRtRankedTensorType ranked_tensor_type;
     internal::AssertOk(LiteRtGetRankedTensorType, Get(), &ranked_tensor_type);
     return litert::RankedTensorType(ranked_tensor_type);
@@ -176,6 +197,15 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
     return per_tensor_quantization;
   }
 
+  LiteRtQuantizationPerChannel PerChannelQuantization() const {
+    internal::AssertEq([&]() { return QTypeId(); },
+                       kLiteRtQuantizationPerChannel);
+    LiteRtQuantizationPerChannel per_channel_quantization;
+    internal::AssertOk(LiteRtGetPerChannelQuantization, Get(),
+                       &per_channel_quantization);
+    return per_channel_quantization;
+  }
+
   bool HasWeights() const {
     auto weights = Weights();
     return !weights.Bytes().empty();
@@ -194,11 +224,19 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
   }
 
   struct TensorUse;
-  SmallVec<TensorUse> Uses() const;
+  using TensorUses =
+      absl::InlinedVector<TensorUse, kExpectedMaxNumOfTensorUses>;
+
+  TensorUses Uses() const;
 
   template <typename T>
   Expected<absl::Span<const T>> WeightsData() const {
-    const ElementType ty = RankedTensorType().ElementType();
+    auto ranked_tensor_type = RankedTensorType();
+    if (!ranked_tensor_type) {
+      return ranked_tensor_type.Error();
+    }
+
+    const enum ElementType ty = ranked_tensor_type->ElementType();
     if (ty != GetElementType<T>()) {
       return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
@@ -208,7 +246,7 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
     }
     const absl::Span<const uint8_t> weights = Weights().Bytes();
 
-    auto num_elements = RankedTensorType().Layout().NumElements();
+    auto num_elements = ranked_tensor_type->Layout().NumElements();
     if (!num_elements.has_value()) {
       return litert::Unexpected(kLiteRtStatusErrorInvalidArgument);
     }
@@ -242,6 +280,9 @@ class Tensor : public internal::NonOwnedHandle<LiteRtTensor> {
   bool IsConstant() const;
 };
 
+using OpInputs = absl::InlinedVector<Tensor, kExpectedMaxNumOfOpInputs>;
+using OpOutputs = absl::InlinedVector<Tensor, kExpectedMaxNumOfOpOutputs>;
+
 // Operator. C++ equivalent of LiteRtOp.
 class Op : public internal::NonOwnedHandle<LiteRtOp> {
  public:
@@ -254,25 +295,19 @@ class Op : public internal::NonOwnedHandle<LiteRtOp> {
     return opcode;
   }
 
-  SmallVec<Tensor> Inputs() const {
-    LiteRtParamIndex num_inputs;
-    LiteRtTensorArray inputs;
-    internal::AssertOk(LiteRtGetOpInputs, Get(), &num_inputs, &inputs);
-    return SmallVec<Tensor>(inputs, inputs + num_inputs);
-  }
-
-  SmallVec<Tensor> Outputs() const {
-    LiteRtParamIndex num_outputs;
-    LiteRtTensorArray outputs;
-    internal::AssertOk(LiteRtGetOpOutputs, Get(), &num_outputs, &outputs);
-    return SmallVec<Tensor>(outputs, outputs + num_outputs);
-  }
+  OpInputs Inputs() const;
+  OpOutputs Outputs() const;
 };
 
 struct Tensor::TensorUse {
   Op user;
   LiteRtParamIndex user_arg_ind;
 };
+
+using SubgraphInputs =
+    absl::InlinedVector<Tensor, kExpectedMaxNumOfSubgraphInputs>;
+using SubgraphOutputs =
+    absl::InlinedVector<Tensor, kExpectedMaxNumOfSubgraphOutputs>;
 
 // Model subgraph. C++ equivalent of LiteRtSubgraph.
 class Subgraph : public internal::NonOwnedHandle<LiteRtSubgraph> {
@@ -281,30 +316,65 @@ class Subgraph : public internal::NonOwnedHandle<LiteRtSubgraph> {
   explicit Subgraph(LiteRtSubgraph subgraph)
       : internal::NonOwnedHandle<LiteRtSubgraph>(subgraph) {}
 
-  SmallVec<Tensor> Inputs() const {
+  SubgraphInputs Inputs() const;
+  SubgraphOutputs Outputs() const;
+  std::vector<Op> Ops() const;
+
+  // Returns the input tensor with the given input signature name.
+  Expected<Tensor> Input(absl::string_view name) const;
+
+  // Returns the output tensor with the given output signature name.
+  Expected<Tensor> Output(absl::string_view name) const;
+};
+
+// Model signature. C++ equivalent of LiteRtSignature.
+class Signature : public internal::NonOwnedHandle<LiteRtSignature> {
+ public:
+  Signature() = default;
+  explicit Signature(LiteRtSignature signature)
+      : internal::NonOwnedHandle<LiteRtSignature>(signature) {}
+
+  absl::string_view Key() const {
+    const char* key;
+    internal::AssertOk(LiteRtGetSignatureKey, Get(), &key);
+    return key;
+  }
+
+  LiteRtSubgraph Subgraph() const {
+    LiteRtSubgraph subgraph;
+    internal::AssertOk(LiteRtGetSignatureSubgraph, Get(), &subgraph);
+    return subgraph;
+  }
+
+  std::vector<absl::string_view> InputNames() const {
     LiteRtParamIndex num_inputs;
-    LiteRtTensorArray inputs;
-    internal::AssertOk(LiteRtGetSubgraphInputs, Get(), &num_inputs, &inputs);
-    return SmallVec<Tensor>(inputs, inputs + num_inputs);
+    internal::AssertOk(LiteRtGetNumSignatureInputs, Get(), &num_inputs);
+    std::vector<absl::string_view> input_names;
+    input_names.reserve(num_inputs);
+    for (int i = 0; i < num_inputs; ++i) {
+      const char* input_name;
+      internal::AssertOk(LiteRtGetSignatureInputName, Get(), i, &input_name);
+      input_names.push_back(input_name);
+    }
+    return input_names;
   }
 
-  SmallVec<Tensor> Outputs() const {
+  std::vector<absl::string_view> OutputNames() const {
     LiteRtParamIndex num_outputs;
-    LiteRtTensorArray outputs;
-    internal::AssertOk(LiteRtGetSubgraphOutputs, Get(), &num_outputs, &outputs);
-    return SmallVec<Tensor>(outputs, outputs + num_outputs);
-  }
-
-  std::vector<Op> Ops() const {
-    LiteRtParamIndex num_ops;
-    LiteRtOpArray ops;
-    internal::AssertOk(LiteRtGetSubgraphOps, Get(), &num_ops, &ops);
-    return std::vector<Op>(ops, ops + num_ops);
+    internal::AssertOk(LiteRtGetNumSignatureOutputs, Get(), &num_outputs);
+    std::vector<absl::string_view> output_names;
+    output_names.reserve(num_outputs);
+    for (int i = 0; i < num_outputs; ++i) {
+      const char* output_name;
+      internal::AssertOk(LiteRtGetSignatureOutputName, Get(), i, &output_name);
+      output_names.push_back(output_name);
+    }
+    return output_names;
   }
 };
 
 // Model. C++ equivalent of LiteRtModel.
-class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
+class Model : public internal::Handle<LiteRtModel, LiteRtDestroyModel> {
  public:
   Model() = default;
 
@@ -314,6 +384,25 @@ class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
 
   static Model CreateFromNonOwnedHandle(LiteRtModel model) {
     return Model(model, /*owned=*/false);
+  }
+
+  static Expected<Model> CreateFromFile(const std::string& filename) {
+    LiteRtModel model;
+    if (auto status = LiteRtCreateModelFromFile(filename.c_str(), &model);
+        status != kLiteRtStatusOk) {
+      return Unexpected(status, "Failed to load model from file");
+    }
+    return CreateFromOwnedHandle(model);
+  }
+
+  static Expected<Model> CreateFromBuffer(BufferRef<uint8_t> buffer) {
+    LiteRtModel model;
+    if (auto status =
+            LiteRtCreateModelFromBuffer(buffer.Data(), buffer.Size(), &model);
+        status != kLiteRtStatusOk) {
+      return Unexpected(status, "Failed to load model from buffer");
+    }
+    return CreateFromOwnedHandle(model);
   }
 
   Expected<absl::Span<const uint8_t>> Metadata(
@@ -349,11 +438,87 @@ class Model : public internal::Handle<LiteRtModel, LiteRtModelDestroy> {
     return litert::Subgraph(subgraph);
   }
 
+  Expected<class Subgraph> Subgraph(absl::string_view signature_key) const {
+    auto signature = FindSignature(signature_key);
+    if (!signature) {
+      return Unexpected(kLiteRtStatusErrorNotFound, "Signature not found");
+    }
+    return litert::Subgraph(signature->Subgraph());
+  }
+
+  size_t GetNumSignatures() const {
+    LiteRtParamIndex num_signatures;
+    internal::AssertOk(LiteRtGetNumModelSignatures, Get(), &num_signatures);
+    return num_signatures;
+  }
+
+  // Returns the list of signatures defined in the model.
+  Expected<std::vector<class Signature>> GetSignatures() const {
+    LiteRtParamIndex num_signatures;
+    internal::AssertOk(LiteRtGetNumModelSignatures, Get(), &num_signatures);
+    std::vector<class Signature> signatures;
+    signatures.reserve(num_signatures);
+    for (int i = 0; i < num_signatures; ++i) {
+      LiteRtSignature lite_rt_signature;
+      internal::AssertOk(LiteRtGetModelSignature, Get(), i, &lite_rt_signature);
+      Signature signature(lite_rt_signature);
+      signatures.push_back(std::move(signature));
+    }
+    return std::move(signatures);
+  }
+
+  // Returns the signature at the given index.
+  Expected<class Signature> GetSignature(size_t signature_index) const {
+    LiteRtSignature lite_rt_signature;
+    internal::AssertOk(LiteRtGetModelSignature, Get(), signature_index,
+                       &lite_rt_signature);
+    return Signature(lite_rt_signature);
+  }
+
+  // Returns the signature index for the given signature key.
+  Expected<size_t> GetSignatureIndex(absl::string_view signature_key) const {
+    LiteRtParamIndex num_signatures;
+    internal::AssertOk(LiteRtGetNumModelSignatures, Get(), &num_signatures);
+    for (int i = 0; i < num_signatures; ++i) {
+      LiteRtSignature lite_rt_signature;
+      internal::AssertOk(LiteRtGetModelSignature, Get(), i, &lite_rt_signature);
+      const char* key_cstr;
+      internal::AssertOk(LiteRtGetSignatureKey, lite_rt_signature, &key_cstr);
+      if (absl::string_view(key_cstr) == signature_key) {
+        return i;
+      }
+    }
+    return Unexpected(kLiteRtStatusErrorNotFound, "Signature not found");
+  }
+
+  // Returns the Signature object for the given signature key.
+  Expected<class Signature> FindSignature(
+      absl::string_view signature_key) const {
+    LiteRtParamIndex num_signatures;
+    internal::AssertOk(LiteRtGetNumModelSignatures, Get(), &num_signatures);
+    for (int i = 0; i < num_signatures; ++i) {
+      LiteRtSignature lite_rt_signature;
+      internal::AssertOk(LiteRtGetModelSignature, Get(), i, &lite_rt_signature);
+      const char* key_cstr;
+      internal::AssertOk(LiteRtGetSignatureKey, lite_rt_signature, &key_cstr);
+      if (absl::string_view(key_cstr) == signature_key) {
+        return Signature(lite_rt_signature);
+      }
+    }
+    return Unexpected(kLiteRtStatusErrorNotFound, "Signature not found");
+  }
+
+  static absl::string_view DefaultSignatureKey() {
+    const char* key;
+    internal::AssertOk(LiteRtGetDefaultSignatureKey, &key);
+    return key;
+  }
+
  private:
   // Parameter `owned` indicates if the created TensorBuffer object should take
   // ownership of the provided `tensor_buffer` handle.
   Model(LiteRtModel model, bool owned)
-      : internal::Handle<LiteRtModel, LiteRtModelDestroy>(model, owned) {}
+      : internal::Handle<LiteRtModel, LiteRtDestroyModel>(model, owned) {}
 };
 
 }  // namespace litert

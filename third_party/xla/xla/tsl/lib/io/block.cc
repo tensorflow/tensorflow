@@ -20,9 +20,9 @@ limitations under the License.
 #include <algorithm>
 
 #include "xla/tsl/lib/io/format.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/coding.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/raw_coding.h"
 
 namespace tsl {
@@ -100,8 +100,8 @@ class Block::Iter : public Iterator {
   absl::string_view value_;
   absl::Status status_;
 
-  inline int Compare(const absl::string_view& a,
-                     const absl::string_view& b) const {
+  inline int Compare(const absl::string_view a,
+                     const absl::string_view b) const {
     return a.compare(b);
   }
 
@@ -151,7 +151,7 @@ class Block::Iter : public Iterator {
     ParseNextKey();
   }
 
-  void Seek(const absl::string_view& target) override {
+  void Seek(absl::string_view target) override {
     // Binary search in restart array to find the last restart point
     // with a key < target
     uint32 left = 0;

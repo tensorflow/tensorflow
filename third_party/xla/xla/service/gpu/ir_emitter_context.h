@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "xla/backends/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
-#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/device_description.h"
 

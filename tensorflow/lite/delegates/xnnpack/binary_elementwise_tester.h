@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_BINARY_ELEMENTWISE_TESTER_H_
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>

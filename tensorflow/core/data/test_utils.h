@@ -18,12 +18,12 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {

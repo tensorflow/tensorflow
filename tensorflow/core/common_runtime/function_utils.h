@@ -38,7 +38,7 @@ string DebugString(const Graph* g);
 
 // Dump the contents of the "graph" to log files if the logging level is
 // sufficiently high.
-void DumpGraph(StringPiece label, const Graph* g);
+void DumpGraph(absl::string_view label, const Graph* g);
 
 // Convert the Graph of a function to a GraphDef.
 //

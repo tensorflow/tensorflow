@@ -24,12 +24,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
@@ -546,6 +546,49 @@ TEST_F(CallInlinerTest, DontInlineStreamAnnotationCall) {
   EXPECT_THAT(*inst, op::Constant());
   ++inst;
   EXPECT_THAT(*inst, op::Add());
+}
+
+TEST_F(CallInlinerTest, ControlDepsPropagateToRootOfInlinedInstructions) {
+  const char* hlo = R"(
+  HloModule test
+
+  bar {
+    p0 = s32[] parameter(0)
+    add = s32[] add(p0, s32[] constant(2))
+    ROOT res = s32[] subtract(add, s32[] constant(3))
+  }
+
+  ENTRY main {
+    p0 = s32[] parameter(0)
+    p1 = s32[] parameter(1)
+    p2 = s32[] parameter(2)
+    call1 = s32[] custom-call(p0), custom_call_target="foo"
+    call2 = s32[] call(p1), to_apply=bar, control-predecessors={call1}
+    call3 = s32[] custom-call(p2), custom_call_target="baz", control-predecessors={call2}
+    ROOT res = (s32[], s32[], s32[]) tuple(call1, call2, call3)
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  CallInliner call_inliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(m.get()));
+  EXPECT_TRUE(mutated);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_result,
+      RunFileCheck(m->ToString(HloPrintOptions{}
+                                   .set_print_result_shape(false)
+                                   .set_print_operand_shape(false)),
+                   R"(
+  // CHECK: ENTRY %main
+  // CHECK-DAG: %[[call1:.+]] = custom-call({{.+}}), custom_call_target="foo"
+  // CHECK-DAG: %[[p1:.+]] = parameter(1)
+  // CHECK-DAG: %[[c2:.+]] = constant(2), control-predecessors={%[[call1]]}
+  // CHECK-DAG: %[[add:.+]] = add(%[[p1]], %[[c2]]), control-predecessors={%[[call1]]}
+  // CHECK-DAG: %[[c3:.+]] = constant(3), control-predecessors={%[[call1]]}
+  // CHECK-DAG: %[[res:.+]] = subtract(%[[add]], %[[c3]]), control-predecessors={%[[call1]]}
+  // CHECK-DAG: %[[call3:.+]] = custom-call({{.+}}), custom_call_target="baz", control-predecessors={%[[res]]}
+  )"));
+  EXPECT_TRUE(filecheck_result);
 }
 
 }  // namespace

@@ -10,6 +10,8 @@ toc:
     path: /xla/operation_semantics
   - title: XLA architecture
     path: /xla/architecture
+  - title: XLA terminology
+    path: /xla/terminology
 - title: Developer details
   # These should be in alphabetical order unless otherwise noted.
   section:
@@ -23,6 +25,8 @@ toc:
     path: /xla/copybara
   - title: Determinism
     path: /xla/determinism
+  - title: Emitters
+    path: /xla/emitters
   - title: Hermetic CUDA overview
     path: /xla/hermetic_cuda
   - title: Indexing Analysis
@@ -33,6 +37,8 @@ toc:
     path: /xla/persisted_autotuning
   - title: Shapes and layout
     path: /xla/shapes
+  - title: Testing HLO passes
+    path: /xla/test_hlo_passes
   - title: Tiled layout
     path: /xla/tiled_layout
   - title: Using LSP autocompletion

@@ -19,50 +19,53 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "testing/base/public/unique-test-directory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 
 namespace litert::internal {
 namespace {
 
+using litert::testing::UniqueTestDirectory;
 using ::testing::Contains;
 using ::testing::HasSubstr;
-using ::testing::UniqueTestDirectory;
 
 constexpr absl::string_view kNotLiteRtSo = "notLibLiteRt.so";
-constexpr absl::string_view kLiteRtSo1 = "libLiteRtPlugin_1.so";
-constexpr absl::string_view kLiteRtSo2 = "libLiteRtPlugin_2.so";
+constexpr absl::string_view kLiteRtSo1 = "libLiteRtCompilerPlugin_1.so";
+constexpr absl::string_view kLiteRtSo2 = "libLiteRtCompilerPlugin_2.so";
 
 TEST(TestDynamicLoading, GlobNoMatch) {
-  const auto dir = UniqueTestDirectory();
-  Touch(Join({dir, kNotLiteRtSo}));
+  const auto dir = UniqueTestDirectory::Create();
+  ASSERT_TRUE(dir);
+  Touch(Join({dir->Str(), kNotLiteRtSo}));
 
   std::vector<std::string> results;
-  LITERT_ASSERT_STATUS_OK(litert::internal::FindLiteRtSharedLibs(dir, results));
+  LITERT_ASSERT_OK(litert::internal::FindLiteRtSharedLibs(dir->Str(), results));
   EXPECT_EQ(results.size(), 0);
 }
 
 TEST(TestDynamicLoading, GlobOneMatch) {
-  const auto dir = UniqueTestDirectory();
-  Touch(Join({dir, kLiteRtSo1}));
-  Touch(Join({dir, kNotLiteRtSo}));
+  const auto dir = UniqueTestDirectory::Create();
+  ASSERT_TRUE(dir);
+  Touch(Join({dir->Str(), kLiteRtSo1}));
+  Touch(Join({dir->Str(), kNotLiteRtSo}));
 
   std::vector<std::string> results;
-  LITERT_ASSERT_STATUS_OK(litert::internal::FindLiteRtSharedLibs(dir, results));
+  LITERT_ASSERT_OK(litert::internal::FindLiteRtSharedLibs(dir->Str(), results));
   ASSERT_EQ(results.size(), 1);
   EXPECT_TRUE(absl::string_view(results.front()).ends_with(kLiteRtSo1));
 }
 
 TEST(TestDynamicLoading, GlobMultiMatch) {
-  const auto dir = UniqueTestDirectory();
-  Touch(Join({dir, kLiteRtSo1}));
-  Touch(Join({dir, kLiteRtSo2}));
-  Touch(Join({dir, kNotLiteRtSo}));
+  const auto dir = UniqueTestDirectory::Create();
+  ASSERT_TRUE(dir);
+  Touch(Join({dir->Str(), kLiteRtSo1}));
+  Touch(Join({dir->Str(), kLiteRtSo2}));
+  Touch(Join({dir->Str(), kNotLiteRtSo}));
 
   std::vector<std::string> results;
-  LITERT_ASSERT_STATUS_OK(litert::internal::FindLiteRtSharedLibs(dir, results));
+  LITERT_ASSERT_OK(litert::internal::FindLiteRtSharedLibs(dir->Str(), results));
   ASSERT_EQ(results.size(), 2);
   EXPECT_THAT(results, Contains(HasSubstr(kLiteRtSo1)));
   EXPECT_THAT(results, Contains(HasSubstr(kLiteRtSo2)));

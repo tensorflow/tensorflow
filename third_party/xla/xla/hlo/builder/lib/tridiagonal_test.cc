@@ -19,14 +19,15 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/array.h"
 #include "xla/array3d.h"
 #include "xla/hlo/builder/lib/slicing.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/util.h"

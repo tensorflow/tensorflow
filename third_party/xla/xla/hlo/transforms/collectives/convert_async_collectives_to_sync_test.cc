@@ -38,7 +38,7 @@ namespace {
 namespace m = xla::testing::opcode_matchers;
 
 // Note: The pass only processes modules that are already scheduled. If the test
-// does not work as epxected, make sure to check if "is_scheduled=true" is added
+// does not work as expected, make sure to check if "is_scheduled=true" is added
 // to the HLO module string.
 class ConvertAsyncCollectivesToSyncTest
     : public HloHardwareIndependentTestBase {
@@ -174,6 +174,26 @@ TEST_F(ConvertAsyncCollectivesToSyncTest, SimpleCollectivePermute) {
   TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   const HloInstruction *root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, m::CollectivePermute(m::Parameter(0)));
+  const auto *cp = Cast<HloCollectivePermuteInstruction>(root);
+  EXPECT_THAT(cp, m::SourceTargetPairs({{0, 1}, {1, 0}}));
+  EXPECT_EQ(GetAsyncName(cp), "start");
+}
+
+TEST_F(ConvertAsyncCollectivesToSyncTest, CombinedCollectivePermute) {
+  const absl::string_view hlo_string = R"(
+  HloModule test, is_scheduled=true
+
+  ENTRY test_computation {
+    p0 = u32[2] parameter(0)
+    p1 = u32[2] parameter(1)
+    start = ((u32[2], u32[2]), (u32[2], u32[2])) collective-permute-start(p0, p1), source_target_pairs={{0,1}, {1,0}}
+    ROOT done = (u32[2], u32[2]) collective-permute-done(start)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  const HloInstruction *root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, m::CollectivePermute(m::Parameter(0), m::Parameter(1)));
   const auto *cp = Cast<HloCollectivePermuteInstruction>(root);
   EXPECT_THAT(cp, m::SourceTargetPairs({{0, 1}, {1, 0}}));
   EXPECT_EQ(GetAsyncName(cp), "start");

@@ -83,8 +83,10 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -173,8 +175,8 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:debug_options_flags",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -31,6 +32,8 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/core/graph/graph.h"
 
 #if !defined(DISABLE_MLIR)
 #include "tensorflow/compiler/mlir/python/mlir.h"
@@ -38,6 +41,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -89,7 +93,7 @@ EagerContext& GlobalPythonEagerContext() {
   return *ctx;
 }
 
-absl::StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
+absl::StatusOr<FunctionDef> Runtime::GetFunctionProto(absl::string_view name) {
   EagerContext& ctx = this->eager_ctx_;
 
   const FunctionDef* f = ctx.FindFunctionDef(std::string(name));
@@ -130,8 +134,8 @@ absl::Status Runtime::CreateFunction(OpaqueTfFuncOp* fop) {
   return CreateFunction(fdef);
 }
 
-absl::Status Runtime::TransformFunction(StringPiece name,
-                                        StringPiece pipeline_name,
+absl::Status Runtime::TransformFunction(absl::string_view name,
+                                        absl::string_view pipeline_name,
                                         Dialect dialect) {
   // TODO(mdan): Use a longer-lived context.
   mlir::MLIRContext ctx;
@@ -183,7 +187,15 @@ absl::Status Runtime::TransformFunction(StringPiece name,
     status = FunctionDefToBodyHelper(*fn, AttrSlice(), &flib_def, &fbody);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(status, "importing function ", name);
 
-    auto mlir_fn = ConvertFunctionToMlir(fbody.get(), flib_def, &ctx);
+    tensorflow::GraphImportConfig specs;
+    specs.graph_func_name = fbody->record->fdef().signature().name();
+    specs.enable_shape_inference = false;
+    specs.graph_as_function = true;
+    for (const Node* control_ret_node : fbody->control_ret_nodes)
+      specs.control_outputs.push_back(control_ret_node->name());
+    absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> mlir_fn =
+        tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(*fbody->graph, {},
+                                                         flib_def, specs, &ctx);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(mlir_fn.status(), "importing function ",
                                     name);
 
@@ -209,7 +221,7 @@ absl::Status Runtime::TransformFunction(StringPiece name,
 }
 
 absl::StatusOr<ReturnValues> Runtime::CallFunction(
-    StringPiece name, absl::Span<AbstractTensorHandle* const> args) {
+    absl::string_view name, absl::Span<AbstractTensorHandle* const> args) {
   EagerContext& ctx = this->eager_ctx_;
 
   ImmediateOpPtr op(ctx.CreateOperation());

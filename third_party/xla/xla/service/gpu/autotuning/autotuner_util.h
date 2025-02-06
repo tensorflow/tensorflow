@@ -33,11 +33,8 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/xla.pb.h"
@@ -145,14 +142,8 @@ class AutotuneConfig {
             debug_options.xla_gpu_experimental_autotune_cache_mode()) {}
 
   std::string GetModelStr() const {
-    if (auto deviceless_config = std::get_if<DevicelessConfig>(&config_)) {
-      return AutotuneCacheKey::DeviceDescriptionToCacheKey(
-          deviceless_config->device_description);
-    }
-
-    const auto& device_config = std::get<DeviceConfig>(config_);
     return AutotuneCacheKey::DeviceDescriptionToCacheKey(
-        device_config.stream_exec->GetDeviceDescription());
+        GetDeviceDescription());
   }
 
   se::StreamExecutor* GetExecutor() const {
@@ -179,11 +170,14 @@ class AutotuneConfig {
   }
 
   const se::GpuComputeCapability& GetGpuComputeCapability() const {
-    if (auto c = std::get_if<DeviceConfig>(&config_)) {
-      return c->stream_exec->GetDeviceDescription().gpu_compute_capability();
+    return GetDeviceDescription().gpu_compute_capability();
+  }
+
+  const se::DeviceDescription& GetDeviceDescription() const {
+    if (auto* device_config = std::get_if<DeviceConfig>(&config_)) {
+      return device_config->stream_exec->GetDeviceDescription();
     }
-    return std::get<DevicelessConfig>(config_)
-        .device_description.gpu_compute_capability();
+    return std::get<DevicelessConfig>(config_).device_description;
   }
 
   bool IsDeviceless() const {
@@ -206,12 +200,6 @@ class AutotuneConfig {
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;
 
 struct AutotunerUtil {
-  // Create a buffer for a given operation using redzone checker, initialize
-  // based on a given rng state.
-  static absl::StatusOr<se::DeviceMemoryBase> CreateBuffer(
-      se::RedzoneAllocator& allocator, const Shape& shape,
-      const AutotuneConfig& config, int64_t& rng_state);
-
   static absl::StatusOr<AutotuneResult> Autotune(
       const HloInstruction* instr, const AutotuneConfig& config,
       const AutotuneNoCacheFn& autotune_fn);
@@ -236,10 +224,6 @@ struct AutotunerUtil {
   static absl::StatusOr<bool> AddResult(const AutotuneCacheKey& key,
                                         AutotuneResult result,
                                         const AutotuneConfig& config);
-
-  // Creates a RedzoneAllocator from a given config.
-  static absl::StatusOr<se::RedzoneAllocator> CreateRedzoneAllocator(
-      const AutotuneConfig& config, const DebugOptions& opts);
 
   // Functions to save/load XLA's autotuning results.
   //
@@ -293,12 +277,14 @@ struct AutotunerUtil {
   //
   // Warning: The results are only loaded to the in-memory cache.
   static absl::Status LoadAutotuneResults(absl::string_view data,
-                                          bool as_textproto = false);
+                                          bool as_textproto = false,
+                                          bool allow_override = false);
 
   // Loads autotune results from the given proto.
   //
   // Warning: The results are only loaded to the in-memory cache.
-  static absl::Status LoadAutotuneResults(const AutotuneResults& results);
+  static absl::Status LoadAutotuneResults(const AutotuneResults& results,
+                                          bool allow_override = false);
 
   // Serializes autotune results into a file.
   //
@@ -360,6 +346,8 @@ absl::StatusOr<std::string> AutotuneResultsToString(
 // Git is also transitioning to SHA-256. This is probably better than
 // tsl::Fingerprint128.
 absl::StatusOr<std::string> GetBase64EncodedSha256Hash(absl::string_view s);
+
+std::string ToCanonicalString(const HloInstruction* instr);
 
 }  // namespace gpu
 }  // namespace xla

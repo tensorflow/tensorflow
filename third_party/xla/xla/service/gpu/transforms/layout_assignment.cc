@@ -24,6 +24,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -50,6 +51,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -101,8 +104,9 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       instr->convolution_dimension_numbers();
   Shape input_shape = instr->operand(0)->shape();
   PrimitiveType input_ty = instr->operand(0)->shape().element_type();
+  int num_spatial_dimensions = dnums.input_spatial_dimensions_size();
   if (primitive_util::IsIntegralType(input_ty)) {
-    if (input_ty == S8 && dnums.input_spatial_dimensions_size() == 2 &&
+    if (input_ty == S8 && num_spatial_dimensions == 2 &&
         input_shape.dimensions_size() == 5) {
       VLOG(2) << "Using NCHW_VECT_C for int8_t conv " << instr->ToString();
       return kAllNCHW_VECT_C;
@@ -127,6 +131,31 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   if (debug_options.xla_gpu_force_conv_nhwc()) {
     VLOG(2) << "Overriding layout to NHWC for " << instr->ToString();
     return kAllNHWC;
+  }
+
+  // Despite the specialized logic below for Volta, we expect GPUs with Tensor
+  // Cores work best using NHWC layouts for cuDNN convolutions---as per
+  // https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html#tensor-layout.
+  if (auto* cc = std::get_if<se::CudaComputeCapability>(&gpu_version)) {
+    // TODO(b/383560056): investigate chips below Hopper as well.
+    if (cc->IsAtLeast(se::CudaComputeCapability::HOPPER)) {
+      // With that said, cuDNN's documentation states that NHWC is not supported
+      // for float64, so we use NCHW instead.
+      if (input_ty == F64) {
+        VLOG(2) << "Using NCHW for F64 conv " << instr->ToString() << " on "
+                << cc->ToString();
+        return kAllNCHW;
+        // TODO(b/383560056): find the right filter for 3D convolutions. 3D
+        // convolutions also have a much smaller surface of support. We filter
+        // them out completely as well for now.
+      } else if (num_spatial_dimensions > 2) {
+        VLOG(2) << "Using NHWC for " << num_spatial_dimensions << "D conv "
+                << instr->ToString() << " on " << cc->ToString();
+        return kAllNCHW;
+      } else {
+        return kAllNHWC;
+      }
+    }
   }
 
   const auto* rocm_compute_capability =
@@ -303,13 +332,21 @@ bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
       .ok();
 }
 
+bool IsPackedInstruction(const HloInstruction* instruction) {
+  return primitive_util::IsSubByteNonPredType(
+             instruction->shape().element_type()) ||
+         (instruction->opcode() == HloOpcode::kConvert &&
+          primitive_util::IsSubByteNonPredType(
+              instruction->operand(0)->shape().element_type()));
+}
+
 }  // namespace
 
 absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
     LayoutConstraints* constraints, HloDotInstruction* instruction) {
   struct Side {
     size_t operand_no;
-    const Shape* shape;
+    const HloInstruction* operand;
     absl::Span<const int64_t> batch_dims;
     absl::Span<const int64_t> contracting_dims;
     PrimitiveType type;
@@ -318,12 +355,13 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
   auto make_side =
       [&](size_t operand_no, absl::Span<const int64_t> batch_dims,
           absl::Span<const int64_t> contracting_dims) -> absl::StatusOr<Side> {
-    Side side = {operand_no, &instruction->operand(operand_no)->shape(),
-                 batch_dims, contracting_dims};
-    side.type = side.shape->element_type();
-    TF_ASSIGN_OR_RETURN(side.non_contracting_dims,
-                        GetNonContractingDims(*side.shape, side.batch_dims,
-                                              side.contracting_dims));
+    Side side = {operand_no, instruction->operand(operand_no), batch_dims,
+                 contracting_dims};
+    side.type = side.operand->shape().element_type();
+    TF_ASSIGN_OR_RETURN(
+        side.non_contracting_dims,
+        GetNonContractingDims(side.operand->shape(), side.batch_dims,
+                              side.contracting_dims));
     return side;
   };
   const DotDimensionNumbers& dot_dims = instruction->dot_dimension_numbers();
@@ -346,6 +384,11 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
           ->config()
           .debug_options()
           .xla_gpu_ensure_minor_dot_contraction_dims();
+  const bool pack_along_contracting_dims =
+      instruction->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_pack_dot_operands_along_k_dimension();
 
   const bool is_bf16_to_bf16 =
       (output_type == PrimitiveType::BF16 && lhs.type == PrimitiveType::BF16 &&
@@ -362,11 +405,11 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
       is_s8_to_s32 || is_fp8_to_fp8;
 
   for (const Side& side : {lhs, rhs}) {
-    if (both_operands_require_minor_contraction_dims) {
-      TF_RETURN_IF_ERROR(SetOperandMajorToMinorLayout(
-          instruction, side.operand_no,
-          /*dim_groups=*/
-          {side.batch_dims, side.non_contracting_dims, side.contracting_dims}));
+    if ((IsPackedInstruction(side.operand) && pack_along_contracting_dims) ||
+        both_operands_require_minor_contraction_dims) {
+      TF_RETURN_IF_ERROR(SetDotOperandLayoutToMinorContracting(
+          instruction, side.operand_no, side.batch_dims, side.contracting_dims,
+          side.non_contracting_dims));
     } else if (!side.batch_dims.empty() || side.contracting_dims.size() > 1 ||
                side.non_contracting_dims.size() > 1) {
       TF_RETURN_IF_ERROR(SetDotOperandLayout(
@@ -403,12 +446,12 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
     CHECK(!IsCublasGemm(*instruction))
         << "Gemm rewriting should run after layout assignment";
 
-    if (instruction->opcode() == HloOpcode::kDot) {
+    if (HloPredicateIsOp<HloOpcode::kDot>(instruction)) {
       TF_RETURN_IF_ERROR(AddDotBackendConstraints(
           constraints, Cast<HloDotInstruction>(instruction)));
-    } else if (instruction->opcode() == HloOpcode::kTranspose) {
+    } else if (HloPredicateIsOp<HloOpcode::kTranspose>(instruction)) {
       const HloInstruction* operand = instruction->operand(0);
-      if ((operand->opcode() != HloOpcode::kDot) ||
+      if ((HloPredicateIsNotOp<HloOpcode::kDot>(operand)) ||
           (operand->user_count() > 1)) {
         continue;
       }
@@ -423,7 +466,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
         TF_RETURN_IF_ERROR(
             SetOperandLayout(shape, instruction, /*operand_no=*/0));
       }
-    } else if (instruction->opcode() == HloOpcode::kFft) {
+    } else if (HloPredicateIsOp<HloOpcode::kFft>(instruction)) {
       // cuFFT requires a dim0 major layout.
       Shape op0_shape = instruction->operand(0)->shape();
       LayoutUtil::SetToDefaultLayout(&op0_shape);
@@ -431,7 +474,8 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       LayoutUtil::SetToDefaultLayout(&output_shape);
       TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
       TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
-    } else if (instruction->opcode() == HloOpcode::kSort &&
+    } else if ((HloPredicateIsOp<HloOpcode::kSort>(instruction) ||
+                IsCubDeviceRadixSort(*instruction)) &&
                instruction->operand(0)->shape().rank() > 1) {
       // Make sure that all the operands and the output(s) have the same layout.
       Shape keys_shape = instruction->operand(0)->shape();
@@ -465,7 +509,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
           auto indices_buffer,
           points_to_analysis_->GetBufferDefinedAt(instruction, {1}));
       TF_RETURN_IF_ERROR(SetBufferLayout(default_layout, *indices_buffer));
-    } else if (instruction->opcode() == HloOpcode::kTriangularSolve) {
+    } else if (HloPredicateIsOp<HloOpcode::kTriangularSolve>(instruction)) {
       // TODO(phawkins): Ideally we would relax this constraint. What we
       // actually want is that:
       // a) the batch dimensions are major, in no particular order.
@@ -481,21 +525,21 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
       TF_RETURN_IF_ERROR(SetOperandLayout(op1_shape, instruction, 1));
       TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
-    } else if (instruction->opcode() == HloOpcode::kReduceScatter) {
+    } else if (HloPredicateIsOp<HloOpcode::kReduceScatter>(instruction)) {
       // XLA:GPU can only support reduce-scatter where the scatter dimension
       // is the most major dimension in the layout.
       auto ars = Cast<HloReduceScatterInstruction>(instruction);
       TF_RETURN_IF_ERROR(SetInstructionLayout(
           ShapeUtil::MoveDimToMajor(ars->shape(), ars->scatter_dimension()),
           ars));
-    } else if (instruction->opcode() == HloOpcode::kAllGather) {
+    } else if (HloPredicateIsOp<HloOpcode::kAllGather>(instruction)) {
       // XLA:GPU can only support all-gathers where the gather dimension is the
       // most major dimension in the layout.
       auto ag = Cast<HloAllGatherInstruction>(instruction);
       TF_RETURN_IF_ERROR(SetInstructionLayout(
           ShapeUtil::MoveDimToMajor(ag->shape(), ag->all_gather_dimension()),
           ag));
-    } else if (instruction->opcode() == HloOpcode::kAllToAll &&
+    } else if (HloPredicateIsOp<HloOpcode::kAllToAll>(instruction) &&
                instruction->shape().IsArray()) {
       // XLA:GPU can only support all-to-all with split dimensions where the
       // split dimension is the most major dimension in the layout.
@@ -504,13 +548,13 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
           ShapeUtil::MoveDimToMajor(all_to_all->shape(),
                                     *all_to_all->split_dimension()),
           all_to_all));
-    } else if (instruction->opcode() == HloOpcode::kSend) {
+    } else if (HloPredicateIsOp<HloOpcode::kSend>(instruction)) {
       Shape s = instruction->operand(0)->shape();
       LayoutUtil::SetToDefaultLayout(&s);
       TF_RETURN_IF_ERROR(SetInstructionLayout(s, instruction->operand(0)));
       TF_RETURN_IF_ERROR(
           SetArrayOperandLayout(s.layout(), instruction->operand(0), 0));
-    } else if (instruction->opcode() == HloOpcode::kRecv) {
+    } else if (HloPredicateIsOp<HloOpcode::kRecv>(instruction)) {
       Shape s = instruction->shape();
       ShapeUtil::ForEachMutableSubshape(
           &s, [&](Shape* subshape, const ShapeIndex& index) {
@@ -543,6 +587,42 @@ absl::Status GpuLayoutAssignment::SetDotOperandLayout(
   return SetOperandMajorToMinorLayout(
       instruction, operand,
       /*dim_groups=*/{batch_dims, row_dims, col_dims});
+}
+
+absl::Status GpuLayoutAssignment::SetDotOperandLayoutToMinorContracting(
+    const HloInstruction* instruction, int64_t operand,
+    absl::Span<const int64_t> batch_dims,
+    absl::Span<const int64_t> contracting_dims,
+    absl::Span<const int64_t> noncontracting_dims) {
+  Shape shape = instruction->operand(operand)->shape();
+
+  if (shape.has_layout() &&
+      shape.layout().minor_to_major_size() >= contracting_dims.size()) {
+    // Check that the contracting dimensions are physically minor, i.e. check
+    // that minor physical dimensions all point to contracting logical
+    // dimensions.
+    bool contracting_dims_are_minor = true;
+    const auto& minor_to_major = shape.layout().minor_to_major();
+    for (int64_t i = 0; i < contracting_dims.size(); ++i) {
+      if (!absl::c_linear_search(contracting_dims, minor_to_major[i])) {
+        contracting_dims_are_minor = false;
+        break;
+      }
+    }
+
+    // If contracting dims are already minor, and the layout is valid, keep it.
+    if (contracting_dims_are_minor &&
+        MatrixLayout::For(shape, batch_dims, noncontracting_dims,
+                          contracting_dims)
+            .ok()) {
+      // Re-set the operand layout, so it becomes mandatory.
+      return SetOperandLayout(shape, instruction, operand);
+    }
+  }
+  return SetOperandMajorToMinorLayout(
+      instruction, operand,
+      /*dim_groups=*/
+      {batch_dims, noncontracting_dims, contracting_dims});
 }
 
 absl::Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(
@@ -595,7 +675,8 @@ bool GpuLayoutAssignment::PropagateReductionLayoutToOperand(
   }
   int64_t kept_dimension_size = ShapeUtil::ElementsIn(user->shape());
   return IsUnnestedReductionFasterThanElemental(
-      {/*is_row_reduction=*/true, {1, kept_dimension_size, reduction_size}});
+      {/*is_row_reduction=*/true, {1, kept_dimension_size, reduction_size}},
+      device_description_);
 }
 
 bool GpuLayoutAssignment::InstructionCanChangeLayoutInstance(

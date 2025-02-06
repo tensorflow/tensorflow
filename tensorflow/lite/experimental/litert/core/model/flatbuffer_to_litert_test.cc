@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
@@ -25,6 +26,8 @@
 
 namespace litert::internal {
 namespace {
+
+using ::testing::ElementsAreArray;
 
 TEST(FlatbufferToLiteRtTest, MapStaticTensorType) {
   static constexpr int32_t kDims[] = {2, 2};
@@ -57,7 +60,8 @@ TEST(FlatbufferToLiteRtTest, MapDynamicTensorType) {
 }
 
 TEST(FlatbufferToLiteRtTest, MapNoQuantization) {
-  auto q = MapQuantization(nullptr);
+  LiteRtTensorT tensor;
+  auto q = MapQuantization(nullptr, tensor);
   ASSERT_TRUE(q);
   ASSERT_EQ(q->first, kLiteRtQuantizationNone);
 }
@@ -70,7 +74,8 @@ TEST(FlatbufferToLiteRtTest, MapPerTensorQuantization) {
   tfl_q.scale.assign({kScale});
   tfl_q.zero_point.assign({kZp});
 
-  auto q = MapQuantization(&tfl_q);
+  LiteRtTensorT tensor;
+  auto q = MapQuantization(&tfl_q, tensor);
   ASSERT_TRUE(q);
   ASSERT_EQ(q->first, kLiteRtQuantizationPerTensor);
   EXPECT_EQ(q->second.per_tensor.scale, kScale);
@@ -88,8 +93,17 @@ TEST(FlatbufferToLiteRtTest, MapPerChannelQuantization) {
   tfl_q.zero_point.assign(kZps, kZps + kRank);
   tfl_q.quantized_dimension = kQDim;
 
-  auto q = MapQuantization(&tfl_q);
-  ASSERT_FALSE(q);
+  LiteRtTensorT tensor;
+  auto q = MapQuantization(&tfl_q, tensor);
+  ASSERT_TRUE(q);
+  ASSERT_EQ(q->first, kLiteRtQuantizationPerChannel);
+  EXPECT_THAT(absl::MakeConstSpan(q->second.per_channel.scales, kRank),
+              ElementsAreArray(kScales));
+
+  EXPECT_THAT(absl::MakeConstSpan(q->second.per_channel.zero_points, kRank),
+              ElementsAreArray(kZps));
+  EXPECT_EQ(q->second.per_channel.quantized_dimension, kQDim);
+  EXPECT_EQ(q->second.per_channel.num_channels, kRank);
 }
 
 }  // namespace

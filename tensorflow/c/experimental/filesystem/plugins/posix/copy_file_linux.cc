@@ -16,6 +16,8 @@ limitations under the License.
 #include <stdint.h>
 #include <sys/sendfile.h>
 
+#include <cstddef>
+
 #include "tensorflow/c/experimental/filesystem/plugins/posix/copy_file.h"
 
 namespace tf_posix_filesystem {

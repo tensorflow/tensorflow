@@ -184,7 +184,7 @@ struct FoldQuantizedI32ToFloat : public OpRewritePattern<TFL::DequantizeOp> {
 
     auto dequant_values =
         mlir::cast<DenseIntOrFPElementsAttr>(input_values)
-            .mapValues(FloatType::getF32(rewriter.getContext()),
+            .mapValues(Float32Type::get(rewriter.getContext()),
                        llvm::function_ref<DequantizeFuncType>(dequantize_func));
     rewriter.replaceOpWithNewOp<TFL::ConstOp>(dequant_op, dequant_op.getType(),
                                               dequant_values);
@@ -211,7 +211,7 @@ void OptimizeQuantizedOpToFloat(func::FuncOp func, MLIRContext* context) {
   patterns
       .add<FoldQuantizedI32ToFloat, FoldQuantizeDequantize, RemoveUnusedQuant>(
           context);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 
 }  // namespace tac

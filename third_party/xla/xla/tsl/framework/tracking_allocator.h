@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/gtl/inlined_vector.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 

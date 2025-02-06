@@ -27,8 +27,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -86,7 +86,7 @@ class TiledHloInstruction {
   // The number of tile offsets is equal to the rank of the tiled hlo.
   //
   // The indexing map is not computed by default.
-  absl::StatusOr<const IndexingMap> tile_offsets_indexing() const {
+  absl::StatusOr<IndexingMap> tile_offsets_indexing() const {
     if (!tile_offsets_indexing_.has_value()) {
       return absl::FailedPreconditionError(
           "tile_offsets_indexing was not computed. It is likely that "

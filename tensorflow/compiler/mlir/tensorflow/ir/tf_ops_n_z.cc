@@ -2737,7 +2737,7 @@ class FuseWithBroadcastCompatibleOp
 
       auto tile = mlir::dyn_cast<TF::TileOp>(operand.get().getDefiningOp());
       if (!tile) {
-        return failure();
+        continue;
       }
 
       DenseIntElementsAttr multiples_attr;
@@ -3141,7 +3141,7 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
         llvm::to_vector<6>(tf_fused_batch_norm_op.getResultTypes());
     // reserve_space_3
     new_result_types.push_back(
-        UnrankedTensorType::get(FloatType::getF32(rewriter.getContext())));
+        UnrankedTensorType::get(Float32Type::get(rewriter.getContext())));
     auto tf_fused_batch_norm_op_v3 = CreateTfOp<TF::FusedBatchNormV3Op>(
         rewriter, tf_fused_batch_norm_op, new_result_types,
         tf_fused_batch_norm_op.getOperands(),

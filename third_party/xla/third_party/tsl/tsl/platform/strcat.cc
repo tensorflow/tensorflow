@@ -23,7 +23,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/meta/type_traits.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace tsl {
 namespace strings {

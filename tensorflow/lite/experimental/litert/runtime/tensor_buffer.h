@@ -16,14 +16,25 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_RUNTIME_TENSOR_BUFFER_H_
 
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <type_traits>
+#include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/types/span.h"
+#include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_event.h"
+#include "tensorflow/lite/experimental/litert/c/litert_layout.h"
+#include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_event.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
+#include "tensorflow/lite/experimental/litert/runtime/open_cl_buffer.h"
 
 class LiteRtTensorBufferT {
  public:
@@ -64,6 +75,10 @@ class LiteRtTensorBufferT {
       size_t fastrpc_buffer_offset,
       LiteRtFastRpcDeallocator deallocator = nullptr);
 
+  static litert::Expected<Ptr> CreateFromOpenClBuffer(
+      const LiteRtRankedTensorType& tensor_type, cl_mem buffer,
+      size_t opencl_buffer_size, LiteRtOpenClDeallocator deallocator = nullptr);
+
   static litert::Expected<Ptr> CreateManaged(
       LiteRtTensorBufferType buffer_type,
       const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
@@ -73,13 +88,27 @@ class LiteRtTensorBufferT {
   size_t buffer_size() const { return buffer_size_; }
   size_t buffer_offset() const { return buffer_offset_; }
 
+  bool HasEvent() const { return event_.has_value(); }
+
+  litert::Expected<LiteRtEvent> GetEvent() const {
+    if (!HasEvent()) {
+      return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                           "TensorBuffer has no event");
+    }
+    return event_->Get();
+  }
+
+  void SetEvent(LiteRtEvent e) { event_ = litert::Event(e, true); }
+  void ClearEvent() { event_ = std::nullopt; }
+
   litert::Expected<void*> GetHostBuffer();
   litert::Expected<AHardwareBuffer*> GetAhwbBuffer();
   litert::Expected<std::pair<void*, int>> GetIonBuffer();
   litert::Expected<std::pair<void*, int>> GetDmaBufBuffer();
   litert::Expected<std::pair<void*, int>> GetFastRpcBuffer();
+  litert::Expected<litert::internal::OpenClBuffer*> GetOpenClBuffer();
 
-  litert::Expected<void*> Lock(LiteRtEvent event = nullptr);
+  litert::Expected<void*> Lock();
   litert::Expected<void> Unlock();
 
   // Used to duplicate the current tensor buffer. Internally it increases
@@ -150,6 +179,9 @@ class LiteRtTensorBufferT {
   static litert::Expected<Ptr> CreateManagedFastRpcBuffer(
       const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
 
+  static litert::Expected<Ptr> CreateManagedOpenClBuffer(
+      const LiteRtRankedTensorType& tensor_type, size_t buffer_size);
+
   litert::Expected<void> IsValid();
 
   LiteRtRankedTensorType tensor_type_;
@@ -158,8 +190,10 @@ class LiteRtTensorBufferT {
   LiteRtTensorBufferType buffer_type_;
   size_t buffer_size_;
   size_t buffer_offset_;
-  std::variant<HostBuffer, AhwbBuffer, IonBuffer, DmaBufBuffer, FastRpcBuffer>
+  std::variant<HostBuffer, AhwbBuffer, IonBuffer, DmaBufBuffer, FastRpcBuffer,
+               litert::internal::OpenClBuffer>
       buffer_;
+  std::optional<litert::Event> event_;
   mutable std::atomic_int_fast32_t ref_;
 };
 

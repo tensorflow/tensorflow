@@ -22,27 +22,26 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
-#include "xla/backends/cpu/runtime/kernel_c_api.h"
+#include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/service/cpu/collectives_interface.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -67,6 +66,7 @@ namespace xla::cpu {
 class Thunk {
  public:
   enum class Kind {
+    kUnknown,
     kAllGather,
     kAllReduce,
     kAllToAll,
@@ -88,6 +88,7 @@ class Thunk {
     kSort,
     kTopK,
     kWhile,
+    kXnnFusion,
   };
 
   struct Info {
@@ -132,7 +133,7 @@ class Thunk {
   Kind kind() const { return kind_; }
   const Info& info() const { return info_; }
 
-  static std::string_view KindToString(Kind kind);
+  static absl::string_view KindToString(Kind kind);
 
   // Returns the list of buffers used by a thunk. Thunk executor relies on this
   // information to execute thunks concurrently and to avoid data races.
@@ -146,43 +147,6 @@ class Thunk {
   // that returns an empty vector.
   using ResourceUses = absl::InlinedVector<ResourceUse, 4>;
   virtual ResourceUses resource_uses() const { return {}; }
-
-  //===--------------------------------------------------------------------===//
-  // FunctionRegistry
-  //===--------------------------------------------------------------------===//
-
-  // An API to resolve function pointers required for running ThunkSequence:
-  //
-  // 1. Host kernels that are executed by a KernelThunk via StreamExecutor APIs.
-  // 2. Comparator functions required by a SortThunk.
-  //
-  // At run time this is typically backed by an LLVM JIT compiler that compiles
-  // LLVM IR to function pointers on demand. At compile time, together with
-  // thunks themselves, we emit LLVM module(s) and metadata describing all the
-  // functions required for running emitted thunks (number of threads, etc.).
-  class FunctionRegistry {
-   public:
-    using Kernel = XLA_CPU_Kernel*;
-
-    // TODO(ezhulenev): We rely on legacy IrEmitter to emit comparator
-    // functions, and we use legacy compute function ABI. We should emit a
-    // much simpler comparator function that only takes compared values.
-    using Comparator = void (*)(bool*, /*run_options=*/const void*,
-                                /*params=*/const void**,
-                                /*buffer_table=*/const void*,
-                                /*status=*/const void*,
-                                /*prof_counters=*/const void*);
-
-    virtual ~FunctionRegistry() = default;
-
-    virtual absl::StatusOr<Kernel> FindKernel(std::string_view name) {
-      return Unimplemented("Host kernels are not supported");
-    }
-
-    virtual absl::StatusOr<Comparator> FindComparator(std::string_view name) {
-      return Unimplemented("Comparator functions are not supported");
-    }
-  };
 
   //===--------------------------------------------------------------------===//
   // CollectiveExecuteParams
@@ -200,13 +164,13 @@ class Thunk {
     GlobalDeviceId global_device_id;
 
     const DeviceAssignment* device_assignment = nullptr;
-    CollectivesInterface* collectives = nullptr;
+    CpuCollectives* collectives = nullptr;
 
    private:
     CollectiveExecuteParams(RunId run_id, int64_t local_device_ordinal,
                             GlobalDeviceId global_device_id,
                             const DeviceAssignment* device_assignment,
-                            CollectivesInterface* collectives);
+                            CpuCollectives* collectives);
   };
 
   //===--------------------------------------------------------------------===//
@@ -219,12 +183,13 @@ class Thunk {
     static absl::StatusOr<CustomCallExecuteParams> Create(
         const ExecutableRunOptions* run_options);
 
+    RunId run_id;
     int32_t device_ordinal;
     const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
     const ffi::ExecutionContext* ffi_execution_context = nullptr;
 
    private:
-    CustomCallExecuteParams(int32_t device_ordinal,
+    CustomCallExecuteParams(RunId run_id, int32_t device_ordinal,
                             const Eigen::ThreadPoolDevice* intra_op_thread_pool,
                             const ffi::ExecutionContext* ffi_execution_context);
   };
@@ -285,7 +250,7 @@ class Thunk {
   // Parameters passed to Execute. Execute is responsible for launching "work"
   // on device, i.e., it launches host kernels, calls into libraries, etc.
   struct ExecuteParams {
-    FunctionRegistry* function_registry = nullptr;
+    FunctionLibrary* function_library = nullptr;
     const BufferAllocations* buffer_allocations = nullptr;
     runtime::XfeedManager* xfeed = nullptr;
     const Eigen::ThreadPoolDevice* intra_op_threadpool = nullptr;

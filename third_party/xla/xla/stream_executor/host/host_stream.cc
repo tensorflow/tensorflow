@@ -22,7 +22,6 @@ limitations under the License.
 #include <cfenv>  // NOLINT
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <queue>
 #include <utility>
 
@@ -34,13 +33,9 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_event.h"
-#include "xla/stream_executor/host/host_kernel.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
 #include "tsl/platform/denormal.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/setround.h"
 
 namespace stream_executor {
@@ -194,28 +189,6 @@ absl::Status HostStream::BlockUntilDone() {
   });
   done.WaitForNotification();
   return status;
-}
-
-absl::Status HostStream::Launch(const ThreadDim& thread_dims,
-                                const BlockDim& block_dims,
-                                const std::optional<ClusterDim>& cluster_dims,
-                                const Kernel& kernel, const KernelArgs& args) {
-  if (cluster_dims.has_value()) {
-    if (cluster_dims->x != 1 || cluster_dims->y != 1 || cluster_dims->z != 1) {
-      return absl::UnimplementedError("Not implemented for Host");
-    }
-  }
-  const HostKernel* host_kernel = AsHostKernel(&kernel);
-
-  const KernelArgsDeviceMemoryArray* device_mem =
-      DynCast<KernelArgsDeviceMemoryArray>(&args);
-
-  if (device_mem != nullptr) {
-    return host_kernel->Launch(thread_dims, device_mem->device_memory_args());
-  }
-  return absl::UnimplementedError(
-      "Host kernel implements Launch method only for DeviceMemoryArray "
-      "arguments.");
 }
 
 }  // namespace host

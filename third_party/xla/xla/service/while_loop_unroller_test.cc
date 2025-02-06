@@ -31,10 +31,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -52,6 +52,14 @@ class WhileLoopUnrollerTest : public HloTestBase {
   MakeModuleWithWhileFeedingAnotherWhile(int num_iters);
   [[nodiscard]] std::unique_ptr<VerifiedHloModule>
   MakeModuleWithSimpleLoopAllReduce(int num_iters);
+  // These two methods make a module with a while loop over
+  // (i = `start`; i < `stop`; i += `step`) whose iterations perform a
+  // dynamic slice (or dynamic update slice) at position i with slice size
+  // `slice_size` on a tensor whose dimension has size `dim_size`.
+  [[nodiscard]] std::unique_ptr<VerifiedHloModule> MakeModuleWithDS(
+      int start, int stop, int step, int slice_size, int dim_size);
+  [[nodiscard]] std::unique_ptr<VerifiedHloModule> MakeModuleWithDUS(
+      int start, int stop, int step, int slice_size, int dim_size);
 
  public:
   void UnrollAndCompare(std::unique_ptr<HloModule> module,
@@ -308,6 +316,81 @@ WhileLoopUnrollerTest::MakeModuleWithSimpleLoopAllReduce(int num_iters) {
   )";
   std::string hlo_string = absl::StrReplaceAll(
       hlo_string_template, {{"{{LOOP_BOUND}}", absl::StrCat(num_iters)}});
+  return ParseAndReturnVerifiedModule(hlo_string).value();
+}
+
+std::unique_ptr<VerifiedHloModule> WhileLoopUnrollerTest::MakeModuleWithDS(
+    int start, int stop, int step, int slice_size, int dim_size) {
+  std::string hlo_string_template = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[]{:T(128)}, s32[{{DIM_SIZE}},10]{1,0}) parameter(0)
+    get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[]{:T(128)} constant({{STEP}})
+    idx = s32[]{:T(128)} add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[{{DIM_SIZE}},10]{1,0} get-tuple-element(loop_var.1), index=1
+    zero = s32[] constant(0)
+    slice = s32[{{SLICE_SIZE}},10] dynamic-slice(get-tuple-element.2, get-tuple-element.1, zero), dynamic_slice_sizes={{{SLICE_SIZE}},10}
+    output = s32[{{DIM_SIZE}},10]{1,0} add(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple = (s32[]{:T(128)}, s32[{{DIM_SIZE}},10]{1,0}) tuple(idx, output)
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[]{:T(128)}, s32[{{DIM_SIZE}},10]{1,0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[]{:T(128)} constant({{STOP}})
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[]{:T(128)} constant({{START}})
+    constant.4 = s32[{{DIM_SIZE}},10]{1,0} constant({...})
+    tuple.1 = (s32[]{:T(128)}, s32[{{DIM_SIZE}},10]{1,0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[]{:T(128)}, s32[{{DIM_SIZE}},10]{1,0}) while(tuple.1), condition= SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
+  std::string hlo_string = absl::StrReplaceAll(
+      hlo_string_template, {{"{{START}}", absl::StrCat(start)},
+                            {"{{STOP}}", absl::StrCat(stop)},
+                            {"{{STEP}}", absl::StrCat(step)},
+                            {"{{SLICE_SIZE}}", absl::StrCat(slice_size)},
+                            {"{{DIM_SIZE}}", absl::StrCat(dim_size)}});
+  return ParseAndReturnVerifiedModule(hlo_string).value();
+}
+
+std::unique_ptr<VerifiedHloModule> WhileLoopUnrollerTest::MakeModuleWithDUS(
+    int start, int stop, int step, int slice_size, int dim_size) {
+  std::string hlo_string_template = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[]{:T(128)}, s32[{{DIM_SIZE}},10]{1,0}) parameter(0)
+    get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[]{:T(128)} constant({{STEP}})
+    idx = s32[]{:T(128)} add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[{{DIM_SIZE}},10]{1,0} get-tuple-element(loop_var.1), index=1
+    zero = s32[] constant(0)
+    broadcast = s32[{{SLICE_SIZE}},10] broadcast(zero)
+    slice = s32[{{DIM_SIZE}},10] dynamic-update-slice(get-tuple-element.2, broadcast, get-tuple-element.1, zero)
+    output = s32[{{DIM_SIZE}},10]{1,0} add(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple = (s32[]{:T(128)}, s32[{{DIM_SIZE}},10]{1,0}) tuple(idx, output)
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[]{:T(128)}, s32[{{DIM_SIZE}},10]{1,0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[]{:T(128)} constant({{STOP}})
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[]{:T(128)} constant({{START}})
+    constant.4 = s32[{{DIM_SIZE}},10]{1,0} constant({...})
+    tuple.1 = (s32[]{:T(128)}, s32[{{DIM_SIZE}},10]{1,0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[]{:T(128)}, s32[{{DIM_SIZE}},10]{1,0}) while(tuple.1), condition= SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
+  std::string hlo_string = absl::StrReplaceAll(
+      hlo_string_template, {{"{{START}}", absl::StrCat(start)},
+                            {"{{STOP}}", absl::StrCat(stop)},
+                            {"{{STEP}}", absl::StrCat(step)},
+                            {"{{SLICE_SIZE}}", absl::StrCat(slice_size)},
+                            {"{{DIM_SIZE}}", absl::StrCat(dim_size)}});
   return ParseAndReturnVerifiedModule(hlo_string).value();
 }
 
@@ -945,37 +1028,8 @@ TEST_F(WhileLoopUnrollerTest, LoopWithCollective2) {
 }
 
 TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDS) {
-  std::string hlo_string_template = R"(
-  HloModule SimpleLoop
-  SimpleLoop.body {
-    loop_var.1 = (s32[]{:T(128)}, s32[3,10]{1,0}) parameter(0)
-    get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(loop_var.1), index=0
-    constant.1 = s32[]{:T(128)} constant(1)
-    idx = s32[]{:T(128)} add(get-tuple-element.1, constant.1)
-    get-tuple-element.2 = s32[3,10]{1,0} get-tuple-element(loop_var.1), index=1
-    zero = s32[] constant(0)
-    slice = s32[1,10] dynamic-slice(get-tuple-element.2, get-tuple-element.1, zero), dynamic_slice_sizes={1,10}
-    output = s32[3,10]{1,0} add(get-tuple-element.2, get-tuple-element.2)
-    ROOT tuple = (s32[]{:T(128)}, s32[3,10]{1,0}) tuple(idx, output)
-  }
-  SimpleLoop.condition {
-    loop_var.2 = (s32[]{:T(128)}, s32[3,10]{1,0}) parameter(0)
-    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
-    constant.2 = s32[]{:T(128)} constant({{LOOP_BOUND}})
-    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
-  }
-  ENTRY SimpleLoop {
-    constant.3 = s32[]{:T(128)} constant(0)
-    constant.4 = s32[3,10]{1,0} constant({...})
-    tuple.1 = (s32[]{:T(128)}, s32[3,10]{1,0}) tuple(constant.3, constant.4)
-    ROOT while = (s32[]{:T(128)}, s32[3,10]{1,0}) while(tuple.1), condition=
-      SimpleLoop.condition, body=SimpleLoop.body
-  }
-  )";
-
-  std::string hlo_string = absl::StrReplaceAll(
-      hlo_string_template, {{"{{LOOP_BOUND}}", absl::StrCat(3)}});
-  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  auto module = MakeModuleWithDS(/*start=*/0, /*stop=*/3, /*step=*/1,
+                                 /*slice_size=*/1, /*dim_size=*/3);
   HloInstruction* loop = module->entry_computation()->root_instruction();
   auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
   EXPECT_TRUE(config.has_value());
@@ -1086,6 +1140,85 @@ TEST_F(WhileLoopUnrollerTest, MatchShapeCoveringDSNested) {
                   instr, inner_fusion_comp->parameter_instruction(0),
                   HloOpcode::kDynamicSlice, config.value())
                   .has_value());
+}
+
+TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDSIncrementByTwo) {
+  // In this version of the test, our dimension of interest gets incremented by
+  // two at a time so that it takes on values {0, 2, 4}. The DS has slice size
+  // two, so indeed all index values {0, 1, 2, 3, 4, 5} are retrieved by the DS.
+  auto module = MakeModuleWithDS(/*start=*/0, /*stop=*/6, /*step=*/2,
+                                 /*slice_size=*/2, /*dim_size=*/6);
+  HloInstruction* loop = module->entry_computation()->root_instruction();
+  auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
+  EXPECT_TRUE(config.has_value());
+  HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
+  HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
+  HloInstruction* instr = body->GetInstructionWithName("slice");
+  EXPECT_TRUE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
+                  instr, input, HloOpcode::kDynamicSlice, config.value())
+                  .has_value());
+}
+
+TEST_F(WhileLoopUnrollerTest,
+       AdvancedMatchShapeCoveringDSIncrementByTwoMismatch) {
+  // In this version of the test, our dimension of interest gets incremented by
+  // two at a time so that it takes on values {0, 2, 4}. The DS has slice size
+  // two, so only index values {0, 1, 2, 3, 4, 5} are retrieved by the DS and
+  // index value 6 is not.
+  auto module = MakeModuleWithDS(/*start=*/0, /*stop=*/6, /*step=*/2,
+                                 /*slice_size=*/2, /*dim_size=*/7);
+  HloInstruction* loop = module->entry_computation()->root_instruction();
+  auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
+  EXPECT_TRUE(config.has_value());
+  HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
+  HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
+  HloInstruction* instr = body->GetInstructionWithName("slice");
+  EXPECT_FALSE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
+                   instr, input, HloOpcode::kDynamicSlice, config.value())
+                   .has_value());
+}
+
+TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDUS) {
+  auto module = MakeModuleWithDUS(/*start=*/0, /*stop=*/3, /*step=*/1,
+                                  /*slice_size=*/1, /*dim_size=*/3);
+  HloInstruction* loop = module->entry_computation()->root_instruction();
+  auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
+  EXPECT_TRUE(config.has_value());
+  HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
+  HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
+  HloInstruction* instr = body->GetInstructionWithName("slice");
+  EXPECT_TRUE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
+                  instr, input, HloOpcode::kDynamicUpdateSlice, config.value())
+                  .has_value());
+}
+
+TEST_F(WhileLoopUnrollerTest, AdvancedMatchShapeCoveringDUSIncrementByTwo) {
+  auto module = MakeModuleWithDUS(/*start=*/0, /*stop=*/6, /*step=*/2,
+                                  /*slice_size=*/2, /*dim_size=*/6);
+  HloInstruction* loop = module->entry_computation()->root_instruction();
+  auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
+  EXPECT_TRUE(config.has_value());
+  HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
+  HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
+  HloInstruction* instr = body->GetInstructionWithName("slice");
+  EXPECT_TRUE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
+                  instr, input, HloOpcode::kDynamicUpdateSlice, config.value())
+                  .has_value());
+}
+
+TEST_F(WhileLoopUnrollerTest,
+       AdvancedMatchShapeCoveringDUSIncrementByTwoMismatch) {
+  auto module = MakeModuleWithDUS(/*start=*/0, /*stop=*/6, /*step=*/2,
+                                  /*slice_size=*/2, /*dim_size=*/7);
+  HloInstruction* loop = module->entry_computation()->root_instruction();
+  auto config = WhileLoopUnroller::IsLoopUnrollable(loop);
+  EXPECT_TRUE(config.has_value());
+  HloComputation* body = module->GetComputationWithName("SimpleLoop.body");
+  HloInstruction* input = body->GetInstructionWithName("get-tuple-element.2");
+  HloInstruction* instr = body->GetInstructionWithName("slice");
+  EXPECT_FALSE(AdvancedMatchShapeCoveringDynamicIndexInstruction(
+                   instr, input, HloOpcode::kDynamicUpdateSlice, config.value())
+                   .has_value());
 }
 
 // Unroller pass must remove all the DynamicGte custom-calls.

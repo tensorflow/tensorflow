@@ -137,7 +137,7 @@ def tflite_flex_cc_library(
                 full = [],
                 lite = ["TENSORFLOW_LITE_PROTOS"],
             ) + tf_defines_nortti_if_lite_protos(),
-            features = tf_features_nomodules_if_mobile() + tf_features_nolayering_check_if_ios(),
+            features = tf_features_nomodules_if_mobile() + tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
             linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
             includes = [
                 CUSTOM_KERNEL_HEADER.include_path,
@@ -168,7 +168,7 @@ def tflite_flex_cc_library(
         hdrs = [
             clean_dep("//tensorflow/lite/delegates/flex:delegate.h"),
         ],
-        features = tf_features_nolayering_check_if_ios(),
+        features = tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
         compatible_with = compatible_with,
         visibility = visibility,
         deps = [

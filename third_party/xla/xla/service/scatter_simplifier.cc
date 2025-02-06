@@ -227,20 +227,20 @@ bool ScatterSimplifier::IsSimplifiedScatter(
   auto operand_rank = scatter->scatter_operands().front()->shape().rank();
   if (operand_rank == 0) return false;
 
-  bool nonstandard_index_vector_dim =
-      dims.index_vector_dim() != scatter->scatter_indices()->shape().rank() - 1;
+  bool standard_index_vector_dim =
+      dims.index_vector_dim() == scatter->scatter_indices()->shape().rank() - 1;
   int64_t num_scatter_dims =
       scatter->scatter_updates().front()->shape().rank() -
       dims.update_window_dims().size();
-  bool scatter_indices_reordered =
-      !IsIdentityPermutation(dims.scatter_dims_to_operand_dims());
-  bool scatter_dim_not_first =
-      absl::c_linear_search(dims.update_window_dims(), 0);
+  bool scatter_indices_ordered =
+      IsIdentityPermutation(dims.scatter_dims_to_operand_dims());
+  bool first_dim_not_in_update_window_dims =
+      !absl::c_linear_search(dims.update_window_dims(), 0);
   bool update_window_dims_sorted = absl::c_is_sorted(dims.update_window_dims());
 
-  return !(nonstandard_index_vector_dim || num_scatter_dims > 1 ||
-           scatter_indices_reordered || scatter_dim_not_first ||
-           !update_window_dims_sorted || !dims.inserted_window_dims().empty());
+  return standard_index_vector_dim && num_scatter_dims <= 1 &&
+         scatter_indices_ordered && first_dim_not_in_update_window_dims &&
+         update_window_dims_sorted && dims.inserted_window_dims().empty();
 }
 
 bool ScatterSimplifier::InstructionMatchesPattern(HloInstruction* inst) {

@@ -28,13 +28,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
 #include "xla/service/float_support.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -1154,7 +1154,7 @@ ENTRY main {
 // This test demonstrates the need for invoking the ResolveAliasingBuffer
 // multiple times via a fixed-point algorithm. The key was the aliasing of the
 // two output buffers of the conditional, at subshape 0 (first element). This
-// aliasing is not resolved until after the gte0 variale is already processed,
+// aliasing is not resolved until after the gte0 variable is already processed,
 // triggering incorrect type for gte0 if not repeating the aliasing analysis.
 TEST_F(BFloat16PropagationTest, ConditionalGTEWithFusion) {
   const std::string module_str = R"(

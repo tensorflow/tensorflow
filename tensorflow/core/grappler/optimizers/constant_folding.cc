@@ -368,12 +368,12 @@ static absl::Status ConvertShapeToConstant(const string& op,
 
 // TODO(rmlarsen): Perhaps we should move this to the GraphOptimizer base class.
 bool ConstantFolding::OptimizedNodeExists(const NodeDef& node,
-                                          StringPiece suffix) const {
+                                          absl::string_view suffix) const {
   return node_map_->NodeExists(OptimizedNodeName(node, suffix));
 }
 
 string ConstantFolding::OptimizedNodeName(const NodeDef& node,
-                                          StringPiece suffix) const {
+                                          absl::string_view suffix) const {
   return AddPrefixToNodeName(strings::StrCat(node.name(), suffix),
                              kConstantFoldingConst);
 }

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_HLO_BUILDER_LIB_SVD_H_
 #define XLA_HLO_BUILDER_LIB_SVD_H_
 
+#include <cstdint>
+
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/xla_data.pb.h"
 

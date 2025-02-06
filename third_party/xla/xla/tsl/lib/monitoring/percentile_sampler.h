@@ -20,7 +20,7 @@ limitations under the License.
 // Required for IS_MOBILE_PLATFORM
 #include "absl/status/status.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/platform/types.h"
 // clang-format on
 
 // We replace this implementation with a null implementation for mobile
@@ -30,8 +30,8 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
 
 namespace tsl {
 namespace monitoring {
@@ -57,7 +57,7 @@ class PercentileSampler {
     return &default_cell_;
   }
 
-  Status GetStatus() { return tsl::OkStatus(); }
+  Status GetStatus() { return absl::OkStatus(); }
 
  private:
   PercentileSamplerCell default_cell_;
@@ -88,9 +88,9 @@ PercentileSampler<NumLabels>* PercentileSampler<NumLabels>::New(
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {

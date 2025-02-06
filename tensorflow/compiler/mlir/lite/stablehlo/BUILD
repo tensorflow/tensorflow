@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -192,7 +192,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@local_tsl//tsl/platform:bfloat16",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:padding",
@@ -202,6 +201,7 @@ cc_library(
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:convert_op_folder",
         "@local_xla//xla/translate/hlo_to_mhlo:attribute_importer",
+        "@local_xla//xla/tsl/platform:status",
         "@stablehlo//:chlo_ops",
     ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
 )
@@ -508,6 +508,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -789,6 +790,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:conv",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:conv_util",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:custom_call",
+        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:fft",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:pad_util",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:reduce_window",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:slice",
@@ -909,6 +911,24 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "legalize_qdq_custom_call",
+    srcs = ["transforms/torch/legalize_qdq_custom_call_pass.cc"],
+    copts = ["-Ithird_party"],
+    deps = [
+        ":passes_inc_gen",
+        ":prepare_hlo",
+        "@com_google_absl//absl/log",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = True,
 )

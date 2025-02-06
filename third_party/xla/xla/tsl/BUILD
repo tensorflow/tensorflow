@@ -1,7 +1,6 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl:package_groups.bzl", "tsl_package_groups")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load(
@@ -10,6 +9,7 @@ load(
     "tsl_extra_config_settings_targets",
     "tsl_google_bzl_deps",
 )
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -562,12 +562,12 @@ bzl_library(
     deps = [
         "//third_party/compute_library:build_defs_bzl",
         "//xla/tsl/mkl:build_defs_bzl",
+        "//xla/tsl/platform:rules_cc_bzl",
         "@bazel_skylib//lib:new_sets",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
         "@local_tsl//third_party/py/rules_pywrap:pywrap_bzl",
-        "@local_tsl//tsl/platform:rules_cc_bzl",
     ],
 )
 
@@ -577,7 +577,7 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tsl_bzl",
-        "@local_tsl//tsl/platform:build_config_root_bzl",
+        "//xla/tsl/platform:build_config_root_bzl",
     ] + tsl_google_bzl_deps(),
 )
 

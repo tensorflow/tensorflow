@@ -927,12 +927,12 @@ TEST_F(PlacerTest, TestAssignedGpuDeviceToCpuDevice) {
       "/job:a/replica:0/task:0/device:FakeGPU:0");
 
   absl::Status s = Place(&g);
-  EXPECT_EQ(error::INTERNAL, s.code()) << s.ToString();
+  EXPECT_EQ(error::INTERNAL, s.code()) << s;
   EXPECT_TRUE(absl::StrContains(
       s.message(),
       "Assigned device '/job:a/replica:0/task:0/device:FakeGPU:0' "
       "does not have registered OpKernel support for TestInput"))
-      << s.ToString();
+      << s;
 }
 
 // Test that graphs with reference connections are correctly placed.
@@ -1082,7 +1082,7 @@ TEST_F(PlacerTest, TestResourceHandlesOnDifferentDevicesFails) {
     }
 
     absl::Status s = Place(&g, allow_soft_placement, true);
-    EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
+    EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s;
     if (set_assigned) {
       EXPECT_TRUE(absl::StrContains(
           s.message(),
@@ -1091,7 +1091,7 @@ TEST_F(PlacerTest, TestResourceHandlesOnDifferentDevicesFails) {
           "colocation groups with incompatible assigned devices: "
           "/job:a/replica:0/task:0/device:FakeGPU:0 vs "
           "/job:a/replica:0/task:0/device:FakeCPU:0"))
-          << s.ToString();
+          << s;
     } else {
       EXPECT_TRUE(absl::StrContains(
           s.message(),
@@ -1100,7 +1100,7 @@ TEST_F(PlacerTest, TestResourceHandlesOnDifferentDevicesFails) {
           "colocation groups with incompatible resource devices: "
           "/job:a/replica:0/task:0/device:FakeGPU:0 vs "
           "/job:a/replica:0/task:0/device:FakeCPU:0"))
-          << s.ToString();
+          << s;
     }
 
     return absl::OkStatus();
@@ -1317,7 +1317,7 @@ TEST_P(SoftPlacementPlacerTest, TestInvalidMultipleColocationGroups) {
   bool allow_soft_placement = GetParam();
   absl::Status s = Place(&g, allow_soft_placement, true);
   if (allow_soft_placement) {
-    EXPECT_EQ(error::OK, s.code()) << s.ToString();
+    EXPECT_EQ(error::OK, s.code()) << s;
     EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
     EXPECT_DEVICE_TYPE(g, "colocated_1", "FakeCPU");
     EXPECT_DEVICE_TYPE(g, "foo", "FakeGPU");
@@ -1327,7 +1327,7 @@ TEST_P(SoftPlacementPlacerTest, TestInvalidMultipleColocationGroups) {
         "Cannot colocate nodes {{colocation_node foo}} and "
         "{{colocation_node in}} because no device type supports both of those "
         "nodes and the other nodes colocated with them"))
-        << s.ToString();
+        << s;
   }
 }
 
@@ -1401,15 +1401,15 @@ TEST_P(SoftPlacementPlacerTest,
   bool allow_soft_placement = GetParam();
   absl::Status s = Place(&g, allow_soft_placement, true);
   if (allow_soft_placement) {
-    EXPECT_EQ(error::OK, s.code()) << s.ToString();
+    EXPECT_EQ(error::OK, s.code()) << s;
   } else {
-    EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
+    EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s;
     EXPECT_TRUE(absl::StrContains(
         s.message(),
         "Cannot colocate nodes {{colocation_node assign3}} and "
         "{{colocation_node var2}} because no device type supports both of "
         "those nodes and the other nodes colocated with them."))
-        << s.ToString();
+        << s;
   }
 }
 
@@ -1757,12 +1757,11 @@ TEST_F(PlacerTest, TestUnsupportedDeviceNoAllowSoftPlacement) {
   }
 
   absl::Status s = Place(&g, false, false);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
-  EXPECT_TRUE(absl::StrContains(s.message(), "/device:FakeCPU:0"))
-      << s.ToString();
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s;
+  EXPECT_TRUE(absl::StrContains(s.message(), "/device:FakeCPU:0")) << s;
   EXPECT_TRUE(absl::StrContains(
       s.message(), "no supported kernel for FakeCPU devices is available"))
-      << s.ToString();
+      << s;
 }
 
 // Test that placement fails when a node requests an explicit device that is not
@@ -1987,7 +1986,7 @@ TEST_P(SoftPlacementPlacerTest,
   bool allow_soft_placement = GetParam();
   absl::Status s = Place(&g, allow_soft_placement, true);
   if (allow_soft_placement) {
-    EXPECT_EQ(error::OK, s.code()) << s.ToString();
+    EXPECT_EQ(error::OK, s.code()) << s;
     EXPECT_DEVICE_TYPE(g, "a", "FakeGPU");
     EXPECT_DEVICE_TYPE(g, "id1", "FakeGPU");
     EXPECT_DEVICE_TYPE(g, "b", "FakeCPU");
@@ -1999,7 +1998,7 @@ TEST_P(SoftPlacementPlacerTest,
         "Cannot colocate nodes {{colocation_node id2}} and {{colocation_node "
         "id1}}: Cannot merge devices with incompatible types: "
         "'/device:FakeCPU:0' and '/device:FakeGPU:0'"))
-        << s.ToString();
+        << s;
   }
 }
 
@@ -2056,13 +2055,13 @@ TEST_F(PlacerTest, AssignedDeviceOfColocatedNodeIsRespected) {
   TF_ASSERT_OK(BuildGraph(graph, &g));
   GetNodeByName(g, "a")->set_assigned_device_name(kFullCPU);
   absl::Status s = Place(&g);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s;
   EXPECT_TRUE(
       absl::StrContains(s.message(),
                         "{{colocation_node iter}} was colocated with a "
                         "group of nodes that required incompatible device "
                         "'/job:a/replica:0/task:0/device:FakeCPU:0'"))
-      << s.ToString();
+      << s;
 }
 
 TEST_P(SoftPlacementPlacerTest,
@@ -2100,7 +2099,7 @@ TEST_P(SoftPlacementPlacerTest,
 
   absl::Status s = Place(&g, allow_soft_placement, false);
   if (allow_soft_placement) {
-    EXPECT_EQ(error::OK, s.code()) << s.ToString();
+    EXPECT_EQ(error::OK, s.code()) << s;
     EXPECT_DEVICE_TYPE(g, "a", "FakeGPU");
     EXPECT_DEVICE_TYPE(g, "id_a", "FakeGPU");
     EXPECT_DEVICE_TYPE(g, "id1", "FakeGPU");
@@ -2115,7 +2114,7 @@ TEST_P(SoftPlacementPlacerTest,
         "id1}}: Cannot merge devices with incompatible types: "
         "'/job:a/replica:0/task:0/device:FakeCPU:0' and "
         "'/job:a/replica:0/task:0/device:FakeGPU:0'"))
-        << s.ToString();
+        << s;
   }
 }
 
@@ -2693,13 +2692,13 @@ TEST_F(NestedPlacerTest, ResourceConflictInvolvingPCO) {
   Graph g(OpRegistry::Global());
   TF_EXPECT_OK(BuildGraph(graph, &g));
   absl::Status s = CallOptPassesAndPlace(&g);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s;
   EXPECT_TRUE(absl::StrContains(
       s.message(),
       "Cannot place the graph because a reference or resource edge connects "
       "colocation groups with incompatible resource devices: /device:FakeCPU:0 "
       "vs /device:FakeGPU:0"))
-      << s.ToString();
+      << s;
 }
 
 TEST_F(NestedPlacerTest, ResourceConflictInvolvingTwoPCOs) {
@@ -2741,13 +2740,13 @@ TEST_F(NestedPlacerTest, ResourceConflictInvolvingTwoPCOs) {
   TF_EXPECT_OK(BuildGraph(graph, &g));
 
   absl::Status s = CallOptPassesAndPlace(&g);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s;
   EXPECT_TRUE(absl::StrContains(
       s.message(),
       "Cannot place the graph because a reference or resource edge connects "
       "colocation groups with incompatible resource devices: /device:FakeCPU:0 "
       "vs /device:FakeGPU:0"))
-      << s.ToString();
+      << s;
 }
 
 // Function that returns a resource that can be produced on CPU only.
@@ -2802,12 +2801,12 @@ TEST_F(NestedPlacerTest, DeepDeviceConstraintsPropagated) {
   GetNodeByName(g, "id")->set_assigned_device_name(kFullGPU);
 
   absl::Status s = CallOptPassesAndPlace(&g);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s;
   // TODO(b/129057603): When better error messages are implemented, this should
   // change.
   EXPECT_TRUE(absl::StrContains(
       s.message(), "Could not satisfy explicit device specification"))
-      << s.ToString();
+      << s;
 }
 
 FunctionDef NestedCPUResourceOutput() {
@@ -2865,12 +2864,12 @@ TEST_F(NestedPlacerTest, NestedDeepDeviceConstraintsPropagated) {
   GetNodeByName(g, "id")->set_assigned_device_name(kFullGPU);
 
   absl::Status s = CallOptPassesAndPlace(&g);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s;
   // TODO(b/129057603): When better error messages are implemented, this should
   // change.
   EXPECT_TRUE(absl::StrContains(
       s.message(), "Could not satisfy explicit device specification"))
-      << s.ToString();
+      << s;
 }
 
 TEST_F(NestedPlacerTest, TwoFunctionsBackToBack) {
@@ -2919,13 +2918,13 @@ TEST_F(NestedPlacerTest, TwoFunctionsBackToBack) {
   TF_EXPECT_OK(BuildGraph(graph, &g));
 
   absl::Status s = CallOptPassesAndPlace(&g);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s;
   EXPECT_TRUE(absl::StrContains(
       s.message(),
       "Cannot place the graph because a reference or resource edge connects "
       "colocation groups with incompatible resource devices: /device:FakeCPU:0 "
       "vs /device:FakeGPU:0"))
-      << s.ToString();
+      << s;
 }
 
 FunctionDef NestedCallFunctionsBackToBack() {
@@ -2986,13 +2985,13 @@ TEST_F(NestedPlacerTest, NestedTwoFunctionsBackToBack) {
   TF_EXPECT_OK(BuildGraph(graph, &g));
 
   absl::Status s = CallOptPassesAndPlace(&g);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s;
   EXPECT_TRUE(absl::StrContains(
       s.message(),
       "Nodes were connected by a reference or resource connection (requiring "
       "them to be on the same device), but the two nodes were assigned two "
       "different devices"))
-      << s.ToString();
+      << s;
 }
 
 FunctionDef RecursiveResourceIdentity() {
@@ -3035,13 +3034,13 @@ TEST_F(NestedPlacerTest, DirectRecursion) {
   TF_EXPECT_OK(BuildGraph(graph, &g));
 
   absl::Status s = CallOptPassesAndPlace(&g);
-  EXPECT_EQ(error::UNIMPLEMENTED, s.code()) << s.ToString();
+  EXPECT_EQ(error::UNIMPLEMENTED, s.code()) << s;
   EXPECT_TRUE(absl::StrContains(
       s.message(),
       "Recursive function calls are not supported. Node {{node out}} inside "
       "the body of {{function_node RecursiveResourceIdentity}} calls function "
       "{{function_node RecursiveResourceIdentity}}"))
-      << s.ToString();
+      << s;
 }
 
 FunctionDef RecursiveF1() {
@@ -3107,14 +3106,14 @@ TEST_F(NestedPlacerTest, IndirectRecursion) {
   TF_EXPECT_OK(BuildGraph(graph, &g));
 
   absl::Status s = CallOptPassesAndPlace(&g);
-  EXPECT_EQ(error::UNIMPLEMENTED, s.code()) << s.ToString();
+  EXPECT_EQ(error::UNIMPLEMENTED, s.code()) << s;
   EXPECT_TRUE(absl::StrContains(
       s.message(),
       "Recursive function calls are not supported. Node {{node out}} inside "
       "the body of {{function_node RecursiveF2}} calls function "
       "{{function_node RecursiveF1}} which is already present in the call "
       "stack"))
-      << s.ToString();
+      << s;
 }
 
 TEST_F(PlacerTest, IdentityMatchesInputAndOutputPlacement) {

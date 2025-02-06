@@ -112,7 +112,6 @@ class RpcHelper {
       std::unique_ptr<CopyToHostBufferRequest> req);
   ResponseFuture<CopyArraysResponse> CopyArrays(
       std::unique_ptr<CopyArraysRequest> req);
-  ResponseFuture<ReshardResponse> Reshard(std::unique_ptr<ReshardRequest> req);
   ResponseFuture<FullyReplicatedShardResponse> FullyReplicatedShard(
       std::unique_ptr<FullyReplicatedShardRequest> req);
   ResponseFuture<IsArrayDeletedResponse> IsArrayDeleted(

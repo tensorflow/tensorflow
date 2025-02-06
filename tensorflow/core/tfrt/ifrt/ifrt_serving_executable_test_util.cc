@@ -32,15 +32,15 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 namespace tensorflow {
 namespace ifrt_serving {
@@ -90,7 +90,7 @@ IfrtServingExecutableTestHelper::MakeExecutable(int64_t program_id,
       thread_pool_.get(), &ifrt_loaded_variable_registry_,
       &ifrt_restore_tensor_registry_, work_queue_.get(), device_mgr_.get(),
       tensorflow::IdentityShapeRepresentationFn(), core_selector_.get(),
-      /*compilation_environment_proto=*/nullptr,
+      /*compilation_environment_proto=*/nullptr, &tf_to_hlo_compiler_,
       ifrt_persistent_compilation_cache_.get());
   TF_CHECK_OK(executable_or.status());
   return std::move(executable_or.value());

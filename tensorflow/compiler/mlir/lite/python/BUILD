@@ -1,4 +1,4 @@
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_pywrap")
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -64,8 +64,11 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:model_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite:types_proto_cc",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
-        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tensorflow/translate/tools:parsers",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:graph_to_tf_executor",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
@@ -120,12 +123,13 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/utility",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_xla//xla/hlo/parser:hlo_parser",
-        "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "@local_xla//xla/hlo/translate:stablehlo",
         "@local_xla//xla/service:hlo_proto_cc",
     ],
 )
@@ -155,6 +159,7 @@ py_strict_library(
         "wrap_converter.py",
     ],
     srcs_version = "PY3",
+    visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_converter_api",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
@@ -214,7 +219,7 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@com_google_protobuf//:protobuf_headers",
         "@flatbuffers//:runtime_cc",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.
         # It requires to link with TensorFlow Ops to get the op definitions.

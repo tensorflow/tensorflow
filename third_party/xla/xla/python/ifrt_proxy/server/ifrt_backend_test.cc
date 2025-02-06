@@ -38,6 +38,7 @@
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -54,6 +55,7 @@
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -68,19 +70,18 @@
 #include "xla/service/computation_placer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/test.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/status_to_from_proto.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -194,6 +195,10 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
+    const auto* deserialize_program_options =
+        llvm::cast<DeserializeProgramOptions>(options.get());
+    CHECK_OK(deserialize_program_options->lookup_device(DeviceId(0)));
+
     return std::make_unique<TestProgram>();
   }
 
@@ -970,74 +975,6 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
               SizeIs(copied_arrays.size()));
 }
 
-TEST_P(IfrtBackendHandlerTest, ReshardSuccess) {
-  auto src_mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
-  TF_ASSERT_OK_AND_ASSIGN(auto* device,
-                          mock_client_->LookupDevice(DeviceId(0)));
-  auto src_sharding = SingleDeviceSharding::Create(device, MemoryKind());
-  ON_CALL(*src_mock_array, sharding()).WillByDefault(ReturnRef(*src_sharding));
-  TF_ASSERT_OK_AND_ASSIGN(auto src_array_handle,
-                          MakeTestArray(std::move(src_mock_array)));
-
-  auto copied_mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*mock_client_, CopyArrays(_, _, _, _))
-      .WillOnce(Return(std::vector<tsl::RCReference<xla::ifrt::Array>>(
-          {copied_mock_array})));
-
-  auto ifrt_request = NewIfrtRequest(NewOpId());
-  auto* reshard_request = ifrt_request->mutable_reshard_request();
-  reshard_request->set_array_handle(src_array_handle);
-  reshard_request->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
-  TF_ASSERT_OK_AND_ASSIGN(auto* new_device,
-                          mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK_AND_ASSIGN(
-      *ifrt_request->mutable_reshard_request()->mutable_sharding(),
-      SingleDeviceSharding::Create(new_device, MemoryKind())->ToProto());
-
-  TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
-
-  EXPECT_THAT(tsl::StatusFromProto(response->response_metadata().status()),
-              IsOk());
-  EXPECT_NE(response->reshard_response().array_handle(), 0);
-}
-
-TEST_P(IfrtBackendHandlerTest, ReshardFailsWhenTheBackendFails) {
-  auto mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
-  TF_ASSERT_OK_AND_ASSIGN(auto* device,
-                          mock_client_->LookupDevice(DeviceId(1)));
-  auto sharding = SingleDeviceSharding::Create(device, MemoryKind());
-  ON_CALL(*mock_array, sharding()).WillByDefault(ReturnRef(*sharding));
-  TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
-                          MakeTestArray(std::move(mock_array)));
-
-  EXPECT_CALL(*mock_client_, CopyArrays(_, _, _, _))
-      .WillOnce(Return(absl::UnknownError("injected error")));
-
-  auto ifrt_request = NewIfrtRequest(NewOpId());
-  auto* reshard_request = ifrt_request->mutable_reshard_request();
-  reshard_request->set_array_handle(array_handle);
-  reshard_request->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
-  TF_ASSERT_OK_AND_ASSIGN(auto* new_device,
-                          mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK_AND_ASSIGN(
-      *ifrt_request->mutable_reshard_request()->mutable_sharding(),
-      SingleDeviceSharding::Create(new_device, MemoryKind())->ToProto());
-
-  EXPECT_THAT(CallBackend(std::move(ifrt_request)),
-              StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
-}
-
-TEST_P(IfrtBackendHandlerTest, ReshardFailsWithNonExistentArrayHandle) {
-  auto ifrt_request = NewIfrtRequest(NewOpId());
-  auto* reshard_request = ifrt_request->mutable_reshard_request();
-  reshard_request->set_array_handle(0);
-  reshard_request->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
-  reshard_request->mutable_sharding();
-
-  EXPECT_THAT(CallBackend(std::move(ifrt_request)),
-              StatusIs(absl::StatusCode::kNotFound));
-}
-
 TEST_P(IfrtBackendHandlerTest, FullyReplicatedShardSuccess) {
   auto fully_replicated_mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
   auto resultant_array = tsl::MakeRef<xla::ifrt::MockArray>();
@@ -1311,16 +1248,16 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
     EXPECT_CALL(*executable, GetOutputShardings())
         .WillOnce(Return(std::vector<OpSharding>{op_sharding1}));
 
-    std::vector<std::unique_ptr<xla::PjRtLayout>> parameter_layouts;
-    parameter_layouts.push_back(std::make_unique<xla::PjRtXlaLayout>(
+    std::vector<std::shared_ptr<const xla::PjRtLayout>> parameter_layouts;
+    parameter_layouts.push_back(std::make_shared<xla::PjRtLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1)));
-    parameter_layouts.push_back(std::make_unique<xla::PjRtXlaLayout>(
+    parameter_layouts.push_back(std::make_shared<xla::PjRtLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
     EXPECT_CALL(*executable, GetParameterLayouts())
         .WillOnce(Return(std::move(parameter_layouts)));
 
-    std::vector<std::unique_ptr<xla::PjRtLayout>> output_layouts;
-    output_layouts.push_back(std::make_unique<xla::PjRtXlaLayout>(
+    std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts;
+    output_layouts.push_back(std::make_shared<xla::PjRtLayout>(
         xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
     EXPECT_CALL(*executable, GetOutputLayouts())
         .WillOnce(Return(std::move(output_layouts)));

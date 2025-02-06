@@ -18,8 +18,11 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -56,8 +59,7 @@ class HloCostAnalysis;
 // pass.
 class HostOffloader : public HloModulePass {
  public:
-  explicit HostOffloader(int64_t host_memory_space_color)
-      : kHostMemorySpaceColor(host_memory_space_color) {}
+  HostOffloader() = default;
   ~HostOffloader() override = default;
 
   absl::string_view name() const override { return "host-offloader"; }
@@ -74,7 +76,6 @@ class HostOffloader : public HloModulePass {
   // instruction chain) are ignored.
   absl::StatusOr<bool> ProcessNextMoveToHostInstr(HloComputation* computation);
 
-  const int64_t kHostMemorySpaceColor;
   absl::flat_hash_set<HloInstruction*>
       already_visited_move_to_host_custom_calls_;
   absl::flat_hash_set<HloInstruction*> dynamic_update_slices_already_allocated_;
@@ -82,6 +83,18 @@ class HostOffloader : public HloModulePass {
   absl::flat_hash_set<HloInstruction*> move_to_device_custom_calls_to_remove_;
   absl::flat_hash_set<host_offload_utils::InstructionAndShapeIndex>
       already_inserted_copy_before_;
+
+  // DynamicUpdateSlices are a bit special because they are the only op which
+  // has multiple operands that host memory offloading supports. As a result,
+  // different memory propagation paths can pass through the same
+  // DynamicUpdateSlice. These track which paths have been seen.
+  std::vector<HloInstruction*> dynamic_update_slices_seen_;
+  std::vector<HloInstruction*> dynamic_update_slices_seen_with_annotation_;
+
+  // Maybe set DynamicUpdateSlice as host compute. Also maybe convert
+  // broadcast(0) to an "AllocateBuffer". Should be called only after all host
+  // memory propagation is done. Returns true if the module was changed.
+  absl::StatusOr<bool> HandleDynamicUpdateSlices();
 
   // Sometimes previous transformations turn a DynamicSlice into a Slice. Since
   // we're doing a DMA between the host and device, we need to turn the Slice
@@ -121,7 +134,8 @@ class HostOffloader : public HloModulePass {
 
   // DynamicUpdateSlices which write into host memory must have their
   // destination buffer allocated on the host. This function creates the
-  // allocation and updates all positions to have host memory space.
+  // allocation and updates all positions to have host memory space. Note that
+  // this also sets the DynamicUpdateSlice's memory space to host memory.
   absl::Status CreateAllocateBufferForDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice);
 

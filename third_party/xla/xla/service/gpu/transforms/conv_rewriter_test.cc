@@ -24,16 +24,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -759,7 +759,7 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
     })");
 
   // Test complex types
-  for (std::string_view type : {"c64", "c128"}) {
+  for (absl::string_view type : {"c64", "c128"}) {
     const std::string module_with_type =
         absl::StrReplaceAll(module_str, {{"TYPE", type}});
     TF_ASSERT_OK_AND_ASSIGN(auto m,

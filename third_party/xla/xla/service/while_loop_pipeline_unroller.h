@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_WHILE_LOOP_PIPELINE_UNROLLER_H_
 
 #include <cstdint>
-#include <string_view>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -40,14 +39,14 @@ namespace xla {
 // drastically increase compile times due to linearly increasing graph size.
 class WhileLoopPipelineUnroller : public HloModulePass {
  public:
-  std::string_view name() const override {
+  absl::string_view name() const override {
     return "while_loop_pipeline_unroller";
   }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
-      const absl::flat_hash_set<std::string_view>& execution_threads) override;
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // The pipeline depth of a while loop is the number of loop iterations that
   // pipelined loop inputs live throughout. This is used to determine how many

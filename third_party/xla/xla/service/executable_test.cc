@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -56,7 +55,7 @@ TEST_F(ExecutableTest, HloProtoGetterIsThreadCompatible) {
   // thread-compatible way.
   // Note that this test needs to run with --config=tsan to reliably
   // detect any potential data races.
-  constexpr std::string_view kHloModule = R"(
+  constexpr absl::string_view kHloModule = R"(
     HloModule module
 
     ENTRY main {

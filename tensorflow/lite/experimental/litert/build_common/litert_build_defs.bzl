@@ -46,9 +46,6 @@ def _valid_so_name(name):
 def _make_target_ref(name):
     return ":{}".format(name)
 
-def _make_script_linkopt(script):
-    return make_linkopt("--version-script=$(location {})".format(script))
-
 ####################################################################################################
 # Explicitly Link System Libraries ("ungrte")
 
@@ -64,8 +61,71 @@ _SYS_ELF_INTERPRETER_LINKOPT_X86_64 = make_linkopt("--dynamic-linker={}".format(
 ####################################################################################################
 # Symbol Hiding
 
-_EXPORT_LRT_ONLY_SCRIPT = "//tensorflow/lite/experimental/litert/build_common:export_litert_only.lds"
-_EXPORT_LRT_ONLY_LINKOPT = _make_script_linkopt(_EXPORT_LRT_ONLY_SCRIPT)
+_EXPORT_LRT_ONLY_SCRIPT_LINUX = "//tensorflow/lite/experimental/litert/build_common:export_litert_only_linux.lds"
+_EXPORT_LRT_ONLY_SCRIPT_DARWIN = "//tensorflow/lite/experimental/litert/build_common:export_litert_only_darwin.lds"
+_EXPORT_LRT_ONLY_LINKOPT_LINUX = make_linkopt("--version-script=$(location {})".format(_EXPORT_LRT_ONLY_SCRIPT_LINUX))
+_EXPORT_LRT_ONLY_LINKOPT_DARWIN = make_linkopt("-exported_symbols_list,$(location {})".format(_EXPORT_LRT_ONLY_SCRIPT_DARWIN))
+
+def symbol_opts():
+    """Defines linker flags whether to include symbols or not."""
+    return select({
+        "//tensorflow:debug": [],
+        "//conditions:default": [
+            # Omit symbol table, for all non debug builds
+            "-Wl,-s",
+        ],
+    })
+
+def export_lrt_only_script():
+    return select({
+        "//tensorflow:linux_x86_64": [_EXPORT_LRT_ONLY_SCRIPT_LINUX],
+        "//tensorflow:android": [_EXPORT_LRT_ONLY_SCRIPT_LINUX],
+        "//tensorflow:macos": [_EXPORT_LRT_ONLY_SCRIPT_DARWIN],
+        "//tensorflow:ios": [_EXPORT_LRT_ONLY_SCRIPT_DARWIN],
+        "//conditions:default": [],
+    })
+
+def export_lrt_only_linkopt():
+    return select({
+        "//tensorflow:linux_x86_64": [_EXPORT_LRT_ONLY_LINKOPT_LINUX],
+        "//tensorflow:android": [_EXPORT_LRT_ONLY_LINKOPT_LINUX],
+        "//tensorflow:macos": [_EXPORT_LRT_ONLY_LINKOPT_DARWIN],
+        "//tensorflow:ios": [_EXPORT_LRT_ONLY_LINKOPT_DARWIN],
+        "//conditions:default": [],
+    }) + symbol_opts()
+
+_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX = "//tensorflow/lite/experimental/litert/build_common:export_litert_runtime_only_linux.lds"
+_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN = "//tensorflow/lite/experimental/litert/build_common:export_litert_runtime_only_darwin.lds"
+_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX = make_linkopt("--version-script=$(location {})".format(_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX))
+_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN = make_linkopt("-exported_symbols_list,$(location {})".format(_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN))
+
+# TODO b/391390553: Add "-Wl,--no-undefined" to make sure all symbols are defined.
+_EXPORT_LRT_COMMON_LINKOPTS_LINUX = [
+    "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
+    "-Wl,--gc-sections",  # Eliminate unused code and data.
+    "-Wl,--as-needed",  # Don't link unused libs.a
+]
+
+def export_lrt_runtime_only_script():
+    return select({
+        "//tensorflow:linux_x86_64": [_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX],
+        "//tensorflow:android": [_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_LINUX],
+        "//tensorflow:macos": [_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN],
+        "//tensorflow:ios": [_EXPORT_LRT_RUNTIME_ONLY_SCRIPT_DARWIN],
+        "//conditions:default": [],
+    })
+
+def export_lrt_runtime_only_linkopt():
+    return select({
+        "//tensorflow:linux_x86_64": _EXPORT_LRT_COMMON_LINKOPTS_LINUX + [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX],
+        "//tensorflow:android": _EXPORT_LRT_COMMON_LINKOPTS_LINUX + [
+            "-Wl,-z,max-page-size=16384",
+            _EXPORT_LRT_RUNTIME_ONLY_LINKOPT_LINUX,
+        ],
+        "//tensorflow:macos": [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN],
+        "//tensorflow:ios": [_EXPORT_LRT_RUNTIME_ONLY_LINKOPT_DARWIN],
+        "//conditions:default": [],
+    }) + symbol_opts()
 
 ####################################################################################################
 # Macros
@@ -154,8 +214,8 @@ def litert_bin(
     if export_litert_only:
         append_rule_kwargs(
             cc_bin_kwargs,
-            linkopts = [_EXPORT_LRT_ONLY_LINKOPT],
-            deps = [_EXPORT_LRT_ONLY_SCRIPT],
+            linkopts = export_lrt_only_linkopt(),
+            deps = export_lrt_only_script(),
         )
 
     _litert_base(
@@ -205,8 +265,8 @@ def litert_dynamic_lib(
     user_link_flags = []
     additional_linker_inputs = []
     if export_litert_only:
-        user_link_flags.append(_EXPORT_LRT_ONLY_LINKOPT)
-        additional_linker_inputs.append(_EXPORT_LRT_ONLY_SCRIPT)
+        user_link_flags = export_lrt_only_linkopt()
+        additional_linker_inputs = export_lrt_only_script()
 
     native.cc_shared_library(
         name = shared_lib_name,

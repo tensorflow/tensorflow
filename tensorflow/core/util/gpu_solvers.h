@@ -360,7 +360,7 @@ class GpuSolver {
   template <typename Scalar>
   Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
                int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
-               int ldvt, int* dev_lapack_info) TF_MUST_USE_RESULT;
+               int ldvt, int* dev_lapack_info);
 
   // QR factorization.
   // Computes QR factorization A = Q * R.
@@ -423,15 +423,14 @@ class GpuSolver {
               const Scalar* alpha, /* host or device pointer */
               const Scalar* A, int lda,
               const Scalar* beta, /* host or device pointer */
-              const Scalar* B, int ldb, Scalar* C,
-              int ldc) const TF_MUST_USE_RESULT;
+              const Scalar* B, int ldb, Scalar* C, int ldc) const;
 
   // Computes the Cholesky factorization A = L * L^H for a single matrix.
   // Returns OkStatus() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
   template <typename Scalar>
   Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
-               int* dev_lapack_info) TF_MUST_USE_RESULT;
+               int* dev_lapack_info);
 
   // Computes the Cholesky factorization A = L * L^H for a batch of small
   // matrices.
@@ -440,21 +439,20 @@ class GpuSolver {
   template <typename Scalar>
   Status PotrfBatched(cublasFillMode_t uplo, int n,
                       const Scalar* const host_a_dev_ptrs[], int lda,
-                      DeviceLapackInfo* dev_lapack_info,
-                      int batch_size) TF_MUST_USE_RESULT;
+                      DeviceLapackInfo* dev_lapack_info, int batch_size);
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
   template <typename Scalar>
   Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
-               int* dev_lapack_info) TF_MUST_USE_RESULT;
+               int* dev_lapack_info);
 
   // Uses LU factorization to solve A * X = B.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrs
   template <typename Scalar>
   Status Getrs(cublasOperation_t trans, int n, int nrhs, const Scalar* A,
                int lda, const int* pivots, Scalar* B, int ldb,
-               int* dev_lapack_info) const TF_MUST_USE_RESULT;
+               int* dev_lapack_info) const;
 
   // Computes partially pivoted LU factorizations for a batch of small matrices.
   // Returns OkStatus() if the kernel was launched successfully. See:
@@ -462,7 +460,7 @@ class GpuSolver {
   template <typename Scalar>
   Status GetrfBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
                       int* dev_pivots, DeviceLapackInfo* dev_lapack_info,
-                      int batch_size) TF_MUST_USE_RESULT;
+                      int batch_size);
 
   // Batched linear solver using LU factorization from getrfBatched.
   // Notice that lapack_info is returned on the host, as opposed to
@@ -472,8 +470,7 @@ class GpuSolver {
   Status GetrsBatched(cublasOperation_t trans, int n, int nrhs,
                       const Scalar* const dev_Aarray[], int lda,
                       const int* devIpiv, const Scalar* const dev_Barray[],
-                      int ldb, int* host_lapack_info,
-                      int batch_size) TF_MUST_USE_RESULT;
+                      int ldb, int* host_lapack_info, int batch_size);
 
   // Computes matrix inverses for a batch of small matrices. Uses the outputs
   // from GetrfBatched. Returns OkStatus() if the kernel was launched
@@ -483,8 +480,7 @@ class GpuSolver {
   Status GetriBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
                       const int* dev_pivots,
                       const Scalar* const host_a_inverse_dev_ptrs[], int ldainv,
-                      DeviceLapackInfo* dev_lapack_info,
-                      int batch_size) TF_MUST_USE_RESULT;
+                      DeviceLapackInfo* dev_lapack_info, int batch_size);
 
   // Computes matrix inverses for a batch of small matrices with size n < 32.
   // Returns OkStatus() if the kernel was launched successfully. See:
@@ -493,7 +489,7 @@ class GpuSolver {
   Status MatInvBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
                        const Scalar* const host_a_inverse_dev_ptrs[],
                        int ldainv, DeviceLapackInfo* dev_lapack_info,
-                       int batch_size) TF_MUST_USE_RESULT;
+                       int batch_size);
 
   // QR factorization.
   // Computes QR factorization A = Q * R.
@@ -501,7 +497,7 @@ class GpuSolver {
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-geqrf
   template <typename Scalar>
   Status Geqrf(int m, int n, Scalar* dev_A, int lda, Scalar* dev_tau,
-               int* dev_lapack_info) TF_MUST_USE_RESULT;
+               int* dev_lapack_info);
 
   // Overwrite matrix C by product of C and the unitary Householder matrix Q.
   // The Householder matrix Q is represented by the output from Geqrf in dev_a
@@ -514,7 +510,7 @@ class GpuSolver {
   template <typename Scalar>
   Status Unmqr(cublasSideMode_t side, cublasOperation_t trans, int m, int n,
                int k, const Scalar* dev_a, int lda, const Scalar* dev_tau,
-               Scalar* dev_c, int ldc, int* dev_lapack_info) TF_MUST_USE_RESULT;
+               Scalar* dev_c, int ldc, int* dev_lapack_info);
 
   // Overwrites QR factorization produced by Geqrf by the unitary Householder
   // matrix Q. On input, the Householder matrix Q is represented by the output
@@ -524,7 +520,7 @@ class GpuSolver {
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-orgqr
   template <typename Scalar>
   Status Ungqr(int m, int n, int k, Scalar* dev_a, int lda,
-               const Scalar* dev_tau, int* dev_lapack_info) TF_MUST_USE_RESULT;
+               const Scalar* dev_tau, int* dev_lapack_info);
 
   // Hermitian (Symmetric) Eigen decomposition.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-syevd
@@ -532,7 +528,7 @@ class GpuSolver {
   Status Heevd(cusolverEigMode_t jobz, cublasFillMode_t uplo, int n,
                Scalar* dev_A, int lda,
                typename Eigen::NumTraits<Scalar>::Real* dev_W,
-               int* dev_lapack_info) TF_MUST_USE_RESULT;
+               int* dev_lapack_info);
 
   // Singular value decomposition.
   // Returns OkStatus() if the kernel was launched successfully.
@@ -541,7 +537,7 @@ class GpuSolver {
   template <typename Scalar>
   Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
                int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
-               int ldvt, int* dev_lapack_info) TF_MUST_USE_RESULT;
+               int ldvt, int* dev_lapack_info);
   template <typename Scalar>
   Status GesvdjBatched(cusolverEigMode_t jobz, int m, int n, Scalar* dev_A,
                        int lda, Scalar* dev_S, Scalar* dev_U, int ldu,

@@ -75,7 +75,6 @@ PACKAGE_STATIC_DEPS = [
     "@icu//:__subpackages__",
     "@libjpeg_turbo//:__subpackages__",
     "@llvm-project//:__subpackages__",
-    "@nsync//:__subpackages__",
     "@png//:__subpackages__",
     "@sobol_data//:__subpackages__",
     "@stablehlo//:__subpackages__",
@@ -91,7 +90,6 @@ PACKAGE_STATIC_DEPS = [
     "@com_googlesource_code_re2//:__subpackages__",
     "@compute_library//:__subpackages__",
     "@curl//:__subpackages__",
-    "@double_conversion//:__subpackages__",
     "@eigen_archive//:__subpackages__",
     "@farmhash_archive//:__subpackages__",
     "@farmhash_gpu_archive//:__subpackages__",
@@ -108,7 +106,7 @@ PACKAGE_STATIC_DEPS = [
     "@local_config_tensorrt//:__subpackages__",
     "@local_execution_config_platform//:__subpackages__",
     "@mkl_dnn_acl_compatible//:__subpackages__",
-    "@ml_dtypes//:__subpackages__",
+    "@ml_dtypes_py//ml_dtypes:__subpackages__",
     "@nccl_archive//:__subpackages__",
     "@nvtx_archive//:__subpackages__",
     "@onednn//:__subpackages__",
@@ -1253,6 +1251,7 @@ cc_import(
         "//tensorflow:macos": ":libtensorflow_framework.dylib",
         "//conditions:default": ":libtensorflow_framework.so.%s" % VERSION_MAJOR,
     }),
+    visibility = ["//visibility:public"],
 )
 
 # -------------------------------------------

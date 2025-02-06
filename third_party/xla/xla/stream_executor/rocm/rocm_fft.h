@@ -21,15 +21,13 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_
 
 #include <cstdint>
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
+
+#include "rocm/rocm_config.h"  // IWYU pragma: keep - needed for TF_ROCM_VERSION
 
 #if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/hipfft/hipfft.h"
 #else
 #include "rocm/include/hipfft.h"
-#endif
-
 #endif
 
 #include "xla/stream_executor/fft.h"

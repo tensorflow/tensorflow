@@ -21,8 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/synchronization/notification.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace profiler {
@@ -53,14 +53,14 @@ void FillEvents2Stage(LockFreeQueue<T, block_size_in_bytes>& queue,
   expected2.clear();
   for (size_t i = 0; i < event_count1; ++i) {
     T event = gen(i);
-    expected1.emplace_back(event);
+    expected1.push_back(event);
     queue.Push(std::move(event));
   }
   stage1_filled.Notify();
   stage1_grabbed.WaitForNotification();
   for (size_t i = 0; i < event_count2; ++i) {
     T event = gen(i + event_count1);
-    expected2.emplace_back(event);
+    expected2.push_back(event);
     queue.Push(std::move(event));
   }
   stage2_filled.Notify();

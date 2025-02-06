@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
@@ -33,15 +34,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-using SourceTargetPair = std::pair<int64_t, int64_t>;
-using SourceTargetPairs = std::vector<SourceTargetPair>;
+using SourceTargetPairType = std::pair<int64_t, int64_t>;
+using SourceTargetPairsType = std::vector<SourceTargetPairType>;
 
 struct FoldableSelect {
   Comparison::Direction cmp_direction;
@@ -51,12 +52,20 @@ struct FoldableSelect {
   HloInstruction* false_operand;
 };
 
+const HloInstruction* FindInnerScalarOp(const HloInstruction* inst) {
+  while (inst->opcode() == HloOpcode::kConvert ||
+         inst->opcode() == HloOpcode::kBroadcast) {
+    inst = inst->operand(0);
+  }
+  return inst;
+}
+
 // Matches foldable select ops that we can analyse and returns handy references
 // to %constant, %true_operand, %false_operand of the op. Matches, e.g.,
 //
 // ```
 // select(
-//     broadcast(compare(partition-id(), constant)),
+//     broadcast(compare(convert(partition-id()), constant)),
 //     true_operand,
 //     false_operand)
 // ```
@@ -65,7 +74,7 @@ struct FoldableSelect {
 //
 // ```
 // select(
-//     compare(partition-id(), constant),
+//     compare(replica-id(), constant),
 //     true_operand,
 //     false_operand)
 // ```
@@ -74,21 +83,22 @@ std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
     return std::nullopt;
   }
 
-  // Match select predicate (may be broadcasted).
-  const HloInstruction* predicate_candidate = select->operand(0);
-  if (HloPredicateIsOp<HloOpcode::kBroadcast>(predicate_candidate))
-    predicate_candidate = predicate_candidate->operand(0);
+  // Match select predicate.
+  const HloInstruction* predicate_candidate =
+      FindInnerScalarOp(select->operand(0));
   const HloCompareInstruction* compare =
       DynCast<HloCompareInstruction>(predicate_candidate);
-  if (compare == nullptr) return std::nullopt;
+  if (compare == nullptr) {
+    return std::nullopt;
+  }
   if (compare->direction() != Comparison::Direction::kEq &&
       compare->direction() != Comparison::Direction::kNe) {
     return std::nullopt;
   }
 
   // Find replica-id or partition-id op and constant op, swap if needed.
-  const HloInstruction* id_op = compare->operand(0);
-  const HloInstruction* constant_op = compare->operand(1);
+  const HloInstruction* id_op = FindInnerScalarOp(compare->operand(0));
+  const HloInstruction* constant_op = FindInnerScalarOp(compare->operand(1));
   if (HloPredicateIsNotOp<HloOpcode::kConstant>(constant_op)) {
     std::swap(id_op, constant_op);
   }
@@ -104,35 +114,41 @@ std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
   }
 
   // Match constant.
-  if (HloPredicateIsNotOp<HloOpcode::kConstant>(constant_op))
+  if (HloPredicateIsNotOp<HloOpcode::kConstant>(constant_op) ||
+      !ShapeUtil::IsScalar(constant_op->shape())) {
     return std::nullopt;
+  }
   std::optional<int64_t> constant_id = constant_op->literal().GetFirstInteger();
-  if (!constant_id.has_value()) return std::nullopt;
+  if (!constant_id.has_value()) {
+    return std::nullopt;
+  }
   return FoldableSelect{compare->direction(), *constant_id, collective_mode,
                         select->mutable_operand(1), select->mutable_operand(2)};
 }
 
+bool SelectPredicateEval(const FoldableSelect& select_match,
+                         const SourceTargetPairType& pair) {
+  int64_t src_id = pair.first;
+  return select_match.cmp_direction == Comparison::Direction::kEq
+             ? src_id == select_match.constant_id
+             : src_id != select_match.constant_id;
+};
+
 std::optional<bool> StaticallyEvaluatePredicateForAllSourceIDs(
-    FoldableSelect select_match, SourceTargetPairs pairs) {
+    const FoldableSelect& select_match, const SourceTargetPairsType& pairs) {
   // If there are no pairs, the predicate is undefined.
   if (pairs.empty()) return std::nullopt;
 
   // Evaluate the select predicate for the first source target pair.
   CHECK(select_match.cmp_direction == Comparison::Direction::kEq ||
         select_match.cmp_direction == Comparison::Direction::kNe);
-  auto select_predicate_eval = [&select_match](const SourceTargetPair& pair) {
-    int64_t src_id = pair.first;
-    return select_match.cmp_direction == Comparison::Direction::kEq
-               ? src_id == select_match.constant_id
-               : src_id != select_match.constant_id;
-  };
-  bool result_candidate = select_predicate_eval(pairs.front());
+  bool result_candidate = SelectPredicateEval(select_match, pairs.front());
 
   // Check that the result is the same for all source target pairs. If not,
   // we have a contradiction and cannot statically evaluate the predicate. We
   // return std::nullopt in this case.
-  if (!absl::c_all_of(pairs, [&](const SourceTargetPair& it) -> bool {
-        return result_candidate == select_predicate_eval(it);
+  if (!absl::c_all_of(pairs, [&](const SourceTargetPairType& it) -> bool {
+        return result_candidate == SelectPredicateEval(select_match, it);
       })) {
     return std::nullopt;
   }

@@ -59,7 +59,7 @@ absl::StatusOr<ApiDefMap> LoadOpsAndApiDefs(
   return api_def_map;
 }
 
-string GetPath(StringPiece dot_h_fname) {
+string GetPath(absl::string_view dot_h_fname) {
   auto pos = dot_h_fname.find("/bin/");
   string result(dot_h_fname);
   if (pos != string::npos) {
@@ -82,14 +82,14 @@ string GetPath(StringPiece dot_h_fname) {
   return result;
 }
 
-string GetFilename(StringPiece path) {
+string GetFilename(absl::string_view path) {
   size_t slash_pos = path.rfind('/');
   if (slash_pos == path.npos) slash_pos = -1;
   size_t dot_pos = path.rfind('.');
   return string(path.substr(slash_pos + 1, dot_pos - (slash_pos + 1)));
 }
 
-string ToGuard(StringPiece path) {
+string ToGuard(absl::string_view path) {
   string guard;
   guard.reserve(path.size() + 1);  // + 1 -> trailing _
   for (const char c : path) {
@@ -105,7 +105,7 @@ string ToGuard(StringPiece path) {
   return guard;
 }
 
-string ToTitle(StringPiece name) {
+string ToTitle(absl::string_view name) {
   string title(name);
   for (int i = 0; i < title.size(); ++i) {
     if (title[i] == '_') title[i] = ' ';
@@ -114,7 +114,7 @@ string ToTitle(StringPiece name) {
   return title;
 }
 
-string MakeComment(StringPiece text, StringPiece indent) {
+string MakeComment(absl::string_view text, absl::string_view indent) {
   string ret;
   while (!text.empty()) {
     int last_non_space = -1;
@@ -134,7 +134,7 @@ string MakeComment(StringPiece text, StringPiece indent) {
   return ret;
 }
 
-string PrintString(StringPiece str) {
+string PrintString(absl::string_view str) {
   return strings::StrCat("\"", absl::CEscape(str), "\"");
 }
 
@@ -280,7 +280,7 @@ bool IsEmptyList(const AttrValue::ListValue& list) {
          list.shape_size() == 0 && list.tensor_size() == 0;
 }
 
-string ToCamelCase(StringPiece str) {
+string ToCamelCase(absl::string_view str) {
   string result;
   const char joiner = '_';
   size_t i = 0;
@@ -301,7 +301,7 @@ string ToCamelCase(StringPiece str) {
   return result;
 }
 
-string SeparateNamespaces(StringPiece str) {
+string SeparateNamespaces(absl::string_view str) {
   string result;
   const char joiner = '_';
   size_t i = 0;
@@ -316,27 +316,26 @@ string SeparateNamespaces(StringPiece str) {
   return result;
 }
 
-std::pair<StringPiece, bool> AttrTypeName(StringPiece attr_type) {
-  static const auto* attr_type_map =
-      new std::unordered_map<StringPiece, std::pair<StringPiece, bool>,
-                             StringPieceHasher>{
-          {"string", {"StringPiece", false}},
-          {"list(string)", {"gtl::ArraySlice<::tensorflow::tstring>", true}},
-          {"int", {"int64", false}},
-          {"list(int)", {"gtl::ArraySlice<int>", true}},
-          {"float", {"float", false}},
-          {"list(float)", {"gtl::ArraySlice<float>", true}},
-          {"bool", {"bool", false}},
-          {"list(bool)", {"gtl::ArraySlice<bool>", true}},
-          {"type", {"DataType", false}},
-          {"list(type)", {"DataTypeSlice", true}},
-          {"shape", {"PartialTensorShape", false}},
-          {"list(shape)", {"gtl::ArraySlice<PartialTensorShape>", true}},
-          {"tensor", {"TensorProto", true}},
-          {"list(tensor)", {"gtl::ArraySlice<TensorProto>", true}},
-          {"func", {"NameAttrList", true}},
-          {"list(func)", {"gtl::ArraySlice<NameAttrList>", true}},
-      };
+std::pair<absl::string_view, bool> AttrTypeName(absl::string_view attr_type) {
+  static const auto* attr_type_map = new std::unordered_map<
+      absl::string_view, std::pair<absl::string_view, bool>, StringPieceHasher>{
+      {"string", {"StringPiece", false}},
+      {"list(string)", {"gtl::ArraySlice<::tensorflow::tstring>", true}},
+      {"int", {"int64", false}},
+      {"list(int)", {"gtl::ArraySlice<int>", true}},
+      {"float", {"float", false}},
+      {"list(float)", {"gtl::ArraySlice<float>", true}},
+      {"bool", {"bool", false}},
+      {"list(bool)", {"gtl::ArraySlice<bool>", true}},
+      {"type", {"DataType", false}},
+      {"list(type)", {"DataTypeSlice", true}},
+      {"shape", {"PartialTensorShape", false}},
+      {"list(shape)", {"gtl::ArraySlice<PartialTensorShape>", true}},
+      {"tensor", {"TensorProto", true}},
+      {"list(tensor)", {"gtl::ArraySlice<TensorProto>", true}},
+      {"func", {"NameAttrList", true}},
+      {"list(func)", {"gtl::ArraySlice<NameAttrList>", true}},
+  };
 
   auto entry = attr_type_map->find(attr_type);
   if (entry == attr_type_map->end()) {
@@ -346,17 +345,14 @@ std::pair<StringPiece, bool> AttrTypeName(StringPiece attr_type) {
   return entry->second;
 }
 
-StringPiece ListElementTypeName(StringPiece attr_type) {
-  static const auto* attr_list_type_map =
-      new absl::flat_hash_map<StringPiece, StringPiece, StringPieceHasher>{
-          {"list(string)", "string"},
-          {"list(int)", "int"},
-          {"list(float)", "float"},
-          {"list(bool)", "bool"},
-          {"list(type)", "DataType"},
-          {"list(shape)", "PartialTensorShape"},
-          {"list(tensor)", "TensorProto"},
-      };
+absl::string_view ListElementTypeName(absl::string_view attr_type) {
+  static const auto* attr_list_type_map = new absl::flat_hash_map<
+      absl::string_view, absl::string_view, StringPieceHasher>{
+      {"list(string)", "string"},      {"list(int)", "int"},
+      {"list(float)", "float"},        {"list(bool)", "bool"},
+      {"list(type)", "DataType"},      {"list(shape)", "PartialTensorShape"},
+      {"list(tensor)", "TensorProto"},
+  };
 
   auto entry = attr_list_type_map->find(attr_type);
   if (entry == attr_list_type_map->end()) {
@@ -366,10 +362,11 @@ StringPiece ListElementTypeName(StringPiece attr_type) {
   return entry->second;
 }
 
-bool IsCPPKeyword(StringPiece name) {
-  static const absl::flat_hash_set<StringPiece, StringPieceHasher>*
+bool IsCPPKeyword(absl::string_view name) {
+  static const absl::flat_hash_set<absl::string_view, StringPieceHasher>*
       // Keywords obtained from http://en.cppreference.com/w/cpp/keyword
-      kCPPReserved = new absl::flat_hash_set<StringPiece, StringPieceHasher>{
+      kCPPReserved = new absl::flat_hash_set<absl::string_view,
+                                             StringPieceHasher>{
           "alignas",
           "alignof",
           "and",
@@ -477,7 +474,7 @@ bool IsCPPKeyword(StringPiece name) {
   return kCPPReserved->count(name) > 0;
 }
 
-string AvoidCPPKeywords(StringPiece name) {
+string AvoidCPPKeywords(absl::string_view name) {
   if (IsCPPKeyword(name)) {
     return strings::StrCat(name, "_");
   }
@@ -558,7 +555,7 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
     arg_names.push_back(AvoidCPPKeywords(api_def_arg.rename_to()));
 
     // TODO(keveman): Include input type information.
-    StringPiece description = api_def_arg.description();
+    absl::string_view description = api_def_arg.description();
     if (!description.empty()) {
       ConsumeEquals(&description);
       strings::StrAppend(&comment, "* ",

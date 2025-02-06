@@ -18,11 +18,8 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_check.h"
 #include "absl/strings/string_view.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
-#include "third_party/qairt/latest/include/QNN/QnnContext.h"
-#include "third_party/qairt/latest/include/QNN/QnnInterface.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"

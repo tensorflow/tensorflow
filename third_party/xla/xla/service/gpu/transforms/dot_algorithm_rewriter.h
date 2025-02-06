@@ -41,6 +41,10 @@ class DotAlgorithmRewriter : public HloModulePass {
       HloInstruction* lhs, HloInstruction* rhs);
   static absl::StatusOr<HloInstruction*> MakeMultiplyForBF16BF16F32X6(
       HloInstruction* lhs, HloInstruction* rhs);
+  static absl::StatusOr<HloInstruction*> MakeMultiplyForTF32TF32F32(
+      HloInstruction* lhs, HloInstruction* rhs);
+  static absl::StatusOr<HloInstruction*> MakeMultiplyForTF32TF32F32X3(
+      HloInstruction* lhs, HloInstruction* rhs);
 };
 
 }  // namespace xla::gpu

@@ -27,22 +27,20 @@
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
-#include "tensorflow/lite/experimental/litert/core/byte_code_util.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/core/build_stamp.h"
+#include "tensorflow/lite/experimental/litert/core/dispatch_op_schema.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
-#include "tensorflow/lite/experimental/litert/core/model/model_load.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 
 namespace litert::tools {
 namespace {
 
-using ::litert::internal::kByteCodeMetadataKey;
 using ::litert::internal::kLiteRtBuildStampKey;
-using ::litert::internal::LoadModelFromMemory;
 using ::litert::internal::ParseBuildStamp;
-using ::litert::internal::ParseByteCodePlaceholder;
-using ::litert::internal::ParseExecInfo;
-using ::litert::internal::Serialization;
 using ::testing::HasSubstr;
+using ::testing::litert::IsError;
 
 static constexpr absl::string_view kPluginSearchPath =
     "third_party/tensorflow/lite/experimental/litert/vendors/examples";
@@ -76,15 +74,15 @@ ApplyPluginRun::Ptr MakeBaseRun(ApplyPluginRun::Cmd cmd) {
 TEST(TestApplyPluginTool, TestInfoBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::INFO);
   run->lib_search_paths.clear();
-  LITERT_ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                                kLiteRtStatusErrorInvalidToolConfig);
+  EXPECT_THAT(ApplyPlugin(std::move(run)),
+              IsError(kLiteRtStatusErrorInvalidToolConfig));
 }
 
 TEST(TestApplyPluginTool, TestInfo) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::INFO);
   std::stringstream out;
   run->outs.push_back(out);
-  LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
+  LITERT_ASSERT_OK(ApplyPlugin(std::move(run)));
   EXPECT_THAT(out.str(),
               ::testing::HasSubstr(
                   "< LiteRtCompilerPlugin > \"ExampleSocManufacturer\" | "
@@ -94,48 +92,48 @@ TEST(TestApplyPluginTool, TestInfo) {
 TEST(TestApplyPluginTool, TestNoopBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::NOOP);
   run->model.reset();
-  LITERT_ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                                kLiteRtStatusErrorInvalidToolConfig);
+  EXPECT_THAT(ApplyPlugin(std::move(run)),
+              IsError(kLiteRtStatusErrorInvalidToolConfig));
 }
 
 TEST(TestApplyPluginTool, TestNoop) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::NOOP);
   std::stringstream out;
   run->outs.push_back(out);
-  LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
+  LITERT_ASSERT_OK(ApplyPlugin(std::move(run)));
 
-  auto model = LoadModelFromMemory(
+  auto model = Model::CreateFromBuffer(
       BufferRef<uint8_t>(out.view().data(), out.view().size()));
-  EXPECT_EQ(model->Get()->subgraphs.size(), 1);
+  EXPECT_EQ(model->Get()->NumSubgraphs(), 1);
 }
 
 TEST(TestApplyPluginTool, TestPartitionBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::PARTITION);
   run->model.reset();
-  LITERT_ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                                kLiteRtStatusErrorInvalidToolConfig);
+  EXPECT_THAT(ApplyPlugin(std::move(run)),
+              IsError(kLiteRtStatusErrorInvalidToolConfig));
 }
 
 TEST(TestApplyPluginTool, TestPartition) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::PARTITION);
   std::stringstream out;
   run->outs.push_back(out);
-  LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
+  LITERT_ASSERT_OK(ApplyPlugin(std::move(run)));
   EXPECT_FALSE(out.str().empty());
 }
 
 TEST(TestApplyPluginTool, TestCompileBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::COMPILE);
   run->model.reset();
-  LITERT_ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                                kLiteRtStatusErrorInvalidToolConfig);
+  EXPECT_THAT(ApplyPlugin(std::move(run)),
+              IsError(kLiteRtStatusErrorInvalidToolConfig));
 }
 
 TEST(TestApplyPluginTool, TestCompile) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::COMPILE);
   std::stringstream out;
   run->outs.push_back(out);
-  LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
+  LITERT_ASSERT_OK(ApplyPlugin(std::move(run)));
   EXPECT_FALSE(out.str().empty());
   EXPECT_THAT(out.str(), HasSubstr("Partition_0_with_1_muls"));
 }
@@ -143,86 +141,41 @@ TEST(TestApplyPluginTool, TestCompile) {
 TEST(TestApplyPluginTool, TestApplyBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::APPLY);
   run->model.reset();
-  LITERT_ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                                kLiteRtStatusErrorInvalidToolConfig);
+  EXPECT_THAT(ApplyPlugin(std::move(run)),
+              IsError(kLiteRtStatusErrorInvalidToolConfig));
 }
 
 TEST(TestApplyPluginTool, TestApply) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::APPLY);
   std::stringstream out;
   run->outs.push_back(out);
-  LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
+  LITERT_ASSERT_OK(ApplyPlugin(std::move(run)));
 
-  auto model = LoadModelFromMemory(
-      BufferRef<uint8_t>(out.str().data(), out.str().size()));
-  EXPECT_EQ(model->Get()->subgraphs.size(), 1);
+  const auto out_str = out.str();
+  BufferRef<uint8_t> serialized(out_str.data(), out_str.size());
+
+  auto model = Model::CreateFromBuffer(serialized);
+  EXPECT_EQ(model->Get()->NumSubgraphs(), 1);
 
   {
     auto stamp_buffer = model->Get()->FindMetadata(kLiteRtBuildStampKey);
     auto stamp = ParseBuildStamp(*stamp_buffer);
-    auto [man, soc_model, serial] = *stamp;
+    auto [man, soc_model] = *stamp;
     EXPECT_EQ(man, kSocManufacturer);
     EXPECT_EQ(soc_model, kSocModel);
-    EXPECT_EQ(serial, Serialization::kMetadata);
   }
 
-  {
-    auto custom_op = model->Get()->subgraphs.front().ops.front();
-    ASSERT_EQ(custom_op->op_code, kLiteRtOpCodeTflCustom);
-    EXPECT_EQ(custom_op->custom_options.StrView(), "Partition_0");
-  }
+  auto* op = model->Get()->MainSubgraph()->Ops().front();
+  ASSERT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
 
-  {
-    auto byte_code_buffer = model->Get()->FindMetadata(kByteCodeMetadataKey);
-    EXPECT_THAT(byte_code_buffer->StrView(),
-                HasSubstr("Partition_0_with_1_muls"));
-  }
+  const auto options = internal::GetDispatchOpOptions(op->CustomOptions());
+  const auto& [size, offset, name] = options;
+  EXPECT_EQ(name, "Partition_0");
+  ASSERT_LE(offset + size, serialized.Size());
+
+  EXPECT_THAT(serialized.StrView().substr(offset, size),
+              HasSubstr("Partition_0_with_1_muls"));
 }
-
-// NOLINTBEGIN
-TEST(TestApplyPluginTool, TestApplyWithAppendSerialization) {
-#ifndef NDEBUG
-  GTEST_SKIP() << "Flatbuffers assertion will fail in append mode\n";
-#endif
-  std::stringstream out;
-  {
-    auto run = MakeBaseRun(ApplyPluginRun::Cmd::APPLY);
-    run->serialization = Serialization::kAppend;
-    run->outs.push_back(out);
-    LITERT_ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
-  }
-
-  BufferRef<uint8_t> serialized(out.str().data(), out.str().size());
-
-  auto model = LoadModelFromMemory(serialized);
-  EXPECT_EQ(model->Get()->subgraphs.size(), 1);
-
-  {
-    auto stamp_buffer = model->Get()->FindMetadata(kLiteRtBuildStampKey);
-    auto stamp = ParseBuildStamp(*stamp_buffer);
-    auto [man, model, serial] = *stamp;
-    EXPECT_EQ(man, kSocManufacturer);
-    EXPECT_EQ(model, kSocModel);
-    EXPECT_EQ(serial, Serialization::kAppend);
-  }
-
-  {
-    auto custom_op = model->Get()->subgraphs.front().ops.front();
-    ASSERT_EQ(custom_op->op_code, kLiteRtOpCodeTflCustom);
-
-    auto options = ParseExecInfo(custom_op->custom_options);
-    auto [entry_point, metadata_key] = *options;
-    EXPECT_EQ(entry_point, "Partition_0");
-
-    auto metadata = model->Get()->FindMetadata(metadata_key);
-    auto byte_code_info = ParseByteCodePlaceholder(*metadata);
-    auto [offset, size] = *byte_code_info;
-
-    EXPECT_EQ(serialized.StrView().substr(offset, size),
-              "Partition_0_with_1_muls:");
-  }
-}
-// NOLINTEND
 
 }  // namespace
 }  // namespace litert::tools

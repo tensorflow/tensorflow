@@ -40,6 +40,7 @@ load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
 load("//third_party/llvm:setup.bzl", "llvm_setup")
+load("//third_party/nanobind:workspace.bzl", nanobind = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
@@ -47,6 +48,7 @@ load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
 load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
+load("//third_party/robin_map:workspace.bzl", robin_map = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/shardy:workspace.bzl", shardy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
@@ -78,11 +80,13 @@ def _initialize_third_party():
     kissfft()
     libprotobuf_mutator()
     ml_dtypes()
+    nanobind()
     nasm()
     opencl_headers()
     pasta()
     pybind11_abseil()
     pybind11_bazel()
+    robin_map()
     ruy()
     shardy()
     sobol_data()
@@ -150,18 +154,18 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "fc5a15b1a19fb4d53da06ed2b1012da549c3bfb36a1bfa92e3e002dd33008cb0",
-        strip_prefix = "XNNPACK-cc7c00ae7a378908502f58472969bbb6f0e95a22",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/cc7c00ae7a378908502f58472969bbb6f0e95a22.zip"),
+        sha256 = "435a5360d1c30b5130270afff32b398b239713e97f1aa7ea1e0a02c6c5247e17",
+        strip_prefix = "XNNPACK-6a834a09c53765bea56b8aea9a644a90564fe3a5",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/6a834a09c53765bea56b8aea9a644a90564fe3a5.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "ad37707084a6d4ff41be10cbe8540c75bea057ba79d0de6c367c1bfac6ba0852",
-        strip_prefix = "kleidiai-40a926833857fb64786e02f97703e42b1537cb57",
-        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/40a926833857fb64786e02f97703e42b1537cb57/kleidiai-40a926833857fb64786e02f97703e42b1537cb57.zip"),
+        sha256 = "f3ea4fce53f3b31076958dbff229f0048dae15bf454929673c78292a56279d52",
+        strip_prefix = "kleidiai-847ebd19d0192528659b0a0fa2c6057eed674c6a",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/847ebd19d0192528659b0a0fa2c6057eed674c6a/kleidiai-847ebd19d0192528659b0a0fa2c6057eed674c6a.zip"),
     )
 
     tf_http_archive(
@@ -180,19 +184,19 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "cpuinfo",
-        sha256 = "52e0ffd7998d8cb3a927d8a6e1145763744d866d2be09c4eccea27fc157b6bb0",
-        strip_prefix = "cpuinfo-cebb0933058d7f181c979afd50601dc311e1bf8c",
+        sha256 = "4bf314b3f04db2fd984fef38a7e278e702b74297ef0af592b73296edba02b9d4",
+        strip_prefix = "cpuinfo-8a1772a0c5c447df2d18edf33ec4603a8c9c04a6",
         patch_file = ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/cebb0933058d7f181c979afd50601dc311e1bf8c.zip"),
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/8a1772a0c5c447df2d18edf33ec4603a8c9c04a6.zip"),
     )
 
     tf_http_archive(
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "5f77784dc3ccbca7aca5ea0b5a6e31b95aa85023c5942d22be5fa8dd6c339d81",
-        strip_prefix = "cudnn-frontend-1.8.0",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.8.0.zip"),
+        sha256 = "59fb63e273c845cb85996d536194a7e2b22012810983cbbf06c4a46b09d17a32",
+        strip_prefix = "cudnn-frontend-1.10.0",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.10.0.zip"),
     )
 
     tf_http_archive(
@@ -229,6 +233,10 @@ def _tf_repositories():
             "//third_party/mkl_dnn:onednn_acl_fp32_bf16_reorder.patch",
             "//third_party/mkl_dnn:onednn_acl_bf16_capability_detection_for_ubuntu20.04.patch",
             "//third_party/mkl_dnn:onednn_acl_indirect_conv.patch",
+            "//third_party/mkl_dnn:onednn_acl_allow_blocked_weight_format_for_matmul_primitive.patch",
+            "//third_party/mkl_dnn:onednn_acl_fix_segfault_during_postop_execute.patch",
+            "//third_party/mkl_dnn:onednn_acl_add_bf16_platform_support_check.patch",
+            "//third_party/mkl_dnn:onednn_acl_add_sbgemm_matmul_primitive_definition.patch",
         ],
         sha256 = "2f76b407ef8893cca71340f88cd800019a1f14f8ac1bbdbb89a84be1370b52e3",
         strip_prefix = "oneDNN-3.2.1",
@@ -240,6 +248,8 @@ def _tf_repositories():
         patch_file = [
             "//third_party/compute_library:compute_library.patch",
             "//third_party/compute_library:acl_thread_local_scheduler.patch",
+            "//third_party/compute_library:exclude_omp_scheduler.patch",
+            "//third_party/compute_library:include_string.patch",
         ],
         sha256 = "c4ca329a78da380163b2d86e91ba728349b6f0ee97d66e260a694ef37f0b0d93",
         strip_prefix = "ComputeLibrary-23.05.1",
@@ -393,15 +403,6 @@ def _tf_repositories():
             "//third_party/systemlibs:protobuf_deps.bzl": "protobuf_deps.bzl",
         },
         urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/v3.21.9.zip"),
-    )
-
-    tf_http_archive(
-        name = "nsync",
-        patch_file = ["//third_party:nsync.patch"],
-        sha256 = "1d63e967973733d2c97e841e3c05fac4d3fa299f01d14c86f2695594c7a4a2ec",
-        strip_prefix = "nsync-1.29.2",
-        system_build_file = "//third_party/systemlibs:nsync.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/nsync/archive/1.29.2.tar.gz"),
     )
 
     tf_http_archive(
@@ -645,14 +646,6 @@ def _tf_repositories():
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/neon2sse.cmake)
 
     tf_http_archive(
-        name = "double_conversion",
-        sha256 = "3dbcdf186ad092a8b71228a5962009b5c96abde9a315257a3452eb988414ea3b",
-        strip_prefix = "double-conversion-3.2.0",
-        system_build_file = "//third_party/systemlibs:double_conversion.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/double-conversion/archive/v3.2.0.tar.gz"),
-    )
-
-    tf_http_archive(
         name = "tflite_mobilenet_float",
         build_file = "//third_party:tflite_mobilenet_float.BUILD",
         sha256 = "2fadeabb9968ec6833bee903900dda6e61b3947200535874ce2fe42a8493abc0",
@@ -798,7 +791,6 @@ def _tf_repositories():
         sha256 = "c7ab64b1ccf9a678694a89035a8c865a693e4e872803778f91f0965c2f281d78",
         strip_prefix = "pybind11_protobuf-80f3440cd8fee124e077e2e47a8a17b78b451363",
         patch_file = [
-            "//third_party/pybind11_protobuf:protobuf.patch",
             "//third_party/pybind11_protobuf:remove_license.patch",
         ],
     )

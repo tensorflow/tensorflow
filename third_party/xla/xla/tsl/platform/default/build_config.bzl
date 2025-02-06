@@ -1,15 +1,15 @@
-# Platform-specific build configurations.
+"""Platform-specific build configurations."""
 
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
 load("@local_tsl//third_party/py/rules_pywrap:pywrap.bzl", "use_pywrap_rules")
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 load(
     "@local_xla//xla/tsl:tsl.bzl",
     "clean_dep",
     "if_not_windows",
     "if_tsl_link_protobuf",
 )
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 
 def well_known_proto_libs():
     """Set of standard protobuf protos, like Any and Timestamp.
@@ -31,8 +31,16 @@ def well_known_proto_libs():
         "@com_google_protobuf//:wrappers_proto",
     ]
 
-# Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):
+    """Appends a suffix to a list of deps.
+
+    Args:
+      deps: the list of deps which will be suffixed
+      suffix: the suffix to add
+
+    Returns:
+      The list of deps with the suffix applied.
+    """
     tf_deps = []
 
     # If the package name is in shorthand form (ie: does not contain a ':'),
@@ -44,7 +52,7 @@ def tf_deps(deps, suffix):
             dep_pieces = dep.split("/")
             tf_dep += ":" + dep_pieces[len(dep_pieces) - 1]
 
-        tf_deps += [tf_dep + suffix]
+        tf_deps.append(tf_dep + suffix)
 
     return tf_deps
 
@@ -259,7 +267,6 @@ def cc_proto_library(
         )
     else:
         header_only_name = name + "_headers_only"
-        header_only_deps = tf_deps(protolib_deps, "_cc_headers_only")
 
         if make_default_target_header_only:
             native.alias(
@@ -287,8 +294,9 @@ def cc_proto_library(
     if use_pywrap_rules():
         pass
     else:
+        header_only_deps = tf_deps(protolib_deps, "_cc_headers_only")
         native.cc_library(
-            name = header_only_name,
+            name = header_only_name,  # buildifier: disable=uninitialized
             deps = [
                 "@com_google_protobuf//:protobuf_headers",
             ] + header_only_deps + if_tsl_link_protobuf([impl_name]),
@@ -446,17 +454,18 @@ def py_proto_library(
 
 # TODO(b/356020232): cleanup non-use_pywrap_rules part and all logic reated to
 #                    protobuf header-only targets after migration is done
+# buildifier: disable=function-docstring
 def tf_proto_library_cc(
         name,
         srcs = [],
-        has_services = None,
+        has_services = None,  # @unused
         protodeps = [],
         visibility = None,
         testonly = 0,
         cc_libs = [],
         cc_grpc_version = None,
         use_grpc_namespace = False,
-        j2objc_api_version = 1,
+        j2objc_api_version = 1,  # @unused
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
@@ -470,7 +479,7 @@ def tf_proto_library_cc(
         testonly = testonly,
         visibility = visibility,
     )
-    _ignore = (create_service, create_java_proto, create_kotlin_proto)
+    _ = (create_service, create_java_proto, create_kotlin_proto)  # @unused
 
     use_grpc_plugin = None
     if cc_grpc_version:
@@ -552,6 +561,7 @@ def tf_proto_library_cc(
         local_defines = local_defines,
     )
 
+# buildifier: disable=function-docstring
 def tf_proto_library_py(
         name,
         srcs = [],
@@ -592,9 +602,12 @@ def tf_proto_library_py(
         deps = deps + py_deps + [clean_dep("@com_google_protobuf//:protobuf_python")],
     )
 
-def tf_jspb_proto_library(**kwargs):
+def tf_jspb_proto_library(**_kwargs):
     pass
 
+# buildifier: disable=function-docstring
+# buildifier: disable=function-docstring-args
+# buildifier: disable=function-docstring-return
 def tf_proto_library(
         name,
         srcs = [],
@@ -603,9 +616,9 @@ def tf_proto_library(
         visibility = None,
         testonly = 0,
         cc_libs = [],
-        cc_grpc_version = None,
+        cc_grpc_version = None,  # @unused
         use_grpc_namespace = False,
-        j2objc_api_version = 1,
+        j2objc_api_version = 1,  # @unused
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
@@ -621,7 +634,9 @@ def tf_proto_library(
     # TODO(b/145545130): Add docstring explaining what rules this creates and how
     # opensource projects importing TF in bazel can use them safely (i.e. w/o ODR or
     # ABI violations).
-    _ignore = (
+
+    # @unused
+    _ = (
         js_codegen,
         create_service,
         create_java_proto,
@@ -684,8 +699,6 @@ def tf_additional_lib_hdrs():
         clean_dep("//xla/tsl/platform/default:criticality.h"),
         clean_dep("//xla/tsl/platform/default:integral_types.h"),
         clean_dep("//xla/tsl/platform/default:logging.h"),
-        clean_dep("//xla/tsl/platform/default:mutex.h"),
-        clean_dep("//xla/tsl/platform/default:mutex_data.h"),
         clean_dep("//xla/tsl/platform/default:stacktrace.h"),
         clean_dep("//xla/tsl/platform/default:status.h"),
         clean_dep("//xla/tsl/platform/default:statusor.h"),
@@ -740,10 +753,7 @@ def tf_additional_lib_deps():
         "@com_google_absl//absl/base:base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
-    ] + if_static(
-        [clean_dep("@nsync//:nsync_cpp")],
-        [clean_dep("@nsync//:nsync_headers")],
-    )
+    ]
 
 def tf_additional_core_deps():
     return select({
@@ -762,7 +772,8 @@ def tf_lib_proto_parsing_deps():
         clean_dep("@local_xla//xla/tsl/protobuf:protos_all_cc"),
     ]
 
-def tf_py_clif_cc(name, visibility = None, **kwargs):
+def tf_py_clif_cc(name, visibility = None, **_kwargs):
+    _ = visibility  # @unused
     pass
 
 def tf_pyclif_proto_library(
@@ -770,7 +781,8 @@ def tf_pyclif_proto_library(
         proto_lib,
         proto_srcfile = "",
         visibility = None,
-        **kwargs):
+        **_kwargs):
+    _ = (proto_lib, proto_srcfile, visibility)  # @unused
     native.filegroup(name = name)
     native.filegroup(name = name + "_pb2")
 
@@ -867,8 +879,6 @@ def tf_resource_deps():
 def tf_portable_deps_no_runtime():
     return [
         "@eigen_archive//:eigen3",
-        "@double_conversion//:double-conversion",
-        "@nsync//:nsync_cpp",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
     ]

@@ -59,10 +59,10 @@ bool RegisterQuantizeFn(const QuantizeXlaFn& fn) {
 namespace {
 
 // Compiles the XLA computation into executable code.
-Status CompileXla(xla::CompileOnlyClient* client,
-                  const xla::XlaComputation& computation,
-                  const xla::cpu::CpuAotCompilationOptions& aot_opts,
-                  CompileResult* compile_result) {
+absl::Status CompileXla(xla::CompileOnlyClient* client,
+                        const xla::XlaComputation& computation,
+                        const xla::cpu::CpuAotCompilationOptions& aot_opts,
+                        CompileResult* compile_result) {
   // Retrieves arg and result layouts from the computation.
   // TODO(toddw): Should we let the user choose the major/minor ordering?
   absl::StatusOr<std::unique_ptr<xla::ProgramShape>> pshape_or =
@@ -105,8 +105,9 @@ Status CompileXla(xla::CompileOnlyClient* client,
 
 }  // namespace
 
-Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
-                    const MainFlags& flags, CompileResult* compile_result) {
+absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
+                          const MainFlags& flags,
+                          CompileResult* compile_result) {
   // Converts the graph into an XLA computation, and compiles the
   // computation.
   // TODO(toddw): Should we let the user pick the XLA cpu vs. gpu client?
@@ -116,14 +117,11 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform).value();
   xla::XlaComputation computation;
 
-  bool use_mlir_hlo_lowering = false;
   bool use_mlir_bridge = false;
   if (!flags.mlir_components.empty() && flags.mlir_components != "None") {
     for (auto component : absl::StrSplit(flags.mlir_components, ',')) {
       if (component == "Bridge") {
         use_mlir_bridge = true;
-      } else if (component == "HloLowering") {
-        use_mlir_hlo_lowering = true;
       } else {
         return errors::Unknown("Unknown mlir_component ", component);
       }
@@ -159,7 +157,6 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
       flags.target_triple, flags.target_cpu, flags.target_features,
       flags.entry_point,
       xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
-  aot_opts.set_use_mlir_hlo_lowering(use_mlir_hlo_lowering);
 
   if (flags.sanitize_dataflow) {
     aot_opts.set_sanitize_dataflow(flags.sanitize_dataflow);
@@ -170,7 +167,8 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   return CompileXla(client, computation, aot_opts, compile_result);
 }
 
-static Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
+static absl::Status ReadProtoFile(const string& fname,
+                                  protobuf::Message* proto) {
   if (absl::EndsWith(fname, ".pbtxt")) {
     return ReadTextProto(Env::Default(), fname, proto);
   } else {
@@ -243,7 +241,7 @@ static std::string InterpolateErrorMessage(std::string message) {
   return message;
 }
 
-Status Main(const MainFlags& flags) {
+absl::Status Main(const MainFlags& flags) {
   absl::call_once(targets_init, &InitializeTargets);
 
   // Process config.
@@ -270,7 +268,7 @@ Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
   CompileResult compile_result;
 
-  Status status =
+  absl::Status status =
       CompileGraph(std::move(graph_def), config, flags, &compile_result);
   if (!status.ok()) {
     return errors::CreateWithUpdatedMessage(

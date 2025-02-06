@@ -51,12 +51,12 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
@@ -120,7 +120,10 @@ class GemmAutotuner {
     deterministic_ops_ = RequireDeterminism(gemm->GetModule()->config());
     solutions_limit_ = debug_options.xla_gpu_autotune_max_solutions();
 
-    TF_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm));
+    TF_ASSIGN_OR_RETURN(auto gemm_config,
+                        GemmConfig::For(gemm, stream_->parent()
+                                                  ->GetDeviceDescription()
+                                                  .gpu_compute_capability()));
 
     // Don't run autotuning concurrently on the same GPU.
     absl::MutexLock gpu_lock(&GetGpuMutex(stream_->parent()));

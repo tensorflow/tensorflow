@@ -158,5 +158,5 @@ The flags from `XLA_FLAGS` are also supported, so the tool can be used to test
 running a single pass:
 
 ```
-$ hlo-opt --platform=CUDA --stage=hlo --xla-hlo-enable-passes-only=algebraic_simplifer input.hlo
+$ hlo-opt --platform=CUDA --stage=hlo --passes=algebraic_simplifer input.hlo
 ```

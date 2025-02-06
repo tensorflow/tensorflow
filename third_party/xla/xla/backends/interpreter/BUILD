@@ -1,8 +1,8 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
 )
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -39,10 +39,10 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms:cholesky_expander",
-        "//xla/hlo/transforms:dynamic_index_splitter",
-        "//xla/hlo/transforms:eigh_expander",
-        "//xla/hlo/transforms:qr_expander",
+        "//xla/hlo/transforms/expanders:cholesky_expander",
+        "//xla/hlo/transforms/expanders:dynamic_index_splitter",
+        "//xla/hlo/transforms/expanders:eigh_expander",
+        "//xla/hlo/transforms/expanders:qr_expander",
         "//xla/service:batchnorm_expander",
         "//xla/service:compiler",
         "//xla/service:computation_placer",
@@ -169,11 +169,13 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:event",
-        "//xla/stream_executor:host_memory_allocation",
+        "//xla/stream_executor:generic_memory_allocation",
+        "//xla/stream_executor:generic_memory_allocator",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_allocator",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_common",

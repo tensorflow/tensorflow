@@ -116,6 +116,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantizePass();
 
+std::unique_ptr<OperationPass<ModuleOp>> CreateLowerQuantAnnotationsPass();
+
 // Overloading of CreateQuantizePass which takes only necessary flags to reduce
 // the binary size.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(

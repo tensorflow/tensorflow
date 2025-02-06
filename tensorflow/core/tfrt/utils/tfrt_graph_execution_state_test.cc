@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/config.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -97,14 +97,15 @@ TEST_F(PruneGraphDefTest, ConstFeedWithInput) {
   CompareGraphs(expected, graphdef);
 }
 
-Status LessThanTenCond(const Scope& scope, const std::vector<Output>& inputs,
-                       Output* output) {
+absl::Status LessThanTenCond(const Scope& scope,
+                             const std::vector<Output>& inputs,
+                             Output* output) {
   *output = ops::Less(scope, inputs[0], 10);
   return scope.status();
 }
 
-Status AddOneBody(const Scope& scope, const std::vector<Output>& inputs,
-                  std::vector<Output>* outputs) {
+absl::Status AddOneBody(const Scope& scope, const std::vector<Output>& inputs,
+                        std::vector<Output>* outputs) {
   outputs->push_back(ops::AddN(scope, {inputs[0], 1}));
   return scope.status();
 }

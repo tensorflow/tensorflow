@@ -691,7 +691,7 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
       return ::tensorflow::errors::Unimplemented(
           "NewReadOnlyMemoryRegionFromFile unimplemented");
     }
-    const ::tensorflow::StringPiece sp = data_tensor_.tensor_data();
+    const absl::string_view sp = data_tensor_.tensor_data();
     *result = std::unique_ptr<::tensorflow::ReadOnlyMemoryRegion>(
         new TestReadOnlyMemoryRegion(sp.data(), sp.size()));
     return absl::OkStatus();

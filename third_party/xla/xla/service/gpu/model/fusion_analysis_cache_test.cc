@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"

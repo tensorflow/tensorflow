@@ -15,13 +15,9 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/hlo/transforms/simplifiers/broadcast_canonicalizer.h"
 
-#include <functional>
-#include <memory>
 #include <optional>
 
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 
 namespace xla {
 namespace {

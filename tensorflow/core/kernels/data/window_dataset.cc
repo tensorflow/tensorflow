@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {

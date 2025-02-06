@@ -24,7 +24,11 @@ VERSION=$1
 REQUIREMENTS=$2
 
 # Install Python packages for this container's version
-if [[ ${VERSION} == "python3.13" ]]; then
+if [[ ${VERSION} == "python3.13-nogil" ]]; then
+  cat >pythons.txt <<EOF
+$VERSION
+EOF
+elif [[ ${VERSION} == "python3.13" || ${VERSION} == "python3.12" ]]; then
   cat >pythons.txt <<EOF
 $VERSION
 $VERSION-dev
@@ -65,4 +69,6 @@ wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 
 /usr/bin/$VERSION -m pip install -U setuptools
 
 # Disable the cache dir to save image space, and install packages
-/usr/bin/$VERSION -m pip install --no-cache-dir -r $REQUIREMENTS -U
+if [[ ${VERSION} != "python3.13-nogil" ]]; then
+  /usr/bin/$VERSION -m pip install --no-cache-dir -r $REQUIREMENTS -U
+fi

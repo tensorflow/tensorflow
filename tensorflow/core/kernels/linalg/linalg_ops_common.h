@@ -19,6 +19,7 @@ limitations under the License.
 // module. Supports batch computation on several matrices at once, sharding the
 // computations across different threads if necessary.
 #include <algorithm>
+#include <cstdint>
 
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"

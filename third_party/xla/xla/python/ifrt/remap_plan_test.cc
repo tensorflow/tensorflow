@@ -23,6 +23,8 @@ limitations under the License.
 #include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
+#include "xla/layout_util.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
@@ -30,13 +32,14 @@ limitations under the License.
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -124,7 +127,7 @@ TEST_P(RemapPlanTest, ToFromProto) {
   }
 }
 
-TEST_P(RemapPlanTest, InvalidInputDtype) {
+TEST_P(RemapPlanTest, EmptyMappings) {
   RemapPlan plan;
   plan.input_specs.push_back(
       ArraySpec{/*dtype=*/DType(DType::kS32),
@@ -142,7 +145,45 @@ TEST_P(RemapPlanTest, InvalidInputDtype) {
                                              /*shard_shape=*/Shape({2, 3}))});
   EXPECT_THAT(plan.Validate(),
               StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Input must have the same dtype")));
+                       HasSubstr("Must have at least one mapping")));
+}
+
+TEST_P(RemapPlanTest, MixedDtype) {
+  RemapPlan plan;
+
+  ArraySpec array_spec_s32{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3}))};
+  ArraySpec array_spec_f32{
+      /*dtype=*/DType(DType::kF32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3}))};
+
+  plan.input_specs.push_back(array_spec_s32);
+  plan.input_specs.push_back(array_spec_f32);
+  plan.output_specs.push_back(array_spec_f32);
+  plan.output_specs.push_back(array_spec_s32);
+
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/0,
+                         /*out_array=*/1,
+                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/1,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+
+  TF_EXPECT_OK(plan.Validate());
 }
 
 TEST_P(RemapPlanTest, InvalidOutputDtype) {
@@ -161,9 +202,89 @@ TEST_P(RemapPlanTest, InvalidOutputDtype) {
                 ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
                                              /*shape=*/Shape({2, 3}),
                                              /*shard_shape=*/Shape({2, 3}))});
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/0,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
   EXPECT_THAT(plan.Validate(),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Input and output must have the same dtype")));
+}
+
+TEST_P(RemapPlanTest, InvalidOutputDtypeFromMixedInputDtypes) {
+  RemapPlan plan;
+  ArraySpec array_spec_s32{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({4, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                   /*shape=*/Shape({4, 3}),
+                                   /*shard_shape=*/Shape({2, 3}))};
+  ArraySpec array_spec_f32{
+      /*dtype=*/DType(DType::kF32),
+      /*shape=*/Shape({4, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind(),
+                                   /*shape=*/Shape({4, 3}),
+                                   /*shard_shape=*/Shape({2, 3}))};
+  plan.input_specs.push_back(array_spec_s32);
+  plan.input_specs.push_back(array_spec_f32);
+  plan.output_specs.push_back(array_spec_f32);
+
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/0,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/1,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{1, 2, 1}},
+                         /*to=*/{RemapPlan::Interval{1, 2, 1}}});
+
+  EXPECT_THAT(plan.Validate(),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Input and output must have the same dtype")));
+}
+
+TEST_P(RemapPlanTest, InvalidLayout) {
+  RemapPlan plan;
+  plan.input_specs.push_back(ArraySpec{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/
+      std::make_shared<xla::PjRtLayout>(
+          xla::LayoutUtil::MakeDescendingLayout(2)),
+  });
+  plan.output_specs.push_back(ArraySpec{
+      /*dtype=*/DType(DType::kS32),
+      /*shape=*/Shape({2, 3}),
+      /*sharding=*/
+      ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
+                                   /*shape=*/Shape({2, 3}),
+                                   /*shard_shape=*/Shape({2, 3})),
+      /*layout=*/
+      std::make_shared<xla::PjRtLayout>(
+          xla::LayoutUtil::MakeAscendingLayout(2)),  // layout differs
+  });
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->push_back(
+      RemapPlan::Mapping{/*in_array=*/0,
+                         /*out_array=*/0,
+                         /*from=*/{RemapPlan::Interval{0, 1, 1}},
+                         /*to=*/{RemapPlan::Interval{0, 1, 1}}});
+  EXPECT_THAT(
+      plan.Validate(),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Input and output must have the same layout")));
 }
 
 TEST_P(RemapPlanTest, InvalidInputArrayIndex) {

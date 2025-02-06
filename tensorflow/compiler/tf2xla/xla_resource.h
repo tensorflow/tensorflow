@@ -107,7 +107,7 @@ class XlaResource {
 
   // Sets the current value of the resource. Returns an error if the type is not
   // set to a valid value.
-  absl::Status SetValue(const xla::XlaOp& value);
+  absl::Status SetValue(xla::XlaOp value);
 
   // Sets the current value of the resource to an all-zero value.
   absl::Status SetZeroValue(xla::XlaBuilder* builder);
@@ -139,7 +139,7 @@ class XlaResource {
   // values.
   // Opposite of Pack().
   absl::Status SetFromPack(const std::set<string>& gradient_sources,
-                           const xla::XlaOp& pack, xla::XlaBuilder* builder);
+                           xla::XlaOp pack, xla::XlaBuilder* builder);
 
   bool IsOverwritten() { return is_overwritten_; }
 

@@ -20,9 +20,9 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Sets the device field of ops in the graph.
-Status SetDevice(const GraphDef& input_graph_def,
-                 const TransformFuncContext& context,
-                 GraphDef* output_graph_def) {
+absl::Status SetDevice(const GraphDef& input_graph_def,
+                       const TransformFuncContext& context,
+                       GraphDef* output_graph_def) {
   string new_device;
   TF_RETURN_IF_ERROR(context.GetOneStringParameter("device", "", &new_device));
   bool if_default;
@@ -38,7 +38,7 @@ Status SetDevice(const GraphDef& input_graph_def,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("set_device", SetDevice);

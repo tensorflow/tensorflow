@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
+#include "absl/types/span.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -102,7 +103,8 @@ class FakeDeviceManager : public DeviceMgr {
   }
   std::string DebugString() const override { return ""; }
   std::string DeviceMappingString() const override { return ""; }
-  absl::Status LookupDevice(StringPiece name, Device** device) const override {
+  absl::Status LookupDevice(absl::string_view name,
+                            Device** device) const override {
     *device = fake_device_.get();
     return absl::OkStatus();
   }

@@ -31,12 +31,15 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
@@ -54,6 +57,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -63,7 +67,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -79,7 +82,7 @@ uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
 }
 }  // namespace
 
-absl::StatusOr<std::string> Tf2HloArg::Key() {
+absl::StatusOr<uint64_t> Tf2HloArg::Fingerprint() const {
   uint64_t fingerprint = tsl::Fingerprint64(platform_name);
   if (topology) {
     TF_ASSIGN_OR_RETURN(std::string serialized_topology, topology->Serialize());
@@ -114,7 +117,7 @@ absl::StatusOr<std::string> Tf2HloArg::Key() {
   }
   fingerprint = tsl::FingerprintCat64(
       fingerprint, tsl::Fingerprint64(serialized_compile_metadata));
-  return absl::StrCat(absl::Hex(fingerprint));
+  return fingerprint;
 }
 
 Tf2HLOResultProto Tf2HloResult::ToProto() const {
@@ -232,6 +235,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
 
 
   std::vector<TensorShape> arg_shapes;
+  arg_shapes.reserve(arg.input_dtypes_and_shapes.size());
   for (const auto& input : arg.input_dtypes_and_shapes) {
     arg_shapes.push_back(input.shape);
   }
@@ -267,6 +271,15 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   result.host_compute_metadata = compilation_result.host_compute_metadata;
 
   return result;
+}
+
+absl::StatusOr<Tf2HloResult> TfToHloCompiler::CompileTfToHlo(Tf2HloArg& arg) {
+  return tensorflow::ifrt_serving::CompileTfToHlo(arg);
+}
+
+absl::StatusOr<std::string> TfToHloCompiler::Key(const Tf2HloArg& arg) {
+  TF_ASSIGN_OR_RETURN(uint64_t fingerprint, arg.Fingerprint());
+  return absl::StrCat(absl::Hex(fingerprint));
 }
 
 }  // namespace ifrt_serving

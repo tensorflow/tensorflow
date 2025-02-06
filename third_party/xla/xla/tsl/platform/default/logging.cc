@@ -15,13 +15,20 @@ limitations under the License.
 
 #include "xla/tsl/platform/default/logging.h"
 
+#include <cstdint>
+#include <limits>
+
 // TODO(b/142492876): Avoid depending on absl internal.
 #include "absl/base/internal/cycleclock.h"
 #include "absl/base/internal/sysinfo.h"
 #include "absl/base/log_severity.h"
+#include "absl/base/optimization.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "tsl/platform/env_time.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/env_time.h"
+#include "xla/tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
 
 #if defined(PLATFORM_POSIX_ANDROID)
@@ -93,7 +100,7 @@ class TFLogSinks {
 TFLogSinks::TFLogSinks() {
 #ifndef NO_DEFAULT_LOGGER
   static TFDefaultLogSink* default_sink = new TFDefaultLogSink();
-  sinks_.emplace_back(default_sink);
+  sinks_.push_back(default_sink);
 #endif
 }
 
@@ -106,7 +113,7 @@ void TFLogSinks::Add(TFLogSink* sink) {
   assert(sink != nullptr && "The sink must not be a nullptr");
 
   tsl::mutex_lock lock(mutex_);
-  sinks_.emplace_back(sink);
+  sinks_.push_back(sink);
 
   // If this is the only sink log all the queued up messages to this sink
   if (sinks_.size() == 1) {
@@ -200,14 +207,11 @@ VlogFileMgr::~VlogFileMgr() {
 
 FILE* VlogFileMgr::FilePtr() const { return vlog_file_ptr; }
 
-int ParseInteger(const char* str, size_t size) {
-  // Ideally we would use env_var / safe_strto64, but it is
-  // hard to use here without pulling in a lot of dependencies,
-  // so we use std:istringstream instead
-  string integer_str(str, size);
-  std::istringstream ss(integer_str);
-  int level = 0;
-  ss >> level;
+int ParseInteger(absl::string_view str) {
+  int level;
+  if (!absl::SimpleAtoi(str, &level)) {
+    return 0;
+  }
   return level;
 }
 
@@ -216,35 +220,10 @@ int64_t LogLevelStrToInt(const char* tf_env_var_val) {
   if (tf_env_var_val == nullptr) {
     return 0;
   }
-  return ParseInteger(tf_env_var_val, strlen(tf_env_var_val));
+  return ParseInteger(tf_env_var_val);
 }
 
-// Using StringPiece breaks Windows build.
-struct StringData {
-  struct Hasher {
-    size_t operator()(const StringData& sdata) const {
-      // For dependency reasons, we cannot use hash.h here. Use DBJHash instead.
-      size_t hash = 5381;
-      const char* data = sdata.data;
-      for (const char* top = data + sdata.size; data < top; ++data) {
-        hash = ((hash << 5) + hash) + (*data);
-      }
-      return hash;
-    }
-  };
-
-  StringData() = default;
-  StringData(const char* data, size_t size) : data(data), size(size) {}
-
-  bool operator==(const StringData& rhs) const {
-    return size == rhs.size && memcmp(data, rhs.data, size) == 0;
-  }
-
-  const char* data = nullptr;
-  size_t size = 0;
-};
-
-using VmoduleMap = std::unordered_map<StringData, int, StringData::Hasher>;
+using VmoduleMap = absl::flat_hash_map<absl::string_view, int>;
 
 // Returns a mapping from module name to VLOG level, derived from the
 // TF_CPP_VMODULE environment variable; ownership is transferred to the caller.
@@ -261,36 +240,31 @@ VmoduleMap* VmodulesMapFromEnv() {
   // setenv() calls. And since we keep references to it in the VmoduleMap in
   // form of StringData objects, make a copy of it.
   const char* env_data = strdup(env);
+  absl::string_view env_view(env_data);
   VmoduleMap* result = new VmoduleMap();
-  while (true) {
-    const char* eq = strchr(env_data, '=');
-    if (eq == nullptr) {
+  while (!env_view.empty()) {
+    size_t eq_pos = env_view.find('=');
+    if (eq_pos == absl::string_view::npos) {
       break;
     }
-    const char* after_eq = eq + 1;
+    absl::string_view module_name = env_view.substr(0, eq_pos);
+    env_view.remove_prefix(eq_pos + 1);
 
     // Comma either points at the next comma delimiter, or at a null terminator.
     // We check that the integer we parse ends at this delimiter.
-    const char* comma = strchr(after_eq, ',');
-    const char* new_env_data;
-    if (comma == nullptr) {
-      comma = strchr(after_eq, '\0');
-      new_env_data = comma;
-    } else {
-      new_env_data = comma + 1;
+    size_t level_end_pos = env_view.find(',');
+    absl::string_view level_str = env_view.substr(0, level_end_pos);
+    (*result)[module_name] = ParseInteger(level_str);
+    if (level_end_pos != absl::string_view::npos) {
+      env_view.remove_prefix(level_end_pos + 1);
     }
-    (*result)[StringData(env_data, eq - env_data)] =
-        ParseInteger(after_eq, comma - after_eq);
-    env_data = new_env_data;
   }
   return result;
 }
 
 bool EmitThreadIdFromEnv() {
   const char* tf_env_var_val = getenv("TF_CPP_LOG_THREAD_ID");
-  return tf_env_var_val == nullptr
-             ? false
-             : ParseInteger(tf_env_var_val, strlen(tf_env_var_val)) != 0;
+  return tf_env_var_val == nullptr ? false : ParseInteger(tf_env_var_val) != 0;
 }
 
 }  // namespace
@@ -357,15 +331,18 @@ bool LogMessage::VmoduleActivated(const char* fname, int level) {
     return true;
   }
   static VmoduleMap* vmodules = VmodulesMapFromEnv();
-  if (TF_PREDICT_TRUE(vmodules == nullptr)) {
+  if (ABSL_PREDICT_TRUE(vmodules == nullptr)) {
     return false;
   }
-  const char* last_slash = strrchr(fname, '/');
-  const char* module_start = last_slash == nullptr ? fname : last_slash + 1;
-  const char* dot_after = strchr(module_start, '.');
-  const char* module_limit =
-      dot_after == nullptr ? strchr(fname, '\0') : dot_after;
-  StringData module(module_start, module_limit - module_start);
+  absl::string_view module(fname);
+  if (size_t last_slash = module.rfind('/');
+      last_slash != absl::string_view::npos) {
+    module.remove_prefix(last_slash + 1);
+  }
+  if (size_t dot_after = module.find('.');
+      dot_after != absl::string_view::npos) {
+    module.remove_suffix(module.size() - dot_after);
+  }
   auto it = vmodules->find(module);
   return it != vmodules->end() && it->second >= level;
 }
@@ -411,12 +388,10 @@ void MakeCheckOpValueString(std::ostream* os, const unsigned char& v) {
   }
 }
 
-#if LANG_CXX11
 template <>
 void MakeCheckOpValueString(std::ostream* os, const std::nullptr_t& v) {
   (*os) << "nullptr";
 }
-#endif
 
 CheckOpMessageBuilder::CheckOpMessageBuilder(const char* exprtext)
     : stream_(new std::ostringstream) {
@@ -536,18 +511,25 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
 #else   // PLATFORM_POSIX_ANDROID
   static const internal::VlogFileMgr vlog_file;
   static bool log_thread_id = internal::EmitThreadIdFromEnv();
-  uint64 now_micros = EnvTime::NowMicros();
+  uint64_t now_micros = EnvTime::NowMicros();
   time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
-  int32_t micros_remainder = static_cast<int32>(now_micros % 1000000);
+  int32_t micros_remainder = static_cast<int32_t>(now_micros % 1000000);
   const size_t time_buffer_size = 30;
   char time_buffer[time_buffer_size];
-  strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S",
-           localtime(&now_seconds));
-  const size_t tid_buffer_size = 10;
-  char tid_buffer[tid_buffer_size] = "";
+  struct tm* tp;
+#if defined(__linux__) || defined(__APPLE__)
+  struct tm now_tm;
+  tp = localtime_r(&now_seconds, &now_tm);
+#else
+  tp = localtime(&now_seconds);  // NOLINT(runtime/threadsafe_fn)
+#endif
+  strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S", tp);
+  uint64_t tid = absl::base_internal::GetTID();
+  constexpr size_t kTidBufferSize =
+      (1 + std::numeric_limits<uint64_t>::digits10 + 1);
+  char tid_buffer[kTidBufferSize] = "";
   if (log_thread_id) {
-    snprintf(tid_buffer, sizeof(tid_buffer), " %7u",
-             absl::base_internal::GetTID());
+    absl::SNPrintF(tid_buffer, sizeof(tid_buffer), " %7u", tid);
   }
 
   char sev;
@@ -574,9 +556,9 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
       break;
   }
 
-  fprintf(vlog_file.FilePtr(), "%s.%06d: %c%s %s:%d] %s\n", time_buffer,
-          micros_remainder, sev, tid_buffer, entry.FName().c_str(),
-          entry.Line(), entry.ToString().c_str());
+  absl::FPrintF(vlog_file.FilePtr(), "%s.%06d: %c%s %s:%d] %s\n", time_buffer,
+                micros_remainder, sev, tid_buffer, entry.FName().c_str(),
+                entry.Line(), entry.ToString().c_str());
   fflush(vlog_file.FilePtr());  // Ensure logs are written immediately.
 #endif  // PLATFORM_POSIX_ANDROID
 }

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/literal_util.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/shape.h"
 #include "xla/tests/hlo_test_base.h"
@@ -933,6 +934,98 @@ ENTRY main {
                           CpuInstructionFusion().Run(module.get()));
   EXPECT_TRUE(fused_something);
   EXPECT_THAT(module->entry_computation()->root_instruction(), op::Fusion());
+}
+
+TEST_F(OpcodeFusionTest, BigConstantNotInFusion) {
+  absl::string_view module_string = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[1000,1000]{1,0} parameter(0)
+  b = f32[1000,1000]{1,0} constant({...})
+  a_plus_b = f32[1000,1000]{1,0} add(a, b)
+  c = f32[1000,1000]{1,0} constant({...})
+  ROOT result = f32[1000,1000]{1,0} add(a_plus_b, c)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_string));
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(), {HloOpcode::kParameter, HloOpcode::kParameter,
+                     HloOpcode::kParameter, HloOpcode::kAdd, HloOpcode::kAdd});
+}
+
+TEST_F(OpcodeFusionTest, SmallConstantInFusion) {
+  absl::string_view module_string = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[10,10]{1,0} parameter(0)
+  b = f32[10,10]{1,0} constant({...})
+  a_plus_b = f32[10,10]{1,0} add(a, b)
+  c = f32[10,10]{1,0} constant({...})
+  ROOT result = f32[10,10]{1,0} add(a_plus_b, c)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_string));
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(), {HloOpcode::kParameter, HloOpcode::kConstant,
+                     HloOpcode::kConstant, HloOpcode::kAdd, HloOpcode::kAdd});
+}
+
+TEST_F(InstructionFusionTest, SkipCustomFusions) {
+  absl::string_view module_string = R"(
+HloModule module
+
+%fused_computation (param_0: f32[10,10], param_1: f32[10,10]) -> f32[10,10] {
+  %param_0 = f32[10,10]{1,0} parameter(0)
+  %param_1 = f32[10,10]{1,0} parameter(1)
+  %add = f32[10,10]{1,0} add(f32[10,10]{1,0} %param_0, f32[10,10]{1,0} %param_1)
+  %subtract = f32[10,10]{1,0} subtract(f32[10,10]{1,0} %param_0, f32[10,10]{1,0} %param_1)
+  ROOT %multiply = f32[10,10]{1,0} multiply(f32[10,10]{1,0} %add, f32[10,10]{1,0} %subtract)
+}
+
+ENTRY %main (Arg_0: f32[10,10], Arg_1: f32[10,10]) -> f32[10,10] {
+  %Arg_0 = f32[10,10]{1,0} parameter(0), metadata={op_name="x"}
+  %Arg_1 = f32[10,10]{1,0} parameter(1), metadata={op_name="y"}
+  ROOT %subtract_multiply_fusion = f32[10,10]{1,0} fusion(f32[10,10]{1,0} %Arg_0, f32[10,10]{1,0} %Arg_1), kind=kCustom, calls=%fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          CpuInstructionFusion().Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(InstructionFusionTest, SkipComputationsAttachedToCustomCalls) {
+  absl::string_view module_string = R"(
+HloModule module
+
+%custom_computation (param_0: f32[10,10], param_1: f32[10,10]) -> f32[10,10] {
+  %param_0 = f32[10,10]{1,0} parameter(0)
+  %param_1 = f32[10,10]{1,0} parameter(1)
+  %add = f32[10,10]{1,0} add(f32[10,10]{1,0} %param_0, f32[10,10]{1,0} %param_1)
+  %subtract = f32[10,10]{1,0} subtract(f32[10,10]{1,0} %param_0, f32[10,10]{1,0} %param_1)
+  ROOT %multiply = f32[10,10]{1,0} multiply(f32[10,10]{1,0} %add, f32[10,10]{1,0} %subtract)
+}
+
+ENTRY %main (Arg_0: f32[10,10], Arg_1: f32[10,10]) -> f32[10,10] {
+  %Arg_0 = f32[10,10]{1,0} parameter(0), metadata={op_name="x"}
+  %Arg_1 = f32[10,10]{1,0} parameter(1), metadata={op_name="y"}
+  ROOT %custom_call = f32[10,10]{1,0} custom-call(f32[10,10]{1,0} %Arg_0, f32[10,10]{1,0} %Arg_1), custom_call_target="target", called_computations={%custom_computation}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          CpuInstructionFusion().Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

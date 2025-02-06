@@ -30,10 +30,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
 
 namespace tsl {
 class Env;
@@ -77,6 +77,8 @@ class CoordinationServiceInterface {
   using StatusOrValueCallback =
       std::function<void(const absl::StatusOr<std::string_view>&)>;
   using BarrierCallback = std::function<void(const absl::Status&, int64_t)>;
+  using GetAliveTasksCallback = std::function<void(
+      const absl::Status&, const std::vector<tensorflow::CoordinatedTask>&)>;
 
   virtual ~CoordinationServiceInterface() = default;
 
@@ -99,14 +101,7 @@ class CoordinationServiceInterface {
       return nullptr;
     }
     auto service = factories_iter->second(env, config, std::move(cache));
-    if (service != nullptr) {
-      *GetCoordinationServiceInstancePtr() = service.get();
-    }
     return service;
-  }
-
-  static CoordinationServiceInterface* GetCoordinationServiceInstance() {
-    return *GetCoordinationServiceInstancePtr();
   }
 
   // This function is invoked after each task's local devices are appended in a
@@ -250,6 +245,40 @@ class CoordinationServiceInterface {
       std::string barrier_id, int64_t counter,
       const tensorflow::CoordinatedTask& task) = 0;
 
+  // Returns the set of currently alive tasks. More specifically, given a set of
+  // tasks T, GetAliveTasks(T) returns the subset T of alive tasks. Note that
+  // `tasks` must include `requesting_task`.
+  //
+  // # Barrier Semantics
+  //
+  // If multiple tasks call GetAliveTasks concurrently, it's important that they
+  // all agree on which tasks are alive. Otherwise, the tasks' behavior might
+  // diverge. For example, imagine a set of tasks trying to run an AllGather,
+  // but they all disagree on which tasks should be participating in the
+  // AllGather. This is buggy.
+  //
+  // To ensure that every task agrees on which tasks are alive, the
+  // GetAliveTasks RPC has barrier-like semantics. Consider an invocation
+  // GetAliveTasks(T) for a set of tasks T. The invocation acts as a barrier,
+  // waiting for every task in T to call GetAliveTasks(T). Afterwards,
+  // GetAliveTasks returns the same set of alive tasks A to all the tasks in T.
+  // This ensures that every task agrees which tasks are alive.
+  //
+  // One small correction. GetAliveTasks doesn't act as a barrier for *every*
+  // task in T. Some tasks in T might have failed, so we should not wait for
+  // them. Instead, the GetAliveTasks RPC waits only for the returned tasks A.
+  //
+  // # An Example
+  //
+  // Imagine we have four tasks: A, B, C, and D. Further imagine that task D
+  // has failed and that every task calls GetAliveTasks([A, B, C, D]). The
+  // invocation will return tasks [A, B, C]. The GetAliveTasks call acts as a
+  // barrier across tasks A, B, and C. Task D, which failed, is ignored.
+  virtual void GetAliveTasksAsync(
+      const tensorflow::CoordinatedTask& requesting_task,
+      const std::vector<tensorflow::CoordinatedTask>& tasks,
+      GetAliveTasksCallback done) = 0;
+
   // Gets error from the coordination service. Block until the service
   // returns an error or the task/service is shutdown. This should never be used
   // when there is service to client connection (i.e. `CoordinationClientCache`
@@ -277,11 +306,6 @@ class CoordinationServiceInterface {
     static auto* coordination_service_factories =
         new std::unordered_map<std::string, CoordinationServiceFactory>();
     return coordination_service_factories;
-  }
-
-  static CoordinationServiceInterface** GetCoordinationServiceInstancePtr() {
-    static CoordinationServiceInterface* instance = nullptr;
-    return &instance;
   }
 };
 

@@ -15,27 +15,37 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/tests/filecheck.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 using ::testing::HasSubstr;
-using CollectivePermuteCycleDecomposerTest = HloTestBase;
+
 using Decomposer = CollectivePermuteCycleDecomposer;
+
+struct Decomposed {
+  std::string cp_name;
+  HloCollectivePermuteInstruction* cp_fwd;
+  HloCollectivePermuteInstruction* cp_bwd;
+};
 
 HloPrintOptions PrintOptions() {
   HloPrintOptions options;
@@ -43,6 +53,22 @@ HloPrintOptions PrintOptions() {
   options.set_include_layout_in_shapes(false);
   return options;
 }
+
+class CollectivePermuteCycleDecomposerTest
+    : public HloHardwareIndependentTestBase {
+ protected:
+  Decomposed FindComponents(HloModule* module, absl::string_view cp_name) {
+    Decomposed result;
+    result.cp_name = cp_name;
+    result.cp_fwd = static_cast<HloCollectivePermuteInstruction*>(
+        FindInstruction(module, absl::StrCat(cp_name, "-fwd")));
+    result.cp_bwd = static_cast<HloCollectivePermuteInstruction*>(
+        FindInstruction(module, absl::StrCat(cp_name, "-bwd")));
+    CHECK(result.cp_fwd != nullptr) << cp_name;
+    CHECK(result.cp_bwd != nullptr) << cp_name;
+    return result;
+  }
+};
 
 TEST_F(CollectivePermuteCycleDecomposerTest, NoCycle_NotTransformed) {
   absl::string_view kHlo = R"(
@@ -53,7 +79,6 @@ TEST_F(CollectivePermuteCycleDecomposerTest, NoCycle_NotTransformed) {
         source_target_pairs={{0,0}}
     }
   )";
-
   TF_ASSERT_OK(RunAndCheckHloRewrite(kHlo, Decomposer(0), false));
 }
 
@@ -91,7 +116,7 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycle) {
         metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           RunAndCheckHloRewrite(hlo, Decomposer(0), true));
   EXPECT_TRUE(*RunFileCheck(module->ToString(PrintOptions()), R"(
     // CHECK:     ENTRY %test_computation (p: u32[8,8]) -> u32[8,8] {
@@ -106,7 +131,7 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycle) {
     // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=2,
     // CHECK-SAME{LITERAL}: source_target_pairs={{0,1},{1,2},{2,3}}, frontend_attributes={_xla_send_recv_validation={{0,7},{1,8},{2,9}}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
 
-    // CHECK-DAG:   ROOT %select = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
+    // CHECK-DAG:   ROOT %{{.+}} = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
     // CHECK-DAG: }
   )"));
 }
@@ -124,7 +149,7 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleNoChannel) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           RunAndCheckHloRewrite(hlo, Decomposer(0), true));
   EXPECT_TRUE(*RunFileCheck(module->ToString(PrintOptions()), R"(
     // CHECK:     ENTRY %test_computation (p: u32[8,8]) -> u32[8,8] {
@@ -139,7 +164,40 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleNoChannel) {
     // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), source_target_pairs=
     // CHECK-SAME{LITERAL}: {{0,1},{1,2},{2,3}}
 
-    // CHECK-DAG:   ROOT %select = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
+    // CHECK-DAG:   ROOT %{{.+}} = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
+    // CHECK-DAG: }
+  )"));
+}
+
+TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleMultipleCycles) {
+  // For a forward cycle, this checks:
+  // 1. Split collectives should not have channel-id
+  // 2. Split collectives are combined based on replica-id.
+  absl::string_view hlo = R"(
+    HloModule test
+    ENTRY test_computation {
+      p = u32[8,8] parameter(0)
+      ROOT start = u32[8,8] collective-permute(p),
+        source_target_pairs={{0,2},{2,4},{4,6},{6,0},{1,3},{3,5},{5,7},{7,1}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          RunAndCheckHloRewrite(hlo, Decomposer(0), true));
+  EXPECT_TRUE(*RunFileCheck(module->ToString(PrintOptions()), R"(
+    // CHECK:     ENTRY %test_computation (p: u32[8,8]) -> u32[8,8] {
+    // CHECK-DAG:   %[[replica_id:.+]] = u32[] replica-id()
+    // CHECK-DAG:   %[[c1:.+]] = u32[] constant(1)
+    // CHECK-DAG:   %[[compare:.+]] = pred[] compare(%[[replica_id]], %[[c1]]), direction=EQ
+    // CHECK-DAG:   %{{.+}} = u32[8,8] parameter(0)
+
+    // CHECK-DAG:   %[[cp1:.+]] = u32[8,8] collective-permute(%{{.+}}), source_target_pairs=
+    // CHECK-SAME{LITERAL}: {{6,0},{7,1}}
+
+    // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), source_target_pairs=
+    // CHECK-SAME{LITERAL}: {{0,2},{2,4},{4,6},{1,3},{3,5},{5,7}}
+
+    // CHECK-DAG:   ROOT %{{.+}} = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
     // CHECK-DAG: }
   )"));
 }
@@ -178,19 +236,16 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleWithMatmul) {
     while_res = (u32[], f32[2,2], f32[2,2]) while(input), condition=while_cond, body=while_body
     ROOT data_out = f32[2,2] get-tuple-element(while_res), index=1
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           RunAndCheckHloRewrite(hlo, Decomposer(0), true));
-  HloCollectivePermuteInstruction* cp1 =
-      DynCast<HloCollectivePermuteInstruction>(
-          FindInstruction(module.get(), "cp.backward"));
-  HloCollectivePermuteInstruction* cp2 =
-      DynCast<HloCollectivePermuteInstruction>(
-          FindInstruction(module.get(), "cp.forward"));
-  EXPECT_THAT(cp1->ToString(), HasSubstr("source_target_pairs={{3,0}}"));
-  EXPECT_THAT(cp1->ToString(), HasSubstr("_xla_send_recv_validation={{3,10}}"));
-  EXPECT_THAT(cp2->ToString(),
+  Decomposed deco = FindComponents(module.get(), "cp");
+  EXPECT_THAT(deco.cp_bwd->ToString(),
+              HasSubstr("source_target_pairs={{3,0}}"));
+  EXPECT_THAT(deco.cp_bwd->ToString(),
+              HasSubstr("_xla_send_recv_validation={{3,10}}"));
+  EXPECT_THAT(deco.cp_fwd->ToString(),
               HasSubstr("source_target_pairs={{0,1},{1,2},{2,3}}"));
-  EXPECT_THAT(cp2->ToString(),
+  EXPECT_THAT(deco.cp_fwd->ToString(),
               HasSubstr("_xla_send_recv_validation={{0,7},{1,8},{2,9}}"));
 }
 
@@ -257,7 +312,7 @@ TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycleNoChannel) {
     // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), source_target_pairs=
     // CHECK-SAME{LITERAL}: {{1,0},{2,1},{3,2}}, frontend_attributes={_xla_send_recv_validation={{1,8},{2,9},{3,10}}}
 
-    // CHECK-DAG:   ROOT %select = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
+    // CHECK-DAG:   ROOT %{{.+}} = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
     // CHECK-DAG: }
   )"));
 }

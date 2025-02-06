@@ -16,12 +16,9 @@ limitations under the License.
 #include "xla/hlo/transforms/host_offload_legalize.h"
 
 #include <cstdint>
-#include <stack>
 #include <string>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -29,9 +26,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -554,6 +551,36 @@ ENTRY main {
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(custom_call->users()[0]->shape().layout(),
             LayoutUtil::MakeLayout({3, 1, 2, 0}, {}, {}, {},
+                                   {Tile{{8, 128}}, Tile{{2, 1}}}));
+}
+
+TEST_F(HostOffloadLegalizeTest, MoveCopyOverBitcast_2) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(bf16[1,16384,4,256]{3,2,1,0:T(4,128)(2,1)S(5)})->bf16[1,1,16384,4,256]{4,3,1,2,0:T(8,128)(2,1)}}
+
+ENTRY main {
+  param = bf16[1,16384,4,256]{3,2,1,0:T(4,128)(2,1)} parameter(0)
+  copy = bf16[1,16384,4,256]{2,3,1,0:T(8,128)(2,1)} copy(param)
+  bitcast = bf16[1,1,16384,4,256]{4,3,1,2,0:T(8,128)(2,1)} bitcast(copy)
+  custom-call = bf16[1,1,16384,4,256]{4,3,1,2,0:T(8,128)(2,1)} custom-call(bitcast), custom_call_target="MoveToDevice"
+  ROOT add = bf16[1,1,16384,4,256]{4,3,1,2,0:T(8,128)(2,1)} add(custom-call, custom-call)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
+  EXPECT_EQ(custom_call->shape().layout(),
+            LayoutUtil::MakeLayout({4, 3, 2, 1, 0}, {}, {}, {},
+                                   {Tile{{4, 128}}, Tile{{2, 1}}}));
+  EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
+            LayoutUtil::MakeLayout({3, 4, 2, 1, 0}, {}, {}, {},
                                    {Tile{{8, 128}}, Tile{{2, 1}}}));
 }
 

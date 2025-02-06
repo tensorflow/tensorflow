@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/sorting.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <random>

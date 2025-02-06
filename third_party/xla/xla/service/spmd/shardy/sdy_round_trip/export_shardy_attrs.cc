@@ -43,7 +43,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 
@@ -66,7 +66,7 @@ using ::mlir::StringRef;
 using ::mlir::Value;
 using ::mlir::func::FuncOp;
 
-using ::mlir::mhlo::CustomCallOp;
+using ::mlir::stablehlo::CustomCallOp;
 
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::kShardingRuleAttr;
@@ -79,7 +79,7 @@ using ::mlir::sdy::TensorShardingPerValueAttr;
 // the `op`.
 void saveOpShardingPerValueAttr(
     Operation* op, TensorShardingPerValueAttr shardingPerValueAttr) {
-  addFrontendAttribute(op, kShardingRoundTripAttr, shardingPerValueAttr);
+  setFrontendAttribute(op, kShardingRoundTripAttr, shardingPerValueAttr);
 }
 
 // Converts the shardings from `kShardingAttr` into
@@ -88,7 +88,7 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
     if (auto oldSharding = funcOp.getArgAttrOfType<TensorShardingAttr>(
             argNum, kShardingAttr)) {
-      addFrontendAttribute(funcOp, kShardingRoundTripAttr, oldSharding, argNum);
+      setFrontendAttribute(funcOp, kShardingRoundTripAttr, oldSharding, argNum);
     }
   }
 
@@ -97,9 +97,9 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
   for (mlir::OpOperand& returnOperand : terminatorOp->getOpOperands()) {
     if (auto sharding = funcOp.getResultAttrOfType<TensorShardingAttr>(
             returnOperand.getOperandNumber(), kShardingAttr)) {
-      // We cannot save the result shardings as frontend attributes. MHLO->HLO
-      // conversion converts `mhlo.sharding`s on the results to a tuple
-      // sharding on the ROOT instruction, but it discards the frontend
+      // We cannot save the result shardings as frontend attributes.
+      // StableHLO->HLO conversion converts `mhlo.sharding`s on the results to a
+      // tuple sharding on the ROOT instruction, but it discards the frontend
       // attributes on the MLIR results. Thus, instead of making the conversion
       // handle that, push the shardings to a temporary custom op for each
       // FuncOp result with a sharding. Then during import, we will copy the
@@ -126,7 +126,7 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
     }
     if (auto oldShardingRule =
             op->getAttrOfType<OpShardingRuleAttr>(kShardingRuleAttr)) {
-      addFrontendAttribute(op, kShardingRuleRoundTripAttr, oldShardingRule);
+      setFrontendAttribute(op, kShardingRuleRoundTripAttr, oldShardingRule);
       op->removeAttr(kShardingRuleAttr);
     }
   });
@@ -152,15 +152,16 @@ class SdyRoundTripExportShardyAttrsPass
       }
     }
 
-    SmallVector<NamedAttribute> mhloMeshes;
-    // Saves the MeshOps for MHLO<->HLO round-trip and removes them from the
-    // ModuleOp.
+    SmallVector<NamedAttribute> stablehloMeshes;
+    // Saves the MeshOps for StableHLO<->HLO round-trip and removes them from
+    // the ModuleOp.
     for (MeshOp meshOp : moduleOp.getOps<MeshOp>()) {
-      mhloMeshes.emplace_back(meshOp.getSymNameAttr(), meshOp.getMeshAttr());
+      stablehloMeshes.emplace_back(meshOp.getSymNameAttr(),
+                                   meshOp.getMeshAttr());
     }
-    if (!mhloMeshes.empty()) {
-      addFrontendAttribute(moduleOp, kMeshesRoundTripAttr,
-                           DictionaryAttr::get(context, mhloMeshes));
+    if (!stablehloMeshes.empty()) {
+      setFrontendAttribute(moduleOp, kMeshesRoundTripAttr,
+                           DictionaryAttr::get(context, stablehloMeshes));
     }
   }
 
@@ -177,7 +178,7 @@ class SdyRoundTripExportShardyAttrsPass
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
-    registry.insert<mlir::sdy::SdyDialect, mlir::mhlo::MhloDialect>();
+    registry.insert<mlir::sdy::SdyDialect, mlir::stablehlo::StablehloDialect>();
   }
 };
 

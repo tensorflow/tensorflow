@@ -60,13 +60,13 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -154,14 +154,6 @@ void SetThreadName(HloComputation* called_computation,
                     skip_async_execution_thread_overwrite);
     }
   }
-}
-
-bool IsValidResultAccuracy(const ResultAccuracy& accuracy) {
-  bool valid_mode = ResultAccuracy::Mode_IsValid(accuracy.mode());
-  bool valid_tolerance =
-      (accuracy.tolerance().rtol() >= 0 && accuracy.tolerance().ulps() >= 0 &&
-       accuracy.tolerance().atol() >= 0);
-  return valid_mode && valid_tolerance;
 }
 
 }  // namespace
@@ -775,10 +767,9 @@ bool HloTopKInstruction::IdenticalSlowPath(
   return k() == casted_other.k() && largest() == casted_other.largest();
 }
 
-HloSendRecvInstruction::HloSendRecvInstruction(HloOpcode opcode,
-                                               const Shape& shape,
-                                               int64_t channel_id,
-                                               bool is_host_transfer)
+HloSendRecvInstruction::HloSendRecvInstruction(
+    HloOpcode opcode, const Shape& shape, std::optional<int64_t> channel_id,
+    bool is_host_transfer)
     : HloChannelInstruction(opcode, shape, channel_id),
       is_host_transfer_(is_host_transfer) {}
 
@@ -808,7 +799,7 @@ bool HloSendRecvInstruction::IdenticalSlowPathIgnoringChannelIdValues(
 // Send instruction produces a tuple of {aliased operand, U32 context}.
 HloSendInstruction::HloSendInstruction(HloInstruction* operand,
                                        HloInstruction* token,
-                                       int64_t channel_id,
+                                       std::optional<int64_t> channel_id,
                                        bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kSend,
@@ -824,21 +815,20 @@ std::unique_ptr<HloInstruction> HloSendInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
-  return std::make_unique<HloSendInstruction>(
-      new_operands[0], new_operands[1], *channel_id(), is_host_transfer());
+  return std::make_unique<HloSendInstruction>(new_operands[0], new_operands[1],
+                                              channel_id(), is_host_transfer());
 }
 
 HloSendDoneInstruction::HloSendDoneInstruction(HloSendInstruction* operand,
                                                bool is_host_transfer)
     : HloSendRecvInstruction(HloOpcode::kSendDone, ShapeUtil::MakeTokenShape(),
-                             CHECK_NOTNULL(operand)->channel_id().value(),
-                             is_host_transfer) {
+                             operand->channel_id(), is_host_transfer) {
   AppendOperand(operand);
 }
 
-HloSendDoneInstruction::HloSendDoneInstruction(HloInstruction* operand,
-                                               int64_t channel_id,
-                                               bool is_host_transfer)
+HloSendDoneInstruction::HloSendDoneInstruction(
+    HloInstruction* operand, std::optional<int64_t> channel_id,
+    bool is_host_transfer)
     : HloSendRecvInstruction(HloOpcode::kSendDone, ShapeUtil::MakeTokenShape(),
                              channel_id, is_host_transfer) {
   AppendOperand(operand);
@@ -854,14 +844,14 @@ HloSendDoneInstruction::CloneWithNewOperandsImpl(
     return std::make_unique<HloSendDoneInstruction>(send, is_host_transfer());
   }
 
-  return std::make_unique<HloSendDoneInstruction>(
-      new_operands[0], channel_id().value(), is_host_transfer());
+  return std::make_unique<HloSendDoneInstruction>(new_operands[0], channel_id(),
+                                                  is_host_transfer());
 }
 
 // Recv instruction produces a tuple of {receive buffer, U32 context}.
 HloRecvInstruction::HloRecvInstruction(const Shape& shape,
                                        HloInstruction* token,
-                                       int64_t channel_id,
+                                       std::optional<int64_t> channel_id,
                                        bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kRecv,
@@ -876,7 +866,7 @@ std::unique_ptr<HloInstruction> HloRecvInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return std::make_unique<HloRecvInstruction>(
-      ShapeUtil::GetTupleElementShape(shape, 0), new_operands[0], *channel_id(),
+      ShapeUtil::GetTupleElementShape(shape, 0), new_operands[0], channel_id(),
       is_host_transfer());
 }
 
@@ -887,13 +877,13 @@ HloRecvDoneInstruction::HloRecvDoneInstruction(HloRecvInstruction* operand,
           ShapeUtil::MakeTupleShape(
               {ShapeUtil::GetTupleElementShape(operand->shape(), 0),
                ShapeUtil::MakeTokenShape()}),
-          CHECK_NOTNULL(operand)->channel_id().value(), is_host_transfer) {
+          operand->channel_id(), is_host_transfer) {
   AppendOperand(operand);
 }
 
-HloRecvDoneInstruction::HloRecvDoneInstruction(HloInstruction* operand,
-                                               int64_t channel_id,
-                                               bool is_host_transfer)
+HloRecvDoneInstruction::HloRecvDoneInstruction(
+    HloInstruction* operand, std::optional<int64_t> channel_id,
+    bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kRecvDone,
           ShapeUtil::MakeTupleShape(
@@ -913,8 +903,8 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
     return std::make_unique<HloRecvDoneInstruction>(recv, is_host_transfer());
   }
 
-  return std::make_unique<HloRecvDoneInstruction>(
-      new_operands[0], channel_id().value(), is_host_transfer());
+  return std::make_unique<HloRecvDoneInstruction>(new_operands[0], channel_id(),
+                                                  is_host_transfer());
 }
 
 HloCollectiveInstruction::HloCollectiveInstruction(
@@ -929,15 +919,6 @@ HloCollectiveInstruction::HloCollectiveInstruction(
     AppendOperand(operand);
   }
 }
-
-HloCollectiveInstruction::HloCollectiveInstruction(
-    HloOpcode opcode, const Shape& shape,
-    absl::Span<HloInstruction* const> operands,
-    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const std::optional<int64_t>& channel_id)
-    : HloCollectiveInstruction(opcode, shape, operands,
-                               CollectiveDeviceList(replica_groups),
-                               constrain_layout, channel_id) {}
 
 HloInstructionProto HloCollectiveInstruction::ToProto() const {
   HloInstructionProto proto = HloChannelInstruction::ToProto();
@@ -1049,17 +1030,6 @@ HloAllReduceInstructionBase::HloAllReduceInstructionBase(
   AppendComputation(reduce_computation);
   reduce_computation->SetCollectiveCallInstruction(this);
 }
-
-HloAllReduceInstructionBase::HloAllReduceInstructionBase(
-    HloOpcode opcode, const Shape& shape,
-    absl::Span<HloInstruction* const> operands,
-    HloComputation* reduce_computation,
-    absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids)
-    : HloAllReduceInstructionBase(opcode, shape, operands, reduce_computation,
-                                  CollectiveDeviceList(replica_groups),
-                                  constrain_layout, channel_id,
-                                  use_global_device_ids) {}
 
 HloInstructionProto HloAllReduceInstructionBase::ToProto() const {
   HloInstructionProto proto = HloCollectiveInstruction::ToProto();
@@ -1286,12 +1256,14 @@ HloCollectiveBroadcastInstruction::CloneWithNewOperandsImpl(
 }
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
-    HloOpcode opcode, const Shape& shape, HloInstruction* operand,
+    HloOpcode opcode, const Shape& shape,
+    absl::Span<HloInstruction* const> operands,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
     const std::optional<int64_t>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
       source_target_pairs_(source_target_pairs) {
-  AppendOperand(operand);
+  AppendOperands(operands);
+  inplace_ = false;
 }
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
@@ -1309,6 +1281,7 @@ HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
   AppendOperand(output);
   AppendOperand(input_start_indices);
   AppendOperand(output_start_indices);
+  inplace_ = true;
 }
 
 HloInstructionProto HloCollectivePermuteInstruction::ToProto() const {
@@ -1381,7 +1354,9 @@ HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* /*context*/) const {
   if (dynamic_slice_sizes_list().empty()) {
     return std::make_unique<HloCollectivePermuteInstruction>(
-        opcode(), shape, new_operands[0], source_target_pairs(), channel_id());
+        opcode(), shape,
+        absl::Span<HloInstruction* const>(new_operands.subspan(0, 1)),
+        source_target_pairs(), channel_id());
   } else {
     return std::make_unique<HloCollectivePermuteInstruction>(
         opcode(), shape, new_operands[0], new_operands[1], new_operands[2],
@@ -2771,7 +2746,9 @@ void HloParameterInstruction::PrintExtraAttributesImpl(
 void HloParameterInstruction::PrintOperandsWithCanonicalNameMap(
     Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  printer->Append(parameter_number_);
+  if (options.print_parameter_number()) {
+    printer->Append(parameter_number_);
+  }
 }
 
 bool HloParameterInstruction::IdenticalSlowPath(
@@ -4204,34 +4181,6 @@ HloRngBitGeneratorInstruction::CloneWithNewOperandsImpl(
   CHECK_EQ(new_operands.size(), 1);
   return std::make_unique<HloRngBitGeneratorInstruction>(shape, new_operands[0],
                                                          algorithm());
-}
-
-HloUnaryInstruction::HloUnaryInstruction(const Shape& shape, HloOpcode opcode,
-                                         HloInstruction* operand,
-                                         ResultAccuracy result_accuracy)
-    : HloInstruction(opcode, shape), result_accuracy_(result_accuracy) {
-  if (!IsValidResultAccuracy(result_accuracy)) {
-    LOG(FATAL) << "Invalid result accuracy";
-  }
-  AppendOperand(operand);
-}
-
-void HloUnaryInstruction::PrintExtraAttributesImpl(
-    AttributePrinter& printer, const HloPrintOptions& options) const {
-  // Don't print anything if the result accuracy is set to default.
-  if (result_accuracy_.mode() != ResultAccuracy::DEFAULT) {
-    printer.Next([this](Printer* printer) {
-      printer->Append("result_accuracy={mode=");
-      printer->Append(ResultAccuracyToString(result_accuracy_.mode()));
-      printer->Append("}");
-    });
-  } else if (result_accuracy_.has_tolerance()) {
-    printer.Next([this](Printer* printer) {
-      AppendCat(printer, "result_accuracy={",
-                ResultAccuracyToleranceToString(result_accuracy_.tolerance()),
-                "}");
-    });
-  }
 }
 
 }  // namespace xla

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/plugin/example_plugin/myplugin_cpp_pjrt.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 

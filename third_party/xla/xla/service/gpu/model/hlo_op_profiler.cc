@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -55,7 +56,8 @@ namespace xla {
 namespace gpu {
 
 #ifdef GOOGLE_CUDA
-class CuptiKernelTracer : public profiler::CuptiTraceCollector {
+class CuptiKernelTracer : public HloOpProfiler::KernelTracer,
+                          public profiler::CuptiTraceCollector {
  public:
   CuptiKernelTracer()
       : profiler::CuptiTraceCollector({}),
@@ -69,7 +71,7 @@ class CuptiKernelTracer : public profiler::CuptiTraceCollector {
     cupti_tracer_->Enable(options, this);
   }
 
-  uint64_t getMedianKernelTimeNs() && {
+  uint64_t getMedianKernelTimeNs() && override {
     cupti_tracer_->Disable();  // Also flushes buffer.
     if (kernel_times_ns_.empty()) {
       LOG(ERROR) << "No kernel events";
@@ -104,13 +106,18 @@ class CuptiKernelTracer : public profiler::CuptiTraceCollector {
   std::vector<uint64_t> kernel_times_ns_;
 };
 #else
-class CuptiKernelTracer {
+class CuptiKernelTracer : public HloOpProfiler::KernelTracer {
  public:
   uint64_t getMedianKernelTimeNs() && {
     LOG(FATAL) << "Not built with --config=cuda";
   }
 };
 #endif
+
+/*static*/ std::unique_ptr<HloOpProfiler::KernelTracer>
+HloOpProfiler::GetKernelTracer() {
+  return std::make_unique<CuptiKernelTracer>();
+}
 
 /*static*/ std::unique_ptr<HloModule> HloOpProfiler::MakeModuleForMeasurements(
     HloOpcode op, PrimitiveType data_type, int chain_length) {
@@ -173,7 +180,7 @@ absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
                                                       /*use_large_range=*/true)
                                         .value();
   const absl::Time t_compile_start = absl::Now();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> ex,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> ex,
                       runner_.CreateExecutable(std::move(module),
                                                /*run_hlo_passes=*/false));
   if (absl::Now() - t_compile_start > absl::Seconds(10)) {

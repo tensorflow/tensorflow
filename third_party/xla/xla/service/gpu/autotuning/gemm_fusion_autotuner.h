@@ -44,8 +44,8 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -148,7 +148,7 @@ class GemmFusionAutotunerImpl {
       absl::Span<const ExecutableCandidate> candidates);
 
   // Autotune and save the results to the autotuning cache.
-  absl::StatusOr<AutotuneCacheKeySet> Autotune(
+  absl::Status Autotune(
       AutotunerCompileUtil& compile_util,
       const BackendConfigs& gemm_config_sets,
       absl::flat_hash_map<AutotuneCacheKey, uint64_t> fusion_count_map);
@@ -156,7 +156,8 @@ class GemmFusionAutotunerImpl {
   // Helper methods.
   const AutotuneConfig& GetConfig() const { return config_; }
   bool IsAutotuningEnabled() const;
-  static std::string ToString(const BackendConfig& config);
+
+  static const int64_t BLAS_GEMM_DEFAULT;
 
  private:
   // Measures the performance of a single executable candidate.
@@ -166,7 +167,7 @@ class GemmFusionAutotunerImpl {
   //
   // If the candidate is not cuBLAS, this will check the redzones and compare
   // the outputs with the reference buffer.
-  absl::StatusOr<std::optional<AutotuneResult>> MeasurePerformance(
+  absl::StatusOr<AutotuneResult> MeasurePerformance(
       AutotunerCompileUtil& compile_util, const HloFusionInstruction& fusion,
       const ExecutableCandidate& candidate,
       std::optional<ScopedShapedBuffer>& reference_buffer);
@@ -183,10 +184,20 @@ class GemmFusionAutotunerImpl {
                               const ScopedShapedBuffer& buffer,
                               AutotuneResult& res);
 
-  se::CudaComputeCapability GetComputeCapability() const {
-    return std::get<se::CudaComputeCapability>(
-        config_.GetGpuComputeCapability());
+  se::GpuComputeCapability GetComputeCapability() const {
+    return config_.GetGpuComputeCapability();
   }
+
+  bool isRocm() const {
+    return std::holds_alternative<se::RocmComputeCapability>(
+        GetComputeCapability());
+  }
+
+  bool IsFusionKind(const HloInstruction& hlo, absl::string_view kind);
+
+  bool AddLibConfigs(const HloFusionInstruction& fusion,
+                     const HloDotInstruction* dot,
+                     std::vector<BackendConfig>& configs);
 
   std::vector<TritonGemmConfig> GetDefaultTritonConfigs() const;
   std::vector<TritonGemmConfig> GetExhaustiveTritonConfigs() const;

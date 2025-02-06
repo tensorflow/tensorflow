@@ -16,8 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 
 #include <ostream>
-#include <string>
-#include <vector>
 
 #include "absl/strings/str_join.h"
 

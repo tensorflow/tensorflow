@@ -15,20 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"

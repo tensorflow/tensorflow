@@ -14,16 +14,30 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/summary_db_writer.h"
 
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
+#include <limits>
+#include <memory>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include "tensorflow/core/summary/summary_converter.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/summary/summary_converter.h"
 #include "tensorflow/core/util/event.pb.h"
 
 // TODO(jart): Break this up into multiple files with excellent unit tests.
@@ -137,7 +151,7 @@ void PatchPluginName(SummaryMetadata* metadata, const char* name) {
 }
 
 absl::Status SetDescription(Sqlite* db, int64_t id,
-                            const StringPiece& markdown) {
+                            const absl::string_view& markdown) {
   const char* sql = R"sql(
     INSERT OR REPLACE INTO Descriptions (id, description) VALUES (?, ?)
   )sql";
@@ -263,14 +277,14 @@ class GraphWriter {
     for (int node_id = 0; node_id < graph_->node_size(); ++node_id) {
       const NodeDef& node = graph_->node(node_id);
       for (int idx = 0; idx < node.input_size(); ++idx) {
-        StringPiece name = node.input(idx);
+        absl::string_view name = node.input(idx);
         int64_t input_node_id;
         int64_t input_node_idx = 0;
         int64_t is_control = 0;
         size_t i = name.rfind(':');
-        if (i != StringPiece::npos) {
-          if (!strings::safe_strto64(name.substr(i + 1, name.size() - i - 1),
-                                     &input_node_idx)) {
+        if (i != absl::string_view::npos) {
+          if (!absl::SimpleAtoi(name.substr(i + 1, name.size() - i - 1),
+                                &input_node_idx)) {
             return errors::DataLoss("Bad NodeDef.input: ", name);
           }
           name.remove_suffix(name.size() - i);
@@ -372,7 +386,8 @@ class GraphWriter {
   const uint64 now_;
   const int64_t graph_id_;
   std::vector<string> name_copies_;
-  std::unordered_map<StringPiece, int64_t, StringPieceHasher> name_to_node_id_;
+  std::unordered_map<absl::string_view, int64_t, StringPieceHasher>
+      name_to_node_id_;
 
   GraphWriter(const GraphWriter&) = delete;
   void operator=(const GraphWriter&) = delete;
@@ -690,7 +705,7 @@ class SeriesWriter {
       } else {
         SqliteTransaction txn(*db);
         TF_RETURN_IF_ERROR(
-            Update(db, step, computed_time, t, StringPiece(), rowid));
+            Update(db, step, computed_time, t, absl::string_view(), rowid));
         TF_RETURN_IF_ERROR(UpdateNdString(db, t, rowid));
         return txn.Commit();
       }
@@ -700,7 +715,8 @@ class SeriesWriter {
   }
 
   absl::Status Update(Sqlite* db, int64_t step, double computed_time,
-                      const Tensor& t, const StringPiece& data, int64_t rowid) {
+                      const Tensor& t, const absl::string_view& data,
+                      int64_t rowid) {
     const char* sql = R"sql(
       UPDATE OR REPLACE
         Tensors

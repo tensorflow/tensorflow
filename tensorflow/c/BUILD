@@ -3,8 +3,8 @@
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_pywrap")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
+load("@local_xla//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
@@ -354,9 +354,9 @@ tf_cuda_library(
     ],
     deps = [
         ":c_api_macros_hdrs",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla/tsl/c:tsl_status",
         "@local_xla//xla/tsl/c:tsl_status_internal",
+        "@local_xla//xla/tsl/platform:status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -687,8 +687,8 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf_status_headers",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla/tsl/c:tsl_status_helper",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -698,10 +698,11 @@ tf_cc_test(
     deps = [
         ":tf_status",
         ":tf_status_helper",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:test",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -808,9 +809,9 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
             "//tensorflow/core:protos_all_cc",
-            "@local_tsl//tsl/platform:statusor",
             "@local_xla//xla/stream_executor:stream",
             "@local_xla//xla/tsl/framework:device_id_utils",
+            "@local_xla//xla/tsl/platform:statusor",
         ],
     }),
 )

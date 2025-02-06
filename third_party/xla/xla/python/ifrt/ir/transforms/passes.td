@@ -374,6 +374,16 @@ module {
   let constructor = "CreateIfrtRemoveIfrtAttrsPass()";
 }
 
+def IfrtRemoveAttrsFromOtherDialectsPass :
+    Pass<"ifrt-remove-attrs-from-other-dialects", "mlir::ModuleOp"> {
+  let summary = "Remove attrs from other dialects in IFRT functions";
+  let description = [{
+Remove attributes that are not from IFRT or Builtin dialect from IFRT functions.
+Does not modify atom programs.
+  }];
+  let constructor = "CreateIfrtRemoveAttrsFromOtherDialectsPass()";
+}
+
 def IfrtLowerMpmdReshardToCallPass :
     Pass<"ifrt-lower-mpmd-reshard-to-call", "mlir::ModuleOp"> {
   let summary = "Lowers MPMD `ifrt.Reshard` to `ifrt.Call`";
@@ -461,6 +471,16 @@ This pass fails if
   let options = [
     ListOption<"platform_names", "platform_names", "std::string",
                "The mapping from logical device ID to platform name (e.g., tpu, cuda) corresponding to the logical device ID.">
+  ];
+}
+
+def IfrtDumpAtomProgramsPass
+    : Pass<"ifrt-dump-atom-programs", "mlir::ModuleOp"> {
+  let summary = "Extracts atom programs from module and dumps them to files.";
+  let constructor = "CreateIfrtDumpAtomProgramsPass()";
+  let options = [
+    Option<"dump_dir", "dump_dir", "std::string", "",
+           "The directory to dump the atom programs and the main function to.">,
   ];
 }
 

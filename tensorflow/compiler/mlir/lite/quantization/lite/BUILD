@@ -210,10 +210,11 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
-        "@local_tsl//tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -222,6 +223,7 @@ cc_library(
     testonly = 1,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
         "@com_google_googletest//:gtest",

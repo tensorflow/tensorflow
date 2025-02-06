@@ -16,10 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/dynamic_dimension_simplifier.h"
 
 #include <memory>
-#include <utility>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -28,14 +25,14 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 #include "xla/window_util.h"

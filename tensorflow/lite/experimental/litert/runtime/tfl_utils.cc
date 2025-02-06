@@ -15,9 +15,7 @@
 #include "tensorflow/lite/experimental/litert/runtime/tfl_utils.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <utility>
-#include <vector>
 
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
@@ -87,7 +85,7 @@ Expected<RankedTensorType> ConvertTensorType(
   }
 
   size_t rank = TfLiteOpaqueTensorNumDims(tfl_opaque_tensor);
-  SmallVec<int32_t> dimensions(rank);
+  Dimensions dimensions(rank);
   for (size_t i = 0; i < rank; ++i) {
     dimensions[i] = TfLiteOpaqueTensorDim(tfl_opaque_tensor, i);
   }

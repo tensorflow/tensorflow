@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -130,14 +131,14 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 
 // Returns the LLVM type which represents the given XLA primitive type.
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
-                                  llvm::Module* module);
+                                  llvm::LLVMContext& context);
 
 // Returns the type size in bits. If "type" is a struct, it must be packed.
 int GetSizeInBits(llvm::Type* type);
 
 // Returns the LLVM type which represents the given XLA shape. For example,
 // if "shape" is [5 x [10 x f32]], the function returns [5 x [10 x float]].
-llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module);
+llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context);
 
 // Returns a value that represents a pointer to a global string constant that
 // encodes the shape as a serialized protobuf.
@@ -278,10 +279,6 @@ void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder);
 
 void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilderBase* builder);
 
-// Create a bitwise rotation of `rotand` by `rotor`.
-llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
-                       llvm::IRBuilderBase* builder);
-
 // Returns the number of bytes within the shape.
 int64_t ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
 
@@ -311,15 +308,6 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
                                   llvm::GlobalValue::LinkageTypes linkage,
                                   const HloModuleConfig& module_config,
                                   absl::string_view name, llvm::Module* module);
-
-// Zero-extends two 32-bit values to 64 bits, multiplies them, and returns the
-// result as a pair of (low 32 bits, high 32 bits).
-std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilderBase* b,
-                                                    llvm::Value* src0,
-                                                    llvm::Value* src1);
-// Splits the 64-bit integer value into its high and low 32 bits.
-std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
-    llvm::IRBuilderBase* b, llvm::Value* value_64bits);
 
 // Checks whether a global variable is already created to represent the state
 // of a random number generator. If not, creates such a variable. Returns the

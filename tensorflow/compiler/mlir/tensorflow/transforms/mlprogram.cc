@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/mlprogram.h"
 
-#include <string>
-#include <utility>
-
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "mlir/Transforms/Passes.h"  // from @llvm-project

@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -41,10 +42,10 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -69,6 +70,25 @@ template <typename CppType>
     }
     return ::mlir::DenseElementsAttr::getFromRawBuffer(type,
                                                        packed_padded_data);
+  } else if constexpr (std::is_same_v<CppType, tsl::float4_e2m1fn>) {
+    // DenseElementsAttr::get() does not support being passed an array of
+    // tsl::float4_e2m1fn. So convert each element to APFloat first.
+    auto data_span = literal.data<CppType>();
+    std::vector<llvm::APFloat> apfloats;
+    apfloats.reserve(literal.element_count());
+    for (size_t i = 0; i < literal.element_count(); i++) {
+      llvm::APFloat apfloat{static_cast<float>(data_span[i])};
+      bool losesInfo;
+      llvm::APFloat::opStatus status =
+          apfloat.convert(llvm::APFloat::Float4E2M1FN(),
+                          llvm::APFloat::rmNearestTiesToEven, &losesInfo);
+      CHECK_EQ(status, llvm::APFloat::opOK)
+          << "Failed to convert " << data_span[i] << " to Float4E2M1FN APFloat";
+      CHECK(!losesInfo) << "Lost info when converting " << data_span[i]
+                        << " to Float4E2M1FN APFloat";
+      apfloats.push_back(apfloat);
+    }
+    return ::mlir::DenseElementsAttr::get(type, apfloats);
   } else {
     auto data_span = literal.data<CppType>();
     return ::mlir::DenseElementsAttr::get(
@@ -186,6 +206,26 @@ mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
   assert(defining_tuple_op && "builder didn't return the right type");
   auto tupleOp = defining_tuple_op.getOperation();
   return tupleOp;
+}
+
+mlir::Operation* WrapVariadicResultsInTuple(mlir::OpBuilder* builder,
+                                            mlir::Location loc,
+                                            mlir::Operation* op) {
+  auto result_types = op->getResultTypes();
+  // Consider skipping wrapping result type of size 1.
+  assert(result_types.size() != 1 ||
+         !llvm::isa<mlir::TupleType>(result_types[0]) &&
+             "Cannot wrap single tuple arg in tuple");
+
+  auto tuple_type = builder->getTupleType(result_types);
+  return CreateTupleFromOpResults(builder, loc, op, tuple_type);
+}
+
+bool IsEmptyTuple(const mlir::Type& type) {
+  if (auto tuple_type = llvm::dyn_cast<mlir::TupleType>(type)) {
+    return tuple_type.getTypes().empty();
+  }
+  return false;
 }
 
 mlir::TypeRange Untuple(const mlir::Type& type) {

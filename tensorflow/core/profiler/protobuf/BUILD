@@ -131,6 +131,19 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "hlo_stats_proto",
+    srcs = ["hlo_stats.proto"],
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "roofline_model_proto",
+    srcs = ["roofline_model.proto"],
+    protodeps = [":diagnostics_proto"],
+    visibility = [":friends"],
+)
+
+tf_proto_library(
     name = "op_stats_proto",
     srcs = ["op_stats.proto"],
     protodeps = [
@@ -218,6 +231,18 @@ tf_proto_library(
 # )
 #
 # py_proto_library(
+#     name = "hlo_stats_py_pb2",
+#     visibility = ["//visibility:public"],
+#     deps = [":hlo_stats_proto"],
+# )
+#
+# py_proto_library(
+#     name = "roofline_model_py_pb2",
+#     visibility = ["//visibility:public"],
+#     deps = [":roofline_model_proto"],
+# )
+#
+# py_proto_library(
 #     name = "op_metrics_py_pb2",
 #     visibility = ["//visibility:public"],
 #     deps = [":op_metrics_proto"],
@@ -264,4 +289,10 @@ tf_proto_library(
         ":friends",
         "//learning/serving/tools/servo_model_profiler:__subpackages__",
     ],
+)
+
+tf_proto_library(
+    name = "tpu_input_pipeline_proto",
+    srcs = ["tpu_input_pipeline.proto"],
+    protodeps = [":input_pipeline_proto"],
 )

@@ -17,8 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_COMPILE_MLIR_UTIL_H_
 
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -68,8 +72,7 @@ absl::Status ConvertMLIRToXlaComputation(
     mlir::ModuleOp module_op, llvm::StringRef device_type,
     xla::XlaComputation* xla_computation, bool use_tuple_args,
     bool enable_op_fallback, bool return_tuple,
-    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns =
-        {},
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns = {},
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {},
     llvm::StringRef module_name = llvm::StringRef());
@@ -135,7 +138,7 @@ ABSL_DEPRECATED("Not meant to be used directly and should be a util.")
 absl::Status PopulateResultIOInfo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     bool use_tuple_args, bool use_resource_updates_for_aliases,
-    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result);
 
 // Runs MLIR Bridge on an MLIR module.
@@ -189,7 +192,7 @@ ABSL_DEPRECATED("Use v2/legalize_tf.h::LegalizeMlirToHlo instead.")
 absl::StatusOr<std::string> CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
-    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {},
@@ -206,7 +209,7 @@ absl::Status CompileGraphToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple,
-    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
+    XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes);

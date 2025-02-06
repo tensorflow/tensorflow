@@ -14,25 +14,40 @@
 
 #include "tensorflow/lite/experimental/litert/compiler/plugin/compiler_plugin.h"
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
-#include <ostream>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/absl_check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/litert/c/litert_any.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_detail.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/compiler/plugin/algo.h"
+#include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/dynamic_loading.h"
+#include "tensorflow/lite/experimental/litert/core/environment.h"
+#include "tensorflow/lite/experimental/litert/core/filesystem.h"
+#include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
+#include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
+#include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
 
@@ -42,32 +57,63 @@ namespace litert::internal {
 // CompiledResult
 //
 
-Expected<BufferRef<uint8_t>> CompiledResult::ByteCode() const {
+Expected<BufferRef<uint8_t>> CompiledResult::ByteCode(
+    LiteRtParamIndex byte_code_idx) const {
   const void* data;
   size_t size;
-  LITERT_EXPECT_OK(allocating_plugin_api_.get_compiled_result_byte_code(
-      compiled_result_handle_, &data, &size));
+  LITERT_RETURN_IF_ERROR(parent_.get_compiled_result_byte_code(
+      compiled_result_handle_, byte_code_idx, &data, &size));
   return BufferRef(data, size);
 }
 
-Expected<LiteRtParamIndex> CompiledResult::NumCalls() const {
-  LiteRtParamIndex call_idx;
-  LITERT_EXPECT_OK(allocating_plugin_api_.get_compiled_result_num_calls(
-      compiled_result_handle_, &call_idx));
-  return call_idx;
+Expected<LiteRtParamIndex> CompiledResult::NumByteCodeModules() const {
+  LiteRtParamIndex byte_code_idx;
+  LITERT_RETURN_IF_ERROR(parent_.get_compiled_result_num_byte_code(
+      compiled_result_handle_, &byte_code_idx));
+  return byte_code_idx;
 }
 
-Expected<std::string> CompiledResult::CallInfo(
-    LiteRtParamIndex call_idx) const {
+Expected<LiteRtParamIndex> CompiledResult::NumCalls() const {
+  LiteRtParamIndex num_calls;
+  LITERT_RETURN_IF_ERROR(parent_.get_compiled_result_num_calls(
+      compiled_result_handle_, &num_calls));
+  return num_calls;
+}
+
+Expected<CallInfo> CompiledResult::CallInfo(LiteRtParamIndex call_idx) const {
   const void* data;
   size_t size;
-  LITERT_EXPECT_OK(allocating_plugin_api_.get_compiled_result_call_info(
-      compiled_result_handle_, call_idx, &data, &size));
-  return std::string(reinterpret_cast<const char*>(data), size);
+  LiteRtParamIndex byte_code_idx;
+
+  LITERT_RETURN_IF_ERROR(parent_.get_compiled_result_call_info(
+      compiled_result_handle_, call_idx, &data, &size, &byte_code_idx));
+
+  absl::string_view call_info_str(reinterpret_cast<const char*>(data), size);
+  return ::litert::internal::CallInfo(call_info_str, byte_code_idx);
 }
 
 CompiledResult::~CompiledResult() {
-  allocating_plugin_api_.destroy_compiled_result(compiled_result_handle_);
+  if (compiled_result_handle_ != nullptr) {
+    parent_.destroy_compiled_result(compiled_result_handle_);
+  }
+}
+
+CompiledResult::CompiledResult(CompiledResult&& other)
+    : parent_(other.parent_),
+      compiled_result_handle_(other.compiled_result_handle_) {
+  other.parent_ = {};
+  other.compiled_result_handle_ = nullptr;
+}
+
+CompiledResult& CompiledResult::operator=(CompiledResult&& other) {
+  if (this != &other) {
+    parent_ = other.parent_;
+    other.parent_ = {};
+
+    compiled_result_handle_ = other.compiled_result_handle_;
+    other.compiled_result_handle_ = nullptr;
+  }
+  return *this;
 }
 
 //
@@ -77,46 +123,51 @@ CompiledResult::~CompiledResult() {
 namespace {
 
 #define RESOLVE_API_FUNC(name, dest) \
-  LITERT_RETURN_STATUS_IF_NOT_OK(    \
+  LITERT_RETURN_IF_ERROR(            \
       ResolveLibSymbol<decltype(dest)>(lib_handle, name, &dest));
 
 LiteRtStatus ResolvePluginApi(void* lib_handle,
                               LiteRtCompilerPluginApi& result) {
-  RESOLVE_API_FUNC("LiteRtGetCompilerPluginVersion",
+  RESOLVE_API_FUNC(kLiteRtGetCompilerPluginVersion,
                    result.get_compiler_plugin_version);
-  RESOLVE_API_FUNC("LiteRtGetCompilerPluginSocManufacturer",
+  RESOLVE_API_FUNC(kLiteRtGetCompilerPluginSupportedHardware,
+                   result.get_compiler_plugin_supported_hardware);
+  RESOLVE_API_FUNC(kLiteRtGetCompilerPluginSocManufacturer,
                    result.get_compiler_plugin_soc_manufacturer);
-  RESOLVE_API_FUNC("LiteRtGetNumCompilerPluginSupportedSocModels",
+  RESOLVE_API_FUNC(kLiteRtGetNumCompilerPluginSupportedSocModels,
                    result.get_num_compiler_plugin_supported_models);
-  RESOLVE_API_FUNC("LiteRtGetCompilerPluginSupportedSocModel",
+  RESOLVE_API_FUNC(kLiteRtGetCompilerPluginSupportedSocModel,
                    result.get_compiler_plugin_supported_soc_model);
 
-  RESOLVE_API_FUNC("LiteRtCreateCompilerPlugin", result.create_compiler_plugin);
-  RESOLVE_API_FUNC("LiteRtDestroyCompilerPlugin",
+  RESOLVE_API_FUNC(kLiteRtCreateCompilerPlugin, result.create_compiler_plugin);
+  RESOLVE_API_FUNC(kLiteRtDestroyCompilerPlugin,
                    result.destroy_compiler_plugin);
 
-  RESOLVE_API_FUNC("LiteRtCompilerPluginPartitionModel",
-                   result.compiler_plugin_partition_model);
-  RESOLVE_API_FUNC("LiteRtCompilerPluginCompile",
+  RESOLVE_API_FUNC(kLiteRtCompilerPluginPartition,
+                   result.compiler_plugin_partition);
+  RESOLVE_API_FUNC(kLiteRtCompilerPluginCompile,
                    result.compiler_plugin_compile);
 
-  RESOLVE_API_FUNC("LiteRtDestroyCompiledResult",
+  RESOLVE_API_FUNC(kLiteRtDestroyCompiledResult,
                    result.destroy_compiled_result);
-  RESOLVE_API_FUNC("LiteRtGetCompiledResultByteCode",
+  RESOLVE_API_FUNC(kLiteRtCompiledResultNumByteCodeModules,
+                   result.get_compiled_result_num_byte_code);
+  RESOLVE_API_FUNC(kLiteRtGetCompiledResultByteCode,
                    result.get_compiled_result_byte_code);
-  RESOLVE_API_FUNC("LiteRtGetCompiledResultCallInfo",
+  RESOLVE_API_FUNC(kLiteRtGetCompiledResultCallInfo,
                    result.get_compiled_result_call_info);
-  RESOLVE_API_FUNC("LiteRtGetNumCompiledResultCalls",
+  RESOLVE_API_FUNC(kLiteRtGetNumCompiledResultCalls,
                    result.get_compiled_result_num_calls);
+
   return kLiteRtStatusOk;
 }
 
-Expected<SmallVec<std::string>> GetSocModels(
+Expected<std::vector<std::string>> GetSocModels(
     const LiteRtCompilerPluginApi& api, LiteRtCompilerPlugin plugin_handle) {
-  SmallVec<std::string> soc_models;
+  std::vector<std::string> soc_models;
 
   LiteRtParamIndex num_models;
-  LITERT_EXPECT_OK(
+  LITERT_RETURN_IF_ERROR(
       api.get_num_compiler_plugin_supported_models(plugin_handle, &num_models));
 
   for (LiteRtParamIndex i = 0; i < num_models; ++i) {
@@ -131,6 +182,28 @@ Expected<SmallVec<std::string>> GetSocModels(
   return soc_models;
 }
 
+// Sort plugins so that we first apply those supporting NPU, then those
+// supporting GPU, and finally those supporting CPU.
+void SortPlugins(std::vector<CompilerPlugin>& compiler_plugins) {
+  std::sort(compiler_plugins.begin(), compiler_plugins.end(),
+            [](auto& x, auto& y) {
+              auto x_supported_hardware = x.SupportedHardware();
+              auto y_supported_hardware = y.SupportedHardware();
+              if (x_supported_hardware && y_supported_hardware) {
+                bool x_npu = (*x_supported_hardware & kLiteRtHwAcceleratorNpu);
+                bool x_gpu = (*x_supported_hardware & kLiteRtHwAcceleratorGpu);
+                bool x_cpu = (*x_supported_hardware & kLiteRtHwAcceleratorCpu);
+                bool y_npu = (*y_supported_hardware & kLiteRtHwAcceleratorNpu);
+                bool y_gpu = (*y_supported_hardware & kLiteRtHwAcceleratorGpu);
+                bool y_cpu = (*y_supported_hardware & kLiteRtHwAcceleratorCpu);
+                int x_score = 100 * x_npu + 10 * x_gpu + x_cpu;
+                int y_score = 100 * y_npu + 10 * y_gpu + y_cpu;
+                return x_score < y_score;
+              }
+              return true;
+            });
+}
+
 }  // namespace
 
 Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
@@ -138,13 +211,14 @@ Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
   CompilerPlugin plugin;
   LITERT_LOG(LITERT_INFO, "Loading plugin at: %s", lib_path.data());
 
-  LITERT_EXPECT_OK(OpenLib(lib_path, &plugin.lib_handle_));
+  LITERT_RETURN_IF_ERROR(OpenLib(lib_path, &plugin.lib_handle_));
   LITERT_LOG(LITERT_INFO, "Loaded plugin at: %s", lib_path.data());
 
-  LITERT_EXPECT_OK(ResolvePluginApi(plugin.lib_handle_, plugin.plugin_api_));
+  LITERT_RETURN_IF_ERROR(
+      ResolvePluginApi(plugin.lib_handle_, plugin.plugin_api_));
   LITERT_LOG(LITERT_INFO, "Resolved plugin api at: %s", lib_path.data());
 
-  LITERT_EXPECT_OK(
+  LITERT_RETURN_IF_ERROR(
       plugin.plugin_api_.create_compiler_plugin(&plugin.plugin_handle_));
   LITERT_LOG(LITERT_INFO, "Initialize plugin at: %s", lib_path.data());
 
@@ -175,14 +249,18 @@ Expected<CompilerPlugin> CompilerPlugin::LoadPlugin(
   return plugin;
 }
 
-Expected<SmallVec<CompilerPlugin>> CompilerPlugin::LoadPlugins(
+Expected<std::vector<CompilerPlugin>> CompilerPlugin::LoadPlugins(
     absl::Span<const absl::string_view> lib_search_paths) {
   std::vector<std::string> plugin_lib_paths;
   for (auto search_path : lib_search_paths) {
-    LITERT_EXPECT_OK(FindLiteRtSharedLibs(search_path, plugin_lib_paths));
+    // Skip paths that are not valid.
+    if (Exists(search_path)) {
+      LITERT_RETURN_IF_ERROR(
+          FindLiteRtSharedLibs(search_path, plugin_lib_paths));
+    }
   }
 
-  SmallVec<CompilerPlugin> loaded_plugins;
+  std::vector<CompilerPlugin> loaded_plugins;
   loaded_plugins.reserve(lib_search_paths.size());
 
   for (const auto& lib_path : plugin_lib_paths) {
@@ -194,14 +272,17 @@ Expected<SmallVec<CompilerPlugin>> CompilerPlugin::LoadPlugins(
     loaded_plugins.push_back(std::move(plugin.Value()));
   }
 
+  // Sort plugins.
+  SortPlugins(loaded_plugins);
+
   return loaded_plugins;
 }
 
 CompilerPlugin::CompilerPlugin(CompilerPlugin&& other)
     : soc_models_(std::move(other.soc_models_)),
-      lib_handle_(other.lib_handle_),
+      lib_handle_(std::move(other.lib_handle_)),
       plugin_api_(std::move(other.plugin_api_)),
-      plugin_handle_(other.plugin_handle_) {
+      plugin_handle_(std::move(other.plugin_handle_)) {
   other.soc_models_ = {};
   other.plugin_api_ = {};
   other.lib_handle_ = nullptr;
@@ -210,17 +291,10 @@ CompilerPlugin::CompilerPlugin(CompilerPlugin&& other)
 
 CompilerPlugin& CompilerPlugin::operator=(CompilerPlugin&& other) {
   if (this != &other) {
-    soc_models_ = std::move(other.soc_models_);
-    other.soc_models_ = {};
-
-    lib_handle_ = other.lib_handle_;
-    other.lib_handle_ = nullptr;
-
-    plugin_api_ = std::move(other.plugin_api_);
-    other.plugin_api_ = {};
-
-    plugin_handle_ = other.plugin_handle_;
-    other.plugin_handle_ = nullptr;
+    std::swap(soc_models_, other.soc_models_);
+    std::swap(lib_handle_, other.lib_handle_);
+    std::swap(plugin_api_, other.plugin_api_);
+    std::swap(plugin_handle_, other.plugin_handle_);
   }
   return *this;
 }
@@ -236,71 +310,237 @@ CompilerPlugin::~CompilerPlugin() {
   }
 }
 
+std::string CompilerPlugin::DebugString() const {
+  std::string version_str = "?";
+  if (auto version = ApiVersion(); version) {
+    version_str = absl::StrFormat("%d.%d.%d", version->major, version->minor,
+                                  version->patch);
+  }
+  return absl::StrFormat("%s compiler plugin (ver %s)", SocManufacturer(),
+                         version_str);
+}
+
 Expected<LiteRtApiVersion> CompilerPlugin::ApiVersion() const {
   LiteRtApiVersion api_version;
-  LITERT_EXPECT_OK(plugin_api_.get_compiler_plugin_version(&api_version));
+  LITERT_RETURN_IF_ERROR(plugin_api_.get_compiler_plugin_version(&api_version));
   return api_version;
 }
 
-Expected<std::vector<LiteRtOp>> CompilerPlugin::PartitionModel(
-    const Model& model) {
+Expected<LiteRtHwAccelerators> CompilerPlugin::SupportedHardware() const {
+  LiteRtHwAccelerators supported_hardware;
+  LITERT_RETURN_IF_ERROR(plugin_api_.get_compiler_plugin_supported_hardware(
+      plugin_handle_, &supported_hardware));
+  return supported_hardware;
+}
+
+Expected<std::vector<LiteRtOp>> CompilerPlugin::Partition(
+    const Subgraph& subgraph) {
   LiteRtOpListT ops;
-  LiteRtModel model_handle = model.Get();
-  LITERT_EXPECT_OK(plugin_api_.compiler_plugin_partition_model(
-      plugin_handle_, model_handle, &ops));
+  LITERT_RETURN_IF_ERROR(plugin_api_.compiler_plugin_partition(
+      plugin_handle_, subgraph.Get(), &ops));
   return ops.Vec();
 }
 
-LiteRtStatus CompilerPlugin::Compile(
-    const absl::string_view soc_model,
-    const std::vector<LiteRtSubgraph>& partitions, std::ostream& byte_code_out,
-    std::vector<std::string>& call_info_out) {
+Expected<CompiledResult> CompilerPlugin::Compile(LiteRtModel partitions,
+                                                 absl::string_view soc_model) {
   CompiledResult result = MakeResult();
+  // If the user has passed an soc_model, then we use it; otherwise we let the
+  // backend pick the appropriate one by passing nullptr as soc_model. This is
+  // important for on-device compilation, where the backend must determine the
+  // SoC model based on the user device.
+  const char* soc_model_str = !soc_model.empty() ? soc_model.data() : nullptr;
+  LITERT_RETURN_IF_ERROR(plugin_api_.compiler_plugin_compile(
+      plugin_handle_, soc_model_str, partitions,
+      &result.compiled_result_handle_));
+  return result;
+}
 
-  // Compile given partitions into result.
-  // TODO: Use const where appropriate in the C compiler plugin api.
-  LiteRtSubgraphArray partitions_arr =
-      const_cast<LiteRtSubgraphArray>(partitions.data());
-  if (auto stat = plugin_api_.compiler_plugin_compile(
-          plugin_handle_, soc_model.data(), partitions_arr, partitions.size(),
-          &result.compiled_result_handle_);
-      stat != kLiteRtStatusOk) {
-    return stat;
+namespace {
+
+LiteRtStatus PartitionSubgraph(CompilerPlugin& compiler_plugin,
+                               LiteRtSubgraphT& subgraph,
+                               PartitionResult& result) {
+  // Get selected ops from plugin.
+  auto selected_ops = compiler_plugin.Partition(Subgraph(&subgraph));
+  if (!selected_ops) {
+    LITERT_LOG(LITERT_ERROR, "Failed to get partitions from plugin");
+    return selected_ops.Error().Status();
   }
 
-  // Parse call info from the result.
-  {
-    auto num_call = result.NumCalls();
-    if (!num_call) {
-      return num_call.Error().Status();
-    }
-    if (num_call.Value() != partitions.size()) {
-      LITERT_LOG(
-          LITERT_ERROR, "%s",
-          "Plugin didn't return call info for each partition compiled.\n");
-      return kLiteRtStatusErrorRuntimeFailure;
-    }
-    for (int i = 0; i < num_call.Value(); ++i) {
-      auto call_info = result.CallInfo(i);
-      if (!call_info) {
-        return call_info.Error().Status();
-      }
-      call_info_out.emplace_back() = *call_info;
-    }
+  // Group selected ops into connected islands.
+  auto islands = GroupPartitions(*selected_ops);
+  if (islands.empty()) {
+    LITERT_LOG(LITERT_ERROR, "Failed to group partitions");
+    return kLiteRtStatusErrorRuntimeFailure;
   }
 
-  // Parse byte code from result.
-  {
-    auto byte_code = result.ByteCode();
-    if (!byte_code) {
-      return byte_code.Error().Status();
-    }
-    LITERT_LOG(LITERT_INFO, "Compiled %d partitions in %lu bytes",
-               partitions.size(), byte_code->Size());
-    byte_code->WriteStr(byte_code_out);
+  // For each connected island, slice into new subgraph and replace use with
+  // single dispatch op.
+  for (auto& island : islands) {
+    auto& new_subgraph = result.second.EmplaceBack();
+    auto* dispatch_op = OutlinePartition(subgraph, &new_subgraph, island);
+    result.first.push_back(dispatch_op);
   }
 
   return kLiteRtStatusOk;
+}
+
+}  // namespace
+
+Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
+                                         LiteRtModelT& model) {
+  // Accumulate partition results for each subgraph in model.
+  PartitionResult result;
+  for (auto* subgraph : model.Subgraphs()) {
+    LITERT_RETURN_IF_ERROR(
+        PartitionSubgraph(compiler_plugin, *subgraph, result));
+  }
+  ABSL_DCHECK_EQ(result.first.size(), result.second.Size());
+  return result;
+}
+
+Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+                           absl::string_view soc_model) {
+  // Collect partitions to pass to compilation.
+  auto partitions = PartitionModel(compiler_plugin, model);
+  if (!partitions) {
+    return partitions.Error();
+  }
+
+  auto& dispatch_ops = partitions->first;
+  auto& subgraphs = partitions->second;
+
+  // Wrap the partitioned subgraphs in a LiteRtModel.
+  LiteRtModelT sliced_model;
+  sliced_model.TransferSubgraphs(std::move(subgraphs));
+
+  // Copy op codes.
+  const auto& op_codes = detail::GetTflOpCodes(model);
+
+  LiteRtModelT::TflOpCodes codes;
+  codes.reserve(op_codes.size());
+  for (const auto& op_code : op_codes) {
+    codes.emplace_back(std::make_unique<TflOpCode>(*op_code));
+  }
+
+  detail::SetTflOpCodes(sliced_model, std::move(codes));
+
+  // Pass sliced subgraphs to plugin for compilation.
+  auto compiled_result = compiler_plugin.Compile(&sliced_model, soc_model);
+  if (!compiled_result) {
+    return compiled_result.Error();
+  }
+
+  // Register byte code buffers as external buffers. Map the byte code indices
+  // to the registered buffer ids.
+  auto num_byte_code = compiled_result->NumByteCodeModules();
+  if (!num_byte_code) {
+    return num_byte_code.Error();
+  }
+
+  std::vector<LiteRtParamIndex> byte_code_idx_to_buf_id(*num_byte_code);
+
+  for (auto i = 0; i < *num_byte_code; ++i) {
+    auto byte_code = compiled_result->ByteCode(i);
+    if (!byte_code) {
+      return byte_code.Error();
+    }
+
+    // TODO: This copy could probably be avoided.
+    OwningBufferRef<uint8_t> owned_byte_code(byte_code->Data(),
+                                             byte_code->Size());
+    const auto buf_id =
+        model.Buffers()->RegisterOwnedBuffer(std::move(owned_byte_code));
+
+    byte_code_idx_to_buf_id[i] = buf_id;
+  }
+
+  // Register byte code buffers and add edges from dispatch ops to them.
+  for (auto i = 0; i < dispatch_ops.size(); ++i) {
+    auto* dispatch_op = dispatch_ops.at(i);
+
+    auto call_info = compiled_result->CallInfo(i);
+    if (!call_info) {
+      return call_info.Error();
+    }
+    auto [name, byte_code_idx] = *call_info;
+    const auto buf_id = byte_code_idx_to_buf_id[byte_code_idx];
+
+    model.AttachAssetToOp(dispatch_op, buf_id, std::string(name));
+  }
+
+  // Tag the model with make/model from the plugin.
+  auto build_stamp =
+      MakeBuildStamp(compiler_plugin.SocManufacturer(), soc_model);
+  if (!build_stamp) {
+    return build_stamp.Error();
+  }
+
+  if (auto status =
+          model.PushMetadata(kLiteRtBuildStampKey, std::move(*build_stamp));
+      status != kLiteRtStatusOk) {
+    return Error(status);
+  }
+
+  return {};
+}
+
+Expected<ApplyPluginsResult> ApplyPlugins(
+    LiteRtEnvironment environment, LiteRtModel model,
+    LiteRtHwAcceleratorSet selected_hw_accelerators) {
+  std::string compiler_plugin_lib_path = ".";
+  auto option =
+      environment->GetOption(kLiteRtEnvOptionTagCompilerPluginLibraryPath);
+  if (option.has_value() && option->type == kLiteRtAnyTypeString) {
+    compiler_plugin_lib_path = option->str_value;
+  }
+
+  const std::array<const absl::string_view, 1>
+      compiler_plugin_lib_search_paths = {compiler_plugin_lib_path};
+
+  auto compiler_plugins = litert::internal::CompilerPlugin::LoadPlugins(
+      compiler_plugin_lib_search_paths);
+  if (!compiler_plugins) {
+    return compiler_plugins.Error();
+  }
+  if (compiler_plugins->empty()) {
+    return litert::Error(kLiteRtStatusErrorRuntimeFailure,
+                         "No compiler plugin found");
+  }
+
+  OwningBufferRef<uint8_t> new_flatbuffer;
+  std::vector<std::string> success_messages;
+  std::vector<std::string> error_messages;
+
+  ApplyPluginsResult result;
+  result.num_applied_plugins = 0;
+  for (auto& compiler_plugin : *compiler_plugins) {
+    auto plugin_name = compiler_plugin.DebugString();
+
+    auto plugin_supported_hardware = compiler_plugin.SupportedHardware();
+    if (!plugin_supported_hardware) {
+      error_messages.push_back(absl::StrCat(
+          plugin_name, " ", plugin_supported_hardware.Error().Message()));
+      continue;
+    }
+
+    if (*plugin_supported_hardware & selected_hw_accelerators) {
+      if (auto status = ApplyPlugin(compiler_plugin, *model); !status) {
+        error_messages.push_back(
+            absl::StrCat(plugin_name, " ", status.Error().Message()));
+        continue;
+      }
+
+      success_messages.push_back(absl::StrCat(plugin_name));
+      result.num_applied_plugins++;
+    }
+  }
+
+  result.new_flatbuffer = std::move(new_flatbuffer);
+  result.success_message = absl::StrJoin(success_messages, ", ");
+  result.error_message = absl::StrJoin(error_messages, ", ");
+
+  return result;
 }
 
 }  // namespace litert::internal

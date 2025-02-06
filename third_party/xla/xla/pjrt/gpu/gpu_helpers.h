@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
@@ -40,7 +41,7 @@ absl::StatusOr<LocalClient*> GetGpuXlaClient(
 // Enables peer access between all pairs of GPUs where possible.
 void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors);
 
-std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
     se::StreamExecutor* executor);
 
 // Builds a BFCAllocator for all local GPUs.
@@ -65,7 +66,7 @@ struct TopologySizes {
   // "<num_slices> x <num_hosts_per_slice> x <num_devices_per_host>"
   // and returns the parsed components on success.
   static absl::StatusOr<TopologySizes> FromString(
-      std::string_view topology_string);
+      absl::string_view topology_string);
 };
 
 }  // namespace xla

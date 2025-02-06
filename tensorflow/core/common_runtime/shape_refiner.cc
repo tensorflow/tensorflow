@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -74,7 +74,7 @@ absl::Status ShapeRefiner::InferShapesForFunctionSubNode(
   TF_RETURN_IF_ERROR(AddNodeInternal(node, outer_context));
   InferenceContext* node_context = CHECK_NOTNULL(GetContext(node));
 
-  if (StringPiece(node->type_string()) == kArgOp) {
+  if (absl::string_view(node->type_string()) == kArgOp) {
     // Handle special node: function input.
     // Shapes for these nodes are provided in the outer inference
     // context.
@@ -102,7 +102,7 @@ absl::Status ShapeRefiner::InferShapesForFunctionSubNode(
     if (resource) {
       node_context->set_output_handle_shapes_and_types(0, *resource);
     }
-  } else if (StringPiece(node->type_string()) == kRetvalOp) {
+  } else if (absl::string_view(node->type_string()) == kRetvalOp) {
     // Handle special node: function output.
     // Shapes inferred for these nodes go into the outer inference
     // context.

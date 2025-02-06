@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 
 #include "absl/log/check.h"
 #include "absl/strings/ascii.h"

@@ -3420,6 +3420,7 @@ absl::flat_hash_set<const HloInstruction*> ComputeInstructionsToShard(
     const HloModule& module, const HloInstructionSequence& sequence) {
   std::queue<const HloInstruction*> queue;
 
+  // Initialize queue
   for (HloInstruction* instruction : sequence.instructions()) {
     if (spmd::IsSPMDFullToShardShapeCustomCall(instruction)) {
       for (const HloInstruction* user : instruction->users()) {
@@ -3437,6 +3438,17 @@ absl::flat_hash_set<const HloInstruction*> ComputeInstructionsToShard(
   }
 
   absl::flat_hash_set<const HloInstruction*> visited;
+  auto push_into_queue =
+      [&visited, &queue](absl::Span<HloInstruction* const> instructions) {
+        for (const HloInstruction* instruction : instructions) {
+          if (!spmd::IsSPMDShardToFullShapeCustomCall(instruction) &&
+              !spmd::IsSPMDFullToShardShapeCustomCall(instruction) &&
+              !visited.contains(instruction)) {
+            queue.push(instruction);
+          }
+        }
+      };
+
   while (!queue.empty()) {
     const HloInstruction* instruction = queue.front();
     queue.pop();
@@ -3447,30 +3459,12 @@ absl::flat_hash_set<const HloInstruction*> ComputeInstructionsToShard(
 
     for (const HloComputation* computation :
          instruction->called_computations()) {
-      for (const HloInstruction* parameter :
-           computation->parameter_instructions()) {
-        if (!spmd::IsSPMDShardToFullShapeCustomCall(parameter) &&
-            !spmd::IsSPMDFullToShardShapeCustomCall(parameter) &&
-            parameter != instruction && !visited.contains(parameter)) {
-          queue.push(parameter);
-        }
-      }
+      push_into_queue(computation->parameter_instructions());
+      push_into_queue({computation->root_instruction()});
     }
 
-    for (const HloInstruction* user : instruction->users()) {
-      if (!spmd::IsSPMDShardToFullShapeCustomCall(user) &&
-          !spmd::IsSPMDFullToShardShapeCustomCall(user) &&
-          !visited.contains(user)) {
-        queue.push(user);
-      }
-    }
-    for (const HloInstruction* operand : instruction->operands()) {
-      if (!spmd::IsSPMDShardToFullShapeCustomCall(operand) &&
-          !spmd::IsSPMDFullToShardShapeCustomCall(operand) &&
-          operand != instruction && !visited.contains(operand)) {
-        queue.push(operand);
-      }
-    }
+    push_into_queue(instruction->users());
+    push_into_queue(instruction->operands());
   }
 
   absl::flat_hash_set<const HloInstruction*> to_shard;
@@ -3527,6 +3521,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   bool module_is_changed = false;
 
   bool set_to_memory_lower_bound = (option_.memory_budget_per_device == 0);
+  bool hard_memory_constraint = (option_.memory_budget_ratio < 0);
 
   // Remove CustomCalls with custom_call_target="Sharding" and move their
   // shardings to their input ops.
@@ -3690,7 +3685,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
       option_.memory_budget_per_device =
           memory_lower_bound * std::abs(option_.memory_budget_ratio);
       // TODO(b/341299984): Document this flag syntax, or automate the behavior.
-      if (option_.memory_budget_ratio < 0) {
+      if (hard_memory_constraint) {
         option_.memory_overbudget_coeff = -1.0;  // Disables the soft constraint
       }
     } else if (option_.memory_budget_per_device > 0) {
@@ -3813,7 +3808,12 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
               option_, request_name, sharding_propagation_solution));
     if (mesh_idx == partial_mesh_shapes.size() - 1) {
       this->solver_optimal_objective_value_ = output.cost;
+    } else if (hard_memory_constraint) {
+      // If the memory budget constraint is *hard*, we're already guaranteed
+      // that this intermediate solution honors the maximum value.
     } else {
+      // If the memory budget constraint is *soft*, we require the intermediate
+      // solution to be optimal (since otherwise, it's probably degenerate).
       TF_RET_CHECK(output.is_optimal)
           << "The solver did not find an optimal solution for a partial mesh "
           << "shape.";

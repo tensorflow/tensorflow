@@ -17,16 +17,16 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_TESTLIB_LLVM_IR_KERNEL_EMITTER_H_
 
 #include <cstddef>
-#include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_emitter.h"
-#include "xla/codegen/kernel_spec.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::cpu {
@@ -45,17 +45,20 @@ class LlvmIrKernelEmitter : public KernelEmitter {
     BufferUse::MemoryAccess memory_access;
   };
 
-  LlvmIrKernelEmitter(std::string_view llvm_ir, std::string_view kernel_name,
+  LlvmIrKernelEmitter(absl::string_view llvm_ir, absl::string_view kernel_name,
                       se::ThreadDim thread_dim,
                       absl::Span<const KernelArg> args);
 
-  absl::StatusOr<std::unique_ptr<KernelSpec>> EmitKernelSpec() final;
+  absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
 
  private:
   std::string llvm_ir_;
   std::string kernel_name_;
   se::ThreadDim thread_dim_;
   std::vector<KernelArg> args_;
+  // Normally this would be populated by the buffer assignment pass, but for
+  // testing purposes we hold it in the emitter.
+  std::vector<BufferAllocation> buffer_allocations_;
 };
 
 }  // namespace xla::cpu

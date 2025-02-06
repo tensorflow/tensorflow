@@ -1236,9 +1236,14 @@ def main():
       # Get the linker version
       ld_version = run_shell([gcc_env, '-Wl,-version']).split()
 
-      ld_version_int = convert_version_to_int(ld_version[3])
+      ld_version_int = 0
+      for i in range(len(ld_version)):
+        ld_version_int = convert_version_to_int(ld_version[i])
+        if ld_version_int is not None:
+          break
+
       if ld_version_int is None:
-        ld_version_int = convert_version_to_int(ld_version[4])
+        ld_version_int = 0
 
       # Enable if 'ld' version >= 2.35
       if ld_version_int >= 2035000:

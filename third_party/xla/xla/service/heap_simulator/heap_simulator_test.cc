@@ -46,10 +46,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -1862,10 +1862,16 @@ TEST_F(IntervalTreeTest, InsertAndRemoveTwoLevelsLeft) {
   BufferIntervalTree tree;
   tree.Add(20, 36, chunk);
   tree.Add(1, 45, chunk);
+  EXPECT_EQ(tree.NumChunksOverlappingInTime(10, 25), 2);
+  EXPECT_EQ(tree.NumChunksOverlappingInTime(5, 15), 1);
   EXPECT_TRUE(tree.Remove(1, 45, chunk));
+  EXPECT_EQ(tree.NumChunksOverlappingInTime(10, 25), 1);
+  EXPECT_EQ(tree.NumChunksOverlappingInTime(5, 15), 0);
   EXPECT_EQ(tree.GetRoot()->subtree_end, 36);
   EXPECT_TRUE(tree.Remove(20, 36, chunk));
   ASSERT_EQ(tree.GetRoot(), nullptr);
+  EXPECT_EQ(tree.NumChunksOverlappingInTime(10, 25), 0);
+  EXPECT_EQ(tree.NumChunksOverlappingInTime(5, 15), 0);
 }
 
 TEST_F(IntervalTreeTest, InsertAndRemoveTwoLevelsRight) {

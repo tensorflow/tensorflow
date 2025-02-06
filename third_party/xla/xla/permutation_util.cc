@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/permutation_util.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"

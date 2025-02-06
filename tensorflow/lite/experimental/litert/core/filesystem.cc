@@ -18,6 +18,8 @@
 #include <cstdint>
 #include <filesystem>  // NOLINT
 #include <fstream>
+#include <string>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -63,7 +65,7 @@ LiteRtStatus StdIFRead(const StdPath& std_path, char* data, size_t size) {
 
 void Touch(absl::string_view path) { std::ofstream(MakeStdPath(path)); }
 
-std::string Join(const SmallVec<absl::string_view>& paths) {
+std::string Join(const std::vector<absl::string_view>& paths) {
   StdPath std_path;
   for (auto subpath : paths) {
     std_path /= MakeStdPath(subpath);
@@ -76,7 +78,7 @@ bool Exists(absl::string_view path) { return StdExists(MakeStdPath(path)); }
 Expected<size_t> Size(absl::string_view path) {
   auto std_path = MakeStdPath(path);
   if (!StdExists(std_path)) {
-    return Error(kLiteRtStatusErrorNotFound);
+    return Error(kLiteRtStatusErrorNotFound, "File not found");
   }
   return StdSize(std_path);
 }
@@ -85,11 +87,11 @@ Expected<OwningBufferRef<uint8_t>> LoadBinaryFile(absl::string_view path) {
   auto std_path = MakeStdPath(path);
 
   if (!StdExists(std_path)) {
-    return Error(kLiteRtStatusErrorFileIO);
+    return Error(kLiteRtStatusErrorFileIO, "File not found");
   }
 
   OwningBufferRef<uint8_t> buf(StdSize(std_path));
-  LITERT_EXPECT_OK(StdIFRead(std_path, buf.StrData(), buf.Size()));
+  LITERT_RETURN_IF_ERROR(StdIFRead(std_path, buf.StrData(), buf.Size()));
 
   return buf;
 }

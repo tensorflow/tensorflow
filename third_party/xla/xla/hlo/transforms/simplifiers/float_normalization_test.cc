@@ -30,15 +30,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/float_support.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -150,7 +150,9 @@ class FloatNormalizationF8Test
       public ::testing::WithParamInterface<PrimitiveType> {};
 
 INSTANTIATE_TEST_SUITE_P(FloatNormalizationF8Suite, FloatNormalizationF8Test,
-                         ::testing::Values(F8E3M4, F8E4M3, F8E5M2));
+                         ::testing::Values(F4E2M1FN, F8E3M4, F8E4M3,
+                                           F8E4M3B11FNUZ, F8E4M3FN, F8E4M3FNUZ,
+                                           F8E5M2, F8E5M2FNUZ, F8E8M0FNU));
 
 TEST_F(FloatNormalizationTest, NoopIfSupported) {
   auto builder = HloComputation::Builder(TestName());

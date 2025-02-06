@@ -1,4 +1,5 @@
 compiler/xla/backends/cpu/nanort/package_groups.bzl:
+compiler/xla/backends/cpu/package_groups.bzl:
 compiler/xla/internal/package_groups.bzl:
 compiler/xla/mlir_hlo/WORKSPACE:
 compiler/xla/package_groups.bzl:
@@ -29,7 +30,6 @@ third_party/ortools/ortools.patch:
 third_party/py/BUILD.tpl:
 third_party/py/BUILD:
 third_party/py/ml_dtypes/BUILD:
-third_party/py/ml_dtypes/LICENSE:
 third_party/py/numpy/BUILD:
 third_party/py/python_configure.bzl:
 third_party/py/python_init_pip.bzl:
@@ -41,6 +41,10 @@ third_party/python_runtime/BUILD:
 third_party/repo.bzl:
 third_party/spirv_llvm_translator/spirv_llvm_translator.BUILD:
 third_party/stablehlo/BUILD:
+tools/def_file_filter/BUILD.tpl:
+tools/def_file_filter/BUILD:
+tools/def_file_filter/def_file_filter.py.tpl:
+tools/def_file_filter/def_file_filter_configure.bzl:
 tools/toolchains/BUILD:
 tools/toolchains/clang6/BUILD:
 tools/toolchains/cpus/py/BUILD:
@@ -56,5 +60,7 @@ tools/toolchains/win/20240424/BUILD:
 tools/toolchains/win/BUILD:
 tools/toolchains/win/bazel_211/BUILD:
 tools/toolchains/win/tf_win_05022023/BUILD:
+tools/toolchains/win2022/20241118/BUILD:
+tools/toolchains/win2022/BUILD:
 tools/toolchains/win_1803/py38/BUILD:
 tools/toolchains/win_1803/py39/BUILD:

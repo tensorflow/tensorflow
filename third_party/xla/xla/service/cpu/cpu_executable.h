@@ -20,14 +20,15 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/executable_run_options.h"
@@ -35,7 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/simple_orc_jit.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
@@ -68,7 +69,7 @@ class CpuExecutable : public Executable {
   // Creates a CpuExecutable from JIT compiled cpu function by resolving
   // `entry_function_name` in the `jit`.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
-      std::unique_ptr<SimpleOrcJIT> jit,
+      std::unique_ptr<FunctionLibrary> function_library,
       std::unique_ptr<const BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module,
       const std::string& entry_function_name,
@@ -77,7 +78,7 @@ class CpuExecutable : public Executable {
 
   // Creates a CpuExecutable from a thunk sequence.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
-      std::unique_ptr<SimpleOrcJIT> jit,
+      std::unique_ptr<FunctionLibrary> function_library,
       std::unique_ptr<const BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
       std::vector<ConstantAllocation> constants,
@@ -103,8 +104,40 @@ class CpuExecutable : public Executable {
 
   absl::Span<const std::string> obj_files() const { return obj_files_; }
 
+  std::vector<SymbolProto> get_compiled_symbols_proto() const {
+    std::vector<SymbolProto> symbols;
+    for (const auto& symbol : compiled_symbols_) {
+      SymbolProto symbol_proto;
+      symbol_proto.set_name(symbol.name);
+      symbol_proto.set_function_type_id(GetFunctionTypeId(symbol.type_id));
+      symbols.push_back(std::move(symbol_proto));
+    }
+    return symbols;
+  }
+
   void set_obj_files(std::vector<std::string> obj_files) {
     obj_files_ = std::move(obj_files);
+  }
+
+  void set_compiled_symbols(
+      std::vector<FunctionLibrary::Symbol> compiled_symbols) {
+    compiled_symbols_ = std::move(compiled_symbols);
+  }
+
+  void set_symbol_type_id_to_function_type_id(
+      absl::flat_hash_map<FunctionLibrary::TypeId, SymbolProto::FunctionTypeId>
+          symbol_type_id_to_function_type_id) {
+    symbol_type_id_to_function_type_id_ =
+        std::move(symbol_type_id_to_function_type_id);
+  }
+
+  SymbolProto::FunctionTypeId GetFunctionTypeId(
+      const FunctionLibrary::TypeId type_id) const {
+    auto it = symbol_type_id_to_function_type_id_.find(type_id);
+    if (it == symbol_type_id_to_function_type_id_.end()) {
+      return SymbolProto::UNKNOWN;
+    }
+    return it->second;
   }
 
   // This should be called after set_ir_module_string.
@@ -139,21 +172,7 @@ class CpuExecutable : public Executable {
     return assignment_->Allocations();
   }
 
-  // A Thunk::FunctionRegistry implementation that jit-compiles functions on
-  // demand using the SimpleOrcJIT instance owned by the CpuExecutable.
-  class FunctionRegistry : public Thunk::FunctionRegistry {
-   public:
-    explicit FunctionRegistry(SimpleOrcJIT* jit);
-    absl::StatusOr<Kernel> FindKernel(std::string_view name) final;
-    absl::StatusOr<Comparator> FindComparator(std::string_view name) final;
-
-   private:
-    std::string Mangle(std::string_view name);
-
-    SimpleOrcJIT* jit_;
-  };
-
-  Thunk::FunctionRegistry& function_registry() { return *function_registry_; }
+  FunctionLibrary* function_library() const { return function_library_.get(); }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
@@ -190,13 +209,20 @@ class CpuExecutable : public Executable {
   // computation. Uses dataflow analysis from buffer assignment.
   const InstructionValueSet& GetRootValueSet() const;
 
-  // The JIT containing compiled modules.
-  std::unique_ptr<SimpleOrcJIT> jit_;
+  // The FunctionLibrary containing compiled modules.
+  std::unique_ptr<FunctionLibrary> function_library_;
 
   // Object files (machine code) compiled from an HLO module by the JIT
-  // compiler. We capture all object files created by SimpleOrcJIT so we can
+  // compiler. We capture all object files created by JitCompiler so we can
   // export them to AOT compilation result.
   std::vector<std::string> obj_files_;
+
+  // Generate compiled symbols. We capture all compiled symbols so we can export
+  // them to AOT compilation result.
+  std::vector<FunctionLibrary::Symbol> compiled_symbols_;
+
+  absl::flat_hash_map<FunctionLibrary::TypeId, SymbolProto::FunctionTypeId>
+      symbol_type_id_to_function_type_id_;
 
   // Buffer assignment for the buffers we need to allocate.
   const std::unique_ptr<const BufferAssignment> assignment_;
@@ -227,8 +253,6 @@ class CpuExecutable : public Executable {
   std::optional<ThunkExecutor> thunks_;
   // Vector indexed by BufferAllocation::Index for efficient access.
   std::vector<ConstantAllocation> constants_;
-  // On-demand JIT compiler for functions required by thunks.
-  std::optional<FunctionRegistry> function_registry_;
 
   // Entry function name for the computation.
   const std::string entry_function_name_;

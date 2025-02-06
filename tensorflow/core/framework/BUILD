@@ -541,7 +541,7 @@ cc_library(
     srcs = ["tensor_testutil.cc"],
     hdrs = ["tensor_testutil.h"],
     copts = tf_copts(),
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -614,7 +614,7 @@ cc_library(
     testonly = 1,
     srcs = ["fake_input.cc"],
     hdrs = ["fake_input.h"],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         ":attr_value_proto_cc",
         ":op_def_proto_cc",
@@ -724,6 +724,7 @@ cc_library(
         "//learning/brain/google/data/core/parse_proto:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
         "//learning/deepmind/video/tensorflow:__pkg__",
+        "//learning/processing/hydra/tensorflow:__pkg__",
         "//learning/sibyl/tfx/state/kernels:__pkg__",
         "//learning/sibyl/tfx/transformation/kernels:__pkg__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
@@ -840,6 +841,7 @@ tf_cuda_library(
         "variant_tensor_data.h",
     ],
     visibility = [
+        "//learning/infra/runtime/experimental/mixed_engine:__subpackages__",
         "//tensorflow:__pkg__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
@@ -890,6 +892,7 @@ tf_cuda_library(
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_xla//xla/tsl/framework:device_type",
         "@local_xla//xla/tsl/util:byte_swap_array",
     ],
@@ -947,7 +950,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 

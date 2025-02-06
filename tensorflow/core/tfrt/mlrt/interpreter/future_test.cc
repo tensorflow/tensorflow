@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/status_matchers.h"
 
 namespace mlrt {
 namespace {

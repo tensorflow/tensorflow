@@ -25,7 +25,6 @@ limitations under the License.
 #include <limits>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -33,6 +32,7 @@ limitations under the License.
 #include "absl/log/absl_check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -132,7 +132,7 @@ class TensorMatcher {
     return false;
   }
 
-  void Describe(std::ostream* os, std::string_view prefix) const {
+  void Describe(std::ostream* os, absl::string_view prefix) const {
     *os << prefix;
     if (comp_.float_comp == FloatComparison::kApproximate) {
       *os << "approximately ";

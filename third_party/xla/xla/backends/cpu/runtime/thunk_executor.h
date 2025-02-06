@@ -23,12 +23,14 @@ limitations under the License.
 #include <new>
 #include <queue>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/fixed_array.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -42,6 +44,8 @@ namespace internal {
 // Clang does not allow defining a nested struct with member initializer, as
 // a workaround we define a struct in internal namespace and create an alias.
 struct ThunkExecutorOptions {
+  enum class ReadyQueueType { kFifo, kLifo, kPriority };
+
   // If all thunks in a sequence use buffers of size less than or equal to the
   // given threshold, we mark execution as sequential, as concurrency overheads
   // will likely dominate the overall execution time.
@@ -52,9 +56,8 @@ struct ThunkExecutorOptions {
   // the overall execution time.
   size_t execute_sequential_num_thunks_threshold = 8;
 
-  // Use priority ready queue to execute nodes according to their priority. By
-  // default we use FIFO ready queue.
-  bool use_priority_ready_queue = false;
+  // The type of a queue for ready thunks.
+  ReadyQueueType ready_queue_type = ReadyQueueType::kFifo;
 };
 }  // namespace internal
 
@@ -69,7 +72,7 @@ class ThunkExecutor {
   using Options = internal::ThunkExecutorOptions;
 
   // Nodes identified by their index in the captured ThunkSequence.
-  using NodeId = int64_t;
+  using NodeId = int32_t;
 
   static constexpr NodeId kInvalidNodeId = std::numeric_limits<NodeId>::min();
 
@@ -79,8 +82,22 @@ class ThunkExecutor {
   static absl::StatusOr<ThunkExecutor> Create(
       ThunkSequence thunk_sequence, const Options& options = Options());
 
+  // We store all `in_edges` and `out_edges` referenced by the `NodeDef` inside
+  // large vectors to optimize for data locality on a hot path.
+  using NodesEdges = std::vector<NodeId>;
+
   // NodeDef defines an execution order for all thunks in a sequence.
   struct NodeDef {
+    NodeId id = kInvalidNodeId;
+    int64_t priority = 0;
+    absl::Span<const NodeId> in_edges;
+    absl::Span<const NodeId> out_edges;
+  };
+
+  // A NodeDef builder to collect all in-edges and out-edges before constructing
+  // a NodeDef. We use it at ThunkExecutor creation time when we don't know how
+  // many in-edges and out-edges we have in total.
+  struct NodeDefBuilder {
     NodeId id = kInvalidNodeId;
     int64_t priority = 0;
     std::vector<NodeId> in_edges;
@@ -94,6 +111,8 @@ class ThunkExecutor {
   // Returned execute event becomes ready when all thunks completed execution.
   // If any of the thunks failed, the event will be in error state.
   tsl::AsyncValueRef<ExecuteEvent> Execute(const Thunk::ExecuteParams& params);
+
+  const ThunkSequence& thunk_sequence() const { return thunk_sequence_; }
 
   absl::Span<const NodeDef> nodes_defs() const { return nodes_defs_; }
   const NodeDef& node_def(NodeId id) const { return nodes_defs_[id]; }
@@ -126,6 +145,25 @@ class ThunkExecutor {
    private:
     absl::InlinedVector<NodeId, 8> queue_;
     size_t head_ = 0;
+  };
+
+  // A ready queue that executes nodes in LIFO order.
+  class LifoReadyQueue {
+   public:
+    explicit LifoReadyQueue(absl::Span<const NodeId> ready_nodes);
+
+    void Push(NodeId id);
+
+    NodeId Pop();
+    LifoReadyQueue PopHalf();
+
+    size_t Size() const;
+    bool Empty() const;
+
+    LifoReadyQueue CreateEmptyReadyQueue() const;
+
+   private:
+    absl::InlinedVector<NodeId, 8> queue_;
   };
 
   // A ready queue that executes nodes sorted by NodeDef priority.
@@ -177,7 +215,7 @@ class ThunkExecutor {
       explicit Node(const NodeDef& node_def);
 
       alignas(kAtomicAlignment) std::atomic<int64_t> counter;
-      const std::vector<NodeId>* out_edges;
+      absl::Span<const NodeId> out_edges;
     };
 
     static_assert(std::is_trivially_destructible_v<Node>,
@@ -185,15 +223,22 @@ class ThunkExecutor {
 
     // We use indirection via NodeStorage to be able to allocate uninitialized
     // memory and do not pay the cost of default initializing all nodes.
-    using NodeStorage = std::aligned_storage_t<sizeof(Node), alignof(Node)>;
+    struct NodeStorage {
+      alignas(Node) std::byte data[sizeof(Node)];
+    };
 
     ExecuteState(ThunkExecutor* executor, Thunk::TaskRunner* runner);
 
-    Node& node(NodeId id) { return *reinterpret_cast<Node*>(&nodes[id]); }
+    Node& node(NodeId id) {
+      DCHECK_LT(id, nodes.size()) << "Node id is out of bounds";
+      return *reinterpret_cast<Node*>(&nodes.data()[id]);
+    }
 
     ThunkExecutor* executor;
     Thunk::TaskRunner* runner;
 
+    // Note: using alignas(Node) here instead of in NodeStorage does not work:
+    // `nodes` would be aligned, but not its elements.
     absl::FixedArray<NodeStorage> nodes;
     tsl::AsyncValueRef<ExecuteEvent> execute_event;
 
@@ -208,7 +253,8 @@ class ThunkExecutor {
     absl::Status abort_status ABSL_GUARDED_BY(abort_mutex);
   };
 
-  ThunkExecutor(ThunkSequence thunk_sequence, std::vector<NodeDef> nodes_defs,
+  ThunkExecutor(ThunkSequence thunk_sequence, NodesEdges nodes_in_edges,
+                NodesEdges nodes_out_edges, std::vector<NodeDef> nodes_defs,
                 const Options& options);
 
   // Executes thunks sequentially starting from the first thunk in the sequence.
@@ -240,17 +286,25 @@ class ThunkExecutor {
                        tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,
                        ExecuteState::Node& node, ReadyQueue& ready_queue);
 
-  // Runs a transitive reduction on the NodeDef graph to remove redundant edges,
-  // and updates nodes priorities. Returns the number of removed edges.
+  // Converts a vector of NodeDefBuilder to a tuple of NodesEdges and a vector
+  // of NodeDef.
+  static std::tuple<NodesEdges, NodesEdges, std::vector<NodeDef>>
+  CreateNodeDefs(std::vector<NodeDefBuilder> builders);
+
+  // Runs a transitive reduction on the NodeDefBuilder graph to remove redundant
+  // edges, and updates nodes priorities. Returns the number of removed edges.
   //
   // See: https://en.wikipedia.org/wiki/Transitive_reduction
-  int64_t RunTransitiveReductionAndUpdatePriorities();
+  static int64_t RunTransitiveReductionAndUpdatePriorities(
+      absl::Span<NodeDefBuilder> builders);
 
   ThunkSequence thunk_sequence_;
   Options options_;
 
   int64_t num_thunks_;
 
+  NodesEdges nodes_in_edges_;   // `in_edges` referenced by `nodes_defs_`
+  NodesEdges nodes_out_edges_;  // `out_edges` referenced by `nodes_defs_`
   std::vector<NodeDef> nodes_defs_;
 
   std::vector<NodeId> source_;

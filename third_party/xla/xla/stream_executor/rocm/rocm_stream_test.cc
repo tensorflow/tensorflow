@@ -39,9 +39,9 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -50,7 +50,6 @@ namespace {
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
-using ::testing::IsEmpty;
 using ::tsl::testing::IsOk;
 
 class RocmStreamTest : public ::testing::Test {
@@ -219,7 +218,7 @@ TEST_F(RocmStreamTest, LaunchKernel) {
   EXPECT_THAT(stream->Memset32(&a, 1, kByteLength), IsOk());
   EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), IsOk());
   EXPECT_THAT(stream->MemZero(&c, kByteLength), IsOk());
-  EXPECT_THAT(stream->ThenLaunch(ThreadDim(), BlockDim(kLength), add, a, b, c),
+  EXPECT_THAT(add.Launch(ThreadDim(), BlockDim(kLength), stream.get(), a, b, c),
               IsOk());
 
   EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());

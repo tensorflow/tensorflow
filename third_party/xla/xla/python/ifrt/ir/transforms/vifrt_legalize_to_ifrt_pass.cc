@@ -252,16 +252,21 @@ class VifrtToIfrtTypeConverter : public VifrtTypeConverterBuiltin {
                                 << array.getDevicesAttr() << '\n');
         return {};
       }
-      if (auto memory_kind_str =
-              llvm::dyn_cast<mlir::StringAttr>(array.getMemoryKindAttr());
-          memory_kind_str.str() == kVifrtDefaultString) {
+      auto memory_kind_attr =
+          llvm::dyn_cast<mlir::StringAttr>(array.getMemoryKindAttr());
+      if (memory_kind_attr && memory_kind_attr.str() == kVifrtDefaultString) {
         // No memory kind was specified.
-        return IfrtArrayType::get(array.getContext(), array.getShape(),
-                                  sharding_attr, devices_attr);
-      } else {
-        return IfrtArrayType::get(array.getContext(), array.getShape(),
-                                  sharding_attr, devices_attr, memory_kind_str);
+        memory_kind_attr = nullptr;
       }
+      auto layout_attr =
+          llvm::dyn_cast<mlir::StringAttr>(array.getLayoutAttr());
+      if (layout_attr && layout_attr.str() == kVifrtDefaultString) {
+        // No layout was specified.
+        layout_attr = nullptr;
+      }
+      return IfrtArrayType::get(array.getContext(), array.getShape(),
+                                sharding_attr, devices_attr, memory_kind_attr,
+                                layout_attr);
     });
     addConversion([](VifrtControlV1Type type) -> mlir::Type {
       return IfrtControlType::get(type.getContext());
@@ -311,8 +316,10 @@ mlir::FailureOr<mlir::SymbolRefAttr> getCalleeSymbolRef(CallOpV1 call_op) {
   if (!callee_symbol_ref_str_attr) {
     return mlir::failure();
   }
-  std::vector<std::string> symbol_strs =
-      absl::StrSplit(callee_symbol_ref_str_attr.str(), absl::ByString("::@"));
+  // It is important to call `getValue()` on the `StringAttr` to get the
+  // unescaped string instead of the escaped string.
+  std::vector<std::string> symbol_strs = absl::StrSplit(
+      callee_symbol_ref_str_attr.getValue().str(), absl::ByString("::@"));
   if (symbol_strs.empty()) {
     return mlir::failure();
   }

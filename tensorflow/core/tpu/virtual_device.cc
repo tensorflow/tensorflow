@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/virtual_device.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 
 namespace tensorflow {
@@ -28,7 +31,7 @@ class VirtualDeviceContext : public DeviceContext {
                              Tensor* device_tensor, StatusCallback done,
                              bool sync_dst_compute) const override;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                             StringPiece tensor_name, Device* device,
+                             absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
   void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
                               Tensor* output_tensor,
@@ -45,7 +48,7 @@ void VirtualDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
 }
 
 void VirtualDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                                                 StringPiece tensor_name,
+                                                 absl::string_view tensor_name,
                                                  Device* device,
                                                  Tensor* cpu_tensor,
                                                  StatusCallback done) {

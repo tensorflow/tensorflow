@@ -3,6 +3,7 @@ load("@python_version_repo//:py_version.bzl", "USE_PYWRAP_RULES")
 load(
     "//third_party/py/rules_pywrap:pywrap.impl.bzl",
     _pybind_extension = "pybind_extension",
+    _pywrap_binaries = "pywrap_binaries",
     _pywrap_common_library = "pywrap_common_library",
     _pywrap_library = "pywrap_library",
     _stripped_cc_info = "stripped_cc_info",
@@ -17,7 +18,6 @@ def pybind_extension(
         win_def_file = None,  # original
         testonly = None,  # original
         compatible_with = None,  # original
-        outer_module_name = "",  # deprecate
         additional_exported_symbols = [],
         data = None,  # original
         # Garbage parameters, exist only to maingain backward compatibility for
@@ -25,12 +25,6 @@ def pybind_extension(
 
         # To patch top-level deps lists in sophisticated cases
         pywrap_ignored_deps_filter = ["@pybind11", "@pybind11//:pybind11"],
-        pywrap_private_deps_filter = [
-            "@pybind11_abseil//pybind11_abseil:absl_casters",
-            "@pybind11_abseil//pybind11_abseil:import_status_module",
-            "@pybind11_abseil//pybind11_abseil:status_casters",
-            "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
-        ],
         pytype_srcs = None,  # alias for data
         hdrs = [],  # merge into sources
         pytype_deps = None,  # ignore?
@@ -53,25 +47,22 @@ def pybind_extension(
         pytype_deps,
     ]
 
-    private_deps_filter_dict = {k: None for k in pywrap_private_deps_filter}
     ignored_deps_filter_dict = {k: None for k in pywrap_ignored_deps_filter}
 
     actual_srcs = srcs + hdrs
 
-    actual_data = data
-    if pytype_srcs:
-        data = pytype_srcs
+    actual_data = data if data else []
+    list_type = type([])
+    if pytype_srcs and type(actual_data) == list_type:
+        actual_data.extend(pytype_srcs)
 
     actual_deps = []
     actual_private_deps = []
     actual_default_deps = ["@pybind11//:pybind11"]
 
-    if type(deps) == list:
+    if not deps or type(deps) == list:
         for dep in deps:
             if dep in ignored_deps_filter_dict:
-                continue
-            if dep in private_deps_filter_dict:
-                actual_private_deps.append(dep)
                 continue
             actual_deps.append(dep)
     else:
@@ -82,12 +73,10 @@ def pybind_extension(
         name = name,
         deps = actual_deps,
         srcs = actual_srcs,
-        private_deps = actual_private_deps,
         visibility = visibility,
         win_def_file = win_def_file,
         testonly = testonly,
         compatible_with = compatible_with,
-        outer_module_name = outer_module_name,
         additional_exported_symbols = additional_exported_symbols,
         data = actual_data,
         default_deps = actual_default_deps,
@@ -141,6 +130,13 @@ def pywrap_aware_cc_import(name, **kwargs):
         pass
     else:
         native.cc_import(
+            name = name,
+            **kwargs
+        )
+
+def pywrap_binaries(name, **kwargs):
+    if use_pywrap_rules():
+        _pywrap_binaries(
             name = name,
             **kwargs
         )

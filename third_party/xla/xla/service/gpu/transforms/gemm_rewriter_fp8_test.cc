@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_replace.h"
@@ -31,17 +32,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/gpu/transforms/gemm_rewriter_test_lib.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/test.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -154,10 +155,6 @@ ENTRY main {
       f32[8,16,2560]{2,1,0} %dot.6237)
 })";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-; CHECK:    custom-call({{.*}}"lhs_batch_dimensions":["1"],"rhs_batch_dimensions":["0"]
-  )");
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
@@ -2421,179 +2418,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK-NEXT:      [[B:%[^ ]+]] = f32[32,16]{1,0} parameter(2)
 ; CHECK-NEXT:      ROOT [[OUT:%[^ ]+]] = f32[32,16]{1,0} add([[SLICE]], [[B]])
       )");
-}
-
-TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDWithAllGatherF8) {
-  absl::string_view hlo_text = R"(
-    HloModule test
-
-    ENTRY test {
-      x = <<F8E4M3>>[16,32] parameter(0)
-      y = <<F8E4M3>>[16,32] parameter(1)
-      x_f32 = f32[16,32] convert(x)
-      y_f32 = f32[16,32] convert(y)
-      x_scale = f32[] parameter(2)
-      y_scale = f32[] parameter(3)
-      x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
-      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
-      x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
-      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
-      all_gather = f32[16,64]{1,0} all-gather(x_unscaled), channel_id=1, replica_groups={{0,1},{2,3},{4,5},{6,7}}, dimensions={1}, use_global_device_ids=true
-      all_gather1 = f32[64,32]{1,0} all-gather(y_unscaled), channel_id=2, replica_groups={{0,2,4,6},{1,3,5,7}}, dimensions={0}, use_global_device_ids=true
-      ROOT dot_a = f32[16,32] dot(all_gather, all_gather1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-          }
-)";
-
-  HloModuleConfig config = GetModuleConfigForTest();
-  config.set_use_spmd_partitioning(true);
-  config.set_num_partitions(8);
-
-  RunAndFilecheckHloRewrite(
-      hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
-                   GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
-      R"(
-; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[16,32], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,32] {
-; CHECK:         [[P0:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} parameter(0)
-; CHECK:         [[AG:%[^ ]+]] = <<F8E4M3>>[16,64]{1,0} all-gather([[P0]]), {{[^ ]+}}
-; CHECK:         [[P1:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} parameter(1)
-; CHECK:         [[AG1:%[^ ]+]] = <<F8E4M3>>[64,32]{1,0} all-gather([[P1]]), {{[^ ]+}}
-; CHECK:         [[P1_TRANSPOSE:%[^ ]+]] = <<F8E4M3>>[32,64]{1,0} transpose([[AG1]]), dimensions={1,0}
-; CHECK:         [[P2:%[^ ]+]] = f32[] parameter(2)
-; CHECK:         [[P3:%[^ ]+]] = f32[] parameter(3)
-; CHECK:         [[GEMM_TUPLE:%[^ ]+]] = (f32[16,32]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[AG]], [[P1_TRANSPOSE]], [[P2]], [[P3]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"DEFAULT"
-; CHECK:           }
-; CHECK:           ROOT [[GEMM:%[^_]+]] = f32[16,32]{1,0} get-tuple-element([[GEMM_TUPLE]]), index=0
-      )",
-      nullptr, &config);
-}
-
-TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDWithAllToAllF8) {
-  absl::string_view hlo_text = R"(
-    HloModule test
-
-    ENTRY test {
-      x = <<F8E4M3>>[16,32] parameter(0)
-      y = <<F8E4M3>>[16,32] parameter(1)
-      x_f32 = f32[16,32] convert(x)
-      y_f32 = f32[16,32] convert(y)
-      x_scale = f32[] parameter(2)
-      y_scale = f32[] parameter(3)
-      x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
-      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
-      x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
-      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
-      all_to_all = f32[16,32]{1,0} all-to-all(x_unscaled), channel_id=1, replica_groups={{0,1,2,3},{4,5,6,7}}, dimensions={0}
-      ROOT dot_a = f32[16,16] dot(all_to_all, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={1}
-          }
-)";
-
-  HloModuleConfig config = GetModuleConfigForTest();
-  config.set_use_spmd_partitioning(true);
-  config.set_num_partitions(8);
-
-  RunAndFilecheckHloRewrite(
-      hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
-                   GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
-      R"(
-; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[16,32], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
-; CHECK:         [[P0:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} parameter(0)
-; CHECK:         [[AA:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} all-to-all([[P0]]), {{[^ ]+}}
-; CHECK:         [[P1:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} parameter(1)
-; CHECK:         [[P2:%[^ ]+]] = f32[] parameter(2)
-; CHECK:         [[P3:%[^ ]+]] = f32[] parameter(3)
-; CHECK:         [[GEMM:%[^ ]+]] = (f32[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[AA]], [[P1]], [[P2]], [[P3]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"DEFAULT"
-; CHECK:           }
-      )",
-      nullptr, &config);
-}
-
-TEST_P(ParameterizedFp8GemmRewriteTest,
-       ScaledABUnscaledDWithCollectivePermuteF8) {
-  absl::string_view hlo_text = R"(
-    HloModule test
-
-    ENTRY test {
-      x = <<F8E4M3>>[16,32] parameter(0)
-      y = <<F8E4M3>>[16,32] parameter(1)
-      x_f32 = f32[16,32] convert(x)
-      y_f32 = f32[16,32] convert(y)
-      x_scale = f32[] parameter(2)
-      y_scale = f32[] parameter(3)
-      x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
-      y_scale_bcast = f32[16,32] broadcast(y_scale), dimensions={}
-      x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
-      y_unscaled = f32[16,32] multiply(y_f32, y_scale_bcast)
-      collective_permute = f32[16,32]{1,0} collective-permute(x_unscaled), source_target_pairs={{0,0}, {1,1}, {2,4}, {3,5}, {4,2}, {5,3}, {6,6}, {7,7}}
-      ROOT dot_a = f32[16,16] dot(collective_permute, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={1}
-          }
-)";
-
-  HloModuleConfig config = GetModuleConfigForTest();
-  config.set_use_spmd_partitioning(true);
-  config.set_num_partitions(8);
-
-  RunAndFilecheckHloRewrite(
-      hlo_text,
-      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
-                   GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
-      R"(
-; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[16,32], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
-; CHECK:         [[P0:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} parameter(0)
-; CHECK:         [[AA:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} collective-permute([[P0]]), {{[^ ]+}}
-; CHECK:         [[P1:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} parameter(1)
-; CHECK:         [[P2:%[^ ]+]] = f32[] parameter(2)
-; CHECK:         [[P3:%[^ ]+]] = f32[] parameter(3)
-; CHECK:         [[GEMM:%[^ ]+]] = (f32[16,16]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[AA]], [[P1]], [[P2]], [[P3]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"DEFAULT"
-; CHECK:           }
-      )",
-      nullptr, &config);
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest,

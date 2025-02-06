@@ -15,53 +15,105 @@ limitations under the License.
 
 #include "xla/backends/cpu/testlib/kernel_runner.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <random>
-#include <string_view>
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/testlib/kernel_runner.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
 
+using ::testing::Eq;
+
 TEST(KernelRunnerTest, Add) {
-  // TODO(b/370122948): Add an actual LLVM IR for simple addition kernel.
-  static constexpr std::string_view kNoOp = R"(
-    define ptr @noop(ptr noundef %0) {
-      ret ptr null
-    }
+  static constexpr absl::string_view kLlvmAddI32 = R"(
+        %struct.XLA_CPU_KernelCallFrame = type { ptr, ptr, i64, ptr }
+        %struct.XLA_CPU_KernelArg = type { ptr, i64 }
+        ; c = a + b (per thread)
+        define ptr @LlvmAddI32(ptr noundef %call_frame_ptr) {
+          %args_gep = getelementptr inbounds %struct.XLA_CPU_KernelCallFrame,
+                          ptr %call_frame_ptr, i32 0, i32 3
+          %args_ptr = load ptr, ptr %args_gep, align 8
+          %arg1_gep = getelementptr inbounds %struct.XLA_CPU_KernelArg, ptr %args_ptr, i64 1
+          %arg2_gep = getelementptr inbounds %struct.XLA_CPU_KernelArg, ptr %args_ptr, i64 2
+          %arg0_ptr = load ptr, ptr %args_ptr, align 8
+          %arg1_ptr = load ptr, ptr %arg1_gep, align 8
+          %arg2_ptr = load ptr, ptr %arg2_gep, align 8
+          %thread_gep = getelementptr inbounds %struct.XLA_CPU_KernelCallFrame, ptr %call_frame_ptr, i32 0, i32 1
+          %thread_ptr = load ptr, ptr %thread_gep, align 8
+          %thread_idx = load i64, ptr %thread_ptr, align 8
+          %a_ptr = getelementptr inbounds i32, ptr %arg0_ptr, i64 %thread_idx
+          %a = load i32, ptr %a_ptr, align 4
+          %b_ptr = getelementptr inbounds i32, ptr %arg1_ptr, i64 %thread_idx
+          %b = load i32, ptr %b_ptr, align 4
+          %c = add nsw i32 %a, %b
+          %result_ptr = getelementptr inbounds i32, ptr %arg2_ptr, i64 %thread_idx
+          store i32 %c, ptr %result_ptr, align 4
+          ret ptr null
+        }
   )";
 
-  LlvmIrKernelEmitter::KernelArg arg{1024, BufferUse::kWrite};
-  LlvmIrKernelEmitter emitter(kNoOp, "noop", se::ThreadDim(), {arg});
+  constexpr int64_t kNumElements = 8;
+  constexpr size_t kArgSizeBytes = kNumElements * sizeof(int32_t);
+  LlvmIrKernelEmitter::KernelArg read_arg{kArgSizeBytes, BufferUse::kRead};
+  LlvmIrKernelEmitter::KernelArg write_arg{kArgSizeBytes, BufferUse::kWrite};
+  LlvmIrKernelEmitter emitter(kLlvmAddI32, "LlvmAddI32",
+                              se::ThreadDim(kNumElements),
+                              {read_arg, read_arg, write_arg});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel, emitter.EmitKernelSpec());
+  TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
+                          emitter.EmitKernelDefinition());
+  TF_ASSERT_OK_AND_ASSIGN(JitCompiler compiler,
+                          KernelRunner::CreateJitCompiler(HloModuleConfig()));
 
-  KernelRunner runner(std::move(kernel));
+  TF_ASSERT_OK_AND_ASSIGN(
+      KernelRunner runner,
+      KernelRunner::Create(std::move(kernel_definition), std::move(compiler)));
 
   std::minstd_rand0 engine;
+  Shape shape = ShapeUtil::MakeShape(S32, {kNumElements});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal in_arg1,
+      LiteralUtil::CreateRandomLiteral<S32>(shape, &engine, 10, 10));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal in_arg2,
+      LiteralUtil::CreateRandomLiteral<S32>(shape, &engine, 15, 100));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal out_arg,
+      LiteralUtil::CreateRandomLiteral<S32>(shape, &engine, 0, 1));
 
-  Shape shape = ShapeUtil::MakeShape(F32, {8});
-  auto a = LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
-  auto b = LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
-  auto c = LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
+  absl::Status status =
+      runner.Call({KernelRunnerUtil::CreateArgument(in_arg1),
+                   KernelRunnerUtil::CreateArgument(in_arg2),
+                   KernelRunnerUtil::CreateArgument(out_arg)});
+  EXPECT_TRUE(status.ok());
 
-  std::vector<KernelRunner::Argument> args = {
-      KernelRunnerUtil::CreateArgument(*a),
-      KernelRunnerUtil::CreateArgument(*b),
-      KernelRunnerUtil::CreateArgument(*c),
-  };
+  std::vector<int32_t> expected_result;
+  expected_result.reserve(kNumElements);
+  for (int64_t idx = 0; idx < kNumElements; ++idx) {
+    expected_result.push_back(in_arg1.data<int32_t>()[idx] +
+                              in_arg2.data<int32_t>()[idx]);
+  }
 
-  auto status = runner.Call(args);
-  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(out_arg.data<int32_t>(), Eq(expected_result));
 }
 
 }  // namespace xla::cpu

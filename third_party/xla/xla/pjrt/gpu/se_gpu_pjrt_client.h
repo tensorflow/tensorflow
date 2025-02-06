@@ -20,14 +20,12 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -36,7 +34,6 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/local_device_state.h"
@@ -53,13 +50,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/framework/allocator.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/fingerprint.h"
-
-namespace stream_executor {
-
-class MultiDeviceAdapter;
-
-}
 
 namespace xla {
 using DeviceTopologyPair =
@@ -242,7 +232,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
     return &topology_;
   }
 
-  // TODO(b/285385306): Enable loading a non-loaded PjRtExecutable.
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::unique_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) override {
@@ -250,13 +239,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
         tensorflow::down_cast<PjRtLoadedExecutable*>(executable.release()));
   }
 
-  // TODO(b/296466237): Unify `Load` method after (de)serialization and tests on
-  // existing use cases are done.
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::unique_ptr<PjRtExecutable> executable);
 
-  // TODO(b/296466237): Unify `LoadSerializedExecutable` after fixing existing
-  // tests.
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
       absl::string_view serialized, std::optional<CompileOptions> options,
       const LoadOptions& load_options);
@@ -276,12 +261,12 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
 std::string MakeComputeCapabilityString(const se::DeviceDescription* desc);
 
 absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
-    std::string_view platform_name,
+    absl::string_view platform_name,
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int node_id, int num_nodes,
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
-    std::optional<std::string_view> mock_gpu_topology = std::nullopt,
+    std::optional<absl::string_view> mock_gpu_topology = std::nullopt,
     absl::Duration get_local_topology_timeout = absl::Minutes(2),
     absl::Duration get_global_topology_timeout = absl::Minutes(5));
 

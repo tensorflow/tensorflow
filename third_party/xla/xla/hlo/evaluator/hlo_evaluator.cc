@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
@@ -223,7 +224,7 @@ absl::Status MakeEvalErrorDueToParamOrInfeed(
   return error;
 }
 
-// Repesents a value that might or might not be determined statically.
+// Represents a value that might or might not be determined statically.
 struct DynamicOrStaticInteger {
   std::optional<int64_t> static_value;
   bool is_dynamic() const { return !static_value.has_value(); }
@@ -899,8 +900,10 @@ absl::StatusOr<Literal> HloEvaluator::Evaluate(
     const auto& computation_shape =
         computation.parameter_instruction(i)->shape();
     const auto& arg_shape = arg_literals[i]->shape();
-    if (!Shape::Equal().MinorToMajorOnlyInLayout()(computation_shape,
-                                                   arg_shape)) {
+    bool ignore_layout = !computation_shape.has_layout();
+    if (!Shape::Equal()
+             .IgnoreLayout(ignore_layout)
+             .MinorToMajorOnlyInLayout()(computation_shape, arg_shape)) {
       return InvalidArgument(
           "Shape mismatch at parameter %d. Computation expected %s, but arg "
           "was %s.",
@@ -1290,12 +1293,30 @@ absl::Status HloEvaluator::EvaluateInternal(
 }
 
 absl::Status HloEvaluator::HandleBitcast(const HloInstruction* bitcast) {
-  const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
-  Literal result(bitcast->shape());
+  Shape result_shape = bitcast->shape();
+
+  // Allow effective scalars without layouts as the result is unambiguous.
+  if (!result_shape.has_layout() &&
+      ShapeUtil::IsEffectiveScalar(result_shape)) {
+    result_shape = LayoutUtil::GetWithDefaultLayout(result_shape);
+  }
+
+  // In general, we require a layout to evaluate a bitcast: this is the only
+  // operation where indexing is physical rather than logical.
+  if (!result_shape.has_layout()) {
+    return InvalidArgument(
+        "Evaluator cannot evaluate bitcast for non-scalar operand without "
+        "assigned layout.");
+  }
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(result_shape));
+
+  Literal result(result_shape);
+
   // Bitcast output is allowed to be smaller than the input if the backend-
   // specific buffer sizes for the input and output are the same. Since the HLO
   // evaluator doesn't have access to the backend-specific shape size function,
   // assume it's OK to bitcast if output <= input.
+  const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
   TF_RET_CHECK(operand_literal.size_bytes() >= result.size_bytes());
   memcpy(result.untyped_data(), operand_literal.untyped_data(),
          result.size_bytes());
@@ -1372,8 +1393,11 @@ absl::Status HloEvaluator::HandleParameter(const HloInstruction* parameter) {
 #ifndef NDEBUG
     const Literal* input_literal = arg_literals_[parameter->parameter_number()];
     VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
-    DCHECK(Shape::Equal().MinorToMajorOnlyInLayout()(parameter->shape(),
-                                                     input_literal->shape()))
+    bool check_layout = parameter->shape().has_layout();
+    DCHECK(Shape::Equal()
+               .IgnoreLayout(!check_layout)
+               .MinorToMajorOnlyInLayout()(parameter->shape(),
+                                           input_literal->shape()))
         << "parameter shape is: "
         << ShapeUtil::HumanStringWithLayout(parameter->shape())
         << ", but input literal shape is: "
@@ -3722,7 +3746,7 @@ absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
                                             const Shape& result_shape) {
   std::function<ResultT(Fp, Uint)> stochastic_convert_op =
       [](Fp operand, Uint random) -> ResultT {
-    bool is_negative = static_cast<bool>(Eigen::numext::signbit(operand));
+    bool is_negative = static_cast<bool>(SignAndMagnitude(operand).first);
     if (Eigen::numext::isinf(operand)) {
       return is_negative ? std::numeric_limits<ResultT>::min()
                          : std::numeric_limits<ResultT>::max();
@@ -4723,7 +4747,7 @@ absl::Status HloEvaluator::Preprocess(const HloInstruction* hlo) {
       }
     }
   }
-  return ShapeUtil::ValidateShape(hlo->shape());
+  return ShapeUtil::ValidateShapeWithOptionalLayout(hlo->shape());
 }
 
 absl::Status HloEvaluator::Postprocess(const HloInstruction* hlo) {

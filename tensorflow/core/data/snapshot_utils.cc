@@ -29,6 +29,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/io/snappy/snappy_inputbuffer.h"
 #include "xla/tsl/lib/io/snappy/snappy_outputbuffer.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -49,9 +52,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -345,10 +345,10 @@ CustomWriter::~CustomWriter() {
   }
 }
 
-absl::Status CustomWriter::WriteRecord(const StringPiece& data) {
+absl::Status CustomWriter::WriteRecord(const absl::string_view& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
-  TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
   return dest_->Append(data);
 }
 
@@ -356,7 +356,7 @@ absl::Status CustomWriter::WriteRecord(const StringPiece& data) {
 absl::Status CustomWriter::WriteRecord(const absl::Cord& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
-  TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
   return dest_->Append(data);
 }
 #endif  // TF_CORD_SUPPORT
@@ -917,7 +917,7 @@ absl::Status CustomReader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
 #if defined(PLATFORM_GOOGLE)
   absl::Cord c;
   TF_RETURN_IF_ERROR(ReadRecord(&c));
-  record.ParseFromCord(c);
+  record.ParseFromString(c);
 #else   // PLATFORM_GOOGLE
   tstring record_bytes;
   TF_RETURN_IF_ERROR(ReadRecord(&record_bytes));

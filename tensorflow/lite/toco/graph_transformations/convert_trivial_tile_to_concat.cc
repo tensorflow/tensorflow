@@ -23,9 +23,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ConvertTrivialTileToConcat::Run(Model* model,
-                                                     std::size_t op_index,
-                                                     bool* modified) {
+absl::Status ConvertTrivialTileToConcat::Run(Model* model, std::size_t op_index,
+                                             bool* modified) {
   *modified = false;
   auto tile_it = model->operators.begin() + op_index;
   if (tile_it->get()->type != OperatorType::kTile) {

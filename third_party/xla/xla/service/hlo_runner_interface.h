@@ -18,27 +18,77 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
+class HloRunnerInterface;
 class BufferAssignmentProto;
+
+// Tags to identify particular properties of a HloRunnerInterface
+// implementation.
+//
+// Tags are an opaque way to expose arbitrary details about the runner backend.
+// Tags should be added whenever a decision must be made based on the property
+// of a particular backend or runner implementation.
+//
+// For example, if a specific feature is only supported under certain conditions
+// and only known to the backend, a tag can be added here and exposed via all
+// applicable backends. A test or other functionality can then be gated on the
+// presence of that particular tag.
+//
+// Custom tags that cannot be added in this file can be defined elsewhere but
+// should use negative values to avoid conflicts.
+class HloRunnerPropertyTag final {
+ public:
+  // Underlying type for HloRunnerPropertyTag properties as well as other fields
+  // that represent property tags.
+  //
+  // e.g. a custom grouping class for a proprietary codebase could be defined
+  // as:
+  //
+  // class MyCorpPropertyTag final {
+  //  public:
+  //   static constexpr HloRunnerPropertyTag::Type kInternalFeature1 = -1;
+  //   static constexpr HloRunnerPropertyTag::Type kInternalFeature2 = -2;
+  // };
+  using Type = int;
+
+  // Default, reserved value for HloRunnerPropertyTag. Perhaps this could be
+  // used as a sentinel value for a tag that is not present. Do not use.
+  static constexpr Type kDefault = 0;
+  // Indicates that the runner is using ROCm.
+  static constexpr Type kUsingGpuRocm = 1;
+  // Indicates that this runner is a CPU runner.
+  static constexpr Type kCpu = 2;
+
+ private:
+  HloRunnerPropertyTag() = default;
+};
+
+// Runner implementations only support the execution of executables that were
+// created by the same runner. We use the this class to represent these
+// executables when they leave the runner without exposing any details of the
+// underlying implementation. See go/xla-opaque-executable for more details.
+using OpaqueExecutable = Executable;
 
 // A base class for running an HloModule. This executes the given HloModule on a
 // certain backend directly without using the client interface. HloModule can be
@@ -112,18 +162,20 @@ class HloRunnerInterface {
   // Reads the hlo text dump file in HloModule::ToString format, creates and
   // returns the HloModule.
   static absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
-      const std::string& filename, const DebugOptions& debug_options);
+      const std::string& filename, const DebugOptions& debug_options,
+      const HloParserOptions& options = HloParserOptions());
 
-  // Creates an executable object given an HLO module. If run_hlo_passes is
-  // true, the HLO passes will be run as part of compilation.
-  virtual absl::StatusOr<std::unique_ptr<Executable>> CreateExecutable(
+  // Creates a runner-internal executable object given an HLO module and returns
+  // a OpaqueExecutable. If run_hlo_passes is true, the HLO passes will be run
+  // as part of compilation.
+  virtual absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) = 0;
 
   // Same as above, except it takes buffer assignment as input.
   // Note: The default implementation of the API here does not utilize the given
   // buffer assignment. A derived runner interface is expected to override the
   // following method to achieve this functionality.
-  virtual absl::StatusOr<std::unique_ptr<Executable>>
+  virtual absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
   CreateExecutableWithBufferAssignment(
       std::unique_ptr<HloModule> module,
       const BufferAssignmentProto* /*buffer_assignment_proto*/,
@@ -183,16 +235,17 @@ class HloRunnerInterface {
 
   // Same as 3 Execute methods above, but with Executable as input.
   absl::StatusOr<Literal> ExecuteWithExecutable(
-      Executable* executable, absl::Span<const Literal> arguments,
+      OpaqueExecutable* executable, absl::Span<const Literal> arguments,
       ExecutionProfile* profile = nullptr);
 
   absl::StatusOr<Literal> ExecuteWithExecutable(
-      Executable* executable, absl::Span<const Literal* const> arguments) {
+      OpaqueExecutable* executable,
+      absl::Span<const Literal* const> arguments) {
     return ExecuteWithExecutable(executable, arguments, nullptr);
   }
 
   virtual absl::StatusOr<Literal> ExecuteWithExecutable(
-      Executable* executable, absl::Span<const Literal* const> arguments,
+      OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
       ExecutionProfile* profile) = 0;
 
   // Executes a given HLO module into a set of replicas, and returns a map
@@ -210,7 +263,7 @@ class HloRunnerInterface {
       DeviceAssignment* device_assignment) = 0;
 
   virtual absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<Executable*(int64_t)> executable_provider,
+      std::function<OpaqueExecutable*(int64_t)> executable_provider,
       std::function<int64_t(int64_t)> argument_count_provider,
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
@@ -226,6 +279,21 @@ class HloRunnerInterface {
   // This function is used e.g. to create a VerifiedHloModule. It returns an
   // integer representing the size of the shape in bytes as opposed to a Shape.
   virtual DeviceShapeSizeFn device_shape_size_fn() const = 0;
+
+  // Returns the number of devices which are known. Not all of these devices may
+  // be usable by XLA.
+  virtual int device_count() const = 0;
+
+  // Returns true if the condition corresponding to the given tag is true for
+  // this runner.
+  virtual bool HasProperty(HloRunnerPropertyTag::Type tag) const = 0;
+
+  // Returns the first (or only) HloModule associated with the given
+  // OpaqueExecutable. Returns an error if the OpaqueExecutable cannot be
+  // unwrapped, or if the OpaqueExecutable does not contain at least one
+  // HloModule.
+  virtual absl::StatusOr<absl::Nonnull<const HloModule*>> HloModuleFromWrapped(
+      const OpaqueExecutable* wrapped) const = 0;
 };
 
 }  // namespace xla

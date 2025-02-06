@@ -44,7 +44,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop as while_loop_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import tf_logging as logging  # pylint: disable=unused-import
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import signature_def_utils_impl
@@ -1307,7 +1307,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
         return {'output': out}
 
-    # If bias_size is not explictly given, it should default to width of weight.
+    # If bias_size is not explicitly given, it should default to width of weight.
     if bias_size is None and has_bias:
       bias_size = weight_shape[-1]
 

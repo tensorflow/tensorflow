@@ -215,6 +215,7 @@ def tflite_jni_binary(
         linkopts = tflite_jni_linkopts(),
         linkscript = LINKER_SCRIPT,
         exported_symbols = EXPORTED_SYMBOLS,
+        stamp = -1,
         linkshared = 1,
         linkstatic = 1,
         testonly = 0,
@@ -244,6 +245,7 @@ def tflite_jni_binary(
         copts = copts,
         linkshared = linkshared,
         linkstatic = linkstatic,
+        stamp = stamp,
         deps = deps + [linkscript, exported_symbols],
         srcs = srcs,
         tags = tags,
@@ -937,3 +939,8 @@ register_extension_info(
     extension = tflite_cc_library_with_c_headers_test,
     label_regex_for_dep = "{extension_name}",
 )
+
+# Workaround bug in Bazel before 8.0 where --cxxopt didn't apply to objc++ compilations.
+CXX17_BAZEL_ONLY_COPTS = [
+    "-std=c++17",  # copybara:comment
+]

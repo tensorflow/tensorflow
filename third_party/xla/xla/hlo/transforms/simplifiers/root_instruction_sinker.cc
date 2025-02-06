@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/root_instruction_sinker.h"
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/tuple_util.h"
 namespace xla {
 

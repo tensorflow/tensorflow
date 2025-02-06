@@ -34,14 +34,22 @@ namespace hlo_query {
 
 // Returns whether the given opcode is a collective communications operation
 // that is represented as HloCollectiveInstruction.
+//
+// Do not rely on this to detect any async computation. In particular wrapped
+// async op `kCall` is not considered an async collective, even if it is
+// wrapping `kAsyncStart` or `kAsyncDone` ops.
 bool IsCollectiveCommunicationOp(HloOpcode op);
 
 // Returns whether the given instruction represents the start operation for a
 // collective communication, may include send & recv operations.
+// Do not rely on this to detect any async computation. See caveats in
+// `IsCollectiveCommunicationOp`.
 bool IsAsyncCollectiveStartOp(const HloInstruction* instruction,
                               bool include_send_recv = false);
 // Returns whether the given instruction represents the done operation for a
 // collective communication, may include send & recv operations.
+// Do not rely on this to detect any async computation. See caveats in
+// `IsCollectiveCommunicationOp`.
 bool IsAsyncCollectiveDoneOp(const HloInstruction* instruction,
                              bool include_send_recv = false);
 
@@ -90,8 +98,8 @@ HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
 // Applies `fn` to a collection of instruction with `opcode` for a given
 // `computation`.
 template <typename Fn>
-void ForEachInstructionWithOpcode(HloComputation& computation, HloOpcode opcode,
-                                  Fn&& fn) {
+void ForEachInstructionWithOpcode(const HloComputation& computation,
+                                  HloOpcode opcode, Fn&& fn) {
   for (HloInstruction* instr : computation.instructions()) {
     if (instr->opcode() == opcode) {
       fn(instr);
@@ -102,7 +110,7 @@ void ForEachInstructionWithOpcode(HloComputation& computation, HloOpcode opcode,
 // Applies `fn` to a collection of instruction with `opcode` for a given
 // `module`.
 template <typename Fn>
-void ForEachInstructionWithOpcode(HloModule& module, HloOpcode opcode,
+void ForEachInstructionWithOpcode(const HloModule& module, HloOpcode opcode,
                                   Fn&& fn) {
   for (HloComputation* computation : module.computations()) {
     ForEachInstructionWithOpcode(*computation, opcode, fn);
@@ -112,8 +120,8 @@ void ForEachInstructionWithOpcode(HloModule& module, HloOpcode opcode,
 // Applies `fn` to a collection of instruction satisfying `pred` for a given
 // `computation`.
 template <typename Fn>
-void ForEachInstructionWithPred(HloComputation& computation, HloPredicate pred,
-                                Fn&& fn) {
+void ForEachInstructionWithPred(const HloComputation& computation,
+                                HloPredicate pred, Fn&& fn) {
   for (HloInstruction* instr : computation.instructions()) {
     if (pred(instr)) {
       fn(instr);
@@ -124,7 +132,8 @@ void ForEachInstructionWithPred(HloComputation& computation, HloPredicate pred,
 // Applies `fn` to a collection of instruction satisfying `pred` for a given
 // `module`.
 template <typename Fn>
-void ForEachInstructionWithPred(HloModule& module, HloPredicate pred, Fn&& fn) {
+void ForEachInstructionWithPred(const HloModule& module, HloPredicate pred,
+                                Fn&& fn) {
   for (HloComputation* computation : module.computations()) {
     ForEachInstructionWithPred(*computation, pred, fn);
   }
@@ -194,12 +203,6 @@ HloInstruction* FindInstruction(const HloComputation* computation,
 // Returns nullptr if no such instruction can be found.
 HloInstruction* FindInstruction(const HloComputation* computation,
                                 HloOpcode opcode);
-
-// Returns compile time optimization effort in range [-1.0, 1.0] where values <
-// 0.0 indicate skipping passes which might optimize the final runtime (thus
-// improving compile time), and values > 0.0 indicate running additional passes
-// which may improve runtime at the cost of compilation time.
-float ExecTimeOptimizationEffort(const HloModule& module);
 
 }  // namespace hlo_query
 }  // namespace xla

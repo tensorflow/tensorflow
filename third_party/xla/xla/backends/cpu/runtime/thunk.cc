@@ -20,24 +20,25 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <string_view>
 #include <utility>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
+#include "xla/backends/cpu/collectives/in_process_collectives.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
-#include "xla/service/cpu/in_process_collectives.h"
 #include "xla/service/global_device_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
 namespace xla::cpu {
 
-std::string_view Thunk::KindToString(Kind kind) {
+absl::string_view Thunk::KindToString(Kind kind) {
   switch (kind) {
     case Kind::kAllGather:
       return "all-gather";
@@ -81,8 +82,13 @@ std::string_view Thunk::KindToString(Kind kind) {
       return "topk";
     case Kind::kWhile:
       return "while";
+    case Kind::kXnnFusion:
+      return "xnn-fusion";
+    case Kind::kUnknown:
+      return "unknown";
   }
 }
+
 Thunk::Thunk(Kind kind, Info info)
     : kind_(kind),
       info_(std::move(info)),
@@ -100,15 +106,14 @@ Thunk::CollectiveExecuteParams::Create(
 
   // Default implementation of a collectives interface that can execute
   // collective operations within the same process.
-  static CollectivesInterface* in_process_collectives =
-      new runtime::InProcessCollectives();
+  static CpuCollectives* in_process_collectives = new InProcessCollectives();
 
   // If CPU executable run options are set, use the collectives interface
   // provided by the executable run options if it is set. Otherwise, use the
   // in-process collectives interface.
   const CpuExecutableRunOptions* cpu_run_options =
       run_options->cpu_executable_run_options();
-  CollectivesInterface* collectives =
+  CpuCollectives* collectives =
       cpu_run_options && cpu_run_options->collectives()
           ? cpu_run_options->collectives()
           : in_process_collectives;
@@ -120,8 +125,7 @@ Thunk::CollectiveExecuteParams::Create(
 
 Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
     RunId run_id, int64_t local_device_ordinal, GlobalDeviceId global_device_id,
-    const DeviceAssignment* device_assignment,
-    CollectivesInterface* collectives)
+    const DeviceAssignment* device_assignment, CpuCollectives* collectives)
     : run_id(run_id),
       local_device_ordinal(local_device_ordinal),
       global_device_id(global_device_id),
@@ -138,15 +142,17 @@ Thunk::CustomCallExecuteParams::Create(
           ? run_options->device_ordinal()
           : run_options->stream()->parent()->device_ordinal();
 
-  return CustomCallExecuteParams{device_ordinal,
+  return CustomCallExecuteParams{run_options->run_id(), device_ordinal,
                                  run_options->intra_op_thread_pool(),
                                  run_options->ffi_execution_context()};
 }
 
 Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
-    int32_t device_ordinal, const Eigen::ThreadPoolDevice* intra_op_thread_pool,
+    RunId run_id, int32_t device_ordinal,
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool,
     const ffi::ExecutionContext* ffi_execution_context)
-    : device_ordinal(device_ordinal),
+    : run_id(run_id),
+      device_ordinal(device_ordinal),
       intra_op_thread_pool(intra_op_thread_pool),
       ffi_execution_context(ffi_execution_context) {}
 

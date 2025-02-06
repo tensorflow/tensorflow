@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
@@ -28,7 +29,6 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/qnn_compose_graph.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
@@ -43,13 +43,15 @@ namespace {
 
 constexpr char kPluginManufacturer[] = "Qualcomm";
 
+// clang-format off
 constexpr std::pair<const char*, QnnHtpDevice_Arch_t> kPluginSocModels[] = {
     {"V68", QNN_HTP_DEVICE_ARCH_V68},
     {"V69", QNN_HTP_DEVICE_ARCH_V69},
     {"V73", QNN_HTP_DEVICE_ARCH_V73},
     {"V75", QNN_HTP_DEVICE_ARCH_V75},
+    {"V79", QNN_HTP_DEVICE_ARCH_V79},
 };
-// clang-format off
+
 constexpr LiteRtOpCode kSupportedOps[] = {
   kLiteRtOpCodeTflAdd,
   kLiteRtOpCodeTflDiv,
@@ -70,6 +72,14 @@ constexpr LiteRtOpCode kSupportedOps[] = {
   kLiteRtOpCodeTflSin,
   kLiteRtOpCodeTflCos,
   kLiteRtOpCodeTflFullyConnected,
+  kLiteRtOpCodeTflEmbeddingLookup,
+  kLiteRtOpCodeTflLogicalAnd,
+  kLiteRtOpCodeTflLess,
+  kLiteRtOpCodeTflGreater,
+  kLiteRtOpCodeTflGelu,
+  kLiteRtOpCodeTflDynamicUpdateSlice,
+  kLiteRtOpCodeTflPack,
+  kLiteRtOpCodeTflQuantize,
 };
 // clang-format on
 
@@ -104,6 +114,16 @@ const char* LiteRtGetCompilerPluginSocManufacturer() {
   return kPluginManufacturer;
 }
 
+LiteRtStatus LiteRtGetCompilerPluginSupportedHardware(
+    LiteRtCompilerPlugin compiler_plugin,
+    LiteRtHwAccelerators* supported_hardware) {
+  if (!compiler_plugin || !supported_hardware) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+  *supported_hardware = kLiteRtHwAcceleratorNpu;
+  return kLiteRtStatusOk;
+}
+
 LiteRtStatus LiteRtGetNumCompilerPluginSupportedSocModels(
     LiteRtCompilerPlugin compiler_plugin,
     LiteRtParamIndex* num_supported_soc_models) {
@@ -136,8 +156,13 @@ struct LiteRtCompiledResultT {
 };
 
 LiteRtStatus LiteRtGetCompiledResultByteCode(
-    LiteRtCompiledResult compiled_result, const void** byte_code,
-    size_t* byte_code_size) {
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex byte_code_idx,
+    const void** byte_code, size_t* byte_code_size) {
+  if (!compiled_result || !byte_code || !byte_code_size ||
+      (byte_code_idx != 0)) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
+
   *byte_code = compiled_result->context_bin.data();
   *byte_code_size = compiled_result->context_bin.size();
   return kLiteRtStatusOk;
@@ -145,25 +170,38 @@ LiteRtStatus LiteRtGetCompiledResultByteCode(
 
 LiteRtStatus LiteRtGetCompiledResultCallInfo(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex call_idx,
-    const void** call_info, size_t* call_info_size) {
-  if (call_idx >= compiled_result->graph_names.size()) {
+    const void** call_info, size_t* call_info_size,
+    LiteRtParamIndex* byte_code_idx) {
+  if (!compiled_result || !call_info || !call_info_size) {
+    return kLiteRtStatusErrorInvalidArgument;
+  } else if (call_idx >= compiled_result->graph_names.size()) {
     return kLiteRtStatusErrorIndexOOB;
   }
 
   *call_info = compiled_result->graph_names.at(call_idx).data();
   *call_info_size = compiled_result->graph_names.at(call_idx).size();
+  *byte_code_idx = 0;
 
   return kLiteRtStatusOk;
 }
 
 LiteRtStatus LiteRtGetNumCompiledResultCalls(
     LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_calls) {
+  if (!compiled_result || !num_calls) {
+    return kLiteRtStatusErrorInvalidArgument;
+  }
   *num_calls = compiled_result->graph_names.size();
   return kLiteRtStatusOk;
 }
 
 void LiteRtDestroyCompiledResult(LiteRtCompiledResult compiled_result) {
   delete compiled_result;
+}
+
+LiteRtStatus LiteRtCompiledResultNumByteCodeModules(
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_byte_code) {
+  *num_byte_code = 1;
+  return kLiteRtStatusOk;
 }
 
 //
@@ -202,21 +240,16 @@ bool IsOpSupported(const litert::Op& op) {
 
 }  // namespace
 
-LiteRtStatus LiteRtCompilerPluginPartitionModel(
-    LiteRtCompilerPlugin compiler_plugin, LiteRtModel model,
-    LiteRtOpList selected_ops) {
-  auto m = litert::Model::CreateFromNonOwnedHandle(model);
-  auto subgraph = m.MainSubgraph();
-  if (!subgraph) {
-    return subgraph.Error().Status();
-  }
-
-  for (const auto& op : subgraph->Ops()) {
+LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
+                                           LiteRtSubgraph subgraph,
+                                           LiteRtOpList selected_ops) {
+  ::litert::Subgraph graph(subgraph);
+  for (const auto& op : graph.Ops()) {
     if (!IsOpSupported(op)) {
       continue;
     }
 
-    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtPushOp(selected_ops, op.Get()));
+    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
   }
 
   return kLiteRtStatusOk;
@@ -224,13 +257,20 @@ LiteRtStatus LiteRtCompilerPluginPartitionModel(
 
 LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
-    LiteRtSubgraphArray partitions, LiteRtParamIndex num_partitions,
-    LiteRtCompiledResult* compiled_result) {
-  LITERT_LOG(LITERT_INFO, "Starting QNN Compilation for %d subgraphs",
-             num_partitions);
-  auto opt_soc_model = FindSocModel(soc_model);
-  if (opt_soc_model.has_value()) {
-    LITERT_LOG(LITERT_INFO, "For arch: %d", opt_soc_model.value());
+    LiteRtModel partitions, LiteRtCompiledResult* compiled_result) {
+  auto model = litert::Model::CreateFromNonOwnedHandle(partitions);
+  const auto num_partitions = model.NumSubgraphs();
+
+  LITERT_LOG(LITERT_INFO,
+             "Starting QNN Compilation for %d subgraphs, soc_model=%s",
+             num_partitions, soc_model);
+
+  auto opt_soc_model = soc_model ? FindSocModel(soc_model) : std::nullopt;
+  if (opt_soc_model) {
+    LITERT_LOG(LITERT_ERROR, "Compiling QNN architecture: %d", *opt_soc_model);
+  } else if (soc_model) {
+    LITERT_LOG(LITERT_ERROR, "Unexpected SoC model: %s", soc_model);
+    return kLiteRtStatusErrorInvalidArgument;
   }
 
   // Initialize SDK and load qnn shared libraries.
@@ -240,7 +280,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   auto qnn_manager = QnnManager::Create(
       backend_configs, /*shared_library_dir=*/std::nullopt, opt_soc_model);
   if (!qnn_manager) {
-    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().c_str());
     return qnn_manager.Error().Status();
   }
   LITERT_LOG(LITERT_INFO, "%s", "QNN manager created");
@@ -251,7 +291,7 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   auto context_configs = QnnManager::DefaultContextConfigs();
   auto context_handle = (*qnn_manager)->CreateContextHandle(context_configs);
   if (!context_handle) {
-    LITERT_LOG(LITERT_ERROR, "%s", context_handle.Error().Message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", context_handle.Error().Message().c_str());
     return context_handle.Error().Status();
   }
   LITERT_LOG(LITERT_INFO, "%s", "Context handle created");
@@ -266,15 +306,16 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   {
     std::string& entry_point_name = result->graph_names.emplace_back();
     entry_point_name = "qnn_partition_0";
-    LITERT_RETURN_STATUS_IF_NOT_OK(litert::qnn::ComposeGraph(
-        **qnn_manager, context_handle->get(), partitions[0], entry_point_name));
+    LiteRtSubgraph partition = model.Subgraph(0)->Get();
+    LITERT_RETURN_IF_ERROR(litert::qnn::ComposeGraph(
+        **qnn_manager, context_handle->get(), partition, entry_point_name));
   }
   LITERT_LOG(LITERT_INFO, "%s", "Graph composed");
 
   // Generate context binary.
 
   LITERT_LOG(LITERT_INFO, "%s", "Generating context binary");
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       (*qnn_manager)
           ->GenerateContextBinary(context_handle->get(), result->context_bin));
   LITERT_LOG(LITERT_INFO, "%s", "Context binary generated");

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/pooling.h"
 
+#include <cstdint>
 #include <numeric>
 #include <utility>
 #include <vector>

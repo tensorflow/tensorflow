@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_MODULE_METADATA_H_
 #define XLA_HLO_IR_HLO_MODULE_METADATA_H_
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -26,10 +27,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 

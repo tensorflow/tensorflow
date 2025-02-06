@@ -29,7 +29,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "xla/service/gpu/model/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -201,9 +201,9 @@ inline ConstraintExpression operator||(
 // equal to 0 and all strides equal to 1.
 //
 // It is represented with "tile_map()", which is an IndexingMap of this form:
-// (size0, ..., size{n-1}) ->  (offset0, ..., offset{n-1},
-//                              size'0, ..., size'{n-1},
-//                              stride0, ..., stride{n-1})
+// (size0, ..., size{M-1}) ->  (offset0, ..., offset{N-1},
+//                              size'0, ..., size'{N-1},
+//                              stride0, ..., stride{N-1})
 //
 // We can get three AffineMap projections of tile_map(), which are just
 // convenience methods to get the components that we need:
@@ -234,7 +234,7 @@ inline ConstraintExpression operator||(
 //
 // Def. An n-dimensional tile is a function:
 // t: Z^k -> P(N^n) =
-//    rt_vars -> CartesianProduct_{i=1, ..., n-1}({
+//    rt_vars -> CartesianProduct_{i=0, ..., n-1}({
 //           offsets(rt_vars)[i] + strides[i] * 0,
 //           ...,
 //           offsets(rt_vars)[i] + strides[i] * (sizes[i]-1)
@@ -283,7 +283,7 @@ inline ConstraintExpression operator||(
 //
 // In the code we represent a symbolic tile with "tile_map()", which is an
 // IndexingMap of this form:
-// (size0, ..., size{n-1})
+// (size0, ..., size{m-1})
 // [rt_var0, ..., rt_var{k-1}] -> (offset0, ..., offset{n-1},
 //                                 size'0, ..., size'{n-1},
 //                                 stride0, ..., stride{n-1})
@@ -336,7 +336,7 @@ class SymbolicTile {
   // A map from one tile's sizes and RTVars to another tile's offsets, sizes,
   // and strides.
   //
-  // (size0, ..., size{n-1})
+  // (size0, ..., size{m-1})
   // [rt_var0, ..., rt_var{k-1}] -> (offset0, ..., offset{n-1},
   //                                 size'0, ..., size'{n-1},
   //                                 stride0, ..., stride{n-1})

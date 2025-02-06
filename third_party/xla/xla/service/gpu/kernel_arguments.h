@@ -69,7 +69,7 @@ class KernelArguments {
 
   static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,
-      const HloInstruction* non_fusion_hlo,
+      const HloInstruction* hlo_instruction,
       absl::Span<const HloInstruction* const> needed_operands,
       bool dedup = true);
 

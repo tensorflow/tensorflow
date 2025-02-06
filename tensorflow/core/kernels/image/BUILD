@@ -412,7 +412,7 @@ tf_cc_test(
         ":scale_and_translate_op",
         "@com_google_benchmark//:benchmark",
         "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
+        "@local_xla//xla/tsl/platform:test_main",
     ] + IMAGE_TEST_DEPS,
 )
 

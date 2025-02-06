@@ -48,8 +48,6 @@ namespace {
 using tensorflow::ProfileOptions;
 using tensorflow::profiler::XPlane;
 using tensorflow::profiler::XSpace;
-using tsl::OkStatus;  // TENSORFLOW_STATUS_OK
-using tsl::Status;    // TENSORFLOW_STATUS_OK
 using tsl::profiler::ProfilerInterface;
 
 class ProfilerStatusHelper {
@@ -65,9 +63,9 @@ class ProfilerStatusHelper {
       TF_Status* const c_status) {
     if (stream_executor::tpu::ProfilerApiFn()->TpuStatus_CodeFn(c_status) ==
         TSL_OK) {
-      return ::tsl::OkStatus();
+      return absl::OkStatus();
     } else {
-      return tsl::Status(  // TENSORFLOW_STATUS_OK
+      return absl::Status(  // TENSORFLOW_STATUS_OK
           absl::StatusCode(
               stream_executor::tpu::ProfilerApiFn()->TpuStatus_CodeFn(
                   c_status)),

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_CANONICALIZE_ALL_GATHER_FOR_CSE_H_
 #define XLA_SERVICE_SPMD_CANONICALIZE_ALL_GATHER_FOR_CSE_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"

@@ -16,17 +16,18 @@ limitations under the License.
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 
 #include <memory>
-#include <optional>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/SourceMgr.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
@@ -37,36 +38,24 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-// A KernelSpec that wraps an LlvmIrKernelSource and owns fake buffer
-// allocations for all kernel arguments.
-class LlvmIrKernelSpec : public KernelSpec {
- public:
-  LlvmIrKernelSpec(se::ThreadDim thread_dim,
-                   std::vector<BufferAllocation> buffer_allocations,
-                   BufferUses buffer_uses,
-                   std::shared_ptr<LlvmIrKernelSource> kernel_source)
-      : KernelSpec(se::ClusterDim(), se::BlockDim(), thread_dim, std::nullopt,
-                   std::move(buffer_uses), std::move(kernel_source)),
-        buffer_allocations_(std::move(buffer_allocations)) {}
-
- private:
-  std::vector<BufferAllocation> buffer_allocations_;
-};
-
 }  // namespace
 
-LlvmIrKernelEmitter::LlvmIrKernelEmitter(std::string_view llvm_ir,
-                                         std::string_view kernel_name,
+LlvmIrKernelEmitter::LlvmIrKernelEmitter(absl::string_view llvm_ir,
+                                         absl::string_view kernel_name,
                                          se::ThreadDim thread_dim,
                                          absl::Span<const KernelArg> args)
     : llvm_ir_(llvm_ir),
       kernel_name_(kernel_name),
       thread_dim_(thread_dim),
-      args_(args.begin(), args.end()) {}
+      args_(args.begin(), args.end()) {
+  for (const LlvmIrKernelEmitter::KernelArg& arg : args_) {
+    buffer_allocations_.emplace_back(buffer_allocations_.size(), arg.size_bytes,
+                                     /*color=*/0);
+  }
+}
 
-absl::StatusOr<std::unique_ptr<KernelSpec>>
-LlvmIrKernelEmitter::EmitKernelSpec() {
-  auto context = std::make_shared<llvm::LLVMContext>();
+absl::StatusOr<KernelDefinition> LlvmIrKernelEmitter::EmitKernelDefinition() {
+  auto context = std::make_unique<llvm::LLVMContext>();
 
   // Parse LLVM IR into a module and create a LlvmIrKernelSource.
   llvm::SMDiagnostic diagnostic;
@@ -78,26 +67,19 @@ LlvmIrKernelEmitter::EmitKernelSpec() {
                     diagnostic.getMessage().str());
   }
 
-  auto source = std::make_unique<LlvmIrKernelSource>(
-      std::move(context), std::move(module), kernel_name_);
+  auto source = std::make_unique<LlvmIrKernelSource>(std::move(context),
+                                                     std::move(module));
 
   // Convert kernel arguments to fake allocations and buffer uses.
-  std::vector<BufferAllocation> buffer_allocations;
   KernelSpec::BufferUses buffer_uses;
 
-  buffer_allocations.reserve(args_.size());
-  buffer_uses.reserve(args_.size());
-
-  for (const LlvmIrKernelEmitter::KernelArg& arg : args_) {
-    auto& allocation = buffer_allocations.emplace_back(
-        buffer_allocations.size(), arg.size_bytes, /*color=*/0);
+  for (const auto& [arg, allocation] : llvm::zip(args_, buffer_allocations_)) {
     BufferAllocation::Slice slice(&allocation, 0, arg.size_bytes);
     buffer_uses.push_back(BufferUse(slice, arg.memory_access));
   }
 
-  return std::make_unique<LlvmIrKernelSpec>(
-      thread_dim_, std::move(buffer_allocations), std::move(buffer_uses),
-      std::move(source));
+  KernelSpec kernel_spec(kernel_name_, thread_dim_, buffer_uses);
+  return KernelDefinition(std::move(kernel_spec), std::move(source));
 }
 
 }  // namespace xla::cpu

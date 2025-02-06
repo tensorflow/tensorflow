@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/logging.h"
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/types.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/refcount.h"
 
 namespace tensorflow {
@@ -141,12 +141,14 @@ LocalRendezvous::~LocalRendezvous() {
 }
 
 namespace {
-uint64 KeyHash(const StringPiece& k) { return Hash64(k.data(), k.size()); }
+uint64 KeyHash(const absl::string_view& k) {
+  return Hash64(k.data(), k.size());
+}
 }  // namespace
 
-Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
-                             const Rendezvous::Args& send_args,
-                             const Tensor& val, const bool is_dead) {
+absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
+                                   const Rendezvous::Args& send_args,
+                                   const Tensor& val, const bool is_dead) {
   uint64 key_hash = KeyHash(key.FullKey());
   DVLOG(2) << "Send " << this << " " << key_hash << " " << key.FullKey();
 
@@ -330,7 +332,7 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
       queue->push_back(new Item(
           std::move(rc_owner), recv_args,
           [this, cm, token, done = std::move(done)](
-              const Status& s, const Rendezvous::Args& send_args,
+              const absl::Status& s, const Rendezvous::Args& send_args,
               const Rendezvous::Args& recv_args, const Tensor& v, bool dead) {
             // TryDeregisterCallback returns true when the cancellation callback
             // is successfully deregistered. If it fails because the CM already
@@ -387,7 +389,7 @@ std::vector<tsl::core::RefCountPtr<Rendezvous> >&
     LocalRendezvous::aborted_rendezs_ =
         *new std::vector<tsl::core::RefCountPtr<Rendezvous> >();
 
-void LocalRendezvous::StartAbort(const Status& status) {
+void LocalRendezvous::StartAbort(const absl::Status& status) {
   DoAbort(status);
 
   if (rc_owner_) {
@@ -396,7 +398,7 @@ void LocalRendezvous::StartAbort(const Status& status) {
   }
 }
 
-void LocalRendezvous::DoAbort(const Status& status) {
+void LocalRendezvous::DoAbort(const absl::Status& status) {
   CHECK(!status.ok());
   {
     mutex_lock l(mu_);
@@ -436,7 +438,7 @@ void LocalRendezvous::DoAbort(const Status& status) {
   }
 }
 
-Status LocalRendezvous::status() {
+absl::Status LocalRendezvous::status() {
   tf_shared_lock ml(mu_);
   return status_;
 }

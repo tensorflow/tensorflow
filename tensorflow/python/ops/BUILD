@@ -785,7 +785,13 @@ py_strict_library(
         "tensor_getitem_override.py",
     ],
     srcs_version = "PY3",
-    visibility = visibility,
+    # copybara:uncomment_begin(google-only)
+    # visibility = visibility,
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         ":array_ops_gen",
         ":array_ops_stack",
@@ -1795,6 +1801,7 @@ py_strict_library(
         "image_ops.py",
     ],
     srcs_version = "PY3",
+    visibility = ["//visibility:public"],
     deps = [
         ":array_ops",
         ":image_ops_gen",
@@ -1859,6 +1866,7 @@ py_strict_library(
     name = "io_ops",
     srcs = ["io_ops.py"],
     srcs_version = "PY3",
+    visibility = ["//visibility:public"],
     deps = [
         ":data_flow_ops_gen",
         ":io_ops_gen",
@@ -3131,6 +3139,7 @@ py_strict_library(
         ":state_ops_gen",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/config:flags_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/checkpoint:tensor_callable",
@@ -4820,5 +4829,16 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:weak_tensor",
         "//third_party/py/numpy",
+    ],
+)
+
+py_strict_test(
+    name = "tensor_math_operator_overrides_test",
+    srcs = ["tensor_math_operator_overrides_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":math_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

@@ -126,17 +126,4 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
     tensorflow::ExperimentalWriteBytecode(filename, mlir_txt, status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
-
-  m.def("ExperimentalTFLiteToTosaBytecode",
-        [](const std::string &flatbuffer_file,
-           const std::string &tosa_bytecode_file, bool use_external_constant,
-           const std::vector<std::string> &ordered_input_arrays,
-           const std::vector<std::string> &ordered_output_arrays) {
-          tensorflow::Safe_TF_StatusPtr status =
-              tensorflow::make_safe(TF_NewStatus());
-          tensorflow::ExperimentalTFLiteToTosaBytecode(
-              flatbuffer_file, tosa_bytecode_file, use_external_constant,
-              ordered_input_arrays, ordered_output_arrays, status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        });
 };

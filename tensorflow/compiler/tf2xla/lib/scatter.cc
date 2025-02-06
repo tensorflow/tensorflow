@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
 
+#include <cstdint>
 #include <functional>
-#include <memory>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -28,9 +28,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 

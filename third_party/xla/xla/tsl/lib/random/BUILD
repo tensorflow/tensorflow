@@ -1,10 +1,10 @@
-load(
-    "@local_tsl//tsl/platform:build_config.bzl",
-    "tsl_cc_test",
-)
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 default_visibility = [
     "//xla/tsl/lib/io:__pkg__",
@@ -40,11 +40,11 @@ cc_library(
         ":exact_uniform_int",
         ":philox_random",
         ":random_distributions_utils",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:types",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:types",
     ],
     alwayslink = 1,
 )
@@ -73,7 +73,7 @@ cc_library(
     hdrs = ["philox_random_test_utils.h"],
     deps = [
         ":philox_random",
-        "@local_tsl//tsl/platform:logging",
+        "//xla/tsl/platform:logging",
         "@local_tsl//tsl/platform:random",
     ],
 )
@@ -84,9 +84,9 @@ cc_library(
     hdrs = ["weighted_picker.h"],
     deps = [
         ":philox",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:types",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:types",
     ],
     alwayslink = 1,
 )
@@ -159,11 +159,11 @@ tsl_cc_test(
     srcs = ["distribution_sampler_test.cc"],
     deps = [
         ":philox",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/platform:types",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "//xla/tsl/platform:types",
     ],
 )
 
@@ -175,10 +175,10 @@ tsl_cc_test(
         ":philox",
         ":philox_random",
         ":philox_random_test_utils",
-        "@local_tsl//tsl/platform:logging",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:random",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -191,10 +191,10 @@ tsl_cc_test(
         ":philox_random",
         ":philox_random_test_utils",
         "//xla/tsl/lib/math:math_util",
-        "@local_tsl//tsl/platform:logging",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:random",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -204,10 +204,10 @@ tsl_cc_test(
     srcs = ["simple_philox_test.cc"],
     deps = [
         ":philox",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/platform:types",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:types",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -218,11 +218,11 @@ tsl_cc_test(
     deps = [
         ":philox",
         ":weighted_picker",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/platform:types",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "//xla/tsl/platform:types",
     ],
 )

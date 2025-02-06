@@ -172,6 +172,12 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
   proto.mutable_non_donatable_input_indices()->Add(
       non_donatable_input_indices.begin(), non_donatable_input_indices.end());
 
+  if (execution_profile != nullptr) {
+    return absl::UnimplementedError(
+        "ExecuteOptions with non-nullptr execution_profile is not "
+        "serializable");
+  }
+
   return proto;
 }
 
@@ -208,7 +214,7 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
   return options;
 }
 
-CompiledMemoryStatsProto CompiledMemoryStats::ToProto() {
+CompiledMemoryStatsProto CompiledMemoryStats::ToProto() const {
   CompiledMemoryStatsProto proto;
   proto.set_generated_code_size_in_bytes(generated_code_size_in_bytes);
   proto.set_argument_size_in_bytes(argument_size_in_bytes);
@@ -422,7 +428,7 @@ PjRtExecutable::GetOutputDimensions() const {
   return output_dimensions;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
 PjRtExecutable::GetParameterLayouts() const {
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       GetHloModules());
@@ -439,15 +445,15 @@ PjRtExecutable::GetParameterLayouts() const {
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
   TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
                       comp_layout.FlattenedParameterLayouts());
-  std::vector<std::unique_ptr<PjRtLayout>> result;
+  std::vector<std::shared_ptr<const PjRtLayout>> result;
   result.reserve(layouts.size());
   for (const Layout& layout : layouts) {
-    result.push_back(std::make_unique<PjRtXlaLayout>(layout));
+    result.push_back(std::make_shared<PjRtLayout>(layout));
   }
   return result;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<PjRtLayout>>>
+absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
 PjRtExecutable::GetOutputLayouts() const {
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       GetHloModules());
@@ -464,10 +470,10 @@ PjRtExecutable::GetOutputLayouts() const {
   ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
   TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
                       comp_layout.FlattenedResultLayouts());
-  std::vector<std::unique_ptr<PjRtLayout>> result;
+  std::vector<std::shared_ptr<const PjRtLayout>> result;
   result.reserve(layouts.size());
   for (const Layout& layout : layouts) {
-    result.push_back(std::make_unique<PjRtXlaLayout>(layout));
+    result.push_back(std::make_shared<PjRtLayout>(layout));
   }
   return result;
 }
@@ -667,6 +673,10 @@ absl::Status CompileOptions::ApplyOptionFromString(
       }
       return absl::OkStatus();
     } else {
+      if (value.empty() && field->is_repeated()) {
+        reflection->ClearField(&debug_options, field);
+        return absl::OkStatus();
+      }
       auto enum_desc = field->enum_type()->FindValueByName(value);
       if (enum_desc != nullptr) {
         if (field->is_repeated()) {

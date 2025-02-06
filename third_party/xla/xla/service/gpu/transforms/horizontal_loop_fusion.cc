@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -38,12 +39,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/sub_byte_normalization.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -69,11 +71,24 @@ PrimitiveType GetUniqueOutputTypeOfFusible(const HloInstruction& fusible) {
   return first_output_type;
 }
 
+bool IsShapeDefaultMemorySpace(const Shape& shape) {
+  bool are_all_subshapes_default_space = true;
+  ShapeUtil::ForEachSubshape(
+      shape, [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        are_all_subshapes_default_space &=
+            LayoutUtil::MemorySpace(subshape) == Layout::kDefaultMemorySpace;
+      });
+  return are_all_subshapes_default_space;
+}
+
 class HorizontalLoopFusionImpl {
  public:
-  explicit HorizontalLoopFusionImpl(HloComputation* computation,
-                                    absl::string_view prefix)
-      : computation_(computation), prefix_(prefix) {}
+  explicit HorizontalLoopFusionImpl(
+      HloComputation* computation,
+      const se::DeviceDescription& device_description, absl::string_view prefix)
+      : computation_(computation),
+        device_description_(device_description),
+        prefix_(prefix) {}
 
   ~HorizontalLoopFusionImpl() = default;
 
@@ -117,18 +132,20 @@ class HorizontalLoopFusionImpl {
   class FusionCandidates {
    public:
     explicit FusionCandidates(HloInstruction* consumer,
-                              bool sliced_input_fusion)
+                              bool sliced_input_fusion,
+                              const se::DeviceDescription& device_description)
         : fusible_instrs_(),
           pos_(0),
           sliced_input_fusion_(sliced_input_fusion) {
-      Initialize(consumer);
+      Initialize(consumer, device_description);
     }
 
     // Gets a span of fusions to be fused.
     absl::Span<HloInstruction*> GetNextSpanOfFusions();
 
    private:
-    void Initialize(HloInstruction*);
+    void Initialize(HloInstruction* consumer,
+                    const se::DeviceDescription& device_description);
 
     std::vector<HloInstruction*> fusible_instrs_;
     // `pos_` points to the start position of the next span.
@@ -139,6 +156,7 @@ class HorizontalLoopFusionImpl {
   };
 
   HloComputation* computation_;
+  const se::DeviceDescription& device_description_;
   std::string prefix_;
 };  // HorizontalLoopFusionImpl
 
@@ -147,16 +165,36 @@ bool IsConcatenationInputFusion(const HloInstruction& instr) {
          instr.fused_expression_root()->opcode() == HloOpcode::kConcatenate;
 }
 
-bool IsFusibleCandidate(const HloInstruction& instr) {
+bool IsDynamicUpdateSliceFusion(const HloInstruction* instr) {
+  if (HloPredicateIsNotOp<HloOpcode::kFusion>(instr)) {
+    return false;
+  }
+  auto root = instr->fused_expression_root();
+  if (HloPredicateIsOp<HloOpcode::kTuple>(root)) {
+    return absl::c_any_of(root->operands(),
+                          HloPredicateIsOp<HloOpcode::kDynamicUpdateSlice>);
+  }
+  return HloPredicateIsOp<HloOpcode::kDynamicUpdateSlice>(root);
+}
+
+bool IsFusibleCandidate(const HloInstruction& instr,
+                        const se::DeviceDescription& device_description) {
   // For now, we do not support fusing instruction with control flow.
   if (!instr.control_successors().empty() ||
       !instr.control_predecessors().empty()) {
     return false;
   }
 
-  if (IsNestableVariadicReduction(instr) ||
+  if (IsNestableVariadicReduction(instr, device_description) ||
       IsNestableVariadicReduceWindow(instr)) {
     return false;
+  }
+
+  // Only consider instructions with default memory space operands and outputs
+  // to be fusable.
+  if (!IsShapeDefaultMemorySpace(instr.shape())) return false;
+  for (auto operand : instr.operands()) {
+    if (!IsShapeDefaultMemorySpace(operand->shape())) return false;
   }
 
   // Require no further check for element-wise instructions.
@@ -209,24 +247,16 @@ bool IsProfitableFusionCandidate(const HloInstruction& instr,
                                    : &instr;
 
   // Too large shapes are not easily profitable.
-  if (root->opcode() == HloOpcode::kTuple) {
+  if (HloPredicateIsOp<HloOpcode::kTuple>(root)) {
     // Since all output shapes are the same, use the first shape as the
     // representative.
-    Shape shape = root->operand(0)->shape();
-    if (ShapeUtil::ElementsIn(shape) > kShapeThreshold) {
-      VLOG(2) << "Profitable check failed due to element count with "
-                 "sliced_input_fusion="
-              << sliced_input_fusion;
-      return false;
-    }
-  } else {
-    Shape shape = root->shape();
-    if (ShapeUtil::ElementsIn(shape) > kShapeThreshold) {
-      VLOG(2) << "Profiltable check failed due to element size with "
-                 "sliced_input_fusion="
-              << sliced_input_fusion;
-      return false;
-    }
+    root = root->operand(0);
+  }
+  if (ShapeUtil::ElementsIn(root->shape()) > kShapeThreshold) {
+    VLOG(2) << "Profitable check failed due to element count with "
+               "sliced_input_fusion="
+            << sliced_input_fusion;
+    return false;
   }
 
   // Having too many instructions is not easily profitable.
@@ -238,29 +268,27 @@ bool IsProfitableFusionCandidate(const HloInstruction& instr,
   return true;
 }
 
-// Returns whether any operand of `instr` is a parameter instruction that
-// is shared with `fusion_instrs`.
-bool AnyOpndIsParamSharedAmongFusions(
+// Returns whether any operand of `instr` is an instruction that is shared with
+// `fusion_instrs`.
+bool AnyOperandIsSharedAmongFusions(
     const HloInstruction* instr,
     const absl::flat_hash_set<HloInstruction*>& fusion_instrs) {
   return absl::c_any_of(instr->operands(), [&](const HloInstruction* opnd) {
-    return opnd->opcode() == HloOpcode::kParameter &&
-           absl::c_any_of(opnd->users(), [&](const HloInstruction* user) {
-             return user != instr && fusion_instrs.contains(user);
-           });
+    return absl::c_any_of(opnd->users(), [&](const HloInstruction* user) {
+      return user != instr && fusion_instrs.contains(user);
+    });
   });
 }
 
 HloInstruction* LatestNonTrivialAncestor(HloInstruction* hlo) {
-  if (hlo->opcode() == HloOpcode::kGetTupleElement ||
-      hlo->opcode() == HloOpcode::kBitcast) {
+  if (HloPredicateIsOp<HloOpcode::kGetTupleElement, HloOpcode::kBitcast>(hlo)) {
     return LatestNonTrivialAncestor(hlo->mutable_operand(0));
   }
   return hlo;
 }
 
 void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
-    HloInstruction* consumer) {
+    HloInstruction* consumer, const se::DeviceDescription& device_description) {
   VLOG(4) << "Considering fusing inputs of " << consumer->ToShortString();
 
   // First, find out all potential target candidates. We will filter out
@@ -269,7 +297,7 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
   std::vector<HloInstruction*> ordered_fusible_candidates;
   for (HloInstruction* opnd : consumer->operands()) {
     HloInstruction* predecessor = LatestNonTrivialAncestor(opnd);
-    if (IsFusibleCandidate(*predecessor)) {
+    if (IsFusibleCandidate(*predecessor, device_description)) {
       if (fusible_candidates.insert(predecessor).second) {
         // Add unseen fusion to ordered list.
         VLOG(4) << "Considering " << predecessor->ToShortString();
@@ -289,14 +317,13 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
               << " rejects may-not-be profitable fusion instr"
               << instr->ToString();
       continue;
-    } else if (sliced_input_fusion_ &&
-               AnyOpndIsParamSharedAmongFusions(instr, fusible_candidates)) {
-      // Don't fuse fusions whose operands are parameter instructions that are
-      // shared among fusions because we cannot i/o alias the produced
-      // horizontal fusion due to the concat insertion.
+    } else if (IsDynamicUpdateSliceFusion(instr) &&
+               AnyOperandIsSharedAmongFusions(instr, fusible_candidates)) {
+      // Don't fuse DUS fusions with shared operands because we cannot
+      // i/o alias the produced horizontal fusion due to the concat insertion.
       VLOG(2) << "sliced_input_fusion=" << sliced_input_fusion_
-              << " rejects the fusion instr because it shares parameter with"
-              << " other fusion candidates, instr: " << instr->ToString();
+              << " rejects the DUS fusion because it shares an operand with"
+              << " other fusion candidates: " << instr->ToString();
       continue;
     } else {
       // Encapsulate it into a fusion computation for unified representation
@@ -311,22 +338,17 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
   // For kLoop fusion, we in addition require the same output shape.
   // We did a sort here so the fusion candidates is
   // populating a continuous span.
-  std::stable_sort(
-      fusible_instrs_.begin(), fusible_instrs_.end(),
-      [&](const HloInstruction* a, const HloInstruction* b) {
-        if (GetUniqueOutputTypeOfFusible(*a) !=
-            GetUniqueOutputTypeOfFusible(*b)) {
-          return GetUniqueOutputTypeOfFusible(*a) <
-                 GetUniqueOutputTypeOfFusible(*b);
-        } else if (GetOutputSizeOfFusible(*a) != GetOutputSizeOfFusible(*b)) {
-          return GetOutputSizeOfFusible(*a) < GetOutputSizeOfFusible(*b);
-        } else if (GetInstrCountOfFusible(*a) != GetInstrCountOfFusible(*b)) {
-          return GetInstrCountOfFusible(*a) < GetInstrCountOfFusible(*b);
-        } else {
-          return ShapeUtil::ElementsIn(GetOutputsOfFusible(*a)[0]->shape()) <
-                 ShapeUtil::ElementsIn(GetOutputsOfFusible(*b)[0]->shape());
-        }
-      });
+  std::sort(fusible_instrs_.begin(), fusible_instrs_.end(),
+            [&](const HloInstruction* a, const HloInstruction* b) {
+              auto make_tuple_for_op = [](const HloInstruction* op) {
+                return std::tuple{
+                    GetUniqueOutputTypeOfFusible(*op),
+                    GetOutputSizeOfFusible(*op), GetInstrCountOfFusible(*op),
+                    ShapeUtil::ElementsIn(GetOutputsOfFusible(*op)[0]->shape()),
+                    op->unique_id()};
+              };
+              return make_tuple_for_op(a) < make_tuple_for_op(b);
+            });
 }
 
 // Gets a next span of fusion instructions to be fused.
@@ -417,7 +439,8 @@ absl::StatusOr<bool> HorizontalLoopFusionImpl::FuseConsumerOperands(
     HloInstruction* consumer, bool sliced_input_fusion,
     std::vector<HloInstruction*>& to_fuse_candidates) {
   bool changed = false;
-  FusionCandidates loop_fusion_candidates(consumer, sliced_input_fusion);
+  FusionCandidates loop_fusion_candidates(consumer, sliced_input_fusion,
+                                          device_description_);
   while (true) {
     auto fusibles = loop_fusion_candidates.GetNextSpanOfFusions();
     if (fusibles.empty()) {
@@ -433,7 +456,7 @@ absl::StatusOr<bool> HorizontalLoopFusionImpl::FuseConsumerOperands(
     std::vector<HloInstruction*> fusion_instrs;
     for (HloInstruction* instr : fusibles) {
       VLOG(2) << "next candidate: " << instr->ToString();
-      if (instr->opcode() == HloOpcode::kFusion) {
+      if (HloPredicateIsOp<HloOpcode::kFusion>(instr)) {
         fusion_instrs.push_back(instr);
       } else {
         TF_ASSIGN_OR_RETURN(
@@ -494,8 +517,9 @@ absl::Status HorizontalLoopFusionImpl::CreateFusedComputation(
                                 ->fused_instructions_computation()
                                 ->MakeInstructionPostOrder();
     for (HloInstruction* old_instr : def_to_use_order) {
-      if (old_instr->opcode() == HloOpcode::kParameter ||
-          (sliced_input_fusion && old_instr->opcode() == HloOpcode::kTuple &&
+      if (HloPredicateIsOp<HloOpcode::kParameter>(old_instr) ||
+          (sliced_input_fusion &&
+           HloPredicateIsOp<HloOpcode::kTuple>(old_instr) &&
            old_instr == fused_fusion_instrs[i]->fused_expression_root())) {
         // Parameters have been created, and we don't need tuples from
         // multi-output fusions, as we will directly reference the tuple
@@ -718,7 +742,8 @@ absl::StatusOr<bool> HorizontalLoopFusionImpl::Run() {
 
 absl::StatusOr<bool> HorizontalLoopFusion::RunOnComputation(
     HloComputation* computation) {
-  HorizontalLoopFusionImpl horizontal_fusion_impl(computation, prefix_);
+  HorizontalLoopFusionImpl horizontal_fusion_impl(computation,
+                                                  device_description_, prefix_);
   return horizontal_fusion_impl.Run();
 }
 
@@ -727,11 +752,19 @@ absl::StatusOr<bool> HorizontalLoopFusion::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Run horizontal fusion.";
 
-  // Run on the entry computation is actually enough.
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      RunOnComputation(module->entry_computation()));
+  bool any_changed = false;
+  if (only_entry_computation_) {
+    TF_ASSIGN_OR_RETURN(any_changed,
+                        RunOnComputation(module->entry_computation()));
+  } else {
+    for (HloComputation* computation :
+         GetFusibleComputations(*module, execution_threads)) {
+      TF_ASSIGN_OR_RETURN(bool changed, RunOnComputation(computation));
+      any_changed |= changed;
+    }
+  }
 
-  if (changed) {
+  if (any_changed) {
     // Correctly set element_size_in_bits for any sub-byte added slice and
     // concatenate instructions
     TF_ASSIGN_OR_RETURN(
@@ -740,7 +773,7 @@ absl::StatusOr<bool> HorizontalLoopFusion::Run(
             module));
   }
 
-  return changed;
+  return any_changed;
 }
 
 }  // namespace gpu

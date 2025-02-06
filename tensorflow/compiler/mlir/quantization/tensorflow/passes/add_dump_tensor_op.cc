@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 #include "tensorflow/core/platform/path.h"
 
 namespace mlir {
@@ -55,7 +56,6 @@ namespace {
 using ::stablehlo::quantization::DebuggerConfig;
 using DebuggerType = DebuggerConfig::DebuggerType;
 
-constexpr StringRef kEntryFuncAttrName = "_entry_function";
 constexpr StringRef kOriginalEntryFuncAttrName = "_original_entry_function";
 constexpr StringRef kCompositeFuncPrefix = "composite_";
 constexpr StringRef kEmptyNodeName = "_empty_node";
@@ -82,6 +82,7 @@ Operation *DuplicateOp(TF::PartitionedCallOp call_op, PatternRewriter &rewriter,
   // get quantized.
   auto new_call_op = rewriter.create<TF::PartitionedCallOp>(
       call_op.getLoc(), call_op.getResultTypes(), call_op.getOperands(),
+      call_op.getArgAttrsAttr(), call_op.getResAttrsAttr(),
       FlatSymbolRefAttr::get(new_ref_func_name));
   return new_call_op;
 }
@@ -94,14 +95,16 @@ Operation *DuplicateOp(TF::XlaCallModuleOp call_op, PatternRewriter &rewriter,
   auto new_call_op = rewriter.create<TF::XlaCallModuleOp>(
       call_op.getLoc(), call_op.getResultTypes(), call_op.getOperands(),
       call_op.getVersionAttr(), call_op.getModuleAttr(), call_op.getSoutAttr());
-  new_call_op->setAttr(kEntryFuncAttrName,
+  new_call_op->setAttr(TF::kStablehloEntryFunctionAttrName,
                        rewriter.getStringAttr(new_ref_func_name.getValue()));
   new_call_op->setAttrs(call_op->getAttrs());
+  new_call_op->setAttr(TF::kStablehloVersionAttrName,
+                       call_op->getAttr(TF::kStablehloVersionAttrName));
   new_call_op->removeAttr(rewriter.getStringAttr(kQuantTraitAttrName));
 
   FlatSymbolRefAttr new_func_name_attr =
       FlatSymbolRefAttr::get(rewriter.getContext(), new_ref_func_name);
-  new_call_op->setAttr(kEntryFuncAttrName, new_func_name_attr);
+  new_call_op->setAttr(TF::kStablehloEntryFunctionAttrName, new_func_name_attr);
   new_call_op->setAttr(kOriginalEntryFuncAttrName, new_ref_func_name);
   return new_call_op;
 }
@@ -291,7 +294,7 @@ void AddDumpTensorOpPass::runOnOperation() {
                AddDumpTensorOp<TF::XlaCallModuleOp>>(ctx, debugger_type_,
                                                      log_dir_path_);
 
-  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
     module.emitError() << "quant-add-dump-tensor-op failed.";
     signalPassFailure();
   }

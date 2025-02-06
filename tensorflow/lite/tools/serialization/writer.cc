@@ -18,7 +18,8 @@ limitations under the License.
 // Usage:
 //   writer <input tflite> <output tflite>
 
-#include <iostream>
+#include <cstdio>
+#include <memory>
 
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"

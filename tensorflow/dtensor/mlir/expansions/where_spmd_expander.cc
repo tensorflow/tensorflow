@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/where_spmd_expander.h"
 
-#include <cstddef>
 #include <string>
 #include <vector>
 

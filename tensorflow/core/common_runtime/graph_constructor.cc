@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -73,7 +75,10 @@ inline bool IsNextIteration(const NodeDef& node_def) {
          node_def.op() == "RefNextIteration";
 }
 
-bool IsValidNodeName(StringPiece s, bool allow_internal_ops) {
+inline const std::string_view kSharedNameGenerationCompatibleOps[] = {
+    "VariableV2", "Variable", "BatchFunction"};
+
+bool IsValidNodeName(absl::string_view s, bool allow_internal_ops) {
   using ::tensorflow::strings::Scanner;
   Scanner scanner(s);
   scanner
@@ -275,15 +280,15 @@ class GraphConstructor {
 
   // Returns true if `name` already exists in `g_` (either as a node name or
   // prefix).
-  bool NameExistsInGraph(StringPiece name);
+  bool NameExistsInGraph(absl::string_view name);
 
   // Returns true if `name` already exists in the GraphDef being imported
   // (either as a node name or prefix).
-  bool NameExistsInGraphDef(StringPiece name);
+  bool NameExistsInGraphDef(absl::string_view name);
 
   // Returns a unique version of `original_name`, or `original_name` if it's
   // already unique in the graph.
-  string FindUniqueName(StringPiece original_name);
+  string FindUniqueName(absl::string_view original_name);
 
   // Decrement pending count for users of `processed` and add the ones that now
   // have all of their pending inputs satisfied to `ready_`.
@@ -349,13 +354,13 @@ class GraphConstructor {
   absl::flat_hash_map<std::string, NodeInfo> gdef_nodes_;
 
   // Prefixes already used in the GraphDef being imported.
-  absl::flat_hash_set<StringPiece> gdef_prefixes_;
+  absl::flat_hash_set<absl::string_view> gdef_prefixes_;
 
   // Mapping from node name to the existing node in g_.
-  absl::flat_hash_map<StringPiece, Node*> existing_nodes_;
+  absl::flat_hash_map<absl::string_view, Node*> existing_nodes_;
 
   // Prefixes already used in the graph.
-  absl::flat_hash_set<StringPiece> existing_prefixes_;
+  absl::flat_hash_set<absl::string_view> existing_prefixes_;
 
   // Imported node names that have been uniquified. The key is the original
   // name, the value is the new unique name.
@@ -582,7 +587,7 @@ void GraphConstructor::UpdatePendingCountAndReady(int processed,
 // This could be expensive but we don't expect to call it often, if at all (only
 // if there are multiple nodes in g_ with the same name)
 bool NodeNameInValues(const std::map<TensorId, TensorId>& input_map,
-                      const StringPiece& node_name) {
+                      const absl::string_view& node_name) {
   for (auto iter = input_map.begin(); iter != input_map.end(); ++iter) {
     if (iter->second.first == node_name) return true;
   }
@@ -590,17 +595,17 @@ bool NodeNameInValues(const std::map<TensorId, TensorId>& input_map,
 }
 
 bool NodeNameInValues(const std::vector<string>& control_dependencies,
-                      const StringPiece& node_name) {
+                      const absl::string_view& node_name) {
   return std::find(control_dependencies.begin(), control_dependencies.end(),
                    node_name) != control_dependencies.end();
 }
 
 // Adds any prefixes of `node_name` (not including the full name itself) to
 // `prefixes`.
-void AddPrefixes(StringPiece node_name,
-                 absl::flat_hash_set<StringPiece>* prefixes) {
+void AddPrefixes(absl::string_view node_name,
+                 absl::flat_hash_set<absl::string_view>* prefixes) {
   size_t idx = -1;
-  while ((idx = node_name.find('/', idx + 1)) != StringPiece::npos) {
+  while ((idx = node_name.find('/', idx + 1)) != absl::string_view::npos) {
     prefixes->insert(node_name.substr(0, idx));
   }
 }
@@ -634,7 +639,7 @@ absl::Status GraphConstructor::EnsureNoNameCollisions() {
       }
     }
   } else if (!prefix_.empty()) {
-    StringPiece prefix_no_slash(prefix_);
+    absl::string_view prefix_no_slash(prefix_);
     prefix_no_slash.remove_suffix(1);
     if (!IsValidNodeName(prefix_no_slash, false)) {
       return errors::InvalidArgument("Imported node name prefix '", prefix_,
@@ -703,7 +708,7 @@ absl::Status GraphConstructor::BuildNodeIndex() {
     // Validate control edges at end
     bool in_control_dependence = false;
     for (int i = 0; i < node_def.input_size(); ++i) {
-      StringPiece input_name = node_def.input(i);
+      absl::string_view input_name = node_def.input(i);
       if (!input_name.empty() && absl::StartsWith(input_name, "^")) {
         in_control_dependence = true;
       } else if (in_control_dependence) {
@@ -742,7 +747,7 @@ absl::Status GraphConstructor::InitFromEdges() {
       int32_t num_control_edges = 0;
       bool has_loop_back_edge = false;
       for (int i = 0; i < node_def.input_size(); ++i) {
-        StringPiece input_name(node_def.input(i));
+        absl::string_view input_name(node_def.input(i));
         if (absl::StartsWith(input_name, "^")) {
           num_control_edges++;
         } else {
@@ -758,7 +763,7 @@ absl::Status GraphConstructor::InitFromEdges() {
       }
     }
     for (int i = 0; i < node_def.input_size(); ++i) {
-      StringPiece input_name = node_def.input(i);
+      absl::string_view input_name = node_def.input(i);
       TensorId id(ParseTensorName(input_name));
       if (opts_.input_map.count(id) == 0) {
         // If an input is not mapped, then the input should appear in the graph
@@ -792,7 +797,7 @@ absl::Status GraphConstructor::ValidateColocationConstraints(
   const auto iter = node_def.attr().find(kColocationAttrName);
   if (iter == node_def.attr().end()) return absl::OkStatus();
   for (const string& c : iter->second.list().s()) {
-    StringPiece s(c);
+    absl::string_view s(c);
     if (absl::ConsumePrefix(&s, kColocationGroupPrefix) &&
         gdef_nodes_.find(s) == gdef_nodes_.end()) {
       return errors::InvalidArgument(
@@ -985,7 +990,7 @@ void GraphConstructor::AddPrefixToNodeDef(
     // Skip remapped inputs (which already exist in g_ and are not being
     // imported).
     if (input_already_exists[i]) continue;
-    StringPiece input(node_def->input(i));
+    absl::string_view input(node_def->input(i));
     if (absl::ConsumePrefix(&input, "^")) {
       node_def->set_input(i, strings::StrCat("^", prefix_, input));
     } else {
@@ -997,7 +1002,7 @@ void GraphConstructor::AddPrefixToNodeDef(
     auto* list =
         node_def->mutable_attr()->at(kColocationAttrName).mutable_list();
     for (int i = 0; i < list->s_size(); ++i) {
-      StringPiece v(list->s(i));
+      absl::string_view v(list->s(i));
       if (absl::ConsumePrefix(&v, kColocationGroupPrefix)) {
         list->set_s(i, strings::StrCat(kColocationGroupPrefix, prefix_, v));
       }
@@ -1039,7 +1044,7 @@ void GraphConstructor::UpdateUniquifiedColocationNames() {
       continue;
     bool updated = false;
     for (size_t i = 0; i < coloc_values.size(); ++i) {
-      StringPiece val(coloc_values[i]);
+      absl::string_view val(coloc_values[i]);
       if (absl::ConsumePrefix(&val, kColocationGroupPrefix)) {
         auto name_pair = uniquified_names_.find(string(val));
         if (name_pair == uniquified_names_.end()) continue;
@@ -1054,19 +1059,19 @@ void GraphConstructor::UpdateUniquifiedColocationNames() {
   }
 }
 
-bool GraphConstructor::NameExistsInGraph(StringPiece name) {
+bool GraphConstructor::NameExistsInGraph(absl::string_view name) {
   if (existing_nodes_.find(name) != existing_nodes_.end()) return true;
   if (existing_prefixes_.find(name) != existing_prefixes_.end()) return true;
   return false;
 }
 
-bool GraphConstructor::NameExistsInGraphDef(StringPiece name) {
+bool GraphConstructor::NameExistsInGraphDef(absl::string_view name) {
   if (gdef_nodes_.find(name) != gdef_nodes_.end()) return true;
   if (gdef_prefixes_.find(name) != gdef_prefixes_.end()) return true;
   return false;
 }
 
-string GraphConstructor::FindUniqueName(StringPiece original_name) {
+string GraphConstructor::FindUniqueName(absl::string_view original_name) {
   string name(original_name);
   int count = 0;
   // Check that any generated names don't collide with imported NodeDefs (as
@@ -1441,7 +1446,7 @@ absl::Status GraphConstructor::PopulateReturnTensors() {
 
 absl::Status GraphConstructor::PopulateReturnNodes() {
   if (opts_.return_nodes.empty()) return absl::OkStatus();
-  for (StringPiece name : opts_.return_nodes) {
+  for (absl::string_view name : opts_.return_nodes) {
     auto iter = gdef_nodes_.find(name);
     if (iter == gdef_nodes_.end()) {
       return errors::InvalidArgument("Requested return node '", name,
@@ -1525,13 +1530,106 @@ absl::Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
       /*missing_unused_input_map_keys=*/nullptr);
 }
 
+bool IsSharedNameGenerationCompatible(const std::string& op_name) {
+  for (const std::string_view& valid_name :
+       kSharedNameGenerationCompatibleOps) {
+    if (valid_name == op_name) return true;
+  }
+  return false;
+}
+
+absl::Status GenerateResourceSharedNameIfEmpty(
+    GraphDef& gdef, const OpRegistryInterface* default_registry) {
+  auto is_resource_op_with_empty_shared_name = [](const NodeDef& node_def,
+                                                  const OpDef& op_def) {
+    if (!IsSharedNameGenerationCompatible(op_def.name())) {
+      // If this op is not in the allowlist, then it is likely a custom op.
+      // Currently for these ops, we are relying on its "use_node_name_sharing"
+      // to decide whether it is valid to generate shared_names. If the OpDef
+      // has "use_node_name_sharing" field, then it is valid to use node names
+      // as shared names.
+      if (!std::any_of(op_def.attr().begin(), op_def.attr().end(),
+                       [](const auto& attr_def) {
+                         return attr_def.name() == "use_node_name_sharing" &&
+                                attr_def.type() == "bool";
+                       }))
+        return false;
+    }
+
+    if (!std::any_of(op_def.attr().begin(), op_def.attr().end(),
+                     [](const auto& attr_def) {
+                       return attr_def.name() == "shared_name" &&
+                              attr_def.type() == "string";
+                     }))
+      return false;
+
+    auto iter = node_def.attr().find("shared_name");
+    if (iter == node_def.attr().end()) return true;
+    return iter->second.s().empty();
+  };
+
+  FunctionDefLibrary* library = gdef.mutable_library();
+  auto flib_def = library ? std::make_unique<FunctionLibraryDefinition>(
+                                default_registry, *library)
+                          : std::make_unique<FunctionLibraryDefinition>(
+                                default_registry, FunctionDefLibrary());
+
+  if (library) {
+    // Upgrade nodes in the functions.
+    for (FunctionDef& fdef : *library->mutable_function()) {
+      auto func_name = fdef.signature().name();
+      for (auto& node_def : *fdef.mutable_node_def()) {
+        const OpDef* op_def = nullptr;
+        // With lazy loading, some functions might not be executed, thus we skip
+        // the node if the op is not registered.
+        if (flib_def->LookUpOpDef(node_def.op(), &op_def).ok() &&
+            is_resource_op_with_empty_shared_name(node_def, *op_def)) {
+          // TODO(b/197144710): improve the shared_name attr, each op may use
+          // the shared_name differently.
+          if (IsSharedNameGenerationCompatible(op_def->name())) {
+            // Use the node name for such ops as the shared_name according to
+            // the document of variable ops.
+            (*node_def.mutable_attr())["shared_name"].set_s(node_def.name());
+          } else {
+            // Use the concat of function name and node name for such ops in a
+            // function as the shared_name. "@" is used as the separator because
+            // it is not allowed in the function name or the node name.
+            (*node_def.mutable_attr())["shared_name"].set_s(
+                absl::StrCat(node_def.name(), "@", func_name));
+          }
+        }
+      }
+    }
+  }
+
+  // Upgrade nodes in the GraphDef.
+  for (auto& node_def : *gdef.mutable_node()) {
+    const OpDef* op_def = nullptr;
+    TF_RETURN_IF_ERROR(flib_def->LookUpOpDef(node_def.op(), &op_def));
+    // TODO(b/197144710): improve the shared_name attr, each op may use the
+    // shared_name differently.
+    if (is_resource_op_with_empty_shared_name(node_def, *op_def)) {
+      (*node_def.mutable_attr())["shared_name"].set_s(node_def.name());
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                     GraphDef&& gdef, Graph* g) {
-  ShapeRefiner refiner(gdef.versions().producer(), g->op_registry());
-  return GraphConstructor::Construct(opts, std::move(gdef), g, &refiner,
-                                     /*return_tensors=*/nullptr,
-                                     /*return_nodes=*/nullptr,
-                                     /*missing_unused_input_map_keys=*/nullptr);
+  if (opts.upgrade_legacy) {
+    TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(
+        gdef, g->flib_def().default_registry()));
+  }
+
+  tensorflow::ShapeRefiner refiner(gdef.versions().producer(),
+                                   g->op_registry());
+  return tensorflow::GraphConstructor::Construct(
+      opts, std::move(gdef), g, &refiner,
+      /*return_tensors=*/nullptr,
+      /*return_nodes=*/nullptr,
+      /*missing_unused_input_map_keys=*/nullptr);
 }
 
 absl::Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,

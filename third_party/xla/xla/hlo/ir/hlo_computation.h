@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_COMPUTATION_H_
 #define XLA_HLO_IR_HLO_COMPUTATION_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -49,9 +51,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 
@@ -420,11 +422,23 @@ class HloComputation {
   // with respect to HloComputation::Equal() method.
   template <typename H>
   friend H AbslHashValue(H h, const HloComputation& computation) {
+    // Walk the computation in post-order, computing (and caching) the
+    // Absl::Hash after each instruction to use to as an operand for
+    // subsequent instructions.
     auto instructions = computation.MakeInstructionPostOrder();
+    absl::flat_hash_map<HloInstruction*, size_t> instruction_hash_cache;
+    instruction_hash_cache.reserve(instructions.size());
     for (auto* instruction : instructions) {
-      h = H::combine(std::move(h), *instruction);
+      absl::InlinedVector<size_t, 2> operand_hashes;
+      for (auto* operand : instruction->operands()) {
+        operand_hashes.push_back(instruction_hash_cache[operand]);
+      }
+      instruction_hash_cache.emplace(
+          instruction, absl::HashOf(*instruction, operand_hashes));
     }
-    return H::combine(std::move(h), instructions.size());
+    return H::combine(std::move(h),
+                      instruction_hash_cache[computation.root_instruction()],
+                      instructions.size());
   }
 
   using InstructionSequence = tsl::gtl::iterator_range<

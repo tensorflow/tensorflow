@@ -210,6 +210,11 @@ absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
 
 bool MHACallHasDropout(absl::string_view fmha_call_name);
 
+// A call to cuDNN for a block scaled dot.
+extern const absl::string_view kCudnnBlockScaledDotCallTarget;
+
+bool IsCustomCallToBlockScaledDot(const HloInstruction& hlo);
+
 // CUB library calls.
 // Reference: https://nvlabs.github.io/cub/
 extern const absl::string_view kCubDeviceRadixSortTarget;

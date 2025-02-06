@@ -32,7 +32,7 @@ class GemmRewriteTestBase : public GpuCodegenTest {
   const stream_executor::GpuComputeCapability& Capability() const;
 
   stream_executor::SemanticVersion GetToolkitVersion() const;
-
+  stream_executor::SemanticVersion GetRuntimeVersion() const;
   bool IsCuda() const;
 
   bool IsRocm() const;

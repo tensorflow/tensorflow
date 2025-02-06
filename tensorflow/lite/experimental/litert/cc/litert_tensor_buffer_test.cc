@@ -14,10 +14,14 @@
 
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <memory>
 
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
+#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
 #include "tensorflow/lite/experimental/litert/c/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_layout.h"
@@ -28,6 +32,10 @@
 #include "tensorflow/lite/experimental/litert/runtime/fastrpc_buffer.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/runtime/ion_buffer.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/litert/runtime/tensor_buffer.h"
+
+#if LITERT_HAS_AHWB_SUPPORT
+#include <android/hardware_buffer.h>
+#endif  // LITERT_HAS_AHWB_SUPPORT
 
 namespace {
 constexpr const float kTensorData[] = {10, 20, 30, 40};
@@ -301,6 +309,86 @@ TEST(TensorBuffer, NotOwned) {
   LiteRtDestroyTensorBuffer(litert_tensor_buffer);
 }
 
+TEST(TensorBuffer, ExternalHostMemory) {
+  // Allocate a tensor buffer with host memory.
+  const int kTensorBufferSize =
+      std::max<int>(sizeof(kTensorData), LITERT_HOST_MEMORY_BUFFER_ALIGNMENT);
+  const litert::RankedTensorType kTensorType(::kTensorType);
+  void* host_memory_ptr;
+  ASSERT_EQ(
+      ::posix_memalign(&host_memory_ptr, LITERT_HOST_MEMORY_BUFFER_ALIGNMENT,
+                       kTensorBufferSize),
+      0);
+
+  std::memcpy(host_memory_ptr, kTensorData, sizeof(kTensorData));
+
+  // Create a tensor buffer that wraps the host memory.
+  auto tensor_buffer_from_external_memory =
+      litert::TensorBuffer::CreateFromHostMemory(kTensorType, host_memory_ptr,
+                                                 kTensorBufferSize);
+
+  auto lock_and_addr_external_memory = litert::TensorBufferScopedLock::Create(
+      *tensor_buffer_from_external_memory);
+  ASSERT_TRUE(lock_and_addr_external_memory);
+  ASSERT_EQ(std::memcmp(lock_and_addr_external_memory->second, kTensorData,
+                        sizeof(kTensorData)),
+            0);
+
+  free(host_memory_ptr);
+}
+
+#if LITERT_HAS_AHWB_SUPPORT
+TEST(TensorBuffer, FromAhwb) {
+  AHardwareBuffer* ahw_buffer = nullptr;
+  if (__builtin_available(android 26, *)) {
+    int error = 0;
+    AHardwareBuffer_Desc desc = {
+        .width = LITERT_HOST_MEMORY_BUFFER_ALIGNMENT,
+        .height = 1,
+        .layers = 1,
+        .format = AHARDWAREBUFFER_FORMAT_BLOB,
+        .usage = AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY |
+                 AHARDWAREBUFFER_USAGE_CPU_READ_RARELY};
+    error = AHardwareBuffer_allocate(&desc, &ahw_buffer);
+    ASSERT_EQ(error, 0);
+
+    void* host_memory_ptr = nullptr;
+    error =
+        AHardwareBuffer_lock(ahw_buffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY,
+                             -1, nullptr, &host_memory_ptr);
+    ASSERT_EQ(error, 0);
+
+    std::memcpy(host_memory_ptr, kTensorData, sizeof(kTensorData));
+
+    int fence_file_descriptor = -1;
+    error = AHardwareBuffer_unlock(ahw_buffer, &fence_file_descriptor);
+    ASSERT_EQ(error, 0);
+  } else {
+    GTEST_SKIP() << "AHardwareBuffers are not supported on this platform; "
+                    "skipping the test";
+  }
+
+  {
+    // Create a tensor buffer that wraps the AHardwareBuffer.
+    const litert::RankedTensorType kTensorType(::kTensorType);
+    auto tensor_buffer_from_ahwb =
+        litert::TensorBuffer::CreateFromAhwb(kTensorType, ahw_buffer,
+                                             /*ahwb_offset=*/0);
+
+    auto lock_and_addr_external_memory =
+        litert::TensorBufferScopedLock::Create(*tensor_buffer_from_ahwb);
+    ASSERT_TRUE(lock_and_addr_external_memory);
+    ASSERT_EQ(std::memcmp(lock_and_addr_external_memory->second, kTensorData,
+                          sizeof(kTensorData)),
+              0);
+  }
+
+  if (__builtin_available(android 26, *)) {
+    AHardwareBuffer_release(ahw_buffer);
+  }
+}
+#endif  // LITERT_HAS_AHWB_SUPPORT
+
 TEST(TensorBuffer, Duplicate) {
   LiteRtTensorBuffer litert_tensor_buffer;
   ASSERT_EQ(LiteRtCreateManagedTensorBuffer(kLiteRtTensorBufferTypeHostMemory,
@@ -336,5 +424,61 @@ TEST(TensorBuffer, Duplicate) {
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
         0);
+  }
+}
+
+TEST(TensorBuffer, ReadWriteBasic) {
+  LiteRtTensorBuffer litert_tensor_buffer;
+  ASSERT_EQ(LiteRtCreateManagedTensorBuffer(kLiteRtTensorBufferTypeHostMemory,
+                                            &kTensorType, sizeof(kTensorData),
+                                            &litert_tensor_buffer),
+            kLiteRtStatusOk);
+
+  litert::TensorBuffer tensor_buffer(litert_tensor_buffer, /*owned=*/true);
+  auto write_success = tensor_buffer.Write<float>(absl::MakeSpan(
+      kTensorData, sizeof(kTensorData) / sizeof(kTensorData[0])));
+  ASSERT_TRUE(write_success);
+  float read_data[sizeof(kTensorData) / sizeof(kTensorData[0])];
+  auto read_success = tensor_buffer.Read<float>(absl::MakeSpan(read_data));
+  ASSERT_TRUE(read_success);
+  ASSERT_EQ(std::memcmp(read_data, kTensorData, sizeof(kTensorData)), 0);
+}
+
+TEST(TensorBuffer, ReadWriteBufferSizeMismatch) {
+  LiteRtTensorBuffer litert_tensor_buffer;
+  ASSERT_EQ(LiteRtCreateManagedTensorBuffer(kLiteRtTensorBufferTypeHostMemory,
+                                            &kTensorType, sizeof(kTensorData),
+                                            &litert_tensor_buffer),
+            kLiteRtStatusOk);
+
+  litert::TensorBuffer tensor_buffer(litert_tensor_buffer, /*owned=*/true);
+  {
+    // Write with smaller size of data.
+    auto write_success =
+        tensor_buffer.Write<float>(absl::MakeSpan(kTensorData, 1));
+    ASSERT_TRUE(write_success);
+  }
+  {
+    constexpr const float big_data[] = {10, 20, 30, 40, 50};
+    // Write with larger size of data.
+    auto write_success =
+        tensor_buffer.Write<float>(absl::MakeSpan(big_data, 5));
+    ASSERT_FALSE(write_success);
+  }
+  auto write_success = tensor_buffer.Write<float>(absl::MakeSpan(
+      kTensorData, sizeof(kTensorData) / sizeof(kTensorData[0])));
+  ASSERT_TRUE(write_success);
+  {
+    // Read with smaller size of buffer.
+    float read_data[1];
+    auto read_success = tensor_buffer.Read<float>(absl::MakeSpan(read_data, 1));
+    ASSERT_TRUE(read_success);
+    ASSERT_EQ(read_data[0], kTensorData[0]);
+  }
+  {
+    // Read with larger size of buffer.
+    float read_data[5];
+    auto read_success = tensor_buffer.Read<float>(absl::MakeSpan(read_data, 5));
+    ASSERT_FALSE(read_success);
   }
 }

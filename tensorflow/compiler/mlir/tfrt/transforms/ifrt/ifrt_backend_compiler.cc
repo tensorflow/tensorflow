@@ -43,12 +43,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf_ifrt_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -109,6 +109,7 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
             ifrt_model_context.GetShapeRepresentationFn(),
             ifrt_model_context.GetIfrtServingCoreSelector(),
             ifrt_model_context.GetCompilationEnvironmentProto(),
+            ifrt_model_context.GetTfToHloCompiler(),
             ifrt_model_context.GetPersistentCompilationCache()));
 
     // Register the Ifrt program to `ServingExecutableRegistry` so that

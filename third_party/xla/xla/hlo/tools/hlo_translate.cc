@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -35,13 +34,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
-#include "stablehlo/dialect/Register.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/hlo/translate/stablehlo.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"
@@ -80,12 +77,6 @@ llvm::cl::opt<bool> print_sugar(
         "Print async ops using syntactic sugar in the generated HLO text"),
     llvm::cl::init(true));
 
-static void RegisterInputMlirDialects(mlir::DialectRegistry& registry) {
-  mlir::stablehlo::registerAllDialects(registry);
-  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                  mlir::tensor::TensorDialect, mlir::mhlo::MhloDialect>();
-}
-
 // Error collector that simply ignores errors reported.
 class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
  public:
@@ -102,12 +93,12 @@ bool LoadHloProto(const std::string& contents, xla::HloProto* hlo_proto) {
          parser.ParseFromString(contents, hlo_proto->mutable_hlo_module());
 }
 
-mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHLOText(
-    std::string content, mlir::MLIRContext* context) {
+constexpr char kLoadHloError[] = "Failed to parse HLO.";
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOText(
+    absl::string_view content, mlir::MLIRContext* context) {
   auto hlo_text = xla::ParseAndReturnUnverifiedModule(content);
-  if (!hlo_text.ok()) {
-    return nullptr;
-  }
+  if (!hlo_text.ok()) return absl::InvalidArgumentError(kLoadHloError);
 
   mlir::OwningOpRef<mlir::ModuleOp> module =
       xla::llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
@@ -115,19 +106,15 @@ mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHLOText(
   auto status = ConvertHloToMlirHlo(*module, hlo_module.get(),
                                     /*import_all_computations=*/true,
                                     /*flatten_computation_args_result*/ true);
-  if (!status.ok()) {
-    LOG(INFO) << "Failed to parse input as HLO text" << status;
-    return nullptr;
-  }
+  if (!status.ok()) return status;
   return module;
 }
 
-mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHLOProto(
-    std::string content, mlir::MLIRContext* context) {
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GetModuleFromHLOProto(
+    std::string const& content, mlir::MLIRContext* context) {
   xla::HloProto hlo_proto;
-  if (!LoadHloProto(content, &hlo_proto)) {
-    return nullptr;
-  }
+  if (!LoadHloProto(content, &hlo_proto))
+    return absl::InvalidArgumentError(kLoadHloError);
 
   mlir::OwningOpRef<mlir::ModuleOp> module =
       xla::llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
@@ -135,29 +122,57 @@ mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHLOProto(
       ConvertHloToMlirHlo(module.get(), hlo_proto.mutable_hlo_module(),
                           /*import_all_computations=*/true,
                           /*flatten_computation_args_result=*/true);
-  if (!status.ok()) {
-    LOG(INFO) << "Failed to parse input as HLO proto" << status;
+  if (!status.ok()) return status;
+  return module;
+}
+
+mlir::OwningOpRef<mlir::ModuleOp> GetModuleFromHloInput(
+    const std::shared_ptr<llvm::SourceMgr>& source_mgr,
+    mlir::MLIRContext* context) {
+  const llvm::MemoryBuffer* input =
+      source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
+  absl::string_view content =
+      absl::string_view(input->getBufferStart(), input->getBufferSize());
+
+  // Emit error using file location 0.
+  auto emitError = [&]() {
+    auto loc =
+        mlir::FileLineColLoc::get(context, input->getBufferIdentifier(), 0, 0);
+    return mlir::emitError(loc);
+  };
+
+  // Try HLO Text
+  auto module_from_text = GetModuleFromHLOText(content, context);
+  if (module_from_text.ok()) return std::move(module_from_text.value());
+  if (module_from_text.status().message() != kLoadHloError) {
+    emitError() << "Failed to convert HLO to MLIR: "
+                << module_from_text.status().message();
     return nullptr;
   }
-  return module;
+
+  // Try HLO Proto
+  auto module_from_proto = GetModuleFromHLOProto(std::string(content), context);
+  if (module_from_proto.ok()) return std::move(module_from_proto.value());
+  if (module_from_proto.status().message() != kLoadHloError) {
+    emitError() << "Failed to convert HLO to MLIR: "
+                << module_from_proto.status().message();
+    return nullptr;
+  }
+
+  // Failed to parse
+  emitError() << "Failed to parse input as HLO text or proto.";
+  return nullptr;
 }
 
 }  // namespace
 
 static mlir::OwningOpRef<mlir::ModuleOp> HloToMlirTranslate(
-    llvm::StringRef input, mlir::MLIRContext* context) {
-  std::string content(input.data(), input.size());
+    const std::shared_ptr<llvm::SourceMgr>& sourceMgr,
+    mlir::MLIRContext* context) {
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      GetModuleFromHLOText(content, context);
+      GetModuleFromHloInput(sourceMgr, context);
 
-  if (!module) {
-    module = GetModuleFromHLOProto(content, context);
-  }
-
-  if (!module) {
-    LOG(ERROR) << "Failed to parse input as HLO text or proto";
-    return nullptr;
-  }
+  if (!module) return nullptr;
 
   if (emit_mhlo) return module;
 
@@ -208,7 +223,7 @@ static mlir::TranslateToMLIRRegistration HloToMlirTranslateRegistration(
 
 static mlir::TranslateFromMLIRRegistration MlirToHloTranslateRegistration(
     "mlir-to-hlo", "mlir to hlo translation", MlirToHloTranslate,
-    RegisterInputMlirDialects);
+    xla::RegisterMlirToHloDependentDialects);
 
 int main(int argc, char** argv) {
   return failed(

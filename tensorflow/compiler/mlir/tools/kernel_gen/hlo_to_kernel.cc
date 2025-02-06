@@ -22,7 +22,9 @@
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
@@ -50,11 +52,11 @@
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace kernel_gen {
@@ -124,13 +126,13 @@ absl::StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
   return ostream.str().str();
 }
 
-Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
-           llvm::StringRef host_triple,
-           llvm::ArrayRef<std::string> architectures,
-           llvm::ArrayRef<int64_t> tile_sizes,
-           llvm::ArrayRef<int64_t> unroll_factors, bool print_ptx,
-           bool print_llvmir, bool enable_ftz, bool index_64bit,
-           bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
+absl::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
+                 llvm::StringRef host_triple,
+                 llvm::ArrayRef<std::string> architectures,
+                 llvm::ArrayRef<int64_t> tile_sizes,
+                 llvm::ArrayRef<int64_t> unroll_factors, bool print_ptx,
+                 bool print_llvmir, bool enable_ftz, bool index_64bit,
+                 bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
   // Read TF code.
   std::string hlo_code;
   TF_RETURN_IF_ERROR(

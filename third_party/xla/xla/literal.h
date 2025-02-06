@@ -367,9 +367,9 @@ class LiteralBase {
     static_assert(sizeof(H) == 0,
                   "Do not use Literal directly as a hash key, because it has "
                   "multiple definitions of equality - layout sensitive or "
-                  "insensitive. Instead, provide an external hash function "
-                  "that uses Literal::Hash which allows you to specify layout "
-                  "sensitivity.");
+                  "insensitive. Instead, use AbslHashable<...>() to create a "
+                  "wrapper with layout sensitivity specified suitable for "
+                  "passing to Absl::Hash");
   }
 
   // Always use this together with the Equal method and not operator== in order
@@ -418,6 +418,17 @@ class LiteralBase {
 
     return std::move(state);
   }
+
+  // Templated wrapper struct to control layout sensitivity during Absl::Hash.
+  template <bool layout_sensitive>
+  struct AbslHashable {
+    const LiteralBase& literal;
+    explicit AbslHashable(const LiteralBase& l) : literal(l) {}
+    template <typename H>
+    friend H AbslHashValue(H h, const AbslHashable& w) {
+      return LiteralBase::Hash<H, layout_sensitive>(std::move(h), w.literal);
+    }
+  };
 
   // Converts this literal to the given shape. Returns an error is the
   // conversion is not possible.
@@ -589,18 +600,17 @@ class LiteralBase {
           primitive_util::NativeToPrimitiveType<NativeT>();
       constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
       if constexpr (bits_per_element < 8) {
-        static_assert(!primitive_util::IsFloatingPointType(primitive_type));
         static_assert(!primitive_util::IsComplexType(primitive_type));
         static_assert(8 % bits_per_element == 0);
-        constexpr int elements_per_byte = 8 / bits_per_element;
 
+        constexpr int elements_per_byte = 8 / bits_per_element;
         int64_t bytes = elements.size() / elements_per_byte;
         for (int64_t i = 0; i < bytes; ++i) {
           uint8_t byte = 0;
           for (int b = 0; b < elements_per_byte; ++b) {
-            uint8_t src =
-                static_cast<uint8_t>(elements[i * elements_per_byte + b]) &
-                LsbMask<uint8_t>(bits_per_element);
+            uint8_t src = Eigen::numext::bit_cast<uint8_t>(
+                              elements[i * elements_per_byte + b]) &
+                          LsbMask<uint8_t>(bits_per_element);
             byte |= src << (b * bits_per_element);
           }
           WriteElement(byte);
@@ -609,9 +619,9 @@ class LiteralBase {
         if (rest != 0) {
           uint8_t byte = 0;
           for (int64_t b = 0; b < rest; ++b) {
-            uint8_t src =
-                static_cast<uint8_t>(elements[bytes * elements_per_byte + b]) &
-                LsbMask<uint8_t>(bits_per_element);
+            uint8_t src = Eigen::numext::bit_cast<uint8_t>(
+                              elements[bytes * elements_per_byte + b]) &
+                          LsbMask<uint8_t>(bits_per_element);
             byte |= src << (b * bits_per_element);
           }
           WriteElement(byte);
@@ -701,11 +711,17 @@ class LiteralBase {
           primitive_util::NativeToPrimitiveType<NativeT>();
       constexpr int bits_per_element = primitive_util::BitWidth(primitive_type);
       if constexpr (bits_per_element < 8) {
-        static_assert(!primitive_util::IsFloatingPointType(primitive_type));
         static_assert(!primitive_util::IsComplexType(primitive_type));
         static_assert(8 % bits_per_element == 0);
-        constexpr int elements_per_byte = 8 / bits_per_element;
 
+        constexpr auto cast = [](uint8_t x) -> NativeT {
+          if constexpr (primitive_util::IsFloatingPointType(primitive_type)) {
+            return Eigen::numext::bit_cast<NativeT>(x);
+          }
+          return static_cast<NativeT>(x);
+        };
+
+        constexpr int elements_per_byte = 8 / bits_per_element;
         int64_t bytes = elements.size() / elements_per_byte;
         for (int64_t i = 0; i < bytes; ++i) {
           uint8_t byte;
@@ -714,7 +730,7 @@ class LiteralBase {
           }
           for (int b = 0; b < elements_per_byte; ++b) {
             elements[i * elements_per_byte + b] =
-                static_cast<NativeT>(byte & LsbMask<uint8_t>(bits_per_element));
+                cast(byte & LsbMask<uint8_t>(bits_per_element));
             byte >>= bits_per_element;
           }
         }
@@ -726,7 +742,7 @@ class LiteralBase {
           }
           for (int64_t b = 0; b < rest; ++b) {
             elements[bytes * elements_per_byte + b] =
-                static_cast<NativeT>(byte & LsbMask<uint8_t>(bits_per_element));
+                cast(byte & LsbMask<uint8_t>(bits_per_element));
             byte >>= bits_per_element;
           }
         }
@@ -1404,7 +1420,7 @@ class Literal : public MutableLiteralBase {
   static absl::StatusOr<Literal> Deserialize(InputIterator begin,
                                              InputIterator end);
 
-  static absl::StatusOr<Literal> DeserializeFromString(std::string_view data) {
+  static absl::StatusOr<Literal> DeserializeFromString(absl::string_view data) {
     return Deserialize(data.data(), data.data() + data.size());
   }
 

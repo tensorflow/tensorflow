@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/model/affine_map_evaluator.h"
 
 #include <cstdint>
-#include <vector>
 
 #include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"

@@ -14,18 +14,27 @@
 
 #include "tensorflow/lite/experimental/litert/test/common.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>  // NOLINT
+#include <ios>
 #include <memory>
+#include <random>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
+#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model_predicates.h"
 #include "tensorflow/lite/experimental/litert/core/filesystem.h"
-#include "tensorflow/lite/experimental/litert/core/model/model_load.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -33,6 +42,38 @@
 
 namespace litert {
 namespace testing {
+
+Expected<UniqueTestDirectory> UniqueTestDirectory::Create() {
+  constexpr size_t kMaxTries = 1000;
+  ABSL_CONST_INIT static absl::Mutex mutex(absl::kConstInit);
+
+  // We don't want multiple threads to create the same directory.
+  absl::MutexLock l(&mutex);
+
+  auto tmp_dir = std::filesystem::temp_directory_path();
+  std::random_device dev;
+  std::mt19937 prng(dev());
+  std::uniform_int_distribution<uint64_t> rand(0);
+  std::stringstream ss;
+
+  for (auto i = 0; i < kMaxTries; ++i) {
+    ss.clear();
+    ss << std::hex << rand(prng);
+    auto path = tmp_dir / ss.str();
+    if (std::filesystem::create_directory(path)) {
+      LITERT_LOG(LITERT_INFO, "Created unique temporary directory %s",
+                 path.c_str());
+      return UniqueTestDirectory(path);
+    }
+  }
+
+  return Error(kLiteRtStatusErrorRuntimeFailure,
+               "Could not create a unique temporary directory");
+}
+
+UniqueTestDirectory::~UniqueTestDirectory() {
+  std::filesystem::remove_all(tmpdir_);
+}
 
 std::string GetTestFilePath(absl::string_view filename) {
   static constexpr absl::string_view kTestDataDir =
@@ -47,30 +88,7 @@ std::string GetTestFilePath(absl::string_view filename) {
 }
 
 Model LoadTestFileModel(absl::string_view filename) {
-  auto model = internal::LoadModelFromFile(GetTestFilePath(filename));
-  return std::move(model.Value());
-}
-
-bool ValidateTopology(const std::vector<Op>& ops) {
-  for (const auto& op : ops) {
-    const auto inputs = op.Inputs();
-    for (int i = 0; i < inputs.size(); ++i) {
-      if (!MatchUse(inputs.at(i), UseInfo{op.Code(), i})) {
-        return false;
-      }
-    }
-    const auto outputs = op.Outputs();
-    for (int i = 0; i < outputs.size(); ++i) {
-      const auto defining_op = outputs.at(i).DefiningOp();
-      if (!defining_op.has_value()) {
-        return false;
-      }
-      if (defining_op->op != op.Get() || defining_op->op_output_index != i) {
-        return false;
-      }
-    }
-  }
-  return true;
+  return *Model::CreateFromFile(GetTestFilePath(filename));
 }
 
 Expected<TflRuntime::Ptr> TflRuntime::CreateFromFlatBuffer(

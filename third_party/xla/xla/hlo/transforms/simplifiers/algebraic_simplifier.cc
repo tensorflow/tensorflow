@@ -2089,9 +2089,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleConstant(
         LiteralUtil::GetFirstScalarLiteral(constant->literal()));
     HloInstruction* scalar = constant->AddInstruction(
         simplifier_->CreateConstantWithLayoutUpdated(std::move(unique_scalar)));
-    return ReplaceWithNewInstruction(
-        constant,
+    HloInstruction* broadcast = constant->AddInstruction(
         HloInstruction::CreateBroadcast(constant->shape(), scalar, {}));
+    return ReplaceInstruction(constant, broadcast);
   }
 
   // If a literal is an increasing sequence from zero, replace it with an iota.
@@ -3957,7 +3957,9 @@ absl::Status AlgebraicSimplifierVisitor::RewriteBatchPlusContractingAsReduce(
 
 bool AlgebraicSimplifierVisitor::SupportedDotPrecisionConfig(
     const PrecisionConfig& config) {
-  return config.algorithm() == PrecisionConfig::ALG_UNSET;
+  return config.algorithm() == PrecisionConfig::ALG_UNSET ||
+         // TODO(loislo): Fixes a failure on a test with CPU backend.
+         config.algorithm() == PrecisionConfig::ALG_DOT_F32_F32_F32;
 }
 
 absl::StatusOr<HloInstruction*>
@@ -4258,27 +4260,21 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
     return ReplaceInstruction(gather, result);
   }
 
-  const auto gather_operand_passthrough_operand_dims =
-      hlo_sharding_util::GetGatherOperandPassthroughOperandDims(
-          gather->operand(0)->shape(), *gather, gather->gather_slice_sizes());
-  const auto gather_operand_passthrough_output_dims =
-      hlo_sharding_util::GetGatherOperandPassthroughOutputDims(
-          gather->shape(), gather->operand(0)->shape(), *gather,
-          gather->gather_slice_sizes());
+  const hlo_sharding_util::GatherScatterDims operand_passthrough_dims =
+      hlo_sharding_util::GetGatherOperandPassthroughDims(
+          *gather, gather->gather_slice_sizes());
+
   absl::flat_hash_map<int64_t, int64_t>
       gather_operand_passthrough_operand_to_output_dims;
   absl::flat_hash_map<int64_t, int64_t>
       gather_operand_passthrough_output_to_operand_dims;
-  CHECK_EQ(gather_operand_passthrough_operand_dims.size(),
-           gather_operand_passthrough_output_dims.size());
-  for (int64_t i = 0; i != gather_operand_passthrough_operand_dims.size();
-       ++i) {
-    gather_operand_passthrough_operand_to_output_dims
-        [gather_operand_passthrough_operand_dims[i]] =
-            gather_operand_passthrough_output_dims[i];
-    gather_operand_passthrough_output_to_operand_dims
-        [gather_operand_passthrough_output_dims[i]] =
-            gather_operand_passthrough_operand_dims[i];
+  CHECK_EQ(operand_passthrough_dims.operand_dims.size(),
+           operand_passthrough_dims.output_dims.size());
+  for (int64_t i = 0; i != operand_passthrough_dims.operand_dims.size(); ++i) {
+    int64_t operand_dim = operand_passthrough_dims.operand_dims[i];
+    int64_t output_dim = operand_passthrough_dims.output_dims[i];
+    gather_operand_passthrough_operand_to_output_dims[operand_dim] = output_dim;
+    gather_operand_passthrough_output_to_operand_dims[output_dim] = operand_dim;
   }
   // If the gather operand is a pad on the pass-through dimensions, then we can
   // gather the unpadded operand and then pad.
@@ -4511,11 +4507,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleMaximum(
   if (primitive_util::IsIntegralType(ty) ||
       (primitive_util::IsFloatingPointType(ty) &&
        options_.minmax_propagate_nan())) {
-    Literal min_val = LiteralUtil::MinValue(ty);
-    if (IsAll(lhs, min_val)) {
+    // Note that `lhs` and `rhs` can have a different element type than
+    // `maximum` if we are dealing with floating point types.
+    PrimitiveType lhs_ty = lhs->shape().element_type();
+    PrimitiveType rhs_ty = rhs->shape().element_type();
+    Literal min_val_lhs = LiteralUtil::MinValue(lhs_ty);
+    if (rhs_ty == ty && IsAll(lhs, min_val_lhs)) {
       return ReplaceInstruction(maximum, rhs);
     }
-    if (IsAll(rhs, min_val)) {
+    Literal min_val_rhs = LiteralUtil::MinValue(rhs_ty);
+    if (lhs_ty == ty && IsAll(rhs, min_val_rhs)) {
       return ReplaceInstruction(maximum, lhs);
     }
   }
@@ -4616,11 +4617,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleMinimum(
   if (primitive_util::IsIntegralType(ty) ||
       (primitive_util::IsFloatingPointType(ty) &&
        options_.minmax_propagate_nan())) {
-    Literal max_val = LiteralUtil::MaxValue(ty);
-    if (IsAll(lhs, max_val)) {
+    // Note that `lhs` and `rhs` can have a different element type than
+    // `minimum` if we are dealing with floating point types.
+    PrimitiveType lhs_ty = lhs->shape().element_type();
+    PrimitiveType rhs_ty = rhs->shape().element_type();
+    Literal max_val_lhs = LiteralUtil::MaxValue(lhs_ty);
+    if (rhs_ty == ty && IsAll(lhs, max_val_lhs)) {
       return ReplaceInstruction(minimum, rhs);
     }
-    if (IsAll(rhs, max_val)) {
+    Literal max_val_rhs = LiteralUtil::MaxValue(rhs_ty);
+    if (lhs_ty == ty && IsAll(rhs, max_val_rhs)) {
       return ReplaceInstruction(minimum, lhs);
     }
   }
@@ -5753,6 +5759,10 @@ absl::Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     TF_ASSIGN_OR_RETURN(HloInstruction * nonzero_pad,
                         MakePadHlo(pad->mutable_operand(0),
                                    pad->mutable_operand(1), nonzero_padding));
+    // MakePadHlo assumes that the return type matches the type of the operand,
+    // but that's not required. Use the type from the original pad instruction.
+    nonzero_pad->mutable_shape()->set_element_type(pad->shape().element_type());
+
     // Copy the layout from the original pad instructions. The new pad and the
     // slice instruction should all have the same layout.
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
@@ -5943,8 +5953,9 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
         new_operands.push_back(operand);
       }
     }
-    VLOG(4) << "Sinking broadcast after user:" << "\n  old broadcast: "
-            << broadcast->ToString() << "\n  old user: " << user->ToString();
+    VLOG(4) << "Sinking broadcast after user:"
+            << "\n  old broadcast: " << broadcast->ToString()
+            << "\n  old user: " << user->ToString();
     changed_shape = ShapeUtil::ChangeElementType(operand->shape(),
                                                  user->shape().element_type());
     simplifier_->UpdateLayout(&changed_shape);
@@ -7402,16 +7413,30 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
       }
     }
 
-    const auto custom_call_pattern = m::CustomCall(
-        {host_memory_offload_annotations::kMoveToHostCustomCallTarget});
-    if (Match(dus_update,
-              m::AnyOf<HloInstruction>(m::Reshape(custom_call_pattern),
-                                       m::Bitcast(custom_call_pattern),
-                                       custom_call_pattern))) {
-      // If this dynamic-update-slice is used for host memory offloading, it
-      // should not be converted into a pad. Also allow for a reshape or a
-      // bitcast between the host-offloading custom-call and the
-      // dynamic-update-slice.
+    // For broadcast that's used for host offloading's DUS, we don't want this
+    // to be rewritten to a pad. Unfortunately, the host memory space is only
+    // set after HostOffloader is run, so we pattern match here. After
+    // HostOffloader is run the broadcast should be rewritten to an
+    // AllocateBuffer so this dus->pad rewrite won't apply anymore.
+    auto is_host_offloading = [&](HloInstruction* hlo) {
+      const auto custom_call_pattern = m::CustomCall(
+          {host_memory_offload_annotations::kMoveToHostCustomCallTarget});
+      if (Match(hlo, custom_call_pattern)) {
+        return true;
+      }
+
+      const auto formatting_op =
+          m::AnyOf<HloInstruction>(m::Reshape(), m::Bitcast(), m::Copy());
+      while (Match(hlo, formatting_op)) {
+        hlo = hlo->mutable_operand(0);
+        if (Match(hlo, custom_call_pattern)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    if (compatible && is_host_offloading(dus_update)) {
       compatible = false;
     }
 
@@ -7425,23 +7450,23 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
           break;
         }
         VLOG(2) << "slice: " << slice_dim_start->ToString();
-        std::optional<int64_t> beg =
+        std::optional<int64_t> start =
             slice_dim_start->literal().GetFirstInteger();
-        if (!beg) {
+        if (!start) {
           compatible = false;
           break;
         }
-        VLOG(2) << "beg value: " << *beg;
+        VLOG(2) << "start value: " << *start;
         auto update_width = ShapeUtil::GetDimension(update_shape, dim);
         auto bcast_width = ShapeUtil::GetDimension(updated_shape, dim);
-        // Clamp beg so that it is non-negative.
-        *beg = std::max<int64_t>(0, *beg);
-        // Clamp beg so that it is in-bounds.
-        *beg = std::min<int64_t>(bcast_width - update_width, *beg);
-        VLOG(2) << "adjusted beg value: " << *beg;
-        padding_config_dim->set_edge_padding_low(*beg);
+        // Clamp start so that it is non-negative.
+        *start = std::max<int64_t>(0, *start);
+        // Clamp start so that it is in-bounds.
+        *start = std::min<int64_t>(bcast_width - update_width, *start);
+        VLOG(2) << "adjusted start value: " << *start;
+        padding_config_dim->set_edge_padding_low(*start);
         padding_config_dim->set_edge_padding_high(bcast_width -
-                                                  (*beg + update_width));
+                                                  (*start + update_width));
         // dynamic_update_slice does not specify a stride
         padding_config_dim->set_interior_padding(0);
       }
@@ -8220,6 +8245,24 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
+  return absl::OkStatus();
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleReducePrecision(
+    HloInstruction* hlo) {
+  HloReducePrecisionInstruction* reduce_precision =
+      Cast<HloReducePrecisionInstruction>(hlo);
+  PrimitiveType element_type =
+      reduce_precision->operand(0)->shape().element_type();
+  if (options_.enable_remove_no_op_reduce_precision() &&
+      reduce_precision->exponent_bits() ==
+          primitive_util::ExponentWidth(element_type) &&
+      reduce_precision->mantissa_bits() + 1 ==
+          primitive_util::SignificandWidth(element_type)) {
+    return ReplaceInstruction(
+        /*old_instruction=*/hlo,
+        /*new_instruction=*/reduce_precision->mutable_operand(0));
+  }
   return absl::OkStatus();
 }
 

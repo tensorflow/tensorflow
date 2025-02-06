@@ -20,18 +20,22 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/literal_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/literal_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -234,14 +238,16 @@ TEST_F(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
   // Load Executable from AOT compilation result.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
                           aot_result->LoadExecutable(compiler, stream_exec));
+  std::unique_ptr<OpaqueExecutable> wrapped_executable =
+      test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
   const xla::Literal literal_1 = xla::LiteralUtil::CreateR0<float>(1.0f);
   const xla::Literal literal_2 = xla::LiteralUtil::CreateR0<float>(2.0f);
   const xla::Literal literal_3 = xla::LiteralUtil::CreateR0<float>(3.0f);
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                          GetHloRunner().value()->ExecuteWithExecutable(
-                              executable.get(), {&literal_1, &literal_3}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, test_runner_as_hlo_runner().ExecuteWithExecutable(
+                          wrapped_executable.get(), {&literal_1, &literal_3}));
 
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::MakeTuple({&literal_2, &literal_3}), result));

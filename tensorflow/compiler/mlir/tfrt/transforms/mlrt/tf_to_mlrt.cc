@@ -43,8 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_ops.h"
@@ -55,11 +55,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tpu_conversion_patterns.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/utils.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace mlrt_compiler {
@@ -1051,17 +1051,9 @@ class TfToMlrtConversionPass
     };
 
     type_converter_.addTargetMaterialization(future_to_tensor_materialization);
+    type_converter_.addSourceMaterialization(future_to_tensor_materialization);
     type_converter_.addArgumentMaterialization(
         future_to_tensor_materialization);
-    type_converter_.addSourceMaterialization(
-        [](mlir::OpBuilder &builder, mlir::Type result_type,
-           mlir::ValueRange inputs,
-           mlir::Location loc) -> mlir::Value {
-          return builder
-              .create<mlir::UnrealizedConversionCastOp>(loc, result_type,
-                                                        inputs)
-              .getResult(0);
-        });
 
     if (use_tpu_host_allocator_for_inputs_.hasValue()) {
       options_.use_tpu_host_allocator_for_inputs =

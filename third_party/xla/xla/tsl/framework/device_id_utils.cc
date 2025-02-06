@@ -28,8 +28,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_id_manager.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {

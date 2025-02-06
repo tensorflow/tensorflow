@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "Eigen/Core"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
@@ -217,6 +217,34 @@ TEST(Array2dTest, LinspaceF8E3M4) {
   EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 1)), 2.5);
   EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 0)), 3.0);
   EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 1)), 3.5);
+}
+
+TEST(Array2dTest, LinspaceF4E2M1FN) {
+  auto arr = MakeLinspaceArray2D<tsl::float4_e2m1fn>(1.0, 3.5, 3, 2);
+
+  EXPECT_EQ(arr->n1(), 3);
+  EXPECT_EQ(arr->n2(), 2);
+
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(0, 0)), 1.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(0, 1)), 1.5);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 0)), 2.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 1)), 2.0);  // 2.5 rounded down
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 0)), 3.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 1)), 4.0);  // 3.5 rounded up
+}
+
+TEST(Array2dTest, LinspaceF8E8M0FNU) {
+  auto arr = MakeLinspaceArray2D<tsl::float8_e8m0fnu>(1.0, 3.5, 3, 2);
+
+  EXPECT_EQ(arr->n1(), 3);
+  EXPECT_EQ(arr->n2(), 2);
+
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(0, 0)), 1.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(0, 1)), 2.0);  // 1.5 rounded up
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 0)), 2.0);
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(1, 1)), 2.0);  // 2.5 rounded down
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 0)), 4.0);  // 3.0 rounded up
+  EXPECT_FLOAT_EQ(static_cast<float>((*arr)(2, 1)), 4.0);  // 3.5 rounded up
 }
 
 TEST(Array2dTest, Stringification) {

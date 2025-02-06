@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERIALIZATION_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERIALIZATION_UTILS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -24,12 +25,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -38,15 +43,15 @@ inline constexpr absl::string_view kRetvalOp = "_Retval";
 
 // Reads dataset elements from the checkpoint reader using the given key prefix.
 absl::Status ReadElementsFromCheckpoint(
-    IteratorContext* ctx, IteratorStateReader* reader, StringPiece key_prefix,
-    std::vector<std::vector<Tensor>>* elements);
+    IteratorContext* ctx, IteratorStateReader* reader,
+    absl::string_view key_prefix, std::vector<std::vector<Tensor>>* elements);
 
 // Writes dataset elements to the checkpoint writer using the given key prefix.
 // The elements can be read back by passing the same key prefix to
 // ReadElementsFromCheckpoint. Only one list of elements can be written under
 // the same key_prefix.
 absl::Status WriteElementsToCheckpoint(
-    IteratorStateWriter* writer, StringPiece key_prefix,
+    IteratorStateWriter* writer, absl::string_view key_prefix,
     const std::vector<std::vector<Tensor>>& elements);
 
 // Updates the dataset elements in the checkpoint for given `checkpoint_indices`
@@ -54,7 +59,7 @@ absl::Status WriteElementsToCheckpoint(
 // checkpointed these before. The elements can be read back by passing the same
 // key prefix to ReadElementsFromCheckpoint.
 absl::Status UpdateCheckpointElements(
-    IteratorStateWriter* writer, StringPiece key_prefix,
+    IteratorStateWriter* writer, absl::string_view key_prefix,
     const std::vector<std::vector<Tensor>>& elements,
     const absl::flat_hash_set<int64_t>& checkpoint_indices);
 
@@ -64,32 +69,33 @@ class VariantTensorDataReader : public IteratorStateReader {
   explicit VariantTensorDataReader(
       const std::vector<const VariantTensorData*>& data);
 
-  bool Contains(StringPiece key) const override;
-  bool Contains(StringPiece name, StringPiece key) const override;
+  bool Contains(absl::string_view key) const override;
+  bool Contains(absl::string_view name, absl::string_view key) const override;
 
-  absl::Status ReadScalar(StringPiece key, int64_t* val) const override;
-  absl::Status ReadScalar(StringPiece name, StringPiece key,
+  absl::Status ReadScalar(absl::string_view key, int64_t* val) const override;
+  absl::Status ReadScalar(absl::string_view name, absl::string_view key,
                           int64_t* val) const override;
-  absl::Status ReadScalar(StringPiece key, tstring* val) const override;
-  absl::Status ReadScalar(StringPiece name, StringPiece key,
+  absl::Status ReadScalar(absl::string_view key, tstring* val) const override;
+  absl::Status ReadScalar(absl::string_view name, absl::string_view key,
                           tstring* val) const override;
-  absl::Status ReadTensor(StringPiece key, Tensor* val) const override;
-  absl::Status ReadTensor(FunctionLibraryRuntime* flr, StringPiece key,
+  absl::Status ReadTensor(absl::string_view key, Tensor* val) const override;
+  absl::Status ReadTensor(FunctionLibraryRuntime* flr, absl::string_view key,
                           Tensor* val) const override;
-  absl::Status ReadTensor(StringPiece name, StringPiece key,
+  absl::Status ReadTensor(absl::string_view name, absl::string_view key,
                           Tensor* val) const override;
-  absl::Status ReadTensor(FunctionLibraryRuntime* flr, StringPiece name,
-                          StringPiece key, Tensor* val) const override;
+  absl::Status ReadTensor(FunctionLibraryRuntime* flr, absl::string_view name,
+                          absl::string_view key, Tensor* val) const override;
 
  private:
   template <typename T>
-  absl::Status ReadScalarInternal(StringPiece name, StringPiece key,
+  absl::Status ReadScalarInternal(absl::string_view name, absl::string_view key,
                                   T* val) const;
-  absl::Status ReadTensorInternal(FunctionLibraryRuntime* flr, StringPiece name,
-                                  StringPiece key, Tensor* val) const;
+  absl::Status ReadTensorInternal(FunctionLibraryRuntime* flr,
+                                  absl::string_view name, absl::string_view key,
+                                  Tensor* val) const;
   absl::Status ReadDatasetInternal(FunctionLibraryRuntime* flr,
-                                   StringPiece name, StringPiece key,
-                                   Tensor* val) const;
+                                   absl::string_view name,
+                                   absl::string_view key, Tensor* val) const;
   // Produces all key/value pairs stored in this reader. Useful for debugging.
   std::map<string, Tensor> ReadAllTensors();
 
@@ -113,16 +119,16 @@ class VariantTensorDataReader : public IteratorStateReader {
 // Now the VariantTensorData objects can be used to serialize.
 class VariantTensorDataWriter : public IteratorStateWriter {
  public:
-  absl::Status WriteScalar(StringPiece key, int64_t val) override;
-  absl::Status WriteScalar(StringPiece name, StringPiece key,
+  absl::Status WriteScalar(absl::string_view key, int64_t val) override;
+  absl::Status WriteScalar(absl::string_view name, absl::string_view key,
                            int64_t val) override;
 
-  absl::Status WriteScalar(StringPiece key, const tstring& val) override;
-  absl::Status WriteScalar(StringPiece name, StringPiece key,
+  absl::Status WriteScalar(absl::string_view key, const tstring& val) override;
+  absl::Status WriteScalar(absl::string_view name, absl::string_view key,
                            const tstring& val) override;
 
-  absl::Status WriteTensor(StringPiece key, const Tensor& val) override;
-  absl::Status WriteTensor(StringPiece name, StringPiece key,
+  absl::Status WriteTensor(absl::string_view key, const Tensor& val) override;
+  absl::Status WriteTensor(absl::string_view name, absl::string_view key,
                            const Tensor& val) override;
 
   // Releases the built VariantTensorData's to `variants`. Clears out all
@@ -137,11 +143,12 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   void Reset();
 
   template <typename T>
-  absl::Status WriteScalarInternal(StringPiece name, StringPiece key,
-                                   const T& val);
-  absl::Status WriteTensorInternal(StringPiece name, StringPiece key,
-                                   const Tensor& val);
-  absl::Status WriteDatasetInternal(StringPiece name, StringPiece key,
+  absl::Status WriteScalarInternal(absl::string_view name,
+                                   absl::string_view key, const T& val);
+  absl::Status WriteTensorInternal(absl::string_view name,
+                                   absl::string_view key, const Tensor& val);
+  absl::Status WriteDatasetInternal(absl::string_view name,
+                                    absl::string_view key,
                                     const DatasetBase* dataset);
 
   bool is_flushed_ = false;

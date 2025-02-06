@@ -23,6 +23,7 @@ include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
+include "mlir/IR/CommonAttrConstraints.td"
 
 // Checks if the param passed is a F32 ElementsAttr.
 def F32ElementsAttr : ElementsAttrBase<
@@ -352,6 +353,23 @@ def MatchHardSwishPattern5 : Pat<
   [
     (FloatValueEquals<"3"> $cst_3),
     (FloatValueEquals<"6"> $cst_6),
+  ]>;
+
+def MatchHardSwishPattern6 : Pat<
+  (TFL_MulOp
+     $arg,
+     (TFL_MulOp
+      (TFL_AddOp
+        $arg,
+        (Arith_ConstantOp F32ElementsAttr:$cst_3),
+        TFL_AF_Relu6),
+      (Arith_ConstantOp F32ElementsAttr:$cst_one_sixth),
+      TFL_AF_None),
+     TFL_AF_None),
+  (TFL_HardSwishOp $arg),
+  [
+    (FloatValueEquals<"3"> $cst_3),
+    (FloatValueEquals<"0.166666672"> $cst_one_sixth),
   ]>;
 
 // Constraint that the attribute value is less than 'n'
@@ -1699,6 +1717,16 @@ def FuseTransposeIntoBatchMatMulRHS: Pat<
    (IsBoolAttrEqual<"false"> $adj_x),
    (IsBoolAttrEqual<"false"> $adj_y)]>;
 
+def FuseTransposeIntoBatchMatMulRHSAdjY: Pat<
+  (TFL_BatchMatMulOp
+    $lhs,
+    (TFL_TransposeOp:$transposed_value $input, (Arith_ConstantOp:$perm_value $p0)),
+    $adj_x, $adj_y, $asymmetric_quantize_inputs),
+  (TFL_BatchMatMulOp $lhs, $input, $adj_x, ConstBoolAttrTrue, $asymmetric_quantize_inputs),
+  [(AreLastTwoDimsTransposed $perm_value),
+   (HasOneUse $transposed_value),
+   (IsBoolAttrEqual<"false"> $adj_y)]>;
+
 // Fuse squeezing LHS reshape into tfl.fully_connected.
 // This will work for any FullyConnected(Reshape(LHS), RHS), provided-
 // 1.The reshape is only squeezing the broadcast dimensions of the LHS.
@@ -1913,3 +1941,14 @@ def ReorderGatherAndCast : Pat<
   (TFL_GatherOp (TFL_CastOp:$cast $params), $indices, $axis, $batch_dims),
   (TFL_CastOp (TFL_GatherOp $params, $indices, $axis, $batch_dims)),
   [(HasOneUse $cast)]>;
+
+// Replace division by a constant with a multiplication by a reciprocal of that
+// constant. Floating point division can be ~10x more expensive than a
+// multiplication.
+def RealDivWithF32ConstDivisor : Pat<
+  (TFL_DivOp:$src $arg0, (Arith_ConstantOp FloatElementsAttr<32>:$value), $activation),
+  (TFL_MulOp:$dest1 $arg0,
+    (TFL_DivOp (Arith_ConstantOp
+      (GetScalarOfType<1> (Arith_ConstantOp $value))),
+      (Arith_ConstantOp $value),  TFL_AF_None),
+    $activation)>;

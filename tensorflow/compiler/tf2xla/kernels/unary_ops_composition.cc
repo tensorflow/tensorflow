@@ -44,7 +44,9 @@ void PopulateXlaOpGeneratorMap(XlaOpGeneratorMap* op_generator_map) {
     CHECK(op_generator_map->insert({name, xla_op_generator}).second);
   };
 
-#define ADD_XLA_OP_GENERATOR(Name) add_xla_op_generator(#Name, xla::Name);
+#define ADD_XLA_OP_GENERATOR(Name) \
+  add_xla_op_generator(#Name,      \
+                       static_cast<xla::XlaOp (*)(xla::XlaOp)>(xla::Name));
 
   ADD_XLA_OP_GENERATOR(Abs);
   ADD_XLA_OP_GENERATOR(Acos);

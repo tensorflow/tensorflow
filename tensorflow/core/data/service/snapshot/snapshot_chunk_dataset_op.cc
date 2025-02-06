@@ -20,16 +20,17 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/data/utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/tstring.h"
 

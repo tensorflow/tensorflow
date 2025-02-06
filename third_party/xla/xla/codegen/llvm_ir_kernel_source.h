@@ -20,9 +20,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/kernel_source.h"
 
 namespace xla {
 
@@ -30,28 +31,23 @@ namespace xla {
 // implementation we might emit a single LLVM module with multiple kernels or a
 // separate LLVM module for each kernel. Kernel function signature is defined by
 // the backend specific ABI.
-class LlvmIrKernelSource : public KernelSource {
+class LlvmIrKernelSource final : public KernelSource {
  public:
-  LlvmIrKernelSource(std::shared_ptr<llvm::LLVMContext> context,
-                     std::shared_ptr<llvm::Module> module,
-                     std::string kernel_name)
-      : context_(std::move(context)),
-        module_(std::move(module)),
-        kernel_name_(std::move(kernel_name)) {}
+  LlvmIrKernelSource(llvm::orc::ThreadSafeContext context,
+                     std::unique_ptr<llvm::Module> module)
+      : module_(std::move(module), std::move(context)) {}
 
-  std::shared_ptr<llvm::LLVMContext> context() const { return context_; }
-  std::shared_ptr<llvm::Module> module() const { return module_; }
+  LlvmIrKernelSource(LlvmIrKernelSource&& other) = default;
+  LlvmIrKernelSource& operator=(LlvmIrKernelSource&& other) = default;
 
-  std::string kernel_name() const { return kernel_name_; }
-
-  const llvm::Function* kernel_function() const {
-    return module_->getFunction(kernel_name_);
+  llvm::orc::ThreadSafeModule thread_safe_module() && {
+    return std::move(module_);
   }
 
+  std::string ToString() const final;
+
  private:
-  std::shared_ptr<llvm::LLVMContext> context_;
-  std::shared_ptr<llvm::Module> module_;
-  std::string kernel_name_;
+  llvm::orc::ThreadSafeModule module_;
 };
 
 }  // namespace xla

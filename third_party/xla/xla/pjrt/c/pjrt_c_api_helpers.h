@@ -66,6 +66,14 @@ using PJRT_ClientDeleter = std::function<void(PJRT_Client*)>;
 // The lifetime of the Api pointed to must be longer than the client.
 PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api);
 
+using PJRT_AsyncHostToDeviceTransferManagerDeleter =
+    std::function<void(PJRT_AsyncHostToDeviceTransferManager*)>;
+
+// Pass in an API pointer; receive a custom deleter for smart pointers.
+// The lifetime of the Api pointed to must be longer than the transfer manager.
+PJRT_AsyncHostToDeviceTransferManagerDeleter
+MakeAsyncHostToDeviceTransferManagerDeleter(const PJRT_Api* api);
+
 using PJRT_ErrorDeleter = std::function<void(PJRT_Error*)>;
 
 // Pass in an API pointer; receive a custom deleter for smart pointers.
@@ -182,6 +190,9 @@ const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes();
 // than or equal to the expected size. The actual struct size can be larger if
 // it comes from a forwards-compatible caller built at a later version than this
 // check. Returns a non-OK status if the expected is smaller.
+//
+// This function is only valid when called from the *plugin* side, not the
+// *client* side.
 absl::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
                                               size_t expected_size,
                                               size_t actual_size);
@@ -210,6 +221,9 @@ int GetId(const PJRT_Api* api, PJRT_DeviceDescription* device_desc);
 using PJRT_KeyValueGetCFunc =
     std::function<PJRT_Error*(PJRT_KeyValueGetCallback_Args* args)>;
 
+using PJRT_KeyValueTryGetCFunc =
+    std::function<PJRT_Error*(PJRT_KeyValueTryGetCallback_Args* args)>;
+
 using PJRT_KeyValuePutCFunc =
     std::function<PJRT_Error*(PJRT_KeyValuePutCallback_Args* args)>;
 
@@ -220,17 +234,21 @@ struct PJRT_KeyValueCallbackData {
 
   std::shared_ptr<xla::KeyValueStoreInterface> kv_store;
 
-  // kv_get_c_func and kv_put_c_func are holding pointers to kv_store.
+  // kv_get_c_func, kv_try_get_c_func and kv_put_c_func are holding pointers to
+  // kv_store.
   pjrt::PJRT_KeyValueGetCFunc kv_get_c_func;
   pjrt::PJRT_KeyValuePutCFunc kv_put_c_func;
-  // c_kv_get and c_kv_put are holding pointers to kv_get_c_func and
-  // kv_put_c_func.
+  // c_kv_get, c_kv_try_get and c_kv_put are holding pointers to kv_get_c_func,
+  // kv_try_get_c_func and kv_put_c_func.
   PJRT_KeyValueGetCallback c_kv_get;
   PJRT_KeyValuePutCallback c_kv_put;
+  pjrt::PJRT_KeyValueTryGetCFunc kv_try_get_c_func;
+  PJRT_KeyValueTryGetCallback c_kv_try_get;
 };
 
-// The returned &kv_get_c_func and &kv_put_c_func must be set as
-// PJRT_Client_Create_Args.kv_get_user_arg and
+// The returned &kv_get_c_func, &kv_try_get_c_func and &kv_put_c_func must be
+// set as PJRT_Client_Create_Args.kv_get_user_arg,
+// PJRT_Client_Create_Args.kv_try_get_user_arg and
 // PJRT_Client_Create_Args.kv_put_user_arg, respectively. The entire
 // PJRT_KeyValueCallbackData must be kept alive as long as c_kv_get and c_kv_put
 // may be called.
@@ -296,6 +314,12 @@ absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
 absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
     const PJRT_Api* api, PJRT_Executable* executable);
 
+PJRT_ShapeSpec ConvertToPjRtShapeSpec(
+    const xla::PjRtClient::ShapeSpec& shape_spec);
+
+xla::PjRtClient::ShapeSpec ConvertFromPjrtShapeSpec(
+    PJRT_ShapeSpec c_shape_spec);
+
 // Creates a PJRT_Profiler_Extension and adds a producer trace with
 // the given name. The created PJRT_Profiler_Extension will be used in argument
 // structs to pass the producer traceme context id to add a corresponding
@@ -335,6 +359,14 @@ int64_t GetTracemeContextId(InputType* args) {
   }
   return traceme_context_id;
 }
+
+std::vector<xla::PjRtMemorySpaceDescription> GetMemorySpaceDescriptions(
+    PJRT_DeviceDescription* device_description, const PJRT_Api* c_api,
+    absl::StatusOr<xla::PjRtMemorySpaceDescription*>* default_memory);
+
+PJRT_Error* InvokePjRtEventWhenReady(
+    const PJRT_Api* api, PJRT_Event* event,
+    absl::AnyInvocable<void() &&> on_done_with_event);
 
 }  // namespace pjrt
 

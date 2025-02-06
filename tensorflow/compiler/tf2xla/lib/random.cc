@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/lib/random.h"
 
 #include <cmath>
-#include <limits>
 
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/math.h"

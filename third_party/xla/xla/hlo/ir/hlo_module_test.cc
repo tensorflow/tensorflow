@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -32,9 +31,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -44,7 +41,7 @@ TEST(HloModuleTest, AbslHashValue) {
   HloModule module2("temp_module3", HloModuleConfig());
   EXPECT_EQ(absl::HashOf(module1), absl::HashOf(module2));
 
-  std::string_view hlo = R"(
+  absl::string_view hlo = R"(
       HloModule m1
         ENTRY main {
           a = f32[] parameter(0)
@@ -109,7 +106,7 @@ TEST(HloModuleTest, GetModifySetConfig) {
   EXPECT_EQ(&m1.config(), &m1.mutable_config());
 }
 
-void CreateComputation(HloModule& module, std::string_view name, bool is_entry,
+void CreateComputation(HloModule& module, absl::string_view name, bool is_entry,
                        HloSchedule& schedule) {
   HloComputation::Builder builder(name);
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
@@ -131,7 +128,7 @@ void CreateComputation(HloModule& module, std::string_view name, bool is_entry,
 
 const char* kCloneSuffix = "clone";
 
-std::string GetCloneName(std::string_view name) {
+std::string GetCloneName(absl::string_view name) {
   return absl::StrCat(name, ".", kCloneSuffix);
 }
 
@@ -202,6 +199,232 @@ TEST(HloModuleTest, CloneWithNewConfig) {
   EXPECT_EQ(pm2->config().device_type(), m1.config().device_type());
   EXPECT_NE(pm2->config().device_memory_size(),
             m1.config().device_memory_size());
+}
+
+TEST(HloModuleTest, AbslHashInstructionOrdering) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )"));
+
+  // Add.0 and add.1 are swapped.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(R"(
+    HloModule HashTest
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.1 = f32[32,32] add(b, c)    // Swapped with below
+        add.0 = f32[32,32] add(a, b)    // Swapped with above
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+    )"));
+
+  EXPECT_EQ(absl::HashOf(*module1), absl::HashOf(*module2));
+}
+
+TEST(HloModuleTest, AbslHashInstructionOpcodes) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )"));
+
+  // Second add changed to sub
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(R"(
+    HloModule HashTest
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] subtract(b, c)  // Changed from add to subtract
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+    )"));
+
+  EXPECT_NE(absl::HashOf(*module1), absl::HashOf(*module2));
+}
+
+TEST(HloModuleTest, AbslHashInstructionShapes) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )"));
+
+  // Second add has different shape.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(R"(
+    HloModule HashTest
+      ENTRY main {
+        // Shapes changed from [32,32] to [16,16]
+        a = f32[16,16] parameter(0)
+        b = f32[16,16] parameter(1)
+        c = f32[16,16] parameter(2)
+        add.0 = f32[16,16] add(a, b)
+        add.1 = f32[16,16] add(b, c)
+        ROOT result = f32[16,16] add(add.0, add.1)
+      }
+    )"));
+
+  EXPECT_NE(absl::HashOf(*module1), absl::HashOf(*module2));
+}
+
+TEST(HloModuleTest, AbslHashInstructionNaming) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )"));
+
+  // Add x to all names
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(R"(
+      HloModule HashTest
+
+      ENTRY main {
+        // All names changed to <name>x
+        ax = f32[32,32] parameter(0)
+        bx = f32[32,32] parameter(1)
+        cx = f32[32,32] parameter(2)
+        add.0x = f32[32,32] add(ax, bx)
+        add.1x = f32[32,32] add(bx, cx)
+        ROOT resultx = f32[32,32] add(add.0x, add.1x)
+      }
+      )"));
+
+  EXPECT_EQ(absl::HashOf(*module1), absl::HashOf(*module2));
+}
+
+TEST(HloModuleTest, AbslHashGraphChanges) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )"));
+
+  // Changed from (a+b)+(b+c) to ((a+b)+c)+a
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(add.0, c)       // Changed from add(b, c)
+        ROOT result = f32[32,32] add(add.1, a) // Changed from add(add.0, add.1)
+      }
+      )"));
+
+  EXPECT_NE(absl::HashOf(*module1), absl::HashOf(*module2));
+}
+
+TEST(HloModuleTest, AbslHashParameterChanges) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(0)
+        b = f32[32,32] parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )"));
+
+  // Change parameter numbers
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(R"(
+      HloModule HashTest
+
+      ENTRY main {
+        a = f32[32,32] parameter(1)  // Changed from parameter(0)
+        b = f32[32,32] parameter(0)  // Changed from parameter(1)
+        c = f32[32,32] parameter(2)
+        add.0 = f32[32,32] add(a, b)
+        add.1 = f32[32,32] add(b, c)
+        ROOT result = f32[32,32] add(add.0, add.1)
+      }
+      )"));
+
+  EXPECT_NE(absl::HashOf(*module1), absl::HashOf(*module2));
+}
+
+TEST(HloModuleTest, AbslHashConstantValues) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnUnverifiedModule(R"(
+    HloModule HashTest
+
+    ENTRY main {
+      a = s32[32,32] parameter(0)
+      c = s32[] constant(42)
+      b = s32[32,32] broadcast(c), dimensions={}
+      ROOT result = s32[32,32] add(a, b)
+    }
+      )"));
+
+  // Changed from 42 to 43
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnUnverifiedModule(R"(
+    HloModule HashTest
+
+    ENTRY main {
+      a = s32[32,32] parameter(0)
+      c = s32[] constant(43)  // Changed from constant(42)
+      b = s32[32,32] broadcast(c), dimensions={}
+      ROOT result = s32[32,32] add(a, b)
+    }
+      )"));
+
+  EXPECT_NE(absl::HashOf(*module1), absl::HashOf(*module2));
 }
 
 }  // namespace

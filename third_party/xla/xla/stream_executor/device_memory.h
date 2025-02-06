@@ -31,7 +31,7 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/base/attributes.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -83,8 +83,7 @@ class DeviceMemoryBase {
 
   // Warning: note that the pointer returned is not necessarily directly to
   // device virtual address space, but is platform-dependent.
-  void *opaque() { return opaque_; }
-  const void *opaque() const { return opaque_; }
+  void *opaque() const { return opaque_; }
 
   // Returns the payload of this memory region.
   uint64_t payload() const { return payload_; }
@@ -129,7 +128,7 @@ class DeviceMemoryBase {
 // that represents one or more integers in Device memory.
 //
 // Thread-compatible.
-template <typename ElemT>
+template <typename T>
 class DeviceMemory final : public DeviceMemoryBase {
  public:
   // Default constructor instantiates a null-pointed, zero-sized memory region.
@@ -144,29 +143,25 @@ class DeviceMemory final : public DeviceMemoryBase {
     SetPayload(other.payload());
   }
 
-  // Returns the number of elements of type ElemT that constitute this
+  // Returns the number of elements of type T that constitute this
   // allocation.
-  uint64_t ElementCount() const { return size() / sizeof(ElemT); }
+  uint64_t ElementCount() const { return size() / sizeof(T); }
 
   // Returns pointer to the allocated data
-  ElemT *base() { return reinterpret_cast<ElemT *>(opaque()); }
-  const ElemT *base() const {
-    return reinterpret_cast<const ElemT *>(opaque());
-  }
+  T *base() const { return reinterpret_cast<T *>(opaque()); }
 
   // Creates a typed area of DeviceMemory with a given opaque pointer and the
   // quantity of bytes in the allocation. This function is broken out to
   // distinguish bytes from an element count.
-  static DeviceMemory<ElemT> MakeFromByteSize(void *opaque, uint64_t bytes) {
-    return DeviceMemory<ElemT>(opaque, bytes);
+  static DeviceMemory<T> MakeFromByteSize(void *opaque, uint64_t bytes) {
+    return DeviceMemory<T>(opaque, bytes);
   }
 
   // Creates a memory region (slice) inside another allocated memory region.
-  // Offset and size are specified in terms of ElemT elements.
-  DeviceMemory<ElemT> GetSlice(uint64_t element_offset,
-                               uint64_t element_count) {
-    return DeviceMemory<ElemT>(GetByteSlice(sizeof(ElemT) * element_offset,
-                                            sizeof(ElemT) * element_count));
+  // Offset and size are specified in terms of T elements.
+  DeviceMemory<T> GetSlice(uint64_t element_offset, uint64_t element_count) {
+    return DeviceMemory<T>(
+        GetByteSlice(sizeof(T) * element_offset, sizeof(T) * element_count));
   }
 
  protected:

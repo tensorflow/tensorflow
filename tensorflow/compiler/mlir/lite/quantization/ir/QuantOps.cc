@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 
+#include <cstdint>
+#include <functional>
+#include <iterator>
 #include <numeric>
 
 #include "llvm/ADT/STLExtras.h"

@@ -29,9 +29,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/SmallVector.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -99,7 +99,7 @@ std::string TiledHloInstruction::ToString() const {
   ss << "\ttile_strides: (" << absl::StrJoin(tile_strides_, ", ") << ")\n";
   ss << "\ttile_offsets_indexing: "
      << (tile_offsets_indexing_.has_value()
-             ? gpu::ToString(*tile_offsets_indexing_)
+             ? ::xla::ToString(*tile_offsets_indexing_)
              : "nullopt");
   return ss.str();
 }

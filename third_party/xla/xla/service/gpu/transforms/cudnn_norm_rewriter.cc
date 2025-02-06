@@ -66,9 +66,8 @@ namespace m = match;
 // Traverses the graph upward starting at instr and returns the
 // first instruction that is not a convert, bitcast or reshape.
 const HloInstruction* SkipUnaryOps(const HloInstruction* instr) {
-  while (instr->opcode() == HloOpcode::kConvert ||
-         instr->opcode() == HloOpcode::kBitcast ||
-         instr->opcode() == HloOpcode::kReshape) {
+  while (HloPredicateIsOp<HloOpcode::kConvert, HloOpcode::kBitcast,
+                          HloOpcode::kReshape>(instr)) {
     instr = instr->operand(0);
   }
   return instr;
@@ -78,9 +77,8 @@ const HloInstruction* SkipUnaryOps(const HloInstruction* instr) {
 // instrs the users that are not a convert, bitcast or reshape.
 void SkipUnaryOpsTopDownRecursive(HloInstruction* instr,
                                   std::vector<HloInstruction*>& instrs) {
-  if (instr->opcode() == HloOpcode::kConvert ||
-      instr->opcode() == HloOpcode::kBitcast ||
-      instr->opcode() == HloOpcode::kReshape) {
+  if (HloPredicateIsOp<HloOpcode::kConvert, HloOpcode::kBitcast,
+                       HloOpcode::kReshape>(instr)) {
     for (HloInstruction* user : instr->users()) {
       SkipUnaryOpsTopDownRecursive(user, instrs);
     }
@@ -206,9 +204,9 @@ std::vector<int64_t> AdjustedDimensions(const Shape& shape,
 // the removal of any degenerate dimensions in the output or input.
 std::vector<int64_t> AdjustedDimensions(const HloInstruction* instr) {
   Shape shape;
-  if (instr->opcode() == HloOpcode::kBroadcast) {
+  if (HloPredicateIsOp<HloOpcode::kBroadcast>(instr)) {
     shape = instr->shape();
-  } else if (instr->opcode() == HloOpcode::kReduce) {
+  } else if (HloPredicateIsOp<HloOpcode::kReduce>(instr)) {
     shape = instr->operand(0)->shape();
   } else {
     return {};
@@ -221,7 +219,7 @@ std::vector<int64_t> AdjustedDimensions(const HloInstruction* instr) {
 // reduction.
 bool AppliesAddReduce(const HloInstruction* instr,
                       absl::Span<const int64_t> reduce_dims = {}) {
-  if (instr->opcode() != HloOpcode::kReduce) {
+  if (HloPredicateIsNotOp<HloOpcode::kReduce>(instr)) {
     return false;
   }
 
@@ -236,7 +234,7 @@ bool AppliesAddReduce(const HloInstruction* instr,
          instr->operand(1)->opcode() == HloOpcode::kConstant &&
          ShapeUtil::IsScalar(instr->operand(1)->shape()) &&
          instr->operand(1)->literal().GetAsDouble({}) == 0. &&
-         reduce_comp_root->opcode() == HloOpcode::kAdd &&
+         HloPredicateIsOp<HloOpcode::kAdd>(reduce_comp_root) &&
          reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
          reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter;
 }
@@ -245,14 +243,14 @@ bool AppliesAddReduce(const HloInstruction* instr,
 // number of reduced elements.
 bool CalculatesExpectation(const HloInstruction* instr) {
   instr = SkipUnaryOps(instr);
-  if (instr->opcode() != HloOpcode::kMultiply) {
+  if (HloPredicateIsNotOp<HloOpcode::kMultiply>(instr)) {
     return false;
   }
   bool bcast_operand = instr->operand(0)->opcode() != HloOpcode::kBroadcast;
   const HloInstruction *broadcast = instr->operand(bcast_operand),
                        *reduce = SkipUnaryOps(instr->operand(!bcast_operand));
-  if (reduce->opcode() != HloOpcode::kReduce ||
-      broadcast->opcode() != HloOpcode::kBroadcast ||
+  if (HloPredicateIsNotOp<HloOpcode::kReduce>(reduce) ||
+      HloPredicateIsNotOp<HloOpcode::kBroadcast>(broadcast) ||
       broadcast->operand(0)->opcode() != HloOpcode::kConstant) {
     return false;
   }
@@ -397,7 +395,7 @@ HloInstruction* FindAddReduceRecursive(
       HloOpcode::kConvert, HloOpcode::kBitcast, HloOpcode::kReshape};
   // Look for a reduction among the users of instr.
   for (HloInstruction* user : instr->users()) {
-    if (user->opcode() == HloOpcode::kReduce) {
+    if (HloPredicateIsOp<HloOpcode::kReduce>(user)) {
       std::vector<int64_t> mapped_reduce_dims =
           MapDimensions(orig_instr_shape, instr->shape(), reduce_dims);
       if (!mapped_reduce_dims.empty() &&
@@ -959,18 +957,18 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
                                      x.Instr()->shape())) {
         instr = instr->users()[0];
       }
-      if (scale->opcode() == HloOpcode::kConvert &&
+      if (HloPredicateIsOp<HloOpcode::kConvert>(scale) &&
           ShapeUtil::SameElementType(scale->operand(0)->shape(),
                                      bias->shape())) {
         scale = scale->mutable_operand(0);
       }
-      if (bias->opcode() == HloOpcode::kConvert &&
+      if (HloPredicateIsOp<HloOpcode::kConvert>(bias) &&
           ShapeUtil::SameElementType(bias->operand(0)->shape(),
                                      scale->shape())) {
         bias = bias->mutable_operand(0);
       }
-      if (scale->opcode() == HloOpcode::kConvert &&
-          bias->opcode() == HloOpcode::kConvert &&
+      if (HloPredicateIsOp<HloOpcode::kConvert>(scale) &&
+          HloPredicateIsOp<HloOpcode::kConvert>(bias) &&
           ShapeUtil::SameElementType(scale->operand(0)->shape(),
                                      bias->operand(0)->shape())) {
         scale = scale->mutable_operand(0);
@@ -1134,7 +1132,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       // The layer norm training graph separately contains the norm factor
       // divided by the sum of variance and epsilon.
       for (HloInstruction* user : norm_factor->users()) {
-        if (user->opcode() == HloOpcode::kDivide &&
+        if (HloPredicateIsOp<HloOpcode::kDivide>(user) &&
             user->operand_index(norm_factor) == 0) {
           TF_ASSIGN_OR_RETURN(bool changed,
                               MatchNormFactor(user, custom_call, variance,
@@ -1235,7 +1233,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           TF_ASSIGN_OR_RETURN(new_instr,
                               MakeReshapeHlo(old_instr->shape(), new_gte));
         }
-        if (old_instr->opcode() != HloOpcode::kDivide) {
+        if (HloPredicateIsNotOp<HloOpcode::kDivide>(old_instr)) {
           // Replace the result of the layer norm or the expectation.
           TF_RETURN_IF_ERROR(ReplaceInstruction(old_instr, new_instr));
         } else {

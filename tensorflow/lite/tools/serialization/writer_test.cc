@@ -19,7 +19,10 @@ limitations under the License.
 // Usage:
 //   writer_test <input tflite>
 
-#include <iostream>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <memory>
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/interpreter_builder.h"

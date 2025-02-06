@@ -76,7 +76,7 @@ int SimpleDynamicBuffer::WriteToBuffer(char** buffer) {
   }
 
   // Copy data of strings.
-  if (data_.size() > 0) {
+  if (!data_.empty()) {
     memcpy(*buffer + start, data_.data(), data_.size());
   }
   return bytes;

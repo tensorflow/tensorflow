@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/stable_sort_expander.h"
 
+#include <cstdint>
+
+#include <gtest/gtest.h>
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
-#include "xla/test.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {

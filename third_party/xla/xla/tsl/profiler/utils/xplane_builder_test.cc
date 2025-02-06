@@ -17,8 +17,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
-#include "tsl/platform/test.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {

@@ -43,6 +43,7 @@ extern void __xla_cpu_runtime_OneDnnMatMulReorder(void* result, void** args);
 template <>
 struct PrimitiveTrait<kOnednnMatmulConfig> {
   using pointer_type = xla::cpu::OneDnnMatMulConfig*;
+  static const BackendConfigOneofCase kConfigVal = kOnednnMatmulConfig;
 };
 
 }  // namespace cpu

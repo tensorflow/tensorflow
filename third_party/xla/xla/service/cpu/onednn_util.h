@@ -72,7 +72,7 @@ typedef BackendConfig::BackendConfigOneofCase BackendConfigOneofCase;
 template <typename PrimDesc>
 std::unique_ptr<PrimDesc> CreateOneDnnPrimDesc(HloInstruction*);
 
-template <BackendConfigOneofCase config>
+template <BackendConfigOneofCase config, typename TransformationType = void>
 struct PrimitiveTrait;
 
 template <BackendConfigOneofCase config>

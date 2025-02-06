@@ -31,6 +31,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -54,6 +55,7 @@
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace ifrt {
@@ -113,6 +115,7 @@ Array::MakeArrayFromHostBuffer(
       return absl::UnimplementedError(
           "String arrays are not supported in ifrt-proxy version < 9");
     }
+    tsl::profiler::TraceMe traceme("IfrtProxySerializeStringHostBuffer");
     TF_ASSIGN_OR_RETURN(
         std::shared_ptr<std::string> owned_data,
         SerializeStringHostBuffer(absl::MakeConstSpan(
@@ -127,6 +130,12 @@ Array::MakeArrayFromHostBuffer(
       }
     };
   }
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      [s = mem_region.size(), semantics]() {
+        return tsl::profiler::TraceMeEncode(
+            "IfrtProxyEntrypointMakeArrayFromHostBuffer",
+            {{"size", s}, {"semantics", static_cast<int>(semantics)}});
+      });
 
   const uint64_t host_buffer_handle = rpc_helper->NextHandle();
 
@@ -226,6 +235,9 @@ void Array::Destruct(RpcHelper* rpc_helper, ArrayHandle handle) {
 }
 
 Future<> Array::GetReadyFuture() const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointArrayGetReadyFuture");
+
   auto req = std::make_unique<CheckValueReadyRequest>();
   req->add_value_handles(handle_.handle);
 
@@ -260,6 +272,8 @@ Future<> Array::Delete() {
 }
 
 bool Array::IsDeleted() const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointIsDeleted");
   if (GetGlobalClientFlags()->array_is_deleted_hack) {
     return false;
   }
@@ -287,6 +301,14 @@ Array::AssembleArrayFromSingleDeviceArrays(
     absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      [n_arrays = arrays.size(), single_device_shard_semantics]() {
+        return tsl::profiler::TraceMeEncode(
+            "IfrtProxyEntrypointAssembleArrayFromSingleDeviceArrays",
+            {{"n_arrays", n_arrays},
+             {"sds_semantics",
+              static_cast<int>(single_device_shard_semantics)}});
+      });
   if (single_device_shard_semantics ==
           SingleDeviceShardSemantics::kAddressableShards &&
       rpc_helper->version().protocol_version() < 8) {
@@ -338,11 +360,26 @@ Array::RemapArrays(xla::ifrt::Client* client,
                    std::shared_ptr<RpcHelper> rpc_helper, const RemapPlan& plan,
                    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
                    ArrayCopySemantics semantics) {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_arrays = arrays.size()]() {
+    return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointRemapArrays",
+                                        {{"n_arrays", n_arrays}});
+  });
+
+  TF_RETURN_IF_ERROR(plan.CheckArrayCopySemantics(semantics));
+  const int num_inputs = plan.input_specs.size();
+  const int num_actual_inputs = arrays.size();
+  if (num_inputs != num_actual_inputs) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("RemapArrays expects %d input arrays, but got %d",
+                        num_inputs, num_actual_inputs));
+  }
+
   auto req = std::make_unique<RemapArraysRequest>();
   TF_RET_CHECK(!arrays.empty());
   TF_ASSIGN_OR_RETURN(*req->mutable_plan(), plan.ToProto());
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
-  for (const tsl::RCReference<xla::ifrt::Array>& rcref : arrays) {
+  for (int i = 0; i < num_inputs; ++i) {
+    const tsl::RCReference<xla::ifrt::Array>& rcref = arrays[i];
     Array* array = llvm::dyn_cast<Array>(rcref.get());
     if (array == nullptr) {
       return absl::InvalidArgumentError(
@@ -350,6 +387,34 @@ Array::RemapArrays(xla::ifrt::Client* client,
                            "not a xla::ifrt::proxy::Array.",
                            rcref.get()));
     }
+
+    if (plan.input_specs[i].dtype != arrays[i]->dtype()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "RemapArrays expects input #%d to have dtype %v, but got %v", i,
+          plan.input_specs[i].dtype, arrays[i]->dtype()));
+    }
+    if (plan.input_specs[i].shape != arrays[i]->shape()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "RemapArrays expects input #%d to have shape %v, but got %v", i,
+          plan.input_specs[i].shape, arrays[i]->shape().DebugString()));
+    }
+    // Skip xla::ifrt::Sharding::HasSamePartitioning() check because RemapArrays
+    // is currently called with input arrays with implicit sharding
+    // reinterpretation. Such patterns should be fixed before enabling stricter
+    // checking to avoid false positives.
+    if (*plan.input_specs[i].sharding->devices() !=
+            *arrays[i]->sharding().devices() ||
+        plan.input_specs[i].sharding->memory_kind() !=
+            arrays[i]->sharding().memory_kind()) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("RemapArrays expects input #%d to be on %v with "
+                          "%v, but is on %v with %v",
+                          i, *plan.input_specs[i].sharding->devices(),
+                          plan.input_specs[i].sharding->memory_kind(),
+                          *arrays[i]->sharding().devices(),
+                          arrays[i]->sharding().memory_kind()));
+    }
+
     req->add_array_handles(array->handle_.handle);
   }
 
@@ -393,6 +458,8 @@ absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
 Array::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointDisassembleIntoSingleDeviceArrays");
   if (single_device_shard_semantics ==
           SingleDeviceShardSemantics::kAddressableShards &&
       rpc_helper_->version().protocol_version() < 8) {
@@ -446,6 +513,8 @@ Array::DisassembleIntoSingleDeviceArrays(
 
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Array::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointFullyReplicatedShard");
   auto req = std::make_unique<FullyReplicatedShardRequest>();
   req->set_array_handle(handle_.handle);
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
@@ -481,6 +550,8 @@ absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Array::FullyReplicatedShard(
 Future<> Array::CopyToStringHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointCopyToStringHostBuffer");
   if (rpc_helper_->version().protocol_version() < 9) {
     return Future<>(absl::UnimplementedError(
         "String arrays are not supported in ifrt-proxy version < 9"));
@@ -540,7 +611,7 @@ Future<> Array::CopyToHostBuffer(
   if (dtype_.kind() == DType::kString) {
     return CopyToStringHostBuffer(data, byte_strides, semantics);
   }
-
+  tsl::profiler::TraceMe traceme("IfrtProxyEntrypointCopyToHostBuffer");
   const auto mem_region = ArrayMemRegion::FromZerothElementPointer(
       /*zeroth_element=*/data, dtype_, shape_, byte_strides);
   if (!mem_region.ok()) {

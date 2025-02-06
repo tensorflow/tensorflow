@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_EXAMPLES_SPEECH_COMMANDS_ACCURACY_UTILS_H_
 #define TENSORFLOW_EXAMPLES_SPEECH_COMMANDS_ACCURACY_UTILS_H_
 
+#include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -28,10 +29,9 @@ namespace tensorflow {
 // Converts the given Jax model to a TF Lite FlatBuffer
 // string according to the given model flags, converter flags and tags. Returns
 // error status if it fails to convert the input.
-Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
-                                    const tflite::ModelFlags& model_flags,
-                                    tflite::ConverterFlags& converter_flags,
-                                    string* result);
+absl::Status ConvertJaxToTFLiteFlatBuffer(
+    const std::string& input, const tflite::ModelFlags& model_flags,
+    tflite::ConverterFlags& converter_flags, string* result);
 
 }  // namespace tensorflow
 

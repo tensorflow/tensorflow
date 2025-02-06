@@ -21,16 +21,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -396,6 +398,7 @@ TEST(XplaneUtilsTest, FindMutablePlanesWithPredicate) {
 TEST(XplaneUtilsTest, TestAggregateXPlanes) {
   XPlane xplane;
   XPlaneBuilder builder(&xplane);
+  builder.SetId(123);
   auto& event_metadata1 = *builder.GetOrCreateEventMetadata("EventMetadata1");
   auto& event_metadata2 = *builder.GetOrCreateEventMetadata("EventMetadata2");
   auto& event_metadata3 = *builder.GetOrCreateEventMetadata("EventMetadata3");
@@ -441,6 +444,7 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
   XPlane aggregated_xplane;
   AggregateXPlane(xplane, aggregated_xplane);
 
+  EXPECT_EQ(aggregated_xplane.id(), 123);
 // Protobuf matchers are unavailable in OSS (b/169705709)
 #if defined(PLATFORM_GOOGLE)
   // TODO(b/238349654): Proto matcher are ineffective for XPlanes.
@@ -448,7 +452,8 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
       aggregated_xplane,
       IgnoringFields(
           {"tensorflow.profiler.XEvent.metadata_id",
-           "tensorflow.profiler.XPlane.event_metadata"},
+           "tensorflow.profiler.XPlane.event_metadata",
+           "tensorflow.profiler.XPlane.id"},
           IgnoringRepeatedFieldOrdering(EqualsProto(
               R"pb(lines {
                      id: 1
@@ -516,6 +521,63 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
                                    "EventMetadata3", "EventMetadata4",
                                    "StepEventMetadata1", "StepEventMetadata2"));
 #endif
+}
+
+TEST(XplaneUtilsTest, TestAggregateXPlanesWithNonUniqueMetadataNames) {
+  XPlane xplane;
+  XPlaneBuilder builder(&xplane);
+  const XStatMetadata& program_id_stat =
+      *builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kProgramId));
+  XEventMetadata& event_metadata1 =
+      *builder.GetOrCreateEventMetadata("EventMetadata1");
+  XStatsBuilder<XEventMetadata> event_metadata1_stats(&event_metadata1,
+                                                      &builder);
+  event_metadata1_stats.AddStatValue(program_id_stat, 1);
+  XEventMetadata& event_metadata1p2 = *builder.CreateEventMetadata();
+  event_metadata1p2.set_name("EventMetadata1");
+  XStatsBuilder<XEventMetadata> event_metadata1p2_stats(&event_metadata1p2,
+                                                        &builder);
+  event_metadata1p2_stats.AddStatValue(program_id_stat, 2);
+  XEventMetadata& step_event_metadata1 =
+      *builder.GetOrCreateEventMetadata("StepEventMetadata1");
+  XEventMetadata& step_event_metadata1p2 =
+      *builder.GetOrCreateEventMetadata("StepEventMetadata2");
+
+  XLineBuilder step_line = builder.GetOrCreateLine(1);
+  step_line.SetName(kStepLineName);
+  XEventBuilder step1 = step_line.AddEvent(step_event_metadata1);
+  step1.SetOffsetNs(0);
+  step1.SetDurationNs(10);
+  XEventBuilder step2 = step_line.AddEvent(step_event_metadata1p2);
+  step2.SetOffsetNs(10);
+  step2.SetDurationNs(10);
+
+  XLineBuilder xla_line = builder.GetOrCreateLine(2);
+  xla_line.SetName(kXlaOpLineName);
+  XEventBuilder event1 = xla_line.AddEvent(event_metadata1);
+  event1.SetOffsetNs(0);
+  event1.SetDurationNs(5);
+  XEventBuilder event2 = xla_line.AddEvent(event_metadata1p2);
+  event2.SetOffsetNs(0);
+  event2.SetDurationNs(5);
+  XEventBuilder event3 = xla_line.AddEvent(event_metadata1);
+  event3.SetOffsetNs(5);
+  event3.SetDurationNs(5);
+  XEventBuilder event4 = xla_line.AddEvent(event_metadata1p2);
+  event4.SetOffsetNs(5);
+  event4.SetDurationNs(5);
+
+  XPlane aggregated_xplane;
+  AggregateXPlane(xplane, aggregated_xplane);
+
+  absl::flat_hash_set<int64_t> program_ids;
+  for (const auto& [id, event_metadata] : aggregated_xplane.event_metadata()) {
+    if (event_metadata.name() == "EventMetadata1") {
+      program_ids.insert(event_metadata.stats(0).int64_value());
+    }
+  }
+  EXPECT_TRUE(program_ids.contains(1));
+  EXPECT_TRUE(program_ids.contains(2));
 }
 
 TEST(XPlaneUtilsTest, TestAggregateXPlaneWithCycleStats) {
@@ -671,23 +733,46 @@ TEST(XplaneutilsTest, TestEventMetadataStatsAreCopiedForRefValue) {
   EXPECT_EQ(stat->StrOrRefValue(), "TestFunction");
 }
 
-TEST(XplaneutilsTest, TestIsXSpaceGrouped) {
+TEST(XplaneutilsTest, PartiallyGroupedXSpace) {
   XSpace space;
   {
-    XPlaneBuilder p1(space.add_planes());
-    auto l1 = CreateXLine(&p1, "l1", "d1", 1, 100);
-    auto e1 = CreateXEvent(&p1, l1, "event1", "display1", 1, 2);
-    CreateXStats(&p1, &e1, "event_stat1", 2.0);
+    XPlaneBuilder host(space.add_planes());
+    host.SetName("/host:CPU");
+    auto l1 = CreateXLine(&host, "l1", "d1", 1, 100);
+    auto e1 = CreateXEvent(&host, l1, "event1", "display1", 1, 2);
+    CreateXStats(&host, &e1, "non_group_id", 2.0);
+  }
+  {
+    XPlaneBuilder device(space.add_planes());
+    device.SetName("/device:TPU");
+    auto l1 = CreateXLine(&device, "l1", "d1", 1, 100);
+    auto e1 = CreateXEvent(&device, l1, "event1", "display1", 1, 2);
+    CreateXStats(&device, &e1, "group_id", 2.0);
   }
   EXPECT_FALSE(IsXSpaceGrouped(space));
+}
+
+TEST(XplaneutilsTest, TestFullyGroupedXSpace) {
+  XSpace space;
+  {
+    XPlaneBuilder host(space.add_planes());
+    host.SetName("/host:CPU");
+    auto l1 = CreateXLine(&host, "l1", "d1", 1, 100);
+    auto e1 = CreateXEvent(&host, l1, "event1", "display1", 1, 2);
+    CreateXStats(&host, &e1, "group_id", 2.0);
+  }
 
   {
-    XPlaneBuilder p2(space.add_planes());
-    auto l2 = CreateXLine(&p2, "l2", "d2", 1, 100);
-    auto e2 = CreateXEvent(&p2, l2, "event2", "display2", 1, 2);
-    CreateXStats(&p2, &e2, "group_id", 1);
+    XPlaneBuilder device(space.add_planes());
+    device.SetName("/device:TPU");
+    auto l1 = CreateXLine(&device, "l1", "d1", 1, 100);
+    auto e1 = CreateXEvent(&device, l1, "event1", "display1", 1, 2);
+    CreateXStats(&device, &e1, "group_id", 2.0);
+    auto l2 = CreateXLine(&device, "l2", "d2", 1, 100);
+    auto e2 = CreateXEvent(&device, l2, "event2", "display2", 1, 2);
+    CreateXStats(&device, &e2, "non_group_id", 2.0);
   }
-  LOG(ERROR) << space.DebugString();
+
   EXPECT_TRUE(IsXSpaceGrouped(space));
 }
 

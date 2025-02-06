@@ -110,6 +110,8 @@ struct Southbound::ThrFunctions {
       thr_invocation_context_attach_input_buffer_sync_fence = nullptr;
   decltype(&thrInvocationContextGetOutputBufferSyncFence)
       thr_invocation_context_get_output_buffer_sync_fence = nullptr;
+  decltype(&thrInvocationContextDetachInputBufferSyncFence)
+      thr_invocation_context_detach_input_buffer_sync_fence = nullptr;
 
   decltype(&thrInvocationContextQueryNodeScratchPad)
       thr_invocation_context_query_node_scratch_pad = nullptr;

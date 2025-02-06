@@ -16,9 +16,9 @@ limitations under the License.
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/strings/str_split.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/xla.pb.h"
 
@@ -27,11 +27,16 @@ namespace gpu {
 
 stream_executor::GpuAsmOpts PtxOptsFromDebugOptions(
     const DebugOptions& debug_options) {
-  std::vector<std::string> extra_flags = absl::StrSplit(
-      debug_options.xla_gpu_asm_extra_flags(), ',', absl::SkipEmpty());
+  std::vector<std::string> extra_flags;
+  if (debug_options.xla_gpu_generate_line_info()) {
+    extra_flags.emplace_back("--generate-line-info");
+  }
+  if (debug_options.xla_gpu_generate_debug_info()) {
+    extra_flags.emplace_back("--device-debug");
+  }
   return stream_executor::GpuAsmOpts(
       debug_options.xla_gpu_disable_gpuasm_optimizations(),
-      debug_options.xla_gpu_cuda_data_dir(), extra_flags);
+      debug_options.xla_gpu_cuda_data_dir(), std::move(extra_flags));
 }
 
 }  // namespace gpu

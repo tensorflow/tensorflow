@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_OPTIONS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_C_LITERT_OPTIONS_H_
 
+#include <stdbool.h>  // NOLINT: To use bool type in C
 #include <stdint.h>
 
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -153,7 +154,8 @@ LiteRtStatus LiteRtGetSubFusedActivationOption(LiteRtOp op,
 //  - new_shape : int32_t[]
 //
 //==============================================================================
-LiteRtStatus LiteRtGetReshapeNewShapeOption(LiteRtOp op, int32_t** new_shape,
+LiteRtStatus LiteRtGetReshapeNewShapeOption(LiteRtOp op,
+                                            const int32_t** new_shape,
                                             int32_t* new_shape_size);
 
 //==============================================================================
@@ -164,6 +166,15 @@ LiteRtStatus LiteRtGetReshapeNewShapeOption(LiteRtOp op, int32_t** new_shape,
 //
 //==============================================================================
 LiteRtStatus LiteRtGetSumKeepDimsOption(LiteRtOp op, bool* keepdims);
+
+//==============================================================================
+//
+// Get option APIs for LiteRt Pack op.
+//  Options:
+// - axisOption : int32_t
+//
+//==============================================================================
+LiteRtStatus LiteRtGetPackAxisOption(LiteRtOp op, int32_t* axis);
 
 #ifdef __cplusplus
 }

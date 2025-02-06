@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include "absl/log/check.h"
@@ -2392,7 +2391,7 @@ ENTRY gds {
 }
 
 TEST_F(DynamicPadderTest, ShardingDynamicShapes) {
-  constexpr std::string_view hlo = R"(
+  constexpr absl::string_view hlo = R"(
 HloModule main
 
 ENTRY main {

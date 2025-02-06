@@ -21,6 +21,7 @@ limitations under the License.
 #include <cassert>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor.h"

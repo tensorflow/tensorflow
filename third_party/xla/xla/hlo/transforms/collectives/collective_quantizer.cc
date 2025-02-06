@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/collective_quantizer.h"
 
+#include "xla/hlo/analysis/hlo_replication_analysis.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/hlo_replication_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 
@@ -148,7 +148,7 @@ std::vector<HloInstruction*> FindDequantizationSubgraphRecursive(
     return {};
   }
 
-  subgraph.emplace_back(instr);
+  subgraph.push_back(instr);
   if (Match(instr, ConvertToWiderType())) {
     return subgraph;
   }
@@ -193,7 +193,7 @@ std::optional<ConversionSubgraph> IsSupportedDequantization(
                        ScalarBroadcast(&subgraph.scale_bcast))))) {
     subgraph.unaries = {candidate_subgraph.begin() + 2,
                         candidate_subgraph.end()};
-  } else if (candidate_subgraph.size() > 0 &&
+  } else if (!candidate_subgraph.empty() &&
              Match(candidate_subgraph[0], m::Convert(&subgraph.convert))) {
     subgraph.unaries = {candidate_subgraph.begin() + 1,
                         candidate_subgraph.end()};
@@ -231,7 +231,7 @@ std::optional<ConversionSubgraph> IsSupportedQuantization(
                          BitcastPreservesElementType(), m::Copy(), m::Reshape(),
                          m::Slice(), m::Multiply(), m::Divide(), m::Clamp()))) {
       if (instr->user_count() > 0) {
-        ops.emplace_back(instr);
+        ops.push_back(instr);
         instr = instr->users()[0];
         continue;
       }
@@ -239,7 +239,7 @@ std::optional<ConversionSubgraph> IsSupportedQuantization(
     }
 
     if (Match(instr, ConvertToNarrowerType())) {
-      ops.emplace_back(instr);
+      ops.push_back(instr);
       break;
     }
     VLOG(5) << "Unsupported instruction.";
@@ -265,8 +265,7 @@ std::optional<ConversionSubgraph> IsSupportedQuantization(
                                     ScalarBroadcast(&subgraph.scale_bcast)),
                           ScalarBroadcast(m::Constant())))))) {
     subgraph.unaries = {ops.begin(), ops.end() - 3};
-  } else if (ops.size() > 0 &&
-             Match(ops.back(), m::Convert(&subgraph.convert))) {
+  } else if (!ops.empty() && Match(ops.back(), m::Convert(&subgraph.convert))) {
     subgraph.unaries = {ops.begin(), ops.end() - 1};
   } else {
     VLOG(5) << "Did not find type conversion or quantization pattern.";

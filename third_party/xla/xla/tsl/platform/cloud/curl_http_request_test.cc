@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace {

@@ -14,20 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/snapshot_stream_writer.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/io/compression.h"
 #include "xla/tsl/lib/monitoring/cell_reader.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -39,10 +39,8 @@ limitations under the License.
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tsl/platform/env.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace data {

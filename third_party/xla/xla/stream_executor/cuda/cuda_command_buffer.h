@@ -39,6 +39,10 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
+#if CUDA_VERSION < 12030
+typedef cuuint64_t CUgraphConditionalHandle;
+#endif
+
 namespace stream_executor::gpu {
 
 // This class implements GpuCommandBuffer for Nvidia GPUs.

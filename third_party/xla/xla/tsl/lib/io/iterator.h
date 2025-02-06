@@ -26,7 +26,7 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_IO_ITERATOR_H_
 #define XLA_TSL_LIB_IO_ITERATOR_H_
 
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
 
 namespace tsl {
@@ -48,7 +48,7 @@ class Iterator {
   // Position at the first key in the source that is at or past target.
   // The iterator is Valid() after this call iff the source contains
   // an entry that comes at or past target.
-  virtual void Seek(const absl::string_view& target) = 0;
+  virtual void Seek(absl::string_view target) = 0;
 
   // Moves to the next entry in the source.  After this call, Valid() is
   // true iff the iterator was not positioned at the last entry in the source.

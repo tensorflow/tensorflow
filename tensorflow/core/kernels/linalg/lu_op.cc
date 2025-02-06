@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
+#include "absl/container/inlined_vector.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "Eigen/LU"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"

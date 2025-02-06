@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <type_traits>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -31,7 +31,6 @@ limitations under the License.
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -57,15 +56,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/tools/parsers.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mlprogram_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tosa/tf_passes.h"
-#include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
-#include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
-#include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 #include "xla/mlir/framework/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -97,10 +93,6 @@ static void RegisterPasses() {
     mlir::mhlo::registerTfXlaPasses();
     mlir::mhlo::registerLegalizeTFPass();
     mlir::quant::stablehlo::registerBridgePasses();
-    mlir::tosa::registerLegalizeTosaPasses();
-    mlir::tosa::registerTFtoTOSALegalizationPipeline();
-    mlir::tosa::registerTFLtoTOSALegalizationPipeline();
-    mlir::tosa::registerTFTFLtoTOSALegalizationPipeline();
     mlir::tf_saved_model::registerTensorFlowSavedModelPasses();
     mlir::xla_framework::registerXlaFrameworkPasses();
     tensorflow::RegisterMlProgramPasses();
@@ -197,7 +189,15 @@ std::string ImportFunction(const std::string& functiondef_proto,
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
   mlir::MLIRContext context(registry);
-  auto module = ConvertFunctionToMlir(fbody.get(), flib_def, &context);
+
+  tensorflow::GraphImportConfig specs;
+  specs.graph_func_name = fbody->record->fdef().signature().name();
+  specs.enable_shape_inference = false;
+  specs.graph_as_function = true;
+  for (const auto* control_ret_node : fbody->control_ret_nodes)
+    specs.control_outputs.push_back(control_ret_node->name());
+  auto module = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+      *fbody->graph, {}, flib_def, specs, &context);
   if (!module.ok()) {
     tsl::Set_TF_Status_from_Status(status, module.status());
     return "// error";
@@ -414,66 +414,6 @@ void ExperimentalWriteBytecode(const std::string& filename,
   if (!error.empty()) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  ("Unable to create output file " + error).c_str());
-    return;
-  }
-  outputFile->keep();
-  if (failed(mlir::writeBytecodeToFile(*module, outputFile->os(),
-                                       writer_config))) {
-    tsl::Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
-  }
-}
-
-void ExperimentalTFLiteToTosaBytecode(
-    const std::string& flatbuffer_file, const std::string& tosa_bytecode_file,
-    bool use_external_constant,
-    const std::vector<std::string>& ordered_input_arrays,
-    const std::vector<std::string>& ordered_output_arrays, TF_Status* status) {
-  mlir::DialectRegistry registry;
-  mlir::RegisterAllTensorFlowDialects(registry);
-  registry.insert<mlir::tosa::TosaDialect>();
-  mlir::MLIRContext context(registry);
-  mlir::OwningOpRef<mlir::ModuleOp> module;
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  {
-    mlir::Location loc = mlir::UnknownLoc::get(&context);
-    std::string error;
-    std::unique_ptr<llvm::MemoryBuffer> buffer =
-        mlir::openInputFile(flatbuffer_file, &error);
-    if (buffer == nullptr) {
-      TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                   ("Unable to load input file " + error).c_str());
-      return;
-    }
-
-    auto buffer_view =
-        std::string_view(buffer->getBufferStart(), buffer->getBufferSize());
-    module = tflite::FlatBufferToMlir(
-        buffer_view, &context, loc, use_external_constant, ordered_input_arrays,
-        ordered_output_arrays);
-    mlir::PassManager pm(&context, module.get()->getName().getStringRef(),
-                         mlir::PassManager::Nesting::Implicit);
-    mlir::tosa::TOSATFLLegalizationPipelineOptions opts;
-    // This flow is specific to compilation backend, so set to true.
-    opts.target_compilation_backend = true;
-    // Temporary work-around for https://github.com/openxla/iree/issues/8974
-    opts.dequantize_tfl_softmax = true;
-    createTFLtoTOSALegalizationPipeline(pm, opts);
-    if (failed(pm.run(*module))) {
-      tsl::Set_TF_Status_from_Status(status,
-                                     diagnostic_handler.ConsumeStatus());
-      return;
-    }
-  }
-  mlir::FallbackAsmResourceMap fallback_resource_map;
-  mlir::BytecodeWriterConfig writer_config(fallback_resource_map);
-  // TODO(jpienaar): Make this an option to the call.
-  writer_config.setDesiredBytecodeVersion(1);
-  std::string error;
-  std::unique_ptr<llvm::ToolOutputFile> outputFile =
-      mlir::openOutputFile(tosa_bytecode_file, &error);
-  if (!error.empty()) {
-    TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 ("Unable to create output file" + error).c_str());
     return;
   }
   outputFile->keep();

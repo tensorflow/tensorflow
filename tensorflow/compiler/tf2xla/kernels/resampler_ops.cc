@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/resampler_ops.h"
 
+#include <cstdint>
 #include <numeric>
 #include <vector>
 

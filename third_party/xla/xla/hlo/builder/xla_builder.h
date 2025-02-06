@@ -100,7 +100,13 @@ struct XlaBuilderFriend {
   static XlaOp BuildCollectivePermuteStart(
       XlaBuilder* builder, XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const std::optional<ChannelHandle>& channel_id = std::nullopt);
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const bool inplace = false);
+  static XlaOp BuildCollectivePermuteStart(
+      XlaBuilder* builder, absl::Span<const XlaOp> operands,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const bool inplace = false);
   static XlaOp BuildCollectivePermuteDone(XlaBuilder* builder, XlaOp operands,
                                           const Shape& shape);
 
@@ -609,6 +615,12 @@ class XlaBuilder {
       const PrecisionConfig* precision_config = nullptr,
       std::optional<PrimitiveType> preferred_element_type = std::nullopt);
 
+  XlaOp RaggedAllToAll(
+      XlaOp input, XlaOp input_offsets, XlaOp send_sizes, XlaOp output,
+      XlaOp output_offsets, XlaOp recv_sizes,
+      absl::Span<const ReplicaGroup> replica_groups = {},
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
+
   XlaOp RaggedDot(
       XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
       const RaggedDotDimensionNumbers& dimension_numbers,
@@ -880,7 +892,14 @@ class XlaBuilder {
   XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const std::optional<ChannelHandle>& channel_id = std::nullopt);
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const bool inplace = false);
+
+  XlaOp CollectivePermute(
+      absl::Span<const XlaOp> operands,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const bool inplace = false);
 
   XlaOp ReplicaId();
 
@@ -1060,6 +1079,11 @@ class XlaBuilder {
 
   // Internal helper method that does the building for an arbitrary unary op.
   virtual XlaOp UnaryOp(HloOpcode unop, XlaOp operand);
+
+  // Internal helper method that does the building for an arbitrary unary op
+  // with a result accuracy intended for unary functions.
+  virtual XlaOp UnaryOp(HloOpcode unop, XlaOp operand,
+                        const ResultAccuracy& result_accuracy);
 
   // Internal helper method that does the building for an arbitrary binary op.
   // broadcast_dimensions specifies which dimensions to use for broadcasting
@@ -1309,6 +1333,11 @@ class XlaBuilder {
                          const DotDimensionNumbers& dimension_number,
                          const PrecisionConfig* precision_config,
                          std::optional<PrimitiveType> preferred_element_type);
+  friend XlaOp RaggedAllToAll(XlaOp input, XlaOp input_offsets,
+                              XlaOp send_sizes, XlaOp output,
+                              XlaOp output_offsets, XlaOp recv_sizes,
+                              absl::Span<const ReplicaGroup> replica_groups,
+                              const std::optional<ChannelHandle>& channel_id);
   friend XlaOp RaggedDot(XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
                          const RaggedDotDimensionNumbers& dimension_numbers,
                          const PrecisionConfig* precision_config,
@@ -1562,7 +1591,11 @@ class XlaBuilder {
   friend XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const std::optional<ChannelHandle>& channel_id);
+      const std::optional<ChannelHandle>& channel_id, const bool inplace);
+  friend XlaOp MultiCollectivePermute(
+      absl::Span<const XlaOp> operands,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id, const bool inplace);
   friend XlaOp ReplicaId(XlaBuilder* builder);
   friend XlaOp SelectAndScatter(XlaOp operand, const XlaComputation& select,
                                 absl::Span<const int64_t> window_dimensions,
@@ -1580,6 +1613,7 @@ class XlaBuilder {
                      absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Erf(XlaOp operand);
   friend XlaOp Exp(XlaOp operand);
+  friend XlaOp Exp(XlaOp operand, const ResultAccuracy& result_accuracy);
   friend XlaOp Expm1(XlaOp operand);
   friend XlaOp Floor(XlaOp operand);
   friend XlaOp Ceil(XlaOp operand);
@@ -1714,7 +1748,14 @@ class XlaBuilder {
   XlaOp CollectivePermuteImpl(
       XlaOp operand,
       const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      const std::optional<ChannelHandle>& channel_id, bool async);
+      const std::optional<ChannelHandle>& channel_id, bool async,
+      const bool inplace);
+
+  XlaOp CollectivePermuteImpl(
+      absl::Span<const XlaOp> operands,
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id, bool async,
+      const bool inplace);
 
   XlaOp ConditionalImpl(
       XlaOp branch_index,
@@ -1729,6 +1770,11 @@ class XlaBuilder {
   // Creates an op with the given opcode and the output shape.
   virtual absl::StatusOr<XlaOp> AddOpWithShape(
       HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands);
+
+  // Creates an op with the given opcode and the output shape.
+  virtual absl::StatusOr<XlaOp> AddOpWithResultAccuracy(
+      HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands,
+      const ResultAccuracy& result_accuracy);
 
   // Here, InstructionType is either const HloInstructionProto* or non-const
   // HloInstructionProto*.
@@ -2178,6 +2224,13 @@ XlaOp SparseDot(
     const DotDimensionNumbers& dimension_numbers,
     const PrecisionConfig* precision_config = nullptr,
     std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+
+// Enqueues a ragged all to all instruction onto the computation.
+XlaOp RaggedAllToAll(
+    XlaOp input, XlaOp input_offsets, XlaOp send_sizes, XlaOp output,
+    XlaOp output_offsets, XlaOp recv_sizes,
+    absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 // Enqueues a ragged dot instruction onto the computation.
 XlaOp RaggedDot(
@@ -2647,7 +2700,13 @@ XlaOp CollectiveBroadcast(
 XlaOp CollectivePermute(
     XlaOp operand,
     const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-    const std::optional<ChannelHandle>& channel_id = std::nullopt);
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const bool inplace = false);
+XlaOp MultiCollectivePermute(
+    absl::Span<const XlaOp> operands,
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const bool inplace = false);
 
 // Enqueues an operation that returns the replica ID.
 XlaOp ReplicaId(XlaBuilder* builder);
@@ -2681,6 +2740,7 @@ XlaOp Erf(XlaOp operand);
 
 // Enqueues an exp instruction onto the computation.
 XlaOp Exp(XlaOp operand);
+XlaOp Exp(XlaOp operand, const ResultAccuracy& result_accuracy);
 
 // Enqueues an expm1 instruction onto the computation.
 XlaOp Expm1(XlaOp operand);

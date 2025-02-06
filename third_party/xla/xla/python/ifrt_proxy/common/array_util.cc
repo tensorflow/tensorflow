@@ -29,7 +29,7 @@
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt_proxy/common/array_util.pb.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -186,7 +186,7 @@ absl::Status DeserializeFromCordIntoPreallocatedStringHostBuffer(
   proto::StringArrayContents string_array_proto;
 
 #if defined(PLATFORM_GOOGLE)
-  if (!string_array_proto.ParseFromCord(serialized_string_buffer)) {
+  if (!string_array_proto.ParseFromString(serialized_string_buffer)) {
 #else
   if (!string_array_proto.ParseFromString(  // No absl::Cord support in OSS.
           std::string(serialized_string_buffer))) {

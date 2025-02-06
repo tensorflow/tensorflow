@@ -58,6 +58,8 @@ static constexpr absl::string_view kCollAlgoScaleRatioKey =
     "Collective algorithm's scaling ratio";
 static constexpr absl::string_view kCollNumDevicesKey =
     "Number of devices of a collective group";
+static constexpr absl::string_view kCollBytesTransferred =
+    "Number of bytes transferred.";
 
 // We use static tables to look up system bandwidths for different
 // type of hardware below.
@@ -76,6 +78,10 @@ float GpuHloCostAnalysis::ScalingRatio(const HloInstruction& hlo) const {
 
 int64_t GpuHloCostAnalysis::NumOfDevices(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kCollNumDevicesKey, hlo_properties_);
+}
+
+float GpuHloCostAnalysis::BytesTransferred(const HloInstruction& hlo) const {
+  return GetPropertyForHlo(hlo, kCollBytesTransferred, hlo_properties_);
 }
 
 int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
@@ -365,6 +371,7 @@ absl::Status GpuHloCostAnalysis::HandleAllReduce(
     bytes_accessed += GetShapeSize(operand->shape());
   }
   current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+  current_properties_[kCollBytesTransferred] = output_bytes_accessed;
   current_properties_[kBytesAccessedKey] = bytes_accessed;
   current_properties_[kCollNumDevicesKey] = num_ranks;
   // Since allreduce has compute, we need to get flops for the compute
@@ -450,6 +457,93 @@ absl::Status GpuHloCostAnalysis::HandleReduce(const HloInstruction* hlo) {
   }
 
   current_properties_[kBytesAccessedKey] = bytes_accessed;
+
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleAllReduceStart(
+    const HloInstruction* hlo) {
+  int64_t output_bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsArray()) {
+          output_bytes_accessed += GetShapeSize(subshape);
+        }
+      });
+  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+  current_properties_[kCollBytesTransferred] = output_bytes_accessed;
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleAllGather(const HloInstruction* hlo) {
+  int64_t output_bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsArray()) {
+          output_bytes_accessed += GetShapeSize(subshape);
+        }
+      });
+  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+  current_properties_[kCollBytesTransferred] = output_bytes_accessed;
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleAllGatherStart(
+    const HloInstruction* hlo) {
+  int64_t output_bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        // Skip first element of a tuple as it expresses the input of the
+        // collective operation.
+        if (index.empty() || index.front() == 0) {
+          return;
+        }
+        if (subshape.IsArray()) {
+          output_bytes_accessed += GetShapeSize(subshape);
+        }
+      });
+  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
+  current_properties_[kCollBytesTransferred] = output_bytes_accessed;
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleAsyncStart(const HloInstruction* hlo) {
+  auto* async_start = DynCast<HloAsyncStartInstruction>(hlo);
+  if (async_start->async_wrapped_opcode() != HloOpcode::kReduceScatter) {
+    VLOG(2) << "Only Reduce Scatter is supported.";
+    return absl::OkStatus();
+  }
+  int index_to_skip = 1;
+  int64_t bytes_transferred = 0;
+  ShapeUtil::ForEachLeafShape(
+      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        // Skip second element of a tuple as it is an output but it is not
+        // actual bytes transferred.
+        if (index.empty() || index.front() == index_to_skip) {
+          return;
+        }
+        if (subshape.IsArray()) {
+          bytes_transferred += GetShapeSize(subshape);
+        }
+      });
+
+  current_properties_[kCollBytesTransferred] = bytes_transferred;
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleReduceScatter(
+    const HloInstruction* hlo) {
+  int64_t bytes_transferred = 0;
+
+  for (auto* operand : hlo->operands()) {
+    ShapeUtil::ForEachLeafShape(
+        operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsArray()) {
+            bytes_transferred += GetShapeSize(subshape);
+          }
+        });
+  }
+  current_properties_[kCollBytesTransferred] = bytes_transferred;
 
   return absl::OkStatus();
 }

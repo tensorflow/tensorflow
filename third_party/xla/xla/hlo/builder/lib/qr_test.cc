@@ -15,15 +15,19 @@ limitations under the License.
 
 #include "xla/hlo/builder/lib/qr.h"
 
+#include <algorithm>
+#include <cstdint>
+
+#include <gtest/gtest.h>
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"

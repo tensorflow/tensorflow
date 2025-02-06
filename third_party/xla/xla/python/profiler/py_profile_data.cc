@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "xla/python/profiler/profile_data.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace {
 

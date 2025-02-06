@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
-#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
@@ -39,8 +39,38 @@ struct ArraySpec {
   DType dtype;
   Shape shape;
   absl::Nonnull<std::shared_ptr<const Sharding>> sharding;
-  // TODO(hyeontaek): Add `layout` once expressing the default layout can be
-  // done in a symbolic manner.
+  absl::Nullable<std::shared_ptr<const xla::PjRtLayout>> layout;
+
+  bool operator==(const ArraySpec& other) const {
+    auto are_pointees_equal = [](auto* lhs, auto* rhs) {
+      if (lhs == nullptr || rhs == nullptr) {
+        return lhs == nullptr && rhs == nullptr;
+      } else {
+        return lhs == rhs || *lhs == *rhs;
+      }
+    };
+    return dtype == other.dtype && shape == other.shape &&
+           are_pointees_equal(sharding.get(), other.sharding.get()) &&
+           are_pointees_equal(layout.get(), other.layout.get());
+  }
+
+  bool operator!=(const ArraySpec& other) const { return !(*this == other); }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ArraySpec& value) {
+    h = H::combine(std::move(h), value.dtype, value.shape);
+    // The current implementation gracefully handles null sharding even if it's
+    // invalid (see `absl::Nonnull` annotation) since we don't enforce such
+    // properties at ArraySpec creation time. Once we have a constructor that
+    // crashes with a null sharding, we can remove this null check.
+    if (value.sharding != nullptr) {
+      h = H::combine(std::move(h), *value.sharding);
+    }
+    if (value.layout != nullptr) {
+      h = H::combine(std::move(h), *value.layout);
+    }
+    return h;
+  }
 
   // Constructs `ArraySpec` from `ArraySpecProto`.
   static absl::StatusOr<ArraySpec> FromProto(

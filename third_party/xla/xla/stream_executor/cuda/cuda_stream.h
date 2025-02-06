@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -23,15 +24,16 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -89,13 +91,18 @@ class CudaStream : public StreamCommon {
 
   absl::Status RecordCompletedEvent();
 
-  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
-                      const std::optional<ClusterDim>& cluster_dims,
-                      const Kernel& kernel, const KernelArgs& args) override;
+  absl::Status LaunchKernel(const ThreadDim& thread_dims,
+                            const BlockDim& block_dims,
+                            const std::optional<ClusterDim>& cluster_dims,
+                            void* function, absl::string_view name, void** args,
+                            int64_t shmem_bytes) override;
 
   StreamExecutor* executor_;
   CudaEvent completed_event_;
   CUstream stream_handle_;
+  absl::Mutex mutex_;
+  bool no_pending_host_callbacks_ ABSL_GUARDED_BY(mutex_) = true;
+  std::atomic<int> num_pending_host_callbacks_ = 0;
 };
 }  // namespace gpu
 

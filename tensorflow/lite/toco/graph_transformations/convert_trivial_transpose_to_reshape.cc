@@ -51,9 +51,9 @@ bool TransposeAffectsMemoryOrder(std::vector<int> perm,
 
 }  // namespace
 
-::tensorflow::Status ConvertTrivialTransposeToReshape::Run(Model* model,
-                                                           std::size_t op_index,
-                                                           bool* modified) {
+absl::Status ConvertTrivialTransposeToReshape::Run(Model* model,
+                                                   std::size_t op_index,
+                                                   bool* modified) {
   *modified = false;
   auto transpose_it = model->operators.begin() + op_index;
   if (transpose_it->get()->type != OperatorType::kTranspose) {

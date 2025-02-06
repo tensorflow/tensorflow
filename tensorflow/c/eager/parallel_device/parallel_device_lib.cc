@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 
+#include <cstdint>
+#include <functional>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -32,13 +36,13 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {

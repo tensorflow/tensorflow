@@ -811,7 +811,7 @@ absl::Status GraphExecutionState::OptimizeGraph(
     Device* cpu_device = nullptr;
     for (const auto& device : device_set_->devices()) {
       if (device->parsed_name().id == 0 &&
-          StringPiece(device->parsed_name().type) == "CPU" &&
+          absl::string_view(device->parsed_name().type) == "CPU" &&
           device->GetAllocator(AllocatorAttributes()) != nullptr) {
         cpu_device = device;
       }

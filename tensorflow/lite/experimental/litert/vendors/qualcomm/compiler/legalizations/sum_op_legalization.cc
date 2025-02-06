@@ -52,22 +52,22 @@ LiteRtStatus SumOpLegalization::LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
   }
   DumpLegalization(*src.Get());
   std::string op_name = absl::StrFormat(kSumOpFmt, op_counter_++);
-  LITERT_RETURN_STATUS_IF_NOT_OK(SetOpInfo(op_name.c_str(),
-                                           kDefaultQnnOpPackageName.data(),
-                                           kQnnSumOpTypeName.data(), dest));
+  LITERT_RETURN_IF_ERROR(SetOpInfo(op_name.c_str(),
+                                   kDefaultQnnOpPackageName.data(),
+                                   kQnnSumOpTypeName.data(), dest));
 
   // QNN reduce sum op expects 1 input tensor.
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, kReduceSumOpInputSize,
                      QNN_TENSOR_INIT);
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.LookupInScope(src.Inputs().front().Get(), qnn_op_ins[0]));
 
   // QNN sum op expects 1 output tensor.
   LITERT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs, kReduceSumOpOutputSize,
                      QNN_TENSOR_INIT);
-  LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.LegalizeAndRegister(
+  LITERT_RETURN_IF_ERROR(graph_mapper.LegalizeAndRegister(
       src.Outputs().front().Get(), qnn_op_outs[0]));
-  LITERT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_IF_ERROR(
       graph_mapper.PushToScope(src.Outputs().front().Get(), qnn_op_outs[0]));
 
   // Prepare QNN reduce sum parameters.
@@ -76,9 +76,18 @@ LiteRtStatus SumOpLegalization::LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
 
   // Check if src_axes are weights tensors.
   if (!src_axes.HasWeights()) {
+    LITERT_LOG(LITERT_ERROR, "Sum op axes are not weights tensors");
     return kLiteRtStatusErrorInvalidLegalization;
   }
-  int32_t dest_axes_size = src_axes.RankedTensorType().Layout().Dimensions()[0];
+
+  auto src_axes_tensor_type = src_axes.RankedTensorType();
+  if (!src_axes_tensor_type) {
+    LITERT_LOG(LITERT_ERROR, "%s",
+               src_axes_tensor_type.Error().Message().c_str());
+    return src_axes_tensor_type.Error().Status();
+  }
+
+  int32_t dest_axes_size = src_axes_tensor_type->Layout().Dimensions()[0];
   auto src_axes_data = src_axes.Weights().Bytes();
   Qnn_ClientBuffer_t axes_tensor_client_buf = BuildDefaultClientBuffer();
   axes_tensor_client_buf.data = (void*)src_axes_data.data();
@@ -86,8 +95,7 @@ LiteRtStatus SumOpLegalization::LegalizeOp(const Op& src, Qnn_OpConfig_t& dest,
 
   // Extract keepdims option from sum op.
   bool keep_dims;
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      LiteRtGetSumKeepDimsOption(src.Get(), &keep_dims));
+  LITERT_RETURN_IF_ERROR(LiteRtGetSumKeepDimsOption(src.Get(), &keep_dims));
 
   // Construct the scalar "keep_dims" param.
   if (keep_dims) {

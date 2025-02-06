@@ -1,10 +1,10 @@
 # Description:
 #   Computationally expensive, exhaustive tests for XLA
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "GPU_BACKENDS", "xla_test")
 load("//xla/tests/exhaustive:build_defs.bzl", "exhaustive_xla_test")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -111,20 +111,24 @@ exhaustive_xla_test(
         "exhaustive_unary_test_definitions.h",
         "exhaustive_unary_test_functions.cc",
     ],
-    # Nvidia close-sourced libraries are not TSAN friendly, but are doing their own synchronization.
-    # This can lead to TSAN false positives that are hard to track down.
+    # Nvidia close-sourced libraries are not TSAN friendly, but are doing their
+    # own synchronization. This can lead to TSAN false positives that are hard
+    # to track down.
     backend_tags = {
-        "gpu": ["notsan"],
+        gpu: ["notsan"]
+        for gpu in GPU_BACKENDS
+        if gpu != "gpu_any" and gpu != "gpu_amd_any"
     },
-    backends = [
-        "gpu",
-        "cpu",
+    backends = ["cpu"] + [
+        gpu
+        for gpu in GPU_BACKENDS
+        if gpu != "gpu_any" and gpu != "gpu_amd_any"
     ],
-    # Partition goal is to get under ~5 minute execution time without needlessly reserving hardware
-    # for each shard.
+    # Partition goal is to get under ~5 minute execution time without needlessly
+    # reserving hardware for each shard.
     #
-    # exhaustive_xla_test needs to have all partition names added to allow other build tools to
-    # function.
+    # exhaustive_xla_test needs to have all partition names added to allow other
+    # build tools to function.
     partitions = {
         "f32_and_smaller": [
             "exhaustive_unary_test_f32_and_smaller_instantiation.cc",
@@ -137,7 +141,7 @@ exhaustive_xla_test(
     shard_count = 50,
     tags = [
         "optonly",
-        "test_xla_cpu_thunks",
+        "test_xla_cpu_no_thunks",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
     ],
@@ -163,19 +167,23 @@ xla_test(
     srcs = [
         "exhaustive_unary_complex_test.cc",
     ],
-    # Nvidia close-sourced libraries are not TSAN friendly, but are doing their own synchronization.
-    # This can lead to TSAN false positives that are hard to track down.
+    # Nvidia close-sourced libraries are not TSAN friendly, but are doing their
+    # own synchronization. This can lead to TSAN false positives that are hard
+    # to track down.
     backend_tags = {
-        "gpu": ["notsan"],
+        gpu: ["notsan"]
+        for gpu in GPU_BACKENDS
+        if gpu != "gpu_any" and gpu != "gpu_amd_any"
     },
-    backends = [
-        "gpu",
-        "cpu",
+    backends = ["cpu"] + [
+        gpu
+        for gpu in GPU_BACKENDS
+        if gpu != "gpu_any" and gpu != "gpu_amd_any"
     ],
     shard_count = 50,
     tags = [
         "optonly",
-        "test_xla_cpu_thunks",
+        "test_xla_cpu_no_thunks",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
     ],
@@ -210,20 +218,24 @@ exhaustive_xla_test(
         "exhaustive_binary_test_definitions.h",
         "exhaustive_binary_test_functions.cc",
     ],
-    # Nvidia close-sourced libraries are not TSAN friendly, but are doing their own synchronization.
-    # This can lead to TSAN false positives that are hard to track down.
+    # Nvidia close-sourced libraries are not TSAN friendly, but are doing their
+    # own synchronization. This can lead to TSAN false positives that are hard
+    # to track down.
     backend_tags = {
-        "gpu": ["notsan"],
+        gpu: ["notsan"]
+        for gpu in GPU_BACKENDS
+        if gpu != "gpu_any" and gpu != "gpu_amd_any"
     },
-    backends = [
-        "gpu",
-        "cpu",
+    backends = ["cpu"] + [
+        gpu
+        for gpu in GPU_BACKENDS
+        if gpu != "gpu_any" and gpu != "gpu_amd_any"
     ],
-    # Partition goal is to get under ~5 minute execution time without needlessly reserving hardware
-    # for each shard.
+    # Partition goal is to get under ~5 minute execution time without needlessly
+    # reserving hardware for each shard.
     #
-    # exhasutive_xla_test needs to have all partition names added to allow other build tools to
-    # function.
+    # exhasutive_xla_test needs to have all partition names added to allow other
+    # build tools to function.
     partitions = {
         "f16_and_smaller": [
             "exhaustive_binary_test_f16_and_smaller_instantiation.cc",
@@ -238,7 +250,6 @@ exhaustive_xla_test(
     shard_count = 50,
     tags = [
         "optonly",
-        "test_xla_cpu_thunks",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
     ],

@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -37,11 +38,12 @@ namespace tensorflow {
 namespace internal {
 
 // Register all custom ops including user specified custom ops.
-Status RegisterAllCustomOps(const tflite::ConverterFlags& converter_flags);
+absl::Status RegisterAllCustomOps(
+    const tflite::ConverterFlags& converter_flags);
 
 // Populate quantization specs (or not) given user specified ranges for each
 // input arrays.
-Status PopulateQuantizationSpecs(
+absl::Status PopulateQuantizationSpecs(
     const tflite::ModelFlags& model_flags,
     tflite::ConverterFlags& converter_flags,
     mlir::quant::QuantizationSpecs* quant_specs,
@@ -52,7 +54,7 @@ Status PopulateQuantizationSpecs(
 
 // Convert imported MLIR file to TfLite flatbuffer.
 // This will also run relevant passes as well.
-Status ConvertMLIRToTFLiteFlatBuffer(
+absl::Status ConvertMLIRToTFLiteFlatBuffer(
     const tflite::ModelFlags& model_flags,
     tflite::ConverterFlags& converter_flags,
     std::unique_ptr<mlir::MLIRContext>&& context,

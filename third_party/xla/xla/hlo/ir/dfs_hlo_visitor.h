@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_DFS_HLO_VISITOR_H_
 #define XLA_HLO_IR_DFS_HLO_VISITOR_H_
 
+#include <cstddef>
 #include <type_traits>
 #include <vector>
 
@@ -25,9 +26,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 

@@ -15,36 +15,22 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_LOAD_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_LOAD_H_
 
-#include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_model.h"
+#include <cstdint>
+#include <memory>
 
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
-
-// Load model from flatbuffer file.
-LiteRtStatus LiteRtLoadModelFromFile(const char* path, LiteRtModel* model);
-
-// Load model from flatbuffer memory.
-LiteRtStatus LiteRtLoadModelFromMemory(const uint8_t* buf, size_t buf_size,
-                                       LiteRtModel* model);
-
-#ifdef __cplusplus
-}
-
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_expected.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_macros.h"
-#include "tensorflow/lite/experimental/litert/cc/litert_model.h"
+#include "tensorflow/lite/experimental/litert/core/model/model.h"
 
 namespace litert::internal {
 
-Expected<Model> LoadModelFromFile(absl::string_view path);
+Expected<std::unique_ptr<LiteRtModelT>> LoadModelFromFile(
+    absl::string_view filename);
 
-Expected<Model> LoadModelFromMemory(BufferRef<uint8_t> serialized);
+Expected<std::unique_ptr<LiteRtModelT>> LoadModelFromBuffer(
+    BufferRef<uint8_t> buffer);
 
 }  // namespace litert::internal
-
-#endif  // __cplusplus
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_MODEL_MODEL_LOAD_H_

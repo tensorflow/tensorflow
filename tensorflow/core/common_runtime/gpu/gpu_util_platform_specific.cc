@@ -33,7 +33,7 @@ void GPUDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
 }
 
 void GPUDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                                             StringPiece tensor_name,
+                                             absl::string_view tensor_name,
                                              Device* device, Tensor* cpu_tensor,
                                              StatusCallback done) {
   GPUUtil::CopyGPUTensorToCPU(device, this, device_tensor, cpu_tensor, done);

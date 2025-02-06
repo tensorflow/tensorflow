@@ -42,6 +42,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
@@ -53,24 +55,24 @@ limitations under the License.
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/regexp.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -95,13 +97,6 @@ class GpuCompilerTest : public HloTestBase {
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, 4, gpu_device_info).status());
     return tensorflow::down_cast<GpuCompiler*>(compiler)
         ->RunPostSchedulingPipelines(module, 4 * 1024 * 1024, gpu_device_info);
-  }
-
-  const stream_executor::GpuComputeCapability& GpuComputeComp() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
   }
 };
 
@@ -611,7 +606,7 @@ TEST_F(GpuCompilerTestWithAutotuneDb,
         << "Autotuning results have only been generated for Hopper GPUs";
   }
   const absl::string_view hlo_string = R"(
-HloModule test 
+HloModule test
 
 ENTRY main {
   p0 = f8e4m3fn[12288,4096]{0,1} parameter(0)
@@ -688,6 +683,7 @@ ENTRY main {
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(enable_blas_fallback);
     debug_options.set_xla_gpu_enable_triton_gemm(enable_triton);
+    debug_options.set_xla_gpu_cudnn_gemm_fusion_level(0);
     if (!enable_blas) {
       debug_options.add_xla_disable_hlo_passes("cublas-gemm-rewriter");
     }
@@ -1041,6 +1037,8 @@ ENTRY e {
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
         aot_result->LoadExecutable(compiler, aot_options.executor()));
+    std::unique_ptr<OpaqueExecutable> wrapped_executable =
+        test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
     const xla::Literal literal_input =
         xla::LiteralUtil::CreateR0<int32_t>(input);
@@ -1048,8 +1046,8 @@ ENTRY e {
         xla::LiteralUtil::CreateR0<int32_t>(expected_result);
 
     TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                            GetHloRunner().value()->ExecuteWithExecutable(
-                                executable.get(), {&literal_input}));
+                            test_runner_as_hlo_runner().ExecuteWithExecutable(
+                                wrapped_executable.get(), {&literal_input}));
 
     EXPECT_TRUE(LiteralTestUtil::Equal(result, literal_expected_result));
   };
@@ -1117,15 +1115,16 @@ TEST_F(GpuCompilerTest, TestFlag_xla_gpu_unsafe_pipelined_loop_annotator) {
     })";
 
   const char* kExpected = R"(
-  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
-  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
   // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
   // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
   )";
 
   DebugOptions debug_options;
   HloModuleConfig config;
   debug_options.set_xla_gpu_unsafe_pipelined_loop_annotator(true);
+  debug_options.set_xla_gpu_enable_pipelined_p2p(true);
   config.set_debug_options(debug_options);
   config.set_num_partitions(4);
   config.set_use_spmd_partitioning(true);
@@ -1240,14 +1239,129 @@ ENTRY main {
           ->root_instruction()));
 }
 
+TEST_F(GpuCompilerTest, NoRaceConditionInParallelCompilation) {
+  // This test will fail under TSAN if there is a race condition somewhere.
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 2);
+
+  // Running two compilations on different threads is enough.
+  // If there is some unsynchronized memory access, TSAN will report it.
+  constexpr int kNumOfParallelCompilations = 2;
+
+  for (int i = 0; i < kNumOfParallelCompilations; ++i) {
+    thread_pool.Schedule([&]() {
+      HloModuleConfig config;
+      DebugOptions debug_options = GetDebugOptionsForTest();
+      config.set_debug_options(debug_options);
+      // The contents on this module don't matter that much, but it should
+      // be something going through the autotuner.
+      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                              ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+triton_gemm_dot {
+  p0 = s8[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  c0 = f32[10,10] convert(p0)
+  ROOT dot.0 = f32[10,10] dot(c0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = s8[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  s = f32[10,10] sqrt(p1)
+  d = f32[10,10] fusion(p0, p1), kind=kCustom, calls=triton_gemm_dot
+  ROOT r = f32[10,10] add(d, s)
+})",
+                                                           config));
+      std::unique_ptr<HloModule> compiled_module =
+          backend()
+              .compiler()
+              ->RunHloPasses(module->Clone(),
+                             backend().default_stream_executor(),
+                             /*device_allocator=*/nullptr)
+              .value();
+      std::unique_ptr<Executable> executable =
+          backend()
+              .compiler()
+              ->RunBackend(std::move(compiled_module),
+                           backend().default_stream_executor(),
+                           {/*device_allocator=*/nullptr,
+                            /*thread_pool=*/nullptr,
+                            /*layout_canonicalization_callback=*/{},
+                            /*is_autotuning_compilation=*/false})
+              .value();
+    });
+  }
+}
+
+MATCHER_P(ThunkKindIs, kind, "") {
+  return ExplainMatchResult(::testing::Eq(kind), arg->kind(), result_listener);
+}
+
+TEST_F(GpuCompilerTest, StreamAnnotationThunkTest) {
+  const absl::string_view hlo_text = R"(
+HloModule composite
+
+async_call {
+  p0 = f32[32,32] parameter(0)
+  p1 = f32[32,32] parameter(1)
+  gemm = (f32[32,32], s8[8192]) custom-call(p0, p1), custom_call_target="__cublas$gemm",
+    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
+      "gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,
+      "dot_dimension_numbers":
+        {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"]},
+      "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
+      "lhs_stride":"1024","rhs_stride":"1024"}}
+  ROOT get-tuple-element = f32[32,32] get-tuple-element(gemm), index=0
+}, execution_thread="explicit"
+
+ENTRY main {
+  p0 = f32[32,32] parameter(0)
+  p1 = f32[32,32] parameter(1)
+  call-start = ((f32[32,32], f32[32,32]), f32[32,32]) call-start(p0, p1),
+    async_execution_thread="explicit", to_apply=async_call,
+    frontend_attributes={_xla_stream_annotation="1"}
+  ROOT call-done = f32[32,32]{1,0} call-done(call-start),
+    frontend_attributes={_xla_stream_annotation="1"},
+    backend_config={"operation_queue_id":"0"}
+})";
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*is_autotuning_compilation=*/false})
+          .value();
+  std::unique_ptr<GpuExecutable> gpu_exec(
+      static_cast<GpuExecutable*>(executable.release()));
+
+  EXPECT_EQ(gpu_exec->GetThunk().thunks().size(), 3);
+  EXPECT_THAT(gpu_exec->GetThunk().thunks(),
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kWaitForStreams),
+                                     ThunkKindIs(Thunk::kSequential),
+                                     ThunkKindIs(Thunk::kWaitForStreams)));
+
+  // Within the sequential thunk, there should only be a single gemm
+  // thunk with an explicitly set execution stream id.
+  auto sequential_thunk =
+      static_cast<SequentialThunk*>(gpu_exec->GetThunk().thunks()[1].get());
+  EXPECT_EQ(sequential_thunk->thunks().size(), 1);
+  EXPECT_THAT(sequential_thunk->thunks(),
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kGemm)));
+  // Ensure the gemm is run on the explicitly set stream.
+  EXPECT_EQ(sequential_thunk->thunks()[0]->execution_stream_id(), 1);
+}
+
 using GpuCompilerPassTest = GpuCompilerTest;
 
 TEST_F(GpuCompilerPassTest,
        GpuCompilerRunsTritonGemmRewriterByDefaultFromAmpere) {
-  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
-    GTEST_SKIP() << "TritonGemmRewriter disabled for ROCm until autotuner "
-                 << "is included.";
-  }
   auto cc = backend()
                 .default_stream_executor()
                 ->GetDeviceDescription()
@@ -1336,6 +1450,40 @@ class PassOrderTest : public GpuCompilerTest {
     CompileModule(config);
   }
 
+  // Fails if any of the passes matching `other_pass_regex` runs before
+  // the first occurrence of the pass matching `first_pass_regex`.
+  void VerifyPassRunsAtLeastOnceBefore(absl::string_view first_pass_regex,
+                                       absl::string_view other_pass_regex) {
+    if (!optimized_module_) {
+      CompileModule(GetModuleConfigForTest());
+    }
+    int first_pass_first_run = std::numeric_limits<int>::max();
+    int other_pass_first_run = std::numeric_limits<int>::max();
+    int run_index = 0;
+    for (const HloPassMetadata& pass_metadata :
+         optimized_module_->metadata()->proto().pass_metadata()) {
+      if (RE2::FullMatch(pass_metadata.pass_name(), first_pass_regex)) {
+        VLOG(2) << "Pass " << pass_metadata.pass_name()
+                << " matches first_pass_regex." << std::endl;
+        first_pass_first_run = std::min(first_pass_first_run, run_index);
+      }
+      if (RE2::FullMatch(pass_metadata.pass_name(), other_pass_regex)) {
+        VLOG(2) << "Pass " << pass_metadata.pass_name()
+                << " matches other_pass_regex." << std::endl;
+        other_pass_first_run = std::min(other_pass_first_run, run_index);
+      }
+      ++run_index;
+    }
+
+    EXPECT_NE(first_pass_first_run, std::numeric_limits<int>::max())
+        << "Did not run a pass matching " << first_pass_regex;
+    EXPECT_NE(other_pass_first_run, std::numeric_limits<int>::max())
+        << "Did not run a pass matching " << other_pass_regex;
+    EXPECT_LE(first_pass_first_run, other_pass_first_run)
+        << "A pass matching " << first_pass_regex
+        << " did not run before passes matching " << other_pass_regex;
+  }
+
   // Fails if any of the passes with names matching the regular expression
   // `first_pass_regex` run after any of the passes matching `last_pass_regex`
   // or if none of the executed passes matches `first_pass_regex` or
@@ -1416,8 +1564,24 @@ TEST_F(PassOrderTest, PassesAreRunInCorrectOrder) {
                   /*last_pass_regex=*/"priority-fusion");
   VerifyPassOrder(/*first_pass_regex=*/"layout-assignment",
                   /*last_pass_regex=*/"layout_normalization");
-  VerifyPassOrder(/*first_pass_regex=*/"host-offload-legalize",
-                  /*last_pass_regex=*/"layout_normalization");
+}
+
+TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
+  // HostOffloadLegalize must run before LayoutNormalization to prevent
+  // the creation of invalid transpose/bitcast operations within
+  // host memory offloading segments.
+  VerifyPassRunsAtLeastOnceBefore(/*first_pass_regex=*/"host-offload-legalize",
+                                  /*other_pass_regex=*/"layout_normalization");
+
+  // CSE should not run between HostOffloadLegalize and HostOffloader
+  // because it could break the invariants established
+  // by the legalize pass, such as the buffer initialization broadcasts
+  // before loops having only a single use
+  // (see https://github.com/openxla/xla/issues/20373).
+  auto pass_range =
+      VerifyPassOrder(/*first_pass_regex=*/"host-offload-legalize",
+                      /*last_pass_regex=*/"host-offloader");
+  VerifyNotRunInBetween(pass_range, /*pass_regex=*/"cse");
 }
 
 TEST_F(PassOrderTest, FusionBlockLevelRewriterRunsAfterAllFusionPasses) {
@@ -1492,6 +1656,28 @@ TEST_F(PassOrderTest, ExecEffortAt0point2RunsSpecifiedPasses) {
   EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
 }
 
+TEST_F(PassOrderTest, LHSRunsIfProfileDataIsAvailable) {
+  HloModuleConfig config = GetModuleConfigForTest();
+
+  // Make sure LHS is off by default.
+  std::vector<std::string> kExpectedPasses = {
+      "latency-hiding-scheduler",
+  };
+  CompileModule(config);
+  TF_ASSERT_OK(ScheduleModule());
+  EXPECT_THAT(optimized_module_, Not(HasExpectedPasses(kExpectedPasses)));
+
+  // Make sure we turn the LHS on with we schedule with profile data.
+  const absl::string_view kProfile = R"pb(
+    costs { name: "cp" cost_us: 100.0 }
+  )pb";
+  config.set_fdo_profile(kProfile);
+  CompileModule(config);
+  TF_ASSERT_OK(ScheduleModule());
+
+  EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
+}
+
 TEST_F(PassOrderTest, GemmFusionRunsAfterDotNormalizer) {
   auto cc = backend()
                 .default_stream_executor()
@@ -1514,6 +1700,94 @@ TEST_F(PassOrderTest, GemmRewriterRunsAfterDotNormalizer) {
       /*first_pass_regex=*/"dot_normalizer",
       /*last_pass_regex=*/"cublas-gemm-rewriter");
   VerifyNotRunInBetween(pass_range, /*pass_regex=*/"algsimp");
+}
+
+TEST_F(PassOrderTest,
+       ReducePrecisionIsRemovedAfterAllCallsToSimplifyFPConversions) {
+  // Because of an issue with JAX remat and `SimplifyFPConversions` (see PR:
+  // https://github.com/jax-ml/jax/pull/22244), we can only eliminate the
+  // no-op reduce-precision operations after the last call to
+  // `SimplifyFPConversions`. No-op reduce-precisions are removed within
+  // algebraic simplifier, if the option to remove them is set. In the compiler
+  // pipeline, this is done as a subpipeline, which should be after the last
+  // invocation of SimplifyFPConversions.
+  VerifyPassOrder("simplify-fp-conversions",
+                  "remove-no-op-reduce-precision-algebraic-simplifier");
+}
+
+// Tests that passes are converging and pipelines reach a fix point.
+class FixPointTest : public HloTestBase {
+ public:
+  void ExpectPipelinesReachFixedPoint(absl::string_view module_text) {
+    std::unique_ptr<HloModule> optimized_module;
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<VerifiedHloModule> module,
+        ParseAndReturnVerifiedModule(module_text, GetModuleConfigForTest()));
+    TF_ASSERT_OK_AND_ASSIGN(optimized_module,
+                            GetOptimizedModule(std::move(module)));
+
+    std::string last_pipeline_name;
+    int count = 0;
+    for (const HloPassMetadata& pass_metadata :
+         optimized_module->metadata()->proto().pass_metadata()) {
+      if (pass_metadata.pass_name() != "pipeline-start") {
+        continue;
+      }
+      VLOG(2) << "pipeline: " << pass_metadata.pipeline_name();
+      if (pass_metadata.pipeline_name() != last_pipeline_name) {
+        count = 0;
+        last_pipeline_name = pass_metadata.pipeline_name();
+      }
+      count++;
+      // 25 is a default iteration limit of HloPassFix.
+      EXPECT_LT(count, 25) << "Pipeline '" << pass_metadata.pipeline_name()
+                           << "' ran " << count
+                           << " times. That is likely an indication that the "
+                              "pipeline is not reaching a fixed point.";
+    }
+  }
+};
+
+TEST_F(FixPointTest, Constant) {
+  ExpectPipelinesReachFixedPoint(R"(ENTRY main {
+  ROOT constant = f32[] constant(0)
+})");
+}
+
+TEST_F(FixPointTest, ReshapeTranspose) {
+  ExpectPipelinesReachFixedPoint(R"(ENTRY main {
+p0 = f32[1024,4096]{1,0} parameter(0)
+reshape = f32[1024,1024,4]{2,1,0} reshape(p0)
+ROOT transpose = f32[4,1024,1024]{2,1,0} transpose(reshape), dimensions={2,1,0}
+})");
+}
+
+TEST_F(FixPointTest, DotWithBatchDims) {
+  // Reduced test case for b/383729716.
+  ExpectPipelinesReachFixedPoint(R"(ENTRY main {
+p0 = f32[8,4,64]{2,1,0} parameter(0)
+p1 = f32[4,64,1024] parameter(1)
+ROOT dot = f32[4,8,1024]{2,1,0} dot(p0, p1), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+})");
+}
+
+TEST_F(FixPointTest, DotWithReshapes) {
+  // Reduced test case for b/383729716.
+  ExpectPipelinesReachFixedPoint(
+      R"(ENTRY main {
+tmp_0 = f64[3]{0} parameter(0)
+tmp_1 = f64[3,1]{1,0} reshape(tmp_0)
+tmp_2 = f64[3]{0} reshape(tmp_1)
+tmp_3 = f64[3]{0} transpose(tmp_2), dimensions={0}
+tmp_4 = f64[3,1]{1,0} reshape(tmp_3)
+tmp_5 = f64[2]{0} parameter(1)
+tmp_6 = f64[1,2]{1,0} reshape(tmp_5)
+tmp_7 = f64[2]{0} reshape(tmp_6)
+tmp_8 = f64[2]{0} transpose(tmp_7), dimensions={0}
+tmp_9 = f64[1,2]{1,0} reshape(tmp_8)
+tmp_10 = f64[3,2]{1,0} dot(tmp_4, tmp_9), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+ROOT tmp_11 = f64[3,2]{1,0} reshape(tmp_10)
+})");
 }
 
 }  // namespace

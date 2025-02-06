@@ -17,7 +17,6 @@ limitations under the License.
 #include <cstdlib>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -25,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/string_view.h"
 #include "xla/client/local_client.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -94,10 +94,10 @@ TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoScalarWithTwoTransfer) {
     int64_t newest = -1;
     const std::string* newest_path = nullptr;
     for (const auto& path : paths) {
-      std::string_view file = tsl::io::Basename(path);
+      absl::string_view file = tsl::io::Basename(path);
       size_t pos = file.find('-');
-      ASSERT_NE(pos, std::string_view::npos);
-      std::string_view timestamp_str = file.substr(0, pos);
+      ASSERT_NE(pos, absl::string_view::npos);
+      absl::string_view timestamp_str = file.substr(0, pos);
       int64_t timestamp;
       ASSERT_TRUE(absl::SimpleAtoi(timestamp_str, &timestamp));
       if (timestamp > newest) {

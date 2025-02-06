@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/kernels/ifrt_program_ops.h"
 
-#include <memory>
 #include <vector>
 
 #include "absl/base/call_once.h"

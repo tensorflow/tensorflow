@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/graph_rewrite/configure_tpu_embedding_rewrite_pass.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -25,6 +26,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -38,8 +41,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_embedding_configuration_proto_rewrite.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

@@ -138,15 +138,16 @@ absl::Status CombineReduceScatters(
   }
 
   // Create combined scatter-reduce op with a tuple result.
-  HloInstruction* combined;
   TF_RET_CHECK(operands.size() >= 2);
-  combined = computation.AddInstruction(HloInstruction::CreateReduceScatter(
-      ShapeUtil::MakeTupleShape(output_shapes), operands, reduction,
-      to_combine.front()->device_list(),
-      /*constrain_layout=*/false, to_combine.front()->channel_id(),
-      Cast<HloReduceScatterInstruction>(to_combine.front())
-          ->use_global_device_ids(),
-      most_frequent_dim));
+  HloInstruction* combined =
+      computation.AddInstruction(HloInstruction::CreateReduceScatter(
+          ShapeUtil::MakeTupleShape(output_shapes), operands, reduction,
+          to_combine.front()->device_list(),
+          /*constrain_layout=*/false, to_combine.front()->channel_id(),
+          Cast<HloReduceScatterInstruction>(to_combine.front())
+              ->use_global_device_ids(),
+          most_frequent_dim));
+  combined->set_metadata(to_combine.front()->metadata());
 
   // We have to propagate the sharding manually because Domain instructions are
   // not guaranteed to preserve it for side effecting instructions.

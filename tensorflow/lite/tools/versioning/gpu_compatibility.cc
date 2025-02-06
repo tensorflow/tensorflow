@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -743,15 +744,6 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
       OpSignatureTensorSpec operand = op_sig.inputs[0];
       OpSignatureTensorSpec update_slice = op_sig.inputs[1];
       OpSignatureTensorSpec start_indices = op_sig.inputs[2];
-      if (operand.dims.size() == 4 && operand.dims[0] != 1) {
-        return absl::UnimplementedError(
-            "DynamicUpdateSlice only support 4D operand with batch size 1.");
-      }
-
-      if (start_indices.dims.size() > 1) {
-        return absl::UnimplementedError(
-            "DynamicUpdateSlice only support 1D start_indices.");
-      }
 
       if (operand.type != update_slice.type) {
         return absl::InternalError(
@@ -761,9 +753,8 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
       }
 
       if (start_indices.dims.size() != 1) {
-        return absl::InternalError(
-            absl::StrCat("Start indices must have be 1D, but got: ",
-                         start_indices.dims.size()));
+        return absl::InternalError(absl::StrCat(
+            "Start indices must be 1D, but got: ", start_indices.dims.size()));
       }
 
       if (start_indices.type != kTfLiteInt32) {
@@ -895,28 +886,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
       }
       const auto& input0 = op_sig.inputs.at(0);
       const auto& input1 = op_sig.inputs.at(1);
-      if (input0.dims.size() == input1.dims.size()) {
-        // this code checks that at least one input of Mul not smaller in all
-        // dimensions. Sometimes Mul used for matrix-vector multiplication that
-        // we currently don't support. For example input0 HWC(1, 256, 1), input1
-        // HWC(1, 1, 256) -> output HWC (1, 256, 256). In this case it can be
-        // replaced with Convolution operation.
-        bool first_has_smaller_dim = false;
-        bool second_has_smaller_dim = false;
-        for (int i = 0; i < input0.dims.size(); ++i) {
-          if (input0.dims[i] < input1.dims[i]) {
-            first_has_smaller_dim = true;
-          }
-          if (input1.dims[i] < input0.dims[i]) {
-            second_has_smaller_dim = true;
-          }
-        }
-        if (first_has_smaller_dim && second_has_smaller_dim) {
-          return absl::UnimplementedError(
-              "MUL requires one tensor that not less than second in all "
-              "dimensions.");
-        }
-      } else {
+      if (input0.dims.size() != input1.dims.size()) {
         const auto& input0 = op_sig.inputs.at(0);
         const auto& input1 = op_sig.inputs.at(1);
         auto broadcastable =

@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_UTILS_HLO_SHARDING_UTIL_H_
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -24,7 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -42,10 +42,22 @@ limitations under the License.
 namespace xla {
 namespace hlo_sharding_util {
 
+// Class representing a formatting step
+// TODO(tongfei): We have a similar thing in tpu_cross_replica_sharding_util,
+// but it is buried in sharding config specific to cross-replica sharding.
+// Refactoring could allow us to unify.
+struct FormattingStep {
+  Shape input_shape;
+  Shape output_shape;
+  std::optional<Shape> reverse_input_shape;
+  HloOpcode formatting_opcode;
+  HloInstruction* padding_value;
+};
+
 struct GatherScatterDims {
-  absl::InlinedVector<int64_t, 1> operand_dims;
-  absl::InlinedVector<int64_t, 1> indices_dims;
-  absl::InlinedVector<int64_t, 1> output_dims;
+  DimensionVector operand_dims;
+  DimensionVector indices_dims;
+  DimensionVector output_dims;
 
   void append(const GatherScatterDims& other);
 
@@ -56,6 +68,16 @@ struct GatherScatterDims {
       int64_t index_vector_dim,
       absl::Span<const int64_t> offset_or_window_dims);
 };
+
+// Apply the formatting steps.
+HloInstruction* FormatShape(HloInstruction* data,
+                            absl::Span<const FormattingStep> formatting_steps,
+                            HloComputation* computation);
+
+// Reverse the formatting steps.
+HloInstruction* ReverseFormatShape(
+    HloInstruction* data, absl::Span<const FormattingStep> formatting_steps,
+    HloComputation* computation);
 
 // Determines if the first operand 'potential_subsharding' is a subsharding of
 // the second operand 'sharding'. Subsharding means that the tiles in
@@ -168,15 +190,13 @@ bool ContainsTileSharding(const HloModule& module);
 
 // Returns the preferred output sharding for a gather op based on the sharding
 // of the indices.
-HloSharding GatherOutputShardingFromIndex(
-    const HloSharding& index_sharding, const HloInstruction* hlo,
-    bool consider_explicit_batch_dims = true);
+HloSharding GatherOutputShardingFromIndex(const HloSharding& index_sharding,
+                                          const HloInstruction* hlo);
 
 // Returns the preferred index sharding for a gather op based on the sharding
 // of the output.
-HloSharding GatherIndexShardingFromOutput(
-    const HloSharding& output_sharding, const HloInstruction* hlo,
-    bool consider_explicit_batch_dims = true);
+HloSharding GatherIndexShardingFromOutput(const HloSharding& output_sharding,
+                                          const HloInstruction* hlo);
 
 // Returns a new HloSharding for a gather op so that only non offset dimensions
 // are sharded. Assume "result" is returned by this function. It is ensured that
@@ -187,14 +207,12 @@ HloSharding GatherEffectiveOutputSharding(const HloInstruction& hlo);
 // Returns the preferred index sharding for a scatter op based on the sharding
 // of the data.
 HloSharding ScatterIndexShardingFromUpdate(
-    const HloSharding& update_sharding, const HloScatterInstruction* scatter,
-    bool consider_explicit_batch_dims = true);
+    const HloSharding& update_sharding, const HloScatterInstruction* scatter);
 
 // Returns the preferred data sharding for a scatter op based on the sharding
 // of the index.
 HloSharding ScatterUpdateShardingFromIndex(
-    const HloSharding& index_sharding, const HloScatterInstruction* scatter,
-    bool consider_explicit_batch_dims = true);
+    const HloSharding& index_sharding, const HloScatterInstruction* scatter);
 
 // Returns a new index sharding for a scatter op so that we only shard on first
 // "number of scatter_window_dims" dimensions. Assume "result" is returned by
@@ -269,14 +287,6 @@ ScatterUpdateShardingFromOutputOperandPassthroughDimensions(
 std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
     const HloSharding& output_sharding, const HloScatterInstruction& scatter,
     const CallGraph& call_graph);
-
-// Returns an output sharding of gather or update operand sharding of scatter by
-// passing through the indices' sharding on index parallel dimensions.
-HloSharding GatherOutputOrScatterUpdateShardingFromIndicesParallelDimensions(
-    const HloSharding& indices_sharding,
-    const int64_t output_or_update_shape_rank,
-    absl::Span<const int64_t> indices_parallel_dims,
-    absl::Span<const int64_t> output_or_update_parallel_dims);
 
 // Returns an identity value and an HloOpcode for reduce computation of scatter
 // instruction.
@@ -363,32 +373,27 @@ std::optional<GatherScatterDims> GetGatherParallelBatchDims(
 std::optional<GatherScatterDims> GetScatterParallelBatchDims(
     const HloInstruction& hlo, const CallGraph& call_graph);
 
-// Returns the operand pass-through dimensions for gather operand.
-absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOperandDims(
-    const Shape& operand_shape, const HloInstruction& hlo,
-    absl::Span<const int64_t> slice_sizes);
-
-// Returns the operand pass-through dimensions for scatter operand(s).
-absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
-    const Shape& operand_shape, const HloSharding& operand_sharding,
+// Returns the operand pass-through dimensions for a gather instruction.
+GatherScatterDims GetGatherOperandPassthroughDims(
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
 
-absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOutputDims(
-    const Shape& output_shape, const Shape& operand_shape,
+// Returns the operand pass-through dimensions for a scatter instruction.
+GatherScatterDims GetScatterOperandPassthroughDims(
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
-
-absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughUpdateDims(
-    const Shape& update_shape, const Shape& operand_shape,
-    const HloSharding& operand_sharding, const HloInstruction& hlo,
-    absl::Span<const int64_t> slice_sizes);
 
 // Returns the dims along which sharding can be propagated between indices and
-// output/update for gather/scatter operations.
+// output/update for gather/scatter operations. `excluded_indices_dims` are
+// excluded from the result.
 GatherScatterDims GetGatherConnectedDimsAcrossIndicesAndOutput(
-    int64_t indices_rank, int64_t index_vector_dim,
-    absl::Span<const int64_t> indices_batching_dims, int64_t output_rank,
+    int64_t indices_rank, int64_t index_vector_dim, int64_t output_rank,
     absl::Span<const int64_t> offset_dims,
-    bool consider_explicit_batch_dims = true);
+    absl::Span<const int64_t> excluded_indices_dims = {});
+
+// Returns the index pass-through dimensions, which are defined by
+// GetGatherConnectedDimsAcrossIndicesAndOutput - ExplictBatchDims -
+// GetGatherScatterBatchParallelDims.
+GatherScatterDims GetGatherScatterIndexPassThroughDims(
+    const HloInstruction& hlo, const CallGraph& call_graph);
 
 // Infer output sharding on index parallel dimensions for gather/scatter from
 // gather operand/indices or scatter operands/indices/updates.
@@ -497,19 +502,21 @@ HloSharding MergeShardingDimension(const HloSharding& sharding,
 std::shared_ptr<const HloSharding> CreateTupleSharding(
     const Shape& shape, absl::Span<const HloInstruction* const> elements);
 
-// Returns the first mergeable dimension for the sort operand. A mergeable
-// dimension satisfies:
-// 1. The sort dimension is sharded. The size of the sort dimension is larger
-// than 1.
-// 2. The mergeable dimension is not a sort dimension.
-// 3. The size of the mergeable dimension is divisible by the merged tile size,
-// which is the product of the tile sizes of the sort dim and the picked
-// mergeable dim.
+// We intend to move the sharding tiles from the source dimension to a target
+// dimension. Returns the first target dimension, which satisfies:
+// 1. The source dimension is sharded. The size of the source dimension is
+// larger than 1.
+// 2. The target dimension and source dimension are different.
+// 3. The target dimension satisfies the can_be_target_dim predicate.
+// 4. The size of the target dimension is divisible by the merged tile size,
+// which is the product of the tile sizes of the source dim and the target dim.
 //
 // If there is no such dimension, returns std::nullopt.
-std::optional<int64_t> GetFirstMergeableDimForSortOperand(
-    const Shape& operand_shape, const HloSharding& operand_sharding,
-    int64_t sort_dim);
+std::optional<int64_t> GetFirstTargetDimToMoveShardingTiles(
+    const Shape& shape, const HloSharding& sharding, int64_t source_dim,
+    std::function<bool(int64_t)> can_be_target_dim = [](int64_t) {
+      return true;
+    });
 
 // Returns the sharding of an output of an instruction. Some instructions have
 // special handling like Outfeed and this function takes care of those.

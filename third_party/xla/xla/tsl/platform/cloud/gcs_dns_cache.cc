@@ -19,9 +19,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/retrying_utils.h"
-#include "tsl/platform/status.h"
 #ifndef _WIN32
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -197,7 +197,7 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
         LOG(ERROR) << "Error converting response to IP address for " << name
                    << ": " << strerror(errno);
       } else {
-        output.emplace_back(buf);
+        output.push_back(buf);
         VLOG(1) << "... address: " << buf;
       }
     }

@@ -18,19 +18,18 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
-#include <string_view>
 
 #include "absl/random/random.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -202,13 +201,15 @@ TEST_F(HloReachabilityTest, ChannelReachability) {
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param"));
   auto token0 = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(param, token0, 1));
-  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      param, token0, /*channel_id=*/1, /*is_host_transfer=*/false));
+  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, send->channel_id(), /*is_host_transfer=*/false));
   auto token1 = builder.AddInstruction(HloInstruction::CreateToken());
-  auto recv =
-      builder.AddInstruction(HloInstruction::CreateRecv(shape, token1, 1));
-  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
+  auto recv = builder.AddInstruction(HloInstruction::CreateRecv(
+      shape, token1, /*channel_id=*/1, /*is_host_transfer=*/false));
+  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(
+      recv, recv->channel_id(), /*is_host_transfer=*/false));
 
   auto module = CreateNewVerifiedModule();
   module->mutable_config().set_use_spmd_partitioning(false);
@@ -285,7 +286,7 @@ BENCHMARK(BM_HloReachabilityBitSetUnion)->BM_ARGS;
 
 class HloReachabilityBenchmark {
  public:
-  HloReachabilityBenchmark(int size, std::string_view name) : name_(name) {
+  HloReachabilityBenchmark(int size, absl::string_view name) : name_(name) {
     Shape r0f32 = ShapeUtil::MakeShape(F32, {});
     auto builder = HloComputation::Builder(name);
 

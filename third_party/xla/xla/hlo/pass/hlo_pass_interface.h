@@ -27,10 +27,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -57,7 +59,7 @@ class HloPassInterface {
 
     // Transition to the next iteration.
     //
-    // Depending on the pass implmentation, one iteration includes all the work
+    // Depending on the pass implementation, one iteration includes all the work
     // done between two IncrementIteration calls, there can be arbitrary number
     // of passes that ran arbitrary times with this state.
     void IncrementIteration() {
@@ -159,7 +161,10 @@ class HloModulePass : public HloPassInterface {
   //
   // TODO(b/129084868): Make this Backend dependent instead of requiring
   // deriving from the pass and overriding this function.
-  virtual void UpdateLayout(Shape* shape) {}
+  virtual void UpdateLayout(Shape* shape) {
+    // CPU/GPU backends require shapes of subbyte types to be packed.
+    ShapeUtil::UpdateElementSizeInBits(shape, /*pack_subbyte_types=*/true);
+  }
 };
 
 // Base class for passes which are module-group scoped. These passes cannot run

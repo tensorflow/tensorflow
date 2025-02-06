@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Function.h"
@@ -33,8 +34,8 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -45,10 +46,9 @@ static llvm::Module* getModuleFromBuilder(llvm::IRBuilderBase* b) {
 
 void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
                llvm::IRBuilderBase* b) {
-  llvm::Module* module = getModuleFromBuilder(b);
   for (size_t i = 0; i < operands.size(); ++i) {
-    auto* cast =
-        b->CreatePointerCast(operands[i], PrimitiveTypeToIrType(TUPLE, module));
+    auto* cast = b->CreatePointerCast(
+        operands[i], PrimitiveTypeToIrType(TUPLE, b->getContext()));
     auto* store = b->CreateStore(
         cast,
         b->CreateInBoundsGEP(tuple.GetBasePointeeType(), tuple.GetBasePointer(),
@@ -69,8 +69,6 @@ void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,
 
 std::vector<llvm::Value*> EmitTupleAllocasAtFunctionEntry(
     const Shape& tuple_shape, llvm::IRBuilderBase* b) {
-  llvm::Module* module = b->GetInsertBlock()->getModule();
-
   llvm::IRBuilderBase::InsertPointGuard guard(*b);
   llvm::Function* function = b->GetInsertBlock()->getParent();
   b->SetInsertPoint(&function->getEntryBlock(),
@@ -82,8 +80,8 @@ std::vector<llvm::Value*> EmitTupleAllocasAtFunctionEntry(
   for (int i = 0; i < tuple_size; i++) {
     const Shape& element_shape = tuple_shape.tuple_shapes(i);
     CHECK(ShapeUtil::IsScalar(element_shape));
-    llvm::Type* type =
-        llvm_ir::PrimitiveTypeToIrType(element_shape.element_type(), module);
+    llvm::Type* type = llvm_ir::PrimitiveTypeToIrType(
+        element_shape.element_type(), b->getContext());
     llvm::AllocaInst* alloca = b->CreateAlloca(
         type,
         /*ArraySize=*/nullptr, AsStringRef(absl::StrCat("tuple_element_", i)));

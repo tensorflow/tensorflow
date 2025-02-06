@@ -39,9 +39,9 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 // TODO(jmudigonda): Several BasicStringArray operations such as
 // DisassembleIntoSingleDeviceArrays, Reshard, FullyReplicatedShard,
@@ -52,35 +52,6 @@ limitations under the License.
 
 namespace xla {
 namespace ifrt {
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// BasicStringArrayLayout
-//
-
-std::string BasicStringArrayLayout::Serialize() const {
-  // We currently do not have any state that need to be serialized. Return an
-  // empty string.
-  return std::string();
-}
-
-std::string BasicStringArrayLayout::ToString() const {
-  return "BasicStringArrayLayout: Dense, major-to-minor.";
-}
-
-bool BasicStringArrayLayout::operator==(const PjRtLayout& other) const {
-  auto* other_basic_string_array_layout =
-      dynamic_cast<const xla::ifrt::BasicStringArrayLayout*>(&other);
-  if (other_basic_string_array_layout == nullptr) {
-    return false;
-  }
-  // All BasicStringArrayLayout objects are the same - they are all dense,
-  // major-to-minor. So, all of them are equal.
-  return true;
-}
-
-void BasicStringArrayLayout::Hash(absl::HashState state) const {
-}  // Nothing to add to the hash state. Just return.
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -396,14 +367,12 @@ absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::FullyReplicatedShard(
     return absl::FailedPreconditionError("Array has already been deleted");
   }
 
-  // Some user code paths (e.g.: through JAX) may not correctly set the
-  // `is_fully_replicated` flag when they are using ConcreteEvenSharding. If
-  // and when that causes a problem, we should investigate a way to actually
-  // looking into the sharding to determine if it is a fully replicated
-  // sharding.
-  if (!sharding_->IsFullyReplicated()) {
-    return absl::FailedPreconditionError("This array is not fully replicated");
-  }
+  // Consider a check here to make sure that the first shard contains the full
+  // array - i.e., this indeed is a fully replicated array. Checking the shading
+  // object may not be sufficient since currently IFRT users (e.g., JAX) can
+  // sometimes use ConcreteSharding even for single device arrays, and
+  // ConcreteSharding is currently hardcoded to be non-fully-replicated.
+
   struct StringStore {  // Data (strings) for a single shard.
     void CopyFrom(absl::Span<const absl::Cord> input_buffer) {
       strings.reserve(input_buffer.size());
@@ -446,12 +415,9 @@ absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::FullyReplicatedShard(
       std::move(buffers_future), std::move(on_done_with_buffer));
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLayout>> BasicStringArray::layout() const {
-  absl::MutexLock lock(&mu_);
-  if (is_deleted_) {
-    return absl::FailedPreconditionError("Array has already been deleted");
-  }
-  return std::make_unique<BasicStringArrayLayout>();
+absl::StatusOr<std::shared_ptr<const PjRtLayout>> BasicStringArray::layout()
+    const {
+  return absl::UnimplementedError("String arrays do not support PjRtLayout");
 }
 
 std::string BasicStringArray::DebugString() const {

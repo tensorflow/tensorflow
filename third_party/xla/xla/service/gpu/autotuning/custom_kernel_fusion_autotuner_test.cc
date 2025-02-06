@@ -24,8 +24,8 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {

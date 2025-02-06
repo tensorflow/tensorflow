@@ -34,9 +34,9 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -64,10 +64,7 @@ class RocmTimerTest : public ::testing::Test {
 
     ASSERT_THAT(stream->Memset32(&a, 1, byte_length), IsOk());
     ASSERT_THAT(stream->Memset32(&b, 2, byte_length), IsOk());
-    ASSERT_THAT(stream->MemZero(&c, byte_length), IsOk());
-
-    ASSERT_THAT(stream->ThenLaunch(ThreadDim(), BlockDim(4), add, a, b, c),
-                IsOk());
+    ASSERT_THAT(add.Launch(ThreadDim(), BlockDim(4), stream, a, b, c), IsOk());
   }
 
   RocmExecutor* executor_;

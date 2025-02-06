@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_SHARDING_METADATA_H_
 #define XLA_HLO_IR_HLO_SHARDING_METADATA_H_
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
@@ -29,7 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace xla {
 

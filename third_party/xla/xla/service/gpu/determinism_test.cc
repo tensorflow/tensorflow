@@ -178,7 +178,6 @@ ENTRY e {
     debug_options_.set_xla_gpu_enable_triton_gemm(false);
   }
 
-  debug_options_.set_xla_gpu_triton_fusion_level(0);
   MatchOptimizedHlo(kHloText, R"(; CHECK: custom_call_target="__cublas$gemm")",
                     TimerCreation::kForbidden);
   AssertDeterminism(kHloText);
@@ -223,6 +222,7 @@ TEST_F(DeterminismTest, ExcludingNonDeterministicOpsDoesNotDisableAutotuning) {
   }
 
   debug_options_.set_xla_gpu_cublas_fallback(false);
+  debug_options_.set_xla_gpu_cudnn_gemm_fusion_level(0);
   ASSERT_TRUE(debug_options_.xla_gpu_exclude_nondeterministic_ops());
   ASSERT_FALSE(debug_options_.xla_gpu_deterministic_ops());
   AutotunerUtil::ClearAutotuneResults();

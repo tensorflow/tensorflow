@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/set_tpu_infeed_layout.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <vector>
 

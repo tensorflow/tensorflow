@@ -32,6 +32,7 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <mutex>  // NOLINT
 #include <numeric>
 #include <optional>
 #include <ostream>
@@ -79,6 +80,8 @@ enum class DataType : uint8_t {
   F8E5M2FNUZ = XLA_FFI_DataType_F8E5M2FNUZ,
   F8E4M3FNUZ = XLA_FFI_DataType_F8E4M3FNUZ,
   F8E3M4 = XLA_FFI_DataType_F8E3M4,
+  F4E2M1FN = XLA_FFI_DataType_F4E2M1FN,
+  F8E8M0FNU = XLA_FFI_DataType_F8E8M0FNU,
 };
 
 // Create aliases in ::xla::ffi namespace for all DataTypes, for consistency
@@ -106,6 +109,8 @@ inline constexpr DataType F8E4M3B11FNUZ = DataType::F8E4M3B11FNUZ;
 inline constexpr DataType F8E5M2FNUZ = DataType::F8E5M2FNUZ;
 inline constexpr DataType F8E4M3FNUZ = DataType::F8E4M3FNUZ;
 inline constexpr DataType F8E3M4 = DataType::F8E3M4;
+inline constexpr DataType F4E2M1FN = DataType::F4E2M1FN;
+inline constexpr DataType F8E8M0FNU = DataType::F8E8M0FNU;
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
   return os << static_cast<XLA_FFI_DataType>(dtype);
@@ -127,6 +132,8 @@ constexpr size_t ByteWidth(DataType dtype) {
     case DataType::F8E5M2FNUZ:
     case DataType::F8E4M3FNUZ:
     case DataType::F8E3M4:
+    case DataType::F4E2M1FN:
+    case DataType::F8E8M0FNU:
       return 1;
     case DataType::S16:
     case DataType::U16:
@@ -316,10 +323,14 @@ class ErrorOr : public Expected<T, Error> {
 // A promise to complete execution with a success or an error.
 class Promise;
 
+// A promise that completes when a specific number of count downs have occurred.
+class CountDownPromise;
+
 // A future that becomes available when a corresponding promise is completed.
 class Future {
  public:
   explicit Future(const Promise& promise);
+  explicit Future(const CountDownPromise& promise);
 
   Future(Future&&) = default;
   Future& operator=(Future&&) = default;
@@ -371,6 +382,9 @@ class Promise {
  public:
   Promise() : data_(std::make_shared<Future::Data>()) {}
 
+  Promise(const Promise&) = default;
+  Promise& operator=(const Promise&) = default;
+
   Promise(Promise&&) = default;
   Promise& operator=(Promise&&) = default;
 
@@ -385,10 +399,82 @@ class Promise {
   std::shared_ptr<Future::Data> data_;
 };
 
+// A simple implementation of `tsl::CountDownAsyncValueRef` that is compatible
+// with `ffi::Future`.
+class CountDownPromise {
+ public:
+  CountDownPromise() = default;
+
+  CountDownPromise(Promise promise, int64_t count)
+      : state_(std::make_shared<State>(std::move(promise), count)) {
+    assert(count > 0 && "Count must be positive");
+  }
+
+  explicit CountDownPromise(int64_t count)
+      : CountDownPromise(Promise(), count) {}
+
+  // Drops the count by `count` and returns true if the underlying promise
+  // became available.
+  bool CountDown(size_t count, const Error& error = Error::Success()) {
+    assert(state_->count.load() >= count && "Invalid count down value");
+
+    if (XLA_FFI_PREDICT_FALSE(!error.success())) {
+      const std::lock_guard<std::mutex> lock(state_->mutex);
+      state_->is_error.store(true, std::memory_order_release);
+      state_->error = error;
+    }
+
+    bool is_complete =
+        state_->count.fetch_sub(count, std::memory_order_acq_rel) == count;
+    if (XLA_FFI_PREDICT_FALSE(is_complete)) {
+      bool is_error = state_->is_error.load(std::memory_order_acquire);
+      if (XLA_FFI_PREDICT_FALSE(is_error)) {
+        auto take_error = [&] {
+          const std::lock_guard<std::mutex> lock(state_->mutex);
+          return state_->error;
+        };
+        state_->promise.SetError(take_error());
+        return true;
+      } else {
+        state_->promise.SetAvailable();
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  // Drops the count by `1` and returns true if the underlying promise became
+  // available.
+  bool CountDown(Error error = Error::Success()) { return CountDown(1, error); }
+
+ private:
+  friend class Future;
+
+  struct State {
+    State(Promise promise, int64_t count)
+        : promise(std::move(promise)), count(count), is_error(false) {}
+
+    Promise promise;
+    std::atomic<int64_t> count;
+    std::atomic<bool> is_error;
+
+    std::mutex mutex;
+    Error error;
+  };
+
+  std::shared_ptr<State> state_;
+
+  const Promise& AsPromise() const { return state_->promise; }
+};
+
 inline Future::Future(const Promise& promise) : data_(promise.data_) {
   assert(data_.use_count() == 2 &&
          "Promise can be used to create at most one Future");
 }
+
+inline Future::Future(const CountDownPromise& promise)
+    : Future(promise.AsPromise()) {}
 
 template <typename F>
 void Future::OnReady(F&& f) {
@@ -893,6 +979,22 @@ XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
 
 #undef XLA_FFI_REGISTER_ARRAY_ATTR_DECODING
 
+template <>
+struct AttrDecoding<std::string_view> {
+  using Type = std::string_view;
+  static std::optional<std::string_view> Decode(XLA_FFI_AttrType type,
+                                                void* attr,
+                                                DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_STRING)) {
+      return diagnostic.Emit("Wrong attribute type: expected ")
+             << XLA_FFI_AttrType_STRING << " but got " << type;
+    }
+
+    auto* span = reinterpret_cast<XLA_FFI_ByteSpan*>(attr);
+    return std::string_view(span->ptr, span->len);
+  }
+};
+
 // A type tag to mark i64 attributes as pointers to `T`.
 template <typename T>
 struct Pointer {};
@@ -1258,6 +1360,23 @@ class ThreadPool {
     }
   }
 
+  int64_t num_threads() const {
+    int64_t num_threads = 0;
+
+    XLA_FFI_ThreadPool_NumThreads_Args args;
+    args.struct_size = XLA_FFI_ThreadPool_NumThreads_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.ctx = ctx_;
+    args.num_threads = &num_threads;
+
+    // Silently ignore errors if we can't get the number of threads.
+    if (XLA_FFI_Error* error = api_->XLA_FFI_ThreadPool_NumThreads(&args)) {
+      internal::DestroyError(api_, error);
+    }
+
+    return num_threads;
+  }
+
  private:
   friend struct CtxDecoding<ThreadPool>;
 
@@ -1293,30 +1412,14 @@ inline ThreadPool::ThreadPool(const XLA_FFI_Api* api,
 // Type Registration
 //===----------------------------------------------------------------------===//
 
-namespace internal {
-
-inline XLA_FFI_Error* RegisterType(const XLA_FFI_Api* api,
-                                   std::string_view name,
-                                   XLA_FFI_TypeId* type_id) {
-  XLA_FFI_TypeId_Register_Args args;
-  args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
-  args.type_id = type_id;
-  return api->XLA_FFI_TypeId_Register(&args);
-}
-
-}  // namespace internal
-
 #define XLA_FFI_REGISTER_TYPE(API, NAME, TYPE_ID) \
   XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, __COUNTER__)
 #define XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, N) \
   XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N)
-#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N)                 \
-  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                 \
-      xla_ffi_type_##N##_registered_ = [] {                            \
-        return ::xla::ffi::internal::RegisterType(API, NAME, TYPE_ID); \
-      }()
+#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, N) \
+  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error* \
+      xla_ffi_type_##N##_registered_ =                 \
+          [] { return ::xla::ffi::Ffi::RegisterTypeId(API, NAME, TYPE_ID); }()
 
 //===----------------------------------------------------------------------===//
 // UserData
@@ -1401,6 +1504,42 @@ struct CtxDecoding<State<T>> {
     }
 
     return static_cast<Type>(args.state);
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// RunId
+//===----------------------------------------------------------------------===//
+
+struct RunId {
+  int64_t run_id;
+};
+
+// Context decoding for RunId (unique identifier of a logical execution).
+//
+// Example: Ffi::Bind().Ctx<RunId>()
+//                     .To([](RunId run_id) { ... });
+template <>
+struct CtxDecoding<RunId> {
+  using Type = RunId;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    XLA_FFI_RunId_Get_Args args;
+    args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.ctx = ctx;
+    args.run_id = 0;
+
+    if (XLA_FFI_Error* err = api->XLA_FFI_RunId_Get(&args); err) {
+      diagnostic.Emit("Failed to get run id from execution context: ")
+          << internal::GetErrorMessage(api, err);
+      internal::DestroyError(api, err);
+      return std::nullopt;
+    }
+
+    return RunId{args.run_id};
   }
 };
 

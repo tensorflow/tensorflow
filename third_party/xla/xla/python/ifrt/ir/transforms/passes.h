@@ -73,6 +73,9 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtRemoveIfrtAttrsPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtRemoveAttrsFromOtherDialectsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtLowerMpmdReshardToCallPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
@@ -125,6 +128,9 @@ CreateIfrtPrecompileAtomProgramPreprocessingPass(
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtVerifyDeviceTypeConsistencyPass(
     IfrtVerifyDeviceTypeConsistencyPassOptions options = {});
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtDumpAtomProgramsPass(IfrtDumpAtomProgramsPassOptions options = {});
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtAtomProgramsToVhloPass(

@@ -20,12 +20,13 @@ limitations under the License.
 #include <string>
 #include <system_error>  // NOLINT
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Memory.h"
 #include "llvm/Support/Process.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
 
 namespace xla::cpu {
 namespace {

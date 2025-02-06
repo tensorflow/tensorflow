@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iostream>
-#include <string_view>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 
 int main(int argc, char** argv) {
   if (argc == 1) {
@@ -27,25 +27,25 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  const auto process_was_called_as = [&](std::string_view binary_name) {
+  const auto process_was_called_as = [&](absl::string_view binary_name) {
     return argv[0] == binary_name ||
            absl::EndsWith(argv[0], absl::StrCat("/", binary_name));
   };
 
   if (process_was_called_as("ptxas") &&
-      argv[1] == std::string_view{"--version"}) {
+      argv[1] == absl::string_view{"--version"}) {
     std::cout << "ptxas dummy V111.2.3\n";
     return 0;
   }
 
   if (process_was_called_as("nvlink") &&
-      argv[1] == std::string_view{"--version"}) {
+      argv[1] == absl::string_view{"--version"}) {
     std::cout << "nvlink dummy V444.5.6\n";
     return 0;
   }
 
   if (process_was_called_as("fatbinary") &&
-      argv[1] == std::string_view{"--version"}) {
+      argv[1] == absl::string_view{"--version"}) {
     std::cout << "fatbinary dummy V777.8.9\n";
     return 0;
   }

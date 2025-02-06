@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -55,7 +57,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
-#include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -76,6 +77,7 @@ class IfrtServingExecutable {
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
       tsl::protobuf::Message* compilation_environment_proto,
+      TfToHloCompiler* tf_to_hlo_compiler,
       IfrtPersistentCompilationCache* persistent_compilation_cache);
 
   // Movable but not copyable.
@@ -151,6 +153,7 @@ class IfrtServingExecutable {
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
       tsl::RCReference<xla::ifrt::DeviceList> assigned_device_list,
       tsl::protobuf::Message* compilation_environment_proto,
+      TfToHloCompiler* tf_to_hlo_compiler,
       IfrtPersistentCompilationCache* persistent_compilation_cache)
       : program_id_(program_id),
         model_name_(std::string(model_name)),
@@ -167,6 +170,7 @@ class IfrtServingExecutable {
         shape_representation_fn_(std::move(shape_representation_fn)),
         ifrt_serving_core_selector_(std::move(ifrt_serving_core_selector)),
         compilation_environment_proto_(compilation_environment_proto),
+        tf_to_hlo_compiler_(tf_to_hlo_compiler),
         persistent_compilation_cache_(persistent_compilation_cache) {}
 
   int64_t program_id_;
@@ -201,6 +205,10 @@ class IfrtServingExecutable {
 
   bool is_frozen_ ABSL_GUARDED_BY(mutex_) = false;
 
+  // The tf_to_hlo_compiler_ is not owned by this executable. It is expected to
+  // be alive during the lifetime of the executable.
+  TfToHloCompiler* tf_to_hlo_compiler_;
+
   // The persistent compilation cache is a global cache and is not owned by
   // this executable. When it is nullptr, the persistent compilation cache is
   // disabled at ifrt serving level.
@@ -220,12 +228,14 @@ class IfrtServingExecutable {
 
   xla::ifrt::Future<SharedCachedExecutableBundle> LookUpOrCreateExecutable(
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
-      absl::Span<const DtypeAndShape> dtypes_and_shapes);
+      absl::Span<const DtypeAndShape> dtypes_and_shapes,
+      absl::Span<const int> variable_arg_indices);
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
   CreateExecutableSynchronously(
       mlir::OwningOpRef<mlir::ModuleOp> module_copy,
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
-      absl::Span<const DtypeAndShape> dtypes_and_shapes);
+      absl::Span<const DtypeAndShape> dtypes_and_shapes,
+      absl::Span<const int> variable_arg_indices);
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(
       int num_devices, const xla::ifrt::Shape& arg_xla_shape,

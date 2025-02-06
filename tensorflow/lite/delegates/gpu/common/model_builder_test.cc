@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -2092,10 +2093,11 @@ TEST(MulOperationParserTest, TestIsSupported) {
       parser
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());
-  // Invalid dims (first_has_smaller_dim && second_has_smaller_dim)
+  // Valid dims (first_has_smaller_dim && second_has_smaller_dim) broadcasting
+  // scenario.
   context->tensor(1)->dims->data[0] = 256;
   context->tensor(2)->dims->data[1] = 256;
-  ASSERT_FALSE(
+  ASSERT_TRUE(
       parser
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());

@@ -19,11 +19,13 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -167,7 +169,7 @@ class GraphConstructorTest : public ::testing::Test {
              "value for the _class attribute. Update it and its callers";
       return "";
     }
-    StringPiece loc(value[0]);
+    absl::string_view loc(value[0]);
     return absl::ConsumePrefix(&loc, kColocationGroupPrefix) ? string(loc) : "";
   }
 
@@ -3512,6 +3514,90 @@ TEST_F(GraphConstructorTest,
   EXPECT_EQ(b2_stack_trace->ToString({}),
             "File \"beta.cc\", line 24, in quip\n"
             "File \"delta.cc\", line 34, in jape");
+}
+
+TEST_F(GraphConstructorTest, ConvertGraphDefToGraphUpgradesLegacy) {
+  GraphDef graph_def;
+  std::string graph_def_ascii = R"(
+  node {
+    name: "VariableV2"
+    op: "VariableV2"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@ScalarW"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+  }
+  )";
+  Graph graph(OpRegistry::Global());
+  protobuf::TextFormat::ParseFromString(graph_def_ascii, &graph_def);
+  GraphImportConfig::InputArrays inputs;
+  tensorflow::ArrayInfo array_info;
+  inputs.insert(std::pair<std::string, tensorflow::ArrayInfo>(
+      "conv_net_input", std::move(array_info)));
+  GraphConstructorOptions opts;
+  opts.upgrade_legacy = true;
+
+  TF_ASSERT_OK(ConvertGraphDefToGraph(opts, std::move(graph_def), &graph));
+
+  EXPECT_EQ(graph.op_nodes().begin()->attrs().Find("shared_name")->s(),
+            "VariableV2");
+}
+
+TEST_F(GraphConstructorTest, ConvertGraphDefToGraphAddsDefaultAttributes) {
+  GraphDef graph_def;
+  std::string graph_def_ascii = R"(
+node{ name:'A' op:'TestDefaultAttr'}
+  )";
+  Graph graph(OpRegistry::Global());
+  protobuf::TextFormat::ParseFromString(graph_def_ascii, &graph_def);
+  GraphImportConfig::InputArrays inputs;
+  tensorflow::ArrayInfo array_info;
+  inputs.insert(std::pair<std::string, tensorflow::ArrayInfo>(
+      "conv_net_input", std::move(array_info)));
+  GraphConstructorOptions opts;
+  opts.add_default_attributes = true;
+
+  TF_ASSERT_OK(ConvertGraphDefToGraph(opts, std::move(graph_def), &graph));
+
+  EXPECT_EQ(graph.op_nodes().begin()->attrs().Find("default_int")->i(), 31415);
 }
 
 }  // namespace

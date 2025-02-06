@@ -882,7 +882,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
 
     dispatch.unregister_dispatch_for(masked_tensor_equals)  # clean up.
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"Dispatch function's signature \(self, other, name=None\) "
         r"does not match API's signature \(self, other\)\."):
 

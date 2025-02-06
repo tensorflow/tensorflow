@@ -22,6 +22,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
@@ -41,10 +42,10 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -567,8 +568,8 @@ llvm::Value* IrArray::EmitLinearArrayElementAddress(
     const IrArray::Index& index, llvm::IRBuilderBase* b, absl::string_view name,
     llvm::Value** bit_offset) const {
   CHECK(index.LinearValidOnShape(shape_));
-  llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
-  llvm::Type* type = PrimitiveTypeToIrType(shape_.element_type(), module);
+  llvm::Type* type =
+      PrimitiveTypeToIrType(shape_.element_type(), b->getContext());
   if (!primitive_util::IsSubByteNonPredType(shape_.element_type())) {
     auto linear_index = llvm::dyn_cast<llvm::BinaryOperator>(index.linear());
     if (linear_index && (linear_index->getOpcode() == llvm::Instruction::Add)) {
@@ -671,8 +672,7 @@ IrArray IrArray::CastToShape(const Shape& new_shape,
                              llvm::IRBuilderBase* b) const {
   if (shape_ == new_shape) return *this;
 
-  llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
-  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
+  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, b->getContext());
   IrArray new_irarray(base_ptr_, new_ir_type, new_shape);
   new_irarray.metadata_ = metadata_;
   return new_irarray;

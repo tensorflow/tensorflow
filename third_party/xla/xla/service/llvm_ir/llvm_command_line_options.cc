@@ -17,17 +17,18 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/Support/CommandLine.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -47,8 +48,8 @@ LLVMCommandLineOptionsLock::LLVMCommandLineOptionsLock(
   // Check if previous client used a different set of LLVM options,
   // (re)initialize if that's the case.
   if (client_signature_ != active_client_signature_) {
-    LOG(INFO) << "XLA (re)initializing LLVM with options fingerprint: "
-              << client_signature_;
+    VLOG(1) << "XLA (re)initializing LLVM with options fingerprint: "
+            << client_signature_;
     VLOG(1) << "XLA LLVM options:";
     CHECK_EQ(num_active_clients_, 0);
 
@@ -56,12 +57,12 @@ LLVMCommandLineOptionsLock::LLVMCommandLineOptionsLock(
     std::vector<const char*> fake_argv(client_options.size() +
                                        GetGlobalOptions().size() + 1);
     fake_argv[0] = "xla";
-    for (std::string_view client_option : client_options) {
+    for (absl::string_view client_option : client_options) {
       VLOG(1) << absl::StrFormat("XLA LLVM arg[%d]: %s", idx, client_option);
       fake_argv[idx] = client_option.data();
       ++idx;
     }
-    for (std::string_view global_option : GetGlobalOptions()) {
+    for (absl::string_view global_option : GetGlobalOptions()) {
       VLOG(1) << absl::StrFormat("XLA LLVM arg[%d]: %s", idx, global_option);
       fake_argv[idx] = global_option.data();
       ++idx;

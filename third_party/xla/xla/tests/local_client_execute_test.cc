@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/sharding_builder.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/platform_util.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"
 #include "xla/tests/test_macros.h"
@@ -760,13 +760,8 @@ XLA_TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
   EXPECT_EQ(2, executables.size());
 }
 
-XLA_TEST_F(LocalClientExecuteTest,
-           DISABLED_ON_INTERPRETER(SizeOfGeneratedCodeInBytes)) {
-  if (IsMlirLoweringEnabled()) {
-    // SizeOfGeneratedCodeInBytes is not supported by the MLIR pipeline.
-    GTEST_SKIP();
-  }
-
+XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
+                                       SizeOfGeneratedCodeInBytes))) {
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
   constexpr int size = 100000;

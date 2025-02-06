@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/profile_utils/cpu_utils.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
 
 namespace tsl {
 

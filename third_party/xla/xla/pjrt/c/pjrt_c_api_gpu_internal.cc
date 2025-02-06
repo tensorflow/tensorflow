@@ -38,8 +38,11 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_triton_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
@@ -52,7 +55,6 @@ limitations under the License.
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/stream_executor/device_description.h"
 
 namespace pjrt {
 namespace gpu_plugin {
@@ -154,9 +156,9 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.num_nodes = num_nodes;
   options.allowed_devices = visible_devices;
   options.platform_name = platform_name;
-  options.kv_store =
-      pjrt::ToCppKeyValueStore(args->kv_get_callback, args->kv_get_user_arg,
-                               args->kv_put_callback, args->kv_put_user_arg);
+  options.kv_store = pjrt::ToCppKeyValueStore(
+      args->kv_get_callback, args->kv_get_user_arg, args->kv_try_get_callback,
+      args->kv_try_get_user_arg, args->kv_put_callback, args->kv_put_user_arg);
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
@@ -399,12 +401,19 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_FFI_Extension ffi_extension = pjrt::CreateFfiExtension(
       reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension));
 
+  static PJRT_MemoryDescriptions_Extension memory_descriptions_extension =
+      pjrt::CreateMemoryDescriptionsExtension(
+          reinterpret_cast<PJRT_Extension_Base*>(&ffi_extension));
+
+  static PJRT_Triton_Extension triton_extension = pjrt::CreateTritonExtension(
+      reinterpret_cast<PJRT_Extension_Base*>(&memory_descriptions_extension));
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::gpu_plugin::PJRT_Client_Create,
       pjrt::gpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
       pjrt::PJRT_Plugin_Initialize_NoOp,
-      reinterpret_cast<PJRT_Extension_Base*>(&ffi_extension),
+      reinterpret_cast<PJRT_Extension_Base*>(&triton_extension),
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

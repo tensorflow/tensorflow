@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/version.h"
 
 namespace xla {
@@ -46,6 +47,8 @@ void CreateIfrtToOutlinedAtomProgramsPipeline(
 
   if (!options.propagate_shardings) {
     pm.addPass(CreateIfrtVerifyShardingSpecifiedPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        xla::ifrt::CreateIfrtMergeReshardsPass());
     // We can split ifrt.Reshard to ifrt.CopyArrays because all the shardings
     // are specified.
     pm.addPass(CreateIfrtReshardToCopyArraysPass());
@@ -67,6 +70,7 @@ void CreateIfrtToVersionedPipeline(mlir::OpPassManager& pm,
                                    std::string ifrt_target_version,
                                    std::string vhlo_target_version,
                                    IfrtIrProgramProto& ifrt_ir_program) {
+  pm.addPass(CreateIfrtRemoveAttrsFromOtherDialectsPass());
   pm.addPass(CreateIfrtAtomProgramsToVhloPass(
       ifrt_ir_program.mutable_atom_programs(), std::move(vhlo_target_version)));
   pm.addPass(createIfrtLegalizeToVifrtPass());

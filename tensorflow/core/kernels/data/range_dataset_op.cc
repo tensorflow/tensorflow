@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/types.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/types.h"
 
 namespace tensorflow {
 namespace data {

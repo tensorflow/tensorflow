@@ -13,15 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/match.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/io/random_inputstream.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_inputstream.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/platform/test.h"
 
 namespace tsl {
 namespace io {

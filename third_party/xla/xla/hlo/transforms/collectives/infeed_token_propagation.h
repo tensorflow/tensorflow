@@ -17,14 +17,14 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_COLLECTIVES_INFEED_TOKEN_PROPAGATION_H_
 
 #include <memory>
-#include <string_view>
-#include <tuple>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_graph.h"
 
@@ -38,19 +38,21 @@ namespace xla {
 // This pass assumes the HLO graph is flattened.
 class InfeedTokenPropagation : public HloModulePass {
  public:
-  std::string_view name() const override { return "infeed-token-propagation"; }
+  absl::string_view name() const override { return "infeed-token-propagation"; }
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
-      const absl::flat_hash_set<std::string_view>& execution_threads) override;
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  absl::Status PropagateToken();
+  absl::Status PropagateToken(const HloOrdering& ordering);
   absl::Status PropagateTokenThroughWhileBody();
   absl::Status PropagateTokenThroughConditionalBranch();
 
   std::unique_ptr<CallGraph> call_graph_;
+
   HloInstruction* dangling_instruction_ = nullptr;
+  HloOpcode original_opcode_;
   HloInstruction* input_token_ = nullptr;
   HloInstruction* output_token_ = nullptr;
 };

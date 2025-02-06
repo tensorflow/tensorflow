@@ -28,7 +28,7 @@ permissions:
 jobs:
   scan-scheduled:
     if: github.repository == 'tensorflow/tensorflow'
-    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v1.9.0"
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v1.9.2"
     with:
       scan-args: |-
         --lockfile=requirements.txt:./requirements_lock_3_9.txt

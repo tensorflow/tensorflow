@@ -1,10 +1,10 @@
-load("@local_tsl//tsl/platform:build_config.bzl", "tsl_cc_test")
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
-)
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
+load("//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
+load(
+    "//xla/tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -43,15 +43,16 @@ cc_library(
         ":iterator",
         ":table_options",
         "//xla/tsl/lib/hash:crc32c",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:coding",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:raw_coding",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -63,8 +64,8 @@ cc_library(
     deps = [
         ":inputstream_interface",
         ":random_inputstream",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:env",
     ],
     alwayslink = True,
 )
@@ -81,13 +82,13 @@ cc_library(
     srcs = ["inputbuffer.cc"],
     hdrs = ["inputbuffer.h"],
     deps = [
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
         "@local_tsl//tsl/platform:coding",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -97,10 +98,10 @@ cc_library(
     srcs = ["inputstream_interface.cc"],
     hdrs = ["inputstream_interface.h"],
     deps = [
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
         "@local_tsl//tsl/platform:cord",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -110,7 +111,8 @@ cc_library(
     srcs = ["iterator.cc"],
     hdrs = ["iterator.h"],
     deps = [
-        "@local_tsl//tsl/platform:status",
+        "//xla/tsl/platform:status",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:stringpiece",
     ],
     alwayslink = True,
@@ -120,8 +122,8 @@ cc_library(
     name = "proto_encode_helper",
     hdrs = ["proto_encode_helper.h"],
     deps = [
+        "//xla/tsl/platform:logging",
         "@local_tsl//tsl/platform:coding",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:stringpiece",
     ],
@@ -133,8 +135,8 @@ cc_library(
     hdrs = ["random_inputstream.h"],
     deps = [
         ":inputstream_interface",
+        "//xla/tsl/platform:env",
         "@local_tsl//tsl/platform:cord",
-        "@local_tsl//tsl/platform:env",
     ],
     alwayslink = True,
 )
@@ -153,12 +155,12 @@ cc_library(
         ":zlib_compression_options",
         ":zlib_inputstream",
         "//xla/tsl/lib/hash:crc32c",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:macros",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:types",
         "@local_tsl//tsl/platform:raw_coding",
         "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -174,13 +176,13 @@ cc_library(
         ":zlib_compression_options",
         ":zlib_outputbuffer",
         "//xla/tsl/lib/hash:crc32c",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
         "@local_tsl//tsl/platform:coding",
         "@local_tsl//tsl/platform:cord",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -235,9 +237,10 @@ cc_library(
         ":cache",
         ":iterator",
         ":table_options",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:coding",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
     ],
     alwayslink = True,
 )
@@ -253,9 +256,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/tsl/lib/hash:crc32c",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status",
         "@local_tsl//tsl/platform:cord",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -266,11 +269,11 @@ tsl_cc_test(
     deps = [
         ":buffered_file",
         "//xla/tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -279,7 +282,7 @@ cc_library(
     srcs = ["zlib_compression_options.cc"],
     hdrs = ["zlib_compression_options.h"],
     deps = [
-        "@local_tsl//tsl/platform:types",
+        "//xla/tsl/platform:types",
         "@zlib",
     ],
     alwayslink = True,
@@ -292,12 +295,12 @@ cc_library(
     deps = [
         ":inputstream_interface",
         ":zlib_compression_options",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:status",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
         "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:types",
         "@zlib",
     ],
     alwayslink = True,
@@ -309,12 +312,12 @@ cc_library(
     hdrs = ["zlib_outputbuffer.h"],
     deps = [
         ":zlib_compression_options",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/platform:status",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
         "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:types",
         "@zlib",
     ],
     alwayslink = True,
@@ -446,11 +449,11 @@ tsl_cc_test(
         ":buffered_inputstream",
         ":random_inputstream",
         "//xla/tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
     ],
 )
 
@@ -460,10 +463,10 @@ tsl_cc_test(
     srcs = ["cache_test.cc"],
     deps = [
         ":cache",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:coding",
         "@local_tsl//tsl/platform:raw_coding",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -474,16 +477,16 @@ tsl_cc_test(
     deps = [
         ":inputbuffer",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:coding",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:str_util",
         "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -494,9 +497,9 @@ tsl_cc_test(
     deps = [
         ":inputstream_interface",
         "//xla/tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -507,10 +510,10 @@ tsl_cc_test(
     deps = [
         ":random_inputstream",
         "//xla/tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -522,14 +525,14 @@ tsl_cc_test(
         ":record_reader",
         ":record_writer",
         "//xla/tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
         "@zlib",
     ],
 )
@@ -544,13 +547,13 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/lib/hash:crc32c",
         "//xla/tsl/lib/random:philox",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:coding",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:str_util",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -563,13 +566,13 @@ tsl_cc_test(
         ":iterator",
         ":table",
         "//xla/tsl/lib/random:philox",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/platform:errors",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -583,11 +586,12 @@ tsl_cc_test(
         ":zlib_inputstream",
         ":zlib_outputbuffer",
         "//xla/tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
-        "@local_tsl//tsl/platform:errors",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )

@@ -14,7 +14,6 @@
 
 #include "xla/python/ifrt_proxy/client/grpc_client_session.h"
 
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -42,6 +41,7 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/common/grpc_credentials.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
+#include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"

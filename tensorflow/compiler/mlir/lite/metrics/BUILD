@@ -11,7 +11,6 @@ package(
     default_visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/lite/toco/python:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -65,7 +64,7 @@ tf_cc_test(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 

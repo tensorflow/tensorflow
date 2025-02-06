@@ -51,8 +51,7 @@ HloPassPipeline FusionPipeline(
   HloVerifierOpts opts =
       HloVerifierOpts().MakeLayoutSensitive().WithInstructionCanChangeLayout(
           LayoutAssignment::InstructionCanChangeLayout);
-  opts.verify_unique_channel_ids =
-      !debug_options.xla_experimental_ignore_channel_id();
+  opts.verify_unique_channel_ids = !debug_options.xla_ignore_channel_id();
   fusion.AddInvariantCheckerDebug<HloVerifier>(
       std::make_unique<CpuGpuVerifierMetadata>(std::move(opts)),
       "hlo verifier (debug)");
@@ -81,7 +80,7 @@ HloPassPipeline FusionPipeline(
 HloPassPipeline HorizontalFusionPipeline(
     const se::DeviceDescription& gpu_device_info) {
   HloPassFix<HloPassPipeline> horizontal_fusion("horizontal fusion");
-  horizontal_fusion.AddPass<HorizontalLoopFusion>();
+  horizontal_fusion.AddPass<HorizontalLoopFusion>(gpu_device_info);
   horizontal_fusion.AddPass<HorizontalInputFusion>(gpu_device_info);
   horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                     /*only_fusion_computations=*/true);

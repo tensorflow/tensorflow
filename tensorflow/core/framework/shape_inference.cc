@@ -119,7 +119,7 @@ absl::Status InferenceContext::Run(
 }
 
 absl::Status InferenceContext::set_output(
-    StringPiece output_name, const std::vector<ShapeHandle>& shapes) {
+    absl::string_view output_name, const std::vector<ShapeHandle>& shapes) {
   auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
@@ -137,7 +137,7 @@ absl::Status InferenceContext::set_output(
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::input(StringPiece input_name,
+absl::Status InferenceContext::input(absl::string_view input_name,
                                      std::vector<ShapeHandle>* output) const {
   const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
@@ -151,7 +151,7 @@ absl::Status InferenceContext::input(StringPiece input_name,
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::output(StringPiece output_name,
+absl::Status InferenceContext::output(absl::string_view output_name,
                                       std::vector<ShapeHandle>* output) const {
   const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {

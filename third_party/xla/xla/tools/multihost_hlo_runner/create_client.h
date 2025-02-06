@@ -38,18 +38,16 @@ struct PjRtEnvironment {
   std::shared_ptr<xla::DistributedRuntimeClient> distributed_client;
 };
 
-enum class PjRtDeviceType : uint8_t {
-  kGpu,
-  kHostCpu,
-};
+// Creates an environment with a PjRtClient for host CPU.
+absl::StatusOr<PjRtEnvironment> GetPjRtEnvironmentForHostCpu();
 
-// Creates an environment with a PjRtClient and potentially distributed runtime
-// components if using multiple GPU nodes.
-absl::StatusOr<PjRtEnvironment> GetPjRtEnvironment(PjRtDeviceType device_type,
-                                                   absl::string_view address,
-                                                   int node_id, int num_nodes,
-                                                   bool enable_mock_nccl,
-                                                   absl::Duration init_timeout);
+// Creates an environment with a PjRtClient for GPU and potentially distributed
+// runtime components if using multiple GPU nodes.
+// In GPU options `kv_store` will be initialized separately for the multi-node
+// environment.
+absl::StatusOr<PjRtEnvironment> GetPjRtEnvironmentForGpu(
+    absl::string_view address, GpuClientOptions gpu_options,
+    absl::Duration init_timeout);
 
 // Creates a PjRtClient which can run HLOs on Host CPU.
 absl::StatusOr<std::unique_ptr<PjRtClient>> CreateHostClient();
