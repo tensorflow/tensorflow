@@ -797,11 +797,20 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
       for (const int fragment_number : dim_sequence) {
         const auto it = src_to_dst.find(&src_fragments_order[fragment_number]);
         if (it == src_to_dst.cend()) {
-          if (hlo.opcode() == HloOpcode::kBroadcast &&
-              src_fragments_order[fragment_number].full_count() > 1 &&
-              nontrivial_dim_numbers_present_in_dst.contains(dim_index)) {
-            return FusionDecision::Forbid("Unsupported broadcast");
-          }
+          // LOG(ERROR) << "Is broadcast: "
+          //            << (hlo.opcode() == HloOpcode::kBroadcast);
+          // LOG(ERROR) << "full_count: "
+          //            << src_fragments_order[fragment_number].full_count();
+          // LOG(ERROR) << "nontrivial_dim_numbers_present_in_dst: "
+          //            << nontrivial_dim_numbers_present_in_dst.contains(
+          //                   dim_index);
+          // if (hlo.opcode() == HloOpcode::kBroadcast &&
+          //     src_fragments_order[fragment_number].full_count() > 1 &&
+          //     nontrivial_dim_numbers_present_in_dst.contains(dim_index)) {
+          //   LOG(ERROR) << "Unsupported broadcast: callstack: "
+          //              << util::CurrentStackTrace();
+          //   return FusionDecision::Forbid("Unsupported broadcast");
+          // }
           continue;
         }
         dst_dim_fragments_order[dim_index].push_back(it->second);
@@ -925,11 +934,13 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
 }
 
 // Difference of input and output data volumes of an instruction.
-int64_t InputMinusOutputBytes(const HloInstruction& hlo) {
+std::optional<int64_t> InputMinusOutputBytes(const HloInstruction& hlo) {
   CHECK(!hlo.shape().IsTuple());
   int64_t input_size = 0;
   for (const HloInstruction* operand : hlo.operands()) {
-    CHECK(!operand->shape().IsTuple());
+    if (operand->shape().IsTuple()) {
+      return std::nullopt;
+    }
     input_size += ShapeUtil::ByteSizeOf(operand->shape());
   }
   return input_size - ShapeUtil::ByteSizeOf(hlo.shape());
@@ -947,7 +958,11 @@ constexpr int kIoToleranceBytes = 1024;
 
 // Tells that fusing an instruction as an input is efficient.
 bool IsInputWorthFusing(const HloInstruction& hlo) {
-  if (InputMinusOutputBytes(hlo) <= kIoToleranceBytes) {
+  std::optional<int64_t> input_minus_output_bytes = InputMinusOutputBytes(hlo);
+  if (!input_minus_output_bytes.has_value()) {
+    return false;
+  }
+  if (input_minus_output_bytes.value() <= kIoToleranceBytes) {
     return true;
   }
   if (hlo.user_count() > 1) {
@@ -957,13 +972,22 @@ bool IsInputWorthFusing(const HloInstruction& hlo) {
       hlo_query::AllOperandsAreParametersOrConstants(hlo)) {
     return true;
   }
+  if (hlo.opcode() == HloOpcode::kMultiply) {
+    return IsInputWorthFusing(*hlo.operand(0)) &&
+           IsInputWorthFusing(*hlo.operand(1));
+  }
   return hlo_query::AllOperandsAreParametersOrConstantsWithSingleUser(hlo);
 }
 
 // Tells that fusing an instruction as an output is efficient.
 bool IsOutputWorthFusing(const HloInstruction& hlo) {
+  std::optional<int64_t> input_minus_output_bytes = InputMinusOutputBytes(hlo);
+  if (!input_minus_output_bytes.has_value()) {
+    return false;
+  }
+
   return CanNotBeFusedIntoAUser(hlo) ||
-         InputMinusOutputBytes(hlo) >= -kIoToleranceBytes;
+         input_minus_output_bytes.value() >= -kIoToleranceBytes;
 }
 
 FusionDecision IsConversionWorthFusing(const HloInstruction& input,
