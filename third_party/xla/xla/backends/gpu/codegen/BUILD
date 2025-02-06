@@ -185,6 +185,7 @@ xla_test(
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "//xla/service:hlo_runner_interface",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu/transforms:dynamic_slice_fusion_rewriter",

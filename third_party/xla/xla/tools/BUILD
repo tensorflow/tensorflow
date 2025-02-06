@@ -640,6 +640,7 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_runner",
+        "//xla/service:hlo_runner_interface",
         "//xla/service:platform_util",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/service/gpu/model:hlo_op_profiler_lib",

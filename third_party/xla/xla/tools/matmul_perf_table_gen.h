@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -82,7 +83,7 @@ class MatmulPerfTableGen {
       absl::string_view filepath);
 
  private:
-  std::unique_ptr<Executable> Compile(std::unique_ptr<HloModule> module);
+  std::unique_ptr<OpaqueExecutable> Compile(std::unique_ptr<HloModule> module);
 
   absl::Duration Profile(std::unique_ptr<HloModule> module);
 

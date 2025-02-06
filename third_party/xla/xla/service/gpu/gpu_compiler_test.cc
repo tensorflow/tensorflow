@@ -1037,6 +1037,8 @@ ENTRY e {
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
         aot_result->LoadExecutable(compiler, aot_options.executor()));
+    std::unique_ptr<OpaqueExecutable> wrapped_executable =
+        test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
     const xla::Literal literal_input =
         xla::LiteralUtil::CreateR0<int32_t>(input);
@@ -1044,8 +1046,8 @@ ENTRY e {
         xla::LiteralUtil::CreateR0<int32_t>(expected_result);
 
     TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                            GetHloRunner().value()->ExecuteWithExecutable(
-                                executable.get(), {&literal_input}));
+                            test_runner_as_hlo_runner().ExecuteWithExecutable(
+                                wrapped_executable.get(), {&literal_input}));
 
     EXPECT_TRUE(LiteralTestUtil::Equal(result, literal_expected_result));
   };
