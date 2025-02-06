@@ -135,15 +135,19 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
   int64_t n = dot_canonical_dims_.n;
   int64_t k = dot_canonical_dims_.k;
 
-  bool transpose_lhs = !dot_canonical_dims_.lhs_canonical;
-  bool transpose_rhs = !dot_canonical_dims_.rhs_canonical;
+  // Decide if a transpose is required based on an XOR of the canonical and
+  // column major flags.
+  bool transpose_lhs = (dot_canonical_dims_.lhs_canonical !=
+                        dot_canonical_dims_.lhs_column_major);
+  bool transpose_rhs = (dot_canonical_dims_.rhs_canonical !=
+                        dot_canonical_dims_.rhs_column_major);
 
-  CHECK_EQ(dot_canonical_dims_.lhs_column_major,
-           dot_canonical_dims_.rhs_column_major);
-  if (!dot_canonical_dims_.lhs_column_major) {
+  if (!dot_canonical_dims_.output_column_major) {
     std::swap(m, n);
     std::swap(lhs, rhs);
     std::swap(transpose_lhs, transpose_rhs);
+    transpose_lhs = !transpose_lhs;
+    transpose_rhs = !transpose_rhs;
   }
 
   PrimitiveType element_type = dot_shape_.lhs_matmul_shape.element_type();

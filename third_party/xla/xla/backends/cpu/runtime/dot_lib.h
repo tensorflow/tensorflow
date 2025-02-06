@@ -75,6 +75,9 @@ struct DotCanonicalDims {
 
   // True if the RHS contraction dimension is 0.
   bool rhs_canonical;
+
+  // True if the output matrix is column major.
+  bool output_column_major;
 };
 
 // Returns buffer uses of the dot operation.
