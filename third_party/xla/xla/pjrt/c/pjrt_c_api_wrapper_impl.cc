@@ -599,13 +599,9 @@ static PJRT_Device* FindDeviceWrapper(
   return nullptr;
 }
 
-// Searches `memory_list` for a PJRT_Memory* that wraps a provided
-// `xla::PjRtMemorySpace *` (`cpp_memory`). If a match is found, that
-// PJRT_Memory* is returned. Otherwise, returns nullptr.
-static PJRT_Memory* FindMemoryWrapper(
-    xla::PjRtMemorySpace* cpp_memory,
-    absl::Span<PJRT_Memory* const> memory_list) {
-  for (PJRT_Memory* memory : memory_list) {
+PJRT_Memory* PJRT_Client_FindMemoryWrapper(xla::PjRtMemorySpace* cpp_memory,
+                                           PJRT_Client* client) {
+  for (PJRT_Memory* memory : client->addressable_memories) {
     if (memory->memory_space == cpp_memory) {
       return memory;
     }
@@ -1994,8 +1990,8 @@ PJRT_Error* PJRT_Buffer_Memory(PJRT_Buffer_Memory_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Buffer_Memory_Args", PJRT_Buffer_Memory_Args_STRUCT_SIZE,
       args->struct_size));
-  args->memory = FindMemoryWrapper(args->buffer->buffer->memory_space(),
-                                   args->buffer->client->addressable_memories);
+  args->memory = PJRT_Client_FindMemoryWrapper(
+      args->buffer->buffer->memory_space(), args->buffer->client);
   if (args->memory == nullptr) {
     return new PJRT_Error{xla::Unimplemented(
         "PJRT_Buffer_Memory not implemented for platform '%s'",
