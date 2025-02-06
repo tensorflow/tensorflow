@@ -15,22 +15,29 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/reduce_scatter_combiner.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-using GpuReduceScatterCombinerTest = HloTestBase;
-
 using ::stream_executor::DeviceDescription;
+using ::testing::Matcher;
+using ::tsl::testing::IsOkAndHolds;
+
+namespace op = xla::testing::opcode_matchers;
+
+using GpuReduceScatterCombinerTest = HloTestBase;
 
 TEST_F(GpuReduceScatterCombinerTest,
        CombinesPipelinedCollectivesUpToSuggestedThreshold) {
@@ -339,6 +346,51 @@ ENTRY entry {
                                          .set_print_operand_shape(false)
                                          .set_print_result_shape(false)),
                     kExpected));
+}
+
+TEST_F(GpuReduceScatterCombinerTest, CombinesSynchronousCollectivesMaximally) {
+  absl::string_view kHloText = R"(
+    HloModule m
+
+    add {
+      p0 = f16[] parameter(0)
+      p1 = f16[] parameter(1)
+      ROOT add = f16[] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f16[20000000]{0} parameter(0)
+      p1 = f16[20000000]{0} parameter(1)
+
+      // 20MB combinable reduce-scatter collectives. Default combiner threshold is 30MB.
+      rs0 = f16[10000000]{0} reduce-scatter(p0), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      rs1 = f16[10000000]{0} reduce-scatter(p1), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+      ROOT result = tuple(rs0, rs1)
+    }
+  )";
+  DeviceDescription device_info;
+  device_info.set_device_memory_size(10000000000);  // 10GB
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  GpuReduceScatterCombiner combiner(
+      device_info, /*default_combine_threshold_in_bytes=*/
+      kDefaultReduceScatterCombineThreshold,
+      /*combine_threshold_in_bytes=*/kDefaultReduceScatterCombineThreshold,
+      /*combine_threshold_count=*/256,
+      /*combine_by_dim=*/false, /*pointer_size=*/4);
+
+  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_sync_collective_combining(true);
+  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
+
+  Matcher<const HloInstruction*> combined_reduce_scatter =
+      op::ReduceScatter(op::Parameter(0), op::Parameter(1));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(combined_reduce_scatter, 0),
+                        op::GetTupleElement(combined_reduce_scatter, 1)));
 }
 
 }  // namespace

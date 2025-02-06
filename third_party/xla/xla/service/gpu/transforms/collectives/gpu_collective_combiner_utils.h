@@ -35,6 +35,10 @@ absl::StatusOr<absl::flat_hash_set<HloInstruction*>> SynchronousCollectives(
     const HloModule& module, int64_t pointer_size,
     const se::DeviceDescription& device_info);
 
+// Returns the maximum available memory on a device.
+int64_t MaxAvailableMemory(const HloModule& module,
+                           const se::DeviceDescription& device_info);
+
 // Suggests a combiner threshold to the caller (combiner). At the moment it only
 // suggests a lower value than a default combiner threshold if it exceeds
 // available memory on a device. If the scheduling of a `module` failed for any

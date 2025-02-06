@@ -120,12 +120,19 @@ absl::StatusOr<absl::flat_hash_set<HloInstruction*>> SynchronousCollectives(
   return sync_collectives;
 }
 
-int64_t ComputeSuggestedCombinerThreshold(
-    const HloModule& module, const se::DeviceDescription& device_info,
-    HloOpcode collective_opcode, int64_t pointer_size) {
+int64_t MaxAvailableMemory(const HloModule& module,
+                           const se::DeviceDescription& device_info) {
   int64_t base_limit = module.config().device_memory_size() != 0
                            ? module.config().device_memory_size()
                            : device_info.device_memory_size();
+  int32_t slop_factor =
+      module.config().debug_options().xla_gpu_memory_limit_slop_factor();
+  return base_limit * slop_factor / 100;
+}
+
+int64_t ComputeSuggestedCombinerThreshold(
+    const HloModule& module, const se::DeviceDescription& device_info,
+    HloOpcode collective_opcode, int64_t pointer_size) {
   int64_t peak_memory_bytes = -1;
   auto mem_schedule = ScheduleGpuModuleWithMemoryScheduler(
       &module, pointer_size, &peak_memory_bytes);
@@ -135,9 +142,7 @@ int64_t ComputeSuggestedCombinerThreshold(
     return GetDefaultValue(collective_opcode);
   }
 
-  int32_t slop_factor =
-      module.config().debug_options().xla_gpu_memory_limit_slop_factor();
-  return base_limit * slop_factor / 100 - peak_memory_bytes;
+  return MaxAvailableMemory(module, device_info) - peak_memory_bytes;
 }
 
 absl::Status AppendPipelinedInstruction(HloInstruction* instr) {

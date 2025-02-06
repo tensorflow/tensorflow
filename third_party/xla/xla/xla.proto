@@ -530,6 +530,9 @@ message DebugOptions {
   // Pre-existing block-level fusions are left unmodified.
   bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
 
+  // If true, enable synchronous collective combining.
+  bool xla_gpu_experimental_enable_sync_collective_combining = 366;
+
   // When enabled, the PriorityFusion pass will try to make Triton fusions first
   // and foremost where it is possible.
   //
@@ -1138,7 +1141,7 @@ message DebugOptions {
 
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
-  // Next id: 366
+  // Next id: 367
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
