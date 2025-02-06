@@ -19,6 +19,7 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
