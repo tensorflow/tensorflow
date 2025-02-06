@@ -1213,7 +1213,8 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
     QuantizableResult,
     SameOperandsAndResultsScale,
     PredOpTrait<"params and output must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    DynamicRangeQuantizedOpInterface]> {
   let summary = "Gather_nd operator";
 
   let description = [{
@@ -1228,6 +1229,11 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
   let results = (outs
     TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$output
   );
+
+  let extraClassDeclaration = [{
+    // DynamicRangeQuantizedOpInterface:
+    std::vector<int> GetQuantizableOperandIndices() { return {0}; }
+  }];
 }
 
 def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
