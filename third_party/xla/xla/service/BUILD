@@ -588,10 +588,10 @@ xla_cc_test(
     name = "hlo_opcode_test",
     srcs = ["hlo_opcode_test.cc"],
     deps = [
-        "//xla:test",
-        "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
     ],
 )
 
