@@ -149,10 +149,10 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:refcount",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla/tsl/platform:logging",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -282,8 +282,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -304,7 +304,7 @@ cc_library(
     deps = [
         ":parallel_executor_interface",
         "//tensorflow/core/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -372,11 +372,11 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor/tpu:c_api_decl",
         "@local_xla//xla/stream_executor/tpu:tpu_platform_interface",
         "@local_xla//xla/stream_executor/tpu:tpu_topology_external",
+        "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/util:env_var",
     ] + tf_dtensor_tpu_dependencies(),
 )

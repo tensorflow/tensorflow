@@ -282,9 +282,9 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/builder:sharding_builder",
+        "@local_xla//xla/tsl/platform:status",
     ],
     alwayslink = 1,
 )
