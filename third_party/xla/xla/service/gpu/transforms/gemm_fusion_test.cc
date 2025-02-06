@@ -1247,6 +1247,22 @@ e {
                                     m::GetTupleElement()))));
 }
 
+TEST_F(GemmFusionTest, DoNotFuseNonProfitableDot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = bf16[1024] parameter(0)
+  b0 = bf16[16,64] bitcast(p0)
+  p1 = bf16[1024] parameter(1)
+  b1 = bf16[64,16] bitcast(p1)
+  ROOT d = bf16[16,16] dot(b0, b1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})")
+                    .value();
+  EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
+}
+
 // A test fixture class for testing the threshold for small matrices.
 class SmallDotGemmFusionTest : public GemmFusionTest {
  public:
