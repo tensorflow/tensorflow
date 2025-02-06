@@ -463,6 +463,8 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
         ::qnn::TensorWrapper* tensor_wrapper{nullptr};
         LITERT_RETURN_IF_ERROR(
             ConvertTensor(input, tensor_pool, tensor_wrapper));
+        // add into map to capture re-used static tensor
+        litert_tensor_to_wrapper.emplace(input.Get(), tensor_wrapper);
         input_tensors.emplace_back(*tensor_wrapper);
       } else {
         input_tensors.emplace_back(*(it->second));
