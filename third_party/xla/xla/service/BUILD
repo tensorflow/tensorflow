@@ -1284,6 +1284,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/transforms/collectives:async_collective_creator",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
