@@ -295,11 +295,9 @@ TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   tflite::PauseHeapMonitoring(/*pause=*/true);
 #endif
-  size_t alloc_bytes = num_bytes;
+  // This buffer may be consumed by XNNPack.
+  size_t alloc_bytes = num_bytes + /*XNN_EXTRA_BYTES=*/16;
   // TODO(b/145340303): Tensor data should be aligned.
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-  alloc_bytes += 16;  // XNNPACK_EXTRA_BYTES = 16
-#endif
   if (!tensor->data.data) {
     tensor->data.data = (char*)malloc(alloc_bytes);
 #ifdef TF_LITE_TENSORFLOW_PROFILER
@@ -370,6 +368,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "STRING";
     case kTfLiteFloat16:
       return "FLOAT16";
+    case kTfLiteBFloat16:
+      return "BFLOAT16";
     case kTfLiteFloat64:
       return "FLOAT64";
     case kTfLiteResource:
@@ -383,42 +383,6 @@ const char* TfLiteTypeGetName(TfLiteType type) {
 }
 
 TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
-
-#ifndef TF_LITE_STATIC_MEMORY
-TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
-    const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
-  if (!opaque_delegate_builder) return nullptr;
-
-  TfLiteDelegate* result = new TfLiteDelegate{};
-  result->opaque_delegate_builder = new TfLiteOpaqueDelegateBuilder{};
-  *(result->opaque_delegate_builder) = *opaque_delegate_builder;
-
-  return reinterpret_cast<TfLiteOpaqueDelegate*>(result);
-}
-
-void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* opaque_delegate) {
-  if (!opaque_delegate) return;
-
-  const TfLiteDelegate* tflite_delegate =
-      reinterpret_cast<const TfLiteDelegate*>(opaque_delegate);
-  delete tflite_delegate->opaque_delegate_builder;
-  delete tflite_delegate;
-}
-#endif  // TF_LITE_STATIC_MEMORY
-
-void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
-  if (!delegate) return nullptr;
-
-  // The following cast is safe only because this code is part of the
-  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
-  // 'TfLiteOpaqueDelegate' and 'TfLiteDelegate' being equivalent.
-  const auto* tflite_delegate =
-      reinterpret_cast<const TfLiteDelegate*>(delegate);
-
-  if (!tflite_delegate->opaque_delegate_builder) return tflite_delegate->data_;
-
-  return tflite_delegate->opaque_delegate_builder->data;
-}
 
 // Returns a tensor data allocation strategy.
 TfLiteAllocationStrategy TfLiteTensorGetAllocationStrategy(

@@ -40,7 +40,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.types import internal
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import object_identity
@@ -1455,7 +1454,6 @@ class _BoundedTensorSpecCodec:
 nested_structure_coder.register_codec(_BoundedTensorSpecCodec())
 
 trace_type.register_serializable(BoundedTensorSpec)
-_pywrap_utils.RegisterType("TensorSpec", TensorSpec)
 
 # Note: we do not include Tensor names when constructing TypeSpecs.
 type_spec.register_type_spec_from_value_converter(

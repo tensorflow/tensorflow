@@ -171,13 +171,14 @@ bool CommonSubgraphElimination::CanDedup(const NodeDef& node) const {
   return IsFreeOfSideEffect(node);
 }
 
-Status CommonSubgraphElimination::DedupComputations(GraphDef* optimized_graph) {
+absl::Status CommonSubgraphElimination::DedupComputations(
+    GraphDef* optimized_graph) {
   CanonicalizeGraph(optimized_graph);
 
   GraphTopologyView graph_view;
   if (!graph_view.InitializeFromGraph(*optimized_graph).ok()) {
     LOG(WARNING) << "Failed to initialize GraphTopologyView.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // If either node or rep feeds an inplace op, deduping them may cause data
@@ -270,12 +271,12 @@ Status CommonSubgraphElimination::DedupComputations(GraphDef* optimized_graph) {
     EraseNodesFromGraph(duplicates, optimized_graph);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CommonSubgraphElimination::Optimize(Cluster* /*cluster*/,
-                                           const GrapplerItem& item,
-                                           GraphDef* optimized_graph) {
+absl::Status CommonSubgraphElimination::Optimize(Cluster* /*cluster*/,
+                                                 const GrapplerItem& item,
+                                                 GraphDef* optimized_graph) {
   // Set up helper data structures.
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();

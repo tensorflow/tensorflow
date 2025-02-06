@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SelfAdjointEigV2"
   input_arg {
     name: "input"

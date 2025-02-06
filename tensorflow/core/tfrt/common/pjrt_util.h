@@ -16,12 +16,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_COMMON_PJRT_UTIL_H_
 
 #include <memory>
-#include <optional>
-#include <set>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tfrt/common/pjrt_state.h"
 
 namespace tensorflow {
 
@@ -29,12 +30,16 @@ namespace tensorflow {
 // for this device_type already exists, the existing PJRT client will not be
 // destroyed, and will be kept alive in an "unused client" vector. PJRT API
 // semantics require the PJRT client to outlive PJRT buffers.
-Status SetPjRtClientInTFGlobalResourceManager(
+absl::Status SetPjRtClientInTFGlobalResourceManager(
     const DeviceType& device_type, std::unique_ptr<xla::PjRtClient> client);
 
 // Gets (the most recent) PJRT client for device_type from
 // TFGlobalResourceManager.
-StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
+absl::StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
+
+absl::Status SetPjRtGpuClientCreationInfoInTFGlobalResourceManager(
+    std::unique_ptr<PjRtGpuClientCreationInfo> info);
+absl::StatusOr<PjRtGpuClientCreationInfo*> GetPjRtGpuClientCreationInfo();
 
 }  // namespace tensorflow
 

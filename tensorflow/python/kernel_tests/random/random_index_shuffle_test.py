@@ -17,9 +17,11 @@
 import itertools
 
 from absl.testing import parameterized
+
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_random_index_shuffle_ops
 from tensorflow.python.ops import math_ops
@@ -97,6 +99,24 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
     new_index = shuffle(constant_op.constant(2))
     self.assertAllGreaterEqual(new_index, 0)
     self.assertAllLessEqual(new_index, 10)
+
+  def test_negative_index(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'index must be >= 0'
+    ):
+      self.evaluate(stateless.index_shuffle(-1, seed=(1, 2), max_index=10))
+
+  def test_negative_max_index(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'max_index must be >= 0'
+    ):
+      self.evaluate(stateless.index_shuffle(0, seed=(1, 2), max_index=-1))
+
+  def test_index_greater_than_max_index(self):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'max_index must be >= index'
+    ):
+      self.evaluate(stateless.index_shuffle(5, seed=(1, 2), max_index=4))
 
 
 if __name__ == '__main__':

@@ -15,16 +15,28 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_RUNTIME_RUNTIME_H_
 #define TENSORFLOW_CORE_TFRT_RUNTIME_RUNTIME_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tsl/platform/errors.h"
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
@@ -54,9 +66,12 @@ class ModelRuntimeContext {
 
   absl::string_view export_dir() const { return export_dir_; }
 
-  const MetaGraphDef* meta_graph_def() const { return meta_graph_def_; }
-  void set_meta_graph_def(const MetaGraphDef* meta_graph_def) {
-    meta_graph_def_ = meta_graph_def;
+  const GraphDef* graph_def() const { return graph_def_; }
+  void set_graph_def(const GraphDef* graph_def) { graph_def_ = graph_def; }
+
+  const CallableOptions* callable_options() const { return callable_options_; }
+  void set_callable_options(const CallableOptions* callable_options) {
+    callable_options_ = callable_options;
   }
 
   FunctionLibraryDefinition* function_library_definition() const {
@@ -66,21 +81,42 @@ class ModelRuntimeContext {
     flib_def_ = flib_def;
   }
 
+  tensorflow::DeviceMgr* device_mgr() const { return device_mgr_; }
+  void set_device_mgr(tensorflow::DeviceMgr* device_mgr) {
+    device_mgr_ = device_mgr;
+  }
+
+  bool is_local_session() const { return is_local_session_; }
+
+  void set_is_local_session(bool is_local_session) {
+    is_local_session_ = is_local_session;
+  }
+
   tfrt::ResourceContext& resource_context() { return *resource_context_; }
 
   const GraphExecutionOptions& graph_execution_options() const {
     return *graph_execution_options_;
   }
 
+  absl::string_view checkpoint_path() const { return checkpoint_path_; }
+
+  void set_checkpoint_path(absl::string_view checkpoint_path) {
+    checkpoint_path_ = checkpoint_path;
+  }
+
  private:
   const GraphExecutionOptions* graph_execution_options_ = nullptr;
 
   std::string export_dir_;
-  const MetaGraphDef* meta_graph_def_ = nullptr;
-
+  const GraphDef* graph_def_ = nullptr;
+  const CallableOptions* callable_options_ = nullptr;
   tfrt::ResourceContext* resource_context_ = nullptr;
+  tensorflow::DeviceMgr* device_mgr_ = nullptr;
 
   FunctionLibraryDefinition* flib_def_ = nullptr;
+
+  bool is_local_session_ = false;
+  std::string checkpoint_path_;
 };
 
 // This defines the runtime abstraction in tensorflow for TFRT. It is supposed
@@ -168,13 +204,14 @@ class Runtime {
   }
 
   void SetCreateRequestQueueFn(
-      std::function<StatusOr<std::unique_ptr<WorkQueueInterface>>(int64_t)>
+      std::function<
+          absl::StatusOr<std::unique_ptr<WorkQueueInterface>>(int64_t)>
           create_request_queue_fn) {
     create_request_queue_fn_ = std::move(create_request_queue_fn);
   }
 
   // Creates a work queue for a request.
-  StatusOr<std::unique_ptr<WorkQueueInterface>> CreateRequestQueue(
+  absl::StatusOr<std::unique_ptr<WorkQueueInterface>> CreateRequestQueue(
       int64_t request_id) const {
     if (create_request_queue_fn_) {
       return create_request_queue_fn_(request_id);
@@ -188,7 +225,7 @@ class Runtime {
                    WorkQueueInterface* work_queue);
 
   std::unique_ptr<tfrt::CoreRuntime> core_runtime_;
-  std::function<StatusOr<std::unique_ptr<WorkQueueInterface>>(int64_t)>
+  std::function<absl::StatusOr<std::unique_ptr<WorkQueueInterface>>(int64_t)>
       create_request_queue_fn_;
   WorkQueueInterface* work_queue_ = nullptr;
   std::vector<std::function<absl::Status(ModelRuntimeContext&)>>

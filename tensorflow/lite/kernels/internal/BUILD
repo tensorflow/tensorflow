@@ -1,8 +1,8 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", "tflite_portable_test_suite_combined")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
@@ -39,6 +39,14 @@ NEON_FLAGS_IF_APPLICABLE = select({
         "-O3",
     ],
 })
+
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = ["compatibility.h"],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
 
 cc_library(
     name = "compatibility",
@@ -177,6 +185,20 @@ config_setting(
 )
 
 config_setting(
+    name = "visionos_arm64",
+    values = {
+        "cpu": "visionos_arm64",
+    },
+)
+
+config_setting(
+    name = "visionos_sim_arm64",
+    values = {
+        "cpu": "visionos_sim_arm64",
+    },
+)
+
+config_setting(
     name = "k8",
     values = {
         "cpu": "k8",
@@ -273,6 +295,8 @@ selects.config_setting_group(
         ":ios_sim_arm64",
         ":darwin_arm64",
         ":raspberry_pi_with_neon",
+        ":visionos_arm64",
+        ":visionos_sim_arm64",
     ] + tflite_extra_arm_config_settings(),
 )
 
@@ -405,7 +429,7 @@ cc_library(
         ":types",
         "//tensorflow/lite/core/c:common",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/framework/convolution:eigen_spatial_convolutions-inl",
+        "@local_xla//xla/tsl/framework/convolution:eigen_spatial_convolutions-inl",
     ],
 )
 
@@ -429,6 +453,8 @@ selects.config_setting_group(
         ":ios_arm64",
         ":ios_arm64e",
         ":ios_sim_arm64",
+        ":visionos_arm64",
+        ":visionos_sim_arm64",
     ],
 )
 
@@ -643,7 +669,9 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":common",
+        ":compatibility",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -758,7 +786,9 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
@@ -854,7 +884,9 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
@@ -884,6 +916,7 @@ cc_library_with_tflite(
     copts = tflite_copts(),
     tflite_deps = [
         "//tensorflow/lite/c:c_api_experimental_without_op_resolver",
+        "//tensorflow/lite:namespace",
     ],
     deps = [
         ":types",
@@ -997,6 +1030,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:op_macros",
+        "@com_google_absl//absl/base:prefetch",
         "@ruy//ruy/profiler:instrumentation",
     ],
 )
@@ -1432,6 +1466,7 @@ cc_test(
     srcs = ["per_channel_dequantize_test.cc"],
     deps = [
         ":reference_base",
+        ":tensor_utils_no_eigen",
         ":types",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
@@ -1497,9 +1532,7 @@ filegroup(
     srcs = glob([
         "optimized/*.h",
     ]),
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
@@ -1507,9 +1540,7 @@ filegroup(
     srcs = glob([
         "reference/*.h",
     ]),
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
@@ -1517,14 +1548,12 @@ filegroup(
     srcs = glob([
         "*.h",
     ]),
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 transitive_hdrs(
     name = "nnapi_external_headers",
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         "@eigen_archive//:eigen3",
         "@gemmlowp",

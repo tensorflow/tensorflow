@@ -40,13 +40,12 @@ package tensorflow.tpu;
 // To find out which row of the saved variable corresponds to a given row of an
 // embedding table, you will need the information contained in this message. If
 // table_row is the row in the original unsharded table, then:
-//    rotated_row = (table_row + rotation_offset) % unsharded_padded_shape[0]
-//    sparse_core_shard = rotated_row % num_sparse_cores
+//    sparse_core_shard = (row + sparse_core_shard_rotation) % num_sparse_cores
 //    sparse_cores_per_partition = num_sparse_cores / num_partitions
 //    partition = sparse_core_shard // sparse_cores_per_partition
 //    sparse_core_shard_within_partition =
 //        sparse_core_shard % sparse_cores_per_partition
-//    row_within_sparse_core_shard = rotated_row // num_sparse_cores +
+//    row_within_sparse_core_shard = row // num_sparse_cores +
 //        sparse_core_shard_row_offset
 //    row_within_partition =
 //        total_rows_per_sparse_core_shard * sparse_core_shard_within_partition
@@ -86,13 +85,21 @@ message SparseCoreTableLayout {
 
   // It's common that row 0 of an embedding will be particularly hot. To
   // prevent this from landing in the same sparse core shard for all tables,
-  // different tables stack have their rows rotated around:
-  //    row_index = (row + rotation_offset) % unsharded_padded_rows[0].
+  // different tables stack rotate which sparse core they go on:
+  //    sparse_core_shard = (row + sparse_core_shard_rotation) %
+  //    num_sparse_cores
+  // Note that this is rotating around the sparse core shards, not rotating
+  // around the whole table.
   // As of 2023, this is usually set so different tables have row 0 on different
-  // partitions.  Because of mod sharding, this means that
-  //    sparse_cores_per_partition = num_sparse_cores / num_partitions
-  //    rotation_offset = table_index * sparse_cores_per_partition
-  int64 rotation_offset = 9;
+  // partitions.
+  //    sparse_core_shard_rotation = table_index * sparse_cores_per_partition
+  int64 sparse_core_shard_rotation = 9;
+
+  // The batch size per sparsecore for this table. This combines the batch sizes
+  // of all the features pointing to this table.
+  int64 per_sparse_core_batch_size = 10;
+  // Number of features that refer to this table.
+  int64 num_features = 11;
 }
 
 message SparseCoreTableLayouts {

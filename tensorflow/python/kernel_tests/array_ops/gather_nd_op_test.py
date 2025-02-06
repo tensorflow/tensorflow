@@ -226,6 +226,45 @@ class GatherNdTest(test.TestCase):
           r"indices\[0,1\] = \[7\] does not index into param shape \[3\]"):
         self.evaluate(gather_nd)
 
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla("XLA does not have assertions in kernels.")
+  def testBadIndicesCPUWithDefaultPolicy(self):
+    with self.session(use_gpu=False):
+      params = [0, 1, 2]
+      indices = [[[0], [7]]]  # Make this one higher rank
+      gather_nd = array_ops.gather_nd(
+          params, indices, bad_indices_policy="DEFAULT"
+      )
+      with self.assertRaisesOpError(
+          r"indices\[0,1\] = \[7\] does not index into param shape \[3\]"
+      ):
+        self.evaluate(gather_nd)
+
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla("XLA does not have assertions in kernels.")
+  def testBadIndicesCPUWithExplicitErrorPolicy(self):
+    with self.session(use_gpu=False):
+      params = [0, 1, 2]
+      indices = [[[0], [7]]]  # Make this one higher rank
+      gather_nd = array_ops.gather_nd(
+          params, indices, bad_indices_policy="ERROR"
+      )
+      with self.assertRaisesOpError(
+          r"indices\[0,1\] = \[7\] does not index into param shape \[3\]"
+      ):
+        self.evaluate(gather_nd)
+
+  @test_util.disable_xla("XLA does not have assertions in kernels.")
+  def testBadIndicesCPUIgnore(self):
+    with self.session(use_gpu=False):
+      params = [10, 1, 2]
+      indices = [[0], [7], [1]]  # Make this one higher rank
+      gather_nd = array_ops.gather_nd(
+          params, indices, bad_indices_policy="IGNORE"
+      )
+      gather_nd_val = self.evaluate(gather_nd)
+    self.assertAllEqual(gather_nd_val, [10, 0, 1])
+
   def _disabledTestBadIndicesGPU(self):
     # TODO disabled due to different behavior on GPU and CPU
     # On GPU the bad indices do not raise error but fetch 0 values

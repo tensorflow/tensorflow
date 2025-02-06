@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,14 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_BUFFER_VALUE_H_
 #define XLA_SERVICE_BUFFER_VALUE_H_
 
+#include <cstdint>
 #include <functional>
+#include <ostream>
 #include <string>
 
-#include "absl/types/span.h"
+#include "absl/base/attributes.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
@@ -34,7 +36,7 @@ namespace xla {
 // TODO(b/78906445) Delete this class when TuplePointsToAnalysis is unused.
 //
 // XLA arrays are trivially a single BufferValue. Tuples are made up of more
-// than one BufferValue: an BufferValue for the pointer vector, and an
+// than one BufferValue: a BufferValue for the pointer vector, and a
 // BufferValue for each child element.
 //
 // Every BufferValue is defined by a particular instruction and most

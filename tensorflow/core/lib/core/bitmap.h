@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_CORE_BITMAP_H_
 #define TENSORFLOW_CORE_LIB_CORE_BITMAP_H_
 
-#include "tsl/lib/core/bitmap.h"
+#include "xla/tsl/lib/core/bitmap.h"
 
 namespace tensorflow {
 namespace core {

@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
@@ -401,9 +403,9 @@ void RemoveUnidirectionalSequenceOps(std::stack<Operator*> uni_sequence_ops,
 }
 
 template <typename T>
-::tensorflow::Status GroupDynamicSequenceOps(Model* model, std::size_t op_index,
-                                             OperatorType operator_type,
-                                             bool* modified) {
+absl::Status GroupDynamicSequenceOps(Model* model, std::size_t op_index,
+                                     OperatorType operator_type,
+                                     bool* modified) {
   *modified = false;
 
   // We assume there's a concatenation right after the bidirectional sequence
@@ -413,14 +415,14 @@ template <typename T>
   if (final_concat_op->type != OperatorType::kConcatenation &&
       final_concat_op->type != OperatorType::kConcat &&
       final_concat_op->type != OperatorType::kConcatV2) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // for bw, there will be a reverse op at the end.
   Operator *fw_sequence_output, *bw_sequence_output;
   if (!MatchDynamicBidirectionalSequenceOutputs(
           final_concat_op, *model, &fw_sequence_output, &bw_sequence_output)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Find all upstream unidirectional sequence ops.
@@ -439,14 +441,14 @@ template <typename T>
       !FindUnidirectionalSequenceOp(
           *model, *bw_sequence_output, unidirectional_op_type,
           &bw_unidirectional_sequence_ops, &first_bw_sequence_input)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (!CheckTwoUnidirectionalSequenceOpsAreValid(
           *model, fw_unidirectional_sequence_ops,
           bw_unidirectional_sequence_ops, first_fw_sequence_input,
           first_bw_sequence_input, /*is_dynamic_rnn=*/true)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<T> bidirectional_sequence_ops;
@@ -470,14 +472,14 @@ template <typename T>
   // Only keep the fw lstm's input.
   DeleteOpAndArrays(model, first_bw_sequence_input);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-::tensorflow::Status GroupBidirectionalSequenceLstm::Run(Model* model,
-                                                         std::size_t op_index,
-                                                         bool* modified) {
+absl::Status GroupBidirectionalSequenceLstm::Run(Model* model,
+                                                 std::size_t op_index,
+                                                 bool* modified) {
   *modified = false;
   // Bidirectional sequence lstm will generate two separate unidirectional
   // sequence lstm ops, for static bidirectional sequence lstm, there will be
@@ -488,7 +490,7 @@ template <typename T>
   if (final_concat_op->type != OperatorType::kConcatenation &&
       final_concat_op->type != OperatorType::kConcat &&
       final_concat_op->type != OperatorType::kConcatV2) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Match fw unidirectional lstm outputs and bw unidirectional lstm outputs:
@@ -496,7 +498,7 @@ template <typename T>
   Operator *fw_lstm_output, *bw_lstm_output;
   if (!MatchTwoUnpackOps(*final_concat_op, *model, &fw_lstm_output,
                          &bw_lstm_output)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Find all upstream unidirectional lstm ops.
@@ -509,14 +511,14 @@ template <typename T>
       !FindUnidirectionalSequenceOp(
           *model, *bw_lstm_output, OperatorType::kUnidirectionalSequenceLstm,
           &bw_unidirectional_sequence_lstm_ops, &first_bw_lstm_input)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (!CheckTwoUnidirectionalSequenceOpsAreValid(
           *model, fw_unidirectional_sequence_lstm_ops,
           bw_unidirectional_sequence_lstm_ops, first_fw_lstm_input,
           first_bw_lstm_input, /*is_dynamic_rnn=*/false)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<BidirectionalSequenceLstmOperator*>
@@ -549,12 +551,12 @@ template <typename T>
   // Only keep the fw lstm's pack input.
   DeleteOpAndArrays(model, first_bw_lstm_input);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
-::tensorflow::Status GroupBidirectionalSequenceRnn::Run(Model* model,
-                                                        std::size_t op_index,
-                                                        bool* modified) {
+absl::Status GroupBidirectionalSequenceRnn::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
   *modified = false;
   // Bidirectional sequence rnn will generate two separate unidirectional
   // sequence rnn ops, for static bidirectional sequence rnn, there will be
@@ -565,7 +567,7 @@ template <typename T>
   if (final_concat_op->type != OperatorType::kConcatenation &&
       final_concat_op->type != OperatorType::kConcat &&
       final_concat_op->type != OperatorType::kConcatV2) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Match fw unidirectional rnn outputs and bw unidirectional rnn outputs:
@@ -573,7 +575,7 @@ template <typename T>
   Operator *fw_rnn_output, *bw_rnn_output;
   if (!MatchTwoUnpackOps(*final_concat_op, *model, &fw_rnn_output,
                          &bw_rnn_output)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Find all upstream unidirectional rnn ops.
@@ -586,14 +588,14 @@ template <typename T>
       !FindUnidirectionalSequenceOp(
           *model, *bw_rnn_output, OperatorType::kUnidirectionalSequenceRnn,
           &bw_unidirectional_sequence_rnn_ops, &first_bw_rnn_input)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (!CheckTwoUnidirectionalSequenceOpsAreValid(
           *model, fw_unidirectional_sequence_rnn_ops,
           bw_unidirectional_sequence_rnn_ops, first_fw_rnn_input,
           first_bw_rnn_input, /*is_dynamic_rnn=*/false)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<BidirectionalSequenceRnnOperator*> bidirectional_sequence_rnn_ops;
@@ -624,17 +626,19 @@ template <typename T>
   // Only keep the fw rnn's pack input.
   DeleteOpAndArrays(model, first_bw_rnn_input);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
-::tensorflow::Status GroupDynamicBidirectionalSequenceRnn::Run(
-    Model* model, std::size_t op_index, bool* modified) {
+absl::Status GroupDynamicBidirectionalSequenceRnn::Run(Model* model,
+                                                       std::size_t op_index,
+                                                       bool* modified) {
   return GroupDynamicSequenceOps<BidirectionalSequenceRnnOperator*>(
       model, op_index, OperatorType::kBidirectionalSequenceRnn, modified);
 }
 
-::tensorflow::Status GroupDynamicBidirectionalSequenceLstm::Run(
-    Model* model, std::size_t op_index, bool* modified) {
+absl::Status GroupDynamicBidirectionalSequenceLstm::Run(Model* model,
+                                                        std::size_t op_index,
+                                                        bool* modified) {
   return GroupDynamicSequenceOps<BidirectionalSequenceLstmOperator*>(
       model, op_index, OperatorType::kBidirectionalSequenceLstm, modified);
 }

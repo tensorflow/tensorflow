@@ -13,16 +13,23 @@
 # limitations under the License.
 # ==============================================================================
 
+# buildifier: disable=out-of-order-load
+
+# Placeholder: load proto_library
+# Placeholder: load java_lite_proto_library
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
+
+# copybara:comment_begin(oss-only)
+load("@local_xla//xla/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
+# copybara:comment_end
+
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
-load(":build_defs.bzl", "flatbuffer_schema_compat_test")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite", "cc_test_with_tflite")
 
-# copybara:comment_begin(oss-only)
-load("@local_tsl//tsl/platform/default:build_config.bzl", "tf_proto_library_py")
-# copybara:comment_end
+# copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
+load(":build_defs.bzl", "flatbuffer_schema_compat_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -233,24 +240,28 @@ cc_library_with_tflite(
     deps = ["//tensorflow/lite/core/acceleration/configuration:nnapi_plugin"],
 )
 
-cc_library(
-    name = "hexagon_plugin",
-    srcs = ["hexagon_plugin.cc"],
-    deps = [
-        ":configuration_fbs",
-        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
-        "@com_google_absl//absl/memory",
-    ] + select({
-        "//third_party/bazel_platforms/cpu:aarch64": [
-            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
-        ],
-        "//third_party/bazel_platforms/cpu:armv7": [
-            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
-        ],
-        "//conditions:default": [],
-    }),
-    alwayslink = 1,  # For registration to always run.
-)
+# Commented under b/279852433 because caused an error in the OSS
+# TODO(zhurakovskyi): Uncomment when fixed.
+# copybara:uncomment_begin
+# cc_library(
+#     name = "hexagon_plugin",
+#     srcs = ["hexagon_plugin.cc"],
+#     deps = [
+#         ":configuration_fbs",
+#         "@com_google_absl//absl/memory",
+#         "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
+#     ] + select({
+#         "//third_party/bazel_platforms/cpu:aarch64": [
+#             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+#         ],
+#         "//third_party/bazel_platforms/cpu:armv7": [
+#             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+#         ],
+#         "//conditions:default": [],
+#     }),
+#     alwayslink = 1,  # For registration to always run.
+# )
+# copybara:uncomment_end
 
 cc_library(
     name = "gpu_plugin",
@@ -275,11 +286,8 @@ cc_library(
         "//conditions:default": [],
     }),
     visibility = [
-        "//tensorflow/lite/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/core/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
         "//tensorflow/lite/experimental/acceleration/configuration:__pkg__",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [
         ":configuration_fbs",
@@ -322,28 +330,53 @@ cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "xnnpack_plugin",
-    srcs = ["xnnpack_plugin.cc"],
-    deps = [
-        ":configuration_fbs",
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "@com_google_absl//absl/base:log_severity",
-        "@com_google_absl//absl/memory",
-    ],
-    alwayslink = 1,  # For registration to always run.
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/lite/core/acceleration/configuration:xnnpack_plugin"],
 )
 
+cc_test_with_tflite(
+    name = "xnnpack_plugin_with_tflite_test",
+    srcs = ["xnnpack_plugin_test.cc"],
+    # The variant of this test that links against TF Lite in Play services
+    # isn't portable to iOS / Mac or Android, because it relies on a separate
+    # shared library that isn't included in the executable, and the testing
+    # infrastructure for iOS and Android doesn't propagate data dependencies
+    # to the test device.  So we disable this test on those devices.
+    # TODO(b/306161304): ideally we ought to apply these tags only to the
+    # variant for TF Lite in Play services.  In the mean time, we apply those
+    # tags to the whole test, but also duplicate the test below using cc_test
+    # without the tags.
+    tags = [
+        "no_mac",
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    tflite_deps = [
+        ":xnnpack_plugin",
+        "//tensorflow/lite:test_util",
+        "//tensorflow/lite/acceleration/configuration:delegate_registry",
+    ],
+    deps = [
+        ":configuration_fbs",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+        "@pthreadpool",
+    ],
+)
+
+# This duplicates xnnnpack_plugin_with_tflite_test above, but without the tags,
+# to ensure that this test does get run on iOS and Android.
 cc_test(
     name = "xnnpack_plugin_test",
     srcs = ["xnnpack_plugin_test.cc"],
     deps = [
         ":configuration_fbs",
         ":xnnpack_plugin",
-        "//tensorflow/lite/core/acceleration/configuration:delegate_registry",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite:test_util",
+        "//tensorflow/lite/acceleration/configuration:delegate_registry",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
         "@pthreadpool",

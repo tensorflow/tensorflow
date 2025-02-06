@@ -12,13 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cassert>
+#include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <vector>
 
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/core/framework/bfloat16.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 // This is a fuzzer for tensorflow::FloatToBFloat16 and
 // tensorflow::BFloat16ToFloat.

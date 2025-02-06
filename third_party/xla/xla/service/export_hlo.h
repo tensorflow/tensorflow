@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_description.pb.h"
 
@@ -38,18 +39,20 @@ class SymbolUploader {
   virtual ~SymbolUploader() = default;
 
   // Returns a string identifying the uploaded HLO, or empty if the upload did
-  // not complete. We use optional rather than StatusOr because an upload error
-  // is not a compiler error.
+  // not complete. We use optional rather than absl::StatusOr because an upload
+  // error is not a compiler error.
   virtual std::optional<std::string> MaybeUploadUnoptimizedHloModule(
       HloModule* module,
       const stream_executor::GpuTargetConfigProto& gpu_target_config) = 0;
 
   virtual std::optional<std::string> MaybeUploadOptimizedHloModule(
-      HloModule* module) = 0;
+      HloModule* module, const AutotuneResults& autotune_results) = 0;
 
   virtual void MaybeUploadSymbolMapping(
       absl::string_view unoptimized_fingerprint,
       absl::string_view optimized_fingerprint) = 0;
+
+  virtual void WaitForUploads() = 0;
 };
 
 // Registers a single process-wide XSymbolUploader to use. The registry is used
@@ -86,10 +89,10 @@ inline std::optional<std::string> MaybeUploadUnoptimizedGpuSymbols(
 }
 
 inline std::optional<std::string> MaybeUploadOptimizedGpuSymbols(
-    HloModule* module) {
+    HloModule* module, const AutotuneResults& autotune_results) {
   if (SymbolUploader* uploader = GetGlobalSymbolUploaderRegistry().uploader();
       uploader != nullptr) {
-    return uploader->MaybeUploadOptimizedHloModule(module);
+    return uploader->MaybeUploadOptimizedHloModule(module, autotune_results);
   }
 
   return std::nullopt;
@@ -102,6 +105,13 @@ inline void MaybeUploadGpuSymbolMapping(
       uploader != nullptr) {
     return uploader->MaybeUploadSymbolMapping(unoptimized_fingerprint,
                                               optimized_fingerprint);
+  }
+}
+
+inline void MaybeWaitForUploads() {
+  if (SymbolUploader* uploader = GetGlobalSymbolUploaderRegistry().uploader();
+      uploader != nullptr) {
+    uploader->WaitForUploads();
   }
 }
 

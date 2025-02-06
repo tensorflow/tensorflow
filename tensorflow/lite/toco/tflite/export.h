@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/log.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/util.h"
@@ -39,11 +42,11 @@ struct ExportParams {
 
 // Transform the given tf.mini model into a TF Lite flatbuffer and deposit the
 // result in the given string.
-tensorflow::Status Export(const Model& model, std::string* output_file_contents,
-                          const ExportParams& params);
+absl::Status Export(const Model& model, std::string* output_file_contents,
+                    const ExportParams& params);
 
 // Export API with custom TFLite operator mapping.
-tensorflow::Status Export(
+absl::Status Export(
     const Model& model, std::string* output_file_contents,
     const ExportParams& params,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type);

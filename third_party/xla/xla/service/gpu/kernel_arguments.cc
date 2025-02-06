@@ -1,4 +1,4 @@
-/*Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/*Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,50 +14,66 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/kernel_arguments.h"
 
-#include <utility>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <utility>
+#include <vector>
 
-#include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "xla/mlir_hlo/transforms/gpu_passes.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
-StatusOr<KernelArgument> KernelArgument::Create(
-    absl::Span<const BufferAllocation> allocations, mlir::Value value,
-    bool is_written) {
-  TF_ASSIGN_OR_RETURN(
-      auto slice, xla::gpu::GetAllocationSlice(value, allocations, nullptr));
-  return KernelArgument(value, GetShape(value), slice, is_written);
+absl::StatusOr<KernelArguments> KernelArguments::Create(
+    const BufferAssignment& buffer_assignment,
+    const HloInstruction* hlo_instruction,
+    absl::Span<const HloInstruction* const> needed_operands, bool dedup) {
+  std::vector<KernelArgument> kernel_arguments;
+  for (const HloInstruction* operand : needed_operands) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                        buffer_assignment.GetUniqueSlice(operand, {}));
+    kernel_arguments.emplace_back(
+        KernelArgument(operand->shape(), slice, /*written=*/false));
+  }
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      hlo_instruction->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray()) return absl::OkStatus();
+
+        TF_ASSIGN_OR_RETURN(
+            BufferAllocation::Slice slice,
+            buffer_assignment.GetUniqueSlice(hlo_instruction, index));
+
+        kernel_arguments.emplace_back(
+            KernelArgument(subshape, slice, /*written=*/true));
+        return absl::OkStatus();
+      }));
+
+  return KernelArguments{std::move(kernel_arguments), dedup};
 }
 
-StatusOr<KernelArguments> KernelArguments::Create(
-    absl::Span<const BufferAllocation> allocations,
-    mlir::lmhlo::FusionOp fusion) {
-  auto operands = GetHloOperands(fusion);
-  auto outputs = GetHloOutputs(fusion);
-  std::vector<KernelArgument> kernel_arguments;
-  kernel_arguments.reserve(operands.size() + outputs.size());
-
-  for (auto value : operands) {
-    TF_ASSIGN_OR_RETURN(auto arg, KernelArgument::Create(allocations, value,
-                                                         /*is_written=*/false));
-    kernel_arguments.emplace_back(std::move(arg));
-  }
-  for (auto value : outputs) {
-    TF_ASSIGN_OR_RETURN(auto arg, KernelArgument::Create(allocations, value,
-                                                         /*is_written=*/true));
-    kernel_arguments.emplace_back(std::move(arg));
-  }
-
-  return KernelArguments{std::move(kernel_arguments)};
+absl::StatusOr<KernelArguments> KernelArguments::Create(
+    const BufferAssignment& buffer_assignment,
+    const HloFusionInstruction* fusion) {
+  return KernelArguments::Create(buffer_assignment, fusion, fusion->operands(),
+                                 /*dedup=*/true);
 }
 
 std::vector<KernelArgument> KernelArguments::ProcessArguments(
-    std::vector<KernelArgument> kernel_arguments) {
+    std::vector<KernelArgument> kernel_arguments, bool dedup) {
   absl::flat_hash_set<BufferAllocation::Slice> buffers_written;
   for (const KernelArgument& kernel_argument : kernel_arguments) {
     if (kernel_argument.written()) {
@@ -67,19 +83,22 @@ std::vector<KernelArgument> KernelArguments::ProcessArguments(
 
   absl::flat_hash_map<BufferAllocation::Slice, std::optional<int64_t>>
       first_indices_for_slices;
+  int next_llvm_arg_index = 0;
   for (int i = 0; i < static_cast<int>(kernel_arguments.size()); ++i) {
     KernelArgument& kernel_argument = kernel_arguments[i];
 
     auto& first_index = first_indices_for_slices[kernel_argument.slice_];
-    if (first_index) {
+    if (dedup && first_index) {
       const KernelArgument& same = kernel_arguments[*first_index];
       kernel_argument.first_with_same_slice_ = first_index;
       kernel_argument.alignment_ = same.alignment_;
       kernel_argument.aliased_ = same.aliased_;
       kernel_argument.written_ = same.written_;
+      kernel_argument.llvm_arg_index_ = same.llvm_arg_index_;
       continue;
     } else {
       first_index = i;
+      kernel_argument.llvm_arg_index_ = next_llvm_arg_index++;
     }
 
     const BufferAllocation* alloc = kernel_argument.slice().allocation();
@@ -113,20 +132,6 @@ std::vector<KernelArgument> KernelArguments::ProcessArguments(
     }();
   }
   return kernel_arguments;
-}
-
-StatusOr<KernelArguments> KernelArguments::Create(
-    absl::Span<const BufferAllocation> allocations,
-    mlir::Operation* non_fusion_op, mlir::ValueRange needed_operands) {
-  std::vector<KernelArgument> kernel_arguments;
-  kernel_arguments.reserve(needed_operands.size());
-  for (const auto& [i, value] : llvm::enumerate(needed_operands)) {
-    bool written = WritesMlirBuffer(non_fusion_op, value);
-    TF_ASSIGN_OR_RETURN(auto arg,
-                        KernelArgument::Create(allocations, value, written));
-    kernel_arguments.emplace_back(std::move(arg));
-  }
-  return KernelArguments{std::move(kernel_arguments)};
 }
 
 }  // namespace gpu

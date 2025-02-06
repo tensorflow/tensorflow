@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,12 +15,21 @@ limitations under the License.
 
 #include "xla/service/cpu/shape_partition.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/types/span.h"
+
 namespace xla {
 namespace cpu {
 
 std::vector<int64_t> ShapePartitionAssigner::Run(
     int64_t target_partition_count) {
-  // Gather outer-most dims where dim_size >= 'target_partition_count'.
+  // Gather outermost dims where dim_size >= 'target_partition_count'.
   // This may include the inner-dim as LLVM can vectorize loops with dynamic
   // bounds.
   std::vector<int64_t> outer_dims;

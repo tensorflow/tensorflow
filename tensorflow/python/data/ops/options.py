@@ -229,6 +229,18 @@ class AutotuneOptions(options_lib.OptionsBase):
       docstring="When autotuning is enabled (through `autotune`), determines "
       "the algorithm to use.")
 
+  initial_parallelism = options_lib.create_option(
+      name="initial_parallelism",
+      ty=int,
+      docstring=(
+          "The initial parallelism to use for parallel transformations before"
+          " autotune has a chance to run. A higher value can help with quick"
+          " startup, but may cause the ram_budget to temporarily be exceeded."
+          " Memory-sensitive datasets should consider setting this to `1` to"
+          " avoid running out of memory. Defaults to 16."
+      ),
+  )
+
   def _to_proto(self):
     pb = dataset_options_pb2.AutotuneOptions()
     if self.enabled is not None:
@@ -240,6 +252,8 @@ class AutotuneOptions(options_lib.OptionsBase):
     if self.autotune_algorithm is not None:
       pb.autotune_algorithm = AutotuneAlgorithm._to_proto(  # pylint: disable=protected-access
           self.autotune_algorithm)
+    if self.initial_parallelism is not None:
+      pb.initial_parallelism = self.initial_parallelism
     return pb
 
   def _from_proto(self, pb):
@@ -252,6 +266,8 @@ class AutotuneOptions(options_lib.OptionsBase):
     if pb.WhichOneof("optional_autotune_algorithm") is not None:
       self.autotune_algorithm = AutotuneAlgorithm._from_proto(  # pylint: disable=protected-access
           pb.autotune_algorithm)
+    if pb.WhichOneof("optional_initial_parallelism") is not None:
+      self.initial_parallelism = pb.initial_parallelism
 
   def _set_mutable(self, mutable):
     """Change the mutability value to `mutable` on this options and children."""
@@ -344,6 +360,16 @@ class OptimizationOptions(options_lib.OptionsBase):
       "when the last transformation is a synchronous transformation. If None, "
       "defaults to True.")
 
+  seq_interleave_prefetch = options_lib.create_option(
+      name="seq_interleave_prefetch",
+      ty=bool,
+      docstring=(
+          "Whether to replace parallel interleave using a sequential interleave"
+          " that prefetches elements from its input iterators. If None,"
+          " defaults to False."
+      ),
+  )
+
   map_and_batch_fusion = options_lib.create_option(
       name="map_and_batch_fusion",
       ty=bool,
@@ -361,8 +387,12 @@ class OptimizationOptions(options_lib.OptionsBase):
   map_fusion = options_lib.create_option(
       name="map_fusion",
       ty=bool,
-      docstring="Whether to fuse map transformations. If None, defaults to "
-      "False.")
+      docstring=(
+          "Whether to fuse map transformations with `num_parallel_calls` set to"
+          " `tf.data.AUTOTUNE`, no captured inputs and same `deterministic`"
+          " value. If None, defaults to False."
+      ),
+  )
 
   map_parallelization = options_lib.create_option(
       name="map_parallelization",
@@ -399,6 +429,8 @@ class OptimizationOptions(options_lib.OptionsBase):
       pb.filter_parallelization = self.filter_parallelization
     if self.inject_prefetch is not None:
       pb.inject_prefetch = self.inject_prefetch
+    if self.seq_interleave_prefetch is not None:
+      pb.seq_interleave_prefetch = self.seq_interleave_prefetch
     if self.map_and_batch_fusion is not None:
       pb.map_and_batch_fusion = self.map_and_batch_fusion
     if self.map_and_filter_fusion is not None:
@@ -424,6 +456,8 @@ class OptimizationOptions(options_lib.OptionsBase):
       self.filter_parallelization = pb.filter_parallelization
     if pb.WhichOneof("optional_inject_prefetch") is not None:
       self.inject_prefetch = pb.inject_prefetch
+    if pb.WhichOneof("optional_seq_interleave_prefetch") is not None:
+      self.seq_interleave_prefetch = pb.seq_interleave_prefetch
     if pb.WhichOneof("optional_map_and_batch_fusion") is not None:
       self.map_and_batch_fusion = pb.map_and_batch_fusion
     if pb.WhichOneof("optional_map_and_filter_fusion") is not None:
@@ -443,6 +477,44 @@ class OptimizationOptions(options_lib.OptionsBase):
     """Change the mutability value to `mutable` on this options and children."""
     # pylint: disable=protected-access
     object.__setattr__(self, "_mutable", mutable)
+
+
+@tf_export("data.experimental.ServiceOptions")
+class ServiceOptions(options_lib.OptionsBase):
+  """Represents options for tf.data service.
+
+  You can set the service options of a dataset through the
+  `experimental_service` property of `tf.data.Options`; the property is an
+  instance of `tf.data.experimental.ServiceOptions`.
+
+  ```python
+  options = tf.data.Options()
+  options.experimental_service.pinned = True
+  dataset = dataset.with_options(options)
+  ```
+  """
+
+  pinned = options_lib.create_option(
+      name="pinned",
+      ty=bool,
+      docstring=(
+          "If true, the tf.data service client allocates data to pinned memory,"
+          " which faciliates more efficient copying from host memory to GPU"
+          " memory downstream. For gRPC, compression must be disabled for this"
+          " to take effect. For alternative data transfer protocols, this may"
+          " or may not take effect, depending on the implementation."
+      ),
+  )
+
+  def _to_proto(self):
+    pb = dataset_options_pb2.ServiceOptions()
+    if self.pinned is not None:
+      pb.pinned = self.pinned
+    return pb
+
+  def _from_proto(self, pb):
+    if pb.WhichOneof("optional_pinned") is not None:
+      self.pinned = pb.pinned
 
 
 @deprecation.deprecated_endpoints("data.experimental.ThreadingOptions")
@@ -584,6 +656,16 @@ class Options(options_lib.OptionsBase):
       "Note that symbolic checkpointing is not supported for "
       "transformations that can reorder elements.")
 
+  experimental_service = options_lib.create_option(
+      name="experimental_service",
+      ty=ServiceOptions,
+      docstring=(
+          "The tf.data service options associated with the dataset. See "
+          "`tf.data.experimental.ServiceOptions` for more details."
+      ),
+      default_factory=ServiceOptions,
+  )
+
   experimental_threading = options_lib.create_option(
       name="experimental_threading",
       ty=ThreadingOptions,
@@ -602,6 +684,17 @@ class Options(options_lib.OptionsBase):
       ),
       default_factory=lambda: True if test_mode.TEST_MODE else None,
   )
+
+  dataset_name = options_lib.create_option(
+      name="dataset_name",
+      ty=str,
+      docstring="A name for the dataset, to help in debugging.")
+
+  framework_type = options_lib.create_option(
+      name="framework_type",
+      ty=list,
+      docstring="The list of frameworks that are used to generate this "
+      "pipeline, used for telemetry.")
 
   threading = options_lib.create_option(
       name="threading",
@@ -658,6 +751,12 @@ class Options(options_lib.OptionsBase):
       pb.symbolic_checkpoint = self.experimental_symbolic_checkpoint
     if self.experimental_warm_start is not None:
       pb.warm_start = self.experimental_warm_start
+    if self.dataset_name is not None:
+      pb.dataset_name = self.dataset_name
+    if self.framework_type:
+      for framework_type in self.framework_type:
+        pb.framework_type.append(framework_type)
+    pb.service_options.CopyFrom(self.experimental_service._to_proto())  # pylint: disable=protected-access
     pb.threading_options.CopyFrom(self.threading._to_proto())  # pylint: disable=protected-access
     return pb
 
@@ -677,6 +776,13 @@ class Options(options_lib.OptionsBase):
       self.experimental_symbolic_checkpoint = pb.symbolic_checkpoint
     if pb.WhichOneof("optional_warm_start") is not None:
       self.experimental_warm_start = pb.warm_start
+    if pb.WhichOneof("optional_dataset_name") is not None:
+      self.dataset_name = pb.dataset_name
+    if pb.framework_type:
+      self.framework_type = []
+      for framework_type in pb.framework_type:
+        self.framework_type.append(framework_type)
+    self.experimental_service._from_proto(pb.service_options)  # pylint: disable=protected-access
     self.threading._from_proto(pb.threading_options)  # pylint: disable=protected-access
 
   def _set_mutable(self, mutable):

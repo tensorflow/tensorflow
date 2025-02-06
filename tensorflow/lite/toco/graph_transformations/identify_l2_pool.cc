@@ -17,20 +17,22 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-::tensorflow::Status IdentifyL2Pool::Run(Model* model, std::size_t op_index,
-                                         bool* modified) {
+absl::Status IdentifyL2Pool::Run(Model* model, std::size_t op_index,
+                                 bool* modified) {
   *modified = false;
   const auto sqrt_it = model->operators.begin() + op_index;
   const auto* sqrt_op = sqrt_it->get();
   if (sqrt_op->type != OperatorType::kSqrt) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   CHECK_EQ(sqrt_op->inputs.size(), 1);
@@ -44,7 +46,7 @@ namespace toco {
     AddMessageF(
         "Giving up trying to identify L2Pool subgraph: "
         "expected AveragePool op, but Sqrt op has no preceding op");
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (prev_to_sqrt_op->type != OperatorType::kAveragePool) {
@@ -52,7 +54,7 @@ namespace toco {
         "Giving up trying to identify L2Pool subgraph: "
         "expected AveragePool op, got %s",
         LogName(*prev_to_sqrt_op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   avpool_op = static_cast<const AveragePoolOperator*>(prev_to_sqrt_op);
@@ -65,7 +67,7 @@ namespace toco {
         "Giving up trying to identify L2Pool subgraph: "
         "expected Square op, got %s",
         LogName(*square_op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Create and emplace L2Pool node.
@@ -91,7 +93,7 @@ namespace toco {
   DeleteOpAndArrays(model, sqrt_op);
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

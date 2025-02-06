@@ -30,20 +30,6 @@ py_strict_binary(
 )
 
 py_strict_binary(
-    name = "debug_tflearn_iris",
-    srcs = ["debug_tflearn_iris.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        # copybara:uncomment_begin(google-only)
-        # "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",  # build_cleaner:keep
-        # copybara:uncomment_end
-        "//tensorflow/python/debug:debug_py",
-    ],
-)
-
-py_strict_binary(
     name = "debug_keras",
     srcs = ["debug_keras.py"],
     python_version = "PY3",
@@ -115,19 +101,6 @@ sh_test(
     tags = [
         "no_windows",
         "noasan",  # TODO(b/193153560)
-        "v1only",
-    ],
-)
-
-sh_test(
-    name = "examples_v1_debug_tflearn_iris_test",
-    srcs = ["examples_v1_debug_tflearn_iris_test.sh"],
-    data = [
-        ":debug_tflearn_iris",
-    ],
-    tags = [
-        "no_windows",
-        "noasan",
         "v1only",
     ],
 )

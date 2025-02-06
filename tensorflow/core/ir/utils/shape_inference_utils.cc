@@ -22,16 +22,23 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
+#include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -45,7 +52,7 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/status.h"
 
 #define DEBUG_TYPE "tfg-shape-inference-utils"
 
@@ -88,7 +95,7 @@ NamedAttrList GetAllAttributesFromOperation(Operation* op) {
 std::optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
   if (auto ranked_type = t.dyn_cast<RankedTensorType>()) {
     tensorflow::PartialTensorShape shape;
-    const tensorflow::Status status =
+    const absl::Status status =
         tensorflow::PartialTensorShape::BuildPartialTensorShape(
             ConvertMlirShapeToTF(ranked_type.getShape()), &shape);
     if (status.ok()) return shape;
@@ -225,7 +232,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
   tensorflow::AttrValueMap attributes;
 
   if (get_attr_values_fn) {
-    tensorflow::Status status =
+    absl::Status status =
         get_attr_values_fn(op, op_name, op_reg_data,
                            /*ignore_unregistered_attrs=*/true, &attributes);
     if (!status.ok()) {
@@ -236,7 +243,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
   } else {
     auto* dialect = cast<TFGraphDialect>(op->getDialect());
     tensorflow::NodeDef node_def;
-    tensorflow::Status status = ConvertToNodeDef(
+    absl::Status status = ConvertToNodeDef(
         op, &node_def, dialect,
         [&](Value value) { return GetValueName(value, dialect); });
     if (!status.ok()) {

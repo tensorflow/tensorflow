@@ -29,7 +29,8 @@ using tensorflow::errors::Unknown;
 
 // If the rank and all dim sizes are known, return corresponding TensorShape.
 // Otherwise return Unknown error.
-StatusOr<TensorShape> ToTensorShape(ShapeHandle shape_handle, int64_t rank) {
+absl::StatusOr<TensorShape> ToTensorShape(ShapeHandle shape_handle,
+                                          int64_t rank) {
   TensorShape shape;
   for (int i = 0; i < rank; ++i) {
     int64_t dim_size = shape_inference::InferenceContext::Value(
@@ -42,23 +43,24 @@ StatusOr<TensorShape> ToTensorShape(ShapeHandle shape_handle, int64_t rank) {
   return shape;
 }
 
-Status ScalesZeroPointsShapeValid(shape_inference::InferenceContext* context,
-                                  DimensionHandle match_dimension_handle,
-                                  ShapeHandle scales, ShapeHandle zero_points) {
+absl::Status ScalesZeroPointsShapeValid(
+    shape_inference::InferenceContext* context,
+    DimensionHandle match_dimension_handle, ShapeHandle scales,
+    ShapeHandle zero_points) {
   const int32_t scales_rank = shape_inference::InferenceContext::Rank(scales);
   const int32_t zero_points_rank =
       shape_inference::InferenceContext::Rank(zero_points);
   // Skip validation when rank is unknown.
   if (scales_rank == shape_inference::InferenceContext::kUnknownRank ||
       zero_points_rank == shape_inference::InferenceContext::kUnknownRank) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (scales_rank != zero_points_rank) {
     return InvalidArgument("scales and zero_points must have same rank.");
   }
   if (scales_rank == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   DimensionHandle scales_size = context->Dim(scales, 0);
   DimensionHandle zero_points_size = context->Dim(zero_points, 0);
@@ -68,10 +70,10 @@ Status ScalesZeroPointsShapeValid(shape_inference::InferenceContext* context,
   DimensionHandle merged_zero_points;
   TF_RETURN_IF_ERROR(context->Merge(zero_points_size, match_dimension_handle,
                                     &merged_zero_points));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DotShape(shape_inference::InferenceContext* context) {
+absl::Status DotShape(shape_inference::InferenceContext* context) {
   ShapeHandle lhs;
   TF_RETURN_IF_ERROR(context->WithRank(context->input(0), 2, &lhs));
   ShapeHandle rhs;
@@ -111,10 +113,10 @@ Status DotShape(shape_inference::InferenceContext* context) {
       context, output_cols, output_scales, output_zero_points));
 
   context->set_output(0, context->Matrix(output_rows, output_cols));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DotHybridShape(shape_inference::InferenceContext* context) {
+absl::Status DotHybridShape(shape_inference::InferenceContext* context) {
   ShapeHandle lhs;
   TF_RETURN_IF_ERROR(context->WithRank(context->input(0), 2, &lhs));
   ShapeHandle rhs;
@@ -139,7 +141,7 @@ Status DotHybridShape(shape_inference::InferenceContext* context) {
                                                 rhs_scales, rhs_zero_points));
 
   context->set_output(0, context->Matrix(output_rows, output_cols));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct ShapeCommonParams {
@@ -176,15 +178,15 @@ struct ShapeCommonParams {
         is_output_scales_zero_points_set(false) {}
 };
 
-Status ConvolutionShapeCommon(shape_inference::InferenceContext* context,
-                              const ShapeCommonParams& params) {
+absl::Status ConvolutionShapeCommon(shape_inference::InferenceContext* context,
+                                    const ShapeCommonParams& params) {
   const int32_t lhs_rank = shape_inference::InferenceContext::Rank(params.lhs);
   const int32_t rhs_rank = shape_inference::InferenceContext::Rank(params.rhs);
 
   if (lhs_rank == shape_inference::InferenceContext::kUnknownRank &&
       rhs_rank == shape_inference::InferenceContext::kUnknownRank) {
     context->set_output(0, context->UnknownShape());
-    return OkStatus();
+    return absl::OkStatus();
   } else if (lhs_rank == shape_inference::InferenceContext::kUnknownRank ||
              rhs_rank == shape_inference::InferenceContext::kUnknownRank) {
     context->set_output(
@@ -192,7 +194,7 @@ Status ConvolutionShapeCommon(shape_inference::InferenceContext* context,
                lhs_rank == shape_inference::InferenceContext::kUnknownRank
                    ? rhs_rank
                    : lhs_rank));
-    return OkStatus();
+    return absl::OkStatus();
   } else if (lhs_rank != rhs_rank) {
     return InvalidArgument("lhs and rhs must have same rank.");
   }
@@ -201,7 +203,7 @@ Status ConvolutionShapeCommon(shape_inference::InferenceContext* context,
   auto rhs_shape = ToTensorShape(params.rhs, rhs_rank);
   if (!lhs_shape.ok() || !rhs_shape.ok()) {
     context->set_output(0, context->UnknownShapeOfRank(lhs_rank));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   UniformQuantizedConvolutionParams convolution_params;
@@ -233,10 +235,10 @@ Status ConvolutionShapeCommon(shape_inference::InferenceContext* context,
   TF_RETURN_IF_ERROR(
       context->MakeShapeFromTensorShape(out_shape, &out_shape_handle));
   context->set_output(0, out_shape_handle);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ConvolutionShape(shape_inference::InferenceContext* context) {
+absl::Status ConvolutionShape(shape_inference::InferenceContext* context) {
   ShapeHandle lhs;
   TF_RETURN_IF_ERROR(context->WithRankAtLeast(context->input(0), 2, &lhs));
   ShapeHandle rhs;
@@ -267,7 +269,8 @@ Status ConvolutionShape(shape_inference::InferenceContext* context) {
                         rhs_zero_points, output_scales, output_zero_points));
 }
 
-Status ConvolutionHybridShape(shape_inference::InferenceContext* context) {
+absl::Status ConvolutionHybridShape(
+    shape_inference::InferenceContext* context) {
   ShapeHandle lhs;
   TF_RETURN_IF_ERROR(context->WithRankAtLeast(context->input(0), 2, &lhs));
   ShapeHandle rhs;

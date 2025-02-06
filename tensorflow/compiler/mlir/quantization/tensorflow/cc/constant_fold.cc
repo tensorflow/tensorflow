@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/constant_fold_utils.h"
 
@@ -71,7 +71,7 @@ LogicalResult FoldOperation(OpBuilder& builder, Operation* op,
 bool IsOperationFoldable(Operation* op) {
   if (isa<TF::ConstOp>(op)) return true;
 
-  if (!op->getDialect()->getNamespace().equals("tf") || !TF::CanBeFolded(op)) {
+  if (op->getDialect()->getNamespace() != "tf" || !TF::CanBeFolded(op)) {
     return false;
   }
 

@@ -15,10 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_COMMON_ASYNC_VALUE_TENSOR_H_
 #define TENSORFLOW_CORE_TFRT_COMMON_ASYNC_VALUE_TENSOR_H_
 
+#include <cstddef>
 #include <memory>
 
 #include "xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
 

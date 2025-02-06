@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,17 +17,21 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/serdes.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -35,7 +39,13 @@ namespace {
 
 using ::tsl::testing::StatusIs;
 
+struct TestNumberSerializeOptions;
+struct TestNumberDeserializeOptions;
+
 struct TestNumber : llvm::RTTIExtends<TestNumber, Serializable> {
+  using SerializeOptions = TestNumberSerializeOptions;
+  using DeserializeOptions = TestNumberDeserializeOptions;
+
   int number;
 
   explicit TestNumber(int number) : number(number) {}
@@ -43,7 +53,16 @@ struct TestNumber : llvm::RTTIExtends<TestNumber, Serializable> {
   static char ID;  // NOLINT
 };
 
-char TestNumber::ID = 0;  // NOLINT
+[[maybe_unused]] char TestNumber::ID = 0;  // NOLINT
+
+struct TestNumberSerializeOptions
+    : llvm::RTTIExtends<TestNumberSerializeOptions, SerializeOptions> {
+  absl::Status injected_failure;
+
+  static char ID;  // NOLINT
+};
+
+[[maybe_unused]] char TestNumberSerializeOptions::ID = 0;  // NOLINT
 
 struct TestNumberDeserializeOptions
     : llvm::RTTIExtends<TestNumberDeserializeOptions, DeserializeOptions> {
@@ -52,7 +71,7 @@ struct TestNumberDeserializeOptions
   static char ID;  // NOLINT
 };
 
-char TestNumberDeserializeOptions::ID = 0;  // NOLINT
+[[maybe_unused]] char TestNumberDeserializeOptions::ID = 0;  // NOLINT
 
 class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
  public:
@@ -60,7 +79,14 @@ class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
     return "xla::ifrt::TestNumber";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable,
+      std::unique_ptr<SerializeOptions> options) override {
+    if (options != nullptr) {
+      auto* serialize_options =
+          llvm::cast<TestNumberSerializeOptions>(options.get());
+      TF_RETURN_IF_ERROR(serialize_options->injected_failure);
+    }
     const TestNumber& obj = llvm::cast<TestNumber>(serializable);
     return absl::StrCat(obj.number);
   }
@@ -84,7 +110,7 @@ class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
   static char ID;  // NOLINT
 };
 
-char TestNumberSerDes::ID = 0;  // NOLINT
+[[maybe_unused]] char TestNumberSerDes::ID = 0;  // NOLINT
 
 class TestNumberTest : public testing::Test {
  protected:
@@ -95,19 +121,30 @@ class TestNumberTest : public testing::Test {
 
 TEST_F(TestNumberTest, RoundTrip) {
   auto obj = std::make_unique<TestNumber>(1234);
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(*obj));
-  TF_ASSERT_OK_AND_ASSIGN(auto deserialized,
-                          Deserialize(serialized, /*options=*/nullptr));
-  EXPECT_EQ(obj->number, llvm::cast<TestNumber>(*deserialized).number);
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(*obj, /*options=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deserialized,
+      Deserialize<TestNumber>(serialized, /*options=*/nullptr));
+  EXPECT_EQ(obj->number, deserialized->number);
 }
 
-TEST_F(TestNumberTest, WithOptions) {
+TEST_F(TestNumberTest, WithSerializeOptions) {
   auto obj = std::make_unique<TestNumber>(1234);
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized, Serialize(*obj));
+  auto options = std::make_unique<TestNumberSerializeOptions>();
+  options->injected_failure = absl::InternalError("injected failure");
+  EXPECT_THAT(Serialize(*obj, std::move(options)),
+              StatusIs(absl::StatusCode::kInternal, "injected failure"));
+}
+
+TEST_F(TestNumberTest, WithDeserializeOptions) {
+  auto obj = std::make_unique<TestNumber>(1234);
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(*obj, /*options=*/nullptr));
 
   auto options = std::make_unique<TestNumberDeserializeOptions>();
   options->injected_failure = absl::InternalError("injected failure");
-  EXPECT_THAT(Deserialize(serialized, std::move(options)),
+  EXPECT_THAT(Deserialize<TestNumber>(serialized, std::move(options)),
               StatusIs(absl::StatusCode::kInternal, "injected failure"));
 }
 

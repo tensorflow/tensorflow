@@ -6,7 +6,7 @@ func.func @unfold_splat_constant_float() -> tensor<1x750xf32> {
   func.return %cst : tensor<1x750xf32>
 
   // CHECK-DAG: %0 = mhlo.constant dense<7.680000e+02> : tensor<f32>
-  // CHECK: %1 = "mhlo.broadcast_in_dim"(%0) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<1x750xf32>
+  // CHECK: %1 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<1x750xf32>
   // CHECK: return %1 : tensor<1x750xf32>
 }
 
@@ -16,7 +16,7 @@ func.func @unfold_splat_constant_integer() -> tensor<1x750xi32> {
   func.return %cst : tensor<1x750xi32>
 
   // CHECK-DAG: %0 = mhlo.constant dense<1> : tensor<i32>
-  // CHECK: %1 = "mhlo.broadcast_in_dim"(%0) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<i32>) -> tensor<1x750xi32>
+  // CHECK: %1 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<1x750xi32>
   // CHECK: return %1 : tensor<1x750xi32>
 }
 

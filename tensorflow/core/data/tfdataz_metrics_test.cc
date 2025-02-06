@@ -41,8 +41,8 @@ class TfDatazMetricsTest : public ::testing::Test {
  protected:
   void SetUp() override {
     env_ = std::make_unique<FakeClockEnv>(Env::Default());
-    tfdataz_metrics_ =
-        std::make_unique<TfDatazMetricsCollector>(*env_, iterator_.get());
+    tfdataz_metrics_ = std::make_unique<TfDatazMetricsCollector>(
+        *env_, iterator_.get(), /*model=*/nullptr);
   }
 
   void TearDown() override {
@@ -50,7 +50,7 @@ class TfDatazMetricsTest : public ::testing::Test {
     tfdataz_metrics_.reset();
   }
 
-  std::unique_ptr<IteratorBase> iterator_;
+  std::unique_ptr<DatasetBaseIterator> iterator_;
   std::unique_ptr<FakeClockEnv> env_;
   std::unique_ptr<TfDatazMetricsCollector> tfdataz_metrics_;
 };
@@ -198,11 +198,11 @@ class ScopedTfDataMetricsRegistration {
 };
 
 TEST(TfDatazMetricsRegistryTest, Register) {
-  std::unique_ptr<IteratorBase> iterator;
+  std::unique_ptr<DatasetBaseIterator> iterator;
   auto collector_one = std::make_shared<TfDatazMetricsCollector>(
-      *Env::Default(), iterator.get());
+      *Env::Default(), iterator.get(), /*model=*/nullptr);
   auto collector_two = std::make_shared<TfDatazMetricsCollector>(
-      *Env::Default(), iterator.get());
+      *Env::Default(), iterator.get(), /*model=*/nullptr);
 
   ScopedTfDataMetricsRegistration scoped_registration_one(collector_one);
   ScopedTfDataMetricsRegistration scoped_registration_two(collector_two);
@@ -211,13 +211,13 @@ TEST(TfDatazMetricsRegistryTest, Register) {
 }
 
 TEST(TfDatazMetricsRegistryTest, Deregister) {
-  std::unique_ptr<IteratorBase> iterator;
+  std::unique_ptr<DatasetBaseIterator> iterator;
   auto collector_one = std::make_shared<TfDatazMetricsCollector>(
-      *Env::Default(), iterator.get());
+      *Env::Default(), iterator.get(), /*model=*/nullptr);
   auto collector_two = std::make_shared<TfDatazMetricsCollector>(
-      *Env::Default(), iterator.get());
+      *Env::Default(), iterator.get(), /*model=*/nullptr);
   auto collector_three = std::make_shared<TfDatazMetricsCollector>(
-      *Env::Default(), iterator.get());
+      *Env::Default(), iterator.get(), /*model=*/nullptr);
   ScopedTfDataMetricsRegistration scoped_registration_one(collector_one);
   ScopedTfDataMetricsRegistration scoped_registration_two(collector_two);
   ScopedTfDataMetricsRegistration scoped_registration_three(collector_three);

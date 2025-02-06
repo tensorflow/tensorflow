@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_TFRT_COMPILE_OPTIONS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_TFRT_COMPILE_OPTIONS_H_
 
+#include <cstdint>
 #include <iosfwd>
 #include <ostream>
 #include <string>
@@ -125,7 +126,7 @@ struct TfrtCompileOptions {
   // For TFRT, if true, tf.While's iterations will be parallelized on a
   // best-effort basis. This is currently experimental. MLRT attempts to convert
   // tf.while to tf_mlrt.map_fn regardless of this flag. For tf.While that
-  // cannot be onverted tf_mlrt.map_fn, MLRT try to parallerize tf.while's
+  // cannot be converted tf_mlrt.map_fn, MLRT try to parallelize tf.while's
   // iterations on a best-effort basis.
   bool enable_while_parallel_iterations = false;
 
@@ -136,7 +137,26 @@ struct TfrtCompileOptions {
   // expensive.
   uint64_t cost_threshold = 1;
 
-  // If true, streams with inter data depenedencies will be preferred to be
+  // The minimum number of batch threads. This number provides a lower bound on
+  // the number of batch threads on top of what is specified in the model. If
+  // the number of batch threads is too small (e.g. smaller than the number of
+  // parallel hardware accelerator available), it can lead to under utilization
+  // of resources.
+  int64_t min_num_batch_threads = 1;
+
+  // The minimum of the maximum number of enqueued batches. This number provides
+  // a lower bound on top of what is specified in the model. If the number of
+  // max_enqueued_batches is too small, it can lead to under utilization of
+  // resources.
+  int64_t min_max_enqueued_batches = 1;
+
+  // The policy used by a BatchScheduler to pad (or split) batches.
+  std::string batch_padding_policy;
+
+  // Batching parameters to be rewritten in the existing BatchFunction ops.
+  BatchingOptions batch_options;
+
+  // If true, streams with inter data dependencies will be preferred to be
   // merged for inline execution.
   bool merge_inter_dependent_streams = true;
 
@@ -155,6 +175,12 @@ struct TfrtCompileOptions {
 
   // Serialized MLIR module file under aot_packages.
   std::string aot_mlir_module_file;
+
+  // If true, BEF will be serialized to aot_packages.
+  bool serialize_bef_to_aot_packages = false;
+
+  // Serialized BEF file under aot_packages.
+  std::string aot_bef_file;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

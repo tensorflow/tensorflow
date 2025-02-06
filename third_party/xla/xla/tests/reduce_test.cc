@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,29 +37,28 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
-#include "xla/client/global_data.h"
-#include "xla/client/lib/arithmetic.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -1041,6 +1040,50 @@ XLA_TEST_F(ReduceHloTest, HandleReductionToVectorAndOtherReduction) {
     ROOT tuple = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(reduce.0, reduce.1)
   }
   )";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(ReduceHloTest, ReduceAtomicF16) {
+  absl::string_view hlo_string = R"(
+HloModule jit_reduce_axes12
+
+region_0.3 {
+  Arg_0.4 = f16[] parameter(0)
+  Arg_1.5 = f16[] parameter(1)
+  ROOT minimum.6 = f16[] minimum(Arg_0.4, Arg_1.5)
+}
+
+ENTRY main.8 {
+  constant.1 = f16[] constant(1)
+  Arg_0.1 = f16[2,16385,1]{2,1,0} broadcast(constant.1), dimensions={}
+  constant.2 = f16[] constant(inf)
+  ROOT reduce.7 = f16[2]{0} reduce(Arg_0.1, constant.2), dimensions={1,2}, to_apply=region_0.3
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(ReduceHloTest, ReduceWithEpilogueMultiOutputFusion) {
+  absl::string_view hlo_string = R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+
+    ENTRY main {
+      %p0 = f32[1024] parameter(0)
+      %p1 = f32[] parameter(1)
+      %reduce = f32[] reduce(%p0, %p1), dimensions={0}, to_apply=add
+      %p2 = f32[1024] parameter(2)
+      %reduce2 = f32[] reduce(%p2, %p1), dimensions={0}, to_apply=add
+      %negate = f32[] negate(%reduce)
+      %log = f32[] log(%reduce)
+      ROOT %tuple = (f32[], f32[], f32[]) tuple(%negate, %reduce2, %log)
+    })";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 

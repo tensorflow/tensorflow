@@ -159,7 +159,9 @@ def _embedding_lookup_and_transform(params,
       #   We must flatten in this case because transform_fn expects a flat
       #   tensor of embeddings.
       flat_ids = array_ops.reshape(ids, [-1])
-      original_indices = math_ops.range(array_ops.size(flat_ids))
+      original_indices = math_ops.range(
+          array_ops.size(flat_ids, out_type=dtypes.int32)
+      )
 
       # Create p_assignments and set new_ids depending on the strategy.
       if partition_strategy == "mod":
@@ -307,6 +309,8 @@ def embedding_lookup(
       element must be appropriately sized for the given `partition_strategy`.
     ids: A `Tensor` or a 'RaggedTensor' with type `int32` or `int64` containing
       the ids to be looked up in `params`.
+      Caution: Out-of-bounds indices will result in undefined behavior, which
+        will differ between devices and backends.
     partition_strategy: A string specifying the partitioning strategy, relevant
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`.
@@ -1093,8 +1097,9 @@ def embedding_lookup_sparse_impl(
 
     # Reshape weights to allow broadcast
     ones_shape = array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0)
-    ones = array_ops.ones(ones_shape, dtype=dtypes.int32)
-    bcast_weights_shape = array_ops.concat([array_ops.shape(weights), ones], 0)
+    weights_shape = array_ops.shape(weights)
+    ones = array_ops.ones(ones_shape, dtype=weights_shape.dtype)
+    bcast_weights_shape = array_ops.concat([weights_shape, ones], 0)
 
     orig_weights_shape = weights.get_shape()
     weights = array_ops.reshape(weights, bcast_weights_shape)

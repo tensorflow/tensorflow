@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/strided_slice_op.h"
 
+#include "absl/base/prefetch.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
@@ -56,8 +56,8 @@ namespace {
 template <typename T>
 struct MemCpyFunctor {
   // Returns true if the copy was made with memcpy, false otherwise.
-  bool Copy(const Tensor& input, const gtl::InlinedVector<int64_t, 4>& begin,
-            const gtl::InlinedVector<int64_t, 4>& end, Tensor* result) {
+  bool Copy(const Tensor& input, const absl::InlinedVector<int64_t, 4UL>& begin,
+            const absl::InlinedVector<int64_t, 4UL>& end, Tensor* result) {
     if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
       auto in = input.tensor<T, 2>();
       auto output = result->tensor<T, 2>();
@@ -65,8 +65,8 @@ struct MemCpyFunctor {
       for (int row_in = begin[0], row_out = 0; row_in < end[0];
            ++row_in, ++row_out) {
         if (row_in + 1 < end[0]) {
-          port::prefetch<port::PREFETCH_HINT_T0>(&output(row_in + 1, 0));
-          port::prefetch<port::PREFETCH_HINT_T0>(&in(row_in + 1, begin[1]));
+          absl::PrefetchToLocalCache(&output(row_in + 1, 0));
+          absl::PrefetchToLocalCache(&in(row_in + 1, begin[1]));
         }
         memcpy(&output(row_out, 0), &in(row_in, begin[1]),
                (end[1] - begin[1]) * sizeof(T));
@@ -79,8 +79,8 @@ struct MemCpyFunctor {
 
 template <>
 struct MemCpyFunctor<ResourceHandle> {
-  bool Copy(const Tensor& input, const gtl::InlinedVector<int64_t, 4>& begin,
-            const gtl::InlinedVector<int64_t, 4>& end, Tensor* result) {
+  bool Copy(const Tensor& input, const absl::InlinedVector<int64_t, 4UL>& begin,
+            const absl::InlinedVector<int64_t, 4UL>& end, Tensor* result) {
     return false;
   }
 };
@@ -104,9 +104,9 @@ class StridedSliceOp : public OpKernel {
     bool is_identity = true;
     bool slice_dim0 = true;
     bool is_simple_slice = true;
-    gtl::InlinedVector<int64_t, 4> begin;
-    gtl::InlinedVector<int64_t, 4> end;
-    gtl::InlinedVector<int64_t, 4> strides;
+    absl::InlinedVector<int64_t, 4UL> begin;
+    absl::InlinedVector<int64_t, 4UL> end;
+    absl::InlinedVector<int64_t, 4UL> strides;
 
     OP_REQUIRES_OK(
         context, ValidateStridedSliceOp(
@@ -212,9 +212,9 @@ class StridedSliceGradOp : public OpKernel {
     bool is_identity = true;
     bool slice_dim0 = true;
     bool is_simple_slice = true;
-    gtl::InlinedVector<int64_t, 4> begin;
-    gtl::InlinedVector<int64_t, 4> end;
-    gtl::InlinedVector<int64_t, 4> strides;
+    absl::InlinedVector<int64_t, 4UL> begin;
+    absl::InlinedVector<int64_t, 4UL> end;
+    absl::InlinedVector<int64_t, 4UL> strides;
 
     TensorShape input_shape;
     const Tensor& input_shape_tensor = context->input(0);
@@ -307,9 +307,9 @@ class StridedSliceAssignOp : public OpKernel {
     bool is_identity = true;
     bool slice_dim0 = true;
     bool is_simple_slice = true;
-    gtl::InlinedVector<int64_t, 4> begin;
-    gtl::InlinedVector<int64_t, 4> end;
-    gtl::InlinedVector<int64_t, 4> strides;
+    absl::InlinedVector<int64_t, 4UL> begin;
+    absl::InlinedVector<int64_t, 4UL> end;
+    absl::InlinedVector<int64_t, 4UL> strides;
 
     Tensor* old_lhs = nullptr;
     Tensor tmp;

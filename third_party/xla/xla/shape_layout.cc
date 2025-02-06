@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,34 +15,36 @@ limitations under the License.
 
 #include "xla/shape_layout.h"
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/status.h"
 
 namespace xla {
 
-Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
+absl::Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
   if (!ShapeUtil::Compatible(other_shape, shape_)) {
     return InvalidArgument("Shape %s is not compatible with shape %s",
                            ShapeUtil::HumanString(other_shape),
                            ShapeUtil::HumanString(shape()));
   }
   shape_ = other_shape;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
+absl::Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
   if (!ShapeUtil::Compatible(*to_shape, shape_)) {
     return InvalidArgument("Shape %s is not compatible with shape %s",
                            ShapeUtil::HumanString(*to_shape),
                            ShapeUtil::HumanString(shape()));
   }
   *to_shape = shape_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ShapeLayout::SetToDefaultLayout() {
@@ -89,8 +91,14 @@ const Layout& ShapeLayout::layout() const {
 }
 
 void ShapeLayout::Clear() { LayoutUtil::ClearLayout(&shape_); }
+void ShapeLayout::Clear(ShapeIndexView shape_index) {
+  ShapeUtil::GetMutableSubshape(&shape_, shape_index)->clear_layout();
+}
 
 bool ShapeLayout::LayoutIsSet() const { return LayoutUtil::HasLayout(shape_); }
+bool ShapeLayout::AnyLayoutIsSet() const {
+  return LayoutUtil::HasAnyLayout(shape_);
+}
 
 void ShapeLayout::ResetLayout(const Layout& layout) {
   DCHECK(!shape_.IsTuple());

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,16 +19,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/tests/verified_hlo_module.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "xla/tsl/profiler/rpc/client/save_profile.h"
+#include "xla/tsl/profiler/utils/file_system_utils.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tsl/platform/test.h"
-#include "tsl/profiler/convert/xla_op_utils.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/rpc/client/save_profile.h"
-#include "tsl/profiler/utils/file_system_utils.h"
-#include "tsl/profiler/utils/xplane_builder.h"
-#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace xla {
 namespace {

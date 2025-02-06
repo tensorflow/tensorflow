@@ -81,7 +81,7 @@ namespace {
 const char kGraphViewError[] = "GraphView::GraphView error: ";
 }  // namespace
 
-GraphView::GraphView(const GraphDef* graph, Status* status)
+GraphView::GraphView(const GraphDef* graph, absl::Status* status)
     : GraphViewInternal(graph) {
   const int num_nodes = graph->node_size();
   node_index_by_name_.reserve(num_nodes);
@@ -95,7 +95,7 @@ GraphView::GraphView(const GraphDef* graph, Status* status)
       return;
     }
   }
-  Status s;
+  absl::Status s;
   for (NodeView& node_view : nodes_) {
     s = CheckAndAddFaninsInternal(&node_view);
     if (!s.ok()) {
@@ -104,7 +104,7 @@ GraphView::GraphView(const GraphDef* graph, Status* status)
       return;
     }
   }
-  *status = OkStatus();
+  *status = absl::OkStatus();
 }
 
 bool GraphView::AddUniqueNodeInternal(const NodeDef* node) {
@@ -117,7 +117,7 @@ bool GraphView::AddUniqueNodeInternal(const NodeDef* node) {
   return false;
 }
 
-Status GraphView::CheckAndAddFaninsInternal(NodeView* node_view) {
+absl::Status GraphView::CheckAndAddFaninsInternal(NodeView* node_view) {
   bool has_observed_control = false;
   const NodeDef* node = node_view->node();
   const string& node_name = node->name();
@@ -165,7 +165,7 @@ Status GraphView::CheckAndAddFaninsInternal(NodeView* node_view) {
       node_view->fanins_set_.emplace(fanin_node_view.node(), fanin_id.index());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 MutableFaninView::MutableFaninView(MutableNodeView* node_view, int index)
@@ -222,7 +222,7 @@ bool IsTensorIdRegular(const TensorId& tensor_id) {
 
 Mutation::Mutation(MutableGraphView* graph_view) : graph_view_(graph_view) {}
 
-MutationNewNode Mutation::AddNode(NodeDef&& node, Status* status) {
+MutationNewNode Mutation::AddNode(NodeDef&& node, absl::Status* status) {
   bool has_observed_control = false;
   const string& node_name = node.name();
   std::vector<SafeTensorId> regular_fanins;
@@ -257,7 +257,7 @@ MutationNewNode Mutation::AddNode(NodeDef&& node, Status* status) {
   mutation_node.regular_fanins = std::move(regular_fanins);
   mutation_node.num_regular_fanins = mutation_node.regular_fanins.size();
   mutation_node.controlling_fanins = std::move(controlling_fanins);
-  *status = OkStatus();
+  *status = absl::OkStatus();
   return MutationNewNode(this, mutation_counter_, new_nodes_.size() - 1);
 }
 
@@ -433,7 +433,7 @@ void Mutation::Reset() {
   ResetInternal();
 }
 
-Status Mutation::Apply() { return graph_view_->ApplyMutationInternal(); }
+absl::Status Mutation::Apply() { return graph_view_->ApplyMutationInternal(); }
 
 namespace {
 const char kMutableGraphViewError[] =
@@ -461,7 +461,7 @@ inline void DecrementFaninCount(
 }
 }  // namespace
 
-MutableGraphView::MutableGraphView(GraphDef* graph, Status* status)
+MutableGraphView::MutableGraphView(GraphDef* graph, absl::Status* status)
     : GraphViewInternal(graph), mutation_(Mutation(this)) {
   const int num_nodes = graph->node_size();
   node_index_by_name_.reserve(num_nodes);
@@ -476,7 +476,7 @@ MutableGraphView::MutableGraphView(GraphDef* graph, Status* status)
     }
   }
   std::vector<std::vector<TensorId>> fanins;
-  Status s = CheckFaninsInternal(&fanins);
+  absl::Status s = CheckFaninsInternal(&fanins);
   if (!s.ok()) {
     *status = s;
     Reset();
@@ -484,7 +484,7 @@ MutableGraphView::MutableGraphView(GraphDef* graph, Status* status)
   }
   AddFaninsInternal(&fanins);
   mutation_.ResetInternal();
-  *status = OkStatus();
+  *status = absl::OkStatus();
 }
 
 Mutation* MutableGraphView::GetMutationBuilder() { return &mutation_; }
@@ -499,7 +499,7 @@ bool MutableGraphView::AddUniqueNodeInternal(NodeDef* node) {
   return false;
 }
 
-Status MutableGraphView::CheckFaninsInternal(
+absl::Status MutableGraphView::CheckFaninsInternal(
     std::vector<std::vector<TensorId>>* fanins) {
   const int num_nodes = nodes_.size();
   fanins->reserve(num_nodes);
@@ -534,7 +534,7 @@ Status MutableGraphView::CheckFaninsInternal(
     }
     fanins->push_back(std::move(node_fanins));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MutableGraphView::AddFaninsInternal(
@@ -603,7 +603,7 @@ void MutableGraphView::AddFaninsInternal(
   }
 }
 
-Status MutableGraphView::GetNodeNamesAndPartitionUpdatedNodes(
+absl::Status MutableGraphView::GetNodeNamesAndPartitionUpdatedNodes(
     absl::flat_hash_map<absl::string_view, int>* node_names,
     std::vector<RenamedOrOverwrittenNode>* renamed_nodes,
     std::vector<int>* inplace_nodes,
@@ -686,10 +686,10 @@ Status MutableGraphView::GetNodeNamesAndPartitionUpdatedNodes(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status MutableGraphView::RemovedOrMissingNodeFanoutsWellFormed(
+absl::Status MutableGraphView::RemovedOrMissingNodeFanoutsWellFormed(
     const absl::flat_hash_map<absl::string_view, int>& node_names,
     const std::vector<RenamedOrOverwrittenNode>& renamed_nodes) {
   auto bad_fanout = [](absl::string_view fanout_node_name,
@@ -764,10 +764,10 @@ Status MutableGraphView::RemovedOrMissingNodeFanoutsWellFormed(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status MutableGraphView::CheckNodeNamesAndFanins(
+absl::Status MutableGraphView::CheckNodeNamesAndFanins(
     const absl::flat_hash_map<absl::string_view, int>& node_names,
     const std::vector<RenamedOrOverwrittenNode>& renamed_nodes,
     const std::vector<int>& inplace_nodes) {
@@ -801,11 +801,11 @@ Status MutableGraphView::CheckNodeNamesAndFanins(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status MutableGraphView::CheckKernelRegisteredForNodes() {
-  Status s;
+absl::Status MutableGraphView::CheckKernelRegisteredForNodes() {
+  absl::Status s;
   for (auto& diff : mutation_.updated_nodes_) {
     if (internal::IsEmpty(&diff)) {
       continue;
@@ -849,7 +849,7 @@ Status MutableGraphView::CheckKernelRegisteredForNodes() {
       LOG(WARNING) << s.message();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -1423,7 +1423,7 @@ struct Edge {
 };
 }  // namespace
 
-Status MutableGraphView::SortTopologically(
+absl::Status MutableGraphView::SortTopologically(
     bool ignore_cycles,
     absl::Span<const TopologicalDependency> extra_dependencies) {
   if (!mutation_.updated_nodes_.empty() || !mutation_.new_nodes_.empty()) {
@@ -1617,10 +1617,10 @@ Status MutableGraphView::SortTopologically(
   // Permute graph NodeDefs.
   PermuteNodesInPlace(graph_, &order, /*invert_permutation=*/false);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-inline Status MutableGraphView::ValidateInternal(
+inline absl::Status MutableGraphView::ValidateInternal(
     absl::flat_hash_map<absl::string_view, int>* node_names,
     std::vector<RenamedOrOverwrittenNode>* renamed_nodes,
     std::vector<int>* inplace_nodes,
@@ -1637,10 +1637,10 @@ inline Status MutableGraphView::ValidateInternal(
   // Check if nodes after mutation have kernels registered.
   TF_RETURN_IF_ERROR(CheckKernelRegisteredForNodes());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status MutableGraphView::ApplyMutationInternal() {
+absl::Status MutableGraphView::ApplyMutationInternal() {
   // Node name -> node index mapping. If a node index is -1, the associated node
   // with key node name exists. Otherwise the node index is the node's index in
   // the graph.
@@ -1701,7 +1701,7 @@ Status MutableGraphView::ApplyMutationInternal() {
 
   mutation_.mutation_counter_++;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace utils

@@ -1,6 +1,10 @@
 load(
+    "@local_xla//xla/tsl:tsl.bzl",
+    "check_deps",
+)
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
+load(
     "//tensorflow:tensorflow.bzl",
-    "if_cuda_or_rocm",
     "tf_cc_test",
     "tf_cuda_library",
 )
@@ -11,16 +15,23 @@ load(
     "tf_proto_library",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        # copybara:uncomment "//learning/infra/mira:__subpackages__",
-        "//third_party/cloud_tpu/inference_converter:__subpackages__",
         "//tensorflow/compiler/tf2xla:internal",
+        "//third_party/cloud_tpu/inference_converter:__subpackages__",
     ],
     licenses = ["notice"],
+)
+
+check_deps(
+    name = "xla_ops_check_deps",
+    disallowed_deps = [
+        "@local_xla//xla/service/cpu:cpu_compiler",
+        "@local_xla//xla/service/gpu:gpu_compiler",
+    ],
+    deps = [":xla_ops"],
 )
 
 cc_library(
@@ -48,7 +59,6 @@ cc_library(
         ":clip_by_value_op",
         ":concat_op",
         ":const_op",
-        ":conv_op_helpers",
         ":conv_ops",
         ":cross_op",
         ":cwise_ops",
@@ -109,7 +119,6 @@ cc_library(
         ":retval_op",
         ":reverse_op",
         ":reverse_sequence_op",
-        ":rng_converter_utils",
         ":roll_op",
         ":scan_ops",
         ":scatter_nd_op",
@@ -137,7 +146,6 @@ cc_library(
         ":strided_slice_op",
         ":tensor_array_ops",
         ":tensor_list_ops",
-        ":tensor_list_utils",
         ":tile_ops",
         ":to_bool_op",
         ":topk_op",
@@ -180,7 +188,6 @@ tf_cuda_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:protos_all_cc",
@@ -188,10 +195,8 @@ tf_cuda_library(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -199,27 +204,29 @@ tf_cuda_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/service:custom_call_status",
         "@local_xla//xla/service:custom_call_target_registry",
         "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/stream_executor",
-        "@local_xla//xla/stream_executor/gpu:gpu_executor_header",
-        "@local_xla//xla/stream_executor/gpu:gpu_stream_header",
-        "@local_xla//xla/stream_executor/gpu:gpu_types_header",
+        "@local_xla//xla/stream_executor:device_memory",
+        "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor:platform_manager",
+        "@local_xla//xla/stream_executor:stream",
+        "@local_xla//xla/stream_executor:stream_executor_h",
+        "@local_xla//xla/stream_executor:stream_finder",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
     alwayslink = 1,
 )
@@ -239,13 +246,13 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:array4d",
         "@local_xla//xla:literal",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:constants",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:constants",
     ],
     alwayslink = 1,
 )
@@ -260,6 +267,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
 )
@@ -274,17 +282,22 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_xla//xla:literal_util",
         "@local_xla//xla:util",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:constants",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:constants",
     ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
 )
 
@@ -293,16 +306,18 @@ cc_library(
     srcs = ["tensor_list_utils.cc"],
     hdrs = ["tensor_list_utils.h"],
     deps = [
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_expression",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@local_xla//xla:literal_util",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -313,9 +328,18 @@ cc_library(
     deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_expression",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:function_body",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@local_xla//xla:literal",
+        "@local_xla//xla/hlo/builder:value_inference",
     ],
 )
 
@@ -327,8 +351,11 @@ cc_library(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -336,16 +363,13 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:regexp",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/client:xla_computation",
-        "@local_xla//xla/mlir_hlo",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/translate:stablehlo",
+        "@local_xla//xla/mlir/utils:type_util",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/python:refine_polymorphic_shapes",
-        "@local_xla//xla/translate/hlo_to_mhlo:hlo_utils",
-        "@local_xla//xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
+        "@local_xla//xla/service:hlo_proto_cc",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
@@ -367,8 +391,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -379,14 +405,16 @@ tf_kernel_library(
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:debug_options_flags",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:util",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-        "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/translate:stablehlo",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
+        "@local_xla//xla/service:hlo_module_config",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -409,18 +437,20 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_tree",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-        "@local_xla//xla/client/lib:tuple",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/builder/lib:tuple",
     ],
 )
 
@@ -430,16 +460,26 @@ tf_kernel_library(
     hdrs = ["if_op.h"],
     deps = [
         ":if_while_utils",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:dynamic_shaped_ops",
+        "//tensorflow/core/common_runtime:function_body",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
     ],
 )
 
@@ -458,9 +498,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:dynamic_shaped_ops",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
     ],
 )
 
@@ -478,6 +520,7 @@ tf_kernel_library(
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:logging_ops_op_lib",
+        "@com_google_absl//absl/log",
     ],
     alwayslink = 1,
 )
@@ -485,7 +528,6 @@ tf_kernel_library(
 tf_proto_library(
     name = "callback_proto",
     srcs = ["callback.proto"],
-    cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
 )
 
@@ -496,6 +538,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/strings:string_view",
         "@local_xla//xla:xla_data_proto_cc",
     ],
 )
@@ -504,10 +547,6 @@ tf_kernel_library(
     name = "xla_dot_op",
     srcs = ["xla_dot_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -518,24 +557,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "training_ops",
     srcs = ["training_ops.cc"],
     deps = [
-        ":case_op",
         ":cwise_ops",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -544,24 +578,18 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:math",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:math",
+    ],
 )
 
 tf_kernel_library(
     name = "batch_matmul_op",
     srcs = ["batch_matmul_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -571,25 +599,18 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:protos_all_cc",
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client/lib:math",
-        "@local_xla//xla/client/lib:matrix",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ) + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
+        "@local_xla//xla/hlo/builder/lib:math",
+        "@local_xla//xla/hlo/builder/lib:matrix",
+    ],
 )
 
 tf_kernel_library(
     name = "softmax_op",
     srcs = ["softmax_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -602,26 +623,17 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
-        "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "in_topk_op",
     srcs = ["in_topk_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -632,30 +644,23 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@local_xla//xla:literal",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:sorting",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:sorting",
+    ],
 )
 
 tf_kernel_library(
     name = "unary_ops_composition",
     srcs = ["unary_ops_composition.cc"],
     deps = [
-        ":case_op",
         ":cwise_ops",
         ":elu_op",
-        ":if_op",
         ":relu_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -664,27 +669,21 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/client:client_library",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:math",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:math",
+    ],
 )
 
 tf_kernel_library(
     name = "topk_op",
     srcs = ["topk_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -694,24 +693,22 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:sorting",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status:statusor",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:sorting",
+    ],
 )
 
 tf_kernel_library(
     name = "tensor_array_ops",
     srcs = ["tensor_array_ops.cc"],
     deps = [
-        ":case_op",
         ":gather_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -722,23 +719,20 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "tile_ops",
     srcs = ["tile_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -751,22 +745,16 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/client:value_inference",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "strided_slice_op",
     srcs = ["strided_slice_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -777,30 +765,26 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@local_xla//xla:literal",
-        "@local_xla//xla:util",
+        "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:value_inference",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:dynamic_shaped_ops",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+    ],
 )
 
 tf_kernel_library(
     name = "xla_broadcast_helper_op",
     srcs = ["xla_broadcast_helper_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -813,21 +797,14 @@ tf_kernel_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "xla_svd_op",
     srcs = ["xla_svd_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -835,14 +812,14 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:slicing",
-        "@local_xla//xla/client/lib:svd",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:slicing",
+        "@local_xla//xla/hlo/builder/lib:svd",
+    ],
 )
 
 tf_kernel_library(
@@ -850,10 +827,6 @@ tf_kernel_library(
     srcs = ["reduction_ops.cc"],
     hdrs = ["reduction_ops.h"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -863,23 +836,22 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "batchtospace_op",
     srcs = ["batchtospace_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -887,21 +859,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "spmd_manual_sharding_ops",
     srcs = ["spmd_manual_sharding_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -912,25 +880,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "fused_conv_ops",
     srcs = ["fused_conv_ops.cc"],
     deps = [
-        ":case_op",
         ":conv_op_helpers",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -940,22 +902,20 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:math",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:math",
+    ],
 )
 
 tf_kernel_library(
     name = "matrix_band_part_op",
     srcs = ["matrix_band_part_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -964,20 +924,13 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+    ],
 )
 
 tf_kernel_library(
     name = "clip_by_value_op",
     srcs = ["clip_by_value_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -986,21 +939,15 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@com_google_absl//absl/status",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "sharding_util_ops",
     srcs = ["sharding_util_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1012,26 +959,21 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "sort_ops",
     srcs = ["sort_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1040,22 +982,16 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:comparators",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:framework",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:comparators",
+    ],
 )
 
 tf_kernel_library(
     name = "matrix_inverse_op",
     srcs = ["matrix_inverse_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -1063,23 +999,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:matrix",
-        "@local_xla//xla/client/lib:qr",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:matrix",
+        "@local_xla//xla/hlo/builder/lib:qr",
+    ],
 )
 
 tf_kernel_library(
     name = "reduce_window_op",
     srcs = ["reduce_window_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1090,22 +1022,15 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+    ],
 )
 
 tf_kernel_library(
     name = "pad_op",
     srcs = ["pad_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1115,23 +1040,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:errors",
+        "@local_xla//xla:literal",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:value_inference",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "function_ops",
     srcs = ["function_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1142,20 +1063,13 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+    ],
 )
 
 tf_kernel_library(
     name = "sparse_to_dense_op",
     srcs = ["sparse_to_dense_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -1164,20 +1078,18 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "reverse_op",
     srcs = ["reverse_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1187,23 +1099,18 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/container:inlined_vector",
         "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "random_ops",
     srcs = ["random_ops.cc"],
     deps = [
-        ":case_op",
         ":gather_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1217,17 +1124,20 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:value_inference",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:comparators",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:dynamic_shaped_ops",
-        "@local_xla//xla/client/lib:loops",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:comparators",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+        "@local_xla//xla/hlo/builder/lib:loops",
+    ],
 )
 
 tf_kernel_library(
@@ -1235,10 +1145,6 @@ tf_kernel_library(
     srcs = ["gather_op.cc"],
     hdrs = ["gather_op_helpers.h"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1250,25 +1156,22 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
         "@local_xla//xla:status_macros",
+        "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:client_library",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:slicing",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:slicing",
+    ],
 )
 
 tf_kernel_library(
     name = "segment_reduction_ops",
     srcs = ["segment_reduction_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1278,23 +1181,20 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@local_xla//xla/client:value_inference",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "dynamic_partition_op",
     srcs = ["dynamic_partition_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1309,25 +1209,18 @@ tf_kernel_library(
         "@com_google_absl//absl/algorithm:container",
         "@local_xla//xla:comparison_util",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:comparators",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:comparators",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "transpose_op",
     srcs = ["transpose_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -1337,23 +1230,22 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "identity_op",
     srcs = ["identity_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":tensor_list_utils",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1362,22 +1254,18 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log:check",
+    ],
 )
 
 tf_kernel_library(
     name = "tensor_list_ops",
     srcs = ["tensor_list_ops.cc"],
     deps = [
-        ":case_op",
         ":gather_op",
-        ":if_op",
         ":tensor_list_utils",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1388,24 +1276,21 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:status_macros",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "cross_op",
     srcs = ["cross_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -1413,21 +1298,14 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "next_after_op",
     srcs = ["next_after_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1439,23 +1317,16 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:math",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:math",
+    ],
 )
 
 tf_kernel_library(
     name = "stochastic_cast_op",
     srcs = ["stochastic_cast_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":random_ops_util",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1467,23 +1338,17 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:stochastic_cast_op_header",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@com_google_absl//absl/status:statusor",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "select_op",
     srcs = ["select_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1494,21 +1359,16 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:broadcast",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/algorithm:container",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "l2loss_op",
     srcs = ["l2loss_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -1517,21 +1377,154 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "arg_op",
     srcs = ["arg_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@local_xla//xla:literal_util",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
+)
+
+tf_kernel_library(
+    name = "shape_util",
+    srcs = ["shape_util.cc"],
+    hdrs = ["shape_util.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+tf_kernel_library(
+    name = "to_bool_op",
+    srcs = ["to_bool_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
+)
+
+tf_kernel_library(
+    name = "mirror_pad_op",
+    srcs = ["mirror_pad_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status:statusor",
+        "@local_xla//xla:literal",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla:util",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
+)
+
+tf_kernel_library(
+    name = "xla_reduce_op",
+    srcs = ["xla_reduce_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+    ],
+)
+
+tf_kernel_library(
+    name = "qr_op",
+    srcs = ["qr_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:qr",
+    ],
+)
+
+tf_kernel_library(
+    name = "slice_op",
+    srcs = ["slice_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+    ],
+)
+
+tf_kernel_library(
+    name = "pack_op",
+    srcs = ["pack_op.cc"],
+    deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1543,92 +1536,14 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@local_xla//xla:literal_util",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
-    name = "shape_util",
-    srcs = ["shape_util.cc"],
-    hdrs = ["shape_util.h"],
+    name = "all_reduce_op",
+    srcs = ["all_reduce_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:xla_compilation_device",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_context",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/tf2xla:xla_resource",
-        "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/core:framework",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
-)
-
-tf_kernel_library(
-    name = "to_bool_op",
-    srcs = ["to_bool_op.cc"],
-    deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:xla_compilation_device",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_context",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/tf2xla:xla_resource",
-        "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/core:lib",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
-)
-
-tf_kernel_library(
-    name = "mirror_pad_op",
-    srcs = ["mirror_pad_op.cc"],
-    deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:xla_compilation_device",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_context",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/tf2xla:xla_resource",
-        "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
-)
-
-tf_kernel_library(
-    name = "xla_reduce_op",
-    srcs = ["xla_reduce_op.cc"],
-    deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1639,130 +1554,22 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/algorithm:container",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
-)
-
-tf_kernel_library(
-    name = "qr_op",
-    srcs = ["qr_op.cc"],
-    deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:xla_compilation_device",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_context",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/tf2xla:xla_resource",
-        "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@local_xla//xla/client/lib:qr",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
-)
-
-tf_kernel_library(
-    name = "slice_op",
-    srcs = ["slice_op.cc"],
-    deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compilation_device",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_context",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/tf2xla:xla_resource",
-        "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/types:span",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@local_xla//xla:util",
-        "@local_xla//xla/client:value_inference",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:dynamic_shaped_ops",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
-)
-
-tf_kernel_library(
-    name = "pack_op",
-    srcs = ["pack_op.cc"],
-    deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compilation_device",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_context",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/tf2xla:xla_resource",
-        "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "@local_xla//xla:literal_util",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
-)
-
-tf_kernel_library(
-    name = "all_reduce_op",
-    srcs = ["all_reduce_op.cc"],
-    deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compilation_device",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_context",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/tf2xla:xla_resource",
-        "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/core:framework",
-        "@local_xla//xla:util",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:math",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:math",
+    ],
 )
 
 tf_kernel_library(
     name = "sharding_op",
     srcs = ["sharding_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -1772,22 +1579,15 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "@local_xla//xla:sharding_op_util",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "concat_op",
     srcs = ["concat_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":shape_util",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1798,23 +1598,18 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla:literal_util",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "scan_ops",
     srcs = ["scan_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -1824,13 +1619,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+    ],
 )
 
 tf_kernel_library(
@@ -1838,10 +1630,6 @@ tf_kernel_library(
     srcs = ["image_resize_ops.cc"],
     hdrs = ["image_resize_ops.h"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/jit:xla_activity_listener",
         "//tensorflow/compiler/jit:xla_activity_proto_cc",
         "//tensorflow/compiler/tf2xla:common",
@@ -1854,50 +1642,25 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_xla//xla:array4d",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "spacetobatch_op",
     srcs = ["spacetobatch_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:xla_compilation_device",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_context",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/tf2xla:xla_resource",
-        "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/core/util:overflow",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
-)
-
-tf_kernel_library(
-    name = "lrn_ops",
-    srcs = ["lrn_ops.cc"],
-    deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -1906,22 +1669,41 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla:literal",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
+)
+
+tf_kernel_library(
+    name = "lrn_ops",
+    srcs = ["lrn_ops.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "@local_xla//xla/hlo/builder:padding",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "binary_ops",
     srcs = ["binary_ops.cc"],
     deps = [
-        ":case_op",
         ":cwise_ops",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1932,26 +1714,21 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:broadcast",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:client_library",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:math",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:math",
+    ],
 )
 
 tf_kernel_library(
     name = "roll_op",
     srcs = ["roll_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -1959,13 +1736,15 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:slicing",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla:literal",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:slicing",
+    ],
 )
 
 tf_kernel_library(
@@ -1973,11 +1752,7 @@ tf_kernel_library(
     srcs = ["random_ops_util.cc"],
     hdrs = ["random_ops_util.h"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":rng_converter_utils",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -1988,29 +1763,26 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla:literal",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:prng",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:prng",
+    ],
 )
 
 tf_kernel_library(
     name = "unary_ops",
     srcs = ["unary_ops.cc"],
     deps = [
-        ":case_op",
         ":cwise_ops",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2020,17 +1792,13 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla:shape_util",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:client_library",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:math",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:math",
+    ],
 )
 
 tf_kernel_library(
@@ -2038,10 +1806,6 @@ tf_kernel_library(
     srcs = ["cwise_ops.cc"],
     hdrs = ["cwise_ops.h"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2052,24 +1816,22 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:broadcast",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/client:client_library",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "matrix_triangular_solve_op",
     srcs = ["matrix_triangular_solve_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2079,12 +1841,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:broadcast",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
@@ -2092,10 +1852,6 @@ tf_kernel_library(
     srcs = ["relu_op.cc"],
     hdrs = ["relu_op.h"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2104,24 +1860,18 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
         "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "reduction_ops_common",
     srcs = ["reduction_ops_common.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":reduction_ops",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2131,24 +1881,25 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+    ],
 )
 
 tf_kernel_library(
     name = "bucketize_op",
     srcs = ["bucketize_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2157,22 +1908,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+    ],
 )
 
 tf_kernel_library(
     name = "depthtospace_op",
     srcs = ["depthtospace_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2182,21 +1928,16 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:data_format",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "xla_optimization_barrier_op",
     srcs = ["xla_optimization_barrier_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2205,20 +1946,13 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+    ],
 )
 
 tf_kernel_library(
     name = "matmul_op",
     srcs = ["matmul_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2228,23 +1962,18 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:matrix",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ) + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:matrix",
+    ],
 )
 
 tf_kernel_library(
     name = "matrix_solve_op",
     srcs = ["matrix_solve_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2252,25 +1981,20 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:matrix",
-        "@local_xla//xla/client/lib:qr",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:matrix",
+        "@local_xla//xla/hlo/builder/lib:qr",
+    ],
 )
 
 tf_kernel_library(
     name = "categorical_op",
     srcs = ["categorical_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":random_ops_util",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2281,25 +2005,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:prng",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:prng",
+    ],
 )
 
 tf_kernel_library(
     name = "dynamic_stitch_op",
     srcs = ["dynamic_stitch_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2309,22 +2027,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "@local_xla//xla:literal_util",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "beta_op",
     srcs = ["beta_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2333,26 +2046,20 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/lib:broadcast",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "@com_google_absl//absl/status:statusor",
         "@local_xla//xla:status_macros",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:loops",
-        "@local_xla//xla/client/lib:math",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:loops",
+        "@local_xla//xla/hlo/builder/lib:math",
+    ],
 )
 
 tf_kernel_library(
     name = "unique_op",
     srcs = ["unique_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2363,32 +2070,26 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@local_xla//xla:comparison_util",
-        "@local_xla//xla:literal",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:comparators",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:comparators",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "reshape_op",
     srcs = ["reshape_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2398,24 +2099,21 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/log",
         "@local_xla//xla:literal",
         "@local_xla//xla:util",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "pooling_ops",
     srcs = ["pooling_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -2427,28 +2125,28 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@local_xla//xla:literal",
+        "@local_xla//xla:shape_util",
         "@local_xla//xla:util",
-        "@local_xla//xla/client:value_inference",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:pooling",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:padding",
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:pooling",
+    ],
 )
 
 tf_kernel_library(
     name = "data_format_ops",
     srcs = ["data_format_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2458,23 +2156,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:slicing",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:slicing",
+    ],
 )
 
 tf_kernel_library(
     name = "xla_dequantize_op",
     srcs = ["xla_dequantize_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2483,23 +2177,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:quantize",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:quantize",
+    ],
 )
 
 tf_kernel_library(
     name = "const_op",
     srcs = ["const_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2510,24 +2198,16 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "shape_op",
     srcs = ["shape_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":shape_util",
         ":tensor_list_utils",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2536,27 +2216,26 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla:literal",
+        "@local_xla//xla:literal_util",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "image_ops",
     srcs = ["image_ops.cc"],
     deps = [
-        ":case_op",
         ":gather_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2569,31 +2248,25 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:comparators",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:dynamic_shaped_ops",
-        "@local_xla//xla/client/lib:loops",
-        "@local_xla//xla/client/lib:sorting",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:comparators",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+        "@local_xla//xla/hlo/builder/lib:loops",
+        "@local_xla//xla/hlo/builder/lib:sorting",
+    ],
 )
 
 tf_kernel_library(
     name = "retval_op",
     srcs = ["retval_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2603,22 +2276,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
         "@local_xla//xla:status_macros",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "xla_custom_call_v2_op",
     srcs = ["xla_custom_call_v2_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2630,23 +2298,18 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/service:hlo_proto_cc",
+    ],
 )
 
 tf_kernel_library(
     name = "listdiff_op",
     srcs = ["listdiff_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2657,22 +2320,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@com_google_absl//absl/status",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "sendrecv_ops",
     srcs = ["sendrecv_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2682,23 +2340,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "conv_ops",
     srcs = ["conv_ops.cc"],
     deps = [
-        ":case_op",
         ":conv_op_helpers",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2709,24 +2363,18 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status:statusor",
         "@local_xla//xla:literal_util",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:matrix",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:matrix",
+    ],
 )
 
 tf_kernel_library(
     name = "dequantize_op",
     srcs = ["dequantize_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2736,23 +2384,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:matrix",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:matrix",
+    ],
 )
 
 tf_kernel_library(
     name = "ensure_shape_op",
     srcs = ["ensure_shape_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2762,23 +2404,16 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/log",
         "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "where_op",
     srcs = ["where_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2788,26 +2423,25 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/tpu:tpu_defs",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:comparators",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:dynamic_shaped_ops",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla:util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:comparators",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+    ],
 )
 
 tf_kernel_library(
     name = "stack_ops",
     srcs = ["stack_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2818,21 +2452,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla:literal",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "xla_reduce_precision_op",
     srcs = ["xla_reduce_precision_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2841,20 +2473,13 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+    ],
 )
 
 tf_kernel_library(
     name = "diag_op",
     srcs = ["diag_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -2866,16 +2491,15 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
         "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:matrix",
-        "@local_xla//xla/client/lib:pooling",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:matrix",
+        "@local_xla//xla/hlo/builder/lib:pooling",
+    ],
 )
 
 tf_kernel_library(
@@ -2883,10 +2507,6 @@ tf_kernel_library(
     srcs = ["index_ops.cc"],
     hdrs = ["index_ops.h"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2896,22 +2516,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla/client/lib:arithmetic",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+    ],
 )
 
 tf_kernel_library(
     name = "lower_upper_bound_ops",
     srcs = ["lower_upper_bound_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2921,22 +2538,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
         "@local_xla//xla:comparison_util",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "spacetodepth_op",
     srcs = ["spacetodepth_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -2946,21 +2558,18 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:data_format",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "empty_op",
     srcs = ["empty_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2970,22 +2579,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "bincount_op",
     srcs = ["bincount_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -2994,25 +2598,20 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "@com_google_absl//absl/status:statusor",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:xla_computation",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:comparators",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:comparators",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "tridiagonal_ops",
     srcs = ["tridiagonal_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3022,22 +2621,15 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla/client/lib:slicing",
-        "@local_xla//xla/client/lib:tridiagonal",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder/lib:slicing",
+        "@local_xla//xla/hlo/builder/lib:tridiagonal",
+    ],
 )
 
 tf_kernel_library(
     name = "device_index_op",
     srcs = ["device_index_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3049,24 +2641,17 @@ tf_kernel_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/client:client_library",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:math",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:math",
+    ],
 )
 
 tf_kernel_library(
     name = "bcast_ops",
     srcs = ["bcast_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3076,24 +2661,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@local_xla//xla:literal",
-        "@local_xla//xla/client:value_inference",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:value_inference",
+    ],
 )
 
 tf_kernel_library(
     name = "aggregate_ops",
     srcs = ["aggregate_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":tensor_list_utils",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3102,22 +2682,14 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:lib",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "split_op",
     srcs = ["split_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3127,22 +2699,15 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "replica_id_op",
     srcs = ["replica_id_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3151,21 +2716,14 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "bias_ops",
     srcs = ["bias_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3175,22 +2733,15 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "xla_select_and_scatter_op",
     srcs = ["xla_select_and_scatter_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3199,25 +2750,15 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+    ],
 )
 
 tf_kernel_library(
     name = "stateless_random_ops_v2",
     srcs = ["stateless_random_ops_v2.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":random_ops_util",
         ":rng_converter_utils",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3229,26 +2770,29 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:random",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:dynamic_shaped_ops",
-        "@local_xla//xla/client/lib:prng",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+        "@local_xla//xla/hlo/builder/lib:prng",
+    ],
 )
 
 tf_kernel_library(
     name = "approx_topk_op",
     srcs = ["approx_topk_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3260,27 +2804,22 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@local_xla//xla:literal_util",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-        "@local_xla//xla/client/lib:approx_topk",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/builder/lib:approx_topk",
+    ],
 )
 
 tf_kernel_library(
     name = "stateful_random_ops",
     srcs = ["stateful_random_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":random_ops_util",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3292,26 +2831,23 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:stateful_random_ops_header",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:math",
-        "@local_xla//xla/client/lib:prng",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:prng",
+    ],
 )
 
 tf_kernel_library(
     name = "no_op",
     srcs = ["no_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3320,21 +2856,13 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+    ],
 )
 
 tf_kernel_library(
     name = "xla_conv_op",
     srcs = ["xla_conv_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3343,23 +2871,14 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/core:framework",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+    ],
 )
 
 tf_kernel_library(
     name = "broadcast_to_op",
     srcs = ["broadcast_to_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3369,21 +2888,14 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:broadcast",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:lib",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "sequence_ops",
     srcs = ["sequence_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3392,28 +2904,25 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status:statusor",
         "@local_xla//xla:literal",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "variable_ops",
     srcs = ["variable_ops.cc"],
     deps = [
-        ":case_op",
         ":gather_op",
-        ":if_op",
         ":shape_util",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3423,25 +2932,22 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:resource_variable_util",
         "//tensorflow/core/kernels:scatter_nd_util",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:slicing",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:slicing",
+    ],
 )
 
 tf_kernel_library(
     name = "matrix_diag_ops",
     srcs = ["matrix_diag_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3452,24 +2958,22 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@eigen_archive//:eigen3",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:matrix",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:matrix",
+    ],
 )
 
 tf_kernel_library(
     name = "reverse_sequence_op",
     srcs = ["reverse_sequence_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3479,23 +2983,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:errors",
+        "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "xla_custom_call_op",
     srcs = ["xla_custom_call_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3507,23 +3007,17 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/tpu:tpu_defs",
+        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "xla_self_adjoint_eig_op",
     srcs = ["xla_self_adjoint_eig_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3531,22 +3025,16 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla/client/lib:self_adjoint_eig",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder/lib:self_adjoint_eig",
+    ],
 )
 
 tf_kernel_library(
     name = "cast_op",
     srcs = ["cast_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3559,25 +3047,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "dynamic_slice_ops",
     srcs = ["dynamic_slice_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3588,21 +3070,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "fft_ops",
     srcs = ["fft_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3612,23 +3090,39 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:inlined_vector",
         "@local_xla//xla:literal_util",
         "@local_xla//xla:util",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "xla_pad_op",
     srcs = ["xla_pad_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
+)
+
+tf_kernel_library(
+    name = "one_hot_op",
+    srcs = ["one_hot_op.cc"],
+    deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3638,46 +3132,16 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
-)
-
-tf_kernel_library(
-    name = "one_hot_op",
-    srcs = ["one_hot_op.cc"],
-    deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compilation_device",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_context",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/tf2xla:xla_op_registry",
-        "//tensorflow/compiler/tf2xla:xla_resource",
-        "//tensorflow/compiler/tf2xla/ops:xla_ops",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:errors",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "unpack_op",
     srcs = ["unpack_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3687,12 +3151,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
@@ -3700,11 +3160,7 @@ tf_kernel_library(
     srcs = ["elu_op.cc"],
     hdrs = ["elu_op.h"],
     deps = [
-        ":case_op",
         ":cwise_ops",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3714,23 +3170,16 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "@local_xla//xla:literal",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_kernel_library(
     name = "batch_norm_op",
     srcs = ["batch_norm_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":relu_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3741,25 +3190,20 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "@local_xla//xla:util",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:math",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:math",
+    ],
 )
 
 tf_kernel_library(
     name = "extract_image_patches_op",
     srcs = ["extract_image_patches_op.cc"],
     deps = [
-        ":case_op",
         ":conv_op_helpers",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3772,24 +3216,17 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:util",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:matrix",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:matrix",
+    ],
 )
 
 tf_kernel_library(
     name = "scatter_nd_op",
     srcs = ["scatter_nd_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3799,24 +3236,19 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:status_macros",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "fill_op",
     srcs = ["fill_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3826,23 +3258,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:value_inference",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "stateless_random_ops",
     srcs = ["stateless_random_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
         ":random_ops_util",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3855,25 +3281,23 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:math",
-        "@local_xla//xla/client/lib:prng",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:prng",
+    ],
 )
 
 tf_kernel_library(
     name = "gather_scatter_ops",
     srcs = ["gather_scatter_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3884,21 +3308,14 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+    ],
 )
 
 tf_kernel_library(
     name = "einsum_op",
     srcs = ["einsum_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3908,22 +3325,16 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:matrix",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:matrix",
+    ],
 )
 
 tf_kernel_library(
     name = "cholesky_op",
     srcs = ["cholesky_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",
@@ -3931,22 +3342,15 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:matrix",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:matrix",
+    ],
 )
 
 tf_kernel_library(
     name = "quantize_and_dequantize_op",
     srcs = ["quantize_and_dequantize_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3957,25 +3361,22 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:constants",
-        "@local_xla//xla/client/lib:math",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:constants",
+        "@local_xla//xla/hlo/builder/lib:math",
+    ],
 )
 
 tf_kernel_library(
     name = "fake_quantize_ops",
     srcs = ["fake_quantize_ops.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -3985,22 +3386,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:lib",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client/lib:arithmetic",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+    ],
 )
 
 tf_kernel_library(
     name = "fake_param_op",
     srcs = ["fake_param_op.cc"],
     deps = [
-        ":case_op",
-        ":if_op",
-        ":while_op",
-        ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -4010,11 +3406,9 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/client/lib:constants",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+        "//tensorflow/core:protos_all_cc",
+        "@local_xla//xla/hlo/builder/lib:constants",
+    ],
 )
 
 tf_cc_test(
@@ -4035,8 +3429,5 @@ tf_kernel_library(
     deps = [
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
-    ] + if_cuda_or_rocm(
-        if_false = [],
-        if_true = [":light_outside_compilation"],
-    ),
+    ],
 )

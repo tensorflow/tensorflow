@@ -14,28 +14,25 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/experimental/common/outline_operations.h"
 
-#include <memory>
+#include <cassert>
 #include <string>
-#include <utility>
 
 #include "absl/strings/str_cat.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/cluster_util.h"
 
 namespace mlir {
@@ -44,7 +41,7 @@ namespace common {
 
 bool IsConstantOrNone(Operation* op) {
   return (op->getNumResults() == 1 &&
-          op->getResult(0).getType().isa<NoneType>()) ||
+          mlir::isa<NoneType>(op->getResult(0).getType())) ||
          matchPattern(op, m_Constant()) || isa<QConstOp>(op);
 }
 
@@ -147,7 +144,7 @@ func::FuncOp BuildFuncOp(const Subgraph& subgraph, OpBuilder& builder,
   // order, accumulating clones of defined Values into a `IRMapping`
   // and pass that map to calls to clone ops.
   OpBuilder function_builder(new_func.getBody());
-  // Prefered data structure for mapping MLIR values.
+  // Preferred data structure for mapping MLIR values.
   IRMapping values_in_scope;
   // Function arguments can appear as operands, so they clone should
   // be aware of them.

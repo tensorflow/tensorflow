@@ -1,6 +1,10 @@
+# NB: DEPRECATED! This file is a part of the deprecated `cuda_configure` rule.
+# Please use `hermetic/cuda_configure` instead.
+
 load(":build_defs.bzl", "cuda_header_library")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
@@ -59,25 +63,33 @@ cuda_header_library(
     ],
 )
 
+# See comment on identically named target in hermetic/BUILD.tpl. This is here
+# to keep users who have still not migrated from hermetic cuda from being
+# broken.
+alias(
+  name = "implicit_cuda_headers_dependency",
+  actual = ":cuda_headers",
+)
+
 cc_library(
     name = "cudart_static",
-    srcs = ["cuda/lib/libcudart_static.a"],
+    srcs = ["cuda/lib/%{cudart_static_lib}"],
     linkopts = [
         "-ldl",
-        "-lrt",
         "-lpthread",
+        %{cudart_static_linkopt}
     ],
 )
 
 cc_library(
     name = "cuda_driver",
-    srcs = ["cuda/lib/libcuda.so"],
+    srcs = ["cuda/lib/%{cuda_driver_lib}"],
 )
 
 cc_library(
     name = "cudart",
-    srcs = glob(["cuda/lib/libcudart.so.*"]),
-    data = glob(["cuda/lib/libcudart.so.*"]),
+    srcs = ["cuda/lib/%{cudart_lib}"],
+    data = ["cuda/lib/%{cudart_lib}"],
     linkstatic = 1,
 )
 
@@ -128,30 +140,29 @@ cuda_header_library(
 
 cc_library(
     name = "cublas",
-    srcs = glob(["cuda/lib/libcublas.so.*"]),
-    data = glob(["cuda/lib/libcublas.so.*"]),
+    srcs = ["cuda/lib/%{cublas_lib}"],
+    data = ["cuda/lib/%{cublas_lib}"],
     linkstatic = 1,
 )
 
 cc_library(
     name = "cublasLt",
-    srcs = glob(["cuda/lib/libcublasLt.so.*"]),
-    data = glob(["cuda/lib/libcublasLt.so.*"]),
+    srcs = ["cuda/lib/%{cublasLt_lib}"],
+    data = ["cuda/lib/%{cublasLt_lib}"],
     linkstatic = 1,
 )
 
 cc_library(
     name = "cusolver",
-    srcs = glob(["cuda/lib/libcusolver.so.*"]),
-    data = glob(["cuda/lib/libcusolver.so.*"]),
-    linkopts = ["-lgomp"],
+    srcs = ["cuda/lib/%{cusolver_lib}"],
+    data = ["cuda/lib/%{cusolver_lib}"],
     linkstatic = 1,
 )
 
 cc_library(
     name = "cudnn",
-    srcs = glob(["cuda/lib/libcudnn.so.*"]),
-    data = glob(["cuda/lib/libcudnn.so.*"]),
+    srcs = ["cuda/lib/%{cudnn_lib}"],
+    data = ["cuda/lib/%{cudnn_lib}"],
     linkstatic = 1,
 )
 
@@ -165,15 +176,15 @@ cc_library(
 
 cc_library(
     name = "cufft",
-    srcs = glob(["cuda/lib/libcufft.so.*"]),
-    data = glob(["cuda/lib/libcufft.so.*"]),
+    srcs = ["cuda/lib/%{cufft_lib}"],
+    data = ["cuda/lib/%{cufft_lib}"],
     linkstatic = 1,
 )
 
 cc_library(
     name = "curand",
-    srcs = glob(["cuda/lib/libcurand.so.*"]),
-    data = glob(["cuda/lib/libcurand.so.*"]),
+    srcs = ["cuda/lib/%{curand_lib}"],
+    data = ["cuda/lib/%{curand_lib}"],
     linkstatic = 1,
 )
 
@@ -192,7 +203,7 @@ cc_library(
 
 alias(
     name = "cub_headers",
-    actual = ":cuda_headers",
+    actual = "%{cub_actual}",
 )
 
 cuda_header_library(
@@ -213,14 +224,13 @@ cuda_header_library(
 
 cc_library(
     name = "cupti_dsos",
-    data = glob(["cuda/lib/libcupti.so.*"]),
+    data = ["cuda/lib/%{cupti_lib}"],
 )
 
 cc_library(
     name = "cusparse",
-    srcs = glob(["cuda/lib/libcusparse.so.*"]),
-    data = glob(["cuda/lib/libcusparse.so.*"]),
-    linkopts = ["-lgomp"],
+    srcs = ["cuda/lib/%{cusparse_lib}"],
+    data = ["cuda/lib/%{cusparse_lib}"],
     linkstatic = 1,
 )
 
@@ -242,4 +252,69 @@ py_library(
     srcs = ["cuda/cuda_config.py"],
 )
 
+# Build setting that is always true (i.e. it can not be changed on the
+# command line). It is used to create the config settings below that are
+# always or never satisfied.
+bool_setting(
+    name = "true_setting",
+    visibility = ["//visibility:private"],
+    build_setting_default = True,
+)
+
+# Config settings whether TensorFlow is built with CUDA.
+# These configs are never satisfied.
+config_setting(
+    name = "cuda_tools",
+    flag_values = {":true_setting": "False"},
+)
+
+# Flags indicating if we should include CUDA libs.
+bool_flag(
+    name = "include_cuda_libs",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "cuda_libs",
+    flag_values = {":true_setting": "False"},
+)
+
+bool_flag(
+    name = "override_include_cuda_libs",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "overrided_cuda_libs",
+    flag_values = {":true_setting": "False"},
+)
+
+selects.config_setting_group(
+    name = "any_cuda_libs",
+    match_any = [
+        ":cuda_libs",
+        ":overrided_cuda_libs"
+    ],
+)
+
+selects.config_setting_group(
+    name = "cuda_tools_and_libs",
+    match_all = [
+        ":any_cuda_libs",
+        ":cuda_tools"
+    ],
+)
+
 %{copy_rules}
+
+cc_library(
+    # This is not yet fully supported, but we need the rule
+    # to make bazel query happy.
+    name = "nvptxcompiler",
+)
+
+cc_library(
+    # This is not yet fully supported, but we need the rule
+    # to make bazel query happy.
+    name = "nvjitlink",
+)

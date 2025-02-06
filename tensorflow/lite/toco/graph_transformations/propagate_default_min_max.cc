@@ -17,11 +17,13 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -39,9 +41,8 @@ bool SupportsMinMax(const Array& array) {
 // When provided a set of min/max values for uint8 arrays this will rescale
 // the values for other data types as required and preserving the floating point
 // range within the new type.
-::tensorflow::Status PropagateDefaultMinMax::Run(Model* model,
-                                                 std::size_t op_index,
-                                                 bool* modified) {
+absl::Status PropagateDefaultMinMax::Run(Model* model, std::size_t op_index,
+                                         bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   const auto* op = it->get();
@@ -65,7 +66,7 @@ bool SupportsMinMax(const Array& array) {
   }
 
   *modified = did_change;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Sets the min/max on the given array, adjusting the reference_minmax for the

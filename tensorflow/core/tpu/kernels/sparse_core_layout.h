@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_SPARSE_CORE_LAYOUT_H_
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,8 +38,10 @@ class SparseCoreLayoutStacker {
   //     into (usually one per TPU chip).
   //       NOTE: As of Q4 2023, SPMD is not supported by the sparse core python
   //       libraries so we don't support it here.
-  //   sparse_cores_per_partition:
+  //   sparse_cores_per_partition: Number of sparsecore per partition
+  //   disable_table_stacking: Should not stack tables.
   explicit SparseCoreLayoutStacker(int num_partitions,
+                                   bool disable_table_stacking = false,
                                    int sparse_cores_per_partition = 4);
 
   // Change various limits. You must call these before calling Addtable.
@@ -53,6 +56,14 @@ class SparseCoreLayoutStacker {
   void SetStackingEnabled(bool stacking_enabled) {
     CHECK(stacks_by_group_.empty()) << "must call before AddTable";
     stacking_enabled_ = stacking_enabled;
+  }
+  void SetStackingRowLimit(int64_t row_limit) {
+    CHECK(stacks_by_group_.empty()) << "must call before AddTable";
+    row_limit_ = row_limit;
+  }
+  void SetStackingTableLimit(int table_limit) {
+    CHECK(stacks_by_group_.empty()) << "must call before AddTable";
+    table_limit_ = table_limit;
   }
 
   // Add a new table.  Arguments:
@@ -73,8 +84,8 @@ class SparseCoreLayoutStacker {
   //
   // Be sure you call AddTable in a deterministic order; the details of the
   // stacking will depend on the order you call AddTable.
-  absl::Status AddTable(tsl::StringPiece table_name, int64_t table_height,
-                        int64_t table_width, tsl::StringPiece group,
+  absl::Status AddTable(absl::string_view table_name, int64_t table_height,
+                        int64_t table_width, absl::string_view group,
                         int64_t output_samples);
 
   // Get the information about each table out.
@@ -102,7 +113,12 @@ class SparseCoreLayoutStacker {
   bool stacking_enabled_ = true;
   int64_t activation_mem_bytes_limit_ = 0;
   int64_t variable_shard_bytes_limit_ = 0;
-  int num_tables_ = 0;
+  // Sparse core ops use signed int for row numbers so we had better not stack
+  // beyond this limit.
+  int64_t row_limit_ = (1LL << 31) - 1;
+
+  // The maximum number of tables in any stack.
+  int table_limit_ = std::numeric_limits<int>::max();
 
   // All the stacks that we currently know about. Note that we use a btree_map
   // rather than a flat_hash_map so the resulting order is deterministic as long

@@ -60,7 +60,7 @@ TEST_F(RendezvousUtilTest, SendBeforeRecv) {
   std::vector<Tensor> received_keys;
   RecvOutputsFromRendezvousAsync(
       rendez_, nullptr, {}, {MakeStringKey("hello1"), MakeStringKey("hello2")},
-      &received_keys, [&n](const Status& status) { n.Notify(); });
+      &received_keys, [&n](const absl::Status& status) { n.Notify(); });
   n.WaitForNotification();
 
   EXPECT_EQ(2, received_keys.size());
@@ -74,7 +74,7 @@ TEST_F(RendezvousUtilTest, RecvBeforeSend) {
   std::vector<Tensor> received_keys;
   RecvOutputsFromRendezvousAsync(
       rendez_, nullptr, {}, {MakeStringKey("hello1"), MakeStringKey("hello2")},
-      &received_keys, [&n](const Status& status) { n.Notify(); });
+      &received_keys, [&n](const absl::Status& status) { n.Notify(); });
 
   TF_ASSERT_OK(SendTensorsToRendezvous(
       rendez_, nullptr, {}, {MakeStringKey("hello1"), MakeStringKey("hello2")},
@@ -105,7 +105,7 @@ TEST(RendezvousUtilCallerThreadTest, RecvBeforeSend) {
   std::vector<Tensor> received_keys;
   RecvOutputsFromRendezvousAsync(
       rendez_, nullptr, {}, {MakeStringKey("hello1"), MakeStringKey("hello2")},
-      &received_keys, [&n, rendez_](const Status& status) {
+      &received_keys, [&n, rendez_](const absl::Status& status) {
         rendez_->Unref();
         n.Notify();
       });

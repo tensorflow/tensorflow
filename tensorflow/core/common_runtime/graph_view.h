@@ -111,9 +111,8 @@ struct NodeItem {
   // is true if and only if the ith output is consumed by another node.
   std::unique_ptr<bool[]> outputs_required;
 
-  gtl::MutableArraySlice<EdgeInfo> mutable_output_edges() {
-    return gtl::MutableArraySlice<EdgeInfo>(output_edge_base(),
-                                            num_output_edges);
+  absl::Span<EdgeInfo> mutable_output_edges() {
+    return absl::Span<EdgeInfo>(output_edge_base(), num_output_edges);
   }
 
   gtl::ArraySlice<EdgeInfo> output_edges() const {
@@ -212,8 +211,8 @@ class GraphView {
   GraphView() : space_(nullptr) {}
   ~GraphView();
 
-  Status Initialize(const Graph* g);
-  Status SetAllocAttrs(const Graph* g, const Device* device);
+  absl::Status Initialize(const Graph* g);
+  absl::Status SetAllocAttrs(const Graph* g, const Device* device);
   void SetScopedAllocatorAttrs(const std::vector<const Node*>& sa_nodes);
 
   // Returns a mutable pointer to the `NodeItem` with the given `id` if it

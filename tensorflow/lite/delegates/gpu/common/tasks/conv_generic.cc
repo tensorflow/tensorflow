@@ -303,6 +303,7 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
   }
   if (gpu_info.IsMali()) {
     compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
+    compiler_options_.push_back(CompilerOptions::kClRegisterAllocation64);
   }
   if (conv_params_.IsPrivateMemBroadcast() &&
       (gpu_info.IsCL20OrHigher() || gpu_info.opencl_info.IsCLVK())) {
@@ -488,7 +489,7 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
          std::to_string(work_group_size_.y) + ", " +
          std::to_string(work_group_size_.z) + ")))\n";
   }
-  if (use_simd_broadcast && gpu_info.IsIntel() && gpu_info.IsApiOpenCl() &&
+  if (use_simd_broadcast && gpu_info.IsApiOpenCl() &&
       gpu_info.SupportsExtension("cl_intel_required_subgroup_size")) {
     c += "__attribute__((intel_reqd_sub_group_size(" +
          std::to_string(simd_size) + ")))\n";
@@ -886,7 +887,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
                       std::to_string(s * 4 + ch + shared_offset);
                   std::string w_val;
                   if (conv_params.AreWeightsBuffer()) {
-                    if (gpu_info.SupportsPointersInKernels()) {
+                    if (need_local_mem ||
+                        gpu_info.SupportsPointersInKernels()) {
                       w_val = "weights_cache[" + weight_id + "]";
                     } else {
                       w_val = "args.weights.Read(filters_offset + " +
@@ -926,7 +928,7 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
                 std::string weight_id =
                     std::to_string(s * 4 + i + shared_offset);
                 if (conv_params.AreWeightsBuffer()) {
-                  if (gpu_info.SupportsPointersInKernels()) {
+                  if (need_local_mem || gpu_info.SupportsPointersInKernels()) {
                     F[i] = "weights_cache[" + weight_id + "]";
                   } else {
                     F[i] =
@@ -1113,7 +1115,7 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
     c += "  if (DST_S + " + sind + " >= args.dst_tensor.Slices()) return;\n";
     c += "  {\n";
     if (conv_params.AreWeightsBuffer() &&
-        gpu_info.SupportsPointersInKernels()) {
+        (need_local_mem || gpu_info.SupportsPointersInKernels())) {
       c += "    FLT4 bias_val = TO_FLT4(weights_cache[" + sind + "]);\n";
     } else {
       c += "    FLT4 bias_val = args.biases.Read(DST_S + " + sind + ");\n";
@@ -1292,7 +1294,7 @@ ConvGeneric::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   options.push_back(CreateWorkGroupSizeOption(
       {8, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.0f, dst_shape,
       params.block_size));
-  if (!apple_info.IsA7GenerationGpu()) {
+  if (!apple_info.IsFamilyApple1()) {
     options.push_back(CreateWorkGroupSizeOption(
         {4, 4, 1}, WorkGroupSizeOption::ThreadMapping::kDefault, 1.01f,
         dst_shape, params.block_size));
@@ -1303,7 +1305,7 @@ ConvGeneric::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   options.push_back(CreateWorkGroupSizeOption(
       {32, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.0f,
       dst_shape, params.block_size));
-  if (!apple_info.IsA7GenerationGpu()) {
+  if (!apple_info.IsFamilyApple1()) {
     options.push_back(CreateWorkGroupSizeOption(
         {16, 1, 1}, WorkGroupSizeOption::ThreadMapping::kLinearSpatial, 1.01f,
         dst_shape, params.block_size));
@@ -1544,23 +1546,34 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
       conv_params.src_depth_loop_size = 4;
     }
   } else if (gpu_info.IsPowerVR()) {
-    if (different_weights_for_height) {
+    if (gpu_info.IsCL30OrHigher()) {
+      work_group_size_ =
+          int3(gpu_info.opencl_info.preferred_work_group_size_multiple, 1, 1);
+    } else {
       work_group_size_ = int3(32, 1, 1);
+    }
+    if (different_weights_for_height) {
       work_group_launch_order_ = int3(2, 0, 1);
       conv_params.fixed_work_group_size = true;
     } else {
       conv_params.linear_spatial = true;
-      work_group_size_ = int3(32, 1, 1);
       work_group_launch_order_ = int3(1, 0, 2);
       conv_params.fixed_work_group_size = true;
     }
     conv_params.block_size = int4(1, 1, 1, 4);
     conv_params.src_depth_loop_size = 1;
-    if (definition.precision == CalculationsPrecision::F32_F16) {
-      conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+    if (!gpu_info.IsApiOpenCl() ||
+        (gpu_info.IsApiOpenCl() &&
+         gpu_info.opencl_info.dedicated_local_memory)) {
+      if (definition.precision == CalculationsPrecision::F32_F16) {
+        conv_params.weights_upload_type =
+            WeightsUploadType::LOCAL_MEM_BY_THREADS;
+      } else {
+        conv_params.weights_upload_type =
+            WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP;
+      }
     } else {
-      conv_params.weights_upload_type =
-          WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP;
+      conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
     }
     if (dst_depth % 8 == 0 || dst_depth >= 32) {
       conv_params.block_size.w = 8;
@@ -1748,8 +1761,7 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
     conv_params.fixed_work_group_size = false;
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM_X4;
-  } else if (gpu_info.IsIntel() ||
-             (gpu_info.IsApiOpenCl() && gpu_info.opencl_info.IsCLVK())) {
+  } else if (gpu_info.IsIntel()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(16, 1, 1);
       work_group_launch_order_ = int3(0, 1, 2);
@@ -1780,16 +1792,20 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
         const int kSubGroupSize = 16;
         const bool supports_subgroup_size_control =
             gpu_info.SupportsExtension("cl_intel_required_subgroup_size");
+        int min_subgroup_size;
+        auto min_subgroup_size_status =
+            gpu_info.GetMinSubGroupSize(min_subgroup_size);
         if (supports_subgroup_size_control &&
             gpu_info.SupportsSubGroupWithSize(kSubGroupSize)) {
           conv_params.weights_upload_type =
               WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
           conv_params.simd_size = kSubGroupSize;
-        } else if (gpu_info.opencl_info.IsCLVK()) {
-          // It will work because of specific driver using subgroup size 16
+        } else if (supports_subgroup_size_control &&
+                   min_subgroup_size_status.ok()) {
           conv_params.weights_upload_type =
               WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
-          conv_params.simd_size = 16;
+          conv_params.simd_size = min_subgroup_size;
+          work_group_size_ = int3(min_subgroup_size, 1, 1);
         } else {
           // no support of subgroup size control
           // only smallest subgroup size (8) can be used safely, otherwise

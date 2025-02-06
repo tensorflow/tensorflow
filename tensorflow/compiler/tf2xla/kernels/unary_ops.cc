@@ -15,19 +15,18 @@ limitations under the License.
 
 // Native XLA implementations of simple unary Ops
 
-#include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
+#include <cmath>
+
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/client_library.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/math.h"
-#include "xla/client/xla_builder.h"
-#include "xla/primitive_util.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/xla_data.pb.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -95,7 +94,7 @@ REGISTER_XLA_OP(Name("Sign"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Sinh, xla::Sinh(x));
 
 static xla::XlaOp Softplus(xla::XlaBuilder* b, xla::XlaOp features) {
-  return b->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
+  return b->ReportErrorOrReturn([&]() -> absl::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(features));
     xla::XlaOp threshold =
         Log(xla::Epsilon(b, shape.element_type())) + ScalarLike(features, 2.0);

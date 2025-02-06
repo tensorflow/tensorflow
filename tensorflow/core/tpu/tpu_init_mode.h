@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_INIT_MODE_H_
 #define TENSORFLOW_CORE_TPU_TPU_INIT_MODE_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -30,7 +31,7 @@ enum class TPUInitMode : int { kNone, kGlobal, kRegular };
 // IMPLEMENTATION DETAILS:
 // Used internally to record the current mode and type of API used for TPU
 // initialization in a global static variable.
-Status SetTPUInitMode(TPUInitMode mode);
+absl::Status SetTPUInitMode(TPUInitMode mode);
 
 // Returns the current TPUInitMode.
 TPUInitMode GetTPUInitMode();

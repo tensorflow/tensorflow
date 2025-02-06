@@ -12,15 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -30,17 +32,16 @@ namespace toco {
   *modified = false;
   const auto pad_it = model->operators.begin() + op_index;
   auto* pad_op = pad_it->get();
-  if (pad_op->type != OperatorType::kPad) return ::tensorflow::OkStatus();
+  if (pad_op->type != OperatorType::kPad) return absl::OkStatus();
 
   auto* op = static_cast<PadOperator*>(pad_op);
-  if (!op->left_padding.empty()) return ::tensorflow::OkStatus();
+  if (!op->left_padding.empty()) return absl::OkStatus();
 
   CHECK_EQ(op->inputs.size(), 2);
-  if (!IsConstantParameterArray(*model, op->inputs[1]))
-    return ::tensorflow::OkStatus();
+  if (!IsConstantParameterArray(*model, op->inputs[1])) return absl::OkStatus();
 
   const auto& array = model->GetArray(op->inputs[1]);
-  if (!array.has_shape()) return ::tensorflow::OkStatus();
+  if (!array.has_shape()) return absl::OkStatus();
 
   const std::vector<int>& dims = array.shape().dims();
   CHECK_EQ(dims.size(), 2);
@@ -55,6 +56,6 @@ namespace toco {
   // TODO(dkalenichenko): Delete the extra input?
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace toco

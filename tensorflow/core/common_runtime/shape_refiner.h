@@ -33,42 +33,6 @@ namespace grappler {
 class GraphProperties;
 }
 
-// This class stores extra inference information in addition to
-// InferenceContext, such as node input and output types.
-class ExtendedInferenceContext {
- public:
-  ExtendedInferenceContext(
-      std::unique_ptr<shape_inference::InferenceContext> ic, const Node* node)
-      : inference_context_(std::move(ic)), op_(node->name()) {
-    input_types_.reserve(node->num_inputs());
-    for (int i = 0; i < node->num_inputs(); i++) {
-      input_types_.push_back(node->input_type(i));
-    }
-    output_types_.reserve(node->num_outputs());
-    for (int i = 0; i < node->num_outputs(); i++) {
-      output_types_.push_back(node->output_type(i));
-    }
-  }
-
-  DataType input_type(int64_t idx) const { return input_types_[idx]; }
-  DataType output_type(int64_t idx) const { return output_types_[idx]; }
-
-  shape_inference::InferenceContext* get_context() {
-    return inference_context_.get();
-  }
-
-  std::string op() const { return op_; }
-
- private:
-  std::unique_ptr<shape_inference::InferenceContext> inference_context_;
-  std::string op_;
-  std::vector<DataType> input_types_;
-  std::vector<DataType> output_types_;
-
-  ExtendedInferenceContext(const ExtendedInferenceContext&) = delete;
-  void operator=(const ExtendedInferenceContext&) = delete;
-};
-
 // ShapeRefiner performs shape inference for TensorFlow Graphs.  It is
 // responsible for instantiating InferenceContext objects for each
 // Node in the Graph, and providing/storing the 'input_tensor' Tensors
@@ -93,15 +57,15 @@ class ShapeRefiner {
   //  - the shape function for 'node' was not registered.
   //  - 'node' was added before its inputs.
   //  - The shape inference function returns an error.
-  Status AddNode(const Node* node);
+  absl::Status AddNode(const Node* node);
 
   // Sets 'node's 'output_port' output to have shape 'shape'.
   //
   // Returns an error if 'node' was not previously added to this
   // object, if 'output_port' is invalid, or if 'shape' is
   // not compatible with the existing shape of the output.
-  Status SetShape(const Node* node, int output_port,
-                  shape_inference::ShapeHandle shape);
+  absl::Status SetShape(const Node* node, int output_port,
+                        shape_inference::ShapeHandle shape);
 
   // Update the input shapes of node in case the shapes of the fan-ins of 'node'
   // have themselves been modified (For example, in case of incremental shape
@@ -111,19 +75,10 @@ class ShapeRefiner {
   // changed (in their string representations). Note that shapes may have been
   // updated to newer versions (but with identical string representations) even
   // if <*refined> is set to false.
-  Status UpdateNode(const Node* node, bool relax, bool* refined);
+  absl::Status UpdateNode(const Node* node, bool relax, bool* refined);
 
   // Returns the InferenceContext for 'node', if present.
   shape_inference::InferenceContext* GetContext(const Node* node) const {
-    auto it = node_to_context_.find(node);
-    if (it == node_to_context_.end()) {
-      return nullptr;
-    }
-    return it->second->get_context();
-  }
-
-  // Returns the ExtendedInferenceContext for 'node', if present.
-  ExtendedInferenceContext* GetExtendedContext(const Node* node) const {
     auto it = node_to_context_.find(node);
     if (it == node_to_context_.end()) {
       return nullptr;
@@ -184,14 +139,14 @@ class ShapeRefiner {
   //
   // On success:
   // - outer_context will contain output shapes inferred from input shapes
-  Status InferShapesForFunction(
+  absl::Status InferShapesForFunction(
       const FunctionDef* function_def, AttrSlice attributes,
       shape_inference::InferenceContext* outer_context);
 
   // Performs shape inference for a node inside a function.
   //
   // 'outer_context' is the 'InferenceContext' for the function's call op.
-  Status InferShapesForFunctionSubNode(
+  absl::Status InferShapesForFunctionSubNode(
       const Node* node, shape_inference::InferenceContext* outer_context);
 
   // Performs validation of 'node' and runs 'node's shape function,
@@ -210,8 +165,8 @@ class ShapeRefiner {
   //  - the shape function for 'node' was not registered.
   //  - 'node' was added before its inputs.
   //  - The shape inference function returns an error.
-  Status AddNodeInternal(const Node* node,
-                         shape_inference::InferenceContext* outer_context);
+  absl::Status AddNodeInternal(
+      const Node* node, shape_inference::InferenceContext* outer_context);
 
   // Attempts to evaluate the 'dst_idx'-th input to 'node'. If the input edge
   // value can be evaluated, 'evaluated' is set to true and the value returned
@@ -222,7 +177,7 @@ class ShapeRefiner {
   // otherwise). This gets used to perform constant propagation across Arg nodes
   // by requesting the constant of value of the incoming tensor from the
   // 'outer_context'.
-  Status EvaluateConstantTensorForEdge(
+  absl::Status EvaluateConstantTensorForEdge(
       const Node* node, int dst_idx, bool* evaluated, Tensor* result,
       shape_inference::InferenceContext* outer_context);
 
@@ -235,7 +190,7 @@ class ShapeRefiner {
   // otherwise). This gets used to perform constant propagation across Arg nodes
   // by requesting the constant of value of the incoming tensor from the
   // 'outer_context'.
-  Status EvaluateConstantIntScalarEdge(
+  absl::Status EvaluateConstantIntScalarEdge(
       const Node* node, int dst_idx, bool* evaluated, int64_t* result,
       shape_inference::InferenceContext* outer_context);
 
@@ -266,10 +221,10 @@ class ShapeRefiner {
   // otherwise). This gets used to perform constant propagation across Arg nodes
   // by requesting the constant of value of the incoming tensor from the
   // 'outer_context'.
-  Status ConstantPartialShape(shape_inference::InferenceContext* target_context,
-                              const Node* node, int dst_idx,
-                              shape_inference::ShapeHandle* result,
-                              shape_inference::InferenceContext* outer_context);
+  absl::Status ConstantPartialShape(
+      shape_inference::InferenceContext* target_context, const Node* node,
+      int dst_idx, shape_inference::ShapeHandle* result,
+      shape_inference::InferenceContext* outer_context);
 
   // Implementation of ConstantPartialShape for StridedSlice nodes.
   //
@@ -278,7 +233,7 @@ class ShapeRefiner {
   // otherwise). This gets used to perform constant propagation across Arg nodes
   // by requesting the constant of value of the incoming tensor from the
   // 'outer_context'.
-  Status PartialStridedSliceShape(
+  absl::Status PartialStridedSliceShape(
       Node* slice_node, shape_inference::InferenceContext* ctx,
       shape_inference::ShapeHandle* result,
       shape_inference::InferenceContext* outer_context);
@@ -290,9 +245,10 @@ class ShapeRefiner {
   // otherwise). This gets used to perform constant propagation across Arg nodes
   // by requesting the constant of value of the incoming tensor from the
   // 'outer_context'.
-  Status RunShapeFn(const Node* node, const OpRegistrationData* op_reg_data,
-                    ExtendedInferenceContext* ec,
-                    shape_inference::InferenceContext* outer_context = nullptr);
+  absl::Status RunShapeFn(
+      const Node* node, const OpRegistrationData* op_reg_data,
+      shape_inference::InferenceContext* context,
+      shape_inference::InferenceContext* outer_context = nullptr);
 
   int32 graph_def_version_;
   const OpRegistryInterface* const ops_registry_;
@@ -301,8 +257,9 @@ class ShapeRefiner {
   // deleted after the tensors.
   GraphRunner graph_runner_;
 
-  // Stores a map from a node to its ExtendedInferenceContext.
-  absl::flat_hash_map<const Node*, std::unique_ptr<ExtendedInferenceContext>,
+  // Stores a map from a node to its InferenceContext.
+  absl::flat_hash_map<const Node*,
+                      std::unique_ptr<shape_inference::InferenceContext>,
                       hash<const Node*>>
       node_to_context_;
 

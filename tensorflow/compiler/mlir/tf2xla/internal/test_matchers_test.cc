@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
-#include "tsl/platform/statusor.h"
 
 namespace {
 using ::tensorflow::monitoring::testing::CellReader;
@@ -43,14 +43,14 @@ template <typename T>
 tsl::StatusOr<T> success(T t) {
   return t;
 }
-tsl::StatusOr<int> success() { return kArbitraryIntResult; }
+absl::StatusOr<int> success() { return kArbitraryIntResult; }
 template <typename T>
 tsl::StatusOr<T> filtered(T t) {
   return tsl::StatusOr<T>(tensorflow::CompileToHloGraphAnalysisFailedError());
 }
-tsl::StatusOr<int> filtered() { return filtered(kArbitraryIntResult); }
-tsl::StatusOr<int> failed() {
-  return tsl::StatusOr<int>(absl::InternalError("fail"));
+absl::StatusOr<int> filtered() { return filtered(kArbitraryIntResult); }
+absl::StatusOr<int> failed() {
+  return absl::StatusOr<int>(absl::InternalError("fail"));
 }
 
 TEST(TestUtil, MatchesOk) { ASSERT_THAT(success(), IsOkOrFiltered()); }

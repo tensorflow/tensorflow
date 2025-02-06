@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,6 +32,8 @@ enum PrimitiveType {
   PRED = 1;
 
   // Signed integral values of fixed width.
+  S1 = 30;
+  S2 = 26;
   S4 = 21;
   S8 = 2;
   S16 = 3;
@@ -39,6 +41,8 @@ enum PrimitiveType {
   S64 = 5;
 
   // Unsigned integral values of fixed width.
+  U1 = 31;
+  U2 = 27;
   U4 = 22;
   U8 = 6;
   U16 = 7;
@@ -64,6 +68,9 @@ enum PrimitiveType {
   // F8E5M2 has 5 exponent bits and 2 mantissa bits, and is similar to the
   // existing IEEE types.
   //
+  // F8E4M3 has 4 exponent bits and 3 mantissa bits, and is similar to the
+  // existing IEEE types.
+  //
   // F8E4M3FN has 4 exponent bits and 3 mantissa bits. The "FN" means only
   // Finite and NaN values are supported. Unlike IEEE types, infinities are not
   // supported.  NaN is represented when the exponent and mantissa bits are all
@@ -75,12 +82,17 @@ enum PrimitiveType {
   // the exponent and mantissa bits are all 0s with a sign bit of 1. All other
   // values are finite.
   //
+  // F8E3M4 has 3 exponent bits and 4 mantissa bits, and is similar to the
+  // existing IEEE types.
+  //
   // Support for these dtypes is under development. They do not yet work
   // properly in most cases.
   // TODO(b/259609697): Fully support FP8.
   F8E5M2 = 19;
+  F8E4M3 = 28;
   F8E4M3FN = 20;
   F8E4M3B11FNUZ = 23;
+  F8E3M4 = 29;
 
   // FP8 dtypes, as described in this paper: https://arxiv.org/abs/2206.02915
   //
@@ -98,6 +110,17 @@ enum PrimitiveType {
   // (8 for Float8E4M3FNUZ and 16 for Float8E5M2FNUZ).
   F8E5M2FNUZ = 24;
   F8E4M3FNUZ = 25;
+
+  // MX float dtypes, as described in:
+  // https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf
+  //
+  // F4E2M1FN has 2 exponent bits and 1 mantissa bit.
+  // F8E8M0FNU has 8 exponent bits, no mantissa and no sign.
+  //
+  // Only finite values are supported (hence "FN" suffix). Unlike IEEE types,
+  // infinities and NaNs are not supported.
+  F4E2M1FN = 32;
+  F8E8M0FNU = 33;
 
   // Complex values of fixed width.
   C64 = 15;   // Paired F32 (real, imag), as in std::complex<float>.
@@ -124,10 +147,9 @@ enum PrimitiveType {
   // primitive type will have empty dimensions and tuple_shapes fields.
   TOKEN = 17;
 
-  // Next = 26
+  // Next = 34
 }
 // LINT.ThenChange(
-//   https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
 // )
 
@@ -171,14 +193,24 @@ enum DimLevelType {
 }
 
 // Describes a tile used in tiling-based layout. Refer to
-// g3doc/third_party/tensorflow/compiler/xla/g3doc/tiled_layout.md for
-// details about tiling-based layout.
+// g3doc/third_party/xla/docs/tiled_layout.md for details about tiling-based
+// layout.
 message TileProto {
   // Number of elements in each dimension of the tile. It's ordered from the
   // most major dimension of the tile to the most minor dimension of the tile.
   // The dimensions correspond to a suffix of the dimensions of the shape being
   // tiled.
   repeated int64 dimensions = 1;
+}
+
+// Describes how data should be split between different memories.
+message SplitConfigProto {
+  // The dimension that is split.
+  int64 dimension = 1;
+  // The indices where each split point occurs. For example, if the dimension
+  // size is 1024, a split_indices value of {512} indicates a two-way split of
+  // data through the middle.
+  repeated int64 split_indices = 2;
 }
 
 // A layout describes how the array is placed in (1D) memory space.  This
@@ -216,6 +248,15 @@ message LayoutProto {
   // error.
   repeated TileProto tiles = 6;
 
+  // The shape is padded at the end to multiple of, in terms of number of
+  // elements. This is useful when tiling does not bring the shape to certain
+  // desired granules. Tiling effectively pads/reshapes/transposes the shape
+  // to another shape. This field pads the total number of elements of that
+  // new shape to a multiple of certain number of elements. This is useful such
+  // as we want a layout which does not tile the data but still requires it to
+  // be padded to certain number of elements.
+  int64 tail_padding_alignment_in_elements = 16;
+
   // (Optional) Bit size of each element. When unspecified or being 0, default
   // to ShapeUtil::ByteSizeOfPrimitiveType.
   int64 element_size_in_bits = 7;
@@ -243,6 +284,10 @@ message LayoutProto {
   // field may be non-zero for a static shape whose associated buffer is for a
   // dynamic shape, e.g. a result of SliceToDynamic.
   int64 dynamic_shape_metadata_prefix_bytes = 15;
+
+  // The split configurations which describe if/how the data is split between
+  // different memories.
+  repeated SplitConfigProto split_configs = 17;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.
@@ -371,16 +416,11 @@ message OpMetadata {
   // Deprecated, use [ProfileInfo][profile_type] instead.
   repeated ProfileType profile_type = 5 [deprecated = true];
 
-  // HloPassMetadata.pass_id of the pass that created this HLO instruction
-  // object. Should never be copied between HLO instructions. Zero if unset and
-  // -1 if the instruction was created before HLO passes began.
-  int64 creation_pass_id = 6;
+  reserved 6;
+  reserved "creation_pass_id";
 
-  // HloPassMetadata.pass_id of the pass that created the logical functionality
-  // that this HLO instruction represents. Should be copied between HLO
-  // instructions that correspond across compilation passes. Zero if unset and
-  // -1 if the instruction was created before HLO passes began.
-  int64 logical_creation_pass_id = 7;
+  reserved 7;
+  reserved "logical_creation_pass_id";
 
   // The footprint of the generated code for the instruction.
   int64 size_of_generated_code_in_bytes = 8;
@@ -404,6 +444,8 @@ message OpMetadata {
   // Profile information for the Op.
   ProfileInfo profile_info = 10;
 
+  reserved 11;
+
   // Deduplicated HLO name for this op. In some cases, we can have multiple
   // instructions (e.g. fusions) that are considered duplicates. We want to
   // group them together under the same name so that we can group them together
@@ -412,12 +454,14 @@ message OpMetadata {
   // fusion.2 and fusion.3 will have deduplicated_name = fusion.1
   string deduplicated_name = 12;
 
-  // Whether to preserve the layout of the HLO op.
-  bool preserve_layout = 13;
+  reserved 13;
 
   // 1-based position of the frame in frames flat array.
   // Ids are 1-based to keep 0 value as representation of non-set property.
   int32 stack_frame_id = 15;
+
+  // Instruction name available upon scheduling.
+  string scheduling_name = 16;
 
   reserved 14;
 }
@@ -452,6 +496,10 @@ message ExecutionProfile {
   // Whether this profile was drawn from a cache of profiles instead of from
   // execution on the hardware.
   bool profile_cache_hit = 7;
+
+  // Whether a warm-up run of the computation was executed before the
+  // measured execution.
+  bool warmup_run_executed = 8;
 }
 
 // Handle given to a user that represents an execution that the user launched
@@ -511,7 +559,7 @@ message DeviceAssignmentProto {
   // Each logical computation runs on replica_count physical devices.
   // ComputationDevice represents the device ids assinged to the replicas.
   message ComputationDevice {
-    repeated int32 replica_device_ids = 1;
+    repeated int64 replica_device_ids = 1;
   }
   repeated ComputationDevice computation_devices = 3;
 }
@@ -525,9 +573,13 @@ message DeviceAssignmentProto {
 message LiteralProto {
   ShapeProto shape = 1;
   repeated bool preds = 2;
+  bytes s1s = 30;
+  bytes s2s = 26;
   bytes s4s = 21;
-  bytes u4s = 22;
   bytes s8s = 15;
+  bytes u1s = 31;
+  bytes u2s = 27;
+  bytes u4s = 22;
   bytes u8s = 3;
   repeated int32 s32s = 4;
   repeated int64 s64s = 5;
@@ -543,13 +595,17 @@ message LiteralProto {
   bytes bf16s = 13;
   bytes u16s = 16;
   bytes s16s = 17;
-  bytes f8e5m2s = 19;
-  bytes f8e4m3fns = 20;
+  bytes f4e2m1fns = 32;
+  bytes f8e3m4s = 29;
   bytes f8e4m3b11fnuzs = 23;
-  bytes f8e5m2fnuzs = 24;
+  bytes f8e4m3fns = 20;
   bytes f8e4m3fnuzs = 25;
+  bytes f8e4m3s = 28;
+  bytes f8e5m2fnuzs = 24;
+  bytes f8e5m2s = 19;
+  bytes f8e8m0fnus = 33;
   repeated int64 sparse_indices = 14;
-  // Next = 26
+  // Next = 34
 }
 
 message WindowDimension {
@@ -632,6 +688,13 @@ message GatherDimensionNumbers {
   // The dimension in the start_indices input that contains the starting
   // indices.
   int64 index_vector_dim = 4;
+
+  // This is the batch dimensions in the operand.
+  repeated int64 operand_batching_dims = 5;
+
+  // This is the batch dimensions in the index, and it should be the same size
+  // as operand_batching_dims.
+  repeated int64 start_indices_batching_dims = 6;
 }
 
 // Describes the dimension numbers for a scatter operation.
@@ -646,6 +709,12 @@ message ScatterDimensionNumbers {
 
   repeated int64 scatter_dims_to_operand_dims = 3;
   int64 index_vector_dim = 4;
+
+  // This is the batch dimension in the input.
+  repeated int64 input_batching_dims = 5;
+
+  // This is the batch dimension in the index.
+  repeated int64 scatter_indices_batching_dims = 6;
 }
 
 message ConvolutionDimensionNumbers {
@@ -708,6 +777,45 @@ message DotDimensionNumbers {
   repeated int64 lhs_batch_dimensions = 3;
   // The dimension numbers that represent the 'rhs' batch dimensions.
   repeated int64 rhs_batch_dimensions = 4;
+}
+
+message RaggedDotDimensionNumbers {
+  // The contracting and batch dimensions of the 'lhs' and 'rhs'.
+  DotDimensionNumbers dot_dimension_numbers = 1;
+  // The dimension numbers that represent the 'lhs' ragged dimensions.
+  repeated int64 lhs_ragged_dimensions = 2;
+  // The dimension numbers that represent the 'rhs' group dimensions.
+  repeated int64 rhs_group_dimensions = 3;
+}
+
+enum SparsityType {
+  SPARSITY_INVALID = 0;
+
+  // Structured N:M sparsity.
+  SPARSITY_STRUCTURED_N_M = 1;
+
+  // Next: 2
+}
+
+// Contains sparsity metadata for a sparse dot operation.
+// The only supported type atm is structured 2:4 sparsity, which is natively
+// supported on NVidia GPUs.
+// Restrictions:
+// - only one operand of the dot operation may be sparse;
+// - only the contracting dimension may be sparse.
+message SparsityDescriptor {
+  SparsityType type = 1;
+
+  // Sparse operand index (0 or 1).
+  int32 index = 2;
+  // Sparse dimension number.
+  int32 dimension = 3;
+
+  // Structured N:M sparsity (N < M).
+  int32 n = 4;
+  int32 m = 5;
+
+  // Next: 6
 }
 
 enum RandomDistribution {
@@ -881,10 +989,65 @@ message ReplicaGroup {
   repeated int64 replica_ids = 1;
 }
 
+// Represents a list of replica groups (a list of list of devices) with
+// reshaping and transposing an iota array (iota tile assignment). Can be used
+// to represent certain common patterns of device lists in a compact, scalable
+// format.
+message IotaReplicaGroupListProto {
+  // Number of replica groups.
+  int64 num_replica_groups = 1;
+
+  // Number of devices per group.
+  int64 num_devices_per_group = 2;
+
+  // The dimensions used to reshape the 1D iota array of device IDs.
+  repeated int64 iota_reshape_dims = 3;
+
+  // The dimension permutations to transposed the iota array reshaped to
+  // iota_reshape_dims. This must have the same size as iota_reshape_dims.
+  repeated int32 iota_transpose_perm = 4;
+}
+
+// Represents a series of devices participating in a collective operation (e.g.,
+// all-reduce and all-to-all). While this directly translates to a list of
+// replica groups, it may be used to represent these lists in a compact form.
+message CollectiveDeviceListProto {
+  // ReplicaGroupV1: List of replica groups. Legacy way of representing device
+  // lists.
+  repeated ReplicaGroup replica_groups = 1;
+
+  // ReplicaGroupV2: Represents a list of replica groups with reshaping and
+  // transposing an iota array.
+  IotaReplicaGroupListProto iota_replica_group_list = 2;
+}
+
 // Describes the source target pair in the collective permute op.
 message SourceTarget {
   int64 source = 1;
   int64 target = 2;
+}
+
+// Describes the types of accuracy the user can request for unary ops with
+// multiple implementations.
+message ResultAccuracy {
+  enum Mode {
+    DEFAULT = 0;
+    HIGHEST = 1;
+  }
+  message Tolerance {
+    // Absolute error tolerance for unary instructions.
+    double atol = 1;
+    // Relative error tolerance for unary instructions.
+    double rtol = 2;
+    // The error in ulps (units in the last place) is relative to machine
+    // precision.
+    int64 ulps = 3;
+  }
+  oneof specs {
+    // Choose either DEFAULT or HIGHEST precision implementation.
+    Mode mode = 1;
+    Tolerance tolerance = 2;
+  }
 }
 
 // Used to indicate the precision configuration. It has backend specific
@@ -899,9 +1062,65 @@ message PrecisionConfig {
 
     // Next: 4
   }
+
+  // The algorithm used to evaluate the instruction.
+  //
+  // The naming convention for the dot instruction is
+  // ALG_DOT_{A_TYPE}_{B_TYPE}_{ACCUM_TYPE}[_X{NUM_OPS}] where A_TYPE, B_TYPE
+  // and ACCUM_TYPE correspond to the types in the "primitive dot operations"
+  // (such as TensorCore operations) and NUM_OPS is the number of such
+  // operations used per "primitive tile". When the NUM_OPS
+  // field is skipped, it is assumed to be 1. The types mentioned in the name
+  // are independent of the storage types.
+  //
+  // In general ATYPE and BTYPE are the precisions that the LHS and RHS of the
+  // operation are rounded to and ACCUMTYPE is the accumulation type. If a
+  // backend does not support the given algorithm, an error is raised. The
+  // Algorithm enum is intended to eventually replace the Precision enum.
+  //
+  enum Algorithm {
+    // If the algorithm is `ALG_UNSET`, we will decide the algorithm based on
+    // the operand_precision values (for now).
+    ALG_UNSET = 0;
+    // The storage type can be any 8-bit floating point type.
+    ALG_DOT_ANY_F8_ANY_F8_F32 = 1;
+    // The storage type can be any 8-bit floating point type. Intermediate
+    // results will not periodically be promoted to a higher precision. This
+    // corresponds to CUBLASLT_MATMUL_DESC_FAST_ACCUM. Triton's
+    // maxNumImpreciseAcc=32 setting may be similar.
+    ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM = 2;
+    ALG_DOT_F16_F16_F16 = 3;
+    ALG_DOT_F16_F16_F32 = 4;
+    ALG_DOT_BF16_BF16_BF16 = 5;
+    ALG_DOT_BF16_BF16_F32 = 6;
+    // An algorithm which uses 3 BF16_BF16_F32 matmuls to achieve better
+    // precision.
+    ALG_DOT_BF16_BF16_F32_X3 = 7;
+    // An algorithm which uses 6 BF16_BF16_F32 matmuls to achieve better
+    // precision (similar to F32).
+    ALG_DOT_BF16_BF16_F32_X6 = 8;
+    ALG_DOT_TF32_TF32_F32 = 9;
+    // An algorithm which uses 3 TF32_TF32_F32 matmuls to achieve better
+    // precision (similar to F32).
+    ALG_DOT_TF32_TF32_F32_X3 = 10;
+    ALG_DOT_F32_F32_F32 = 11;
+    ALG_DOT_F64_F64_F64 = 12;
+
+    // Next: 13
+  }
+
   repeated Precision operand_precision = 1;
 
-  // Next: 2
+  // Currently doesn't do anything, but we plan to support it for dot and
+  // possibly more instructions.
+  //
+  // TODO(b/316147294): Support this on GPU and add this to StableHLO as well.
+  //
+  // If this is set, then `operand_precision` should be set to DEFAULT and it
+  // will be ignored.
+  Algorithm algorithm = 2;
+
+  // Next: 8
 }
 
 // Describes whether all data-parallelism replicas will receive the same
@@ -939,4 +1158,14 @@ message OutputOperandAliasing {
   repeated int64 output_shape_index = 1;
   int64 operand_index = 2;
   repeated int64 operand_shape_index = 3;
+}
+
+message OriginalArrayProto {
+  repeated int64 leaf_shape_index = 1;
+  string instruction_name = 2;
+  repeated int64 shape_index = 3;
+}
+
+message OriginalValueProto {
+  repeated OriginalArrayProto leaves = 1;
 }

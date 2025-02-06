@@ -17,6 +17,7 @@ limitations under the License.
 #include <initializer_list>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
@@ -107,7 +108,8 @@ TEST(SelectOpTest, SelectFloat) {
   model.PopulateTensor<float>(model.input3(), {0.5, 0.6, 0.7, 0.8});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray({0.1, 0.6, 0.3, 0.8}));
+  EXPECT_THAT(model.GetOutput<float>(),
+              Pointwise(FloatingPointEq(), {0.1, 0.6, 0.3, 0.8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
 }
 
@@ -277,7 +279,8 @@ TEST(SelectV2OpTest, SelectFloat) {
   model.PopulateTensor<float>(model.input3(), {0.5, 0.6, 0.7, 0.8});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray({0.1, 0.6, 0.3, 0.8}));
+  EXPECT_THAT(model.GetOutput<float>(),
+              Pointwise(FloatingPointEq(), {0.1, 0.6, 0.3, 0.8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
 }
 

@@ -18,10 +18,16 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "xla/client/lib/prng.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/prng.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -47,13 +53,13 @@ xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype);
 // Combines two signed 32-bit seeds into a single unsigned 64 bit seed.
 xla::XlaOp GetU64FromS32Seeds(xla::XlaOp seed0, xla::XlaOp seed1);
 
-StatusOr<int> GetAlgId(XlaOpKernelContext* ctx, int alg_input_idx);
+absl::StatusOr<int> GetAlgId(XlaOpKernelContext* ctx, int alg_input_idx);
 
 xla::RngOutput BitGenerator(xla::RandomAlgorithm const& alg, xla::XlaOp key,
                             xla::XlaOp counter, const xla::Shape& shape);
 
 // Gets user specified RNG algorithm.
-StatusOr<xla::RandomAlgorithm> AlgorithmFromInput(
+absl::StatusOr<xla::RandomAlgorithm> AlgorithmFromInput(
     XlaOpKernelContext* ctx, int alg_input_idx,
     absl::string_view device_type_string);
 
@@ -66,7 +72,7 @@ DataType MaybeConvertBF16ToF32(DataType const& dtype);
 // Builds uniform randoms from a stateless RNG with given data type and device
 // type, in the given low and high range, where low and high are expressed in
 // XLA functions.
-StatusOr<xla::XlaOp> BuildUniformRandoms(
+absl::StatusOr<xla::XlaOp> BuildUniformRandoms(
     XlaOpKernelContext* ctx, DataType dtype, string device_type_string,
     TensorShape shape,
     std::function<xla::XlaOp(xla::XlaBuilder*, xla::PrimitiveType)> lo,
@@ -74,11 +80,11 @@ StatusOr<xla::XlaOp> BuildUniformRandoms(
 
 // Overloads BuildUniformRandoms where low and high range are expressed in XLA
 // ops.
-StatusOr<xla::XlaOp> BuildUniformRandoms(XlaOpKernelContext* ctx,
-                                         DataType dtype,
-                                         string device_type_string,
-                                         xla::Shape xla_shape, xla::XlaOp lo,
-                                         xla::XlaOp hi);
+absl::StatusOr<xla::XlaOp> BuildUniformRandoms(XlaOpKernelContext* ctx,
+                                               DataType dtype,
+                                               string device_type_string,
+                                               xla::Shape xla_shape,
+                                               xla::XlaOp lo, xla::XlaOp hi);
 }  // namespace tensorflow
 
 namespace xla {

@@ -34,24 +34,24 @@ class FakeSession : public tensorflow::Session {
  public:
   FakeSession();
 
-  ::tensorflow::Status Create(const tensorflow::GraphDef& graph) override;
-  ::tensorflow::Status Extend(const tensorflow::GraphDef& graph) override;
+  absl::Status Create(const tensorflow::GraphDef& graph) override;
+  absl::Status Extend(const tensorflow::GraphDef& graph) override;
 
-  ::tensorflow::Status Close() override;
+  absl::Status Close() override;
 
-  ::tensorflow::Status ListDevices(
+  absl::Status ListDevices(
       std::vector<tensorflow::DeviceAttributes>* response) override;
 
-  ::tensorflow::Status LocalDeviceManager(
+  absl::Status LocalDeviceManager(
       const tensorflow::DeviceMgr** deviceMgrPtr) override;
 
-  ::tensorflow::Status Run(
+  absl::Status Run(
       const std::vector<std::pair<std::string, ::tensorflow::Tensor>>& inputs,
       const std::vector<std::string>& output_names,
       const std::vector<std::string>& target_nodes,
       std::vector<::tensorflow::Tensor>* outputs) override;
 
-  ::tensorflow::Status Run(
+  absl::Status Run(
       const tensorflow::RunOptions& run_options,
       const std::vector<std::pair<std::string, ::tensorflow::Tensor>>& inputs,
       const std::vector<std::string>& output_names,
@@ -59,7 +59,7 @@ class FakeSession : public tensorflow::Session {
       std::vector<::tensorflow::Tensor>* outputs,
       tensorflow::RunMetadata* run_metadata) override;
 
-  ::tensorflow::Status Run(
+  absl::Status Run(
       const tensorflow::RunOptions& run_options,
       const std::vector<std::pair<std::string, ::tensorflow::Tensor>>& inputs,
       const std::vector<std::string>& output_names,

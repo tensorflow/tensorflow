@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,25 +15,23 @@ limitations under the License.
 
 #include "xla/backends/interpreter/executable.h"
 
-#include <algorithm>
-#include <cstring>
+#include <cstdint>
 #include <memory>
-#include <string>
+#include <optional>
 #include <utility>
-#include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/interpreter/executable_base.h"
-#include "xla/backends/interpreter/executor.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal.h"
-#include "xla/service/maybe_owning_device_memory.h"
-#include "xla/service/transfer_manager.h"
+#include "xla/service/dynamic_dimension_inference.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace interpreter {
@@ -51,7 +49,7 @@ InterpreterExecutable::InterpreterExecutable(
   }
 }
 
-StatusOr<Literal> InterpreterExecutable::Evaluate(
+absl::StatusOr<Literal> InterpreterExecutable::Evaluate(
     const ServiceExecutableRunOptions* run_options,
     const HloComputation& computation, absl::Span<const Literal> arg_literals) {
   // Execute the graph using the HloEvaluator.

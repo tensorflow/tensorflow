@@ -19,6 +19,9 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/batching_util/bounded_executor.h"
@@ -52,8 +55,7 @@ int32 BatchFunctionFallbackKernelBase::
   int32_t num;
   const char* val = std::getenv("TF_NUM_BATCH_THREADS");
 
-  return (val && strings::safe_strto32(val, &num)) ? num
-                                                   : default_num_batch_threads;
+  return (val && absl::SimpleAtoi(val, &num)) ? num : default_num_batch_threads;
 }
 
 thread::ThreadPool*
@@ -99,6 +101,9 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
                                &low_priority_allowed_batch_sizes_));
   OP_REQUIRES_OK(c, c->GetAttr("low_priority_max_enqueued_batches",
                                &low_priority_max_enqueued_batches_));
+  OP_REQUIRES_OK(c,
+                 c->GetAttr("mixed_priority_policy", &mixed_priority_policy_));
+  OP_REQUIRES_OK(c, c->GetAttr("batch_padding_policy", &batch_padding_policy_));
 
   if (shared_name_.empty()) {
     // If shared_name is not supplied, use name instead (prevent collisions by
@@ -146,9 +151,10 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
   OP_REQUIRES_OK(c, ValidateAllowedBatchSizes());
 }
 
-Status BatchFunctionFallbackKernelBase::ValidateAllowedBatchSizes() const {
+absl::Status BatchFunctionFallbackKernelBase::ValidateAllowedBatchSizes()
+    const {
   if (allowed_batch_sizes_.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   int32_t last_size = 0;
   for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
@@ -167,7 +173,7 @@ Status BatchFunctionFallbackKernelBase::ValidateAllowedBatchSizes() const {
 
     last_size = size;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void BatchFunctionFallbackKernelBase::SetAdaptiveBatchSchedulerOptions(

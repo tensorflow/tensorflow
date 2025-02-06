@@ -96,9 +96,10 @@ namespace {
 // Maps `n` to the XlaResourceOpKind corresponding to its operation.  If `n` is
 // not a resource operation recognized by XLA then sets `out_resource_op_kind`
 // to nullopt.
-Status XlaResourceOpKindForNode(
+absl::Status XlaResourceOpKindForNode(
     const Node& n, const FunctionLibraryDefinition* flib_def,
-    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
+    const std::function<absl::Status(const Node&, bool*)>&
+        resource_ops_to_ignore,
     std::optional<XlaResourceOpKind>* out_resource_op_kind) {
   bool should_ignore = false;
   if (resource_ops_to_ignore) {
@@ -106,13 +107,13 @@ Status XlaResourceOpKindForNode(
   }
   if (should_ignore) {
     *out_resource_op_kind = std::nullopt;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const XlaResourceOpInfo* op_info = GetResourceOpInfoForOp(n.type_string());
   if (op_info) {
     *out_resource_op_kind = op_info->kind();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // We conservatively assume that functions will both read and write resource
@@ -124,7 +125,7 @@ Status XlaResourceOpKindForNode(
     *out_resource_op_kind = std::nullopt;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns true if a control or data dependence from a TensorFlow operation of
@@ -246,9 +247,10 @@ string NodeToString(const Node& n, XlaResourceOpKind resource_op_kind) {
 }
 }  // namespace
 
-Status ComputeIncompatibleResourceOperationPairs(
+absl::Status ComputeIncompatibleResourceOperationPairs(
     const Graph& g, const FunctionLibraryDefinition* flib_def,
-    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
+    const std::function<absl::Status(const Node&, bool*)>&
+        resource_ops_to_ignore,
     std::vector<std::pair<int, int>>* result) {
   CHECK(result->empty());
 
@@ -314,6 +316,6 @@ Status ComputeIncompatibleResourceOperationPairs(
   std::sort(result->begin(), result->end());
   CHECK(std::unique(result->begin(), result->end()) == result->end());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace tensorflow

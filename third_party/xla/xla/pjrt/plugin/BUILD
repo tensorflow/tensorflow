@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 # Configuration file for an XLA plugin.
 #
@@ -30,12 +30,12 @@ load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 # ** Please don't remove this file - it is supporting some 3rd party plugins **
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "plugin",
-    visibility = ["//visibility:public"],
     deps = [
         #"//xla/pjrt/plugin/example:example_lib",
     ],

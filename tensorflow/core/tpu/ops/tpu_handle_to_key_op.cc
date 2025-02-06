@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/platform/status.h"
 #include "tsl/platform/errors.h"
 
 namespace tensorflow {
@@ -27,7 +27,7 @@ REGISTER_OP("TpuHandleToProtoKey")
       shape_inference::ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
       c->set_output(0, c->UnknownShapeOfRank(1));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

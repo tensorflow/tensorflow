@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/service/memory_space_assignment/tuning_utils.h"
+
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "xla/hlo/ir/hlo_module.h"
 
 namespace xla {
 

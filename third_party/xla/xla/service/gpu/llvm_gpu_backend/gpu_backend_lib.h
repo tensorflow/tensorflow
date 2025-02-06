@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,54 +17,49 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_
 #define XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_
 
+#include <functional>
+#include <memory>
 #include <string>
-#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
+#include "llvm/PassRegistry.h"
 #include "llvm/Target/TargetMachine.h"
-#include "xla/statusor.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/types.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 
-namespace nvptx {
+// Initializes LLVM passes. Uses the PassRegistry mechanism.
+void InitializePasses(llvm::PassRegistry* pass_registry);
 
-std::string CantFindCudaMessage(absl::string_view msg,
-                                absl::string_view xla_gpu_cuda_data_dir);
+// Returns the TargetMachine, given a triple.
+std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
+    llvm::Triple triple, absl::string_view cpu_name,
+    const DebugOptions& debug_options, absl::string_view feature_str);
 
-// Get path to NVVM libdevice file.
-std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir);
+// Returns whether the module could use any device bitcode library functions.
+bool CouldNeedDeviceBitcode(const llvm::Module& module);
 
-// Link libdevice if functions using it are detected in the module.
-Status LinkLibdeviceIfNecessary(llvm::Module* module,
-                                const std::string& libdevice_path);
+// Links the module with a vector of path to bitcode modules.
+// The caller must guarantee that the paths exist.
+absl::Status LinkWithBitcodeVector(
+    llvm::Module* module, const std::vector<std::string>& bitcode_path_vector);
 
-// Compiles the argument module and returns it. libdevice_dir_path is the parent
-// directory of the libdevice bitcode libraries. The contents of the module may
-// be changed.
-//
-// The Compile.* interfaces each create their own llvm::LLVMContext objects for
-// thread safety, but note that LLVM's multithreaded support is very
-// preliminary; multithreaded use is not recommended at this time.
-StatusOr<std::string> CompileToPtx(
-    llvm::Module* module, se::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options,
-    std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
-}  // namespace nvptx
+using TargetModuleLinker = std::function<absl::Status(
+    llvm::Module*, stream_executor::GpuComputeCapability, const DebugOptions&,
+    const std::string&)>;
 
-namespace amdgpu {
-// Compiles the argument module and returns it with LLVM AMDGPU backend.
-// rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
-// The contents of the module may be changed.
-StatusOr<std::vector<uint8_t>> CompileToHsaco(
-    llvm::Module* module, se::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options, const std::string& rocdl_dir_path,
-    const std::string& module_config_cache_key);
-}  // namespace amdgpu
+// Links and optimizes the module.
+absl::Status LinkAndOptimizeModule(
+    llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
+    const DebugOptions& debug_options, const std::string& device_bitcode_path,
+    TargetModuleLinker module_linker, llvm::Triple default_target_triple,
+    llvm::TargetMachine* target_machine, int inline_threshold);
 
 }  // namespace gpu
 }  // namespace xla

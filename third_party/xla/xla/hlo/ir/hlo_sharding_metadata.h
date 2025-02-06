@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,21 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_SHARDING_METADATA_H_
 #define XLA_HLO_IR_HLO_SHARDING_METADATA_H_
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace xla {
 
@@ -58,7 +63,7 @@ class ShardingMetadata : public DomainMetadata {
 
   static absl::string_view KindName() { return "sharding"; }
 
-  static StatusOr<const ShardingMetadata*> ToShardingMetadata(
+  static absl::StatusOr<const ShardingMetadata*> ToShardingMetadata(
       const DomainMetadata* metadata);
 
   // Apply the specified domain metadata onto the specified domain. If no
@@ -67,8 +72,8 @@ class ShardingMetadata : public DomainMetadata {
   // be the original one. Policy wise, HLO passes are allowed to create new
   // unassigned instructions, but if they do create assigned ones, they have to
   // conform to the ones around.
-  static Status NormalizeShardingDomain(const DomainMetadata::Domain& domain,
-                                        const DomainMetadata* metadata);
+  static absl::Status NormalizeShardingDomain(
+      const DomainMetadata::Domain& domain, const DomainMetadata* metadata);
 
  private:
   std::shared_ptr<const HloSharding> sharding_;

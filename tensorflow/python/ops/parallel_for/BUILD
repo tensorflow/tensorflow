@@ -74,8 +74,8 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:object_identity",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -105,8 +105,9 @@ py_strict_library(
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/util:tf_inspect",
         "//tensorflow/python/util:variable_utils",
     ],
 )

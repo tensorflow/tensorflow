@@ -17,11 +17,12 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -73,8 +74,8 @@ bool ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   return true;
 }
 
-::tensorflow::Status CreateIm2colArrays::Run(Model* model, std::size_t op_index,
-                                             bool* modified) {
+absl::Status CreateIm2colArrays::Run(Model* model, std::size_t op_index,
+                                     bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();
@@ -82,13 +83,13 @@ bool ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   switch (op->type) {
     case OperatorType::kConv:
       *modified = ProcessConvOperator(model, static_cast<ConvOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     case OperatorType::kTransposeConv:
       *modified = ProcessTransposeConvOperator(
           model, static_cast<TransposeConvOperator*>(op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     default:
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
   }
 }
 

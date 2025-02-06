@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "xla/pjrt/semaphore.h"
 
+#include <gtest/gtest.h>
 #include "absl/synchronization/notification.h"
-#include "xla/test.h"
+#include "xla/hlo/testlib/test.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/threadpool.h"
 
@@ -25,6 +26,10 @@ namespace {
 
 TEST(SemaphoreTest, UnthreadedTests) {
   Semaphore semaphore(2);
+  EXPECT_EQ(semaphore.capacity(), 2);
+  EXPECT_FALSE(semaphore.TryAcquire(semaphore.capacity() + 1));
+  EXPECT_TRUE(semaphore.TryAcquire(semaphore.capacity()));
+  semaphore.Release(semaphore.capacity());
   semaphore.Acquire(1);
   semaphore.Release(1);
 

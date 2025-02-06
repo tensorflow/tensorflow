@@ -24,14 +24,18 @@ from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import cudnn_rnn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import image_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import io_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import linalg_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import linalg_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
+from tensorflow.python.ops import lookup_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import manip_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops  # pylint: disable=unused-import
+from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import optional_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import parsing_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import proto_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import random_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import rnn_grad  # pylint: disable=unused-import

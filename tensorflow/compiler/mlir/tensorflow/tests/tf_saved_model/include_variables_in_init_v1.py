@@ -30,7 +30,7 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK-SAME: producer
 
 # CHECK: "tf_saved_model.global_tensor"()
-# CHECK: "tf_saved_model.session_initializer"() {initializers = [@[[INIT_FUNC:[a-zA-Z_0-9]+]]]} : () -> ()
+# CHECK: "tf_saved_model.session_initializer"() <{initializers = [@[[INIT_FUNC:[a-zA-Z_0-9]+]]]}> : () -> ()
 
 # Initializer function. This should contain the initialization sequence for the
 # variable.
@@ -38,7 +38,7 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK-SAME: tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_init"]
 # CHECK-SAME: tf_saved_model.initializer_type = "init_op"
 # CHECK-SAME: }
-# CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {{{.*dense<.*> : tensor<2xi32>.*}}} : () -> tensor<2xi32>
+# CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() <{{{.*dense<.*> : tensor<2xi32>.*}}}> {{{.*}}} : () -> tensor<2xi32>
 # CHECK: %[[RAND_STD_NORMAL:.*]] = "tf.RandomStandardNormal"(%[[CST_0]])
 # CHECK: "tf.AssignVariableOp"(%[[ARG_0]], %[[RAND_STD_NORMAL]]){{.*}}: (tensor<!tf_type.resource<tensor<1x3xf32>>>, tensor<1x3xf32>) -> ()
 # CHECK: return
@@ -50,7 +50,7 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK-SAME: -> (tensor<3x3xf32> {tf_saved_model.index_path = ["r"]})
 # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["key"]
 # CHECK-NEXT: %[[READ_VAR_0:.*]] = "tf.ReadVariableOp"(%[[ARG_2]]) {{{.*}}} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
-# CHECK-NEXT: %[[MATMUL_0:.*]] = "tf.MatMul"(%[[ARG_1]], %[[READ_VAR_0]]) {{{.*}}} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>
+# CHECK-NEXT: %[[MATMUL_0:.*]] = "tf.MatMul"(%[[ARG_1]], %[[READ_VAR_0]]) <{{{.*}}}> {{{.*}}} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>
 # CHECK-NEXT: return %[[MATMUL_0]] : tensor<3x3xf32>
 
 

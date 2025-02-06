@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -109,7 +110,7 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
 
 }  // namespace
 
-StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
+/* static */ StatusOr<const PlanAndAlgorithms*> PlanAndAlgorithms::GetOrCreate(
     se::Stream* stream, const BlasLtMatmulPlanParams& params,
     absl::Mutex** ppmu, std::optional<int> max_algorithm_count) {
   static const int64_t max_scratch_size =
@@ -127,8 +128,6 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
                         se::gpu::AsXlaPrimitiveType(params.dtype));
     TF_ASSIGN_OR_RETURN(auto computation_type,
                         GetBlasComputationType(params.dtype));
-
-    auto scale_type = se::gpu::GetScaleType(params.dtype, computation_type);
 
     // row-major output is now handled automatically by blas-lt API
     constexpr auto kRowMajor = se::gpu::MatrixLayout::Order::kRowMajor;
@@ -165,7 +164,10 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
         .alpha = xla::complex128{1.0, 0.0},
         .beta = 0.0,
         .compute_precision = se::blas::kDefaultComputePrecision,
+        .precision_algorithm = xla::PrecisionConfig::ALG_UNSET,
         .algorithm = {},
+        .grad_x = false,
+        .grad_y = false,
         .compute_type = computation_type,
     };
 
@@ -176,10 +178,32 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
         auto algorithms,
         plan->GetAlgorithms(*max_algorithm_count, max_scratch_size));
 
-    ptr->second = {std::move(plan), std::move(algorithms), scale_type};
+    ptr->second = {std::move(plan), std::move(algorithms)};
   }
   *ppmu = &plan_map.mu;
   return &ptr->second;
+}
+
+Status PlanAndAlgorithms::ExecuteOnStream(
+    se::Stream* stream, const se::DeviceMemoryBase& a,
+    const se::DeviceMemoryBase& b, se::DeviceMemoryBase& c,
+    size_t algorithm_idx, se::ScratchAllocator& scratch_allocator,
+    const se::DeviceMemoryBase& bias,
+    se::blas::ProfileResult* profile_result) const {
+  if (!plan || algorithm_idx >= algorithms.size()) {
+    return errors::Internal("MatmulPlan or algorithms are not initialized!");
+  }
+  return plan->ExecuteOnStream(stream, a, b, c, c,
+                               bias,                    // bias_buffer
+                               se::DeviceMemoryBase{},  // aux_buffer
+                               se::DeviceMemoryBase{},  // a_scale_buffer
+                               se::DeviceMemoryBase{},  // b_scale_buffer
+                               se::DeviceMemoryBase{},  // c_scale_buffer
+                               se::DeviceMemoryBase{},  // d_scale_buffer
+                               se::DeviceMemoryBase{},  // d_amax_buffer
+                               algorithms[algorithm_idx],
+                               std::nullopt,  // workspace
+                               &scratch_allocator, profile_result);
 }
 
 }  // namespace tensorflow

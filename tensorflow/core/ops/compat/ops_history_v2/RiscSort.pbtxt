@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RiscSort"
   input_arg {
     name: "input"

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_ATTR_LOWERING_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_ATTR_LOWERING_UTILS_H_
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project

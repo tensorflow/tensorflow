@@ -219,18 +219,26 @@ def _lift_unlifted_variables(graph, variable_holder):
 class WrappedFunction(function.ConcreteFunction):
   """Wraps a tf V1 piece of code in a function."""
 
-  def __init__(self, fn_graph, variable_holder, attrs=None, signature=None):
+  def __init__(
+      self,
+      fn_graph,
+      variable_holder,
+      attrs=None,
+      signature=None,
+      are_keyword_args_also_positional=False,
+  ):
     self._variable_holder = variable_holder
     _lift_unlifted_variables(fn_graph, variable_holder)
     # We call __init__ after lifting variables so that the function's signature
     # properly reflects the new captured inputs.
-    for f in fn_graph.as_graph_def().library.function:
+    for f in fn_graph.as_graph_def(use_pybind11_proto=True).library.function:
       context.context().add_function_def(f)
     self._signature = signature
     function_type = function_type_lib.from_structured_signature(
         fn_graph.structured_input_signature,
         fn_graph.structured_outputs,
         fn_graph.function_captures.capture_types,
+        are_keyword_args_also_positional=are_keyword_args_also_positional,
     )
     atomic_fn = atomic_function.from_func_graph(
         function._inference_name(fn_graph.name), fn_graph, attrs, function_type
@@ -252,7 +260,14 @@ class WrappedFunction(function.ConcreteFunction):
     else:
       return super()._call_impl(args, kwargs)
 
-  def prune(self, feeds, fetches, name=None, input_signature=None):
+  def prune(
+      self,
+      feeds,
+      fetches,
+      name=None,
+      input_signature=None,
+      are_keyword_args_also_positional=False,
+  ):
     """Extract a subgraph of this function's underlying graph.
 
     Wraps the subgraph in a new `WrappedFunction` object.
@@ -271,6 +286,10 @@ class WrappedFunction(function.ConcreteFunction):
       input_signature: (optional) possibly-nested Python data structure
         containing `TensorSpec` objects, with which to populate the returned
         functions's `FuncGraph`'s `structured_input_signature` field.
+      are_keyword_args_also_positional: whether the keyword arguments
+        in `input_signature` are `POSITIONAL_OR_KEYWORD` arguments. If
+        `False` (default), they are treated as `KEYWORD_ONLY`
+        arguments.
 
     Returns:
       A new `WrappedFunction` object containing a copy of the portion of this
@@ -389,7 +408,10 @@ class WrappedFunction(function.ConcreteFunction):
 
     pruned_graph.structured_input_signature = input_signature
     pruned_fn = WrappedFunction(
-        pruned_graph, variable_holder=self._variable_holder)
+        pruned_graph,
+        variable_holder=self._variable_holder,
+        are_keyword_args_also_positional=are_keyword_args_also_positional,
+    )
     pruned_fn._num_positional_args = len(flat_feeds)  # pylint: disable=protected-access
     # TODO(kathywu): Enable keyword arguments if an input signature is specified
     pruned_fn._arg_keywords = [tensor.op.name for tensor in flat_feeds]  # pylint: disable=protected-access

@@ -30,11 +30,74 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/VhloTypes.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
 
 namespace mlir {
+
+// duplicated from
+// https://github.com/openxla/stablehlo/blob/e5ad51715a11721c78b6748ab5de7945df24b1b8/stablehlo/transforms/StablehloLegalizeToVhlo.cpp#L756
+// so we can create correct vhlo types
+class StablehloVhloTypeConverter : public mlir::vhlo::VhloTypeConverter {
+ public:
+  StablehloVhloTypeConverter() : mlir::vhlo::VhloTypeConverter() {
+    addConversion([](mlir::Type type) -> mlir::Type {
+      if (type.getDialect().getNamespace() ==
+          mlir::vhlo::VhloDialect::getDialectNamespace()) {
+        return type;
+      }
+      return {};
+    });
+    addConversion([](mlir::stablehlo::TokenType token) -> mlir::Type {
+      return mlir::vhlo::TokenV1Type::get(token.getContext());
+    });
+    addBuiltinToVhloConversions();
+  }
+
+  mlir::Attribute convertEncoding(mlir::Attribute attr) const final {
+    // Must be VHLO encoding, or convertible to VHLO encoding.
+    if (attr.getDialect().getNamespace() ==
+        mlir::vhlo::VhloDialect::getDialectNamespace())
+      return attr;
+
+    if (auto stablehloAttr =
+            mlir::dyn_cast_or_null<mlir::stablehlo::TypeExtensionsAttr>(attr)) {
+      return mlir::vhlo::TypeExtensionsV1Attr::get(stablehloAttr.getContext(),
+                                                   stablehloAttr.getBounds());
+    }
+
+    // Was not VHLO encoding, or convertible.
+    return {};
+  }
+};
+
+// from
+// https://github.com/openxla/stablehlo/blob/e5ad51715a11721c78b6748ab5de7945df24b1b8/stablehlo/transforms/VhloLegalizeToStablehlo.cpp#L45C70-L45C70
+class VhloToStablehloTypeConverter : public vhlo::VhloTypeConverter {
+ public:
+  VhloToStablehloTypeConverter() : vhlo::VhloTypeConverter() {
+    addConversion([](Type type) -> Type { return type; });
+    addConversion([](vhlo::TokenV1Type token) -> Type {
+      return stablehlo::TokenType::get(token.getContext());
+    });
+    addVhloToBuiltinConversions();
+  }
+
+  Attribute convertEncoding(Attribute attr) const final {
+    if (auto vhloAttr =
+            mlir::dyn_cast_or_null<vhlo::TypeExtensionsV1Attr>(attr)) {
+      return stablehlo::TypeExtensionsAttr::get(vhloAttr.getContext(),
+                                                vhloAttr.getBounds());
+    }
+    // All encodings supported in StableHLO.
+    return attr;
+  }
+};
 
 // Returns true if the op_code belongs to a stablehlo operation.
 bool IsStablehloOp(const tflite::OperatorCodeT &op_code);
@@ -54,7 +117,8 @@ std::optional<flatbuffers::Offset<tflite::Operator>> CreateFlatBufferOperator(
     Operation *mlir_op, uint32_t opcode_index,
     const std::vector<int32_t> &operands, const std::vector<int32_t> &results,
     const std::vector<int32_t> &intermediates,
-    flatbuffers::FlatBufferBuilder *fbb);
+    flatbuffers::FlatBufferBuilder *fbb,
+    std::optional<int> debug_metadata_index = -1);
 
 // Populates the array of mlir::NamedAttributes corresponding to the given
 // tflite::FlatbufferOptionsUnion.
@@ -73,7 +137,7 @@ llvm::MinMax OperandNumbersMinMax(llvm::StringRef op_name);
 // `custom_code` is used to identify CustomOp.
 // `custom_options` are opaque attribute used to store infomations for this
 // custom op.
-tensorflow::Status CustomOptionsToAttributes(
+absl::Status CustomOptionsToAttributes(
     const std::string &custom_code, const std::vector<uint8_t> &custom_options,
     mlir::Builder builder,
     // NOLINTNEXTLINE
@@ -215,6 +279,29 @@ static inline std::vector<T> GetOptionalVector(
     return GetVector<T>(elements.value());
   }
   return std::vector<T>(default_size, default_value);
+}
+
+// Handles the case when the ArrayRef doesn't exist, and when it
+// doesn't returns a vector of length `default_size` all with the same value
+// `default_value`.
+template <typename T>
+static inline std::vector<T> GetOptionalVector(
+    std::optional<ArrayRef<T>> values, int64_t default_size = 0,
+    int64_t default_value = 0) {
+  if (values.has_value()) {
+    return std::vector<T>(values->begin(), values->end());
+  }
+  return std::vector<T>(default_size, default_value);
+}
+
+template <typename T>
+static inline std::vector<T> GetVector(
+    vhlo::TensorV1Attr elements,
+    mlir::vhlo::VhloTypeConverter &vhlo_type_converter) {
+  return GetOptionalVector<T>(mlir::DenseIntElementsAttr::getFromRawBuffer(
+      mlir::cast<mlir::ShapedType>(
+          vhlo_type_converter.convertType(elements.getType())),
+      elements.getData()));
 }
 
 }  // namespace mlir

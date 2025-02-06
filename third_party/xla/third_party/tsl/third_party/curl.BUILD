@@ -14,11 +14,6 @@ CURL_WIN_COPTS = [
     "/DCURL_DISABLE_PROXY",
     "/DHAVE_LIBZ",
     "/DHAVE_ZLIB_H",
-    # Defining _USING_V110_SDK71_ is hackery to defeat curl's incorrect
-    # detection of what OS releases we can build on with VC 2012. This
-    # may not be needed (or may have to change) if the WINVER setting
-    # changes in //third_party/msvc/vc_12_0/CROSSTOOL.
-    "/D_USING_V110_SDK71_",
 ]
 
 CURL_WIN_SRCS = [
@@ -102,10 +97,6 @@ cc_library(
         "lib/curl_multibyte.h",
         "lib/curl_ntlm_core.c",
         "lib/curl_ntlm_core.h",
-        "lib/curl_ntlm_wb.c",
-        "lib/curl_ntlm_wb.h",
-        "lib/curl_path.c",
-        "lib/curl_path.h",
         "lib/curl_printf.h",
         "lib/curl_range.c",
         "lib/curl_range.h",
@@ -116,6 +107,8 @@ cc_library(
         "lib/curl_setup.h",
         "lib/curl_setup_once.h",
         "lib/curl_sha256.h",
+        "lib/curl_sha512_256.c",
+        "lib/curl_sha512_256.h",
         "lib/curl_sspi.c",
         "lib/curl_sspi.h",
         "lib/curl_threads.c",
@@ -123,8 +116,11 @@ cc_library(
         "lib/curl_trc.c",
         "lib/curl_trc.h",
         "lib/curlx.h",
+        "lib/cw-out.c",
+        "lib/cw-out.h",
         "lib/dict.c",
         "lib/dict.h",
+        "lib/dllmain.c",
         "lib/doh.c",
         "lib/doh.h",
         "lib/dynbuf.c",
@@ -236,6 +232,8 @@ cc_library(
         "lib/rand.h",
         "lib/rename.c",
         "lib/rename.h",
+        "lib/request.c",
+        "lib/request.h",
         "lib/rtsp.c",
         "lib/rtsp.h",
         "lib/select.c",
@@ -316,17 +314,22 @@ cc_library(
         "lib/vquic/curl_msh3.h",
         "lib/vquic/curl_ngtcp2.c",
         "lib/vquic/curl_ngtcp2.h",
+        "lib/vquic/curl_osslq.h",
         "lib/vquic/curl_quiche.c",
         "lib/vquic/curl_quiche.h",
         "lib/vquic/vquic.c",
         "lib/vquic/vquic.h",
         "lib/vquic/vquic_int.h",
+        "lib/vssh/curl_path.c",
+        "lib/vssh/curl_path.h",
         "lib/vssh/libssh.c",
         "lib/vssh/libssh2.c",
         "lib/vssh/ssh.h",
         "lib/vssh/wolfssh.c",
         "lib/vtls/bearssl.c",
         "lib/vtls/bearssl.h",
+        "lib/vtls/cipher_suite.c",
+        "lib/vtls/cipher_suite.h",
         "lib/vtls/gtls.c",
         "lib/vtls/gtls.h",
         "lib/vtls/hostcheck.c",
@@ -358,13 +361,13 @@ cc_library(
         "lib/ws.c",
         "lib/ws.h",
     ] + select({
-        "@local_tsl//tsl:macos": [
+        "@local_xla//xla/tsl:macos": [
             "lib/vtls/sectransp.c",
         ],
-        "@local_tsl//tsl:ios": [
+        "@local_xla//xla/tsl:ios": [
             "lib/vtls/sectransp.c",
         ],
-        "@local_tsl//tsl:windows": CURL_WIN_SRCS,
+        "@local_xla//xla/tsl:windows": CURL_WIN_SRCS,
         "//conditions:default": [
         ],
     }),
@@ -383,7 +386,7 @@ cc_library(
         "include/curl/websockets.h",
     ],
     copts = select({
-        "@local_tsl//tsl:windows": CURL_WIN_COPTS,
+        "@local_xla//xla/tsl:windows": CURL_WIN_COPTS,
         "//conditions:default": [
             "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
@@ -396,10 +399,10 @@ cc_library(
             "-Wno-string-plus-int",
         ],
     }) + select({
-        "@local_tsl//tsl:macos": [
+        "@local_xla//xla/tsl:macos": [
             "-fno-constant-cfstrings",
         ],
-        "@local_tsl//tsl:windows": [
+        "@local_xla//xla/tsl:windows": [
             # See curl.h for discussion of write size and Windows
             "/DCURL_MAX_WRITE_SIZE=16384",
         ],
@@ -410,10 +413,10 @@ cc_library(
     defines = ["CURL_STATICLIB"],
     includes = ["include"],
     linkopts = select({
-        "@local_tsl//tsl:android": [
+        "@local_xla//xla/tsl:android": [
             "-pie",
         ],
-        "@local_tsl//tsl:macos": [
+        "@local_xla//xla/tsl:macos": [
             "-Wl,-framework",
             "-Wl,CoreFoundation",
             "-Wl,-framework",
@@ -421,8 +424,8 @@ cc_library(
             "-Wl,-framework",
             "-Wl,Security",
         ],
-        "@local_tsl//tsl:ios": [],
-        "@local_tsl//tsl:windows": [
+        "@local_xla//xla/tsl:ios": [],
+        "@local_xla//xla/tsl:windows": [
             "-DEFAULTLIB:ws2_32.lib",
             "-DEFAULTLIB:advapi32.lib",
             "-DEFAULTLIB:crypt32.lib",
@@ -436,8 +439,8 @@ cc_library(
     deps = [
         "@zlib",
     ] + select({
-        "@local_tsl//tsl:ios": [],
-        "@local_tsl//tsl:windows": [],
+        "@local_xla//xla/tsl:ios": [],
+        "@local_xla//xla/tsl:windows": [],
         "//conditions:default": [
             "@boringssl//:ssl",
         ],
@@ -456,6 +459,8 @@ cc_binary(
         "lib/config-win32.h",
         "src/slist_wc.c",
         "src/slist_wc.h",
+        "src/terminal.c",
+        "src/terminal.h",
         "src/tool_binmode.c",
         "src/tool_binmode.h",
         "src/tool_bname.c",
@@ -470,6 +475,8 @@ cc_binary(
         "src/tool_cb_rea.h",
         "src/tool_cb_see.c",
         "src/tool_cb_see.h",
+        "src/tool_cb_soc.c",
+        "src/tool_cb_soc.h",
         "src/tool_cb_wrt.c",
         "src/tool_cb_wrt.h",
         "src/tool_cfgable.c",
@@ -543,7 +550,7 @@ cc_binary(
         "src/tool_xattr.h",
     ],
     copts = select({
-        "@local_tsl//tsl:windows": CURL_BIN_WIN_COPTS,
+        "@local_xla//xla/tsl:windows": CURL_BIN_WIN_COPTS,
         "//conditions:default": [
             "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
@@ -595,7 +602,7 @@ genrule(
         "#  define HAVE_SETMODE 1",
         "#  define HAVE_SYS_FILIO_H 1",
         "#  define HAVE_SYS_SOCKIO_H 1",
-        "#  define OS \"x86_64-apple-darwin15.5.0\"",
+        "#  define CURL_OS \"x86_64-apple-darwin15.5.0\"",
         "#  define USE_SECTRANSP 1",
         "#else",
         "#  define CURL_CA_BUNDLE \"/etc/ssl/certs/ca-certificates.crt\"",
@@ -624,7 +631,7 @@ genrule(
         "#  define HAVE_RAND_STATUS 1",
         "#  define HAVE_SSL_GET_SHUTDOWN 1",
         "#  define HAVE_TERMIOS_H 1",
-        "#  define OS \"x86_64-pc-linux-gnu\"",
+        "#  define CURL_OS \"x86_64-pc-linux-gnu\"",
         "#  define RANDOM_FILE \"/dev/urandom\"",
         "#  define USE_OPENSSL 1",
         "#endif",

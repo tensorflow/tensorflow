@@ -1,0 +1,34 @@
+# Packages to be installed for the new Docker image.
+
+# Packages needed to build devtoolset
+file
+flex
+g++
+make
+patch
+rpm2cpio
+unar
+wget
+xz-utils
+cpio
+
+# Other build-related tools
+apt-transport-https
+autoconf
+automake
+build-essential
+ca-certificates
+llvm-18
+clang-18
+clang-tidy-18
+lld-18
+clang-format-12
+curl
+git
+parallel
+sudo
+swig
+unzip
+zip
+openjdk-21-jdk
+vim

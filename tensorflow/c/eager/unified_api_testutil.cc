@@ -34,9 +34,9 @@ AbstractContext* BuildFunction(const char* fn_name) {
   return unwrap(graph_ctx);
 }
 
-Status CreateParamsForInputs(AbstractContext* ctx,
-                             absl::Span<AbstractTensorHandle* const> inputs,
-                             std::vector<AbstractTensorHandle*>* params) {
+absl::Status CreateParamsForInputs(
+    AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+    std::vector<AbstractTensorHandle*>* params) {
   tracing::TracingTensorHandle* handle = nullptr;
   for (auto input : inputs) {
     PartialTensorShape shape;
@@ -45,13 +45,14 @@ Status CreateParamsForInputs(AbstractContext* ctx,
         input->DataType(), shape, &handle));
     params->emplace_back(handle);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Runs `model` maybe wrapped in a function.
-Status RunModel(Model model, AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, bool use_function) {
+absl::Status RunModel(Model model, AbstractContext* ctx,
+                      absl::Span<AbstractTensorHandle* const> inputs,
+                      absl::Span<AbstractTensorHandle*> outputs,
+                      bool use_function) {
   if (use_function) {
     const char* fn_name = "test_fn";
     core::RefCountPtr<AbstractFunction> scoped_func;
@@ -113,13 +114,14 @@ Status RunModel(Model model, AbstractContext* ctx,
       }
     }
     TF_RETURN_IF_ERROR(ctx->RemoveFunction(fn_name));
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return model(ctx, inputs, outputs);
   }
 }
 
-Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx) {
+absl::Status BuildImmediateExecutionContext(bool use_tfrt,
+                                            AbstractContext** ctx) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
@@ -127,10 +129,10 @@ Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx) {
   *ctx = unwrap(TF_NewEagerExecutionContext(opts, status.get()));
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
   TFE_DeleteContextOptions(opts);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
+absl::Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_TensorHandle* result_t =

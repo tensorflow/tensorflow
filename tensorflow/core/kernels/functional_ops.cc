@@ -42,13 +42,13 @@ typedef std::vector<Tensor> TensorVec;
 namespace {
 
 // Helper to instantiate function "func" in the library "lib".
-Status Instantiate(FunctionLibraryRuntime* lib, const NameAttrList& func,
-                   FunctionLibraryRuntime::Handle* handle) {
+absl::Status Instantiate(FunctionLibraryRuntime* lib, const NameAttrList& func,
+                         FunctionLibraryRuntime::Handle* handle) {
   return lib->Instantiate(func.name(), AttrSlice(&func.attr()), handle);
 }
 
-Status Instantiate(OpKernelContext* ctx, const NameAttrList& func,
-                   FunctionLibraryRuntime::Handle* handle) {
+absl::Status Instantiate(OpKernelContext* ctx, const NameAttrList& func,
+                         FunctionLibraryRuntime::Handle* handle) {
   FunctionLibraryRuntime::InstantiateOptions opts;
   opts.executor_type = ctx->executor_type();
   return ctx->function_library()->Instantiate(
@@ -56,7 +56,7 @@ Status Instantiate(OpKernelContext* ctx, const NameAttrList& func,
 }
 
 // If "t" is a scalar of a supported type, returns t != 0 in "*v".
-Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
+absl::Status ToBool(absl::Span<const Tensor> t, bool* v) {
   if (t.size() != 1) {
     return errors::InvalidArgument(
         "Expected a single scalar which can be converted to a boolean, got ",
@@ -90,13 +90,13 @@ Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
   } else {
     *v = t[0].NumElements() > 0;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Sets "rets" to be the output of "ctx". Validates rets' types based
 // on "kernel".
-Status SetOutputs(const OpKernel* kernel, OpKernelContext* ctx,
-                  gtl::ArraySlice<Tensor> rets) {
+absl::Status SetOutputs(const OpKernel* kernel, OpKernelContext* ctx,
+                        absl::Span<const Tensor> rets) {
   if (rets.size() != ctx->num_outputs()) {
     return errors::Internal("Expect to produce ", ctx->num_outputs(),
                             " tensors, but only get ", rets.size());
@@ -109,7 +109,7 @@ Status SetOutputs(const OpKernel* kernel, OpKernelContext* ctx,
     }
     ctx->set_output(i, rets[i]);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
@@ -141,12 +141,12 @@ class IfOp : public AsyncOpKernel {
         LOG(INFO) << "FunctionLibraryRuntime already destroyed.";
         continue;
       }
-      Status then_status = lib->ReleaseHandle(it.second.first.first);
+      absl::Status then_status = lib->ReleaseHandle(it.second.first.first);
       if (!then_status.ok()) {
         LOG(INFO) << "Ignoring error while destructing IfOp then function: "
                   << then_status;
       }
-      Status else_status = lib->ReleaseHandle(it.second.first.second);
+      absl::Status else_status = lib->ReleaseHandle(it.second.first.second);
       if (!else_status.ok()) {
         LOG(INFO) << "Ignoring error while destructing IfOp else function: "
                   << else_status;
@@ -189,6 +189,7 @@ class IfOp : public AsyncOpKernel {
           lib_(CHECK_NOTNULL(ctx_->function_library())),
           opts_(ctx->step_id()) {
       SetRunOptions(ctx_, &opts_, true /* always_collect_stats */);
+      args_.reserve(ctx_->num_inputs() - 1);
       for (int i = 1; i < ctx_->num_inputs(); ++i) {
         args_.push_back(ctx_->input(i));
       }
@@ -199,12 +200,12 @@ class IfOp : public AsyncOpKernel {
     void Start() {
       FHandle handle = cond_ ? then_handle_ : else_handle_;
       rets_.clear();
-      profiler::TraceMe trace_me("IfOp");
+      tsl::profiler::TraceMe trace_me("IfOp");
       lib_->Run(
           // Evaluate one of the branch.
           opts_, handle, args_, &rets_,
           // Done callback
-          [this](Status s) {
+          [this](absl::Status s) {
             if (s.ok()) {
               s = SetOutputs(kernel_, ctx_, rets_);
             }
@@ -228,8 +229,8 @@ class IfOp : public AsyncOpKernel {
     TensorVec rets_;
   };
 
-  Status GetHandles(OpKernelContext* ctx, FHandle* then_handle,
-                    FHandle* else_handle) {
+  absl::Status GetHandles(OpKernelContext* ctx, FHandle* then_handle,
+                          FHandle* else_handle) {
     // TODO(b/37549631): Because this op has `SetIsStateful()` in its
     // op registration, this kernel may be shared by multiple
     // subgraphs, which have different associated
@@ -263,7 +264,7 @@ class IfOp : public AsyncOpKernel {
                            tsl::core::WeakPtr<FunctionLibraryRuntime>(lib));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -284,7 +285,7 @@ class CaseOp : public AsyncOpKernel {
       }
 
       for (const auto& handle : it.second.first) {
-        Status status = lib->ReleaseHandle(handle);
+        absl::Status status = lib->ReleaseHandle(handle);
         if (!status.ok()) {
           LOG(INFO)
               << "Ignoring error while destructing CaseOp branch function: "
@@ -314,8 +315,8 @@ class CaseOp : public AsyncOpKernel {
                                tsl::core::WeakPtr<FunctionLibraryRuntime>>>
       handles_ ABSL_GUARDED_BY(mu_);
 
-  Status GetHandles(OpKernelContext* ctx,
-                    std::vector<FHandle>& branch_handles) {
+  absl::Status GetHandles(OpKernelContext* ctx,
+                          std::vector<FHandle>& branch_handles) {
     // TODO(b/37549631): Because this op has `SetIsStateful()` in its
     // op registration, this kernel may be shared by multiple
     // subgraphs, which have different associated
@@ -349,7 +350,7 @@ class CaseOp : public AsyncOpKernel {
       }
     }
     branch_handles.assign(handles.begin(), handles.end());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   class State {
@@ -378,12 +379,12 @@ class CaseOp : public AsyncOpKernel {
         branch = branch_handles_.size() - 1;
       }
       rets_.clear();
-      profiler::TraceMe trace_me("CaseOp");
+      tsl::profiler::TraceMe trace_me("CaseOp");
       lib_->Run(
           // Evaluate one of the branch.
           opts_, branch_handles_[branch], args_, &rets_,
           // Done callback
-          [this](Status s) {
+          [this](absl::Status s) {
             if (s.ok()) {
               s = SetOutputs(kernel_, ctx_, rets_);
             }
@@ -444,13 +445,13 @@ class WhileOp : public AsyncOpKernel {
         LOG(INFO) << "FunctionLibraryRuntime already destroyed.";
         continue;
       }
-      Status cond_status = lib->ReleaseHandle(it.second.first.first);
+      absl::Status cond_status = lib->ReleaseHandle(it.second.first.first);
       if (!cond_status.ok()) {
         LOG(INFO)
             << "Ignoring error while destructing WhileOp condition function: "
             << cond_status;
       }
-      Status body_status = lib->ReleaseHandle(it.second.first.second);
+      absl::Status body_status = lib->ReleaseHandle(it.second.first.second);
       if (!body_status.ok()) {
         LOG(INFO) << "Ignoring error while destructing WhileOp body function: "
                   << body_status;
@@ -476,7 +477,7 @@ class WhileOp : public AsyncOpKernel {
   void Compute(OpKernelContext* ctx) override {
     // Use the non-callback-based implementation when the synchronous Compute()
     // method is invoked, because the caller is explicitly donating a thread.
-    Status s = DoComputeSync(ctx);
+    absl::Status s = DoComputeSync(ctx);
     // NOTE: Unfortunately, we cannot use OP_REQUIRES_OK here, because this is
     // still an AsyncOpKernel, and there is a run-time check to avoid calling
     // OP_REQUIRES_OK in AsyncOpKernel::ComputeAsync() (which would deadlock in
@@ -496,9 +497,9 @@ class WhileOp : public AsyncOpKernel {
                                tsl::core::WeakPtr<FunctionLibraryRuntime>>>
       handles_ ABSL_GUARDED_BY(mu_);
 
-  static Status CondResultToBool(OpKernelContext* ctx,
-                                 const FunctionLibraryRuntime::Options& opts,
-                                 const Tensor& cond_t, bool* out_result) {
+  static absl::Status CondResultToBool(
+      OpKernelContext* ctx, const FunctionLibraryRuntime::Options& opts,
+      const Tensor& cond_t, bool* out_result) {
     bool is_pluggable = ctx->op_device_context() &&
                         ctx->op_device_context()->IsPluggableDevice();
     const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
@@ -553,10 +554,10 @@ class WhileOp : public AsyncOpKernel {
     size_t num_args() const override { return args_->size(); }
     size_t num_retvals() const override { return retvals_->size(); }
 
-    Status GetArg(int index, const Tensor** val) override {
+    absl::Status GetArg(int index, const Tensor** val) override {
       if (index < args_->size()) {
         *val = &(*args_)[index];
-        return OkStatus();
+        return absl::OkStatus();
       } else {
         return errors::InvalidArgument("Argument ", index, " is out of range.");
       }
@@ -571,7 +572,7 @@ class WhileOp : public AsyncOpKernel {
       return index >= 0 && index < args_->size();
     }
 
-    Status SetRetval(int index, const Tensor& val) override {
+    absl::Status SetRetval(int index, const Tensor& val) override {
       if (TF_PREDICT_FALSE(index < 0)) {
         return errors::InvalidArgument(
             "Expected non-negative return value index, but got: ", index, ".");
@@ -586,7 +587,7 @@ class WhileOp : public AsyncOpKernel {
                                        DataTypeString(val.dtype()), ".");
       }
       (*retvals_)[index] = val;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -633,12 +634,12 @@ class WhileOp : public AsyncOpKernel {
     std::unique_ptr<BodyFuncCallFrame> body_frame_;
 
     void EvalCond() {
-      profiler::TraceMe trace_me("WhileOp-EvalCond");
+      tsl::profiler::TraceMe trace_me("WhileOp-EvalCond");
       lib_->Run(
           // Evaluate the condition.
           opts_, cond_handle_, args_, &rets_,
           // Done cb.
-          [this](const Status& s) {
+          [this](const absl::Status& s) {
             if (!s.ok()) {
               return Finish(s);
             }
@@ -647,7 +648,7 @@ class WhileOp : public AsyncOpKernel {
     }
 
     void StartBody() {
-      Status s;
+      absl::Status s;
       if (rets_.size() != 1) {
         s = errors::InvalidArgument(
             "Expected a single scalar return value from WhileOp cond, got ",
@@ -665,16 +666,16 @@ class WhileOp : public AsyncOpKernel {
       }
 
       if (!cond) {
-        return Finish(OkStatus());
+        return Finish(absl::OkStatus());
       }
       rets_.clear();
       rets_.resize(args_.size());
-      profiler::TraceMe trace_me("WhileOp-StartBody");
+      tsl::profiler::TraceMe trace_me("WhileOp-StartBody");
       lib_->Run(
           // Evaluate the body.
           opts_, body_handle_, body_frame_.get(),
           // Done callback
-          [this](const Status& s) {
+          [this](const absl::Status& s) {
             if (!s.ok()) {
               return Finish(s);
             }
@@ -690,7 +691,7 @@ class WhileOp : public AsyncOpKernel {
           });
     }
 
-    void Finish(Status s) {
+    void Finish(absl::Status s) {
       if (s.ok()) {
         s = SetOutputs(kernel_, ctx_, args_);
       }
@@ -700,7 +701,7 @@ class WhileOp : public AsyncOpKernel {
     }
   };
 
-  Status DoComputeSync(OpKernelContext* ctx) {
+  absl::Status DoComputeSync(OpKernelContext* ctx) {
     FHandle cond_handle;
     FHandle body_handle;
     TF_RETURN_IF_ERROR(GetHandles(ctx, &cond_handle, &body_handle));
@@ -724,7 +725,7 @@ class WhileOp : public AsyncOpKernel {
     do {
       // Evaluate the cond function on the current loop variables.
       {
-        profiler::TraceMe trace_me("WhileOp-EvalCond");
+        tsl::profiler::TraceMe trace_me("WhileOp-EvalCond");
         TF_RETURN_IF_ERROR(lib->RunSync(opts, cond_handle, args, &cond_rets));
       }
       if (cond_rets.size() != 1) {
@@ -745,7 +746,7 @@ class WhileOp : public AsyncOpKernel {
       // Evaluate the body function on the current loop variables, to get an
       // updated vector of loop variables.
       {
-        profiler::TraceMe trace_me("WhileOp-StartBody");
+        tsl::profiler::TraceMe trace_me("WhileOp-StartBody");
         body_rets.resize(num_loop_vars);
         BodyFuncCallFrame call_frame(&args, &body_rets, loop_var_types);
         TF_RETURN_IF_ERROR(lib->RunSync(opts, body_handle, &call_frame));
@@ -755,8 +756,8 @@ class WhileOp : public AsyncOpKernel {
     } while (true);
   }
 
-  Status GetHandles(OpKernelContext* ctx, FHandle* cond_handle,
-                    FHandle* body_handle) {
+  absl::Status GetHandles(OpKernelContext* ctx, FHandle* cond_handle,
+                          FHandle* body_handle) {
     // TODO(b/37549631): Because this op has `SetIsStateful()` in its
     // op registration, this kernel may be shared by multiple
     // subgraphs, which have different associated
@@ -790,7 +791,7 @@ class WhileOp : public AsyncOpKernel {
                            tsl::core::WeakPtr<FunctionLibraryRuntime>(lib));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 // TODO(drpng): remove these.
@@ -817,15 +818,15 @@ class ToBoolOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ToBool").Device(DEVICE_CPU), ToBoolOp);
 
-Status GetScalar(OpKernelContext* ctx, int index, int32* value,
-                 const char* label) {
+absl::Status GetScalar(OpKernelContext* ctx, int index, int32* value,
+                       const char* label) {
   Tensor t = ctx->input(index);
   if (!TensorShapeUtils::IsScalar(t.shape())) {
     return errors::InvalidArgument(label, " must be a scalar, but ",
                                    t.shape().DebugString());
   }
   *value = t.scalar<int32>()();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class ForOp : public AsyncOpKernel {
@@ -843,7 +844,7 @@ class ForOp : public AsyncOpKernel {
         LOG(INFO) << "FunctionLibraryRuntime already destroyed.";
         continue;
       }
-      Status status = lib->ReleaseHandle(it.second.first);
+      absl::Status status = lib->ReleaseHandle(it.second.first);
       if (!status.ok()) {
         LOG(INFO) << "Ignoring error while destructing ForOp body function: "
                   << status;
@@ -866,7 +867,7 @@ class ForOp : public AsyncOpKernel {
       std::pair<FHandle, tsl::core::WeakPtr<FunctionLibraryRuntime>>>
       handles_ ABSL_GUARDED_BY(mu_);
 
-  Status GetHandles(OpKernelContext* ctx, FHandle* body_handle) {
+  absl::Status GetHandles(OpKernelContext* ctx, FHandle* body_handle) {
     // TODO(b/37549631): Because this op has `SetIsStateful()` in its
     // op registration, this kernel may be shared by multiple
     // subgraphs, which have different associated
@@ -895,7 +896,7 @@ class ForOp : public AsyncOpKernel {
             *body_handle, tsl::core::WeakPtr<FunctionLibraryRuntime>(lib));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   class State {
@@ -922,7 +923,7 @@ class ForOp : public AsyncOpKernel {
     ~State() = default;
 
     void Start() {
-      Status s = StartLoop();
+      absl::Status s = StartLoop();
       if (!s.ok()) Finish(s);
     }
 
@@ -942,7 +943,7 @@ class ForOp : public AsyncOpKernel {
 
     // If an error e is returned, caller must call Finish(e).
     // If OK is returned, the async loop execution has been started.
-    Status StartLoop() {
+    absl::Status StartLoop() {
       SetRunOptions(ctx_, &opts_, false /* always_collect_stats */);
 
       TF_RETURN_IF_ERROR(GetScalar(ctx_, 0, iter_, "start"));
@@ -953,7 +954,7 @@ class ForOp : public AsyncOpKernel {
           (delta_ < 0 && *iter_ >= limit_) ||
           (delta_ == 0 && *iter_ == limit_)) {
         RunNext();
-        return OkStatus();
+        return absl::OkStatus();
       } else {
         return errors::InvalidArgument("Invalid start/limit/delta: ", *iter_,
                                        " ", limit_, " ", delta_);
@@ -968,7 +969,7 @@ class ForOp : public AsyncOpKernel {
         done_loop = *iter_ <= limit_;
       }
       if (done_loop) {
-        Finish(OkStatus());
+        Finish(absl::OkStatus());
         return;
       }
 
@@ -982,18 +983,19 @@ class ForOp : public AsyncOpKernel {
         args_[1 + i] = std::move(rets_[i]);
       }
       rets_.clear();
-      profiler::TraceMe trace_me("ForOp");
-      lib_->Run(opts_, body_handle_, args_, &rets_, [this](const Status& s) {
-        if (s.ok()) {
-          *iter_ += delta_;
-          RunNext();
-        } else {
-          Finish(s);
-        }
-      });
+      tsl::profiler::TraceMe trace_me("ForOp");
+      lib_->Run(opts_, body_handle_, args_, &rets_,
+                [this](const absl::Status& s) {
+                  if (s.ok()) {
+                    *iter_ += delta_;
+                    RunNext();
+                  } else {
+                    Finish(s);
+                  }
+                });
     }
 
-    void Finish(Status s) {
+    void Finish(absl::Status s) {
       if (s.ok()) {
         s = SetOutputs(kernel_, ctx_, rets_);
       }

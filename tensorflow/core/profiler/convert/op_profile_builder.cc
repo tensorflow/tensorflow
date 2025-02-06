@@ -21,11 +21,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-// #include "perftools/accelerators/xprof/convert/device_type_utils.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
@@ -34,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tsl/profiler/convert/xla_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -44,11 +45,14 @@ using op_profile::Metrics;
 using op_profile::Node;
 using tsl::profiler::IsFusion;
 
+double CapUtilization(double utilization) { return std::min(utilization, 1.0); }
+
 // Fill symbol details into a node.
 void PopulateSymbolNode(const OpMetrics& op_metrics, Node* node) {
   node->set_name(op_metrics.name());
   Node::XLAInstruction& xla = *node->mutable_xla();
   xla.set_expression(op_metrics.long_name());
+  xla.set_fingerprint(op_metrics.fingerprint());
   xla.set_category(op_metrics.category());
   xla.set_provenance(op_metrics.provenance());
   if (op_metrics.has_layout()) {
@@ -86,6 +90,7 @@ void CopySymbolDetailsToDeduplicatedNode(Node* top_child_node,
   Node::XLAInstruction& xla = *deduplicated_node->mutable_xla();
   const Node::XLAInstruction& top_child_node_xla = top_child_node->xla();
   xla.set_expression(top_child_node_xla.expression());
+  xla.set_fingerprint(top_child_node_xla.fingerprint());
   xla.set_category(top_child_node_xla.category());
   if (IsFusion(top_child_node_xla.category())) return;
   xla.set_provenance(top_child_node_xla.provenance());
@@ -123,10 +128,13 @@ void FinalizeDeduplicatedNodes(bool by_program, Node* root) {
     for (Node& program_node : *root->mutable_children()) {
       for (Node& category_node : *program_node.mutable_children()) {
         for (Node& deduplicated_node : *category_node.mutable_children()) {
-          // Skip for non deduplicated nodes. Those nodes already have name set.
-          if (!deduplicated_node.name().empty() ||
-              deduplicated_node.children().empty())
+          // Node with 1 child doesn't have deduplication, the child is itself.
+          // Removing the dedup layer.
+          if (deduplicated_node.children_size() == 1) {
+            Node child = *deduplicated_node.mutable_children(0);
+            deduplicated_node = child;
             continue;
+          }
           CopySymbolDetailsToDeduplicatedNode(
               deduplicated_node.mutable_children(0), &deduplicated_node);
         }
@@ -135,10 +143,13 @@ void FinalizeDeduplicatedNodes(bool by_program, Node* root) {
   } else {
     for (Node& category_node : *root->mutable_children()) {
       for (Node& deduplicated_node : *category_node.mutable_children()) {
-        // Skip for non deduplicated nodes. Those nodes already have name set.
-        if (!deduplicated_node.name().empty() ||
-            deduplicated_node.children().empty())
+        // Node with 1 child doesn't have deduplication, the child is itself.
+        // Removing the dedup layer.
+        if (deduplicated_node.children_size() == 1) {
+          Node child = *deduplicated_node.mutable_children(0);
+          deduplicated_node = child;
           continue;
+        }
         CopySymbolDetailsToDeduplicatedNode(
             deduplicated_node.mutable_children(0), &deduplicated_node);
       }
@@ -146,33 +157,11 @@ void FinalizeDeduplicatedNodes(bool by_program, Node* root) {
   }
 }
 
-// Recursively find computation size for HLOs -- applied only for convolutions.
-// This is only for convolutions, not other HLOs, categories or whole programs.
-// TODO(b/243596435) Find a permanent fix to this problem.
-int64_t GetComputationSize(Node node) {
-  int64_t computation_size = 0;
-  for (const auto& child : node.children()) {
-    if (GetComputationSize(child) != 0) {
-      computation_size = GetComputationSize(child);
-    }
-  }
-  if (node.has_xla()) {
-    if (node.xla().computation_primitive_size() > 0) {
-      return node.xla().computation_primitive_size();
-    } else {
-      return computation_size;
-    }
-  }
-  return 0;
-}
-
 // Fills op metrics into a node.
 void PopulateOpMetricsNode(
     const OpMetrics& op_metrics, double peak_gigaflops_per_second_per_core,
     std::vector<double> peak_mem_gibibytes_per_second_per_core,
     uint64_t total_time_ps, Node* node) {
-  DCHECK_EQ(ChildrenTimePs(op_metrics), 0);
-
   // TODO(dfinchel): remove this temporary change to avoid crash.
   // This is only needed while we make an update to proto version that is not
   // backwards compatible.
@@ -189,67 +178,62 @@ void PopulateOpMetricsNode(
   // and memory_bandwidth = raw_bytes_accessed / raw_time. See:
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
   metrics->set_raw_time(op_metrics.time_ps());
-  metrics->set_raw_flops(op_metrics.flops());
+  metrics->set_raw_flops(op_metrics.model_flops());
+  metrics->set_occurrences(op_metrics.occurrences());
+  metrics->set_avg_time_ps(tsl::profiler::SafeDivide(op_metrics.time_ps(),
+                                                     op_metrics.occurrences()));
 
-  // Hack to approximate utilization for INT8/4 convolution HLOs:
-  // Since MXU BW is 2x/4x for INT8/4, multiply peak BW by the factor detemrined
-  // by the computation size
-  if (GetComputationSize(*node) == 8) {
-    peak_gigaflops_per_second_per_core *= 2;
-  } else if (GetComputationSize(*node) == 4) {
-    peak_gigaflops_per_second_per_core *= 4;
-  }
-  double flops_utilization = SafeDivide(GigaFlopsPerSecondPerCore(op_metrics),
-                                        peak_gigaflops_per_second_per_core);
+  double flops_utilization = CapUtilization(
+      tsl::profiler::SafeDivide(GigaFlopsPerSecondPerCore(op_metrics),
+                                peak_gigaflops_per_second_per_core));
   // The UI expects flops_utilization = flop_util / time_fraction. See:
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
-  const double time_fraction = SafeDivide(op_metrics.time_ps(), total_time_ps);
+  const double time_fraction =
+      tsl::profiler::SafeDivide(op_metrics.time_ps(), total_time_ps);
   metrics->set_flops(flops_utilization * time_fraction);
 
   // Capture both on-chip and off-chip memory utilization.
   const double hbm_gibibytes_per_second =
-      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics,
-                                           MemorySpace::MEMORY_SPACE_HBM,
-                                           OpMetrics::MemoryAccessed::READ)) +
-      GigaToGibi(GigaBytesPerSecondPerCore(op_metrics,
-                                           MemorySpace::MEMORY_SPACE_HBM,
-                                           OpMetrics::MemoryAccessed::WRITE));
-  const double hbm_bw_utilization = SafeDivide(
+      tsl::profiler::GigaToGibi(
+          GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_HBM,
+                                    OpMetrics::MemoryAccessed::READ)) +
+      tsl::profiler::GigaToGibi(
+          GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_HBM,
+                                    OpMetrics::MemoryAccessed::WRITE));
+  const double hbm_bw_utilization = CapUtilization(tsl::profiler::SafeDivide(
       hbm_gibibytes_per_second,
-      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_HBM_RW]);
+      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_HBM_RW]));
   metrics->add_bandwidth_utils(hbm_bw_utilization);
-  double hbm_bytes =
-      GibiToGiga(hbm_gibibytes_per_second) * PicoToNano(op_metrics.time_ps());
+  double hbm_bytes = tsl::profiler::GibiToGiga(hbm_gibibytes_per_second) *
+                     tsl::profiler::PicoToNano(op_metrics.time_ps());
 
-  const double sram_rd_gibibytes_per_second = GigaToGibi(
+  const double sram_rd_gibibytes_per_second = tsl::profiler::GigaToGibi(
       GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
                                 OpMetrics::MemoryAccessed::READ));
-  const double sram_rd_bw_utilization = SafeDivide(
-      sram_rd_gibibytes_per_second,
-      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_RD]);
+  const double sram_rd_bw_utilization =
+      CapUtilization(tsl::profiler::SafeDivide(
+          sram_rd_gibibytes_per_second, peak_mem_gibibytes_per_second_per_core
+                                            [MemBwType::MEM_BW_TYPE_SRAM_RD]));
   metrics->add_bandwidth_utils(sram_rd_bw_utilization);
-  double sram_rd_bytes = GibiToGiga(sram_rd_gibibytes_per_second) *
-                         PicoToNano(op_metrics.time_ps());
+  double sram_rd_bytes =
+      tsl::profiler::GibiToGiga(sram_rd_gibibytes_per_second) *
+      tsl::profiler::PicoToNano(op_metrics.time_ps());
 
-  const double sram_wr_gibibytes_per_second = GigaToGibi(
+  const double sram_wr_gibibytes_per_second = tsl::profiler::GigaToGibi(
       GigaBytesPerSecondPerCore(op_metrics, MemorySpace::MEMORY_SPACE_ON_CHIP,
                                 OpMetrics::MemoryAccessed::WRITE));
-  const double sram_wr_bw_utilization = SafeDivide(
-      sram_wr_gibibytes_per_second,
-      peak_mem_gibibytes_per_second_per_core[MemBwType::MEM_BW_TYPE_SRAM_WR]);
+  const double sram_wr_bw_utilization =
+      CapUtilization(tsl::profiler::SafeDivide(
+          sram_wr_gibibytes_per_second, peak_mem_gibibytes_per_second_per_core
+                                            [MemBwType::MEM_BW_TYPE_SRAM_WR]));
   metrics->add_bandwidth_utils(sram_wr_bw_utilization);
-  double sram_wr_bytes = GibiToGiga(sram_wr_gibibytes_per_second) *
-                         PicoToNano(op_metrics.time_ps());
+  double sram_wr_bytes =
+      tsl::profiler::GibiToGiga(sram_wr_gibibytes_per_second) *
+      tsl::profiler::PicoToNano(op_metrics.time_ps());
 
   metrics->add_raw_bytes_accessed_array(hbm_bytes);
   metrics->add_raw_bytes_accessed_array(sram_rd_bytes);
   metrics->add_raw_bytes_accessed_array(sram_wr_bytes);
-}
-
-// Sets the total time on the root node metrics.
-void SetTotalTime(uint64_t total_time_ps, Node* root) {
-  Metrics* metrics = root->mutable_metrics();
-  metrics->set_raw_time(total_time_ps);
 }
 
 // Recursively insert "fused instruction" nodes (with raw flops).
@@ -262,6 +246,20 @@ void InsertFusedInstructions(const OpMetrics& op_metrics, Node* node) {
     if (child.has_children()) {
       InsertFusedInstructions(child, new_node);
     }
+  }
+}
+
+void UpdateNodeMetrics(const OpMetrics& child, OpMetrics* parent) {
+  DCHECK(parent != nullptr);
+  parent->set_time_ps(child.self_time_ps() + parent->time_ps());
+  if (ChildrenTimePs(child) == 0) {
+    parent->set_flops(child.flops() + parent->flops());
+    parent->set_model_flops(child.model_flops() + parent->model_flops());
+    parent->set_bytes_accessed(child.bytes_accessed() +
+                               parent->bytes_accessed());
+    parent->set_dma_stall_ps(child.dma_stall_ps() + parent->dma_stall_ps());
+    CombineMemoryAccessedBreakdown(child.memory_accessed_breakdown(),
+                                   parent->mutable_memory_accessed_breakdown());
   }
 }
 
@@ -289,12 +287,62 @@ Node* OpProfileBuilder::AddOpNode(const OpMetrics& op_metrics,
   return leaf;
 }
 
+// Function to create deduplicated aggregation layer.
+// 1. Empty deduplicated_name in op_metrics means either:
+// (1) a grouping op of a deduplicated op list. (fusion.3 in the example below)
+// (2) an op that does not have duplicates. (fusion.4 in the example below)
+// We create dedup layer for both cases due to lack of clue which case it is.
+// The op name is used directly as the hash key for the dedup group. The dedup
+// layer will be removed in the 2nd pass for case (2).
+// 2. Non-empty deduplicated_name means this op can be grouped to a
+// deduplicated op list (fusion.1 in the example below).
+// Example:
+// op_metrics {
+//   name: "fusion.1"
+//   deduplicated_name: "fusion.3"
+//   category: "convolution"
+// }
+// op_metrics {
+//   name: "fusion.3"
+//   deduplicated_name: ""
+//   category: "convolution"
+// }
+// op_metrics {
+//   name: "fusion.4"
+//   deduplicated_name: ""
+//   category: "convolution"
+// }
+// The data above will create the following tree after calling the function
+// repeatedly:
+// root(by_program)
+// - jit.xx
+//   - convolution
+//     - fusion.3
+//       - fusion.1
+//       - fusion.2
+//       - fusion.3
+//     - fusion.4
+//       - fusion.4
+// After finalization, the tree will look like:
+// root(by_program)
+// - jit.xx
+//   - convolution
+//     - fusion.3 and its duplicate(s)
+//       - fusion.1
+//       - fusion.2
+//       - fusion.3
+//     - fusion.4
 Node* OpProfileBuilder::LookupOrAddDeduplicatedNode(const OpMetrics& op_metrics,
                                                     Category* category) {
-  Node*& deduplicated_node =
-      category->deduplicated_nodes[op_metrics.deduplicated_name()];
+  std::string deduplicated_name = op_metrics.deduplicated_name().empty()
+                                      ? op_metrics.name()
+                                      : op_metrics.deduplicated_name();
+  Node*& deduplicated_node = category->deduplicated_nodes[deduplicated_name];
   if (deduplicated_node == nullptr) {
     deduplicated_node = category->node->add_children();
+    // Set deduplicated name which is the hash key for the dedup group.
+    // Symbol details will be added in finalization step.
+    deduplicated_node->set_name(deduplicated_name);
   }
   return deduplicated_node;
 }
@@ -329,41 +377,36 @@ OpProfileBuilder::Program* OpProfileBuilder::LookupOrAddProgramNode(
 }
 
 void OpProfileBuilder::AddOp(const OpMetrics& op_metrics) {
-  // Exclude ops with children ops to avoid double counting of flops, bytes and
-  // time from children ops.
+  // 1. Deal with nested parent nodes
+  // op_metrics.time_ps in root node will be reset to total_time_ps later
+  UpdateNodeMetrics(op_metrics, &metrics_[root_]);
+  Program* program = nullptr;
+  if (!IsIdleOp(op_metrics) && options_.group_by_program) {
+    program = LookupOrAddProgramNode(op_metrics);
+    UpdateNodeMetrics(op_metrics, &metrics_[program->node]);
+  }
+
+  // 2. Deal with nested grouping nodes, only accumulate non-child ops
   if (ChildrenTimePs(op_metrics) > 0) return;
-
-  // The path from the root to the leaf node:
-  // e.g. by_program -> cluster_xx -> convolution -> convolution.1 and its
-  // deduplicates -> convolution.1
-  // We will aggregate the metrics of convolution.1 to all its parent nodes.
-  std::vector<Node*> all_paths = {root_};
-
+  std::vector<Node*> nested_grouping_nodes;
   if (IsIdleOp(op_metrics)) {
     Node* leaf = AddOpNode(op_metrics);
-    all_paths.push_back(leaf);
+    nested_grouping_nodes.push_back(leaf);
   } else {
-    Program* program = nullptr;
-    if (options_.group_by_program) {
-      program = LookupOrAddProgramNode(op_metrics);
-      all_paths.push_back(program->node);
-    }
-
     Category* category = LookupOrAddCategoryNode(op_metrics, program);
-    all_paths.push_back(category->node);
+    nested_grouping_nodes.push_back(category->node);
 
     Node* deduplicated_node = nullptr;
-    if (options_.group_by_deduplicated_name &&
-        !op_metrics.deduplicated_name().empty()) {
+    if (options_.group_by_deduplicated_name) {
       deduplicated_node = LookupOrAddDeduplicatedNode(op_metrics, category);
-      all_paths.push_back(deduplicated_node);
+      nested_grouping_nodes.push_back(deduplicated_node);
     }
 
     Node* leaf = AddOpNode(op_metrics, category, deduplicated_node);
-    all_paths.push_back(leaf);
+    nested_grouping_nodes.push_back(leaf);
   }
 
-  for (auto* node : all_paths) {
+  for (auto* node : nested_grouping_nodes) {
     // Per program combiner does not need to update OpMetrics.num_cores
     CombineOpMetrics(op_metrics, &metrics_[node], /*update_num_cores=*/false);
   }
@@ -373,12 +416,17 @@ void OpProfileBuilder::Finalize(
     double peak_gigaflops_per_second_per_core,
     std::vector<double> peak_mem_gibibytes_per_second_per_core,
     uint64_t total_time_ps) {
+  // Call to `PopulateOpMetricsNode` depends on node time_ps to calculate
+  // flops, bandwidth_utils..etc. The root / program node time_ps might
+  // be off a bit, missing its own self_time when calling `UpdateNodeMetrics`.
+  // This is best effort to at least reset the time_ps for root node to be more
+  // precise.
+  metrics_[root_].set_time_ps(total_time_ps);
   for (const auto& [node, op_metrics] : metrics_) {
     PopulateOpMetricsNode(op_metrics, peak_gigaflops_per_second_per_core,
                           peak_mem_gibibytes_per_second_per_core, total_time_ps,
                           node);
   }
-  SetTotalTime(total_time_ps, root_);
   // If grouping by program, we build a two-level pruned tree: the first level
   // is per program and the second level is per category. Otherwise we build a
   // single-level per category pruned tree.
@@ -394,7 +442,10 @@ OpProfileBuilder::OpProfileBuilder(
     tensorflow::profiler::op_profile::Node* root,
     const tensorflow::protobuf::Map<uint64_t, std::string>* program_name_map)
     : options_(options), root_(root), program_name_map_(program_name_map) {
-  CHECK(root != nullptr);
+  if (root == nullptr) {
+    LOG(DFATAL) << "root is null.";
+    return;
+  }
   DCHECK(!options_.group_by_program || program_name_map_ != nullptr);
   root->set_name(options_.group_by_program ? "by_program" : "by_category");
 }

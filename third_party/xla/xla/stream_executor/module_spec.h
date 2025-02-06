@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,9 +17,10 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_MODULE_SPEC_H_
 
 #include <cstdint>
+#include <iosfwd>
 
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor {
@@ -33,16 +34,35 @@ namespace stream_executor {
 // An instance of this is returned from StreamExecutor::GetModule.
 class ModuleHandle {
  public:
-  explicit ModuleHandle(void* id = nullptr) : id_(id) {}
+  explicit ModuleHandle(const void* id = nullptr) : id_(id) {}
 
   // A ModuleHandle with id() == nullptr is an invalid module handle, akin to a
   // null pointer.
-  void* id() const { return id_; }
+  const void* id() const { return id_; }
 
   explicit operator bool() const { return id() != nullptr; }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const ModuleHandle& handle) {
+    return H::combine(std::move(h), handle.id_);
+  }
+  friend bool operator==(const ModuleHandle& lhs, const ModuleHandle& rhs) {
+    return lhs.id_ == rhs.id_;
+  }
+  friend bool operator!=(const ModuleHandle& lhs, const ModuleHandle& rhs) {
+    return lhs.id_ != rhs.id_;
+  }
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const ModuleHandle& handle) {
+    sink.Append(absl::StrFormat("ModuleHandle(id=%p)", handle.id_));
+  }
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const ModuleHandle& handle) {
+    return os << absl::StrFormat("ModuleHandle(id=%p)", handle.id_);
+  }
+
  private:
-  void* id_;
+  const void* id_;
 };
 
 //===----------------------------------------------------------------------===//

@@ -36,7 +36,7 @@ void PrintAllCCOps(const std::string& dot_h, const std::string& dot_cc,
                    bool include_internal,
                    const std::vector<string>& api_def_dirs) {
   OpList ops;
-  StatusOr<ApiDefMap> api_def_map =
+  absl::StatusOr<ApiDefMap> api_def_map =
       LoadOpsAndApiDefs(ops, include_internal, api_def_dirs);
   TF_CHECK_OK(api_def_map.status());
   api_def_map->UpdateDocs();
@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
 
-  bool include_internal = tensorflow::StringPiece("1") == argv[3];
+  bool include_internal = absl::string_view("1") == argv[3];
   std::vector<tensorflow::string> api_def_dirs = tensorflow::str_util::Split(
       argv[4], ",", tensorflow::str_util::SkipEmpty());
   tensorflow::cc_op::PrintAllCCOps(argv[1], argv[2], include_internal,

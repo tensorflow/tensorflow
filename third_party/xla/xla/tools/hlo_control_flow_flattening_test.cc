@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,17 +15,25 @@ limitations under the License.
 
 #include "xla/tools/hlo_control_flow_flattening.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/transforms/despecializer.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/despecializer.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -34,7 +42,7 @@ namespace op = xla::testing::opcode_matchers;
 
 class HloControlFlowFlatteningTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
+  absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       std::unique_ptr<VerifiedHloModule> hlo_module, int64_t num_devices = 2) {
     spmd::SpmdPartitionerOptions options;
     auto collective_ops_creator =
@@ -52,7 +60,7 @@ class HloControlFlowFlatteningTest : public HloTestBase {
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     TF_RETURN_IF_ERROR(pass.Run(hlo_module.get()).status());
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
   }
 };
 
@@ -362,6 +370,101 @@ TEST_F(HloControlFlowFlatteningTest, Outfeed) {
   EXPECT_THAT(custom_call, op::CustomCall(op::Parameter(0), op::AfterAll()));
 }
 
+TEST_F(HloControlFlowFlatteningTest, PredicatedConditional) {
+  absl::string_view hlo_string = R"(
+
+  HloModule pred_conditional, entry_computation_layout={()->f32[]}
+
+  Negate {
+    x = f32[] parameter(0)
+    ROOT negate = f32[] negate(x)
+  }
+
+  Identity {
+    y = f32[] parameter(0)
+    ROOT copy = f32[] copy(y)
+  }
+
+  ENTRY Parameters1.v4 {
+    constant = pred[] constant(true)
+    constant.1 = f32[] constant(56)
+    constant.2 = f32[] constant(12)
+    ROOT conditional = f32[] conditional(constant, constant.1, constant.2), true_computation=Negate, false_computation=Identity
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
+      /*while_execution_count=*/3, /*max_outer_loop_count=*/3,
+      /*max_loop_count=*/3, /*remove_infeed_outfeed=*/true,
+      /*flatten_while_loop=*/true, /*remove_comm=*/false,
+      /*remove_host_transfer=*/false, /*remove_id=*/false,
+      /*flatten_conditional=*/true, /*conditional_value=*/false});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  auto conditional = module->entry_computation()->root_instruction();
+  EXPECT_EQ(conditional->name(), "conditional");
+
+  auto new_predicate = conditional->operand(0);
+  EXPECT_EQ(new_predicate->literal().Get<bool>({}), false);
+  EXPECT_EQ(new_predicate->name(), "constant_flattened");
+  EXPECT_TRUE(module->entry_computation()->GetInstructionWithName(
+                  "custom-call") != nullptr);
+}
+
+TEST_F(HloControlFlowFlatteningTest, IndexedConditional) {
+  absl::string_view hlo_string = R"(
+  HloModule indexed_conditional, entry_computation_layout={()->f32[]}
+
+  %Negate (x: f32[]) -> f32[] {
+    %x = f32[] parameter(0)
+    ROOT %negate = f32[] negate(f32[] %x)
+  }
+
+  %Identity (y: f32[]) -> f32[] {
+    %y = f32[] parameter(0)
+    ROOT %copy = f32[] copy(f32[] %y)
+  }
+
+  %Floor (z: f32[]) -> f32[] {
+    %z = f32[] parameter(0)
+    ROOT %floor = f32[] floor(f32[] %z)
+  }
+
+  ENTRY %Parameters1.v4 () -> f32[] {
+    %constant = s32[] constant(1)
+    %constant.1 = f32[] constant(56)
+    %constant.2 = f32[] constant(12)
+    %constant.3 = f32[] constant(13)
+    ROOT %conditional = f32[] conditional(s32[] %constant, f32[] %constant.1, f32[] %constant.2, f32[] %constant.3), branch_computations={%Negate, %Identity, %Floor}
+  }
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
+      /*while_execution_count=*/3, /*max_outer_loop_count=*/3,
+      /*max_loop_count=*/3, /*remove_infeed_outfeed=*/true,
+      /*flatten_while_loop=*/true, /*remove_comm=*/false,
+      /*remove_host_transfer=*/false, /*remove_id=*/false,
+      /*flatten_conditional=*/true, /*conditional_value=*/false});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  auto conditional = module->entry_computation()->root_instruction();
+  EXPECT_EQ(conditional->name(), "conditional");
+
+  auto new_index = conditional->operand(0);
+  EXPECT_EQ(new_index->literal().Get<int32_t>({}), 2);
+  EXPECT_EQ(new_index->name(), "constant_flattened");
+  EXPECT_TRUE(module->entry_computation()->GetInstructionWithName(
+                  "custom-call") != nullptr);
+}
+
 TEST_F(HloControlFlowFlatteningTest, AllReduce) {
   absl::string_view hlo_string = R"(
   HloModule AllReduce
@@ -492,6 +595,58 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermute) {
               op::CustomCall(op::Parameter(0)));
   EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
             "collective-permute");
+}
+
+TEST_F(HloControlFlowFlatteningTest, ReplicaIdSucceedsWithChange) {
+  absl::string_view hlo_string = R"(
+  HloModule ReplicaId
+
+  ENTRY ReplicaId {
+    ROOT replica-id.18600 = u32[]{:T(128)} replica-id()
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Constant());
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "replica-id.18600");
+}
+
+TEST_F(HloControlFlowFlatteningTest, RemoveReplicaIdButKeepAllReduce) {
+  absl::string_view kHloText = R"(
+  HloModule RemoveReplicaIdButKeepCollective
+
+%sum (a: f32[], b: f32[]) -> f32[] {
+    %a = f32[] parameter(0)
+    %b = f32[] parameter(1)
+    ROOT %add = f32[] add(f32[] a, f32[] b)
+  }
+  ENTRY ReplicaId {
+    replica-id.1 = u32[]{:T(128)} replica-id()
+    ROOT all-reduce.1 = u32[]{:T(128)} all-reduce(replica-id.1), to_apply=sum, replica_groups={}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
+      /*while_execution_count=*/1, /*max_outer_loop_count=*/1,
+      /*max_loop_count=*/1, /*remove_infeed_outfeed=*/false,
+      /*flatten_while_loop=*/false, /*remove_comm=*/false,
+      /*remove_host_transfer=*/false, /*remove_id=*/true});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::AllReduce());
+  EXPECT_THAT(module->entry_computation()->root_instruction()->operand(0),
+              op::Constant());
 }
 
 TEST_F(HloControlFlowFlatteningTest, CollectivePermuteInPlaceUpdate) {
@@ -769,6 +924,27 @@ ENTRY main {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0), op::Parameter(1)));
   EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "fusion");
+}
+
+TEST_F(HloControlFlowFlatteningTest, AsyncAllToAll) {
+  absl::string_view hlo = R"(
+
+  ENTRY main {
+  param = f32[4,8,128]{2,1,0} parameter(0)
+  all-to-all-start = ((f32[4,8,128]{2,1,0}), f32[4,8,128]{2,1,0}, u32[], u32[]) all-to-all-start(param), channel_id=1, replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={1}
+  ROOT all-to-all-done = f32[4,8,128]{2,1,0} all-to-all-done(all-to-all-start)
+  }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_TRUE(IsCollective(module->entry_computation()->root_instruction()));
+  HloControlFlowFlattening flattening({});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CustomCall(op::CustomCall(op::Parameter(0))));
 }
 
 void CheckWhileBound(HloInstruction* while_op, int expected_bound) {

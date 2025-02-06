@@ -14,11 +14,15 @@
 # ==============================================================================
 """Tests for `tf.data.Dataset.flat_map()`."""
 import random
+from typing import Callable, Optional
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -189,6 +193,75 @@ class FlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(42).flat_map(fn, name="flat_map")
     self.assertDatasetProduces(dataset, [42])
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testCardinality(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
+    options = dataset_options_pb2.CardinalityOptions(
+        compute_level="CARDINALITY_COMPUTE_MODERATE")
+    cardinality = dataset_ops.gen_dataset_ops.dataset_cardinality(
+        dataset._variant_tensor, options.SerializeToString())
+    self.assertEqual(self.evaluate(cardinality), 9)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testInfiniteCardinality(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    dataset = dataset.flat_map(lambda _: dataset_ops.Dataset.range(1).repeat())
+    options = dataset_options_pb2.CardinalityOptions(
+        compute_level="CARDINALITY_COMPUTE_MODERATE")
+    cardinality = dataset_ops.gen_dataset_ops.dataset_cardinality(
+        dataset._variant_tensor, options.SerializeToString())
+    self.assertEqual(self.evaluate(cardinality), dataset_ops.INFINITE)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testUnknownCardinality(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    dataset = dataset.flat_map(
+        lambda _: dataset_ops.Dataset.range(10).filter(lambda x: x % 2 == 1))
+    options = dataset_options_pb2.CardinalityOptions(
+        compute_level="CARDINALITY_COMPUTE_MODERATE")
+    cardinality = dataset_ops.gen_dataset_ops.dataset_cardinality(
+        dataset._variant_tensor, options.SerializeToString())
+    self.assertEqual(self.evaluate(cardinality), dataset_ops.UNKNOWN)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyCardinality(self):
+    dataset = dataset_ops.Dataset.range(0)
+    dataset = dataset.flat_map(dataset_ops.Dataset.range)
+    options = dataset_options_pb2.CardinalityOptions(
+        compute_level="CARDINALITY_COMPUTE_MODERATE")
+    cardinality = dataset_ops.gen_dataset_ops.dataset_cardinality(
+        dataset._variant_tensor, options.SerializeToString())
+    self.assertEqual(self.evaluate(cardinality), 0)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCardinalityLowEffort(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
+    options = dataset_options_pb2.CardinalityOptions(
+        compute_level="CARDINALITY_COMPUTE_LOW")
+    cardinality = dataset_ops.gen_dataset_ops.dataset_cardinality(
+        dataset._variant_tensor, options.SerializeToString())
+    self.assertEqual(self.evaluate(cardinality), dataset_ops.UNKNOWN)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMapFuncFailWithErrorContext(self):
+
+    def fn(x):
+      return dataset_ops.Dataset.from_tensors(x // 0)
+
+    dataset = dataset_ops.Dataset.from_tensors(42).flat_map(fn, name="flat_map")
+    get_next = self.getNext(dataset)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r".*Error in user-defined function passed to .* transformation with "
+        r"iterator: Iterator::Root::.*"):
+      self.evaluate(get_next())
+
   @combinations.generate(test_base.v2_eager_only_combinations())
   def testSymbolicCheckpointSize(self):
     examples_per_flat_map = 100
@@ -351,6 +424,140 @@ class FlatMapCheckpointTest(
       return dataset_ops.Dataset.range(10).map(_map_fn).flat_map(_flat_map_fn)
 
     verify_fn(self, _build_ds, num_outputs=20)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[True],
+                               num_skips=[3, 4]),
+      )
+  )
+  def testWithSkip(self, verify_fn, symbolic_checkpoint, num_skips):
+    """Test `.flat_map().skip()` checkpointing behavior.
+
+    `SkipInternal` and `GetNextInternal` are separate functions
+    but with slighly different implementations.
+    Therefore, we should test this op's behavior when used with `.skip()`.
+
+    Args:
+      verify_fn: Verify the correctness of this dataset's checkpointing.
+      symbolic_checkpoint: Whether symbolic checkpointing is turned on.
+      num_skips: `.skip(num_skips)`
+    """
+
+    def build_dataset():
+      def my_map(x):
+        if x == 0:
+          return dataset_ops.Dataset.from_tensor_slices([0, 1, 2, 3])
+        elif x == 1:
+          return dataset_ops.Dataset.from_tensor_slices([4, 5, 6, 7])
+        else:
+          return dataset_ops.Dataset.from_tensor_slices([8, 9, 10, 11])
+
+      indices = dataset_ops.Dataset.from_tensor_slices([0, 1, 2])
+      dataset = indices.flat_map(my_map)
+      # Skip some elements
+      dataset = dataset.skip(num_skips)
+
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(self, build_dataset, num_outputs=3 * 4 - num_skips)
+
+
+@unittest.skip(
+    "TODO: b/355241367 - `flat_map_dataset_op.cc` still needs to be fixed."
+    " Please use concatenate dataset op plus global shuffling instead."
+)
+class FlatMapGlobalShuffleTest(
+    test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              repetitions=[1, 2],
+              seed=[None, 42],
+              reshuffle_each_iteration=[True, False])))
+  def test(
+      self,
+      repetitions: int,
+      seed: Optional[int],
+      reshuffle_each_iteration: bool):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
+    if repetitions > 1:
+      dataset = dataset.repeat(repetitions)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    dataset = global_shuffle_op._global_shuffle(
+        dataset, seed=seed, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    expected = list(range(1, 10)) * repetitions
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+    self.assertLen(dataset_output, self.evaluate(dataset.cardinality()))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testInputCardinalityTooLarge(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices([[i] for i in range(101)])
+    dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError,
+        "The cardinality of the input to FlatMapDataset is too large to support"
+        " global shuffling",
+    ):
+      dataset = global_shuffle_op._global_shuffle(dataset, seed=42)
+      self.getDatasetOutput(dataset, requires_initialization=True)
+
+
+@unittest.skip(
+    "TODO: b/355241367 - `flat_map_dataset_op.cc` still needs to be fixed."
+    " Please use concatenate dataset op plus global shuffling instead."
+)
+class FlatMapGlobalShuffleCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
+):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              repetitions=[1, 2],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def test(
+      self,
+      verify_fn: Callable[..., None],
+      repetitions: int,
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.from_tensor_slices(
+          [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
+      if repetitions > 1:
+        dataset = dataset.repeat(repetitions)
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=9 * repetitions,
+        assert_items_equal=reshuffle_each_iteration)
 
 
 if __name__ == "__main__":

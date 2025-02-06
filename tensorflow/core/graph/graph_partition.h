@@ -80,6 +80,13 @@ struct PartitionOptions {
   // Optional customized function to compute the "tensor_name" attr value of
   // Send/Recv ops inserted during partitioning.
   std::function<string(const Edge*)> get_tensor_name_attr = nullptr;
+
+  // If true, the `Partition()` function can make destructive changes to the
+  // passed-in `Graph`.
+  //
+  // TODO(b/327983931): Add wrapper functions for partitioning that clearly
+  // signal this intent by taking a `Graph` or `Graph&&`.
+  bool can_make_destructive_changes = false;
 };
 
 // Partition "input" graph into a set of graphs, one per location.
@@ -88,14 +95,14 @@ struct PartitionOptions {
 // generate node names.
 //
 // Stores the partitions in *partitions.
-Status Partition(const PartitionOptions& opts, Graph* input,
-                 std::unordered_map<string, GraphDef>* partitions);
+absl::Status Partition(const PartitionOptions& opts, Graph* input,
+                       std::unordered_map<string, GraphDef>* partitions);
 
 // Add control edges to the partitions to control the ordering
 // and timing of the recv nodes based on the start times calculated
 // using some scheduling algorithm.
-Status AddControlEdges(const PartitionOptions& opts,
-                       std::unordered_map<string, GraphDef>* partitions);
+absl::Status AddControlEdges(const PartitionOptions& opts,
+                             std::unordered_map<string, GraphDef>* partitions);
 
 }  // namespace tensorflow
 

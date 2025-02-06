@@ -79,20 +79,21 @@ class FilterDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     std::vector<Node*> other_arguments;
@@ -107,7 +108,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {{0, input_graph_node}}, {{1, other_arguments}},
         {{kPredicate, f}, {kTarguments, other_arguments_types_attr}}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -120,7 +121,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
@@ -130,9 +131,9 @@ class FilterDatasetOp::Dataset : public DatasetBase {
     // NOTE(mrry): This method is thread-safe as long as `input_impl_` and `f`
     // are thread-safe. However, if multiple threads enter this method,
     // outputs may be observed in a non-deterministic order.
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       auto stats_aggregator = ctx->stats_aggregator();
       bool matched;
       do {
@@ -140,7 +141,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
-            return OkStatus();
+            return absl::OkStatus();
           }
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -148,12 +149,15 @@ class FilterDatasetOp::Dataset : public DatasetBase {
         if (*end_of_sequence) {
           mutex_lock l(mu_);
           input_impl_.reset();
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         std::vector<Tensor> result;
-        TF_RETURN_IF_ERROR(instantiated_captured_func_->RunWithBorrowedArgs(
-            ctx, *out_tensors, &result, model_node()));
+        auto status = instantiated_captured_func_->RunWithBorrowedArgs(
+            ctx, *out_tensors, &result, model_node());
+        if (!status.ok()) {
+          return AddErrorContext(status);
+        }
 
         if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
             result[0].NumElements() != 1) {
@@ -201,7 +205,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
                                            static_cast<float>(1));
       }
       *end_of_sequence = false;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -210,8 +214,8 @@ class FilterDatasetOp::Dataset : public DatasetBase {
       return model::MakeUnknownRatioNode(std::move(args));
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
@@ -224,11 +228,11 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           writer->WriteScalar(prefix(), kFilteredElements, filtered_elements_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(prefix(), kDroppedElements, dropped_elements_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64_t input_empty;
       TF_RETURN_IF_ERROR(
@@ -242,7 +246,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           reader->ReadScalar(prefix(), kFilteredElements, &filtered_elements_));
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), kDroppedElements, &dropped_elements_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     data::TraceMeMetadata GetTraceMeMetadata() const override {

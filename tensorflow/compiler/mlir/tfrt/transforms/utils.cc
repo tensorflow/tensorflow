@@ -18,23 +18,25 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/strings/string_view.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
-#include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
-#include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
 
 namespace tensorflow {
 
 bool IsResourceArgument(mlir::Value value) {
-  auto arg = value.dyn_cast<mlir::BlockArgument>();
+  auto arg = mlir::dyn_cast<mlir::BlockArgument>(value);
   if (!arg) return false;
 
   auto func = llvm::cast<mlir::func::FuncOp>(arg.getOwner()->getParentOp());
@@ -44,7 +46,7 @@ bool IsResourceArgument(mlir::Value value) {
 
 bool IsResultVariable(const mlir::Value &original_operand,
                       const mlir::Value &operand) {
-  if (original_operand.isa<mlir::OpResult>()) {
+  if (mlir::isa<mlir::OpResult>(original_operand)) {
     auto defining_op = original_operand.getDefiningOp();
 
     // TODO(b/174753886): When device assignment is properly done, we
@@ -99,7 +101,8 @@ bool IsSessionInitializer(mlir::func::FuncOp op) {
   if (!session_initializer_op) return false;
 
   for (auto sym_ref : session_initializer_op.getInitializers()) {
-    if (op.getSymName() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
+    if (op.getSymName() ==
+        mlir::cast<mlir::FlatSymbolRefAttr>(sym_ref).getValue())
       return true;
   }
 

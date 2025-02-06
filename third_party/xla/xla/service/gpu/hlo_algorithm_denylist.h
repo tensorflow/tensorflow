@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,17 +16,28 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_HLO_ALGORITHM_DENYLIST_H_
 #define XLA_SERVICE_GPU_HLO_ALGORITHM_DENYLIST_H_
 
+#include <string>
 #include <vector>
 
 #include "xla/autotuning.pb.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
 
-absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
+// Get the list of convolution algorithms which are disabled for the given 'hlo'
+// when using compute capability 'cc', cudnn version 'cudnn_version' and blas
+// version 'blas_version'. In addition to the hardcoded denylist used in this
+// function, extra entries for the denylist can be added via a file pointed to
+// by the --xla_gpu_algorithm_denylist_path flag.
+std::vector<stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
     ComputeCapability cc, CudnnVersion cudnn_version,
     const std::string& blas_version, const std::string& hlo);
+
+// Attaches a serialized backend config to the given HLO string.
+std::string HloStringWithGpuBackendConfig(const std::string& hlo,
+                                          GpuBackendConfig config);
 
 }  // namespace gpu
 }  // namespace xla

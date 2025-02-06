@@ -15,14 +15,24 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_gpu_runtime_wrappers.h"
 
+#include <cassert>
+#include <cstdint>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
 
 static void ReportInternalError(tensorflow::OpKernelContext *ctx,
                                 const std::string msg) {
@@ -30,8 +40,7 @@ static void ReportInternalError(tensorflow::OpKernelContext *ctx,
     LOG(WARNING) << msg << "\n";
     return;
   }
-  ctx->CtxFailureWithWarning(
-      tensorflow::Status{absl::StatusCode::kInternal, msg});
+  ctx->CtxFailureWithWarning(absl::Status{absl::StatusCode::kInternal, msg});
 }
 
 #if GOOGLE_CUDA
@@ -80,9 +89,9 @@ GPURuntimeCache::~GPURuntimeCache() {
   }
 }
 
-tensorflow::Status GPURuntimeCache::Create(GPURuntimeCache **dst) {
+absl::Status GPURuntimeCache::Create(GPURuntimeCache **dst) {
   *dst = new GPURuntimeCache;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 std::string GPURuntimeCache::DebugString() const { return "GPU runtime cache"; }

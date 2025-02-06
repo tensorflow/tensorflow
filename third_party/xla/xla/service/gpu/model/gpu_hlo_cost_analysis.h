@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +16,21 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_GPU_HLO_COST_ANALYSIS_H_
 #define XLA_SERVICE_GPU_MODEL_GPU_HLO_COST_ANALYSIS_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -34,25 +43,41 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   static constexpr int64_t kMaxIRSize = 10000;
 
  public:
-  explicit GpuHloCostAnalysis(
+  GpuHloCostAnalysis(
       const Options& options,
-      const se::DeviceDescription* device_info = nullptr)
-      : HloCostAnalysis(options), device_info_(device_info) {}
+      const HloOpProfiles::HloOpProfile& hlo_elementwise_op_profile)
+      : HloCostAnalysis(options),
+        hlo_elementwise_op_profile_(hlo_elementwise_op_profile) {}
 
-  Status Preprocess(const HloInstruction* hlo) override;
+  explicit GpuHloCostAnalysis(const Options& options)
+      : GpuHloCostAnalysis(options,
+                           HloOpProfiles::Singleton().GetDefaultProfile()) {}
+
+  GpuHloCostAnalysis(const Options& options,
+                     const se::DeviceDescription& device_info)
+      : GpuHloCostAnalysis(
+            options, HloOpProfiles::Singleton().GetProfile(device_info)) {}
+
+  absl::Status Preprocess(const HloInstruction* hlo) override;
 
   float ScalingRatio(const HloInstruction& hlo) const;
   int64_t NumOfDevices(const HloInstruction& hlo) const;
+  float BytesTransferred(const HloInstruction& hlo) const;
 
-  Status HandleCustomCall(const HloInstruction* call) override;
+  absl::Status HandleCustomCall(const HloInstruction* call) override;
 
   int64_t GetConvolutionFlops(const HloInstruction* convolution) override;
 
-  Status HandleElementwiseOp(const HloInstruction* hlo);
-  Status HandleElementwiseUnary(const HloInstruction* hlo) override;
-  Status HandleElementwiseBinary(const HloInstruction* hlo) override;
+  absl::Status HandleElementwiseOp(const HloInstruction* hlo) override;
 
-  Status HandleAllReduce(const HloInstruction* allreduce) override;
+  absl::Status HandleConcatenate(const HloInstruction* hlo) override;
+  absl::Status HandleAllReduce(const HloInstruction* allreduce) override;
+  absl::Status HandleReduce(const HloInstruction* hlo) override;
+  absl::Status HandleAllReduceStart(const HloInstruction* hlo) override;
+  absl::Status HandleAllGather(const HloInstruction* hlo) override;
+  absl::Status HandleAllGatherStart(const HloInstruction* hlo) override;
+  absl::Status HandleAsyncStart(const HloInstruction* hlo) override;
+  absl::Status HandleReduceScatter(const HloInstruction* hlo) override;
 
   // Estimate the total size of IR accounting for both duplication
   // of producer code by consumer and the total number of basic blocks.
@@ -72,22 +97,24 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   float CommonElementwiseUtilization(const HloInstruction* a,
                                      const HloInstruction* b) const;
 
-  const se::DeviceDescription* device_info_;
+  // Returns the number of FLOPs needed to compute an element of the given
+  // elementwise instruction.
+  int64_t GetFlopsPerElementwiseOpElement(PrimitiveType type, HloOpcode opcode);
+
+  // Returns the number of FLOPs needed to compute the output of the elementwise
+  // instruction.
+  int64_t GetFlopsForElementwiseOp(HloOpcode op_code, const Shape& shape);
+  int64_t GetFlopsForElementwiseOp(const HloInstruction* instr);
 
  protected:
   std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis() override;
   int64_t FusionParameterReadBytes(const HloInstruction* hlo) const override;
-  Status FusionCalculateUtilizations(const HloInstruction* fusion) override;
+  absl::Status FusionCalculateUtilizations(
+      const HloInstruction* fusion) override;
 
   size_t immediate_constant_max_elements() const override { return 8; }
 
   bool KeyToCopyFromSubcomputation(absl::string_view key) const override;
-
-  // Some instructions create new LLVM basic blocks; with our current code
-  // generation this means in the worst case doubling the IR size of a fusion
-  // containing such an instruction.
-  // Count these to avoid unmanageable IR code size.
-  float IrBasicBlockSplitCount(const HloInstruction& hlo) const;
 
   // To estimate where within the computation an instruction output can be
   // reused and where it has to be recomputed again we group accesses to the
@@ -101,6 +128,10 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   // This is different from hlo_properties_[instr][kUtilizationKey] which
   // is the utilization of the instruction by other roots.
   absl::flat_hash_map<const HloInstruction*, float> root_utilizations_;
+
+  // Contains a map from (opcode, element_type) to FLOPs per element estimate
+  // for elementwise instructions.
+  const HloOpProfiles::HloOpProfile& hlo_elementwise_op_profile_;
 };
 
 }  // namespace gpu

@@ -21,8 +21,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
@@ -46,7 +46,7 @@ class DeviceContextTest : public ::testing::Test {
     auto device_factory = DeviceFactory::GetFactory(device_type);
     SessionOptions options;
     std::vector<std::unique_ptr<Device>> devices;
-    Status s = device_factory->CreateDevices(
+    absl::Status s = device_factory->CreateDevices(
         options, "/job:worker/replica:0/task:0", &devices);
     device_ = std::move(devices[0]);
 

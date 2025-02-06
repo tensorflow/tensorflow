@@ -39,7 +39,7 @@ class WhileLoopTest : public ::testing::Test {
                   const ops::BodyGraphBuilderFn& body,
                   error::Code error_code = error::OK,
                   const string& error_msg = "") {
-    Status s =
+    absl::Status s =
         ops::BuildWhileLoop(scope_, inputs_, cond, body, kFrameName, &outputs_);
     EXPECT_EQ(s.code(), error_code);
     EXPECT_EQ(s.message(), error_msg);
@@ -76,14 +76,14 @@ class WhileLoopTest : public ::testing::Test {
 
 const char* const WhileLoopTest::kFrameName = "test_loop";
 
-Status LessThanTenCond(const Scope& s, const std::vector<Output>& inputs,
-                       Output* output) {
+absl::Status LessThanTenCond(const Scope& s, const std::vector<Output>& inputs,
+                             Output* output) {
   *output = ops::Less(s, inputs[0], 10);
   return s.status();
 }
 
-Status AddOneBody(const Scope& s, const std::vector<Output>& inputs,
-                  std::vector<Output>* outputs) {
+absl::Status AddOneBody(const Scope& s, const std::vector<Output>& inputs,
+                        std::vector<Output>* outputs) {
   outputs->push_back(ops::Add(s, inputs[0], 1));
   return s.status();
 }

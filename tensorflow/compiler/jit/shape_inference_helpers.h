@@ -45,13 +45,13 @@ class BackEdgeHelper {
   BackEdgeHelper& operator=(const BackEdgeHelper& other) = delete;
 
   // Temporarily removes all the back edges in graph.
-  Status Remove(Graph* graph);
+  absl::Status Remove(Graph* graph);
 
   // Gets the list of removed edges.
   const std::vector<BackEdge>& RemovedEdges() const;
 
   // Replaces the back edges removed by a prior call to Remove.
-  Status Replace();
+  absl::Status Replace();
 
  private:
   Graph* graph_ = nullptr;  // not owned

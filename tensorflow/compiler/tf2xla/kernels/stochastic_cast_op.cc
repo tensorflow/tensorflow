@@ -16,13 +16,17 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
@@ -42,7 +46,7 @@ class StochasticCastToInt : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape shape;
     shape = ctx->InputShape(kInputIndex);
-    StatusOr<xla::XlaOp> randoms_or = BuildUniformRandoms(
+    absl::StatusOr<xla::XlaOp> randoms_or = BuildUniformRandoms(
         ctx, from_type_, device_type_string_, shape, xla::Zero, xla::One);
     OP_REQUIRES_OK(ctx, randoms_or.status());
     xla::XlaOp input = ctx->Input(kInputIndex);

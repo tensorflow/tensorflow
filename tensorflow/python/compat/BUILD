@@ -10,21 +10,19 @@ py_strict_library(
     name = "v2_compat",
     srcs = ["v2_compat.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//smartass/brain/ops:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         "//tensorflow/python:tf2",
-        "//tensorflow/python/data/experimental/ops:counter",
-        "//tensorflow/python/data/experimental/ops:interleave_ops",
-        "//tensorflow/python/data/experimental/ops:random_ops",
-        "//tensorflow/python/data/experimental/ops:readers",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:registry",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:control_flow_v2_toggles",
-        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/ops:resource_variables_toggle",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -36,7 +34,7 @@ py_strict_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
     ],
 )

@@ -174,7 +174,7 @@ TEST(CommonTest, IsPreemptedError) {
   EXPECT_TRUE(IsPreemptedError(errors::Aborted("Aborted")));
   EXPECT_TRUE(IsPreemptedError(errors::Cancelled("Cancelled")));
   EXPECT_TRUE(IsPreemptedError(errors::Unavailable("Unavailable")));
-  EXPECT_FALSE(IsPreemptedError(OkStatus()));
+  EXPECT_FALSE(IsPreemptedError(absl::OkStatus()));
 }
 
 TEST(CommonTest, IsPermanentError) {

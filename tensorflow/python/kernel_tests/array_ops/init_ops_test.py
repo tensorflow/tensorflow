@@ -22,16 +22,15 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.util.numpy_compat import np_where
 
 
 # Returns true iff the two initializers produce the same tensor to
@@ -538,13 +537,6 @@ class RangeTest(test.TestCase):
         constant_op.constant(4, dtype=dtypes.int32), dtype=dtypes.int64)
     self.assertAllEqual(self.evaluate(tf_ans), np.array([0, 1, 2, 3]))
 
-  def testLargeLimits(self):
-    # Test case for GitHub issue 46913.
-    with self.session():
-      with self.assertRaises(errors_impl.ResourceExhaustedError):
-        v = math_ops.range(0, 9223372036854775807)
-        self.evaluate(v)
-
   def testLargeStarts(self):
     # Test case for GitHub issue 46899.
     with self.session():
@@ -723,7 +715,7 @@ class LinSpaceNdTest(test.TestCase):
       self.assert_close(actual, expected)
 
   def assert_close(self, actual, expected):
-    wrong_indices = np.where(~np.allclose(actual, expected))
+    wrong_indices = np_where(~np.allclose(actual, expected))
     mess = "Wrong float answer. Wrong indices: {}".format(wrong_indices)
     self.assertTrue(np.allclose(actual, expected), mess)
 
@@ -890,45 +882,6 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
       self.assertAllClose(t1, t2 / 3.14)
 
   @test_util.run_deprecated_v1
-  def testShapesValues(self):
-    gain = 3.14
-    for dtype in [dtypes.float32]:
-      for kernel_size in [[3], [8], [3, 5], [2, 4], [3, 3, 3], [2, 2, 2]]:
-        tol = 1e-2
-        # Check orthogonality by computing ratio between
-        # the 2-norms of the inputs and outputs.
-        if len(kernel_size) == 1:
-          shape = [4, 32, 64]
-          convolution = convolutional.conv1d
-        elif len(kernel_size) == 2:
-          convolution = convolutional.conv2d
-          shape = [4, 32, 32, 64]
-        else:
-          shape = [4, 16, 16, 16, 64]
-          convolution = convolutional.conv3d
-        inputs = random_ops.random_normal(shape, dtype=dtype)
-        inputs_2norm = linalg_ops.norm(inputs)
-        outputs = convolution(
-            inputs,
-            padding="same",
-            filters=128,
-            kernel_size=kernel_size,
-            use_bias=False,
-            kernel_initializer=init_ops.convolutional_delta_orthogonal(
-                gain=gain))
-        outputs_shape = shape[0:-1] + [128]
-        outputs_2norm = linalg_ops.norm(outputs)
-        ratio = outputs_2norm / inputs_2norm
-        my_ops = variables.global_variables_initializer()
-        with self.session():
-          self.evaluate(my_ops)
-          # Check the shape of the outputs
-          t = self.evaluate(outputs)
-          self.assertAllEqual(t.shape, outputs_shape)
-          # Check isometry of the delta-orthogonal kernel.
-          self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
-
-  @test_util.run_deprecated_v1
   def testNonuniformity(self):
     value = 0
     abs_value = 0
@@ -1025,62 +978,6 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
       # Compute the sum of the absolute values of 'count' determinants
       self.assertAllClose(abs_value, count, rtol=tol, atol=tol)
 
-  @test_util.run_deprecated_v1
-  def testShapesValues(self):
-
-    def circular_pad(input_, width, kernel_size):
-      """Pad input_ for computing (circular) convolution.
-
-      Args:
-        input_: the input tensor
-        width: the width of the tensor.
-        kernel_size: the kernel size of the filter.
-
-      Returns:
-        a tensor whose width is (width + kernel_size - 1).
-      """
-
-      beginning = kernel_size // 2
-      end = kernel_size - 1 - beginning
-
-      tmp_up = array_ops.slice(input_, [0, width - beginning, 0],
-                               [-1, beginning, -1])
-      tmp_down = array_ops.slice(input_, [0, 0, 0], [-1, end, -1])
-      tmp = array_ops.concat([tmp_up, input_, tmp_down], 1)
-
-      return tmp
-
-    cout = 64
-    shape = [10, 20, 32]
-    outputs_shape = shape[0:-1] + [cout]
-    dtype = dtypes.float32
-    tol = 1e-3
-    gain = 3.14
-    # Check orthogonality/isometry by computing the ratio between
-    # the 2-norms of the inputs and outputs.
-    for kernel_size in [[1], [2], [3], [4], [5], [6]]:
-      convolution = convolutional.conv1d
-      inputs = random_ops.random_normal(shape, dtype=dtype)
-      inputs_2norm = linalg_ops.norm(inputs)
-      input_with_circular_pad = circular_pad(inputs, shape[1], kernel_size[0])
-      outputs = convolution(
-          input_with_circular_pad,
-          padding="valid",
-          filters=cout,
-          kernel_size=kernel_size[0],
-          use_bias=False,
-          kernel_initializer=init_ops.convolutional_orthogonal_1d(gain=gain))
-      outputs_2norm = linalg_ops.norm(outputs)
-      ratio = outputs_2norm / inputs_2norm
-      my_ops = variables.global_variables_initializer()
-      with self.session():
-        self.evaluate(my_ops)
-        # Check the shape of the outputs
-        t = self.evaluate(outputs)
-        self.assertAllEqual(t.shape, outputs_shape)
-        # Check isometry of the orthogonal kernel.
-        self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
-
 
 class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
 
@@ -1123,67 +1020,6 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
         t1 = init1(shape).eval()
         t2 = init2(shape).eval()
       self.assertAllClose(t1, t2 / 3.14)
-
-  @test_util.run_deprecated_v1
-  def testShapesValues(self):
-
-    def circular_pad(input_, width, kernel_size):
-      """Pad input_ for computing (circular) convolution.
-
-      Args:
-        input_: the input tensor
-        width: the width of the tensor.
-        kernel_size: the kernel size of the filter.
-
-      Returns:
-        a tensor whose width is (width + kernel_size - 1).
-      """
-      beginning = kernel_size // 2
-      end = kernel_size - 1 - beginning
-
-      tmp_up = array_ops.slice(input_, [0, width - beginning, 0, 0],
-                               [-1, beginning, width, -1])
-      tmp_down = array_ops.slice(input_, [0, 0, 0, 0], [-1, end, width, -1])
-      tmp = array_ops.concat([tmp_up, input_, tmp_down], 1)
-
-      new_width = width + kernel_size - 1
-      tmp_left = array_ops.slice(tmp, [0, 0, width - beginning, 0],
-                                 [-1, new_width, beginning, -1])
-      tmp_right = array_ops.slice(tmp, [0, 0, 0, 0], [-1, new_width, end, -1])
-
-      final = array_ops.concat([tmp_left, tmp, tmp_right], 2)
-      return final
-
-    cout = 45
-    shape = [64, 28, 28, 32]
-    outputs_shape = shape[0:-1] + [cout]
-    dtype = dtypes.float32
-    tol = 1e-3
-    gain = 3.14
-    # Check orthogonality/isometry by computing the ratio between
-    # the 2-norms of the inputs and outputs.
-    for kernel_size in [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]:
-      convolution = convolutional.conv2d
-      inputs = random_ops.random_normal(shape, dtype=dtype)
-      inputs_2norm = linalg_ops.norm(inputs)
-      input_with_circular_pad = circular_pad(inputs, shape[1], kernel_size[0])
-      outputs = convolution(
-          input_with_circular_pad,
-          padding="valid",
-          filters=cout,
-          kernel_size=kernel_size,
-          use_bias=False,
-          kernel_initializer=init_ops.convolutional_orthogonal_2d(gain=gain))
-      outputs_2norm = linalg_ops.norm(outputs)
-      ratio = outputs_2norm / inputs_2norm
-      my_ops = variables.global_variables_initializer()
-      with self.session():
-        self.evaluate(my_ops)
-        # Check the shape of the outputs
-        t = self.evaluate(outputs)
-        self.assertAllEqual(t.shape, outputs_shape)
-        # Check isometry of the orthogonal kernel.
-        self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
 
 
 @test_util.run_all_without_tensor_float_32(
@@ -1255,70 +1091,6 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
       # Check all determinants have absolute value 1
       # Compute the sum of the absolute values of 'count' determinants
       self.assertAllClose(abs_value, count, rtol=tol, atol=tol)
-
-  @test_util.run_deprecated_v1
-  def testShapesValues(self):
-
-    def circular_pad(input_, width, kernel_size):
-      """Padding input_ for computing circular convolution.
-
-      Args:
-        input_: the input tensor
-        width: the width of the tensor.
-        kernel_size: the kernel size of the filter.
-
-      Returns:
-        a tensor whose width is (width + kernel_size - 1).
-      """
-
-      beginning = kernel_size // 2
-      end = kernel_size - 1 - beginning
-
-      tmp_up = array_ops.slice(input_, [0, width - beginning, 0, 0, 0],
-                               [-1, beginning, -1, -1, -1])
-      tmp_down = array_ops.slice(input_, [0, 0, 0, 0, 0], [-1, end, -1, -1, -1])
-      tmp = array_ops.concat([tmp_up, input_, tmp_down], 1)
-
-      tmp_left = array_ops.slice(tmp, [0, 0, width - beginning, 0, 0],
-                                 [-1, -1, beginning, -1, -1])
-      tmp_right = array_ops.slice(tmp, [0, 0, 0, 0, 0], [-1, -1, end, -1, -1])
-      tmp = array_ops.concat([tmp_left, tmp, tmp_right], 2)
-
-      tmp_front = array_ops.slice(tmp, [0, 0, 0, width - beginning, 0],
-                                  [-1, -1, -1, beginning, -1])
-      tmp_back = array_ops.slice(tmp, [0, 0, 0, 0, 0], [-1, -1, -1, end, -1])
-      return array_ops.concat([tmp_front, tmp, tmp_back], 3)
-
-    cout = 32
-    shape = [1, 7, 7, 7, 16]
-    outputs_shape = shape[0:-1] + [cout]
-    dtype = dtypes.float32
-    tol = 1e-3
-    gain = 3.14
-    # Check orthogonality/isometry by computing the ratio between
-    # the 2-norms of the inputs and outputs.
-    for kernel_size in [[1, 1, 1], [2, 2, 2], [3, 3, 3]]:
-      convolution = convolutional.conv3d
-      inputs = random_ops.random_normal(shape, dtype=dtype)
-      inputs_2norm = linalg_ops.norm(inputs)
-      input_with_circular_pad = circular_pad(inputs, shape[1], kernel_size[0])
-      outputs = convolution(
-          input_with_circular_pad,
-          padding="valid",
-          filters=cout,
-          kernel_size=kernel_size[0],
-          use_bias=False,
-          kernel_initializer=init_ops.convolutional_orthogonal_3d(gain=gain))
-      outputs_2norm = linalg_ops.norm(outputs)
-      ratio = outputs_2norm / inputs_2norm
-      my_ops = variables.global_variables_initializer()
-      with self.cached_session():
-        self.evaluate(my_ops)
-        # Check the shape of the outputs
-        t = self.evaluate(outputs)
-        self.assertAllEqual(t.shape, outputs_shape)
-        # Check isometry of the orthogonal kernel.
-        self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
 
 
 class IdentityInitializerTest(test.TestCase):

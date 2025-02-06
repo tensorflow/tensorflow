@@ -1,0 +1,17 @@
+// RUN: fusion_to_mlir %s | FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  param0 = f64[] parameter(0)
+  param1 = f64[] parameter(1)
+
+  minimum = f64[] minimum(param0, param1)
+  maximum = f64[] maximum(param0, param1)
+  ROOT tuple = (f64[], f64[]) tuple(minimum, maximum)
+}
+
+// CHECK:       func.func @main
+// CHECK:         xla.pure_call @fusion_tuple
+// CHECK:       func.func private @fusion_tuple
+// CHECK-DAG:     arith.minimumf
+// CHECK-DAG:     arith.maximumf

@@ -38,8 +38,8 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "xla/stream_executor/tpu/tpu_initialize_util.h"
 #include "xla/stream_executor/tpu/tpu_platform.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 
 #if !defined(PLATFORM_GOOGLE)
 #include "xla/stream_executor/tpu/tpu_library_init_fns.inc"
@@ -100,10 +100,12 @@ absl::Status FindAndLoadTpuLibrary() {
     }
   }
 
-  // Check if libtpu is attached to the whl. In that case, libtpu should be in
-  // the path `library/libtpu.so` inside the whl.
+  // Check if libtpu pip package is installed along with tf whl. In that case,
+  // libtpu should be in the path `python3.x/site_packages/libtpu/libtpu.so`.
+  std::filesystem::path canonicalPath = std::filesystem::canonical(so_name);
   std::filesystem::path whl_libtpu_path =
-      std::filesystem::path(so_name).replace_filename("library/libtpu.so");
+      std::filesystem::path(canonicalPath).parent_path().parent_path() /
+      "libtpu/libtpu.so";
 
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path = nullptr;

@@ -665,8 +665,11 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           stream, nullptr, std::get<se::DeviceMemoryBase>(runner_and_scratch),
           input_ptr, filter_ptr, side_input_ptr, bias_ptr, output_ptr);
     } else {
-      cudnn_launch_status = stream->FusedConvolveWithAlgorithm(
-          input_desc, input_ptr,            // input
+      auto dnn = stream->parent()->AsDnn();
+      OP_REQUIRES(context, dnn != nullptr,
+                  absl::InternalError("No DNN for stream."));
+      cudnn_launch_status = dnn->FusedConvolveWithAlgorithm(
+          stream, input_desc, input_ptr,    // input
           kConvScale,                       // input_scale
           filter_desc, filter_ptr,          // filter
           conv_desc,                        // conv

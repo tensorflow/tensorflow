@@ -244,9 +244,6 @@ PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
 // the documentation for `RegisteredPyObjects`.  Returns PyNone.
 PyObject* RegisterPyObject(PyObject* name, PyObject* value);
 
-// Variant of RegisterPyObject that requires the object's value to be a type.
-PyObject* RegisterType(PyObject* type_name, PyObject* type);
-
 // Returns a borrowed reference to an object that was registered with
 // RegisterPyObject.  (Do not call Py_DECREF on the result).
 PyObject* GetRegisteredPyObject(const std::string& name);

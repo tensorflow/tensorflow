@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdlib.h>
-
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <numeric>
 #include <random>
 #include <string>
 #include <vector>
@@ -176,6 +177,13 @@ void AddDynamicUpdateSliceNode(Subgraph* subgraph, int input0, int input1,
 }
 }  // namespace
 
+void Setup1DTensor(Subgraph* subgraph, int tensor_index, TfLiteType type) {
+  int dim = 1;
+  ASSERT_EQ(subgraph->SetTensorParametersReadWrite(tensor_index, type, "", 1,
+                                                   &dim, {}, false),
+            kTfLiteOk);
+}
+
 void SetupTensor(Subgraph* subgraph, int tensor_index, TfLiteType type) {
   ASSERT_EQ(subgraph->SetTensorParametersReadWrite(tensor_index, type, "", 0,
                                                    nullptr, {}, false),
@@ -275,7 +283,7 @@ void SubgraphBuilder::BuildOutputNotConsumedSubgraph(Subgraph& subgraph) {
   ASSERT_EQ(subgraph.SetInputs({kInput0, kInput1, kInput2}), kTfLiteOk);
   ASSERT_EQ(subgraph.SetOutputs({kOutput0, kOutput1, kConstRhs}), kTfLiteOk);
   for (int i = 0; i < kTensorCount; ++i) {
-    SetupTensor(&subgraph, i, kTfLiteInt32);
+    Setup1DTensor(&subgraph, i, kTfLiteInt32);
   }
 
   // kInput0 --> +---+
@@ -422,6 +430,13 @@ void SubgraphBuilder::BuildAddSubgraph(Subgraph* subgraph,
   params->activation = kTfLiteActNone;
   BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_ADD, kTfLiteBuiltinAdd,
                         params, operand_type, operand_type, operand_type);
+}
+
+void SubgraphBuilder::BuildStablehloAddSubgraph(Subgraph* subgraph,
+                                                const TfLiteType operand_type) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_STABLEHLO_ADD,
+                        kTfLiteBuiltinStablehloAdd, nullptr, operand_type,
+                        operand_type, operand_type);
 }
 
 // This body subgraph has arena and dynamic output tensors which are not in
@@ -573,6 +588,13 @@ void SubgraphBuilder::BuildMaximumSubgraph(Subgraph* subgraph,
                         /*output_type=*/operand_type);
 }
 
+void SubgraphBuilder::BuildStablehloMaximumSubgraph(
+    Subgraph* subgraph, const TfLiteType operand_type) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_STABLEHLO_MAXIMUM,
+                        kTfLiteBuiltinStablehloMaximum, nullptr, operand_type,
+                        operand_type, operand_type);
+}
+
 void SubgraphBuilder::BuildMinimumSubgraph(Subgraph* subgraph,
                                            const TfLiteType operand_type) {
   BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_MINIMUM,
@@ -580,6 +602,29 @@ void SubgraphBuilder::BuildMinimumSubgraph(Subgraph* subgraph,
                         /*input1_type=*/operand_type,
                         /*input2_type=*/operand_type,
                         /*output_type=*/operand_type);
+}
+
+void SubgraphBuilder::BuildStablehloMinimumSubgraph(
+    Subgraph* subgraph, const TfLiteType operand_type) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_STABLEHLO_MINIMUM,
+                        kTfLiteBuiltinStablehloMinimum, nullptr, operand_type,
+                        operand_type, operand_type);
+}
+
+void SubgraphBuilder::BuildLogicalOrSubgraph(Subgraph* subgraph) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_LOGICAL_OR,
+                        kTfLiteBuiltinLogicalOr, /*params=*/nullptr,
+                        /*input1_type=*/kTfLiteBool,
+                        /*input2_type=*/kTfLiteBool,
+                        /*output_type=*/kTfLiteBool);
+}
+
+void SubgraphBuilder::BuildLogicalAndSubgraph(Subgraph* subgraph) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_LOGICAL_AND,
+                        kTfLiteBuiltinLogicalAnd, /*params=*/nullptr,
+                        /*input1_type=*/kTfLiteBool,
+                        /*input2_type=*/kTfLiteBool,
+                        /*output_type=*/kTfLiteBool);
 }
 
 void SubgraphBuilder::BuildOutputIsSecondInputSubgraph(Subgraph* subgraph) {
@@ -611,6 +656,13 @@ void SubgraphBuilder::BuildMulSubgraph(Subgraph* subgraph,
                         params, /*input1_type=*/operand_type,
                         /*input2_type=*/operand_type,
                         /*output_type=*/operand_type);
+}
+
+void SubgraphBuilder::BuildStablehloMulSubgraph(Subgraph* subgraph,
+                                                const TfLiteType operand_type) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_STABLEHLO_MULTIPLY,
+                        kTfLiteBuiltinStablehloMultiply, nullptr, operand_type,
+                        operand_type, operand_type);
 }
 
 // Build a subgraph with a pad op. Helper function for testing.
@@ -676,6 +728,59 @@ void SubgraphBuilder::BuildIfSubgraph(Subgraph* subgraph) {
   int node_index;
   subgraph->AddNodeWithParameters({kCondInput, kInput1, kInput2}, {kOutput}, {},
                                   nullptr, 0, params, if_reg, &node_index);
+}
+
+void SubgraphBuilder::BuildCompositeSubgraph(Subgraph* subgraph,
+                                             const Subgraph* decomposition) {
+  //               +-----------+
+  // kInputs ----> | COMPOSITE | --> kOutput
+  //               +-----------+
+  //               |           ^
+  //               v           |
+  //               DECOMPOSITION
+
+  const int decomposition_subgraph_index = decomposition->GetSubgraphIndex();
+  const auto& inputs = decomposition->inputs();
+  const auto& outputs = decomposition->outputs();
+  const int decomposition_tensor_count = inputs.size() + outputs.size();
+
+  std::vector<int> subgraph_inputs(inputs.size());
+  std::iota(begin(subgraph_inputs), end(subgraph_inputs), 0);
+  std::vector<int> subgraph_outputs(outputs.size());
+  std::iota(begin(subgraph_outputs), end(subgraph_outputs), inputs.size());
+
+  int first_new_tensor_index;
+  ASSERT_EQ(
+      subgraph->AddTensors(decomposition_tensor_count, &first_new_tensor_index),
+      kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs(subgraph_inputs), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(subgraph_outputs), kTfLiteOk);
+
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    const TfLiteTensor* src = decomposition->tensor(inputs[i]);
+    SetupTensor(subgraph, i, src->type);
+  }
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    const TfLiteTensor* src = decomposition->tensor(outputs[i]);
+    SetupTensor(subgraph, inputs.size() + i, src->type);
+  }
+
+  TfLiteStablehloCompositeParams* params =
+      reinterpret_cast<TfLiteStablehloCompositeParams*>(
+          malloc(sizeof(TfLiteStablehloCompositeParams)));
+  params->name = "test_composite";
+  params->subgraph_index = decomposition_subgraph_index;
+  params->attributes = nullptr;
+  params->attributes_size = 0;
+  params->version = 1;
+  auto* composite_reg = ops::builtin::Register_STABLEHLO_COMPOSITE();
+  composite_reg->builtin_code = kTfLiteBuiltinStablehloComposite;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(subgraph_inputs, subgraph_outputs, {},
+                                  nullptr, 0, params, composite_reg,
+                                  &node_index);
 }
 
 void SubgraphBuilder::BuildLargeLessEqualCondSubgraph(Subgraph* subgraph,
@@ -1562,7 +1667,7 @@ void SubgraphBuilder::BuildMultiInputIfSubgraph(Subgraph* subgraph,
   params->then_subgraph_index = 1;
   params->else_subgraph_index = 2;
   auto* if_reg = ops::builtin::Register_IF();
-  if_reg->builtin_code = kTfLiteBuiltinWhile;
+  if_reg->builtin_code = kTfLiteBuiltinIf;
 
   int node_index;
   subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,

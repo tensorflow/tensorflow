@@ -14,12 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/common/controller.h"
 
+#include <vector>
+
+#include "absl/log/check.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/c/experimental/ops/gen/common/path_config.h"
+#include "tensorflow/c/experimental/ops/gen/common/source_code.h"
+#include "tensorflow/c/experimental/ops/gen/model/op_spec.h"
+#include "xla/tsl/platform/status.h"
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
 
 namespace tensorflow {
 namespace generator {

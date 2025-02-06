@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_ZLIB_INPUTSTREAM_H_
 #define TENSORFLOW_CORE_LIB_IO_ZLIB_INPUTSTREAM_H_
 
+#include "xla/tsl/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/io/zlib_inputstream.h"
 
 namespace tensorflow {
 namespace io {

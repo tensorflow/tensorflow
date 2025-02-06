@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
@@ -125,7 +126,7 @@ struct ScalarHloToArithmeticPattern : public OpConversionPattern<OpTy> {
     if (filterFn && !filterFn(op)) return failure();
 
     auto isScalar = [&](Value v) {
-      return v.getType().cast<ShapedType>().getRank() == 0;
+      return mlir::cast<ShapedType>(v.getType()).getRank() == 0;
     };
 
     if (!llvm::all_of(adaptor.getOperands(), isScalar))
@@ -134,8 +135,8 @@ struct ScalarHloToArithmeticPattern : public OpConversionPattern<OpTy> {
     auto loc = op.getLoc();
 
     std::optional<ShapedType> resultTy;
-    resultTy = this->typeConverter->convertType(op->getResultTypes().front())
-                   .template dyn_cast<ShapedType>();
+    resultTy = mlir::dyn_cast<ShapedType>(
+        this->typeConverter->convertType(op->getResultTypes().front()));
 
     SmallVector<Value> operands;
     for (auto operand : adaptor.getOperands()) {
@@ -143,7 +144,8 @@ struct ScalarHloToArithmeticPattern : public OpConversionPattern<OpTy> {
           rewriter.create<tensor::ExtractOp>(loc, operand, ValueRange()));
     }
     Value scalarResult = mhlo::MhloOpToStdScalarOp::mapOp(
-        op, resultTy->getElementType(), operands, &rewriter);
+        op, resultTy->getElementType(), operands, /*attributes=*/std::nullopt,
+        &rewriter);
     if (!scalarResult) return failure();
     rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, *resultTy,
                                                         scalarResult);
@@ -207,6 +209,7 @@ void populateScalarHloToArithmeticConversionPatterns(
       ScalarHloToArithmeticPattern<mhlo::CopyOp>,
       ScalarHloToArithmeticPattern<mhlo::CosineOp>,
       ScalarHloToArithmeticPattern<mhlo::DivOp>,
+      ScalarHloToArithmeticPattern<mhlo::ErfOp>,
       ScalarHloToArithmeticPattern<mhlo::ExpOp>,
       ScalarHloToArithmeticPattern<mhlo::Expm1Op>,
       ScalarHloToArithmeticPattern<mhlo::FloorOp>,

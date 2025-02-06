@@ -1,5 +1,3 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-
 # Experimental SavedModel C APIs for TensorFlow. See RFC
 # https://github.com/tensorflow/community/pull/207
 # Targets in this directory are pure C++ "Classes" underlying the C API types
@@ -9,11 +7,11 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        # copybara:uncomment(<g3 only>) "//learning/brain/tfrt/aot:__pkg__",
         "//tensorflow/c:__subpackages__",
         "//tensorflow/c/experimental/saved_model/internal:__pkg__",
     ],

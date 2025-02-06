@@ -107,15 +107,38 @@ class SubgraphBuilder {
   void BuildAddSubgraph(Subgraph* subgraph,
                         TfLiteType operand_type = kTfLiteInt32);
 
+  // Build a subgraph with a single stablehlo Add op.
+  // 2 inputs. 1 output.
+  void BuildStablehloAddSubgraph(Subgraph* subgraph,
+                                 TfLiteType operand_type = kTfLiteInt32);
+
   // Build a subgraph with a single Maximum op.
   // 2 inputs. 1 output.
   void BuildMaximumSubgraph(Subgraph* subgraph,
                             TfLiteType operand_type = kTfLiteInt32);
 
+  // Build a subgraph with a single stablehlo Maximum op.
+  // 2 inputs. 1 output.
+  void BuildStablehloMaximumSubgraph(Subgraph* subgraph,
+                                     TfLiteType operand_type = kTfLiteInt32);
+
   // Build a subgraph with a single Minimum op.
   // 2 inputs. 1 output.
   void BuildMinimumSubgraph(Subgraph* subgraph,
                             TfLiteType operand_type = kTfLiteInt32);
+
+  // Build a subgraph with a single stablehlo Minimum op.
+  // 2 inputs. 1 output.
+  void BuildStablehloMinimumSubgraph(Subgraph* subgraph,
+                                     TfLiteType operand_type = kTfLiteInt32);
+
+  // Build a subgraph with a single LogicalOr op.
+  // 2 inputs. 1 output.
+  void BuildLogicalOrSubgraph(Subgraph* subgraph);
+
+  // Build a subgraph with a single LogicalAnd op.
+  // 2 inputs. 1 output.
+  void BuildLogicalAndSubgraph(Subgraph* subgraph);
 
   // Build a subgraph with no ops inside.
   // 2 inputs. 1 output. Routes the second input to the output.
@@ -125,6 +148,11 @@ class SubgraphBuilder {
   // 2 inputs. 1 output.
   void BuildMulSubgraph(Subgraph* subgraph,
                         TfLiteType operand_type = kTfLiteInt32);
+
+  // Build a subgraph with a single stablehlo Multiply op.
+  // 2 inputs. 1 output.
+  void BuildStablehloMulSubgraph(Subgraph* subgraph,
+                                 TfLiteType operand_type = kTfLiteInt32);
 
   // Build a subgraph with a single Pad op.
   // 2 inputs. 1 output.
@@ -136,6 +164,10 @@ class SubgraphBuilder {
   //   The 2nd and 3rd inputs are feed input the branch subgraphs.
   // 1 output.
   void BuildIfSubgraph(Subgraph* subgraph);
+
+  // Build a subgraph with a single StableHLO Composite op.
+  void BuildCompositeSubgraph(Subgraph* subgraph,
+                              const Subgraph* decomposition);
 
   // Build a subgraph which triggers the reallocation of an inplace output
   // tensor whose corresponding input has not been consumed yet. This tests that

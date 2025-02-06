@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -226,6 +226,8 @@ void LaunchConv2DBackpropFilterOpImpl(
         "without cudnn"));
     return;
   }
+  auto* blas = stream->parent()->AsBlas();
+  OP_REQUIRES(ctx, blas != nullptr, absl::InternalError("No BLAS for stream."));
 
   // If the filter in-depth (filter_shape.dim_size(2)) is 1 and smaller than the
   // input depth, it's a depthwise convolution. More generally, if the filter
@@ -261,10 +263,11 @@ void LaunchConv2DBackpropFilterOpImpl(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                                             se::blas::Transpose::kTranspose, n,
-                                             m, k, a_ptr, n, b_ptr, m, &c_ptr,
-                                             n, GetNumericOptions()));
+    OP_REQUIRES_OK(
+        ctx, blas->BlasGemm(stream, se::blas::Transpose::kNoTranspose,
+                            se::blas::Transpose::kTranspose, n, m, k, a_ptr, n,
+                            b_ptr, m, &c_ptr, n, GetNumericOptions(),
+                            se::blas::CallContext::kNone));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -286,10 +289,11 @@ void LaunchConv2DBackpropFilterOpImpl(
     auto c_ptr = AsDeviceMemory(filter_backprop->template flat<T>().data(),
                                 filter_backprop->template flat<T>().size());
 
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
-                                             se::blas::Transpose::kTranspose, n,
-                                             m, k, b_ptr, n, a_ptr, m, &c_ptr,
-                                             n, GetNumericOptions()));
+    OP_REQUIRES_OK(
+        ctx, blas->BlasGemm(stream, se::blas::Transpose::kNoTranspose,
+                            se::blas::Transpose::kTranspose, n, m, k, b_ptr, n,
+                            a_ptr, m, &c_ptr, n, GetNumericOptions(),
+                            se::blas::CallContext::kNone));
     return;
   }
 
@@ -537,11 +541,8 @@ operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
            const Padding& padding,
            const std::vector<int64_t>& explicit_paddings,
            Tensor* filter_backprop, TensorFormat data_format) {
-  // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-  // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
   auto* stream = ctx->op_device_context()->stream();
-  const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-      se::CudaComputeCapability::AMPERE);
+  const bool cast_to_float = !IsBF16SupportedInOps(stream);
 
   if (cast_to_float) {
     Tensor casted_input = input;

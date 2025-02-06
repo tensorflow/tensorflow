@@ -14,20 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-::tensorflow::Status ConvertTrivialTileToConcat::Run(Model* model,
-                                                     std::size_t op_index,
-                                                     bool* modified) {
+absl::Status ConvertTrivialTileToConcat::Run(Model* model, std::size_t op_index,
+                                             bool* modified) {
   *modified = false;
   auto tile_it = model->operators.begin() + op_index;
   if (tile_it->get()->type != OperatorType::kTile) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   auto* tile_op = static_cast<TransposeOperator*>(tile_it->get());
 
@@ -37,13 +38,13 @@ namespace toco {
   if (!input_array.has_shape() || !multiples_array.has_shape() ||
       !output_array.has_shape()) {
     // Yield until PropagateFixedSizes has been run on this op.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   // Note: We can assume we have error checked inputs in PropagateFixedSizes.
 
   if (!multiples_array.buffer) {
     // Yield until the multiples is constant.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   std::vector<int32> const& multiples =
       multiples_array.GetBuffer<ArrayDataType::kInt32>().data;
@@ -62,7 +63,7 @@ namespace toco {
     // The tile is non-trivial. Good luck.
     AddMessageF("Tile %s is non-trivial (has more than one multiply dimension)",
                 LogName(*tile_op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // The tile is like a concat.
@@ -90,7 +91,7 @@ namespace toco {
   DeleteOpAndArrays(model, tile_op);
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

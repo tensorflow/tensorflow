@@ -42,7 +42,7 @@ limitations under the License.
 #if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
-#include "tsl/util/onednn_threadpool.h"
+#include "xla/tsl/util/onednn_threadpool.h"
 
 using dnnl::engine;
 using dnnl::memory;
@@ -1108,6 +1108,10 @@ memory::data_type MklDnnType<qint32>() {
 template <>
 memory::data_type MklDnnType<bfloat16>() {
   return memory::data_type::bf16;
+}
+template <>
+memory::data_type MklDnnType<Eigen::half>() {
+  return memory::data_type::f16;
 }
 
 // Map MklTensorFormat to oneDNN format tag

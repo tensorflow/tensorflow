@@ -31,11 +31,12 @@ limitations under the License.
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/string.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
@@ -79,10 +80,21 @@ void DynamicallyQuantizedFullyConnectedTester::Test(
   float* delegate_output_data =
       delegate_interpreter->typed_output_tensor<float>(0);
 
-  for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
-    EXPECT_NEAR(default_output_data[i], delegate_output_data[i],
-                std::numeric_limits<float>::epsilon() *
-                    std::max(std::abs(default_output_data[i]) * 20.0f, 1.0f));
+  const int num_output_values = ComputeSize(OutputShape());
+  int different_output_values = 0;
+  // TFLite rounds to nearest with ties to Away. XNNPACK rounds to nearest with
+  // ties to even. IEEE 754 states: "Round to nearest, ties to even" is the
+  // default for binary floating point and the recommended default for decimal.
+  // For this reason, many output values may differ slightly.
+  for (size_t i = 0; i < num_output_values; i++) {
+    if (std::abs(default_output_data[i] - delegate_output_data[i]) >
+        0.005 * std::abs(default_output_data[i])) {
+      ++different_output_values;
+    }
+  }
+  if (different_output_values > 0.05 * num_output_values) {
+    GTEST_FAIL() << (float)different_output_values / num_output_values * 100.f
+                 << "% of output values differ";
   }
 }
 
@@ -139,15 +151,31 @@ std::vector<char> DynamicallyQuantizedFullyConnectedTester::CreateTfLiteModel()
       std::bind(std::uniform_real_distribution<float>(-10, 10), std::ref(rng));
 
   flatbuffers::FlatBufferBuilder builder;
+
+  /*************************** Define operator codes **************************/
   const std::array<flatbuffers::Offset<OperatorCode>, 1> operator_codes{
       {CreateOperatorCode(builder, BuiltinOperator_FULLY_CONNECTED)}};
   std::vector<flatbuffers::Offset<Operator>> operators;
 
-  std::vector<int8_t> filter_data(InputChannels() * OutputChannels());
+  /*********************** Generate filter and bias data **********************/
+  int filter_size_bytes = -1;
+  switch (WeightsType()) {
+    case WeightsType::kChannelWiseQuantizedInt4: {
+      filter_size_bytes = (InputChannels() * OutputChannels() + 1) / 2;
+      break;
+    }
+    case WeightsType::kChannelWiseQuantizedInt8:
+    case WeightsType::kTensorWiseQuantizedInt8: {
+      filter_size_bytes = InputChannels() * OutputChannels();
+      break;
+    }
+  }
+  std::vector<int8_t> filter_data(filter_size_bytes);
   std::generate(filter_data.begin(), filter_data.end(), std::ref(filter_rng));
   std::vector<float> bias_data(OutputChannels());
   std::generate(bias_data.begin(), bias_data.end(), std::ref(bias_rng));
 
+  /****************************** Define buffers ******************************/
   const std::array<flatbuffers::Offset<Buffer>, 3> buffersq{{
       CreateBuffer(builder, builder.CreateVector({})),
       CreateBuffer(builder,
@@ -160,23 +188,45 @@ std::vector<char> DynamicallyQuantizedFullyConnectedTester::CreateTfLiteModel()
                        sizeof(float) * bias_data.size())),
   }};
 
+  /****************************** Define tensors ******************************/
   const std::array<int32_t, 2> filter_shape{
       {OutputChannels(), InputChannels()}};
   const std::array<int32_t, 1> bias_shape{{OutputChannels()}};
-
   const std::vector<int32_t> output_shape = OutputShape();
   std::vector<flatbuffers::Offset<Tensor>> tensors;
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(InputShape().data(), InputShape().size()),
       TensorType_FLOAT32, /*buffer=*/0));
+  tflite::TensorType filter_tensor_type;
+  std::vector<float> filter_scale;
+  std::vector<int64_t> filter_zero_point;
+  switch (WeightsType()) {
+    case WeightsType::kChannelWiseQuantizedInt4:
+      filter_tensor_type = tflite::TensorType_INT4;
+      filter_scale.assign(OutputChannels(), FilterScale());
+      filter_zero_point.assign(OutputChannels(), 0);
+      break;
+    case WeightsType::kChannelWiseQuantizedInt8:
+      filter_tensor_type = tflite::TensorType_INT8;
+      filter_scale.assign(OutputChannels(), FilterScale());
+      filter_zero_point.assign(OutputChannels(), 0);
+      break;
+    case WeightsType::kTensorWiseQuantizedInt8: {
+      filter_tensor_type = tflite::TensorType_INT8;
+      filter_scale = {FilterScale()};
+      filter_zero_point = {0};
+      break;
+    }
+  }
   tensors.emplace_back(CreateTensor(
       builder,
       builder.CreateVector<int32_t>(filter_shape.data(), filter_shape.size()),
-      TensorType_INT8, /*buffer=*/1, /*name=*/0,
-      CreateQuantizationParameters(builder, /*min=*/0, /*max=*/0,
-                                   builder.CreateVector<float>({FilterScale()}),
-                                   builder.CreateVector<int64_t>({0}))));
+      filter_tensor_type, /*buffer=*/1, /*name=*/0,
+      CreateQuantizationParameters(
+          builder, /*min=*/0, /*max=*/0,
+          builder.CreateVector<float>(filter_scale),
+          builder.CreateVector<int64_t>(filter_zero_point))));
   if (HasBias()) {
     tensors.emplace_back(CreateTensor(
         builder,
@@ -188,6 +238,7 @@ std::vector<char> DynamicallyQuantizedFullyConnectedTester::CreateTfLiteModel()
       builder.CreateVector<int32_t>(output_shape.data(), output_shape.size()),
       TensorType_FLOAT32));
 
+  /***************************** Define operators *****************************/
   flatbuffers::Offset<FullyConnectedOptions> fully_connected_options =
       CreateFullyConnectedOptions(
           builder, Activation(), FullyConnectedOptionsWeightsFormat_DEFAULT,
@@ -207,6 +258,7 @@ std::vector<char> DynamicallyQuantizedFullyConnectedTester::CreateTfLiteModel()
       builder.CreateVector<int32_t>(op_outputs.data(), op_outputs.size()),
       BuiltinOptions_FullyConnectedOptions, fully_connected_options.Union()));
 
+  /****************************** Define subgraph *****************************/
   const std::array<int32_t, 1> subgraph_inputs{
       {static_cast<int>(tensors.size()) - 3 - static_cast<int>(HasBias())}};
   const std::array<int32_t, 1> subgraph_outputs{

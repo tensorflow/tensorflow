@@ -15,8 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_DB_SQLITE_H_
 #define TENSORFLOW_CORE_LIB_DB_SQLITE_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <mutex>
 
+#include "absl/log/check.h"
 #include "sqlite3.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -24,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/status.h"
 
 /// TensorFlow SQLite Veneer
 ///
@@ -77,7 +81,7 @@ class TF_LOCKABLE Sqlite : public core::RefCounted {
   ///
   /// This function sets PRAGMA values from TF_SQLITE_* environment
   /// variables. See sqlite.cc to learn more.
-  static Status Open(const string& path, int flags, Sqlite** db);
+  static absl::Status Open(const string& path, int flags, Sqlite** db);
 
   /// \brief Creates SQLite statement.
   ///
@@ -87,8 +91,8 @@ class TF_LOCKABLE Sqlite : public core::RefCounted {
   /// routine will retry automatically and then possibly fail.
   ///
   /// The returned statement holds a reference to this object.
-  Status Prepare(const StringPiece& sql, SqliteStatement* stmt);
-  SqliteStatement PrepareOrDie(const StringPiece& sql);
+  absl::Status Prepare(const absl::string_view& sql, SqliteStatement* stmt);
+  SqliteStatement PrepareOrDie(const absl::string_view& sql);
 
   /// \brief Returns extended result code of last error.
   ///
@@ -175,7 +179,7 @@ class SqliteStatement {
   ///
   /// This statement should be Reset() or destructed when finished with
   /// the result.
-  Status Step(bool* is_done);
+  absl::Status Step(bool* is_done);
   bool StepOrDie() TF_MUST_USE_RESULT;
 
   /// \brief Executes query when only one row is desired.
@@ -185,14 +189,14 @@ class SqliteStatement {
   ///
   /// This statement should be Reset() or destructed when finished with
   /// the result.
-  Status StepOnce();
+  absl::Status StepOnce();
   const SqliteStatement& StepOnceOrDie();
 
   /// \brief Executes query, ensures zero rows returned, then Reset().
   ///
   /// If a row is returned, an internal error Status is returned that
   /// won't be reflected in the connection error state.
-  Status StepAndReset();
+  absl::Status StepAndReset();
   void StepAndResetOrDie();
 
   /// \brief Resets statement so it can be executed again.
@@ -229,22 +233,22 @@ class SqliteStatement {
   ///
   /// When using the unsafe methods, the data must not be changed or
   /// freed until this statement is Reset() or finalized.
-  void BindText(int parameter, const StringPiece& text) {
+  void BindText(int parameter, const absl::string_view& text) {
     Update(sqlite3_bind_text64(stmt_, parameter, text.data(), text.size(),
                                SQLITE_TRANSIENT, SQLITE_UTF8),
            parameter);
     size_ += text.size();
   }
-  void BindText(const char* parameter, const StringPiece& text) {
+  void BindText(const char* parameter, const absl::string_view& text) {
     BindText(GetParameterIndex(parameter), text);
   }
-  void BindTextUnsafe(int parameter, const StringPiece& text) {
+  void BindTextUnsafe(int parameter, const absl::string_view& text) {
     Update(sqlite3_bind_text64(stmt_, parameter, text.data(), text.size(),
                                SQLITE_STATIC, SQLITE_UTF8),
            parameter);
     size_ += text.size();
   }
-  void BindTextUnsafe(const char* parameter, const StringPiece& text) {
+  void BindTextUnsafe(const char* parameter, const absl::string_view& text) {
     BindTextUnsafe(GetParameterIndex(parameter), text);
   }
 
@@ -252,22 +256,22 @@ class SqliteStatement {
   ///
   /// When using the unsafe methods, the data must not be changed or
   /// freed until this statement is Reset() or finalized.
-  void BindBlob(int parameter, const StringPiece& blob) {
+  void BindBlob(int parameter, const absl::string_view& blob) {
     Update(sqlite3_bind_blob64(stmt_, parameter, blob.data(), blob.size(),
                                SQLITE_TRANSIENT),
            parameter);
     size_ += blob.size();
   }
-  void BindBlob(const char* parameter, const StringPiece& blob) {
+  void BindBlob(const char* parameter, const absl::string_view& blob) {
     BindBlob(GetParameterIndex(parameter), blob);
   }
-  void BindBlobUnsafe(int parameter, const StringPiece& blob) {
+  void BindBlobUnsafe(int parameter, const absl::string_view& blob) {
     Update(sqlite3_bind_blob64(stmt_, parameter, blob.data(), blob.size(),
                                SQLITE_STATIC),
            parameter);
     size_ += blob.size();
   }
-  void BindBlobUnsafe(const char* parameter, const StringPiece& text) {
+  void BindBlobUnsafe(const char* parameter, const absl::string_view& text) {
     BindBlobUnsafe(GetParameterIndex(parameter), text);
   }
 
@@ -310,7 +314,7 @@ class SqliteStatement {
   /// Empty values are returned as NULL. The returned memory will no
   /// longer be valid the next time Step() or Reset() is called. No NUL
   /// terminator is added.
-  StringPiece ColumnStringUnsafe(int column) const TF_MUST_USE_RESULT {
+  absl::string_view ColumnStringUnsafe(int column) const TF_MUST_USE_RESULT {
     return {static_cast<const char*>(sqlite3_column_blob(stmt_, column)),
             static_cast<size_t>(ColumnSize(column))};
   }
@@ -428,7 +432,7 @@ class TF_SCOPED_LOCKABLE SqliteTransaction {
   ///
   /// If this is successful, a new transaction will be started, which
   /// is rolled back when exiting the scope.
-  Status Commit();
+  absl::Status Commit();
 
  private:
   void Begin();
@@ -442,7 +446,7 @@ class TF_SCOPED_LOCKABLE SqliteTransaction {
   TF_EXCLUSIVE_LOCKS_REQUIRED(__VA_ARGS__)
 #define SQLITE_TRANSACTIONS_EXCLUDED(...) TF_LOCKS_EXCLUDED(__VA_ARGS__)
 
-inline SqliteStatement Sqlite::PrepareOrDie(const StringPiece& sql) {
+inline SqliteStatement Sqlite::PrepareOrDie(const absl::string_view& sql) {
   SqliteStatement stmt;
   TF_CHECK_OK(Prepare(sql, &stmt));
   return stmt;

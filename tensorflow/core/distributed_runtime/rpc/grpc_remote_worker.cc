@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/env_var.h"
@@ -136,7 +135,7 @@ class GrpcRemoteWorker : public WorkerInterface {
     bool logging_active = logger_->LoggingActive() || VLOG_IS_ON(2);
 
     auto callback = [this, request, response, done, start_usec,
-                     logging_active](Status s) {
+                     logging_active](absl::Status s) {
       if (logging_active) {
         if (logger_->LoggingActive()) {
           int64_t end_usec = Env::Default()->NowMicros();
@@ -205,7 +204,7 @@ class GrpcRemoteWorker : public WorkerInterface {
     bool logging_active = logger_->LoggingActive() || VLOG_IS_ON(2);
 
     auto callback = [this, request, response, done, start_usec,
-                     logging_active](Status s) {
+                     logging_active](absl::Status s) {
       if (logging_active) {
         if (logger_->LoggingActive()) {
           int64_t end_usec = Env::Default()->NowMicros();
@@ -297,7 +296,7 @@ class GrpcRemoteWorker : public WorkerInterface {
     request.set_request_id(request_id);
 
     MarkRecvFinishedResponse* response = new MarkRecvFinishedResponse();
-    auto done = [response](Status status) { delete response; };
+    auto done = [response](absl::Status status) { delete response; };
     IssueRequest(&request, response, markrecvfinished_, done);
   }
 

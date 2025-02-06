@@ -22,11 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
+#include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/convert/dcn_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tsl/profiler/utils/math_utils.h"
-#include "tsl/profiler/utils/tpu_xplane_utils.h"
-#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {

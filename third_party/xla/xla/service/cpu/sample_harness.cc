@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,16 +17,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/array4d.h"
 #include "xla/client/client.h"
 #include "xla/client/client_library.h"
-#include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
@@ -58,7 +57,7 @@ int main(int argc, char** argv) {
 
   // Execute and transfer result of computation.
   xla::ExecutionProfile profile;
-  xla::StatusOr<xla::Literal> result = client->ExecuteAndTransfer(
+  absl::StatusOr<xla::Literal> result = client->ExecuteAndTransfer(
       computation,
       /*arguments=*/{param0_data.get(), param1_data.get()},
       /*execution_options=*/nullptr,

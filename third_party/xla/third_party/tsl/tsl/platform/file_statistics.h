@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,24 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_FILE_STATISTICS_H_
 #define TENSORFLOW_TSL_PLATFORM_FILE_STATISTICS_H_
 
-#include "tsl/platform/types.h"
-
-namespace tsl {
-
-struct FileStatistics {
-  // The length of the file or -1 if finding file length is not supported.
-  int64_t length = -1;
-  // The last modified time in nanoseconds.
-  int64_t mtime_nsec = 0;
-  // True if the file is a directory, otherwise false.
-  bool is_directory = false;
-
-  FileStatistics() {}
-  FileStatistics(int64_t length, int64_t mtime_nsec, bool is_directory)
-      : length(length), mtime_nsec(mtime_nsec), is_directory(is_directory) {}
-  ~FileStatistics() {}
-};
-
-}  // namespace tsl
+#include "xla/tsl/platform/file_statistics.h"
 
 #endif  // TENSORFLOW_TSL_PLATFORM_FILE_STATISTICS_H_

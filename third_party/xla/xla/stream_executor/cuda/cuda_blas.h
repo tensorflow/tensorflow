@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,22 +20,21 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_
 
+#include <cstdint>
+
 #include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/plugin_registry.h"
+#include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
-
-class Stream;
-
-namespace gpu {
-class GpuExecutor;
-}  // namespace gpu
-
 namespace cuda {
 
 // BLAS plugin for CUDA platform via cuBLAS library.
@@ -50,7 +49,7 @@ namespace cuda {
 // Thread-safe post-initialization.
 class CUDABlas : public blas::BlasSupport {
  public:
-  explicit CUDABlas(gpu::GpuExecutor *parent);
+  explicit CUDABlas(StreamExecutor *parent);
 
   // Allocates a cuBLAS handle.
   bool Init();
@@ -70,9 +69,6 @@ class CUDABlas : public blas::BlasSupport {
   // invoked before calling into cuBLAS.
   bool SetStream(Stream *stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Returns the underlying CUDA stream.
-  cudaStream_t CUDAStream(Stream *stream);
-
   // A helper function that calls the real cuBLAS function together with error
   // handling.
   //
@@ -83,9 +79,9 @@ class CUDABlas : public blas::BlasSupport {
   //                     (true) or device (false).
   // args:               Arguments of cuBLAS function.
   template <typename FuncT, typename... Args>
-  tsl::Status DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
-                                 bool pointer_mode_host, cublasMath_t math_type,
-                                 Args... args);
+  absl::Status DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
+                                  bool pointer_mode_host,
+                                  cublasMath_t math_type, Args... args);
 
   // Convenience functions that call DoBlasInternalImpl with err_on_failure=true
   // and math_type=CUBLAS_DEFAULT_MATH.
@@ -100,9 +96,9 @@ class CUDABlas : public blas::BlasSupport {
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.
   template <typename T, typename Scalar, typename FuncT>
-  tsl::Status DoBlasGemmBatchedInternal(
+  absl::Status DoBlasGemmBatchedInternal(
       FuncT cublas_func, Stream *stream, blas::Transpose transa,
-      blas::Transpose transb, uint64_t m, uint64 n, uint64 k, Scalar alpha,
+      blas::Transpose transb, uint64_t m, uint64_t n, uint64_t k, Scalar alpha,
       const DeviceMemorySlice<T> &a_array, int lda,
       const DeviceMemorySlice<T> &b_array, int ldb, Scalar beta,
       const DeviceMemorySlice<T> &c_array, int ldc, int batch_count,
@@ -110,11 +106,11 @@ class CUDABlas : public blas::BlasSupport {
       ScratchAllocator *scratch_allocator);
 
   // Guards the cuBLAS handle for this device.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 
-  // GpuExecutor which instantiated this CUDABlas.
+  // StreamExecutor which instantiated this CUDABlas.
   // Immutable post-initialization.
-  gpu::GpuExecutor *parent_;
+  StreamExecutor *parent_;
 
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ ABSL_GUARDED_BY(mu_);

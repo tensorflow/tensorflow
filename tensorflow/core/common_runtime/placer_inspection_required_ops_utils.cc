@@ -21,9 +21,11 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
 namespace {
@@ -38,11 +40,11 @@ bool IsFunctionCall(const Node& node) {
 }
 
 // Utility to set node's value in `cache` and `is_deep` to `value`.
-Status Set(const Node& node, bool value, bool* is_deep,
-           std::vector<absl::optional<bool>>* cache) {
+absl::Status Set(const Node& node, bool value, bool* is_deep,
+                 std::vector<absl::optional<bool>>* cache) {
   *is_deep = value;
   (*cache)[node.id()] = value;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -53,22 +55,22 @@ PlacerInspectionRequiredOpChecker::PlacerInspectionRequiredOpChecker(
   cache_.resize(graph_.num_node_ids());
 }
 
-Status PlacerInspectionRequiredOpChecker::IsPlacerInspectionRequired(
+absl::Status PlacerInspectionRequiredOpChecker::IsPlacerInspectionRequired(
     const Node& node, bool* is_deep) {
   if (cache_[node.id()].has_value()) {
     *is_deep = cache_[node.id()].value();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (!IsFunctionCall(node)) {
     return Set(node, false, is_deep, &cache_);
   }
-  const FunctionDef* fdef;
+  core::RefCountPtr<FunctionRecord> fdef;
   NameAttrList func;
   TF_RETURN_IF_ERROR(GetFunctionDefAndAttrs(flib_def_, node, &fdef, &func));
   DataTypeVector types;
-  TF_RETURN_IF_ERROR(
-      OutputTypesForNode(AttrSlice(&func.attr()), fdef->signature(), &types));
+  TF_RETURN_IF_ERROR(OutputTypesForNode(AttrSlice(&func.attr()),
+                                        fdef->fdef().signature(), &types));
   for (DataType type : types) {
     if (type == DT_RESOURCE) {
       return Set(node, true, is_deep, &cache_);
@@ -77,18 +79,19 @@ Status PlacerInspectionRequiredOpChecker::IsPlacerInspectionRequired(
   return Set(node, false, is_deep, &cache_);
 }
 
-Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
-                              const Node& node, const FunctionDef** fdef,
-                              NameAttrList* func) {
+absl::Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
+                                    const Node& node,
+                                    core::RefCountPtr<FunctionRecord>* fdef,
+                                    NameAttrList* func) {
   TF_RETURN_IF_ERROR(GetNodeAttr(node.def(), "f", func));
   const string& function_name = func->name();
-  *fdef = flib_def.Find(function_name);
+  *fdef = flib_def.FindRecord(function_name);
   if (*fdef == nullptr) {
     return errors::InvalidArgument(
         "Failed to find function \"", function_name,
         "\" in function library: ", flib_def.ToProto().DebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 FunctionStack::FunctionStack(const string& function_name)
@@ -161,8 +164,8 @@ string Uniquify(const string& candidate_name,
   }
 }
 
-Status AddInputIdentity(Node* node, int input_idx, Graph* graph,
-                        std::unordered_set<string>* node_names) {
+absl::Status AddInputIdentity(Node* node, int input_idx, Graph* graph,
+                              std::unordered_set<string>* node_names) {
   const Edge* edge;
   TF_RETURN_IF_ERROR(node->input_edge(input_idx, &edge));
 
@@ -191,7 +194,7 @@ Status AddInputIdentity(Node* node, int input_idx, Graph* graph,
 
   VLOG(6) << "Successfully inserted identity. Modified node: \n"
           << node->DebugString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct EdgePtrCompare {
@@ -200,8 +203,8 @@ struct EdgePtrCompare {
   }
 };
 
-Status AddOutputIdentities(Node* node, Graph* graph,
-                           std::unordered_set<string>* node_names) {
+absl::Status AddOutputIdentities(Node* node, Graph* graph,
+                                 std::unordered_set<string>* node_names) {
   auto add_identity = [&](int src_output, const string& identity_name,
                           Node** identity_node) {
     NodeDefBuilder builder(identity_name, kIdentityOp);
@@ -215,7 +218,7 @@ Status AddOutputIdentities(Node* node, Graph* graph,
 
     TF_ASSIGN_OR_RETURN(*identity_node, graph->AddNode(identity_def));
     graph->AddEdge(node, src_output, *identity_node, 0);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   // output_used[i] == true iff `node`'s i'th output is used
@@ -261,10 +264,10 @@ Status AddOutputIdentities(Node* node, Graph* graph,
             << " -> <no consumer>: \n"
             << identity_node->DebugString();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status IsolateNode(Node* node, Graph* graph) {
+absl::Status IsolateNode(Node* node, Graph* graph) {
   // We use `node_names` to make sure we pick unique names.
   // We don't use graph->NewName() because it produces verbose names and
   // does not actually ensure that they are unique (it assumes all names
@@ -278,12 +281,12 @@ Status IsolateNode(Node* node, Graph* graph) {
     TF_RETURN_IF_ERROR(AddInputIdentity(node, i, graph, &node_names));
   }
   TF_RETURN_IF_ERROR(AddOutputIdentities(node, graph, &node_names));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status IsolatePlacerInspectionRequiredOps(
+absl::Status IsolatePlacerInspectionRequiredOps(
     const FunctionLibraryDefinition& flib_def, Graph* graph) {
   PlacerInspectionRequiredOpChecker checker(graph, &flib_def);
   // It is OK to add nodes to the graph during iteration.
@@ -302,7 +305,7 @@ Status IsolatePlacerInspectionRequiredOps(
     TF_RETURN_IF_ERROR(IsolateNode(node, graph));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

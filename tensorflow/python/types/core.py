@@ -26,7 +26,6 @@ from tensorflow.python.types import doc_typealias
 
 
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import, g-bad-import-order
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint:disable=g-import-not-at-top
@@ -265,6 +264,9 @@ class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
       Function callable with the following kwargs:
         - `stage` at which the compiler IR should be serialized. Allowed values
           are:
+           - `stablehlo`: StableHLO module textual assembly.
+           - `stablehlo_serialized`: Like stage=`stablehlo`, but the output is a
+             serialized MLIR bytecode.
            - `hlo`: HLO output after conversion from TF
             (https://www.tensorflow.org/xla/operation_semantics).
            - `hlo_serialized`: Like stage=`hlo`, but the output is a serialized
@@ -383,10 +385,6 @@ class TensorProtocol(Protocol):
       A Tensor.
     """
     pass
-
-
-_pywrap_utils.RegisterType("TensorProtocol", TensorProtocol)
-_pywrap_utils.RegisterType("CoreTypeValue", Value)
 
 
 # TODO(rahulkamat): Add missing types that are convertible to Tensor.

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // Python bindings for tensorflow/python/framework/python_api_dispatcher.h.
 
+#include "absl/strings/str_cat.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11

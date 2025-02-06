@@ -1,8 +1,7 @@
 # Description:
 # TensorFlow Java API.
 
-load(":build_defs.bzl", "JAVACOPTS")
-load(":src/gen/gen_ops.bzl", "tf_java_op_gen_srcjar")
+load("@rules_java//java:defs.bzl", "java_library", "java_plugin")
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
@@ -13,6 +12,8 @@ load(
     "tf_custom_op_library",
     "tf_java_test",
 )
+load(":build_defs.bzl", "JAVACOPTS")
+load(":src/gen/gen_ops.bzl", "tf_java_op_gen_srcjar")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -109,6 +110,9 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -133,6 +137,8 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
     ],
 )

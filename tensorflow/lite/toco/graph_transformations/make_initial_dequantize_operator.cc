@@ -17,12 +17,13 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -98,9 +99,9 @@ bool AddDequantizeOperatorToInput(const std::string& input_name,
   return true;
 }
 
-::tensorflow::Status MakeInitialDequantizeOperator::Run(Model* model,
-                                                        std::size_t op_index,
-                                                        bool* modified) {
+absl::Status MakeInitialDequantizeOperator::Run(Model* model,
+                                                std::size_t op_index,
+                                                bool* modified) {
   *modified = false;
   // This is effectively a transformation applied to edges.  We iterate over the
   // specified node (op) and proceed for input edges.
@@ -119,7 +120,7 @@ bool AddDequantizeOperatorToInput(const std::string& input_name,
     }
   }
   *modified = change_made;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
+#include <memory>
 #include <random>
 #include <vector>
 
@@ -37,10 +39,19 @@ struct TestPack {
         depth(depth),
         rows((src_rows + (width - 1)) & ~(width - 1)),
         cols((src_cols + (depth - 1)) & ~(depth - 1)),
-        packed_data_buffer(rows * cols + padding) {}
+        // Must be vector-aligned.
+        packed_data_buffer(
+            [=]() -> uint8_t* {
+              void* ptr;
+              if (posix_memalign(&ptr, 64, rows * cols + padding)) {
+                abort();
+              }
+              return static_cast<uint8_t*>(ptr);
+            }(),
+            [](uint8_t* ptr) { free(ptr); }) {}
 
   void Prepack() {
-    packed_data = packed_data_buffer.data();
+    packed_data = packed_data_buffer.get();
     optimized_4bit::Prepack(packed_data, src_data.data(), rows, cols, src_rows,
                             src_cols, width, depth);
   }
@@ -64,7 +75,7 @@ struct TestPack {
   int rows;
   int cols;
   int padding = optimized_4bit::kDefaultAlignmentPadding;
-  std::vector<uint8_t> packed_data_buffer;
+  std::unique_ptr<uint8_t, std::function<void(uint8_t*)>> packed_data_buffer;
 };
 
 class RunPackTests

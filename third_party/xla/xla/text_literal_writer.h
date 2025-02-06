@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TEXT_LITERAL_WRITER_H_
 #define XLA_TEXT_LITERAL_WRITER_H_
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/literal.h"
 #include "xla/types.h"
@@ -36,7 +37,8 @@ namespace xla {
 // This should be readable by xla::TextLiteralReader.
 class TextLiteralWriter {
  public:
-  static Status WriteToPath(const Literal& literal, absl::string_view path);
+  static absl::Status WriteToPath(const Literal& literal,
+                                  absl::string_view path);
 
  private:
   TextLiteralWriter(const TextLiteralWriter&) = delete;

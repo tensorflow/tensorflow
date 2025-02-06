@@ -16,25 +16,32 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <cstdint>
+#include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "linenoise.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/c/checkpoint_reader.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/advisor/tfprof_advisor.h"
 #include "tensorflow/core/profiler/internal/tfprof_stats.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
 #include "tensorflow/core/profiler/tfprof_options.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
@@ -95,7 +102,7 @@ int Run(int argc, char** argv) {
   }
 
   std::vector<Flag> flag_list = {
-      Flag("profile_path", &FLAGS_profile_path, "Profile binary file name."),
+      Flag("profile_path", &FLAGS_profile_path, "Profile binary file name"),
       Flag("graph_path", &FLAGS_graph_path, "GraphDef proto text file name"),
       Flag("run_meta_path", &FLAGS_run_meta_path,
            "Comma-separated list of RunMetadata proto binary "
@@ -161,8 +168,8 @@ int Run(int argc, char** argv) {
 
   string output_type;
   std::map<string, string> output_options;
-  Status s = ParseOutput(FLAGS_output, &output_type, &output_options);
-  CHECK(s.ok()) << s.ToString();
+  absl::Status s = ParseOutput(FLAGS_output, &output_type, &output_options);
+  CHECK(s.ok()) << s;
 
   string cmd = "";
   if (argc == 1 && FLAGS_graph_path.empty() && FLAGS_profile_path.empty() &&
@@ -296,7 +303,7 @@ int Run(int argc, char** argv) {
     linenoiseHistorySave(".tfprof_history.txt");
 
     Options new_opts = opts;
-    Status s = ParseCmdLine(line_s, &cmd, &new_opts);
+    absl::Status s = ParseCmdLine(line_s, &cmd, &new_opts);
     if (!s.ok()) {
       absl::FPrintF(stderr, "E: %s\n", s.ToString());
       continue;

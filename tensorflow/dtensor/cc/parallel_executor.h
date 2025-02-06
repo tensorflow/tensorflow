@@ -30,7 +30,7 @@ limitations under the License.
 namespace tensorflow {
 namespace dtensor {
 
-template <typename T>
+template <typename T = void>
 using Future = ::xla::PjRtFuture<T>;
 
 // ParallelExecutor Interface
@@ -53,7 +53,7 @@ class ParallelExecutor {
   // raw pointers.
   // The client is responsible for the ownership of the outputs.
   struct ExecutionResult {
-    Future<Status> status;
+    Future<> status;
     // The pointed data of `outputs` are filled after `status` future resolves
     // as ok.
     std::vector<TensorWithLayout*> outputs;
@@ -68,7 +68,7 @@ class ParallelExecutor {
       TensorWithLayout* t) = 0;
 
   // Returns a tensor copied from `t` when `t` contains only a single device.
-  virtual Future<StatusOr<Tensor>> ToHostBuffer(TensorWithLayout* t) = 0;
+  virtual Future<Tensor> ToHostBuffer(TensorWithLayout* t) = 0;
 };
 
 // Factory method for Default ParallelExecutor instance.

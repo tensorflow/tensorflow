@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,24 +16,18 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_CUDAMALLOCASYNC_ALLOCATOR_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_CUDAMALLOCASYNC_ALLOCATOR_H_
 
+#include <atomic>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/framework/allocator.h"
-#include "tsl/framework/device_id.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/mutex.h"
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-
-#define TF_CUDA_MALLOC_ASYNC_SUPPORTED CUDA_VERSION >= 11020
-#endif  // GOOGLE_CUDA
-
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/device_id.h"
 
 namespace stream_executor {
 
@@ -50,26 +44,38 @@ namespace stream_executor {
 //
 // We configure cudaMallocAsync to grow when more memory is needed
 // instead of preallocating everything up front and to keep a local
-// pool up to pool_size bytes that is never released to other processes.
+// pool up to release_threshold bytes that is never released to other processes.
 // So no other process will "steal" the GPU memory already used by the
 // current process. This is to speed up execution and prevent crashes
 // of long-running jobs. Use `reserve_memory=true` if you want to
-// preallocate the full pool_size. You can also use the environment
+// preallocate the full release_threshold. You can also use the environment
 // variable `TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC=nb_bytes` to preallocate
 // that amount of memory. `TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC=-1` is a
 // special value that preallocate all what the BFC memory allocator
 // would have allocated. This is useful when benchmarking as it doesn't
 // change when driver allocations are done.
 //
-// Here, the pool_size isn't the absolute max as for [Gpu]BFCAllocator.
+// Here, the release_threshold isn't the absolute max as for [Gpu]BFCAllocator.
 // The pool can grow above that up to the total GPU memory.  But the
 // driver can return the excess memory to other processes.
 class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
  public:
+  // API that uses the default memory pool for cuda malloc async
   explicit GpuCudaMallocAsyncAllocator(tsl::PlatformDeviceId platform_device_id,
-                                       size_t pool_size,
+                                       size_t release_threshold,
                                        bool reserve_memory = false,
                                        bool compute_stats = true);
+
+  // Construct the allocator that allows the user to instantiate with a new cuda
+  // memory pool.
+  explicit GpuCudaMallocAsyncAllocator(tsl::PlatformDeviceId platform_device_id,
+                                       bool create_new_pool,
+                                       size_t new_pool_size,
+                                       bool reserve_memory = false,
+                                       size_t reserve_memory_size = 0,
+                                       bool sync_mode = false,
+                                       bool compute_stats = true);
+
   ~GpuCudaMallocAsyncAllocator() override;
   std::string Name() override { return name_; }
   void* AllocateRaw(size_t alignment,
@@ -88,12 +94,6 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
 
   void SetStreamAndPreallocateMemory(void* stream) override;
 
-  // With the right VLOG set, it prints:
-  // - the number of ptr currently allocated per size (histogram).
-  // - each ptr value and its size.
-  // - If CUDA_VERSION >= 11030, print cudaMallocAsync statistics.
-  void PrintAllocatorStatistics();
-
   static int GetInstantiatedCountTestOnly() { return number_instantiated_; }
 
   tsl::AllocatorMemoryType GetMemoryType() const override {
@@ -101,23 +101,11 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
   }
 
  private:
-  void PrintAllocatorStatisticsNoLock() ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void PrintAllocatorStatisticsNoLock() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-#if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   StreamExecutor* stream_exec_;  // Not owned.
-
-  // cudaMallocAsync is stream aware. But TF StreamExecutor use only 1
-  // compute stream and already synchronize with the h2d, d2h and d2d
-  // stream. So we do not need to ask cudaMallocAsync to add extra
-  // synchronization.
-  // Not owned.
-  CUstream cuda_stream_;
-
-  // Not owned. The default pool of the associated GPU.
-  // If null, then the instanciation failed and the first allocation
-  // will return an error.
-  CUmemoryPool pool_;
-#endif  // TF_CUDA_MALLOC_ASYNC_SUPPORTED
+  struct CudaState;
+  std::unique_ptr<CudaState> cuda_state_;
 
   // Just a counter for the number of time this class is instantiated.
   // Only useful for tests.
@@ -127,14 +115,20 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
 
   bool reserve_memory_;
 
+  bool create_new_pool_;
+
+  // When the allocator is working in sync mode, the allocator will block host
+  // thread until memory allocation has completed.
+  bool sync_mode_;
+
   GpuCudaMallocAsyncAllocator(const GpuCudaMallocAsyncAllocator&) = delete;
   void operator=(const GpuCudaMallocAsyncAllocator&) = delete;
 
   // Stats.
   // Structures mutable after construction
-  mutable tsl::mutex lock_;
-  std::unique_ptr<tsl::AllocatorStats> stats_ ABSL_PT_GUARDED_BY(lock_);
-  absl::flat_hash_map<const void*, size_t> size_map_ ABSL_GUARDED_BY(lock_);
+  mutable absl::Mutex mutex_;
+  std::unique_ptr<tsl::AllocatorStats> stats_ ABSL_PT_GUARDED_BY(mutex_);
+  absl::flat_hash_map<const void*, size_t> size_map_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace stream_executor

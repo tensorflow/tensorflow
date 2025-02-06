@@ -113,14 +113,14 @@ class TemplatesTest(test.TestCase, parameterized.TestCase):
         template,
         block=[
             gast.Assign(
-                [
+                targets=[
                     gast.Name(
                         'a',
                         ctx=ShouldBeReplaced,
                         annotation=None,
                         type_comment=None)
                 ],
-                gast.BinOp(
+                value=gast.BinOp(
                     gast.Name(
                         'a',
                         ctx=ShouldBeReplaced,

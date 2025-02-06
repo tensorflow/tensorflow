@@ -23,7 +23,11 @@ namespace tflite::acceleration {
 
 // Normalises the given ASCII input by converting all alphabets to lower case
 // and replacing ' ' and '-' with '_'.
-std::string CanonicalizeValue(absl::string_view input);
+std::string CanonicalizeValue(absl::string_view value);
+
+// Applies the above normalisation plus key specific normalisation.
+std::string CanonicalizeValueWithKey(absl::string_view key,
+                                     absl::string_view value);
 }  // namespace tflite::acceleration
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_COMPATIBILITY_CANONICALIZE_VALUE_H_

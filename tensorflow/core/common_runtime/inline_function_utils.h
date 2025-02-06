@@ -160,8 +160,8 @@ struct InlineFunctionBodyOptions {
 //
 // If function can't be safely inlined, returns error message with details why
 // inlining is not possible or safe.
-Status ValidateInlining(const Node* node, const FunctionBody* fbody,
-                        const InlineFunctionBodyOptions& options);
+absl::Status ValidateInlining(const Node* node, const FunctionBody* fbody,
+                              const InlineFunctionBodyOptions& options);
 
 // Given a "caller" in graph "g", which is a function call of a function
 // to "fbody". Replaces the "caller" with fbody->graph and connects
@@ -171,9 +171,10 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
 // Returns 'OkStatus()' if function was successfully inlined into the graph.
 // If function inlining is not possible returns an error with a reason, and
 // leaves the graph in unmodified state.
-Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
-                          Node* caller, const FunctionBody* fbody,
-                          const InlineFunctionBodyOptions& options);
+absl::Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
+                                Graph* g, Node* caller,
+                                const FunctionBody* fbody,
+                                const InlineFunctionBodyOptions& options);
 
 // There are three types of function calls that could be invoked during
 // *Tensorflow graph execution*:

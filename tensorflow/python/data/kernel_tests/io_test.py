@@ -13,8 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the `tf.data.experimental.{save,load}` operations."""
+
 import os
 import shutil
+import threading
+import time
+
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
@@ -136,6 +140,26 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
     next_element = self.getNext(dataset)
     for _ in range(30):
       self.evaluate(next_element())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testWait(self):
+    dataset_range = 50
+
+    def load_thread_fn():
+      dataset = dataset_ops.Dataset.load(self._test_dir)
+      self.assertDatasetProduces(
+          dataset, list(range(dataset_range)), assert_items_equal=True)
+    load_thread = threading.Thread(target=load_thread_fn, name="load_thread")
+    load_thread.start()
+
+    def save_thread_fn():
+      time.sleep(5)
+      dataset = dataset_ops.Dataset.range(dataset_range)
+      self.evaluate(dataset.save(self._test_dir))
+    save_thread = threading.Thread(target=save_thread_fn, name="save_thread")
+    save_thread.start()
+    save_thread.join()
+    load_thread.join()
 
 
 class LoadCheckpointTest(IOTest, checkpoint_test_base.CheckpointTestBase):

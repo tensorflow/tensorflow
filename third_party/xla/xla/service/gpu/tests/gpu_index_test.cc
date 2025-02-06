@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,13 +16,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/literal.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
@@ -64,8 +62,6 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndex) {
 }
 
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
-  HloModuleConfig config;
-  config.set_debug_options(HloTestBase::GetDebugOptionsForTest());
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -74,8 +70,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
       y = f32[5,14]{1,0} parameter(1)
       reshape = f32[5,7,2]{2,1,0} reshape(y)
       ROOT gte = pred[5,7,2]{2,1,0} compare(x, reshape), direction=GE
-    })",
-                                             config)
+    })")
                     .value();
 
   // Check the optimized IR as the unoptimized IR contains dead udiv and urem.
@@ -87,41 +82,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshape) {
                      /*match_optimized_ir=*/true);
 }
 
-TEST_F(GpuIndexTest,
-       ReuseMultidimIndexWithTrivialReshapeAndNonContiguousBroadcast) {
-  HloModuleConfig config;
-  config.set_debug_options(HloTestBase::GetDebugOptionsForTest());
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule test_module
-
-    ENTRY CompatibleUseLinearIndexWithReshape {
-      x = f32[1,7,2,5,3]{4,3,2,1,0} parameter(0)
-      y = f32[2,1,3]{2,1,0} parameter(1)
-      reshape = f32[1,2,3]{2,1,0} reshape(y)
-      broadcast = f32[1,7,2,5,3]{4,3,2,1,0} broadcast(reshape), dimensions={0,2,4}
-      ROOT gte = pred[1,7,2,5,3]{4,3,2,1,0} compare(x, broadcast), direction=GE
-    })",
-                                             config)
-                    .value();
-  CompileAndVerifyIr(std::move(module),
-                     R"(
-; CHECK: %[[tmp4:.*]] = udiv i32 %[[linear_index:.*]], 1
-; CHECK: %[[dim4:.*]] = urem i32 %[[tmp4]], 3
-; CHECK: %[[tmp3:.*]] = udiv i32 %[[linear_index]], 3
-; CHECK: %[[dim3:.*]] = urem i32 %[[tmp3]], 5
-; CHECK: %[[tmp2:.*]] = udiv i32 %[[linear_index]], 15
-; CHECK: %[[dim2:.*]] = urem i32 %[[tmp2]], 2
-; CHECK: %[[tmp1:.*]] = udiv i32 %[[linear_index]], 30
-; CHECK: %{{.*}} = getelementptr inbounds [2 x [1 x [3 x float]]], ptr %{{.*}}, i32 0, i32 %[[dim2]], i32 0, i32 %[[dim4]]
-      )",
-                     /*match_optimized_ir=*/false);
-}
-
-#if TENSORFLOW_USE_ROCM
-#else
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
-  HloModuleConfig config;
-  config.set_debug_options(HloTestBase::GetDebugOptionsForTest());
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
@@ -131,8 +92,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
       reshape = f32[7,2]{1,0} reshape(y)
       broadcast = f32[5,7,2]{2,1,0} broadcast(reshape), dimensions={1,2}
       ROOT gte = pred[5,7,2]{2,1,0} compare(x, broadcast), direction=GE
-    })",
-                                             config)
+    })")
                     .value();
 
   // Check the optimized IR reuses the linear index by calculating modulo 14.
@@ -144,58 +104,41 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
   CompileAndVerifyIr(std::move(module),
                      R"(
 ; CHECK: %[[urem1:.*]] = urem i{{[0-9]*}} %[[linear_index:.*]], 14
-; CHECK: %[[idx1:.*]] = zext i{{[0-9]*}} %[[urem1]] to i64
-; CHECK: getelementptr inbounds float, ptr{{( addrspace\(1\))?}} %[[alloc:.*]], i64 %[[idx1]]
+; CHECK: %[[idx1:.*]] = zext nneg i{{[0-9]*}} %[[urem1]] to i64
+; CHECK: getelementptr inbounds{{( nuw)?}} float, ptr{{( addrspace\(1\))?}} %[[alloc:.*]], i64 %[[idx1]]
       )",
                      /*match_optimized_ir=*/true);
 }
-#endif
 
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
-  HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  config.set_debug_options(debug_options);
-
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule  test_module
 
     ENTRY CompatibleUseLinearIndexWithSizeOneDimensions  {
       x = f32[1,1024,1,256]{3,2,1,0} parameter(0)
       ROOT y = f16[1,1024,1,256]{3,2,1,0} convert(x)
-    })",
-                                             config)
+    })")
                     .value();
 
-  // Check that the unoptimized IR reuses the linear index.
   CompileAndVerifyIr(std::move(module),
                      R"(
-; CHECK-LABEL: @wrapped_convert
-; CHECK: icmp ult i32 %[[linear_index:.*]], 262144
-; CHECK: %[[ld_addr:.*]] = getelementptr inbounds float, ptr {{.*}}, i32 %[[linear_index]]
-; CHECK: load float, ptr %[[ld_addr]]
-; CHECK: %[[st_addr:.*]] = getelementptr inbounds half, ptr {{.*}}, i32 %[[linear_index]]
-; CHECK: store half {{.*}}, ptr %[[st_addr]]
+; CHECK-NOT: udiv
+; CHECK-NOT: urem
       )",
-                     /*match_optimized_ir=*/false);
+                     /*match_optimized_ir=*/true);
 }
 
-TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithTranspose) {
-  HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  config.set_debug_options(debug_options);
-
+TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithBitcastTranspose) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule  test_module
 
     ENTRY CompatibleUseLinearIndexWithTranspose  {
-      x = f32[2,1024,3,256]{3,2,1,0} parameter(0)
-      y = f32[1024,2,256,3]{2,3,0,1} parameter(1)
-      transpose = f32[1024,2,256,3]{3,2,1,0} transpose(x), dimensions={1,0,3,2}
-      ROOT gte = pred[1024,2,256,3]{2,3,0,1} compare(transpose, y), direction=GE
-    })",
-                                             config)
+      x = f32[1024,2,256,3]{2,3,0,1} parameter(0)
+      y = f32[2,1024,3,256]{3,2,1,0} parameter(1)
+      transpose = f32[2,1024,3,256]{3,2,1,0} transpose(x), dimensions={1,0,3,2}
+      ROOT gte = pred[2,1024,3,256]{3,2,1,0} compare(transpose, y), direction=GE
+    })")
                     .value();
-  // Check the optimized IR contains no udiv and urem.
   CompileAndVerifyIr(std::move(module),
                      R"(
 ; CHECK-NOT: udiv

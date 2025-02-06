@@ -1,6 +1,6 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 load("//tensorflow:tensorflow.bzl", "py_test")  # @unused
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -14,9 +14,6 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/lite/python:interpreter",
-        "//tensorflow/lite/python:lite",
-        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/grappler:tf_optimizer",
         "//tensorflow/python/training:saver",
     ],
@@ -44,7 +41,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["fft_ops_test.py"],
     python_version = "PY3",
-    shard_count = 1,
+    shard_count = 2,
     tags = [
         "optonly",
     ],

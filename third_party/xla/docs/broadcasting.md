@@ -99,7 +99,7 @@ dimensions 1 and 2 of the cuboid.
 
 This type of broadcast is used in the binary ops in `XlaBuilder`, if the
 `broadcast_dimensions` argument is given. For example, see
-[XlaBuilder::Add](https://github.com/openxla/xla/blob/main/xla/client/xla_builder.cc).
+[XlaBuilder::Add](https://github.com/openxla/xla/blob/main/xla/hlo/builder/xla_builder.cc).
 In the XLA source code, this type of broadcasting is sometimes called "InDim"
 broadcasting.
 

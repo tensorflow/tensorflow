@@ -25,16 +25,18 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
-#include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"             // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"            // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"             // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"       // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"                // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"                     // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"             // from @llvm-project
+#include "mlir/IR/PatternMatch.h"                     // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"     // from @llvm-project
+#include "mlir/Rewrite/FrozenRewritePatternSet.h"     // from @llvm-project
+#include "mlir/Support/LLVM.h"                        // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -44,6 +46,12 @@ limitations under the License.
 
 namespace mlir {
 namespace tosa {
+
+// returns acc_type attribute for Conv ops with specified input/output element
+// types
+mlir::TypeAttr getConvAccTypeAttr(PatternRewriter& rewriter,
+                                  mlir::Type input_etype,
+                                  mlir::Type output_etype);
 
 LogicalResult getDynamicDims(PatternRewriter& rewriter, Value value,
                              llvm::SmallVector<Value>& dims);
@@ -103,13 +111,11 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
                              std::function<double(double)> func, double min,
                              double max);
 
-// Create a 32-bit TOSA TABLE constant tensor
-// Output is restricted to [-1.0, 1.0] as s0.31 format
-void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
-                            double input_scale, int32_t input_zp,
-                            std::function<double(double)> func,
-                            Value& first_const, Value& second_const,
-                            Value& third_const, Value& fourth_const);
+// Create a 32-bit TOSA TABLE for Softmax Exp
+void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
+                                      double beta, double input_scale,
+                                      Value& first_const, Value& second_const,
+                                      Value& third_const, Value& fourth_const);
 
 // Create 8 bit TOSA TABLE constant tensor for the RSqrt operator
 Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
@@ -118,20 +124,31 @@ Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
 
 // Create a 32-bit float constant operator from a float
 Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
-                                  float val);
+                                  float val, int rank);
 
-// Create a 32-bit integer constant operator from an int
+// Create a 32-bit integer constant operator from an int of specified rank
 Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
-                                  int32_t val);
+                                  int32_t val, int rank);
 
 // Create an expected bitwidth integer constant operator based on the type
-// parameter.
+// parameter, of specified rank
 Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
-                                  int64_t val);
+                                  int64_t val, int rank);
 
-// Create a vector from a 32-bit value tensor.  Returns vector size on success
-// or -1 on error.
+// Create a tosa::ConstShape based on the specified values
+Value getTosaConstShape(PatternRewriter& rewriter, Operation* op,
+                        llvm::ArrayRef<int64_t> values);
+
+
+// Populate a int32_t vector from a val tensor
+// return failure if val is not a constant value
+// return success otherwise
 LogicalResult getVectorFromValue32(Value val, SmallVectorImpl<int32_t>& vec);
+
+// Populate a int64_t vector from a val tensor
+// return failure if val is not a constant value
+// return success otherwise
+LogicalResult getVectorFromValue64(Value val, SmallVectorImpl<int64_t>& vec);
 
 // Calculates the TOSA padding values based on TF operators padded with
 // SAME/VALID.
@@ -164,6 +181,25 @@ template <typename T>
 std::optional<Value> getConstTensor(PatternRewriter& rewriter, Operation* op,
                                     ArrayRef<T> vec, ArrayRef<int64_t> shape);
 
+// For each spatial dimension, return the remainder of the output size
+// calculation: (I - 1 + pad - (K - 1) * dilation) % stride.
+llvm::SmallVector<int64_t> getOutputSpatialSizeRemainder(
+    tensorflow::TensorFormat data_format_tf, ShapedType input_type,
+    DenseI64ArrayAttr kernel_size, DenseI64ArrayAttr pads,
+    DenseI64ArrayAttr strides, DenseI64ArrayAttr dilations);
+
+// The TOSA specification requires the full size of the input to be used during
+// the convolution (the output size remainder calculation must be 0). If input
+// slicing is necessary to satisfy the condition, return a tosa::SliceOp,
+// otherwise return input_val.
+Value getInputSlicedToItsUsedSize(PatternRewriter& rewriter, Operation* op,
+                                  tensorflow::TensorFormat data_format_tf,
+                                  ShapedType input_type, Value input_val,
+                                  DenseI64ArrayAttr kernel_size,
+                                  DenseI64ArrayAttr pads,
+                                  DenseI64ArrayAttr strides,
+                                  DenseI64ArrayAttr dilations);
+
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type);
 
@@ -179,48 +215,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
 template <typename TosaOp, typename... Args>
 TosaOp CreateOpAndInfer(ImplicitLocOpBuilder& builder, Type result_ty,
                         Args&&... args) {
-  auto op = builder.create<TosaOp>(result_ty, args...);
-
-  InferShapedTypeOpInterface shapeInterface =
-      dyn_cast<InferShapedTypeOpInterface>(op.getOperation());
-  if (!shapeInterface) return op;
-
-  SmallVector<ShapedTypeComponents> returnedShapes;
-  if (shapeInterface
-          .inferReturnTypeComponents(op.getContext(), builder.getLoc(),
-                                     op->getOperands(), op->getAttrDictionary(),
-                                     op->getPropertiesStorage(),
-                                     op->getRegions(), returnedShapes)
-          .failed())
-    return op;
-
-  // We need to use the element type of the existing result type to generate
-  // the new result shaped type. This is because rescale can include a cast to
-  // different bit-width types and does not have a TypeAttr to define the
-  // target type.
-  auto result = op->getResult(0);
-  auto predictedShape = returnedShapes[0];
-  auto currentKnowledge = ValueKnowledge::getKnowledgeFromType(result_ty);
-
-  // Compute the knowledge based on the inferred type.
-  auto inferredKnowledge = ValueKnowledge::getPessimisticValueState();
-  inferredKnowledge.dtype = result_ty.cast<ShapedType>().getElementType();
-  inferredKnowledge.hasRank = predictedShape.hasRank();
-  if (predictedShape.hasRank()) {
-    for (auto dim : predictedShape.getDims()) {
-      inferredKnowledge.sizes.push_back(dim);
-    }
-  }
-
-  // Compute the new type based on the joined version.
-  auto newKnowledge = ValueKnowledge::join(currentKnowledge, inferredKnowledge);
-  Type new_ty =
-      newKnowledge.hasRank
-          ? Type{tensorflow::GetTypeFromTFTensorShape(
-                llvm::ArrayRef(newKnowledge.sizes), newKnowledge.dtype)}
-          : Type{mlir::UnrankedTensorType::get(newKnowledge.dtype)};
-  result.setType(new_ty);
-  return op;
+  return CreateOpAndInferShape<TosaOp>(builder, result_ty, args...);
 }
 
 template <typename TosaOp, typename... Args>
@@ -237,6 +232,28 @@ void CreateReplaceOpAndInfer(PatternRewriter& rewriter, Operation* op,
       CreateOpAndInfer<TosaOp>(rewriter, op->getLoc(), result_ty, args...);
   rewriter.replaceOp(op, result->getResults());
 }
+
+template <typename TOSA_OP>
+LogicalResult ConvertBinaryOp(Operation* op, PatternRewriter& rewriter) {
+  TensorType output_type = dyn_cast<TensorType>(op->getResults()[0].getType());
+  if (!output_type) return failure();
+
+  Value x = op->getOperands()[0];
+  Value y = op->getOperands()[1];
+
+  RankedTensorType x_type = dyn_cast<RankedTensorType>(x.getType());
+  RankedTensorType y_type = dyn_cast<RankedTensorType>(y.getType());
+  if (!x_type || !y_type) return failure();
+
+  CreateReplaceOpAndInfer<TOSA_OP>(rewriter, op, output_type, x, y);
+  return success();
+}
+
+// Create TOSA mul ops and infer the shape of the operation. During the
+// creation, fill in the shift value if applied.
+tosa::MulOp CreateMulOpAndInfer(PatternRewriter& rewriter, Operation* op,
+                                Type result_ty, Value input1, Value input2,
+                                int8_t shift = 0);
 
 void TrimQuantizedIntegerRangeMin(mlir::quant::UniformQuantizedType dtype,
                                   int64_t& val_min);

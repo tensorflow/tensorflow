@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,29 +16,40 @@ limitations under the License.
 #ifndef XLA_SERVICE_BUFFER_ASSIGNMENT_H_
 #define XLA_SERVICE_BUFFER_ASSIGNMENT_H_
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iosfwd>
 #include <memory>
+#include <optional>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_assignment.pb.h"
-#include "xla/service/heap_simulator.h"
+#include "xla/service/buffer_value.h"
+#include "xla/service/call_graph.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_dataflow_analysis.h"
+#include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
-#include "xla/service/tuple_points_to_analysis.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
+#include "xla/shape_util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -49,7 +60,7 @@ namespace xla {
 // elements in thread_local_computations and global_computations are in post
 // order (if computation A has an instruction which calls computation B, then A
 // will appear after B in the vector).
-Status GatherComputationsByAllocationType(
+absl::Status GatherComputationsByAllocationType(
     const HloModule* module,
     std::vector<const HloComputation*>* thread_local_computations,
     std::vector<const HloComputation*>* global_computations);
@@ -72,7 +83,6 @@ class BufferAllocation {
 
   BufferAllocation(Index index, int64_t size, LogicalBuffer::Color color)
       : index_(index), size_(size), color_(color) {}
-  ~BufferAllocation() {}
 
   // Returns the index of this allocation.
   Index index() const { return index_; }
@@ -95,7 +105,7 @@ class BufferAllocation {
     return !is_thread_local() && !is_tuple();
   }
 
-  // Whether this allocation is readonly i.e. backed by memory we cannot write
+  // Whether this allocation is read-only i.e. backed by memory we cannot write
   // to.
   bool is_readonly() const {
     // Entry parameters are generally readonly, except when they are aliased
@@ -113,6 +123,10 @@ class BufferAllocation {
   // XLA computation.
   bool is_entry_computation_parameter() const {
     return is_entry_computation_parameter_;
+  }
+
+  bool is_parameter_aliased_with_output() const {
+    return is_parameter_aliased_with_output_;
   }
 
   // Whether this allocation holds a constant.  On the CPU and GPU backends
@@ -149,6 +163,7 @@ class BufferAllocation {
   // color can reside in this allocation.
   LogicalBuffer::Color color() const { return color_; }
 
+  void set_color(LogicalBuffer::Color color) { color_ = color; }
   struct OffsetSize {
     int64_t offset = 0;
     int64_t size = 0;
@@ -165,7 +180,7 @@ class BufferAllocation {
   // to identify the memory range that a LogicalBuffer corresponds to.
   class Slice {
    public:
-    Slice() {}
+    Slice() = default;
     Slice(const BufferAllocation* allocation, int64_t offset, int64_t size)
         : allocation_(allocation), offset_(offset), size_(size) {}
 
@@ -213,6 +228,18 @@ class BufferAllocation {
   Slice GetSlice(const HloValue& buffer) const;
 
   std::string ToString() const;
+  std::string ToShortString(bool human_readable_size = false) const;
+  std::string ValuesToString() const;
+
+  // The function returns memory usage report for the values belonging to the
+  // buffer allocation. The values are grouped by their offset in the
+  // allocation. The groups are sorted by the max size(Z-A) of the values in the
+  // group. Percentile and more_than_k are used to control the number of groups
+  // being reported.
+  std::string MemoryUsageReport(const std::string& prefix,
+                                float percentile = 0.05,
+                                int64_t more_than_k = 50) const;
+
   BufferAllocationProto ToProto() const;
 
   // Whether the buffer is a parameter to or live out of the entry computation.
@@ -245,9 +272,7 @@ class BufferAllocation {
 
   // Return the set of heap traces used to assign slices to logical buffers in
   // this allocation.
-  const std::vector<HeapSimulatorTrace> HeapTraces() const {
-    return heap_traces_;
-  }
+  std::vector<HeapSimulatorTrace> HeapTraces() const { return heap_traces_; }
 
   // Returns the LogicalBuffers which are live at the point of peak memory usage
   // for this allocation. The point of peak memory usage is the point at which
@@ -348,7 +373,7 @@ class BufferAllocation {
 };
 
 // Add stream operators for nicer output of CHECK/RET_CHECK failures.
-std::ostream& operator<<(std::ostream& out, const BufferAllocation& s);
+std::ostream& operator<<(std::ostream& out, const BufferAllocation& buffer);
 std::ostream& operator<<(std::ostream& out, const BufferAllocation::Slice& s);
 
 // This class encapsulates an assignment of the LogicalBuffers in an XLA
@@ -368,14 +393,6 @@ class BufferAssignment {
   // Returns the vector containing all buffer allocations in this assignment.
   const std::vector<BufferAllocation>& Allocations() const {
     return allocations_;
-  }
-
-  // This is similar to copying Allocations(), but since it's moved out, it
-  // preserves the addresses. Since BufferAllocation::Slice keeps a
-  // BufferAllocation*, and some backends keep BufferAllocation::Slice in
-  // xla::Executables, migrating off the use of addresses can be hard.
-  std::vector<BufferAllocation> ReleaseAllocations() {
-    return std::move(allocations_);
   }
 
   // Returns the total size allocation holding all temporary buffers.
@@ -429,16 +446,16 @@ class BufferAssignment {
   // Convenience function which returns the unique slice containing the buffer
   // at the given index of the given instruction. If a slice is not assigned or
   // the slice cannot be determined at compile time then an error is returned.
-  StatusOr<BufferAllocation::Slice> GetUniqueSlice(
+  absl::StatusOr<BufferAllocation::Slice> GetUniqueSlice(
       const HloInstruction* instruction, const ShapeIndex& index) const;
   // Like GetUniqueSlice but fixes the index to the top-level of the shape
   // (index = {}).
-  StatusOr<BufferAllocation::Slice> GetUniqueTopLevelSlice(
+  absl::StatusOr<BufferAllocation::Slice> GetUniqueTopLevelSlice(
       const HloInstruction* instruction) const;
   // Like GetUniqueTopLevelSlice but returns the slice for the output of the
   // entry computation of the HLO module (ie, the result of the XLA
   // computation).
-  StatusOr<BufferAllocation::Slice> GetUniqueTopLevelOutputSlice() const;
+  absl::StatusOr<BufferAllocation::Slice> GetUniqueTopLevelOutputSlice() const;
 
   // Returns the set BufferValues which may be the source of the value at the
   // given index and instruction.
@@ -480,18 +497,31 @@ class BufferAssignment {
   // Returns the HloLiveRange object used to construct this assignment.
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
+  // Is in use by many compilers to dump the buffer-assignment info.
   std::string ToString() const;
+
+  // Returns a memory usage report with the list of buffer allocations ordered
+  // by the size(Z-A) and the values assigned to each buffer allocation.
+  std::string MemoryUsageReport(float percentile = 0.05,
+                                int64_t more_than_k = 50) const;
   // Verbose string tailored to debugging OOMs, includes the Hlo op metadata for
   // every buffer associated with each allocation.
   std::string ToVerboseString(size_t max_buffers_to_show) const;
+
+  // Is in use by tpu compiler to dump the buffer info.
   std::string BufferInfoString() const;
 
   // Convert BufferAssignment to or from a proto.
   BufferAssignmentProto ToProto() const;
-  static StatusOr<std::unique_ptr<BufferAssignment>> FromProto(
+  static absl::StatusOr<std::unique_ptr<BufferAssignment>> FromProto(
       const BufferAssignmentProto& proto, const HloModule* module,
       BufferValue::SizeFunction buffer_size,
       HloDataflowAnalysis::CanShareBuffer can_share_buffer);
+
+  // Returns string representation of buffer assignment statistics. Also
+  // calculates and returns the total fragmentation if
+  // report_total_fragmentation is true.
+  std::string StatsString(bool report_total_fragmentation = false) const;
 
   // Statistics for the assignment.  Values initialized to -1 are not always
   // collected; fragmentation is only collected for instructions that have a
@@ -508,9 +538,6 @@ class BufferAssignment {
     int64_t preallocated_temp_fragmentation_bytes = -1;
     int64_t total_allocation_count = 0;
     int64_t total_allocation_bytes = 0;
-    int64_t total_fragmentation_bytes = -1;
-
-    std::string ToString() const;
   };
   const Stats& GetStats() const { return stats_; }
 
@@ -574,10 +601,14 @@ class BufferAssignment {
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
   void CombineTempAllocations(
-      const absl::flat_hash_set<BufferValue::Color>& private_stack_colors);
+      const absl::flat_hash_set<BufferValue::Color>& private_stack_colors,
+      std::optional<BufferValue::Color> temp_buffer_color);
 
   // Computes stats for the assignment, to be retrieved by GetStats.
-  Status ComputeSummaryStats();
+  void ComputeSummaryStats();
+
+  // Calculates and returns the total fragmentation in bytes.
+  absl::StatusOr<int64_t> ComputeTotalFragmentationBytes() const;
 
   // The vector of buffer allocations. Indexed by BufferAllocation::Index.
   std::vector<BufferAllocation> allocations_;
@@ -616,9 +647,10 @@ class BufferAssignment {
 // A class which constructs a buffer assignment.
 class BufferAssigner {
  public:
-  using Colorer = std::function<Status(HloAliasAnalysis*, const HloOrdering&)>;
-  using MustNotLiveOut =
-      std::function<bool(const HloInstruction*, const ShapeIndex&)>;
+  using Colorer =
+      std::function<absl::Status(HloAliasAnalysis*, const HloOrdering&)>;
+  using MustNotLiveOut = std::function<bool(
+      const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
   using PrivateStacks = absl::flat_hash_map<BufferValue::Color,
                                             std::vector<const HloComputation*>>;
 
@@ -633,7 +665,7 @@ class BufferAssigner {
           value->set_color(BufferValue::Color(0));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     };
   }
 
@@ -645,7 +677,7 @@ class BufferAssigner {
   // LogicalBuffer. If preset_assignments is provided, those pre-set assignment
   // offsets will be used. The caller guarantees that those assignments are
   // valid and they do not overwrite each other.
-  static StatusOr<std::unique_ptr<BufferAssignment>> Run(
+  static absl::StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
@@ -659,7 +691,8 @@ class BufferAssigner {
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare = nullptr,
       std::optional<BufferAssignment::BufferIsolationOptions>
-          isolation_options = std::nullopt);
+          isolation_options = std::nullopt,
+      std::optional<BufferValue::Color> temp_buffer_color = std::nullopt);
 
  private:
   BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
@@ -673,7 +706,7 @@ class BufferAssigner {
   virtual ~BufferAssigner() = default;
 
   // Create a buffer assignment.
-  StatusOr<std::unique_ptr<BufferAssignment>> CreateAssignment(
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> CreateAssignment(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
@@ -681,14 +714,14 @@ class BufferAssigner {
       const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare,
-      std::optional<BufferAssignment::BufferIsolationOptions>
-          isolation_options);
+      std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
+      std::optional<BufferValue::Color> temp_buffer_color);
 
   // Assigns buffers to the instructions in the given computations. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is
   // true, then all assigned buffers have the is_thread_local flag set to
   // true.
-  Status AssignBuffersForComputations(
+  absl::Status AssignBuffersForComputations(
       const std::vector<const HloComputation*>& computations,
       bool is_thread_local,
       absl::flat_hash_map<const HloComputation*,
@@ -702,12 +735,12 @@ class BufferAssigner {
 
   // Assigns pre-set assignments, if provided. These assignments will be added
   // to assigned_buffers and skip buffer allocation.
-  Status AssignPresetBuffers(
+  absl::Status AssignPresetBuffers(
       absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
       BufferAssignment* assignment);
 
   // Assigns a single hlo buffer to an HLO allocation.
-  Status AssignSingleHloBuffer(
+  absl::Status AssignSingleHloBuffer(
       const HloBuffer* hlo_buffer, bool is_thread_local,
       absl::flat_hash_map<const HloComputation*,
                           absl::flat_hash_set<const HloValue*>>*
@@ -720,7 +753,7 @@ class BufferAssigner {
   // assignment->liveness().hlo_ordering().SequentialOrder. If
   // 'run_whole_module_heap_simulation' is true, the heap simulation will be run
   // assuming all global computations are sequentially ordered.
-  Status AssignBuffersWithSequentialOrdering(
+  absl::Status AssignBuffersWithSequentialOrdering(
       const absl::flat_hash_map<const HloComputation*,
                                 absl::flat_hash_set<const HloValue*>>&
           buffers_to_assign_sequentially,

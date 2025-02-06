@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "IteratorGetNextSync"
   input_arg {
     name: "iterator"

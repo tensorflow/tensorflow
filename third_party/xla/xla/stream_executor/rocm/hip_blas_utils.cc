@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/hip_blas_utils.h"
 
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/blas.h"
 
@@ -23,45 +24,60 @@ limitations under the License.
 namespace stream_executor {
 namespace rocm {
 
-tsl::Status ToStatus(hipblasStatus_t status, const char* prefix) {
+absl::Status ToStatus(hipblasStatus_t status, const char* prefix) {
   if (status != HIPBLAS_STATUS_SUCCESS) {
-    return tsl::errors::Internal(absl::StrCat(
+    return absl::InternalError(absl::StrCat(
         prefix, ": ",
         "HipblasLt error " + std::to_string(static_cast<int>(status))));
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-hipblasDatatype_t AsHipblasDataType(blas::DataType type) {
+hipDataType AsHipblasDataType(blas::DataType type) {
   switch (type) {
     case blas::DataType::kF8E5M2:
+    case blas::DataType::kF8E4M3:
     case blas::DataType::kF8E4M3FN:
-      LOG(FATAL) << "hipblaslt does not support F8 yet";
+    case blas::DataType::kF8E3M4:
+    case blas::DataType::kF4E2M1FN:
+    case blas::DataType::kF8E8M0FNU:
+      LOG(FATAL) << "hipblaslt does not support F8E5M2, F8E4M3, F8E4M3FN, "
+                    "F8E3M4, F4E2M1FN and F8E8M0FNU";
+#if TF_ROCM_VERSION >= 60000
+    case blas::DataType::kF8E5M2FNUZ:
+      return HIP_R_8F_E5M2_FNUZ;
+    case blas::DataType::kF8E4M3FNUZ:
+      return HIP_R_8F_E4M3_FNUZ;
+#else
+    case blas::DataType::kF8E5M2FNUZ:
+    case blas::DataType::kF8E4M3FNUZ:
+      LOG(FATAL) << "hipblaslt only supports F8 in ROCm 6.0 and above";
+#endif
     case blas::DataType::kHalf:
-      return HIPBLAS_R_16F;
+      return HIP_R_16F;
     case blas::DataType::kBF16:
-      return HIPBLAS_R_16B;
+      return HIP_R_16BF;
     case blas::DataType::kFloat:
-      return HIPBLAS_R_32F;
+      return HIP_R_32F;
     case blas::DataType::kDouble:
-      return HIPBLAS_R_64F;
+      return HIP_R_64F;
     case blas::DataType::kInt8:
-      return HIPBLAS_R_8I;
+      return HIP_R_8I;
     case blas::DataType::kInt32:
-      return HIPBLAS_R_32I;
+      return HIP_R_32I;
     case blas::DataType::kComplexFloat:
-      return HIPBLAS_C_32F;
+      return HIP_C_32F;
     case blas::DataType::kComplexDouble:
-      return HIPBLAS_C_64F;
+      return HIP_C_64F;
     default:
       LOG(FATAL) << "unknown data type";
   }
 }
 
-hipblasLtComputeType_t AsHipblasComputeType(blas::ComputationType type) {
+hipblasComputeType_t AsHipblasComputeType(blas::ComputationType type) {
   if (type == blas::ComputationType::kF32 ||
       type == blas::ComputationType::kTF32AsF32)
-    return HIPBLASLT_COMPUTE_F32;
+    return HIPBLAS_COMPUTE_32F;
   else
     LOG(FATAL) << "unsupported hipblaslt computation type";
 }

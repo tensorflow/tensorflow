@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteOpaqueDelegateBuilder Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteOpaqueDelegateBuilder</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p><code><a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a></code> is used for constructing <code>TfLiteOpaqueDelegate</code>, see <code>TfLiteOpaqueDelegateCreate</code> below. </p>
+  <h2>Summary</h2>
+  <p>Note: This struct is not ABI stable.</p>
+  <p>For forward source compatibility <code><a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a></code> objects should be brace-initialized, so that all fields (including any that might be added in the future) get zero-initialized. The purpose of each field is exactly the same as with <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>.</p>
+  <p>WARNING: This is an experimental interface that is subject to change. </p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_opaque_delegate_builder_1a5e9463b374756c6de8431be431175540">CopyFromBufferHandle</a>)(TfLiteOpaqueContext *context, TfLiteOpaqueDelegate *delegate, void *data, TfLiteBufferHandle buffer_handle, TfLiteOpaqueTensor *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Copies the data from delegate buffer handle into raw memory of the given <code>tensor</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_opaque_delegate_builder_1a827f5c9feda6c97979f29db928ef451b">CopyToBufferHandle</a>)(TfLiteOpaqueContext *context, TfLiteOpaqueDelegate *delegate, void *data, TfLiteBufferHandle buffer_handle, TfLiteOpaqueTensor *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Copies the data from raw memory of the given <code>tensor</code> to delegate buffer handle. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_opaque_delegate_builder_1aa92d66ba53e7b29899ea59c2cc2ad5e7">FreeBufferHandle</a>)(TfLiteOpaqueContext *context, TfLiteOpaqueDelegate *delegate, void *data, TfLiteBufferHandle *handle)</code>
+      </td>
+      <td>
+        <div>
+          <code>void(*</code>
+        </div>
+        <div>Frees the Delegate Buffer Handle. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_opaque_delegate_builder_1a02bf326e9df6018285ade841c4f0363a">Prepare</a>)(TfLiteOpaqueContext *context, TfLiteOpaqueDelegate *delegate, void *data)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Invoked by ModifyGraphWithDelegate. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_opaque_delegate_builder_1a2c974a9e2ba6efabd530e3534f65176a">data</a></code>
+      </td>
+      <td>
+        <div>
+          <code>void *</code>
+        </div>
+        <div>Data that delegate needs to identify itself. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_opaque_delegate_builder_1a87d94c234238c4f44fd353ff5b7c91eb">flags</a></code>
+      </td>
+      <td>
+        <div>
+          <code>int64_t</code>
+        </div>
+        <div>Bitmask flags. See the comments in <code>TfLiteDelegateFlags</code>. </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_opaque_delegate_builder_1a5e9463b374756c6de8431be431175540">
+    <h3>CopyFromBufferHandle</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteOpaqueDelegateBuilder::CopyFromBufferHandle)(TfLiteOpaqueContext *context, TfLiteOpaqueDelegate *delegate, void *data, TfLiteBufferHandle buffer_handle, TfLiteOpaqueTensor *tensor)</pre>
+    <div>
+      <p>Copies the data from delegate buffer handle into raw memory of the given <code>tensor</code>. </p>
+      <p>Note that the delegate is allowed to allocate the raw bytes as long as it follows the rules for kTfLiteDynamic tensors, in which case this cannot be null. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_opaque_delegate_builder_1a827f5c9feda6c97979f29db928ef451b">
+    <h3>CopyToBufferHandle</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteOpaqueDelegateBuilder::CopyToBufferHandle)(TfLiteOpaqueContext *context, TfLiteOpaqueDelegate *delegate, void *data, TfLiteBufferHandle buffer_handle, TfLiteOpaqueTensor *tensor)</pre>
+    <div>
+      <p>Copies the data from raw memory of the given <code>tensor</code> to delegate buffer handle. </p>
+      <p>This can be null if the delegate doesn't use its own buffer. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_opaque_delegate_builder_1aa92d66ba53e7b29899ea59c2cc2ad5e7">
+    <h3>FreeBufferHandle</h3>
+    <pre class="prettyprint">void(* TfLiteOpaqueDelegateBuilder::FreeBufferHandle)(TfLiteOpaqueContext *context, TfLiteOpaqueDelegate *delegate, void *data, TfLiteBufferHandle *handle)</pre>
+    <div>
+      <p>Frees the Delegate Buffer Handle. </p>
+      <p>Note: This only frees the handle, but this doesn't release the underlying resource (e.g. textures). The resources are either owned by application layer or the delegate. This can be null if the delegate doesn't use its own buffer. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_opaque_delegate_builder_1a02bf326e9df6018285ade841c4f0363a">
+    <h3>Prepare</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteOpaqueDelegateBuilder::Prepare)(TfLiteOpaqueContext *context, TfLiteOpaqueDelegate *delegate, void *data)</pre>
+    <div>
+      <p>Invoked by ModifyGraphWithDelegate. </p>
+      <p>This prepare is called, giving the delegate a view of the current graph through <code>TfLiteContext*</code>. It typically will look at the nodes and call <code>ReplaceNodeSubsetsWithDelegateKernels()</code> to ask the TensorFlow lite runtime to create macro-nodes to represent delegated subgraphs of the original graph. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_opaque_delegate_builder_1a2c974a9e2ba6efabd530e3534f65176a">
+    <h3>data</h3>
+    <pre class="prettyprint">void * TfLiteOpaqueDelegateBuilder::data</pre>
+    <div>
+      <p>Data that delegate needs to identify itself. </p>
+      <p>This data is owned by the delegate. The delegate is owned in the user code, so the delegate is responsible for deallocating this when it is destroyed. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_opaque_delegate_builder_1a87d94c234238c4f44fd353ff5b7c91eb">
+    <h3>flags</h3>
+    <pre class="prettyprint">int64_t TfLiteOpaqueDelegateBuilder::flags</pre>
+    <div>
+      <p>Bitmask flags. See the comments in <code>TfLiteDelegateFlags</code>. </p>
+    </div>
+  </div>
+</body>
+</html>

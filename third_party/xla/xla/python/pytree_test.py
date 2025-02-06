@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2023 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 import collections
+import dataclasses
+import gc
 
 from absl.testing import absltest
 
@@ -42,6 +44,15 @@ def from_iterable(state, values):
 
 
 registry.register_node(ExampleType2, ExampleType2.to_iterable, from_iterable)
+
+
+@dataclasses.dataclass
+class Custom:
+  a: int
+  b: str
+
+
+registry.register_dataclass_node(Custom, ["a"], ["b"])
 
 
 class PyTreeTest(absltest.TestCase):
@@ -86,6 +97,47 @@ class PyTreeTest(absltest.TestCase):
     self.roundtrip_node_data(o)
     self.roundtrip_node_data(ExampleType(field0=o, field1=o))
     self.roundtrip_node_data(ExampleType2(field0=o, field1=o))
+
+  def testCompose(self):
+    x = registry.flatten(0)[1]
+    y = registry.flatten((0, 0))[1]
+    self.assertEqual((x.compose(y)).num_leaves, 2)
+
+  def testDataclassMakeFromNodeData(self):
+    c = Custom(1, "a")
+    c_leafs, c_tree = registry.flatten(c)
+    c_tree2 = c_tree.make_from_node_data_and_children(
+        registry, c_tree.node_data(), c_tree.children()
+    )
+    self.assertEqual(c_tree2.unflatten(c_leafs), c)
+    self.assertEqual(str(c_tree2), str(c_tree))
+
+  def testTpTraverse(self):
+    self.assertContainsSubset(
+        [
+            pytree.PyTreeRegistry,
+            ExampleType2,
+            ExampleType2.to_iterable,
+            from_iterable,
+        ],
+        gc.get_referents(registry),
+    )
+    k1 = "k1"
+    k2 = "k2"
+
+    t = ExampleType("a", "b")
+    _, treedef = registry.flatten([1, {k1: 2, k2: t}, 5, t])
+
+    self.assertContainsSubset(
+        [
+            pytree.PyTreeDef,
+            registry,
+            k1,
+            k2,
+            ExampleType,
+        ],
+        gc.get_referents(treedef),
+    )
 
 
 if __name__ == "__main__":

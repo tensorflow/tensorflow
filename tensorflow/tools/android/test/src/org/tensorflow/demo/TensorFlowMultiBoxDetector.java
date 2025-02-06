@@ -116,7 +116,7 @@ public class TensorFlowMultiBoxDetector implements Classifier {
     try {
       d.loadCoderOptions(assetManager, locationFilename, d.boxPriors);
     } catch (final IOException e) {
-      throw new RuntimeException("Error initializing box priors from " + locationFilename);
+      throw new RuntimeException("Error initializing box priors from " + locationFilename, e);
     }
 
     // Pre-allocate buffers.

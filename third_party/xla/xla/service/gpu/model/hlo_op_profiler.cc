@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/model/hlo_op_profiler.h"
 
-#include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <random>
@@ -24,6 +22,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/debug_options_flags.h"
@@ -35,14 +36,16 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/test_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 #ifdef GOOGLE_CUDA
 #include "xla/backends/profiler/gpu/cupti_collector.h"
@@ -53,7 +56,8 @@ namespace xla {
 namespace gpu {
 
 #ifdef GOOGLE_CUDA
-class CuptiKernelTracer : public profiler::CuptiTraceCollector {
+class CuptiKernelTracer : public HloOpProfiler::KernelTracer,
+                          public profiler::CuptiTraceCollector {
  public:
   CuptiKernelTracer()
       : profiler::CuptiTraceCollector({}),
@@ -67,7 +71,7 @@ class CuptiKernelTracer : public profiler::CuptiTraceCollector {
     cupti_tracer_->Enable(options, this);
   }
 
-  uint64_t getMedianKernelTimeNs() && {
+  uint64_t getMedianKernelTimeNs() && override {
     cupti_tracer_->Disable();  // Also flushes buffer.
     if (kernel_times_ns_.empty()) {
       LOG(ERROR) << "No kernel events";
@@ -102,13 +106,18 @@ class CuptiKernelTracer : public profiler::CuptiTraceCollector {
   std::vector<uint64_t> kernel_times_ns_;
 };
 #else
-class CuptiKernelTracer {
+class CuptiKernelTracer : public HloOpProfiler::KernelTracer {
  public:
   uint64_t getMedianKernelTimeNs() && {
     LOG(FATAL) << "Not built with --config=cuda";
   }
 };
 #endif
+
+/*static*/ std::unique_ptr<HloOpProfiler::KernelTracer>
+HloOpProfiler::GetKernelTracer() {
+  return std::make_unique<CuptiKernelTracer>();
+}
 
 /*static*/ std::unique_ptr<HloModule> HloOpProfiler::MakeModuleForMeasurements(
     HloOpcode op, PrimitiveType data_type, int chain_length) {
@@ -149,7 +158,7 @@ class CuptiKernelTracer {
   return module;
 }
 
-StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
+absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
     HloOpcode op, PrimitiveType data_type, int chain_length) {
 #ifndef GOOGLE_CUDA
   return FailedPrecondition("Not built with --config=cuda");
@@ -157,6 +166,9 @@ StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
 
   std::unique_ptr<HloModule> module =
       MakeModuleForMeasurements(op, data_type, chain_length);
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  TF_RETURN_IF_ERROR(verifier.Run(&*module).status());
 
   std::minstd_rand0 engine;
   // Some operations have dynamic duration that depends on the input values.
@@ -168,7 +180,7 @@ StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
                                                       /*use_large_range=*/true)
                                         .value();
   const absl::Time t_compile_start = absl::Now();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> ex,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> ex,
                       runner_.CreateExecutable(std::move(module),
                                                /*run_hlo_passes=*/false));
   if (absl::Now() - t_compile_start > absl::Seconds(10)) {
@@ -201,7 +213,7 @@ HloOpProfiler::HloOpProfiler(HloRunner& runner)
       << "Failed to measure kernel runtime";
 }
 
-StatusOr<HloInstructionProfile> HloOpProfiler::MeasureClockCyclesPerOp(
+absl::StatusOr<HloInstructionProfile> HloOpProfiler::MeasureClockCyclesPerOp(
     HloOpcode op, PrimitiveType data_type) {
   VLOG(2) << "Measuring " << HloOpcodeString(op) << " "
           << primitive_util::LowercasePrimitiveTypeName(data_type);

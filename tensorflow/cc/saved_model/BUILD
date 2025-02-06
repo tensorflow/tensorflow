@@ -69,6 +69,7 @@ cc_library(
         ":metrics",
         ":util",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status:statusor",
     ] + if_google([
         "//tensorflow/tools/proto_splitter:merge",
     ]) + if_not_mobile([
@@ -109,7 +110,7 @@ cc_library(
         "//tensorflow/core:direct_session",
         "//tensorflow/core:all_kernels",
     ] + if_google(
-        ["@local_tsl//tsl/platform/default/build_config:tensorflow_platform_specific"],
+        ["//tensorflow/core/platform/default/build_config:tensorflow_platform_specific"],
         [],
     )) + if_not_mobile([
         "//tensorflow/core:core_cpu",
@@ -270,8 +271,6 @@ py_strict_binary(
         ":saved_model_asset_data",
         ":saved_model_static_hashtable_asset_data",
     ],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/compat:v2_compat",
@@ -296,8 +295,6 @@ py_strict_binary(
 # py_strict_binary(
 #     name = "testdata/generate_chunked_models",
 #     srcs = ["testdata/generate_chunked_models.py"],
-#     python_version = "PY3",
-#     srcs_version = "PY3",
 #     deps = [
 #         "//tensorflow/python/compat:v2_compat",
 #         "//tensorflow/python/eager:def_function",
@@ -500,9 +497,11 @@ cc_library(
         "//tensorflow/core/graph/regularization:util",
         "//tensorflow/core/util/tensor_bundle:naming",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:types",
     ] + if_not_mobile([
@@ -520,8 +519,9 @@ cc_library(
     name = "fingerprinting",
     hdrs = ["fingerprinting.h"],
     visibility = [
-        "//learning/brain/contrib/hub/server/distro:__subpackages__",
+        "//learning/brain/contrib/hub/server/ingestion:__subpackages__",
         "//learning/brain/contrib/tpu_modeling:__subpackages__",
+        "//learning/metadata/artifactoid/cc:__subpackages__",
         "//learning/tfx/pipeline/util:__subpackages__",
         "//tensorflow/python/saved_model:__subpackages__",
     ],
@@ -541,15 +541,11 @@ cc_library(
     name = "fingerprinting_utils",
     srcs = ["fingerprinting_utils.cc"],
     hdrs = ["fingerprinting_utils.h"],
-    visibility = [
-        "//tensorflow:__pkg__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":constants",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/graph/regularization:simple_delete",
-        "//tensorflow/core/graph/regularization:util",
         "//tensorflow/core/util/tensor_bundle:naming",
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "//tensorflow/tools/proto_splitter:merge",
@@ -557,7 +553,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_absl//absl/strings:str_format",
         "@riegeli//riegeli/bytes:fd_reader",
         "@riegeli//riegeli/records:record_reader",
     ],
@@ -587,12 +583,12 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

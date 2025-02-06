@@ -15,9 +15,11 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 
 #include <array>
+#include <cstdint>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 
 namespace mlrt {
 namespace bc {

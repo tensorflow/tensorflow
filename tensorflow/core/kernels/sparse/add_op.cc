@@ -49,8 +49,8 @@ class CSRSparseMatrixAddFunctor {
                                      const T beta)
       : ctx_(ctx), alpha_(alpha), beta_(beta) {}
 
-  Status operator()(const CSRSparseMatrix& a, const CSRSparseMatrix& b,
-                    CSRSparseMatrix* c) {
+  absl::Status operator()(const CSRSparseMatrix& a, const CSRSparseMatrix& b,
+                          CSRSparseMatrix* c) {
     TensorShape a_tensor_shape;
     TensorShape b_tensor_shape;
     TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
@@ -175,7 +175,7 @@ class CSRSparseMatrixAddFunctor {
       TF_RETURN_IF_ERROR(csr_geam.Compute(a_comp, b_comp, &c_comp, workspace));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

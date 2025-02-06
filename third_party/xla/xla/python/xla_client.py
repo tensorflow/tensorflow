@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import atexit
+from collections.abc import Mapping, Sequence
 import contextlib
 import enum  # pylint: disable=g-bad-import-order
 import gzip
@@ -24,11 +25,12 @@ import inspect
 import logging
 import os
 import threading
-from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Protocol, Union
 
-from . import xla_extension as _xla
 import ml_dtypes
 import numpy as np
+
+from . import xla_extension as _xla
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
 # Python bindings are currently packaged both as part of jaxlib and as part
@@ -42,15 +44,16 @@ import numpy as np
 # Pylint has false positives for type annotations.
 # pylint: disable=invalid-sequence-index
 
+ifrt_programs = _xla.ifrt_programs
 ops = _xla.ops
 profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 207
+_version = 311
 
 # Version number for MLIR:Python components.
-mlir_api_version = 54
+mlir_api_version = 57
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -59,14 +62,27 @@ xla_platform_names = {
 
 logger = logging.getLogger(__name__)
 
-_NameValueMapping = Mapping[str, Union[str, int, List[int], float, bool]]
+_NameValueMapping = Mapping[str, Union[str, int, list[int], float, bool]]
 
 
-def make_cpu_client() -> ...:
-  register_custom_call_handler(
-      'cpu', _xla.register_custom_call_target
+def make_cpu_client(
+    asynchronous=True,
+    distributed_client=None,
+    node_id=0,
+    num_nodes=1,
+    collectives=None,
+    num_devices=None,
+) -> ...:
+  register_custom_call_handler('cpu', _xla.register_custom_call_target)
+  register_custom_type_id_handler('cpu', _xla.register_custom_type_id)
+  return _xla.get_tfrt_cpu_client(
+      asynchronous=asynchronous,
+      distributed_client=distributed_client,
+      node_id=node_id,
+      num_nodes=num_nodes,
+      collectives=collectives,
+      num_devices=num_devices,
   )
-  return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
 def make_gpu_client(
@@ -76,15 +92,11 @@ def make_gpu_client(
     platform_name=None,
     allowed_devices=None,
     mock=False,
+    mock_gpu_topology=None,
 ):
   """Returns a GPU client. BFC allocator is used by default."""
-  allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
-  memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
-  preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE')
-  if allocator not in ('default', 'platform', 'bfc', 'cuda_async'):
-    raise ValueError(
-        'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", '
-        '"bfc", or "cuda_async", got "%s"' % allocator)
+  options = generate_pjrt_gpu_plugin_options()
+  allocator = options['allocator']
   config = _xla.GpuAllocatorConfig()
   if allocator == 'default':
     config.kind = _xla.GpuAllocatorConfig.Kind.DEFAULT
@@ -94,15 +106,16 @@ def make_gpu_client(
     config.kind = _xla.GpuAllocatorConfig.Kind.BFC
   if allocator == 'cuda_async':
     config.kind = _xla.GpuAllocatorConfig.Kind.CUDA_ASYNC
-  if memory_fraction:
-    config.memory_fraction = float(memory_fraction)
-  config.preallocate = preallocate not in ('0', 'false', 'False')
-  register_custom_call_handler(
-      'CUDA', _xla.register_custom_call_target
-  )
-  register_custom_call_handler(
-      'ROCM', _xla.register_custom_call_target
-  )
+  if 'memory_fraction' in options:
+    config.memory_fraction = options['memory_fraction']
+  if 'preallocate' in options:
+    config.preallocate = options['preallocate']
+  if 'collective_memory_size' in options:
+    config.collective_memory_size = options['collective_memory_size']
+  register_custom_call_handler('CUDA', _xla.register_custom_call_target)
+  register_custom_call_handler('ROCM', _xla.register_custom_call_target)
+  register_custom_type_id_handler('CUDA', _xla.register_custom_type_id)
+  register_custom_type_id_handler('ROCM', _xla.register_custom_type_id)
 
   return _xla.get_gpu_client(
       asynchronous=True,
@@ -113,10 +126,11 @@ def make_gpu_client(
       platform_name=platform_name,
       allowed_devices=allowed_devices,
       mock=mock,
+      mock_gpu_topology=mock_gpu_topology,
   )
 
 
-def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
+def make_tfrt_tpu_c_api_client(options: _NameValueMapping | None = None):
   assert pjrt_plugin_loaded('tpu')
   if not pjrt_plugin_initialized('tpu'):
     initialize_pjrt_plugin('tpu')
@@ -136,12 +150,23 @@ def make_tfrt_tpu_c_api_device_topology(
   return _xla.get_default_c_api_topology('tpu', topology_name, dict(**kwargs))
 
 
+def make_c_api_device_topology(
+    c_api: Any, topology_name: str = '', **kwargs
+) -> DeviceTopology:
+  """Creates a PJRT C API TopologyDescription."""
+  return _xla.get_c_api_topology(c_api, topology_name, dict(**kwargs))
+
+
 def pjrt_plugin_loaded(plugin_name: str) -> bool:
   return _xla.pjrt_plugin_loaded(plugin_name)
 
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> Any:
-  return _xla.load_pjrt_plugin(plugin_name, library_path)
+  return _xla.load_pjrt_plugin(plugin_name, library_path, c_api=None)
+
+
+def load_pjrt_plugin_with_c_api(plugin_name: str, c_api: Any) -> None:
+  return _xla.load_pjrt_plugin(plugin_name, None, c_api)
 
 
 def pjrt_plugin_initialized(plugin_name: str) -> bool:
@@ -161,8 +186,8 @@ def initialize_pjrt_plugin(plugin_name: str) -> None:
 
 def make_c_api_client(
     plugin_name: str,
-    options: Optional[_NameValueMapping] = None,
-    distributed_client: Optional[_xla.DistributedRuntimeClient] = None,
+    options: _NameValueMapping | None = None,
+    distributed_client: _xla.DistributedRuntimeClient | None = None,
 ):
   """Creates a PJRT C API client for a PJRT plugin.
 
@@ -182,15 +207,59 @@ def make_c_api_client(
   return _xla.get_c_api_client(plugin_name, options, distributed_client)
 
 
-def make_tpu_client(library_path: Optional[str] = None):
+def make_tpu_client(
+    library_path: str | None = None, options: _NameValueMapping | None = None
+):
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
   if not pjrt_plugin_loaded('tpu'):
-    load_pjrt_plugin_dynamically('tpu', library_path or 'libtpu.so')
-  return make_tfrt_tpu_c_api_client()
+    c_api = load_pjrt_plugin_dynamically('tpu', library_path or 'libtpu.so')
+    profiler.register_plugin_profiler(c_api)
+  return make_tfrt_tpu_c_api_client(options)
+
+
+def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:
+  """Generates the PjRt GPU plugin options.
+
+  Returns:
+    A dictionary of plugin options.
+  """
+
+  options = {}
+  options['platform_name'] = 'cuda'
+  allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
+  memory_fraction = os.getenv('XLA_CLIENT_MEM_FRACTION', '')
+  deprecated_memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION', '')
+  if deprecated_memory_fraction:
+    if memory_fraction:
+      raise ValueError(
+          'XLA_CLIENT_MEM_FRACTION is specified together '
+          'with XLA_PYTHON_CLIENT_MEM_FRACTION. '
+          'Remove the latter one, it is deprecated.'
+      )
+    else:
+      memory_fraction = deprecated_memory_fraction
+  preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE', '')
+  collective_memory_size = os.getenv(
+      'XLA_PYTHON_CLIENT_COLLECTIVE_MEM_SIZE_MB', ''
+  )
+  if allocator not in ('default', 'platform', 'bfc', 'cuda_async'):
+    raise ValueError(
+        'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", '
+        '"bfc", or "cuda_async", got "%s"' % allocator
+    )
+  options['allocator'] = allocator
+  if memory_fraction:
+    options['memory_fraction'] = float(memory_fraction)
+  if preallocate:
+    options['preallocate'] = preallocate not in ('false', 'False', '0')
+  if collective_memory_size:
+    options['collective_memory_size'] = int(collective_memory_size) * (1 << 20)
+  return options
 
 
 class OpMetadata:
   """Python representation of a xla.OpMetadata protobuf."""
+
   __slots__ = ('op_type', 'op_name', 'source_file', 'source_line')
 
   def __init__(self, op_type='', op_name='', source_file='', source_line=0):
@@ -205,15 +274,20 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
   full_filename, lineno = inspect.stack()[skip_frames][1:3]
   filename = os.path.basename(full_filename)
   return OpMetadata(
-      op_type=op_type,
-      op_name=op_name,
-      source_file=filename,
-      source_line=lineno)
+      op_type=op_type, op_name=op_name, source_file=filename, source_line=lineno
+  )
 
 
 PrimitiveType = _xla.PrimitiveType
 
 bfloat16 = ml_dtypes.bfloat16
+# TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+# Also, it would be better to conditionally import these based on whether they
+# are in the current version of ml_dtypes.
+# float4_e2m1fn = ml_dtypes.float4_e2m1fn
+# float8_e3m4 = ml_dtypes.float8_e3m4
+# float8_e4m3 = ml_dtypes.float8_e4m3
+# float8_e8m0fnu = ml_dtypes.float8_e8m0fnu
 float8_e4m3fn = ml_dtypes.float8_e4m3fn
 float8_e4m3b11fnuz = ml_dtypes.float8_e4m3b11fnuz
 float8_e4m3fnuz = ml_dtypes.float8_e4m3fnuz
@@ -222,14 +296,21 @@ float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
+    PrimitiveType.S4: np.dtype('int4'),
     PrimitiveType.S8: np.dtype('int8'),
     PrimitiveType.S16: np.dtype('int16'),
     PrimitiveType.S32: np.dtype('int32'),
     PrimitiveType.S64: np.dtype('int64'),
+    PrimitiveType.U4: np.dtype('uint4'),
     PrimitiveType.U8: np.dtype('uint8'),
     PrimitiveType.U16: np.dtype('uint16'),
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
+    # TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+    # PrimitiveType.F4E2M1FN: np.dtype(float4_e2m1fn),
+    # PrimitiveType.F8E3M4: np.dtype(float8_e3m4),
+    # PrimitiveType.F8E4M3: np.dtype(float8_e4m3),
+    # PrimitiveType.F8E8M0FNU: np.dtype(float8_e8m0fnu),
     PrimitiveType.F8E4M3FN: np.dtype(float8_e4m3fn),
     PrimitiveType.F8E4M3B11FNUZ: np.dtype(float8_e4m3b11fnuz),
     PrimitiveType.F8E5M2: np.dtype(float8_e5m2),
@@ -347,7 +428,8 @@ def shape_from_pyval(pyval, layout: Sequence[int] | None = None):
     if isinstance(pyval, tuple):
       if layout is not None:
         raise NotImplementedError(
-            'shape_from_pyval does not support layouts for tuple shapes')
+            'shape_from_pyval does not support layouts for tuple shapes'
+        )
       return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
     else:
       return Shape.array_shape(pyval.dtype, np.shape(pyval), layout)
@@ -406,47 +488,14 @@ HostBufferSemantics = _xla.HostBufferSemantics
 # There are different implementations of Executable for different backends.
 
 
-def execute_with_python_values(executable, arguments, backend):
-  """Execute on one replica with Python values as arguments and output."""
-
-  def put(arg):
-    return backend.buffer_from_pyval(arg, device=executable.local_devices()[0])
-
-  arguments = [put(arg) for arg in arguments]
-  outputs = executable.execute(arguments)
-  return [np.asarray(x) for x in outputs]
-
-
-def execute_with_python_values_replicated(executable, arguments, backend):
-  """Execute on many replicas with Python values as arguments and output.
-
-  Args:
-    executable: the program to run.
-    arguments: a list of lists of Python values indexed by `[replica][arg_num]`
-      to pass as inputs.
-    backend: the backend we are targeting.
-
-  Returns:
-    A list of python values, one per replica.
-  """
-  devices = executable.local_devices()
-
-  # pylint: disable=g-complex-comprehension
-  def copy_to_devices(pyvals):
-    return [backend.buffer_from_pyval(v, d) for v, d in zip(pyvals, devices)]
-
-  inputs = [copy_to_devices(pyvals) for pyvals in zip(*arguments)]
-  outputs = executable.execute_sharded_on_local_devices(inputs)
-  return [[np.asarray(x) for x in xs] for xs in zip(*outputs)]
-
-
 class PaddingType(enum.Enum):
   VALID = 1
   SAME = 2
 
 
-def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
-                                      window_strides):
+def window_padding_type_to_pad_values(
+    padding_type, lhs_dims, rhs_dims, window_strides
+):
   """Maps PaddingType or string to pad values (list of pairs of ints)."""
   if not isinstance(padding_type, (str, PaddingType)):
     msg = 'padding_type must be str or PaddingType, got {}.'
@@ -468,7 +517,8 @@ def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
     pad_sizes = [
         max((out_size - 1) * stride + filter_size - in_size, 0)
         for out_size, stride, filter_size, in_size in zip(
-            out_shape, window_strides, rhs_dims, lhs_dims)
+            out_shape, window_strides, rhs_dims, lhs_dims
+        )
     ]
     return [(pad_size // 2, pad_size - pad_size // 2) for pad_size in pad_sizes]
   else:
@@ -488,11 +538,13 @@ DeviceList = _xla.DeviceList
 OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
 Sharding = _xla.Sharding
-XLACompatibleSharding = _xla.XLACompatibleSharding
 NamedSharding = _xla.NamedSharding
 SingleDeviceSharding = _xla.SingleDeviceSharding
 PmapSharding = _xla.PmapSharding
 GSPMDSharding = _xla.GSPMDSharding
+PjRtLayout = _xla.PjRtLayout
+AutotuneCacheMode = _xla.AutotuneCacheMode
+ResultAccuracyMode = _xla.ResultAccuracy_Mode
 
 
 def LoadedExecutable_execute(self, arguments, device=None):
@@ -514,14 +566,44 @@ LoadedExecutable.execute = LoadedExecutable_execute
 LoadedExecutable.execute_with_token = LoadedExecutable_execute_with_token
 
 
-_custom_callback_handler: dict[str, Any] = {}
-# Key is xla_platform_name, value is (function_name, function)
-_custom_callback: dict[str, list[Tuple[str, Any]]] = {}
+class CustomCallTargetTraits(enum.IntFlag):
+  DEFAULT = 0
+  # Calls to custom call are safe to trace into the command buffer. It means
+  # that calls to custom call always launch exactly the same device operations
+  # (can depend on attribute values) that can be captured and then replayed.
+  #
+  # Supported only for custom calls implemented with XLA FFI.
+  COMMAND_BUFFER_COMPATIBLE = 1
+
+
+class CustomCallHandler(Protocol):
+
+  def __call__(
+      self,
+      name: str,
+      fn: Any,
+      platform: str,
+      /,
+      api_version: int = ...,
+      traits: CustomCallTargetTraits = ...,
+  ) -> None:
+    ...
+
+
+_custom_callback_handler: dict[str, CustomCallHandler] = {}
+# Key is xla_platform_name, value is (function_name, function, api_version)
+_custom_callback: dict[
+    str, list[tuple[str, Any, int, CustomCallTargetTraits]]
+] = {}
 _custom_callback_lock = threading.Lock()
 
 
 def register_custom_call_target(
-    name: str, fn: Any, platform: str = 'cpu'
+    name: str,
+    fn: Any,
+    platform: str = 'cpu',
+    api_version: int = 0,
+    traits: CustomCallTargetTraits = CustomCallTargetTraits.DEFAULT,
 ) -> None:
   """Registers a custom call target.
 
@@ -529,22 +611,32 @@ def register_custom_call_target(
     name: bytes containing the name of the function.
     fn: a PyCapsule object containing the function pointer.
     platform: the target platform.
+    api_version: the XLA FFI version to use. Supported versions are: 0 for the
+      untyped FFI and 1 for the typed FFI.
+    traits: custom call traits corresponding to XLA FFI handler traits.
   """
   # To support AMD GPUs, we need to have xla_platform_names["gpu"] == "ROCM"
   # Since that is hardcoded to CUDA, we are using the following as workaround.
   xla_platform_name = xla_platform_names.get(platform, platform)
   with _custom_callback_lock:
     if xla_platform_name in _custom_callback_handler:
-      _custom_callback_handler[xla_platform_name](name, fn, xla_platform_name)
+      _custom_callback_handler[xla_platform_name](
+          name, fn, xla_platform_name, api_version, traits
+      )
     else:
-      _custom_callback.setdefault(xla_platform_name, []).append((name, fn))
+      _custom_callback.setdefault(xla_platform_name, []).append(
+          (name, fn, api_version, traits)
+      )
 
 
-def register_custom_call_handler(platform: str, handler: Any) -> None:
+def register_custom_call_handler(
+    platform: str, handler: CustomCallHandler
+) -> None:
   """Registers a custom handler and use it to register existing custom calls.
 
   If a custom call handler for the platform already exist, calling this method
   is a no-op and it will not register a new handler.
+
   Args:
     platform: the target platform.
     handler: the function to register a custom call.
@@ -560,9 +652,70 @@ def register_custom_call_handler(platform: str, handler: Any) -> None:
       return
     _custom_callback_handler[xla_platform_name] = handler
     if xla_platform_name in _custom_callback:
-      for name, fn in _custom_callback[xla_platform_name]:
-        handler(name, fn, xla_platform_name)
+      for name, fn, api_version, traits in _custom_callback[xla_platform_name]:
+        handler(name, fn, xla_platform_name, api_version, traits)
       del _custom_callback[xla_platform_name]
+
+
+class CustomTypeIdHandler(Protocol):
+
+  def __call__(self, name: str, capsule: Any) -> None:
+    ...
+
+
+_custom_type_id_handler: dict[str, CustomTypeIdHandler] = {}
+_custom_type_id: dict[str, Any] = {}
+_custom_type_id_lock = threading.Lock()
+
+
+def register_custom_type_id(
+    type_name: str,
+    type_id: Any,
+    platform: str = 'cpu',
+) -> None:
+  """Register a custom type id for use with the FFI.
+
+  Args:
+    type_name: a unique name for the type.
+    type_id: a PyCapsule object containing a pointer to the ``ffi::TypeId``.
+    platform: the target platform.
+  """
+  xla_platform_name = xla_platform_names.get(platform, platform)
+  with _custom_type_id_lock:
+    if xla_platform_name in _custom_type_id_handler:
+      _custom_type_id_handler[xla_platform_name](type_name, type_id)
+    else:
+      _custom_type_id.setdefault(xla_platform_name, []).append(
+          (type_name, type_id)
+      )
+
+
+def register_custom_type_id_handler(
+    platform: str, handler: CustomTypeIdHandler
+) -> None:
+  """Register a custom type id handler and use it to register existing type ids.
+
+  If a custom type id handler for the platform already exist, calling this
+  method is a no-op and it will not register a new handler.
+
+  Args:
+    platform: the target platform.
+    handler: the function to register a custom type id.
+  """
+  xla_platform_name = xla_platform_names.get(platform, platform)
+  with _custom_callback_lock:
+    if xla_platform_name in _custom_type_id_handler:
+      logger.debug(
+          'Custom type id handler for %s is already register. Will not '
+          'register a new one',
+          xla_platform_name,
+      )
+      return
+    _custom_type_id_handler[xla_platform_name] = handler
+    if xla_platform_name in _custom_type_id:
+      for name, capsule in _custom_type_id[xla_platform_name]:
+        handler(name, capsule)
+      del _custom_type_id[xla_platform_name]
 
 
 register_custom_call_partitioner = _xla.register_custom_call_partitioner
@@ -572,6 +725,7 @@ hlo_sharding_util = _xla.hlo_sharding_util
 
 class PaddingConfigDimension:
   """Python representation of a xla.PaddingConfigDimension protobuf."""
+
   __slots__ = ('edge_padding_low', 'edge_padding_high', 'interior_padding')
 
   edge_padding_low: int
@@ -586,6 +740,7 @@ class PaddingConfigDimension:
 
 class PaddingConfig:
   """Python representation of a xla.PaddingConfig protobuf."""
+
   __slots__ = ('dimensions',)
 
   def __init__(self):
@@ -593,7 +748,7 @@ class PaddingConfig:
 
 
 def make_padding_config(
-    padding_config: Union[PaddingConfig, Sequence[Tuple[int, int, int]]]
+    padding_config: Union[PaddingConfig, Sequence[tuple[int, int, int]]]
 ) -> PaddingConfig:
   """Create PaddingConfig proto from list of triples of integers.
 
@@ -619,8 +774,13 @@ def make_padding_config(
 
 class DotDimensionNumbers:
   """Python representation of a xla.DotDimensionNumbers protobuf."""
-  __slots__ = ('lhs_contracting_dimensions', 'rhs_contracting_dimensions',
-               'lhs_batch_dimensions', 'rhs_batch_dimensions')
+
+  __slots__ = (
+      'lhs_contracting_dimensions',
+      'rhs_contracting_dimensions',
+      'lhs_batch_dimensions',
+      'rhs_batch_dimensions',
+  )
 
   def __init__(self):
     self.lhs_contracting_dimensions = []
@@ -630,9 +790,10 @@ class DotDimensionNumbers:
 
 
 def make_dot_dimension_numbers(
-    dimension_numbers: Union[DotDimensionNumbers,
-                             Tuple[Tuple[List[int], List[int]],
-                                   Tuple[List[int], List[int]]]]
+    dimension_numbers: Union[
+        DotDimensionNumbers,
+        tuple[tuple[list[int], list[int]], tuple[list[int], list[int]]],
+    ]
 ) -> DotDimensionNumbers:
   """Builds a DotDimensionNumbers object from a specification.
 
@@ -659,11 +820,18 @@ def make_dot_dimension_numbers(
 
 class ConvolutionDimensionNumbers:
   """Python representation of a xla.ConvolutionDimensionNumbers protobuf."""
-  __slots__ = ('input_batch_dimension', 'input_feature_dimension',
-               'input_spatial_dimensions', 'kernel_input_feature_dimension',
-               'kernel_output_feature_dimension', 'kernel_spatial_dimensions',
-               'output_batch_dimension', 'output_feature_dimension',
-               'output_spatial_dimensions')
+
+  __slots__ = (
+      'input_batch_dimension',
+      'input_feature_dimension',
+      'input_spatial_dimensions',
+      'kernel_input_feature_dimension',
+      'kernel_output_feature_dimension',
+      'kernel_spatial_dimensions',
+      'output_batch_dimension',
+      'output_feature_dimension',
+      'output_spatial_dimensions',
+  )
 
   def __init__(self):
     self.input_batch_dimension = 0
@@ -678,30 +846,32 @@ class ConvolutionDimensionNumbers:
 
 
 def make_convolution_dimension_numbers(
-    dimension_numbers: Union[None, ConvolutionDimensionNumbers, Tuple[str, str,
-                                                                      str]],
-    num_spatial_dimensions: int) -> ConvolutionDimensionNumbers:
+    dimension_numbers: Union[
+        None, ConvolutionDimensionNumbers, tuple[str, str, str]
+    ],
+    num_spatial_dimensions: int,
+) -> ConvolutionDimensionNumbers:
   """Builds a ConvolutionDimensionNumbers object from a specification.
 
   Args:
     dimension_numbers: optional, either a ConvolutionDimensionNumbers object or
-      a tuple (lhs_spec, rhs_spec, out_spec). Each element is a string of
-      length N+2 identifying by position: (1) batch dimensions in lhs, rhs, and
-        the output with the character 'N', (2) feature dimensions in lhs and the
-        output with the character 'C', (3) input and output feature dimensions
-        in rhs with the characters 'I' and 'O' respectively, and (4) spatial
-        dimension correspondences between lhs, rhs, and the output using any
-        distinct characters. For example, to indicate dimension numbers
-        consistent with the Conv operation with two spatial dimensions, one
-        could use ('NCHW', 'OIHW', 'NCHW'). As another example, to indicate
-        dimension numbers consistent with the TensorFlow Conv2D operation, one
-        could use ('NHWC', 'HWIO', 'NHWC'). When using the latter form of
-        convolution dimension specification, window strides are associated with
-        spatial dimension character labels according to the order in which the
-        labels appear in the rhs_spec string, so that window_strides[0] is
-        matched with the dimension corresponding to the first character
-        appearing in rhs_spec that is not 'I' or 'O'. By default, use the same
-        dimension numbering as Conv and ConvWithGeneralPadding.
+      a tuple (lhs_spec, rhs_spec, out_spec). Each element is a string of length
+      N+2 identifying by position: (1) batch dimensions in lhs, rhs, and the
+      output with the character 'N', (2) feature dimensions in lhs and the
+      output with the character 'C', (3) input and output feature dimensions in
+      rhs with the characters 'I' and 'O' respectively, and (4) spatial
+      dimension correspondences between lhs, rhs, and the output using any
+      distinct characters. For example, to indicate dimension numbers consistent
+      with the Conv operation with two spatial dimensions, one could use
+      ('NCHW', 'OIHW', 'NCHW'). As another example, to indicate dimension
+      numbers consistent with the TensorFlow Conv2D operation, one could use
+      ('NHWC', 'HWIO', 'NHWC'). When using the latter form of convolution
+      dimension specification, window strides are associated with spatial
+      dimension character labels according to the order in which the labels
+      appear in the rhs_spec string, so that window_strides[0] is matched with
+      the dimension corresponding to the first character appearing in rhs_spec
+      that is not 'I' or 'O'. By default, use the same dimension numbering as
+      Conv and ConvWithGeneralPadding.
     num_spatial_dimensions: the number of spatial dimensions.
 
   Returns:
@@ -731,18 +901,26 @@ def make_convolution_dimension_numbers(
     dimension_numbers.kernel_input_feature_dimension = rhs_spec.index('I')
 
     dimension_numbers.kernel_spatial_dimensions.extend(
-        i for i, c in enumerate(rhs_spec) if c not in {'I', 'O'})
+        i for i, c in enumerate(rhs_spec) if c not in {'I', 'O'}
+    )
     dimension_numbers.input_spatial_dimensions.extend(
-        sorted((i for i, c in enumerate(lhs_spec) if c not in {'N', 'C'}),
-               key=lambda i: rhs_spec.index(lhs_spec[i])))
+        sorted(
+            (i for i, c in enumerate(lhs_spec) if c not in {'N', 'C'}),
+            key=lambda i: rhs_spec.index(lhs_spec[i]),
+        )
+    )
     dimension_numbers.output_spatial_dimensions.extend(
-        sorted((i for i, c in enumerate(out_spec) if c not in {'N', 'C'}),
-               key=lambda i: rhs_spec.index(out_spec[i])))
+        sorted(
+            (i for i, c in enumerate(out_spec) if c not in {'N', 'C'}),
+            key=lambda i: rhs_spec.index(out_spec[i]),
+        )
+    )
   return dimension_numbers
 
 
 class PrecisionConfig:
   """Python representation of a xla.PrecisionConfig protobuf."""
+
   __slots__ = ('operand_precision',)
 
   Precision = _xla.PrecisionConfig_Precision
@@ -751,10 +929,27 @@ class PrecisionConfig:
     self.operand_precision = []
 
 
+class ResultAccuracy:
+  """Python representation of a xla.ResultAccuracy protobuf."""
+
+  __slots__ = ('mode', 'atol', 'rtol', 'ulps')
+
+  def __init__(self):
+    self.mode = _xla.ResultAccuracy_Mode.DEFAULT
+    self.atol = 0.0
+    self.rtol = 0.0
+    self.ulps = 0
+
+
 class GatherDimensionNumbers:
   """Python representation of a xla.GatherDimensionNumbers protobuf."""
-  __slots__ = ('offset_dims', 'collapsed_slice_dims', 'start_index_map',
-               'index_vector_dim')
+
+  __slots__ = (
+      'offset_dims',
+      'collapsed_slice_dims',
+      'start_index_map',
+      'index_vector_dim',
+  )
 
   def __init__(self):
     self.offset_dims = []
@@ -765,8 +960,13 @@ class GatherDimensionNumbers:
 
 class ScatterDimensionNumbers:
   """Python representation of a xla.ScatterDimensionNumbers protobuf."""
-  __slots__ = ('update_window_dims', 'inserted_window_dims',
-               'scatter_dims_to_operand_dims', 'index_vector_dim')
+
+  __slots__ = (
+      'update_window_dims',
+      'inserted_window_dims',
+      'scatter_dims_to_operand_dims',
+      'index_vector_dim',
+  )
 
   def __init__(self):
     self.update_window_dims = []
@@ -777,6 +977,7 @@ class ScatterDimensionNumbers:
 
 class ReplicaGroup:
   """Python representation of a xla.ReplicaGroup protobuf."""
+
   __slots__ = ('replica_ids',)
 
   def __init__(self):
@@ -828,6 +1029,13 @@ atexit.register(_xla.collect_garbage)
 
 weakref_lru_cache = _xla.weakref_lru_cache
 array_result_handler = _xla.array_result_handler
-copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding
+batched_copy_array_to_devices_with_sharding = (
+    _xla.batched_copy_array_to_devices_with_sharding
+)
 batched_device_put = _xla.batched_device_put
+reorder_shards = _xla.reorder_shards
+batched_block_until_ready = _xla.batched_block_until_ready
 check_and_canonicalize_memory_kind = _xla.check_and_canonicalize_memory_kind
+Layout = _xla.Layout
+custom_call_targets = _xla.custom_call_targets
+ArrayCopySemantics = _xla.ArrayCopySemantics

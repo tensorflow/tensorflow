@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_TUNING_UTILS_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_TUNING_UTILS_H_
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
+#include "xla/service/hlo_value.h"
 
 namespace xla {
 

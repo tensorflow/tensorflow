@@ -28,7 +28,7 @@ namespace ops {
 Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x, AbstractTensorHandle** y, const char* name = nullptr, const char* raw_device_name = nullptr);
 
 //
-Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTensorHandle* const b, AbstractTensorHandle** product, bool transpose_a = false, bool transpose_b = false, const char* name = nullptr, const char* raw_device_name = nullptr);
+Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a, AbstractTensorHandle* const b, AbstractTensorHandle** product, bool transpose_a = false, bool transpose_b = false, bool grad_a = false, bool grad_b = false, const char* name = nullptr, const char* raw_device_name = nullptr);
 
 //
 Status IdentityN(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> input, absl::Span<AbstractTensorHandle*> output, const char* name = nullptr, const char* raw_device_name = nullptr);

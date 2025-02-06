@@ -124,7 +124,7 @@ class NodeExecStatsWrapper : public NodeExecStatsInterface {
   void AddAllocation(Allocator* allocator,
                      TrackingAllocator* tracking_allocator);
 
-  gtl::InlinedVector<std::pair<AllocatorMemoryUsed*, TrackingAllocator*>, 2>
+  absl::InlinedVector<std::pair<AllocatorMemoryUsed*, TrackingAllocator*>, 2UL>
       allocations_;
   std::unique_ptr<NodeExecStats> stats_;
   const NodeDef* const node_;                       // Not owned.

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "WriteRawProtoSummary"
   input_arg {
     name: "writer"

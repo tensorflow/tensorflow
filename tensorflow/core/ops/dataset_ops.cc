@@ -170,6 +170,7 @@ REGISTER_OP("MapDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("use_inter_op_parallelism: bool = true")
     .Attr("preserve_cardinality: bool = false")
+    .Attr("force_synchronous: bool = false")
     .Attr("metadata: string = ''")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
@@ -205,6 +206,7 @@ REGISTER_OP("ParallelMapDatasetV2")
     // "true", "false", or "default".
     .Attr("deterministic: string = 'default'")
     .Attr("preserve_cardinality: bool = false")
+    .Attr("use_unbounded_threadpool: bool = false")
     .Attr("metadata: string = ''")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
@@ -324,6 +326,11 @@ REGISTER_OP("FilterDataset")
     .Attr("metadata: string = ''")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("DatasetFingerprint")
+    .Input("input_dataset: variant")
+    .Output("fingerprint: uint64")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ParallelFilterDataset")
@@ -554,7 +561,7 @@ REGISTER_OP("AnonymousSeedGenerator")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("DatasetCardinality")
@@ -577,7 +584,7 @@ REGISTER_OP("AnonymousRandomSeedGenerator")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 // Deprecated in favor of AnonymousSeedGenerator/DeleteSeedGenerator.
@@ -590,7 +597,7 @@ REGISTER_OP("DummySeedGenerator")
     .Output("handle: resource")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("ShuffleDataset")
@@ -709,7 +716,7 @@ REGISTER_OP("AnonymousMemoryCache")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("DeleteMemoryCache")
@@ -721,7 +728,7 @@ REGISTER_OP("DummyMemoryCache")
     .Output("handle: resource")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CacheDataset")
@@ -902,7 +909,7 @@ REGISTER_OP("AnonymousIteratorV2")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("AnonymousIteratorV3")
@@ -911,7 +918,7 @@ REGISTER_OP("AnonymousIteratorV3")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("DeleteIterator")
@@ -1014,7 +1021,7 @@ REGISTER_OP("SerializeIterator")
     .Output("serialized: variant")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("DeserializeIterator")
@@ -1135,7 +1142,7 @@ REGISTER_OP("MapDefun")
             c->MakeShapeFromPartialTensorShape(s, &output_shape_handle));
         c->set_output(static_cast<int>(i), output_shape_handle);
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("WrapDatasetVariant")
@@ -1157,7 +1164,7 @@ REGISTER_OP("AnonymousMultiDeviceIterator")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("AnonymousMultiDeviceIteratorV3")
@@ -1167,7 +1174,7 @@ REGISTER_OP("AnonymousMultiDeviceIteratorV3")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("MultiDeviceIterator")

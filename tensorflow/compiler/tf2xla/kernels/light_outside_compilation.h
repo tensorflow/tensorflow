@@ -18,8 +18,11 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/kernels/callback.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -47,17 +50,17 @@ class LightOutsideCompilationOp : public XlaOpKernel {
 
   // Override to provide statically known bounds on output in case of dynamic
   // shapes.
-  virtual StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
+  virtual absl::StatusOr<OutputDimensionBoundsMap> DynamicOutputDimensions(
       const NodeDef& ndef, XlaOpKernelContext* ctx) const {
     return OutputDimensionBoundsMap{};
   }
 
  private:
-  Status CompileToCustomCallCallingTfKernel(int graph_def_version,
-                                            const NodeDef& node_def,
-                                            XlaOpKernelContext* ctx);
-  static Status CallTfKernel(void* stream_handle, void** buffers,
-                             const char* opaque, int opaque_len);
+  absl::Status CompileToCustomCallCallingTfKernel(int graph_def_version,
+                                                  const NodeDef& node_def,
+                                                  XlaOpKernelContext* ctx);
+  static absl::Status CallTfKernel(void* stream_handle, void** buffers,
+                                   const char* opaque, int opaque_len);
 
   NodeDef def_;
   int graph_def_version_;

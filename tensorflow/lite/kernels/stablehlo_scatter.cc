@@ -110,13 +110,13 @@ static bool IsInBounds(Index<IndexType> index, RuntimeShape shape) {
 
 static ComputationType OpCodeToComputationType(int op_code) {
   switch (op_code) {
-    case kTfLiteBuiltinAdd:
+    case kTfLiteBuiltinStablehloAdd:
       return ComputationType::kAdd;
-    case kTfLiteBuiltinMul:
+    case kTfLiteBuiltinStablehloMultiply:
       return ComputationType::kMultiply;
-    case kTfLiteBuiltinMaximum:
+    case kTfLiteBuiltinStablehloMaximum:
       return ComputationType::kMaximum;
-    case kTfLiteBuiltinMinimum:
+    case kTfLiteBuiltinStablehloMinimum:
       return ComputationType::kMinimum;
     default:
       return ComputationType::kOther;
@@ -135,7 +135,7 @@ static TfLiteStatus GetComputationType(const Subgraph* computation_subgraph,
   if (computation_subgraph->execution_plan().size() > 1) {
     TF_LITE_KERNEL_LOG(context,
                        "Only one kernel allowed withing the stablehlo region. "
-                       "(%i) kernels found.\n",
+                       "(%zu) kernels found.\n",
                        computation_subgraph->execution_plan().size());
     return kTfLiteError;
   }

@@ -17,10 +17,11 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -51,22 +52,22 @@ bool IsBroadcastingOp(const Model& model, Operator* op) {
 // Finds an operation that looks like a broadcast (concat of the same sources
 // along the last dimension) and drops it by relying on the ability of certain
 // binary ops to perform an implicit broadcast.
-::tensorflow::Status FuseBroadcastIntoFollowingBinary::Run(Model* model,
-                                                           std::size_t op_index,
-                                                           bool* modified) {
+absl::Status FuseBroadcastIntoFollowingBinary::Run(Model* model,
+                                                   std::size_t op_index,
+                                                   bool* modified) {
   *modified = false;
   const auto binary_it = model->operators.begin() + op_index;
   auto* binary_op = binary_it->get();
 
   // Test for binary ops of types that we know how to resolve
   if (binary_op->inputs.size() != 2) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (binary_op->type != OperatorType::kAdd &&
       binary_op->type != OperatorType::kMul &&
       binary_op->type != OperatorType::kSub &&
       binary_op->type != OperatorType::kDiv) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // NOTE: either of these ops may be nullptr if the input array is constant.
@@ -81,14 +82,14 @@ bool IsBroadcastingOp(const Model& model, Operator* op) {
   if (!is_op_0_broadcast && !is_op_1_broadcast) {
     // Neither input is a broadcast-looking thing.
     AddMessageF("Neither input looks broadcasty");
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   } else if (is_op_0_broadcast && is_op_1_broadcast) {
     AddMessageF(
         "Unable to fuse broadcast into %s as both inputs (%s, %s) are "
         "broadcasts",
         LogName(*binary_op), op[0] ? LogName(*op[0]) : "(?)",
         op[1] ? LogName(*op[1]) : "(?)");
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   int broadcast_index = is_op_0_broadcast ? 0 : 1;
 
@@ -100,7 +101,7 @@ bool IsBroadcastingOp(const Model& model, Operator* op) {
 
   // We leave the broadcast op in; it'll get cleaned up if it's not used later.
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

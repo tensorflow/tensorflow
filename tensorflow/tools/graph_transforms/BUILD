@@ -218,11 +218,7 @@ filegroup(
         "transform_graph.h",
         "transform_utils.h",
     ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-        "//tensorflow/python/util:__pkg__",
-    ],
+    visibility = ["//tensorflow/python/util:__pkg__"],
 )
 
 cc_library(

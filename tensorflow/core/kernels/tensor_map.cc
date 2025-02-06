@@ -43,7 +43,7 @@ void TensorMap::Encode(VariantTensorData* data) const {
   }
 }
 
-static Status TensorMapDeviceCopy(
+static absl::Status TensorMapDeviceCopy(
     const TensorMap& from, TensorMap* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
   for (const std::pair<TensorKey, Tensor>& p : from.tensors()) {
@@ -53,7 +53,7 @@ static Status TensorMapDeviceCopy(
     TF_RETURN_IF_ERROR(copy(p.second, &to_val));
     to->tensors().emplace(to_key, to_val);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define REGISTER_LIST_COPY(DIRECTION)                                        \

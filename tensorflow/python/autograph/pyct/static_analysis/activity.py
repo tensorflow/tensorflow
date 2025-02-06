@@ -570,7 +570,7 @@ class ActivityAnalyzer(transformer.Base):
       node.decorator_list = self.visit_block(node.decorator_list)
       if node.returns:
         node.returns = self._process_annotation(node.returns)
-      # Argument annotartions (includeing defaults) affect the defining context.
+      # Argument annotartions (including defaults) affect the defining context.
       node = self._visit_arg_annotations(node)
 
       function_name = qual_names.QN(node.name)

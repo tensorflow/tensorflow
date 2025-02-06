@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_INPUT_PIPELINE_ANALYSIS_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_INPUT_PIPELINE_ANALYSIS_H_
 
+#include <cstdint>
 #include <string>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
@@ -27,9 +30,30 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
+#include "tensorflow/core/profiler/protobuf/tpu_input_pipeline.pb.h"
+#include "tensorflow/core/profiler/utils/event_span.h"
 
 namespace tensorflow {
 namespace profiler {
+
+struct AllReduceBreakdown {
+  uint64_t compute_duration_ps = 0;
+  uint64_t sync_duration_ps = 0;
+
+  uint64_t DurationPs() const { return compute_duration_ps + sync_duration_ps; }
+};
+
+// Used to store AllReduceBreakdown per core id. Just an alias for user
+// convenience.
+using PerCoreAllReduceBreakdown =
+    absl::flat_hash_map<uint32_t /*core_id*/, AllReduceBreakdown>;
+
+// Breakdown AllReduce time into synchronization time and actual compute time
+// for each core and step.
+PerCoreAllReduceBreakdown ComputePerStepAllReduceBreakdownAcrossCores(
+    const PerCoreStepInfo& coreid_stepinfo_map);
+
+StepSummary GetStepSummaryForSampleStats(const tsl::Stat<double>& sample_stats);
 
 // If the percent of input-time spent on host-to-device transfer is greater than
 // kHostToDeviceTimePercentAsSignificant, we should advise the
@@ -51,6 +75,19 @@ void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
                         InputPipelineAnalysisResult* result);
 
 InputPipelineAnalysisRecommendation GenerateRecommendation();
+
+// For TPU, we may have mis-regarded some host overhead as idle time.
+// This function checks if this is the case using host_step_events. If this is,
+// it will do the correction in op_stats.
+void MayFixTpuStepAnalysis(
+    const StepEvents& host_step_events, const OpMetricsDb& device_op_metrics_db,
+    StepDatabaseResult& step_db,
+    const protobuf::Map<uint32_t, CoreDetails>& core_details_map);
+
+// Returns a struct that describes the performance bottleneck of the
+// program executed on TPU.
+TpuBottleneckAnalysis ComputeTpuBottleneckAnalysis(
+    bool all_cores_profiled, const InputPipelineAnalysisResult& result);
 
 // Returns the performance bottleneck of the program executed.
 BottleneckAnalysis ComputeBottleneckAnalysis(

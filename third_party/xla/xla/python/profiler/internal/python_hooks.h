@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,20 +15,22 @@ limitations under the License.
 #ifndef XLA_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 #define XLA_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <optional>
 #include <stack>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
-#include "pybind11/cast.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
-#include "tsl/platform/macros.h"
-#include "tsl/platform/types.h"
+#include "pybind11/cast.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -66,9 +68,12 @@ struct PythonTraceEntry {
                    PyCFunctionObject* py_c_function)
       : start_time_ns(start),
         end_time_ns(end),
-        method_def(py_c_function->m_ml),
         m_module(py_c_function->m_module) {
     Py_XINCREF(m_module);
+    if (auto* method_def = py_c_function->m_ml;
+        method_def != nullptr && method_def->ml_name != nullptr) {
+      method_name = method_def->ml_name;
+    }
   }
 
   ~PythonTraceEntry() {
@@ -77,17 +82,17 @@ struct PythonTraceEntry {
     Py_XDECREF(m_module);
   }
 
-  PythonTraceEntry(PythonTraceEntry&& other) {
+  PythonTraceEntry(PythonTraceEntry&& other) noexcept {
     start_time_ns = other.start_time_ns;
     end_time_ns = other.end_time_ns;
     co_firstlineno = other.co_firstlineno;
     co_filename = other.co_filename;
     co_name = other.co_name;
-    method_def = other.method_def;
+    method_name = std::move(other.method_name);
     m_module = other.m_module;
     other.co_filename = nullptr;
     other.co_name = nullptr;
-    other.method_def = nullptr;
+    other.method_name = "";
     other.m_module = nullptr;
   }
 
@@ -98,7 +103,7 @@ struct PythonTraceEntry {
   PyObject* co_filename = nullptr;
   PyObject* co_name = nullptr;
   int co_firstlineno = 0;
-  PyMethodDef* method_def = nullptr;
+  std::string method_name;
   PyObject* m_module = nullptr;
 
   PythonTraceEntry(const PythonTraceEntry& other) = delete;
@@ -133,8 +138,8 @@ class PythonHookContext {
   void operator=(PythonHookContext&&) = delete;
 
   // The thread id to entries map, Note: by convention the thread id is
-  // uint32_t to be consistent with cpu tracer when serialize to Xspace.
-  absl::flat_hash_map<uint32_t, PerThreadEvents> entries_;
+  // int64_t to be consistent with cpu tracer when serialize to Xspace.
+  absl::flat_hash_map<int64_t, PerThreadEvents> entries_;
   uint64_t start_timestamp_ns_;
   PythonHooksOptions options_;
   // In end to end mode, Python get uninitialized before Stop()/Finalize(), we
@@ -182,8 +187,6 @@ class PythonHooks {
   static void set_e2e_context(PythonHookContext* e2e_context) {
     e2e_context_ = e2e_context;
   }
-
-  static PythonHookContext* e2e_context() { return e2e_context_; }
 
   static int ProfileFunction(PyObject* obj, PyFrameObject* frame, int what,
                              PyObject* arg);

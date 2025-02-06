@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "xla/service/all_gather_decomposer.h"
 
+#include <cstdint>
+#include <optional>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/strings/str_join.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -27,13 +30,17 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/collective_decomposer_utils.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
+namespace {
 // Creates a computation of x + y.
 HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module) {
   HloComputation::Builder sum_b("add");
@@ -51,14 +58,15 @@ HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module) {
   HloComputation* reduction = module->AddEmbeddedComputation(sum_b.Build());
   return reduction;
 }
+}  // namespace
 
-HloInstruction* TranslateAllGatherToAllReducePerOperand(
+HloInstruction* AllGatherDecomposer::TranslateAllGatherToAllReducePerOperand(
     CollectiveOpGroupMode group_mode, const HloAllGatherInstruction& ag,
-    const Shape& output_shape, HloInstruction* operand, HloComputation* comp) {
+    const Shape& output_shape, HloInstruction* operand, HloComputation* comp,
+    int64_t ag_dim) {
   std::vector<HloInstruction*> start_indices =
       CreateStartIndicesForCollectiveDecomposition(
-          group_mode, ag.replica_groups(), operand->shape(),
-          ag.all_gather_dimension(), comp)
+          group_mode, ag.replica_groups(), operand->shape(), ag_dim, comp)
           .value();
 
   auto zero = comp->AddInstruction(HloInstruction::CreateConstant(
@@ -71,13 +79,14 @@ HloInstruction* TranslateAllGatherToAllReducePerOperand(
   auto ar = comp->AddInstruction(HloInstruction::CreateAllReduce(
       dus->shape(), {dus},
       MakeBinaryAdd(dus->shape().element_type(), comp->parent()),
-      ag.replica_groups(),
+      ag.device_list(),
       /*constrain_layout=*/ag.constrain_layout(), ag.channel_id(),
       ag.use_global_device_ids()));
   return ar;
 }
 
-Status DecomposeAllGather(HloAllGatherInstruction* ag, HloComputation* comp) {
+absl::Status AllGatherDecomposer::DecomposeAllGather(
+    HloAllGatherInstruction* ag, HloComputation* comp) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(ag->channel_id().has_value(),
                                                ag->use_global_device_ids()));
@@ -87,21 +96,23 @@ Status DecomposeAllGather(HloAllGatherInstruction* ag, HloComputation* comp) {
       auto* input_operand = ag->mutable_operand(i);
       const auto& output_shape = ag->shape().tuple_shapes(i);
       auto* ar = TranslateAllGatherToAllReducePerOperand(
-          group_mode, *ag, output_shape, input_operand, comp);
+          group_mode, *ag, output_shape, input_operand, comp,
+          ag->all_gather_dimension());
       tuple_inputs.push_back(ar);
     }
     auto tup = comp->AddInstruction(HloInstruction::CreateTuple(tuple_inputs));
     TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(tup));
   } else {
     auto* ar = TranslateAllGatherToAllReducePerOperand(
-        group_mode, *ag, ag->shape(), ag->mutable_operand(0), comp);
+        group_mode, *ag, ag->shape(), ag->mutable_operand(0), comp,
+        ag->all_gather_dimension());
     TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(ar));
   }
   TF_RETURN_IF_ERROR(comp->RemoveInstructionAndUnusedOperands(ag));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<bool> AllGatherDecomposer::Run(
+absl::StatusOr<bool> AllGatherDecomposer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -111,7 +122,7 @@ StatusOr<bool> AllGatherDecomposer::Run(
         continue;
       }
       auto ag = Cast<HloAllGatherInstruction>(hlo);
-      if (should_decompose_(*ag)) {
+      if (ShouldDecompose(*ag)) {
         TF_RETURN_IF_ERROR(DecomposeAllGather(ag, comp));
         changed = true;
       }

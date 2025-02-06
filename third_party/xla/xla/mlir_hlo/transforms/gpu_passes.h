@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ ArrayAttr getWrittenOperandsAttribute(Operation* op);
 
 /// Pass that transforms gpu modules in standard dialect to NNVM.
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
-createGpuKernelToNvvmPass();
+createGpuKernelToNvvmPass(bool useBarePtrCallConv = false);
 
 /// Pass that transforms gpu modules in standard dialect to ROCDL.
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>

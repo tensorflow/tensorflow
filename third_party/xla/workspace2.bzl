@@ -1,22 +1,36 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
-# Import TSL Workspaces
-load("@local_tsl//:workspace2.bzl", "tsl_workspace2")
-
 # Import third party config rules.
 load("@bazel_skylib//lib:versions.bzl", "versions")
+
+# Import TSL Workspaces
+load("//:tsl_workspace2.bzl", "tsl_workspace2")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 
 # Import third party repository rules. See go/tfbr-thirdparty.
-load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
+load("//third_party/FP16:workspace.bzl", FP16 = "repo")
+load("//third_party/gloo:workspace.bzl", gloo = "repo")
+load("//third_party/mpitrampoline:workspace.bzl", mpitrampoline = "repo")
+load("//third_party/nanobind:workspace.bzl", nanobind = "repo")
+load("//third_party/robin_map:workspace.bzl", robin_map = "repo")
+load("//third_party/shardy:workspace.bzl", shardy = "repo")
 load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/triton:workspace.bzl", triton = "repo")
+load("//third_party/uv:workspace.bzl", uv = "repo")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
+    FP16()
     dlpack()
+    gloo()
+    mpitrampoline()
+    nanobind()
+    robin_map()
+    shardy()
     stablehlo()
     triton()
+    uv()
 
 # Define all external repositories required by TensorFlow
 def _tf_repositories():
@@ -28,13 +42,66 @@ def _tf_repositories():
     #    curl -L <url> | sha256sum
     # and update the sha256 with the result.
 
+    # LINT.IfChange
+    tf_http_archive(
+        name = "XNNPACK",
+        sha256 = "3306f4178c8594b689165d385e644f03a3154c3be044f6ae36dd170fbf182cf5",
+        strip_prefix = "XNNPACK-983d013300f19fd3f4e33220b6401408e97a8d12",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/983d013300f19fd3f4e33220b6401408e97a8d12.zip"),
+    )
+    # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
+
+    tf_http_archive(
+        name = "KleidiAI",
+        sha256 = "ad37707084a6d4ff41be10cbe8540c75bea057ba79d0de6c367c1bfac6ba0852",
+        strip_prefix = "kleidiai-40a926833857fb64786e02f97703e42b1537cb57",
+        urls = tf_mirror_urls("https://gitlab.arm.com/kleidi/kleidiai/-/archive/40a926833857fb64786e02f97703e42b1537cb57/kleidiai-40a926833857fb64786e02f97703e42b1537cb57.zip"),
+    )
+
+    tf_http_archive(
+        name = "FXdiv",
+        sha256 = "3d7b0e9c4c658a84376a1086126be02f9b7f753caa95e009d9ac38d11da444db",
+        strip_prefix = "FXdiv-63058eff77e11aa15bf531df5dd34395ec3017c8",
+        urls = tf_mirror_urls("https://github.com/Maratyszcza/FXdiv/archive/63058eff77e11aa15bf531df5dd34395ec3017c8.zip"),
+    )
+
+    tf_http_archive(
+        name = "cpuinfo",
+        sha256 = "52e0ffd7998d8cb3a927d8a6e1145763744d866d2be09c4eccea27fc157b6bb0",
+        strip_prefix = "cpuinfo-cebb0933058d7f181c979afd50601dc311e1bf8c",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/cebb0933058d7f181c979afd50601dc311e1bf8c.zip"),
+    )
+
+    tf_http_archive(
+        name = "pthreadpool",
+        sha256 = "a4cf06de57bfdf8d7b537c61f1c3071bce74e57524fe053e0bbd2332feca7f95",
+        strip_prefix = "pthreadpool-4fe0e1e183925bf8cfa6aae24237e724a96479b8",
+        urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/4fe0e1e183925bf8cfa6aae24237e724a96479b8.zip"),
+    )
+
+    tf_http_archive(
+        name = "jsoncpp_git",
+        sha256 = "f409856e5920c18d0c2fb85276e24ee607d2a09b5e7d5f0a371368903c275da2",
+        strip_prefix = "jsoncpp-1.9.5",
+        system_build_file = "//third_party/systemlibs:jsoncpp.BUILD",
+        urls = tf_mirror_urls("https://github.com/open-source-parsers/jsoncpp/archive/1.9.5.tar.gz"),
+    )
+
     tf_http_archive(
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "d8dba9e2607a0c256aa8eacb45b39986ab6f3f24a4d431d4397047a3cb0cd4fb",
-        strip_prefix = "cudnn-frontend-0.9",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.9.zip"),
+        sha256 = "59fb63e273c845cb85996d536194a7e2b22012810983cbbf06c4a46b09d17a32",
+        strip_prefix = "cudnn-frontend-1.10.0",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.10.0.zip"),
+    )
+
+    tf_http_archive(
+        name = "cutlass_archive",
+        build_file = "//third_party:cutlass.BUILD",
+        sha256 = "84cf3fcc47c440a8dde016eb458f8d6b93b3335d9c3a7a16f388333823f1eae0",
+        strip_prefix = "cutlass-afa7b7241aabe598b725c65480bd9fa71121732c",
+        urls = tf_mirror_urls("https://github.com/chsigg/cutlass/archive/afa7b7241aabe598b725c65480bd9fa71121732c.tar.gz"),
     )
 
     tf_http_archive(
@@ -82,6 +149,13 @@ def _tf_repositories():
         sha256 = "f57bf32804140cad58b1240b804e0dbd68f7e6bf67eba8e0c0fa3a62fd7f0f84",
         urls = tf_mirror_urls("https://github.com/google/or-tools/releases/download/v9.0/bliss-0.73.zip"),
         #url = "http://www.tcs.hut.fi/Software/bliss/bliss-0.73.zip",
+    )
+
+    tf_http_archive(
+        name = "pybind11_protobuf",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11_protobuf/archive/80f3440cd8fee124e077e2e47a8a17b78b451363.zip"),
+        sha256 = "c7ab64b1ccf9a678694a89035a8c865a693e4e872803778f91f0965c2f281d78",
+        strip_prefix = "pybind11_protobuf-80f3440cd8fee124e077e2e47a8a17b78b451363",
     )
 
 # buildifier: disable=function-docstring

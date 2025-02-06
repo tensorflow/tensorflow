@@ -24,20 +24,23 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_layout.pb.h"
-#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/stringpiece.h"
 
 namespace tensorflow {
 
 // Provide reasonable default values for the parameters. Note the WEAK attribute
 // on these methods: these can be (and in many cases are) overridden.
-ABSL_ATTRIBUTE_WEAK bool GetDisableTableStacking() {
+ABSL_ATTRIBUTE_WEAK bool GetDisableTableStacking(bool disable_table_stacking) {
+  bool should_disable_stacking = false;
+  // BEGIN GOOGLE-INTERNAL
   XlaSparseCoreFlags *sparse_core_flags = GetXlaSparseCoreFlags();
-  return sparse_core_flags->tf_xla_sparse_core_disable_table_stacking;
+  should_disable_stacking =
+      sparse_core_flags->tf_xla_sparse_core_disable_table_stacking;
+  // END GOOGLE-INTERNAL
+  return should_disable_stacking || disable_table_stacking;
 }
 
 ABSL_ATTRIBUTE_WEAK int64_t GetXlaSparseCoreStackingMemLimit() {
@@ -60,39 +63,42 @@ static int64_t NextLargestMultiple(int64_t n, int64_t factor) {
 }
 
 SparseCoreLayoutStacker::SparseCoreLayoutStacker(int num_partitions,
+                                                 bool disable_table_stacking,
                                                  int sparse_cores_per_partition)
     : num_partitions_(num_partitions),
       sparse_cores_per_partition_(sparse_cores_per_partition),
       num_sparse_cores_(num_partitions_ * sparse_cores_per_partition_),
-      stacking_enabled_(!GetDisableTableStacking()),
+      stacking_enabled_(!GetDisableTableStacking(disable_table_stacking)),
       activation_mem_bytes_limit_(GetXlaSparseCoreStackingMemLimit()),
       variable_shard_bytes_limit_(GetXlaSparseCoreStackingTableShardLimit()) {}
 
-absl::Status SparseCoreLayoutStacker::AddTable(tsl::StringPiece table_name,
+absl::Status SparseCoreLayoutStacker::AddTable(absl::string_view table_name,
                                                int64_t table_height,
                                                int64_t table_width,
-                                               tsl::StringPiece group,
+                                               absl::string_view group,
                                                int64_t output_samples) {
   if (stacks_by_group_.empty()) {  // First call?
     VLOG(1) << "Stacking parameters: stacking_enabled_ = " << stacking_enabled_
             << ", activation_mem_bytes_limit_ = " << activation_mem_bytes_limit_
-            << ", variable_shard_bytes_limit_ = "
-            << variable_shard_bytes_limit_;
+            << ", variable_shard_bytes_limit_ = " << variable_shard_bytes_limit_
+            << ", row_limit_ = " << row_limit_
+            << ", table_limit_ = " << table_limit_;
   }
 
+  VLOG(2) << "Table " << table_name << ":";
   int64_t samples_per_sparse_core =
       output_samples / sparse_cores_per_partition_;
   int64_t padded_width = NextLargestMultiple(table_width, 8);
   int64_t padded_height =
       NextLargestMultiple(table_height, num_sparse_cores_ * 8);
-
+  VLOG(2) << "  Original size: " << table_height << "x" << table_width
+          << " padded size: " << padded_height << "x" << padded_width;
   // Find a stack to fit in.
   int64_t activation_mem_bytes =
       sizeof(float) * padded_width * samples_per_sparse_core;
   int64_t variable_shard_bytes =
       sizeof(float) * padded_width * padded_height / num_partitions_;
-  VLOG(1) << "Table " << table_name
-          << ": activation mem = " << activation_mem_bytes
+  VLOG(2) << "  activation mem = " << activation_mem_bytes
           << ", variable shard bytes = " << variable_shard_bytes;
 
   std::vector<TableStack> &candidate_stacks =
@@ -100,15 +106,21 @@ absl::Status SparseCoreLayoutStacker::AddTable(tsl::StringPiece table_name,
   TableStack *stack = nullptr;  // The stack we're going to use.
   if (stacking_enabled_) {
     for (TableStack &ts : candidate_stacks) {
+      if (ts.incomplete_tables.size() >= table_limit_) continue;
       // Make sure we haven't exceeded the maximum stack memory.
       if (activation_mem_bytes_limit_ != 0 &&
-          ts.total_activation_mem_bytes + activation_mem_bytes >
+          ts.total_activation_mem_bytes + activation_mem_bytes >=
               activation_mem_bytes_limit_) {
         continue;
       }
       if (variable_shard_bytes_limit_ != 0 &&
-          ts.total_variable_shard_bytes + variable_shard_bytes >
+          ts.total_variable_shard_bytes + variable_shard_bytes >=
               variable_shard_bytes_limit_) {
+        continue;
+      }
+
+      if (row_limit_ != 0 &&
+          ts.unsharded_height + padded_height >= row_limit_) {
         continue;
       }
 
@@ -147,8 +159,9 @@ absl::Status SparseCoreLayoutStacker::AddTable(tsl::StringPiece table_name,
   // four. Note that the python library is currently written only to advance by
   // sparse core, so the maximum shift is bounded by the number of sparse cores,
   // not the number of rows.
-  layout.set_rotation_offset(
-      (num_tables_ * num_sparse_cores_ / num_partitions_) % num_sparse_cores_);
+  layout.set_sparse_core_shard_rotation(((stack->incomplete_tables.size() - 1) *
+                                         num_sparse_cores_ / num_partitions_) %
+                                        num_sparse_cores_);
 
   // Can't set total_rows_per_sparse_core_shard yet because we may add more
   // tables to this stack.
@@ -156,7 +169,6 @@ absl::Status SparseCoreLayoutStacker::AddTable(tsl::StringPiece table_name,
   stack->total_variable_shard_bytes += variable_shard_bytes;
   stack->total_activation_mem_bytes += activation_mem_bytes;
 
-  ++num_tables_;
   return absl::OkStatus();
 }
 
@@ -181,15 +193,6 @@ absl::StatusOr<SparseCoreTableLayouts> SparseCoreLayoutStacker::GetLayouts() {
            stack.incomplete_tables) {
         if (!stacked_table_name.empty()) stacked_table_name += "_";
         absl::StrAppend(&stacked_table_name, incomplete_layout.table_name());
-      }
-
-      // If the table name is too long, shorten it and replace it with a hash.
-      // The stacked table name turns into a variable name, and for some
-      // systems, variable names that are too long can cause problems.
-      if (stacked_table_name.size() > 100) {
-        stacked_table_name = absl::StrCat(
-            stacked_table_name.substr(0, 80),
-            absl::StrFormat("_%x", tsl::Fingerprint64(stacked_table_name)));
       }
 
       for (const SparseCoreTableLayout &incomplete_layout :

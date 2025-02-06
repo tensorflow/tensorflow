@@ -99,7 +99,7 @@ class SerialDeviceBatchScheduler : public std::enable_shared_from_this<
 
   // Ownership is shared between the caller of Create() and any queues created
   // via AddQueue().
-  static Status Create(
+  static absl::Status Create(
       const Options& options,
       std::shared_ptr<SerialDeviceBatchScheduler<TaskType>>* scheduler);
 
@@ -113,9 +113,9 @@ class SerialDeviceBatchScheduler : public std::enable_shared_from_this<
   using BatchProcessor = std::function<void(std::unique_ptr<Batch<TaskType>>)>;
 
   // Adds queue (and its callback) to be managed by this scheduler.
-  Status AddQueue(const QueueOptions& options,
-                  BatchProcessor process_batch_callback,
-                  std::unique_ptr<BatchScheduler<TaskType>>* queue);
+  absl::Status AddQueue(const QueueOptions& options,
+                        BatchProcessor process_batch_callback,
+                        std::unique_ptr<BatchScheduler<TaskType>>* queue);
 
   double in_flight_batches_limit() {
     mutex_lock l(mu_);
@@ -212,7 +212,7 @@ class SDBSQueue : public BatchScheduler<TaskType> {
   // Adds task to current batch. Fails if the task size is larger than the batch
   // size or if the current batch is full and this queue's number of outstanding
   // batches is at its maximum.
-  Status Schedule(std::unique_ptr<TaskType>* task) override;
+  absl::Status Schedule(std::unique_ptr<TaskType>* task) override;
 
   // Number of tasks waiting to be scheduled.
   size_t NumEnqueuedTasks() const override;
@@ -262,7 +262,7 @@ class SDBSBatch : public Batch<TaskType> {
 // ---------------- SerialDeviceBatchScheduler ----------------
 
 template <typename TaskType>
-Status SerialDeviceBatchScheduler<TaskType>::Create(
+absl::Status SerialDeviceBatchScheduler<TaskType>::Create(
     const Options& options,
     std::shared_ptr<SerialDeviceBatchScheduler<TaskType>>* scheduler) {
   if (options.num_batch_threads < 1) {
@@ -303,7 +303,7 @@ Status SerialDeviceBatchScheduler<TaskType>::Create(
         "specified");
   }
   scheduler->reset(new SerialDeviceBatchScheduler<TaskType>(options));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>
@@ -332,7 +332,7 @@ SerialDeviceBatchScheduler<TaskType>::~SerialDeviceBatchScheduler() {
 }
 
 template <typename TaskType>
-Status SerialDeviceBatchScheduler<TaskType>::AddQueue(
+absl::Status SerialDeviceBatchScheduler<TaskType>::AddQueue(
     const QueueOptions& options, BatchProcessor process_batch_callback,
     std::unique_ptr<BatchScheduler<TaskType>>* queue) {
   if (options.max_batch_size <= 0) {
@@ -349,7 +349,7 @@ Status SerialDeviceBatchScheduler<TaskType>::AddQueue(
                    this->shared_from_this(), options));
   mutex_lock l(mu_);
   queues_and_callbacks_[SDBS_queue_raw] = process_batch_callback;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>
@@ -487,7 +487,7 @@ SDBSQueue<TaskType>::~SDBSQueue() {
 }
 
 template <typename TaskType>
-Status SDBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
+absl::Status SDBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   SDBSBatch<TaskType>* new_batch = nullptr;
   size_t size = (*task)->size();
   if (size > options_.max_batch_size) {
@@ -516,7 +516,7 @@ Status SDBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   }
   // AddBatch must be called outside of lock, since it may call ReleaseBatch.
   if (new_batch != nullptr) scheduler_->AddBatch(new_batch);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>

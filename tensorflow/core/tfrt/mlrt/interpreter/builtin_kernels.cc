@@ -14,14 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/mlrt/interpreter/builtin_kernels.h"
 
-#include <iterator>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/function.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/async_handle.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/register_span.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
 #include "tsl/profiler/lib/traceme.h"
 

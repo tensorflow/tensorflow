@@ -84,7 +84,7 @@ llvm::Expected<tensorflow::Tensor> CopyScalarHostTensorToTFTensor(
   return tf_tensor;
 }
 
-StatusOr<DType> ConvertTFDTypeToTFRTDType(tensorflow::DataType dtype) {
+absl::StatusOr<DType> ConvertTFDTypeToTFRTDType(tensorflow::DataType dtype) {
   switch (dtype) {
 #define DTYPE(TFRT_DTYPE, TF_DTYPE) \
   case tensorflow::TF_DTYPE:        \
@@ -96,7 +96,7 @@ StatusOr<DType> ConvertTFDTypeToTFRTDType(tensorflow::DataType dtype) {
   }
 }
 
-StatusOr<tensorflow::DataType> ConvertTFRTDTypeToTFDType(DType dtype) {
+absl::StatusOr<tensorflow::DataType> ConvertTFRTDTypeToTFDType(DType dtype) {
   switch (dtype) {
 #define DTYPE(TFRT_DTYPE, TF_DTYPE) \
   case DType::TFRT_DTYPE:           \
@@ -138,7 +138,7 @@ AsyncValueRef<TensorHandle> TFTensorToTFRTTensorHandle(
       host_ctx->GetHostDeviceRef(), knfbt->metadata(), std::move(knfbt));
 }
 
-StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(
+absl::StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(
     const tensorflow::Tensor& tensor, HostContext* host) {
   // TODO(chky): Handle non-trivial types such as strings.
   TF_ASSIGN_OR_RETURN(auto dtype, ConvertTFDTypeToTFRTDType(tensor.dtype()));
@@ -169,7 +169,7 @@ StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(
   return TensorHandle(host->GetHostDeviceRef(), metadata, std::move(dht_ref));
 }
 
-StatusOr<tensorflow::Tensor> CreateTFTensorFromTensorHandle(
+absl::StatusOr<tensorflow::Tensor> CreateTFTensorFromTensorHandle(
     const TensorHandle& tensor_handle) {
   const auto& metadata = tensor_handle.GetAvailableMetadata();
   TF_ASSIGN_OR_RETURN(auto dtype, ConvertTFRTDTypeToTFDType(metadata.dtype));

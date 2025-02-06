@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_quantize_op_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -101,7 +101,8 @@ TF::PartitionedCallOp FinalizeFunctionRegister(
   rewriter.restoreInsertionPoint(original_point);
 
   auto quantize_call = rewriter.create<TF::PartitionedCallOp>(
-      quantized_op->getLoc(), quantize_result_type, input, func_name_attr,
+      quantized_op->getLoc(), quantize_result_type, input,
+      /*args_attrs=*/nullptr, /*res_attrs=*/nullptr, func_name_attr,
       /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
   return quantize_call;
 }
@@ -153,11 +154,10 @@ QuantizedType CalculateUniformQuantParams(
   DenseFPElementsAttr attr;
   if (!matchPattern(op->getResult(0), m_Constant(&attr))) return nullptr;
 
-  QuantizedType quant_type =
+  QuantizedType quant_type = mlir::dyn_cast<quant::QuantizedType>(
       quant::GetUniformQuantizedTypeForWeight(
           attr, /*symmetric=*/kIsNarrowRange && kIsSigned, kBitWidth, kIsSigned,
-          kIsNarrowRange, /*is_legacy_float*/ false)
-          .template dyn_cast<quant::QuantizedType>();
+          kIsNarrowRange, /*is_legacy_float*/ false));
 
   return quant_type;
 }
@@ -172,16 +172,16 @@ std::optional<Value> AddUniformQuantizeOps(PatternRewriter& rewriter,
   }
   Type expressed_type = op.getResult().getType();
   Type quantized_type = quant_type.castFromExpressedType(expressed_type);
-  ShapedType shaped_quantized_type = quantized_type.cast<ShapedType>();
+  ShapedType shaped_quantized_type = mlir::cast<ShapedType>(quantized_type);
   DenseElementsAttr tensor_proto_attr =
-      Quantize(attr, shaped_quantized_type).dyn_cast<DenseElementsAttr>();
+      mlir::dyn_cast<DenseElementsAttr>(Quantize(attr, shaped_quantized_type));
   if (!tensor_proto_attr) {
     return nullptr;
   }
 
-  Type storage_type = shaped_quantized_type.getElementType()
-                          .cast<QuantizedType>()
-                          .getStorageType();
+  Type storage_type =
+      mlir::cast<QuantizedType>(shaped_quantized_type.getElementType())
+          .getStorageType();
   ShapedType new_type = shaped_quantized_type.clone(storage_type);
 
   rewriter.setInsertionPointAfter(op);
@@ -205,7 +205,7 @@ Operation* LogicsForUniformDequanization(PatternRewriter& rewriter,
   auto new_cast_op =
       rewriter.create<TF::CastOp>(loc, create_unknown_input_shape, input_val);
   // TODO - b/278949920: Enable Per-Channel Quantization for XLA Opset
-  auto qtype = quant_type.dyn_cast<UniformQuantizedType>();
+  auto qtype = mlir::dyn_cast<UniformQuantizedType>(quant_type);
   TensorType scale_type = RankedTensorType::get({}, rewriter.getF32Type());
   Value scale_op = rewriter.create<TF::ConstOp>(
       loc, scale_type,
@@ -253,7 +253,7 @@ std::optional<TF::PartitionedCallOp> ApplyUniformQuantization(
 
   std::optional<TF::PartitionedCallOp> dequantized_val =
       AddUniformDequantizeOps(rewriter, quant_type, quantized_val.value(),
-                              op.getType().cast<ShapedType>());
+                              mlir::cast<ShapedType>(op.getType()));
 
   return dequantized_val;
 }

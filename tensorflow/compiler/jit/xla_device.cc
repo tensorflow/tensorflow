@@ -52,7 +52,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -66,7 +65,7 @@ namespace tensorflow {
 // Default PaddedShapeFn implementation that simply returns the unpadded
 // on-device shape. This is accurate for CPU and GPU devices that neither
 // transpose nor pad tensors.
-Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
+absl::Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
   const tensorflow::XlaTensor* xla_tensor =
       tensorflow::XlaTensor::FromTensor(&tensor);
   if (xla_tensor == nullptr) {
@@ -75,7 +74,7 @@ Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
 
   const xla::ShapedBuffer& shaped_buffer = xla_tensor->shaped_buffer();
   *shape = shaped_buffer.on_device_shape();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Caches a XlaDeviceAllocator per <backend, device ordinal> pair. A
@@ -170,7 +169,7 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
   return device_type_;
 }
 
-/*static*/ Status XlaDevice::GetMetadataFromDevice(
+/*static*/ absl::Status XlaDevice::GetMetadataFromDevice(
     DeviceBase* device, const XlaDevice::Metadata** metadata) {
   *metadata = nullptr;
   XlaDevice* xla_device = dynamic_cast<XlaDevice*>(device->UnderlyingDevice());
@@ -182,16 +181,16 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
         "placed on the wrong device.");
   }
   *metadata = &(xla_device->xla_metadata_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-/* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
-                                           const Metadata** metadata) {
+/* static */ absl::Status XlaDevice::GetMetadata(OpKernelContext* ctx,
+                                                 const Metadata** metadata) {
   return GetMetadataFromDevice(ctx->device(), metadata);
 }
 
-/* static */ Status XlaDevice::GetMetadata(OpKernelConstruction* ctx,
-                                           const Metadata** metadata) {
+/* static */ absl::Status XlaDevice::GetMetadata(OpKernelConstruction* ctx,
+                                                 const Metadata** metadata) {
   return GetMetadataFromDevice(ctx->device(), metadata);
 }
 
@@ -249,7 +248,7 @@ XlaDevice::~XlaDevice() {
   }
 }
 
-StatusOr<xla::LocalClient*> XlaDevice::GetOrCreateClient() const {
+absl::StatusOr<xla::LocalClient*> XlaDevice::GetOrCreateClient() const {
   // We lazily create the client because the platform commits to the
   // details of the host hardware when the client is created, so we
   // don't want to do it until we get a chance to hook the platform up
@@ -288,27 +287,27 @@ Allocator* XlaDevice::GetAllocatorLocked(AllocatorAttributes attr) {
   return xla_allocator_;
 }
 
-Status XlaDevice::EnsureDeviceContextOk() {
+absl::Status XlaDevice::EnsureDeviceContextOk() {
   mutex_lock lock(mu_);
   return GetDeviceContextLocked().status();
 }
 
-Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
-                                       const string& name,
-                                       std::shared_ptr<se::Stream>* stream,
-                                       bool* stream_was_changed) {
+absl::Status XlaDevice::EnsureStreamOkLocked(
+    xla::Backend* backend, const string& name,
+    std::shared_ptr<se::Stream>* stream, bool* stream_was_changed) {
   if (!(*stream) || !(*stream)->ok()) {
     xla::StreamPool::Ptr ptr;
     TF_ASSIGN_OR_RETURN(ptr, backend->BorrowStream(device_ordinal_));
     *stream = std::shared_ptr<se::Stream>(std::move(ptr));
-    VLOG(1) << "XlaDevice " << this << " new " << name << " "
-            << (*stream)->DebugStreamPointers();
+    VLOG(1) << "XlaDevice " << this << " new " << name
+            << " stream=" << (*stream);
     *stream_was_changed = true;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::vector<DeviceContext*>> XlaDevice::GetDeviceContextLocked() {
+absl::StatusOr<std::vector<DeviceContext*>>
+XlaDevice::GetDeviceContextLocked() {
   if (UsePjRtForSingleDeviceCompilation(device_name_)) {
     if (device_contexts_.empty()) {
       for (const auto& iter : shape_determination_fns_) {
@@ -348,9 +347,9 @@ StatusOr<std::vector<DeviceContext*>> XlaDevice::GetDeviceContextLocked() {
     } else {
       // Directly create the stream here instead of borrowing from the stream
       // pool to avoid potential lifetime issues.
-      stream_ = std::make_unique<se::Stream>(
-          backend->stream_executors()[device_ordinal_]);
-      stream_->Init();
+      TF_ASSIGN_OR_RETURN(
+          stream_,
+          backend->stream_executors()[device_ordinal_]->CreateStream());
       TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "stream", &stream_,
                                               &need_new_device_context));
       (*global_compute_streams_)[device_ordinal_] = stream_;
@@ -428,27 +427,27 @@ StatusOr<std::vector<DeviceContext*>> XlaDevice::GetDeviceContextLocked() {
   return device_contexts_;
 }
 
-StatusOr<DeviceContext*> XlaDevice::GetDeviceContextWithIndex(int index) {
+absl::StatusOr<DeviceContext*> XlaDevice::GetDeviceContextWithIndex(int index) {
   mutex_lock lock(mu_);
   TF_ASSIGN_OR_RETURN(auto device_contexts, GetDeviceContextLocked());
   return device_contexts.at(index);
 }
 
-StatusOr<DeviceContext*> XlaDevice::GetDeviceContextDefault() {
+absl::StatusOr<DeviceContext*> XlaDevice::GetDeviceContextDefault() {
   return GetDeviceContextWithIndex(0);
 }
 
-Status XlaDevice::UseAcceleratorDeviceInfo() {
+absl::Status XlaDevice::UseAcceleratorDeviceInfo() {
   mutex_lock lock(mu_);
   use_accelerator_device_info_ = true;
   return GetDeviceContextLocked().status();
 }
 
-Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
+absl::Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
   TF_ASSIGN_OR_RETURN(auto device_context, GetDeviceContextDefault());
   device_context->Ref();
   *out_context = device_context;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Warn about XLA_CPU/XLA_GPU exactly once.
@@ -482,68 +481,36 @@ void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
   op_kernel->ComputeAsync(context, done);
 }
 
-Status XlaDevice::Sync() {
+absl::Status XlaDevice::Sync() {
   VLOG(1) << "XlaDevice::Sync";
-  profiler::TraceMe activity("XlaDevice::Sync", profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("XlaDevice::Sync",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   std::shared_ptr<se::Stream> stream;
   {
     mutex_lock lock(mu_);
     stream = stream_;
   }
-  if (!stream) return OkStatus();
+  if (!stream) return absl::OkStatus();
 
-  Status status = stream->BlockHostUntilDone();
+  absl::Status status = stream->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(status);
   if (!stream->ok()) {
     return errors::Internal("XlaDevice::Sync() failed.");
   }
   VLOG(1) << "XlaDevice::Sync completed";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-// TODO(b/112409994): This is no longer necessary. Consolidate it with the
-// synchronous version.
-void XlaDevice::Sync(const DoneCallback& done) {
-  VLOG(1) << "XlaDevice::Sync (asynchronous)";
-  std::shared_ptr<se::Stream> stream;
-  {
-    mutex_lock lock(mu_);
-    stream = stream_;
-  }
-  if (!stream) {
-    done(OkStatus());
-    return;
-  }
-
-  // The call to ThenEnqueueOnBackgroundThread below enqueues a host callback at
-  // the end of the stream, after everything that has already been enqueued
-  // there at this moment. When the host callback is called, everything before
-  // it must have already finished, and the host callback will then place the
-  // task below onto a background thread. (See the implementation of
-  // ThenEnqueueOnBackgroundThread for details.) Therefore, when the done
-  // callback is finally called from that background thread, we know for sure
-  // that everything enqueued onto the stream (i.e., the device) at this very
-  // moment--when ThenEnqueueOnBackgroundThread is called--will have finished.
-  // This achieves a device-wide sync.
-  stream->ThenEnqueueOnBackgroundThread([stream, done](se::StreamExecutor*) {
-    profiler::TraceMe activity("XlaDevice::Sync::Callback",
-                               profiler::TraceMeLevel::kInfo);
-    done(stream->ok() ? OkStatus()
-                      : errors::Internal("XlaDevice::Sync() failed."));
-  });
-}
-
-Status XlaDevice::MakeTensorFromProto(DeviceContext* device_context,
-                                      const TensorProto& tensor_proto,
-                                      const AllocatorAttributes alloc_attrs,
-                                      Tensor* tensor) {
+absl::Status XlaDevice::MakeTensorFromProto(
+    DeviceContext* device_context, const TensorProto& tensor_proto,
+    const AllocatorAttributes alloc_attrs, Tensor* tensor) {
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
     return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                    tensor_proto.DebugString());
   }
 
-  Status status;
+  absl::Status status;
   if (alloc_attrs.on_host()) {
     *tensor = parsed;
   } else {
@@ -561,9 +528,9 @@ Status XlaDevice::MakeTensorFromProto(DeviceContext* device_context,
   return status;
 }
 
-Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
-                                      const AllocatorAttributes alloc_attrs,
-                                      Tensor* tensor) {
+absl::Status XlaDevice::MakeTensorFromProto(
+    const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
+    Tensor* tensor) {
   VLOG(1) << "XlaDevice::MakeTensorFromProto";
   DeviceContext* device_context;
   TF_ASSIGN_OR_RETURN(device_context, GetDeviceContextDefault());
@@ -580,13 +547,14 @@ bool XlaDevice::AllowsSyncOnCompletion() const {
   return sync_on_completion_;
 }
 
-void XlaDevice::SetHandleDeviceErrorCallback(std::function<Status()> callback) {
+void XlaDevice::SetHandleDeviceErrorCallback(
+    std::function<absl::Status()> callback) {
   mutex_lock lock(mu_);
   device_error_callback_ = callback;
 }
 
-Status XlaDevice::HandleDeviceError() {
-  std::function<Status()> local_device_error_callback;
+absl::Status XlaDevice::HandleDeviceError() {
+  std::function<absl::Status()> local_device_error_callback;
   {
     mutex_lock lock(mu_);
     local_device_error_callback = device_error_callback_;
@@ -594,19 +562,19 @@ Status XlaDevice::HandleDeviceError() {
   if (local_device_error_callback != nullptr) {
     return local_device_error_callback();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status XlaDevice::RefreshStatus() {
+absl::Status XlaDevice::RefreshStatus() {
   std::shared_ptr<se::Stream> stream;
   {
     mutex_lock lock(mu_);
     stream = stream_;
   }
   if (!stream) {
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status status = stream->RefreshStatus();
+  absl::Status status = stream->RefreshStatus();
   if (!status.ok()) {
     // Ignore errors from HandleDeviceError, since by definition the status is
     // already non-ok, so there's nothing extra to report if HandleDeviceError
@@ -619,7 +587,7 @@ Status XlaDevice::RefreshStatus() {
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(
     const char* device, const char* jit_device,
     OpKernel* (*factory)(OpKernelConstruction*),
-    StringPiece kernel_class_name) {
+    absl::string_view kernel_class_name) {
   XlaOpRegistry::RegisterCompilationKernels();
   XlaDeviceOpRegistrations* registrations = new XlaDeviceOpRegistrations;
   for (const KernelDef* jit_def : XlaOpRegistry::DeviceKernels(

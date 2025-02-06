@@ -23,9 +23,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace delegates {
@@ -173,13 +176,11 @@ TfLiteStatus GraphPartitionHelper::PrepareSupportedNodes(
     std::string unsupported_details;
     if (IsNodeSupported(context_, node, registration, node_id,
                         &unsupported_details)) {
-#ifdef TFLITE_DEBUG_DELEGATE
       if (node_id < start_node_index) {
         continue;
       } else if (node_id > end_node_index) {
         break;
       }
-#endif  // TFLITE_DEBUG_DELEGATE
       supported_nodes_->data[supported_nodes_->size++] = node_id;
     } else if (unsupported_nodes_info) {
       std::string node_info = GetOpNameByRegistration(*registration);

@@ -16,68 +16,67 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_LIB_NVTX_UTILS_H_
 #define TENSORFLOW_TSL_PROFILER_LIB_NVTX_UTILS_H_
 
-#include <optional>
+#include <stddef.h>
 
-#include "absl/strings/string_view.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
+#include <cstdint>
+#include <string>
 
-#if GOOGLE_CUDA
-#include "nvtx3/nvToolsExt.h"
-#endif
+namespace tsl::profiler {
+struct String;
+// Opaque handle to a string that has been pre-registered with the profiler/NVTX
+// implementation
+using StringHandle = String*;
 
-namespace tsl {
-namespace profiler {
-namespace nvtx {
+struct ProfilerDomain;
+// Opaque handle to a domain in the profiler/NVTX implementation
+using ProfilerDomainHandle = ProfilerDomain*;
 
-// Some typedef to help build without NVTX.
-#if !GOOGLE_CUDA
-typedef void* nvtxEventAttributes_t;
-typedef void* nvtxDomainHandle_t;
-#endif
+// Get the "TSL" domain if NVTX profiling is enabled, otherwise null
+ProfilerDomainHandle DefaultProfilerDomain();
 
-// A helper function that return the domains to use if NVTX profiling
-// is enabled.
-inline std::optional<nvtxDomainHandle_t> GetNVTXDomain() {
-#if GOOGLE_CUDA
-  static nvtxDomainHandle_t domain;
-  static bool is_enabled = [] {
-    bool _is_enabled = false;
-    // Force NVTX marker if a tool triggered the profiler.
-    domain = nvtxDomainCreateA("TSL");
-    if (domain) {
-      _is_enabled = true;
-    }
-    VLOG(1) << "Is NVTX marker enabled? " << _is_enabled;
-    return _is_enabled;
-  }();
-  if (is_enabled) return domain;
-#endif
-  return {};
+// Assign a human-readable name to the current thread
+void NameCurrentThread(const std::string&);
+
+// Assign a human-readable name to the given local device
+void NameDevice(int device_id, const std::string& device_name);
+
+struct Stream;
+// Opaque handle to an execution stream
+using StreamHandle = Stream*;
+
+// Assign a human-readable name to the given execution stream
+void NameStream(StreamHandle stream, const std::string& stream_name);
+
+// Register a string with the profiler/NVTX implementation for faster use
+StringHandle RegisterString(ProfilerDomainHandle, const std::string&);
+
+// End a range that was created on this thread by RangePush
+void RangePop(ProfilerDomainHandle);
+
+// Older/simpler version; NVTX implementation copies a C-style string each time
+void RangePush(ProfilerDomainHandle domain, const char*);
+inline void RangePush(ProfilerDomainHandle domain, const std::string& str) {
+  RangePush(domain, str.c_str());
 }
 
-// A helper function to decide whether to enable CUDA NVTX profiling ranges.
-inline bool RangesEnabled() {
-#if GOOGLE_CUDA
-  return GetNVTXDomain().has_value();
-#else
-  return false;
-#endif
+namespace detail {
+void RangePush(ProfilerDomainHandle domain, StringHandle title,
+               uint64_t schema_id, const void* payload, size_t payload_size);
 }
 
-// Note: The memory backing msg must persist until the result of this function
-// has been consumed by an NVTX API.
-inline void MakeAttributes(const char* msg, nvtxEventAttributes_t* result) {
-  *result = {0};
-#if GOOGLE_CUDA
-  result->version = NVTX_VERSION;
-  result->size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
-  result->messageType = NVTX_MESSAGE_TYPE_ASCII;
-  result->message.ascii = msg;
-#endif
+// More powerful version: pass a registered string instead of a C-style
+// string, and attach a generic payload. The Annotation type must implement a
+// method called NvtxSchemaId() that allows the NVTX backend to interpret the
+// payload.
+template <typename Annotation>
+void RangePush(ProfilerDomainHandle domain, StringHandle title,
+               const Annotation& annotation) {
+  return detail::RangePush(domain, title, annotation.NvtxSchemaId(),
+                           &annotation, sizeof(Annotation));
 }
 
-}  // namespace nvtx
-}  // namespace profiler
-}  // namespace tsl
+// Register the schema of a custom payload type, for use with the more powerful
+// version of RangePush
+uint64_t RegisterSchema(ProfilerDomainHandle domain, const void* schemaAttr);
+}  // namespace tsl::profiler
 #endif  // TENSORFLOW_TSL_PROFILER_LIB_NVTX_UTILS_H_

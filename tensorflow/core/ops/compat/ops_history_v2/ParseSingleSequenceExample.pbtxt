@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ParseSingleSequenceExample"
   input_arg {
     name: "serialized"

@@ -22,6 +22,8 @@ numpy==1.22.4;python_version<"3.11"
 scipy==1.11.2;python_version=="3.12"
 scipy==1.9.2;python_version=="3.11"
 scipy==1.7.3;python_version<"3.11"
-ml_dtypes>=0.2.0
+ml_dtypes>=0.5.1
 
+# For using Python 3.11 with Bazel 6 (b/286090018)
 
+lit ~= 17.0.2

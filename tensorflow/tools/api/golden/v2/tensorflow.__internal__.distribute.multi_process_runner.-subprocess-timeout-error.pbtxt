@@ -10,4 +10,7 @@ tf_class {
     name: "__init__"
     argspec: "args=[\'self\', \'msg\', \'mpr_result\'], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "add_note"
+  }
 }

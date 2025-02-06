@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/platform/status.h"
 #include "tsl/platform/errors.h"
 
 namespace tensorflow {
@@ -42,7 +42,7 @@ REGISTER_OP("_TPUCompileMlir")
       for (int i = 0; i < num_computations; ++i) {
         c->set_output(i + 1, c->Vector(3));
       }
-      return OkStatus();
+      return absl::OkStatus();
     })
     .Doc(
         R"(
@@ -65,7 +65,7 @@ REGISTER_OP("_XlaCompileMlirPlaceholderProgramKey")
     .Output("program: string")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(3));
-      return OkStatus();
+      return absl::OkStatus();
     })
     .SetIsStateful()
     .Doc(
@@ -105,7 +105,7 @@ REGISTER_OP("TPUCompile")
       for (int i = 0; i < num_computations; ++i) {
         c->set_output(num_computations + i + 1, c->Scalar());
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TPUCompileSucceededAssert")

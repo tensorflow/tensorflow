@@ -12,238 +12,248 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstring>
-#include <optional>
 #include <string>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
-#include "absl/strings/str_format.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/detail/common.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
-#include "pybind11/stl.h"  // from @pybind11
-#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
-#include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil
+#include "pybind11/stl.h"  // from @pybind11  // IWYU pragma: keep
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil   // IWYU pragma: keep
+#include "pybind11_abseil/import_status_module.h"  // from @pybind11_abseil
+#include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
 #include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
-#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/type_casters.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/python/lib/core/pybind11_lib.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
+
+namespace py = pybind11;
 
 namespace {
 
-using ::tensorflow::calibrator::CalibrationStatistics;
-using ::tensorflow::calibrator::CalibratorSingleton;
+using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::ExportedModel;
+using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::QuantizationOptions;
-using ::tensorflow::quantization::QuantizePtqDynamicRange;
-using ::tensorflow::quantization::QuantizePtqModelPostCalibration;
-using ::tensorflow::quantization::QuantizePtqModelPreCalibration;
+using ::tensorflow::quantization::QuantizeDynamicRangePtq;
 using ::tensorflow::quantization::QuantizeQatModel;
+using ::tensorflow::quantization::QuantizeStaticRangePtq;
 using ::tensorflow::quantization::QuantizeWeightOnly;
-
-// Serializes an ExportedModel. Raises python ValueError if serialization fails.
-std::string Serialize(const ExportedModel& exported_model) {
-  const std::string exported_model_serialized =
-      exported_model.SerializeAsString();
-
-  // Empty string means it failed to serialize the protobuf with an error. See
-  // the docstring for SerializeAsString for details.
-  if (exported_model_serialized.empty()) {
-    throw py::value_error("Failed to serialize ExportedModel.");
-  }
-
-  return exported_model_serialized;
-}
-
-// Retrieves collected statistics of a `CustomAggregator` node from the
-// singleton. `id` is the identifier of the `CustomAggregator`.
-CalibrationStatistics GetStatisticsFromCalibrator(const absl::string_view id) {
-  std::optional<CalibrationStatistics> statistics =
-      CalibratorSingleton::GetStatistics(id);
-
-  if (!statistics.has_value()) {
-    throw py::value_error(absl::StrFormat(
-        "Calibrated data does not exist. Cannot find statistics."
-        "value for id: '%s'",
-        id));
-  }
-
-  return *statistics;
-}
+using ::tensorflow::quantization::RepresentativeDatasetFile;
 
 }  // namespace
-
-namespace pybind11 {
-namespace detail {
-
-// Converts `ExportedModel` (c++) to `bytes` (python). The resulting `bytes`
-// object is a serialization of `ExportedModel`.
-//
-// See https://pybind11.readthedocs.io/en/stable/advanced/cast/custom.html for
-// further details on how custom type conversions work for pybind11.
-template <>
-struct type_caster<ExportedModel> {
- public:
-  PYBIND11_TYPE_CASTER(ExportedModel, const_name("ExportedModel"));
-
-  // Constructs a `bytes` object after serializing `src`.
-  static handle cast(ExportedModel&& src, return_value_policy policy,
-                     handle parent) {
-    // release() prevents the reference count from decreasing upon the
-    // destruction of py::bytes and returns a raw python object handle.
-    return py::bytes(Serialize(src)).release();
-  }
-};
-
-// Python -> cpp conversion for `QuantizationOptions`. Accepts a serialized
-// protobuf string and deserializes into an instance of `QuantizationOptions`.
-template <>
-struct type_caster<QuantizationOptions> {
- public:
-  PYBIND11_TYPE_CASTER(QuantizationOptions, const_name("QuantizationOptions"));
-
-  bool load(handle src, const bool convert) {
-    auto caster = make_caster<absl::string_view>();
-    // The user should have passed a valid python string.
-    if (!caster.load(src, convert)) {
-      return false;
-    }
-
-    const absl::string_view quantization_opts_serialized =
-        cast_op<absl::string_view>(std::move(caster));
-
-    // NOLINTNEXTLINE: Explicit std::string conversion required for OSS.
-    return value.ParseFromString(std::string(quantization_opts_serialized));
-  }
-};
-
-}  // namespace detail
-}  // namespace pybind11
 
 PYBIND11_MODULE(pywrap_quantize_model, m) {
   // Supports absl::StatusOr<T> type conversions.
   pybind11::google::ImportStatusModule();
   pybind11_protobuf::ImportNativeProtoCasters();
-  // Calibrator related functions.
-  m.def(
-      "clear_calibrator",
-      [] { CalibratorSingleton::ClearCollectedInformation(); },
-      R"pbdoc(
-      Clears the collected metrics from the calibrator.
-    )pbdoc");
-  m.def(
-      "clear_data_from_calibrator",
-      [](const absl::string_view id) { CalibratorSingleton::ClearData(id); },
-      R"pbdoc(
-      Clears the collected data of the given id from calibrator.
-    )pbdoc");
-  m.def(
-      "get_statistics_from_calibrator",
-      [](const absl::string_view id) -> CalibrationStatistics {
-        return GetStatisticsFromCalibrator(id);
-      },
-      R"pbdoc(
-      Returns the proto CalibrationStatistics given id from calibrator.
-    )pbdoc");
 
-  // Quantization functions.
   m.def(
+      // If the function signature changes, likely its corresponding .pyi type
+      // hinting should also change.
+      // LINT.IfChange
       "quantize_qat_model",
-      [](const absl::string_view saved_model_path,
+      [](const absl::string_view src_saved_model_path,
+         const absl::string_view dst_saved_model_path,
+         const QuantizationOptions& quantization_options,
          const std::vector<std::string>& signature_keys,
-         const std::unordered_set<std::string>& tags,
-         const QuantizationOptions& quant_opts,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases)
-          -> absl::StatusOr<ExportedModel> {
-        return QuantizeQatModel(saved_model_path, signature_keys, tags,
-                                quant_opts, function_aliases);
+         const absl::flat_hash_map<std::string, SignatureDef>&
+             signature_def_map,
+         const PyFunctionLibrary& py_function_library) -> absl::Status {
+        // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_qat_model)
+        std::unordered_set<std::string> tags;
+        tags.insert(quantization_options.tags().begin(),
+                    quantization_options.tags().end());
+        const absl::StatusOr<ExportedModel> exported_model = QuantizeQatModel(
+            src_saved_model_path, signature_keys, tags, quantization_options);
+        if (!exported_model.ok()) return exported_model.status();
+
+        // Remove the `tpu` tag from the debug quantized saved model as it is
+        // for CPU. Note the 'tpu' value should be the same as `TPU` defined in
+        // tensorflow/python/saved_model/tag_constants.py.
+        if (quantization_options.has_debugger_config()) {
+          tags.erase("tpu");
+        }
+        py_function_library.SaveExportedModel(
+            dst_saved_model_path, *exported_model, src_saved_model_path, tags,
+            signature_def_map);
+
+        return absl::OkStatus();
       },
       R"pbdoc(
-      Returns serialized ExportedModel that contains the quantized model's
-      GraphDef and metadata. The user should pass a serialized
-      `QuantizationOptions` for the `quant_opts` argument.
+      Quantizes a model that went through quantization-aware training (QAT)
+      saved at `src_saved_model_path`. The resulting model will be saved to
+      `dst_saved_model_path`. Returns an OK sataus when successful, otherwise
+      raises `StatusNotOk` exception.
 
-      Raises `StatusNotOk` exception if when the run was unsuccessful.
-    )pbdoc");
+      The user should pass a serialized `QuantizationOptions` for the
+      `quantization_options_serialized` argument, and a signature key ->
+      serialized `SignatureDef` mapping for the `signature_def_map_serialized`
+      argument.
+      )pbdoc",
+      py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
+      py::arg("quantization_options_serialized"), py::kw_only(),
+      py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
+      py::arg("py_function_library"));
 
   m.def(
+      // If the function signature changes, likely its corresponding .pyi type
+      // hinting should also change.
+      // LINT.IfChange
       "quantize_ptq_dynamic_range",
-      [](const absl::string_view saved_model_path,
+      [](const absl::string_view src_saved_model_path,
+         const absl::string_view dst_saved_model_path,
+         const QuantizationOptions& quantization_options,
          const std::vector<std::string>& signature_keys,
-         const std::unordered_set<std::string>& tags,
-         const QuantizationOptions& quant_opts,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases)
-          -> absl::StatusOr<ExportedModel> {
-        return QuantizePtqDynamicRange(saved_model_path, signature_keys, tags,
-                                       quant_opts, function_aliases);
+         const absl::flat_hash_map<std::string, SignatureDef>&
+             signature_def_map,
+         const PyFunctionLibrary& py_function_library) -> absl::Status {
+        // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_ptq_dynamic_range)
+        std::unordered_set<std::string> tags;
+        tags.insert(quantization_options.tags().begin(),
+                    quantization_options.tags().end());
+
+        const absl::StatusOr<ExportedModel> exported_model =
+            QuantizeDynamicRangePtq(src_saved_model_path, signature_keys, tags,
+                                    quantization_options);
+
+        // Remove the `tpu` tag from the debug quantized saved model as it is
+        // for CPU. Note the 'tpu' value should be the same as `TPU` defined in
+        // tensorflow/python/saved_model/tag_constants.py.
+        if (quantization_options.has_debugger_config()) {
+          tags.erase("tpu");
+        }
+        py_function_library.SaveExportedModel(
+            dst_saved_model_path, *exported_model, src_saved_model_path, tags,
+            signature_def_map);
+
+        return absl::OkStatus();
       },
       R"pbdoc(
-      Returns serialized ExportedModel that contains the quantized model's
-      GraphDef and metadata. The user should pass a serialized
-      `QuantizationOptions` for the `quant_opts` argument.
+      Quantizes a model saved at `src_saved_model_path` using dynamic-range
+      quantization algorithm. The resulting model will be saved to
+      `dst_saved_model_path`. Returns an OK sataus when successful, otherwise
+      raises `StatusNotOk` exception.
 
-      Raises `StatusNotOk` exception if when the run was unsuccessful.
-    )pbdoc");
+      The user should pass a serialized `QuantizationOptions` for the
+      `quantization_options_serialized` argument, and a signature key ->
+      serialized `SignatureDef` mapping for the `signature_def_map_serialized`
+      argument.
+      )pbdoc",
+      py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
+      py::arg("quantization_options_serialized"), py::kw_only(),
+      py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
+      py::arg("py_function_library"));
 
   m.def(
+      // If the function signature changes, likely its corresponding .pyi type
+      // hinting should also change.
+      // LINT.IfChange
       "quantize_weight_only",
-      [](const absl::string_view saved_model_path,
-         const QuantizationOptions& quant_opts,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases)
-          -> absl::StatusOr<ExportedModel> {
-        return QuantizeWeightOnly(saved_model_path, quant_opts,
-                                  function_aliases);
+      [](const absl::string_view src_saved_model_path,
+         const absl::string_view dst_saved_model_path,
+         const QuantizationOptions& quantization_options,
+         const absl::flat_hash_map<std::string, SignatureDef>&
+             signature_def_map,
+         const PyFunctionLibrary& py_function_library) -> absl::Status {
+        // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_weight_only)
+        const absl::StatusOr<ExportedModel> exported_model =
+            QuantizeWeightOnly(src_saved_model_path, quantization_options);
+        if (!exported_model.ok()) return exported_model.status();
+
+        std::unordered_set<std::string> tags;
+        tags.insert(quantization_options.tags().begin(),
+                    quantization_options.tags().end());
+
+        py_function_library.SaveExportedModel(
+            dst_saved_model_path, *exported_model, src_saved_model_path, tags,
+            signature_def_map);
+
+        return absl::OkStatus();
       },
       R"pbdoc(
-      Returns serialized ExportedModel that contains the quantized model's
-      GraphDef and metadata. The user should pass a serialized
-      `QuantizationOptions` for the `quant_opts` argument.
+      Quantizes a model saved at `src_saved_model_path` using weight-only
+      quantization algorithm. The resulting model will be saved to
+      `dst_saved_model_path`. Returns an OK sataus when successful, otherwise
+      raises `StatusNotOk` exception.
 
-      Raises `StatusNotOk` exception if when the run was unsuccessful.
-    )pbdoc");
+      The user should pass a serialized `QuantizationOptions` for the
+      `quantization_options_serialized` argument, and a signature key ->
+      serialized `SignatureDef` mapping for the `signature_def_map_serialized`
+      argument.
+      )pbdoc",
+      py::arg("src_saved_model_path"), py::arg("dst_saved_model_path"),
+      py::arg("quantization_options_serialized"), py::kw_only(),
+      py::arg("signature_def_map_serialized"), py::arg("py_function_library"));
 
   m.def(
-      "quantize_ptq_model_pre_calibration",
-      [](const absl::string_view saved_model_path,
+      // If the function signature changes, likely its corresponding .pyi type
+      // hinting should also change.
+      // LINT.IfChange
+      "quantize_ptq_static_range",
+      [](const absl::string_view src_saved_model_path,
+         const absl::string_view dst_saved_model_path,
+         const QuantizationOptions& quantization_options,
          const std::vector<std::string>& signature_keys,
-         const std::unordered_set<std::string>& tags,
-         const QuantizationOptions& quant_opts,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases)
-          -> absl::StatusOr<ExportedModel> {
-        return QuantizePtqModelPreCalibration(saved_model_path, signature_keys,
-                                              tags, quant_opts,
-                                              function_aliases);
+         const absl::flat_hash_map<std::string, SignatureDef>&
+             signature_def_map,
+         const PyFunctionLibrary& py_function_library,
+         const absl::flat_hash_map<std::string, RepresentativeDatasetFile>&
+             representative_dataset_file_map_serialized) -> absl::Status {
+        // LINT.ThenChange(pywrap_quantize_model.pyi:quantize_ptq_static_range)
+        std::unordered_set<std::string> tags;
+        tags.insert(quantization_options.tags().begin(),
+                    quantization_options.tags().end());
+        const absl::StatusOr<ExportedModel> exported_model =
+            QuantizeStaticRangePtq(src_saved_model_path, signature_keys, tags,
+                                   quantization_options, signature_def_map,
+                                   py_function_library,
+                                   representative_dataset_file_map_serialized);
+        if (!exported_model.ok()) return exported_model.status();
+
+        // Remove the `tpu` tag from the debug quantized saved model as it is
+        // for CPU. Note the 'tpu' value should be the same as `TPU` defined
+        // in tensorflow/python/saved_model/tag_constants.py.
+        if (quantization_options.has_debugger_config()) {
+          tags.erase("tpu");
+        }
+        py_function_library.SaveExportedModel(
+            dst_saved_model_path, *exported_model, src_saved_model_path, tags,
+            signature_def_map);
+
+        return absl::OkStatus();
       },
       R"pbdoc(
-      Returns serialized ExportedModel that contains the model's GraphDef and
-      metadata. The GraphDef contains extra ops required for calibration. The
-      user should pass a serialized `QuantizationOptions` for the `quant_opts`
+      Runs static-range post-training quantization (PTQ) on a SavedModel at
+      `src_saved_model_path` and saves the resulting model to
+      `dst_saved_model_path`.
+
+      The user should pass a serialized `QuantizationOptions` for the
+      `quantization_options_serialized` argument, and a signature key ->
+      serialized `SignatureDef` mapping for the `signature_def_map_serialized`
       argument.
 
-      Raises `StatusNotOk` exception if when the run was unsuccessful.
-    )pbdoc");
-
-  m.def(
-      "quantize_ptq_model_post_calibration",
-      [](const absl::string_view saved_model_path,
-         const std::vector<std::string>& signature_keys,
-         const std::unordered_set<std::string>& tags,
-         const QuantizationOptions& quant_opts,
-         const absl::flat_hash_map<std::string, std::string>& function_aliases)
-          -> absl::StatusOr<ExportedModel> {
-        return QuantizePtqModelPostCalibration(saved_model_path, signature_keys,
-                                               tags, quant_opts,
-                                               function_aliases);
-      },
-      R"pbdoc(
-      Returns serialized ExportedModel that contains the quantized model's
-      GraphDef and metadata. The user should pass a serialized
-      `QuantizationOptions` for the `quant_opts` argument.
+      `representative_dataset_file_map_serialized` is a signature key ->
+      `RepresentativeDatasetFile` (serialized) mapping for running the
+      calibration step. Each dataset file stores the representative dataset for
+      the function matching the signature key.
 
       Raises `StatusNotOk` exception if when the run was unsuccessful.
-    )pbdoc");
+      )pbdoc",
+      py::arg("saved_model_path"), py::arg("dst_saved_model_path"),
+      py::arg("quantization_options_serialized"), py::kw_only(),
+      py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
+      py::arg("py_function_library"),
+      py::arg("representative_dataset_file_map_serialized"));
 }

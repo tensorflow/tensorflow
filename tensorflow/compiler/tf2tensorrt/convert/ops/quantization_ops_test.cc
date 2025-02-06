@@ -46,7 +46,7 @@ namespace convert {
 namespace ops = ::tensorflow::ops;
 using ::tensorflow::testing::StatusIs;
 
-// This anonymous namespace contains helper functions for instatiating small TF
+// This anonymous namespace contains helper functions for instantiating small TF
 // building blocks. These are used below to construct specific graph patterns
 // which test end-to-end conversion of the TF graph to an explciit-precision
 // enabled TensorRT network.

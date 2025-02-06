@@ -1,8 +1,8 @@
 # python/lib/io package
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "if_oss")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 
 # copybara:uncomment_begin(google-only)
 # load("//third_party/zlib:BUILD_defs.bzl", "brittle_test_relying_on_stable_zlib_output")
@@ -34,23 +34,6 @@ tf_python_pybind_extension(
     ],
 )
 
-py_strict_library(
-    name = "lib",
-    deprecation = "This target has been split. Depend on the sub-targets instead.",
-    srcs_version = "PY3",
-    visibility = visibility + [
-        "//tensorflow:internal",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/py/tf_agents:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
-    ],
-    deps = [
-        ":file_io",
-        ":python_io",
-        ":tf_record",
-    ],
-)
-
 tf_python_pybind_extension(
     name = "_pywrap_record_io",
     srcs = ["record_io_wrapper.cc"],
@@ -75,13 +58,18 @@ tf_python_pybind_extension(
 py_strict_library(
     name = "file_io",
     srcs = ["file_io.py"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = [
+    # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
     visibility = [
-        "//tensorflow:__subpackages__",
-        "//tensorflow:internal",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/py/tf_agents:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":_pywrap_file_io",
         "//tensorflow/python/framework:errors",
@@ -98,9 +86,7 @@ py_strict_library(
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
     ],
     deps = [
         ":_pywrap_record_io",
@@ -116,9 +102,6 @@ py_strict_library(
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/py/tf_agents:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
     ],
     deps = [":tf_record"],
 )

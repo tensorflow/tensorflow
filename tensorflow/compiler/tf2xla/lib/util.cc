@@ -15,15 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 
-#include "xla/client/xla_builder.h"
+#include <cstdint>
+
+#include "absl/log/log.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 

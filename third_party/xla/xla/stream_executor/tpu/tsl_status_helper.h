@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,9 +18,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
-#include "tsl/c/tsl_status.h"
-#include "tsl/c/tsl_status_helper.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/c/tsl_status.h"
+#include "xla/tsl/c/tsl_status_helper.h"
 
 class TslStatusHelper {
  public:
@@ -28,12 +27,13 @@ class TslStatusHelper {
 
   ~TslStatusHelper() { TSL_DeleteStatus(c_status); }
 
-  static tsl::Status FromC(TF_Status* const c_status) {  // TENSORFLOW_STATUS_OK
+  static absl::Status FromC(
+      TF_Status* const c_status) {  // TENSORFLOW_STATUS_OK
     absl::StatusCode code = tsl::StatusCodeFromTSLCode(TSL_GetCode(c_status));
     if (code == absl::StatusCode::kOk) {
-      return tsl::OkStatus();
+      return absl::OkStatus();
     }
-    return tsl::Status(code, TSL_Message(c_status));  // TENSORFLOW_STATUS_OK
+    return absl::Status(code, TSL_Message(c_status));  // TENSORFLOW_STATUS_OK
   }
 
   bool ok() const {
@@ -41,7 +41,7 @@ class TslStatusHelper {
            absl::StatusCode::kOk;
   }
 
-  tsl::Status status() const {  // TENSORFLOW_STATUS_OK
+  absl::Status status() const {  // TENSORFLOW_STATUS_OK
     return FromC(c_status);
   }
 

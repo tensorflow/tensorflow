@@ -37,6 +37,7 @@ py_strict_test(
         ":activity",
         ":reaching_definitions",
         ":reaching_fndefs",
+        #internal proto upb dep
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:naming",
@@ -101,13 +102,14 @@ py_strict_test(
     deps = [
         ":activity",
         ":annos",
+        "@pypi_gast//:pkg",
+        #internal proto upb dep
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:naming",
         "//tensorflow/python/autograph/pyct:parser",
         "//tensorflow/python/autograph/pyct:qual_names",
         "//tensorflow/python/autograph/pyct:transformer",
         "//tensorflow/python/platform:client_testlib",
-        "@pypi_gast//:pkg",
     ],
 )
 
@@ -121,6 +123,7 @@ py_strict_test(
         ":activity",
         ":liveness",
         ":reaching_fndefs",
+        #internal proto upb dep
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:naming",
@@ -139,6 +142,7 @@ py_strict_test(
     deps = [
         ":activity",
         ":reaching_definitions",
+        #internal proto upb dep
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:naming",
@@ -159,6 +163,7 @@ py_strict_test(
         ":reaching_definitions",
         ":reaching_fndefs",
         ":type_inference",
+        #internal proto upb dep
         "//tensorflow/python/autograph/pyct:anno",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:qual_names",

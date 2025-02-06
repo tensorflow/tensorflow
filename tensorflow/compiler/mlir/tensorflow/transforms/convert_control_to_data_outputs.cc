@@ -14,20 +14,43 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <memory>
 #include <queue>
+#include <set>
+#include <string>
+#include <utility>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
+#include "mlir/Analysis/DataFlow/ConstantPropagationAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/DataFlow/SparseAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/DataFlowFramework.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
+#include "tensorflow/compiler/mlir/tensorflow/analysis/resource_dataflow.h"
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -40,20 +63,36 @@ namespace tf_executor {
 namespace {
 
 using TF::ResourceId;
+using ResourceAndDevice = std::pair<ResourceId, int32_t>;
 static constexpr ResourceId kUnknownResourceId =
     TF::detail::ResourceAliasAnalysisInfo::kUnknownResourceId;
 static constexpr ResourceId kInvalidResourceId =
     TF::detail::ResourceAliasAnalysisInfo::kInvalidResourceId;
 using OperationSetTy = SmallPtrSet<Operation*, 4>;
-using ResourceToOpsMapTy = DenseMap<ResourceId, OperationSetTy>;
+using ResourceToOpsMapTy = DenseMap<ResourceAndDevice, OperationSetTy>;
+using DeviceMap = DenseMap<StringAttr, int64_t>;
+constexpr int64_t kAnyDevice = 0;
+constexpr ResourceAndDevice kInvalidResourceAndDevice{kInvalidResourceId,
+                                                      kAnyDevice};
+constexpr ResourceAndDevice kUnknownResourceAndDevice{kUnknownResourceId,
+                                                      kAnyDevice};
+
+constexpr char kDeviceAttr[] = "device";
 
 #define GEN_PASS_DEF_EXECUTORCONVERTCONTROLTODATAOUTPUTSPASS
+#define GEN_PASS_DECL_EXECUTORCONVERTCONTROLTODATAOUTPUTSPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
-class ConvertControlToDataOutputsPass
+struct ConvertControlToDataOutputsPass
     : public impl::ExecutorConvertControlToDataOutputsPassBase<
           ConvertControlToDataOutputsPass> {
- public:
+  ConvertControlToDataOutputsPass() = default;
+  explicit ConvertControlToDataOutputsPass(
+      bool composite_tpuexecute_side_effects)
+      : ExecutorConvertControlToDataOutputsPassBase(
+            ExecutorConvertControlToDataOutputsPassOptions{
+                composite_tpuexecute_side_effects}) {}
+
   void runOnOperation() override;
 };
 
@@ -74,14 +113,60 @@ SmallVector<TF::WhileOp> GetWhileCallers(func::FuncOp func,
   return while_callers;
 }
 
+bool IsResourceType(Type type) {
+  return mlir::isa<TF::ResourceType>(getElementTypeOrSelf(type));
+}
+
+bool OnlyOperatesOnCompositeDevices(
+    TF::TPUExecuteAndUpdateVariablesOp& op,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    const DataFlowSolver& solver) {
+  auto& alias_analysis = side_effect_analysis.GetAliasAnalysis();
+  llvm::SmallSet<int, 8> read_array;
+  for (const Attribute& attr : op.getDeviceVarReadsIndices()) {
+    read_array.insert(mlir::cast<IntegerAttr>(attr).getInt());
+  }
+  llvm::SmallSet<int, 8> update_array;
+  for (const Attribute& attr : op.getDeviceVarUpdatesIndices()) {
+    update_array.insert(mlir::cast<IntegerAttr>(attr).getInt());
+  }
+
+  for (auto& arg : op->getOpOperands()) {
+    Value v = arg.get();
+    if (!IsResourceType(arg.get().getType())) continue;
+    if (alias_analysis.IsUnknownResource(v)) continue;
+    for (auto id : alias_analysis.GetResourceUniqueIds(v)) {
+      (void)id;
+    }
+  }
+
+  for (auto& arg : op->getOpOperands()) {
+    if (!IsResourceType(arg.get().getType())) {
+      continue;
+    }
+    auto lattice =
+        solver.lookupState<TF::IsCompositeDataflowState>(arg.get())->getValue();
+    bool is_read = read_array.contains(arg.getOperandNumber());
+    bool is_update = update_array.contains(arg.getOperandNumber());
+    // We want the resource operands that are on composite devices to be the
+    // exact same set as the resource operands that are read or updated.
+    if ((is_read || is_update) != lattice.is_on_composite_device) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Populates `chain_resource_to_ops_map`, the map from all resources that need
 // to be chained to the set of operations that access the resource, and
 // `resource_equivalence_classes`. Resources are equivalent if they are accessed
 // by a common op, and equivalent resources will be assigned to the same chain.
 void CollectChainResources(
     func::FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
-    llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes,
-    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    llvm::EquivalenceClasses<ResourceAndDevice>& resource_equivalence_classes,
+    DeviceMap& devices,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    const DataFlowSolver& solver, bool composite_tpuexecute_side_effects) {
   auto graph_op = cast<GraphOp>(func.front().front());
 
   // For each op in the graph, get the resources it uses and update the access
@@ -93,24 +178,77 @@ void CollectChainResources(
     assert(island.WrapsSingleOp());
     Operation& op = island.GetBody().front();
 
-    ResourceId prev_resource_id = kInvalidResourceId;
+    // If the op only operates on resources stored on devices that are
+    // "COMPOSITE", then this op is defined to work in parallel with other
+    // TPUExecute* ops. So we can make all ResourceIds device-specific below.
+    // (Even the per-op "resource ids", like ResourceEffects::TPUExecute.)
+    bool op_only_operates_on_composite_devices = false;
+    if (auto execute = llvm::dyn_cast<TF::TPUExecuteAndUpdateVariablesOp>(op)) {
+      if (OnlyOperatesOnCompositeDevices(execute, side_effect_analysis,
+                                         solver)) {
+        op_only_operates_on_composite_devices = true;
+      }
+    }
+
+    auto device_attr = op.getAttrOfType<StringAttr>(kDeviceAttr);
+    int64_t device_id;
+    if (!device_attr) {
+      device_id = kAnyDevice;
+    } else if (devices.find(device_attr) != devices.end()) {
+      device_id = devices[device_attr];
+    } else {
+      device_id = 1 + devices.size();
+      devices[device_attr] = device_id;
+    }
+
+    auto& alias_analysis = side_effect_analysis.GetAliasAnalysis();
+
+    ResourceAndDevice prev_resource_and_device = kInvalidResourceAndDevice;
     for (auto resource_id_read_only_pair :
          side_effect_analysis.GetResourceIds(&op)) {
-      ResourceId resource_id = resource_id_read_only_pair.first;
+      auto resource_id = resource_id_read_only_pair.first;
+      // If alias analysis knows about a resource (as evidenced by the fact that
+      // GetValuesForResourceId isn't empty), and dataflow tells us that this
+      // stems from a function argument that was annotated as
+      // "tf._composite_device", then we can treat this resource as
+      // device-specific (see below).
+      bool resource_is_on_composite_device = false;
+      for (Value value : alias_analysis.GetValuesForResourceId(resource_id)) {
+        auto lattice = solver.lookupState<TF::IsCompositeDataflowState>(value);
+        if (lattice) {
+          resource_is_on_composite_device |=
+              lattice->getValue().is_on_composite_device;
+        }
+      }
+
+      // A device-specific resource identifier creates an edge only between ops
+      // on the same device, thus preventing ops on different devices from
+      // blocking each other, even if they access the same resource.
+      ResourceAndDevice resource_and_device;
+      if (composite_tpuexecute_side_effects &&
+          (op_only_operates_on_composite_devices ||
+           resource_is_on_composite_device)) {
+        resource_and_device = std::make_pair(resource_id, device_id);
+      } else {
+        resource_and_device = std::make_pair(resource_id, kAnyDevice);
+      }
+
       // If the resource was allocated by an op with `UniqueResourceAllocation`
       // trait, then we don't need to chain resource ops accessing this resource
       // between iterations: Every iteration will create a new independent
       // resource. This enables more parallelism across iterations.
-      if (!side_effect_analysis.IsUniqueResourceAllocationId(resource_id)) {
-        chain_resource_to_ops_map[resource_id].insert(&op);
-        if (prev_resource_id != kInvalidResourceId) {
+      if (!side_effect_analysis.IsUniqueResourceAllocationId(
+              resource_and_device.first)) {
+        chain_resource_to_ops_map[resource_and_device].insert(&op);
+        if (prev_resource_and_device != kInvalidResourceAndDevice) {
           // Merge class of current ID with class of previous ID since both
           // resources are accessed by `op`.
-          resource_equivalence_classes.unionSets(prev_resource_id, resource_id);
+          resource_equivalence_classes.unionSets(prev_resource_and_device,
+                                                 resource_and_device);
         } else {
-          resource_equivalence_classes.insert(resource_id);
+          resource_equivalence_classes.insert(resource_and_device);
         }
-        prev_resource_id = resource_id;
+        prev_resource_and_device = resource_and_device;
       }
     }
   });
@@ -132,7 +270,7 @@ void CollectChainResources(
 //
 // Checks if the value `control` is a NoOp control barrier.
 bool IsNoOpControlBarrier(Value control) {
-  if (!control.getType().isa<ControlType>()) return false;
+  if (!mlir::isa<ControlType>(control.getType())) return false;
 
   auto control_island = dyn_cast_or_null<IslandOp>(control.getDefiningOp());
   if (!control_island) return false;
@@ -269,7 +407,7 @@ IslandOp CreateIsland(Operation* sub_op, ValueRange control_inputs,
 // read/write to a resource of the class to the chain_sink operation.
 void ChainResourceOps(
     func::FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
-    llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes,
+    llvm::EquivalenceClasses<ResourceAndDevice>& resource_equivalence_classes,
     SmallPtrSet<Operation*, 4> ops_connected_to_fetch, int num_old_outputs) {
   assert(num_old_outputs + resource_equivalence_classes.getNumClasses() ==
          func.getNumArguments());
@@ -310,8 +448,8 @@ void ChainResourceOps(
              resource_equivalence_classes.member_begin(class_iter);
          member_iter != resource_equivalence_classes.member_end();
          ++member_iter) {
-      ResourceId resource_id = *member_iter;
-      auto map_iter = chain_resource_to_ops_map.find(resource_id);
+      ResourceAndDevice resource_and_device = *member_iter;
+      auto map_iter = chain_resource_to_ops_map.find(resource_and_device);
       if (map_iter == chain_resource_to_ops_map.end()) continue;
       OperationSetTy& resource_ops = map_iter->getSecond();
 
@@ -386,24 +524,27 @@ TF::WhileOp RewriteWhileOp(TF::WhileOp while_op, int num_resource_inputs,
 void ConvertControlToDataOutputs(
     func::FuncOp while_body, SmallVectorImpl<TF::WhileOp>& while_callers,
     OperationSetTy& recompute_analysis_for_funcs,
-    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    const DataFlowSolver& solver, bool composite_tpuexecute_side_effects) {
   if (while_callers.empty()) return;
 
   // Collect access information for each resource in the while body that needs
   // to be chained, along with equivalence classes (resources in one class will
   // use the same chain).
   ResourceToOpsMapTy chain_resource_to_ops_map;
-  llvm::EquivalenceClasses<ResourceId> resource_equivalence_classes;
-  CollectChainResources(while_body, chain_resource_to_ops_map,
-                        resource_equivalence_classes, side_effect_analysis);
+  llvm::EquivalenceClasses<ResourceAndDevice> resource_equivalence_classes;
+  DeviceMap devices;
+  CollectChainResources(
+      while_body, chain_resource_to_ops_map, resource_equivalence_classes,
+      devices, side_effect_analysis, solver, composite_tpuexecute_side_effects);
 
   // Check for presence of unknown side-effecting ops within the while loop
   // body. These ops act as barriers and the optimization would not yield much
   // inter iteration parallelism for this while loop body. So return with
   // warning.
-  if (chain_resource_to_ops_map.count(kUnknownResourceId) > 0) {
+  if (chain_resource_to_ops_map.count(kUnknownResourceAndDevice) > 0) {
     std::set<std::string> blocking_ops;
-    for (Operation* op : chain_resource_to_ops_map[kUnknownResourceId]) {
+    for (Operation* op : chain_resource_to_ops_map[kUnknownResourceAndDevice]) {
       std::string op_name = op->getName().getStringRef().str();
       if (blocking_ops.insert(op_name).second) {
         LOG(WARNING)
@@ -459,6 +600,13 @@ void ConvertControlToDataOutputs(
 
 void ConvertControlToDataOutputsPass::runOnOperation() {
   ModuleOp module = getOperation();
+
+  DataFlowSolver solver;
+  solver.load<dataflow::DeadCodeAnalysis>();
+  solver.load<dataflow::SparseConstantPropagation>();
+  TF::LoadIsCompositeDataflowAnalysis(solver);
+  if (failed(solver.initializeAndRun(module))) return signalPassFailure();
+
   // This pass assumes that all functions are suitable for export i.e., each
   // function has a single tf_executor.graph op and all islands wrap the
   // internal op perfectly. Verify that in the beginning once.
@@ -500,7 +648,8 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
     }
     ConvertControlToDataOutputs(
         while_body, while_callers, recompute_analysis_for_funcs,
-        side_effect_analysis.GetAnalysisForFunc(while_body));
+        side_effect_analysis.GetAnalysisForFunc(while_body), solver,
+        composite_tpuexecute_side_effects_);
   }
 }
 
@@ -509,6 +658,13 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorConvertControlToDataOutputsPass() {
   return std::make_unique<ConvertControlToDataOutputsPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTFExecutorConvertControlToDataOutputsPass(
+    bool composite_tpuexecute_side_effects) {
+  return std::make_unique<ConvertControlToDataOutputsPass>(
+      composite_tpuexecute_side_effects);
 }
 
 }  // namespace tf_executor

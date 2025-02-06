@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "NcclReduce"
   input_arg {
     name: "input"

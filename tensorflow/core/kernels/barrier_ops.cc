@@ -84,7 +84,7 @@ class Barrier : public ResourceBase {
         queue_component_shapes, strings::StrCat(name_, "_queue"));
   }
 
-  Status Initialize() { return ready_queue_->Initialize(); }
+  absl::Status Initialize() { return ready_queue_->Initialize(); }
 
   template <typename T>
   void TryInsertMany(const Tensor& keys, int component_index,
@@ -290,7 +290,7 @@ class Barrier : public ResourceBase {
   const DataTypeVector component_types() const {
     return value_component_types_;
   }
-  const gtl::ArraySlice<TensorShape> component_shapes() const {
+  const absl::Span<const TensorShape> component_shapes() const {
     return value_component_shapes_;
   }
 
@@ -304,10 +304,12 @@ class Barrier : public ResourceBase {
 
  protected:
   template <typename T>
-  Status InsertOneLocked(OpKernelContext* ctx, const Tensor& keys,
-                         const Tensor& values, const TensorShape& element_shape,
-                         int component_index, int i,
-                         std::vector<Tuple>* ready_tuples, bool* new_elements)
+  absl::Status InsertOneLocked(OpKernelContext* ctx, const Tensor& keys,
+                               const Tensor& values,
+                               const TensorShape& element_shape,
+                               int component_index, int i,
+                               std::vector<Tuple>* ready_tuples,
+                               bool* new_elements)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     auto keys_vec = keys.flat<tstring>();
     auto values_matrix = values.flat_outer_dims<T>();
@@ -396,7 +398,7 @@ class Barrier : public ResourceBase {
       TF_RETURN_IF_ERROR(ready_queue_->ValidateTuple(ready_tuple));
       ready_tuples->push_back(ready_tuple);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void CloseQueueLocked(OpKernelContext* ctx, bool cancel_pending_enqueues,
@@ -459,7 +461,7 @@ class BarrierOp : public ResourceOpKernel<Barrier> {
   }
 
  private:
-  Status CreateResource(Barrier** barrier) override
+  absl::Status CreateResource(Barrier** barrier) override
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     *barrier = new Barrier(value_component_types_, value_component_shapes_,
                            cinfo_.name());
@@ -469,7 +471,7 @@ class BarrierOp : public ResourceOpKernel<Barrier> {
     return (*barrier)->Initialize();
   }
 
-  Status VerifyResource(Barrier* barrier) override
+  absl::Status VerifyResource(Barrier* barrier) override
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (barrier->component_types() != value_component_types_) {
       return errors::InvalidArgument(
@@ -485,7 +487,7 @@ class BarrierOp : public ResourceOpKernel<Barrier> {
           " but requested component shapes were ",
           TensorShapeUtils::ShapeListString(value_component_shapes_));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataTypeVector value_component_types_;

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_COMPILE_ONLY_SERVICE_H_
 #define XLA_SERVICE_COMPILE_ONLY_SERVICE_H_
 
+#include "absl/status/statusor.h"
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/service.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
@@ -33,9 +33,9 @@ class CompileOnlyService : public Service {
   // Factory for creating a CompileOnlyService. The parameter platform is the
   // platform that the service should target. If platform is null then the
   // default platform is used.
-  static StatusOr<std::unique_ptr<CompileOnlyService>> NewService(
+  static absl::StatusOr<std::unique_ptr<CompileOnlyService>> NewService(
       se::Platform* platform);
-  static StatusOr<std::unique_ptr<CompileOnlyService>> NewService(
+  static absl::StatusOr<std::unique_ptr<CompileOnlyService>> NewService(
       const ServiceOptions& options);
 
   // A description of a xla computation to compile using CompileAheadOfTime.
@@ -48,37 +48,27 @@ class CompileOnlyService : public Service {
   // Compiles a list of xla computations for ahead-of-time execution.  This is
   // intended for use in static compilation.  See
   // |CompileOnlyClient::CompileAheadOfTime| for additional details.
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(absl::Span<const AotXlaComputationInstance> computations,
                      const AotCompilationOptions& options,
                      std::unique_ptr<AotCompilationMetadata>* metadata);
 
-  Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
-                          GetDeviceHandlesResponse* result) override {
+  absl::StatusOr<std::vector<DeviceHandle>> GetDeviceHandles(
+      int64_t device_count) override {
     return Unimplemented("CompileOnlyService does not support devices.");
   }
-  Status WaitForExecution(const WaitForExecutionRequest* arg,
-                          WaitForExecutionResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support execution.");
-  }
-  Status TransferToServer(const TransferToServerRequest* arg,
-                          TransferToServerResponse* result) override {
+
+  absl::StatusOr<std::unique_ptr<GlobalData>> TransferToServer(
+      const LiteralSlice& literal_slice,
+      const DeviceHandle* device_handle) override {
     return Unimplemented(
         "CompileOnlyService does not support device data transfers.");
   }
-  Status TransferToInfeed(const TransferToInfeedRequest* arg,
-                          TransferToInfeedResponse* result) override {
+
+  absl::Status TransferToInfeed(const LiteralSlice& literal, int64_t replica_id,
+                                const DeviceHandle* device_handle) override {
     return Unimplemented(
         "CompileOnlyService does not support device data transfers.");
-  }
-  Status TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
-                             TransferFromOutfeedResponse* result) override {
-    return Unimplemented(
-        "CompileOnlyService does not support device data transfers.");
-  }
-  Status ResetDevice(const ResetDeviceRequest* arg,
-                     ResetDeviceResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support devices.");
   }
 
  private:

@@ -1,8 +1,9 @@
-# Placeholder: load py_proto_library
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
-load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+# Placeholder: load py_proto_library
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -75,7 +76,6 @@ py_strict_library(
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_minigo:__subpackages__",
-        "//tensorflow_model_optimization:__subpackages__",
         "//tensorflow_models:__subpackages__",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/mlperf:__subpackages__",
@@ -95,9 +95,9 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":optimizer",
-        ":training_ops",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -108,11 +108,11 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":optimizer",
-        ":training_ops",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -123,12 +123,12 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":optimizer",
-        ":training_ops",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_gen",
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -139,13 +139,13 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":optimizer",
-        ":training_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:state_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -229,7 +229,6 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
-        "//tensorflow_estimator/python/estimator:__pkg__",
         "//third_party/py/tf_slim/training:__pkg__",
     ],
     deps = [
@@ -253,11 +252,11 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":optimizer",
-        ":training_ops",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -273,11 +272,11 @@ py_strict_library(
     ],
     deps = [
         ":optimizer",
-        ":training_ops",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -327,9 +326,9 @@ py_strict_library(
     ],
     deps = [
         ":optimizer",
-        ":training_ops",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -340,7 +339,6 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
-        "//tensorflow_model_optimization/python/core/quantization/keras:__pkg__",
         "//third_party/py/tf_slim/layers:__pkg__",
     ],
     deps = [
@@ -387,8 +385,8 @@ py_strict_library(
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:state_ops",
+        "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:base",
@@ -403,10 +401,10 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":optimizer",
-        ":training_ops",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -417,9 +415,9 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":optimizer",
-        ":training_ops",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -469,11 +467,11 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":optimizer",
-        ":training_ops",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -547,18 +545,6 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
-    ],
-)
-
-py_strict_library(
-    name = "training_ops",
-    srcs = [
-        "gen_training_ops.py",
-        "training_ops.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/ops:training_ops_gen",
     ],
 )
 
@@ -789,14 +775,12 @@ py_strict_library(
 tf_proto_library(
     name = "checkpoint_state",
     srcs = ["checkpoint_state.proto"],
-    cc_api_version = 2,
 )
 
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "checkpoint_state_py_pb2",
 #     testonly = 0,
-#     api_version = 2,
 #     deps = [":checkpoint_state"],
 # )
 # copybara:uncomment_end
@@ -815,10 +799,16 @@ py_strict_library(
     name = "saver",
     srcs = ["saver.py"],
     srcs_version = "PY3",
+    # copybara:uncomment_begin(google-only)
+    # visibility = [
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
     visibility = [
-        "//tensorflow:internal",
-        "//third_party/py/tf_slim:__subpackages__",
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":py_checkpoint_reader",
         ":training_util",
@@ -826,10 +816,10 @@ py_strict_library(
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
@@ -890,14 +880,15 @@ cuda_py_strict_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:graph_io",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:cond",
@@ -976,9 +967,9 @@ py_strict_library(
         ":training_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:timeline",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:variable_scope",
@@ -1011,8 +1002,8 @@ py_strict_library(
         ":training_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:lookup_ops",
@@ -1039,10 +1030,10 @@ tf_py_strict_test(
         ":supervisor",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/checkpoint:checkpoint_management",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -1062,6 +1053,10 @@ py_strict_library(
     name = "server_lib",
     srcs = ["server_lib.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//smartass/brain/ops:__subpackages__",
+        "//tensorflow:internal",
+    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:pywrap_tf_session",
@@ -1083,8 +1078,8 @@ py_strict_library(
     ],
     deps = [
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:graph_io",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:cond",
@@ -1182,7 +1177,6 @@ TRAINING_TEST_DEPS = [
     "//tensorflow/python/ops:data_flow_ops_gen",
     "//tensorflow/python/ops:embedding_ops",
     "//tensorflow/python/framework:errors",
-    "//tensorflow/python/framework",
     "//tensorflow/python/framework:for_generated_wrappers",
     "//tensorflow/python/framework:test_lib",
     "//tensorflow/python/ops:custom_gradient",
@@ -1383,6 +1377,7 @@ cuda_py_strict_test(
         ":saver",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:variable_v1",
     ] + TRAINING_TEST_DEPS,
@@ -1441,12 +1436,12 @@ cuda_py_strict_test(
     srcs = ["training_ops_test.py"],
     python_version = "PY3",
     deps = [
-        ":training_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/ops:variable_v1",
     ] + TRAINING_TEST_DEPS,
 )
@@ -1482,7 +1477,6 @@ distribute_py_strict_test(
     disable_mlir_bridge = False,
     main = "training_ops_test.py",
     deps = [
-        ":training_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -1490,6 +1484,7 @@ distribute_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:training_ops_gen",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:test",
@@ -1514,7 +1509,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/ops:resource_variables_toggle",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:while_loop",
@@ -1541,10 +1536,10 @@ tf_py_strict_test(
         ":training_util",
         "//tensorflow/python/client:session",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",

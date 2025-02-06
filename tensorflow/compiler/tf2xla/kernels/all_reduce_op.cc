@@ -13,14 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/math.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -48,7 +57,7 @@ class CollectiveReduceV2Op : public XlaOpKernel {
 
     // Store all traversed collective configurations, and generate channel_id
     // for the collective.
-    StatusOr<int64_t> channel_id =
+    absl::StatusOr<int64_t> channel_id =
         ctx->xla_context()->RecordCollectiveInfo(group_key, group_size);
     OP_REQUIRES_OK(ctx, channel_id.status());
 
@@ -75,8 +84,12 @@ class CollectiveReduceV2Op : public XlaOpKernel {
     xla::ChannelHandle channel_handle;
     channel_handle.set_type(xla::ChannelHandle::DEVICE_TO_DEVICE);
     channel_handle.set_handle(*channel_id);
-    ctx->SetOutput(0,
-                   xla::AllReduce(ctx->Input(0), *reducer, {}, channel_handle));
+    std::vector<xla::ReplicaGroup> replica_groups(1);
+    for (int64_t i = 0; i < group_size; i++) {
+      replica_groups[0].add_replica_ids(i);
+    }
+    ctx->SetOutput(0, xla::AllReduce(ctx->Input(0), *reducer, replica_groups,
+                                     channel_handle));
   }
 
  private:
@@ -89,19 +102,6 @@ class CollectiveReduceV2Op : public XlaOpKernel {
   void operator=(const CollectiveReduceV2Op&) = delete;
 };
 
-class CollectiveAssignGroupV2Op : public XlaOpKernel {
- public:
-  explicit CollectiveAssignGroupV2Op(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {}
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    OP_REQUIRES(
-        ctx, false,
-        errors::InvalidArgument("CollectiveAssignGroupV2 is unsupported in the "
-                                "legacy TF2XLA bridge"));
-  }
-};
-
 REGISTER_XLA_OP(Name("CollectiveReduceV2")
                     .CompileTimeConstantInput("group_key")
                     .CompileTimeConstantInput("group_size"),
@@ -109,6 +109,15 @@ REGISTER_XLA_OP(Name("CollectiveReduceV2")
 
 REGISTER_XLA_OP(Name("CollectiveAssignGroupV2")
                     .CompileTimeConstantInput("group_assignment"),
-                CollectiveAssignGroupV2Op);
+                MlirXlaOpKernel);
+
+REGISTER_XLA_OP(Name("XlaReduceScatter")
+                    .CompileTimeConstantInput("group_assignment")
+                    .CompileTimeConstantInput("scatter_dimension"),
+                MlirXlaOpKernel);
+
+REGISTER_XLA_OP(
+    Name("XlaAllReduce").CompileTimeConstantInput("group_assignment"),
+    MlirXlaOpKernel);
 
 }  // namespace tensorflow

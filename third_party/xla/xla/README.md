@@ -4,11 +4,17 @@
 
 XLA (Accelerated Linear Algebra) is a domain-specific compiler for linear
 algebra that optimizes TensorFlow computations. See the
-[documentation](./g3doc/index.md).
+[documentation](./../docs/index.md).
 
 This directory is currently migrating to [OpenXLA](https://github.com/openxla/)
 and will be the root of the [openxla/xla](https://github.com/openxla/xla)
 repository.
+
+Where to start? If you're newly integrating with XLA, use PJRT. Integrate with
+the plugin you need at xla/pjrt/plugin/.
+
+Making a new hardware accelerator type compiler? Create a new PJRT Plugin and
+follow the examples in xla/pjrt/plugin/example_plugin.
 
 == Directory Structure ==
 
@@ -87,6 +93,7 @@ for the directory layout:
     *   thlo/
     *   runtime/
 *   pjrt/ (created from xla/pjrt)
+    * plugin/ - Public PJRT API entry points for various backends.
 *   rpc/ (created from xla/rpc)
 *   runtime/
 *   stream_executor/ (moved from TensorFlow)

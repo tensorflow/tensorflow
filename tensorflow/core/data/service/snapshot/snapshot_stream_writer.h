@@ -27,22 +27,25 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/env.h"
+#include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/snapshot/parallel_tfrecord_writer.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
 
-constexpr int64_t kDefaultMaxChunkSizeBytes = 2 * (size_t{1} << 30);  // 2GB
-constexpr absl::Duration kDefaultCheckpointInterval = absl::Minutes(20);
+constexpr ByteSize kDefaultMaxChunkSize = ByteSize::GB(6);
+constexpr absl::Duration kDefaultCheckpointInterval = absl::Minutes(30);
 
 struct SnapshotWriterParams {
   // The directory path of the snapshot. See the comment on SnapshotStreamWriter
@@ -60,9 +63,11 @@ struct SnapshotWriterParams {
   Env* env = nullptr;
 
   // The maximum number of bytes in each chunk.
-  int64_t max_chunk_size_bytes = kDefaultMaxChunkSizeBytes;
+  ByteSize max_chunk_size = kDefaultMaxChunkSize;
 
-  // How often should checkpoints be written.
+  // How often should checkpoints be written at the steady state. We write
+  // checkpoints (and committing chunks) more frequently at the startup time to
+  // avoid starving training jobs during startup.
   absl::Duration checkpoint_interval = kDefaultCheckpointInterval;
 
   // If true, keep temporary files (e.g., checkpoints) after completing the
@@ -155,28 +160,21 @@ class SnapshotStreamWriter {
   // Returns true until the snapshot stream writer is finished, which may be due
   // to reaching the end of its iterator, encountering an error, or being
   // cancelled.
-  bool ShouldWriteChunk() const;
+  bool ShouldWriteChunks() const;
 
-  // Writes the next chunk.
-  absl::Status WriteChunk();
+  // Writes the chunk files.
+  absl::Status WriteChunks();
 
-  // Whether the current chunks should be committed. This writer performs one
-  // commit every ~20 minutes.
-  bool ShouldCommit() const;
-
-  // Commits the chunks since the last commit.
-  absl::Status Commit();
-
-  // Returns the path of the current chunk.
-  std::string GetChunkFilePath() const;
-  std::string GetCommittedChunkFilePath() const;
-
-  // Returns true if the writer should write the next record to the current
-  // chunk.
+  // Returns true if it should write more records to the current chunks. Returns
+  // false if it should checkpoint and commit the current chunks, there are no
+  // more records to write, or there is an error.
   bool ShouldWriteRecord() const;
 
-  // Writes the next record to the current chunk.
-  absl::Status WriteRecord(snapshot_util::TFRecordWriter& writer);
+  // Writes the next record to the current chunks.
+  absl::Status WriteRecord(ParallelTFRecordWriter& writer);
+
+  // Commits the chunks since the last commit.
+  absl::Status Commit(const ParallelTFRecordWriter::FileToStatsMap& file_stats);
 
   // Writes a DONE file when the stream is finished. Writes an ERROR file if it
   // failed.
@@ -185,10 +183,10 @@ class SnapshotStreamWriter {
   absl::Status WriteErrorFile(const absl::Status& status);
 
   // Saves an iterator checkpoint.
-  absl::Status Save();
+  absl::Status Save(const ParallelTFRecordWriter::FileToStatsMap& file_stats);
 
   // After committing a checkpoint, deletes the previous checkpoints.
-  absl::Status DeleteOutdatedCheckpoints();
+  absl::Status DeleteOutdatedCheckpoints(int64_t checkpoint_index);
 
   // Deletes all checkpoints.
   absl::Status DeleteCheckpoints();
@@ -206,6 +204,9 @@ class SnapshotStreamWriter {
   absl::Status SyncCheckpointWithChunks(std::optional<int64_t> checkpoint_index,
                                         int64_t checkpoint_num_elements);
 
+  // Index of the last committed chunk.
+  absl::StatusOr<int64_t> LastCommittedChunkIndex();
+
   // Returns the path of the checkpoint for `chunk_index` with
   // `chunk_num_elements`.
   std::string CheckpointPath(int64_t chunk_index,
@@ -219,18 +220,10 @@ class SnapshotStreamWriter {
   // The dataset iterator that produces the dataset elements.
   std::unique_ptr<TaskIterator> iterator_;
 
-  // Index of the current chunk.
+  // Index of the next chunk to write.
   int64_t chunk_index_ = 0;
-  // Size of the current chunk.
-  int64_t chunk_size_bytes_ = 0;
-  // Number of elements in current chunk.
-  int64_t chunk_num_elements_ = 0;
-  // Index of the last committed chunk.
-  int64_t last_committed_chunk_ = 0;
   // Timestamp when the last chunks are committed.
   absl::Time last_commit_time_ = absl::Now();
-  // Sizes of the chunks since the last commit.
-  absl::flat_hash_map<std::string, int64_t> chunk_file_to_num_elements_;
 
   // True if the dataset is exhausted.
   bool end_of_sequence_ = false;

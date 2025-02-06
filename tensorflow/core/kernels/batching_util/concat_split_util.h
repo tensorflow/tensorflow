@@ -35,8 +35,8 @@ typedef Eigen::GpuDevice GPUDevice;
 // 'output' using 'context' for the allocation to ensure proper device
 // placement.
 template <typename T>
-Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor> inputs,
-              Tensor* output) {
+absl::Status Concat(OpKernelContext* context,
+                    const absl::Span<const Tensor> inputs, Tensor* output) {
   const int input_dims = inputs[0].dims();
   const TensorShape& input_shape = inputs[0].shape();
 
@@ -87,14 +87,15 @@ Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor> inputs,
     ConcatCPU<T>(context->device(), inputs_flat, &output_flat);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Same as 'Concat' above, but handles Tensor dtype deduction automatically.
-inline Status Concat(OpKernelContext* context,
-                     const gtl::ArraySlice<Tensor> inputs, Tensor* output) {
+inline absl::Status Concat(OpKernelContext* context,
+                           const absl::Span<const Tensor> inputs,
+                           Tensor* output) {
   const DataType type = inputs[0].dtype();
-  Status concat_status;
+  absl::Status concat_status;
   switch (type) {
 #define CASE(type)                                         \
   case DataTypeToEnum<type>::value:                        \
@@ -117,9 +118,9 @@ inline Status Concat(OpKernelContext* context,
 // Handles special cases that are cheap. Sets 'done==true' iff it found an
 // applicable special case and wrote to the outputs. Otherwise acts as a no-op.
 template <typename T>
-Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
-                      const gtl::ArraySlice<int64_t> sizes,
-                      std::vector<Tensor>* outputs, bool* done) {
+absl::Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
+                            const absl::Span<const int64_t> sizes,
+                            std::vector<Tensor>* outputs, bool* done) {
   *done = false;
 
   int64_t total_size = 0;
@@ -135,7 +136,7 @@ Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
   if (sizes.size() == 1 && sizes.at(0) == input.shape().dim_size(0)) {
     outputs->push_back(input);
     *done = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Special case 1: input is aligned.
@@ -146,17 +147,17 @@ Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
       position += size;
     }
     *done = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Handles the general case, on CPU.
 template <typename T>
-Status SplitCPU(OpKernelContext* context, const Tensor& input,
-                const gtl::ArraySlice<int64_t> sizes,
-                std::vector<Tensor>* outputs) {
+absl::Status SplitCPU(OpKernelContext* context, const Tensor& input,
+                      const absl::Span<const int64_t> sizes,
+                      std::vector<Tensor>* outputs) {
   int64_t suffix_dim_size = 1;
   for (int i = 1; i < input.shape().dims(); ++i) {
     suffix_dim_size *= input.shape().dim_size(i);
@@ -189,7 +190,7 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
     position += size;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
@@ -208,14 +209,14 @@ Status SplitGPU(OpKernelContext* context, const Tensor& input,
 
 // The outer function that dispatches to the various Split*() functions above.
 template <typename T>
-Status Split(OpKernelContext* context, const Tensor& input,
-             const gtl::ArraySlice<int64_t> sizes,
-             std::vector<Tensor>* outputs) {
+absl::Status Split(OpKernelContext* context, const Tensor& input,
+                   const absl::Span<const int64_t> sizes,
+                   std::vector<Tensor>* outputs) {
   bool easy_cases_done;
   TF_RETURN_IF_ERROR(
       SplitEasyCases<T>(context, input, sizes, outputs, &easy_cases_done));
   if (easy_cases_done) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
@@ -227,11 +228,11 @@ Status Split(OpKernelContext* context, const Tensor& input,
 }
 
 // Same as 'Split' above, but handles Tensor dtype automatically.
-inline Status Split(OpKernelContext* context, const Tensor& input,
-                    const gtl::ArraySlice<int64_t> sizes,
-                    std::vector<Tensor>* outputs) {
+inline absl::Status Split(OpKernelContext* context, const Tensor& input,
+                          const absl::Span<const int64_t> sizes,
+                          std::vector<Tensor>* outputs) {
   const DataType type = input.dtype();
-  Status split_status;
+  absl::Status split_status;
   switch (type) {
 #define CASE(type)                                              \
   case DataTypeToEnum<type>::value:                             \

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// GPU (ROCm / CUDA) specific type handle resolution
+// GPU (SYCL / ROCm / CUDA) specific type handle resolution
 
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_TYPES_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_TYPES_H_
 
-#if TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_SYCL
 
-#define __HIP_DISABLE_CPP_FUNCTIONS__
+#include "sycl/sycl.hpp"
 
-#include "rocm/include/hip/hip_complex.h"
+#elif TENSORFLOW_USE_ROCM
+
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/include/hiprand/hiprand.h"
 
 #else  // CUDA
 
-#include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 
 #endif
@@ -36,48 +36,16 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-#if TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_SYCL
 
-using GpuContextHandle = hipCtx_t;
+using GpuStreamHandle = ::sycl::queue*;
+
+#elif TENSORFLOW_USE_ROCM
+
 using GpuStreamHandle = hipStream_t;
-using GpuEventHandle = hipEvent_t;
-using GpuFunctionHandle = hipFunction_t;
-using GpuFunctionAttribute = hipFunction_attribute;
-using GpuDeviceHandle = hipDevice_t;
-using GpuDevicePtr = hipDeviceptr_t;
-using GpuDeviceAttribute = hipDeviceAttribute_t;
-using GpuDeviceProperty = hipDeviceProp_t;
-using GpuModuleHandle = hipModule_t;
-using GpuStatus = hipError_t;
-using GpuFuncCachePreference = hipFuncCache_t;
-using GpuSharedMemConfig = hipSharedMemConfig;
-using GpuComplexType = hipComplex;
-using GpuDoubleComplexType = hipDoubleComplex;
-using GpuRngHandle = hiprandGenerator_t;
-using GpuGraphHandle = hipGraph_t;
-using GpuGraphExecHandle = hipGraphExec_t;
-using GpuGraphNodeHandle = hipGraphNode_t;
-
 #else  // CUDA
 
-using GpuContextHandle = CUcontext;
 using GpuStreamHandle = CUstream;
-using GpuEventHandle = CUevent;
-using GpuFunctionHandle = CUfunction;
-using GpuFunctionAttribute = CUfunction_attribute;
-using GpuDeviceHandle = CUdevice;
-using GpuDevicePtr = CUdeviceptr;
-using GpuDeviceAttribute = CUdevice_attribute;
-using GpuDeviceProperty = CUdevprop;
-using GpuModuleHandle = CUmodule;
-using GpuStatus = CUresult;
-using GpuFuncCachePreference = CUfunc_cache;
-using GpuSharedMemConfig = CUsharedconfig;
-using GpuComplexType = cuComplex;
-using GpuDoubleComplexType = cuDoubleComplex;
-using GpuGraphHandle = CUgraph;
-using GpuGraphExecHandle = CUgraphExec;
-using GpuGraphNodeHandle = CUgraphNode;
 
 #endif
 

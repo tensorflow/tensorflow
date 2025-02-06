@@ -19,11 +19,15 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
+#include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "tensorflow/core/framework/registration/registration.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
@@ -112,14 +116,15 @@ class SPMDExpanderBase {
 
   // Run ExpandOp() and set layout from the computed layout from original op.
   // Returns the expanded op in output.
-  Status ExpandOpAndSetLayout(mlir::Operation* op, mlir::Operation** output);
+  absl::Status ExpandOpAndSetLayout(mlir::Operation* op,
+                                    mlir::Operation** output);
 };
 
 // Computes the SPMD expansion for `op`.
 //
 // Prior to this call, all inputs to `op` have been lowered to local operations
 // & shapes. The lowered op must emit a type compatible with the local shape.
-Status RunSPMDExpansion(mlir::Operation* op, mlir::Operation** output);
+absl::Status RunSPMDExpansion(mlir::Operation* op, mlir::Operation** output);
 
 // A registry of SPMD expanders. This map is statically stored and initialized
 // with all the registered SPMD expanders.

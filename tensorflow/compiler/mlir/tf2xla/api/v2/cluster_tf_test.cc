@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 
+#include <cstdint>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -28,27 +29,31 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/testing/utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/resource_loader.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tf2xla {
 namespace v2 {
 namespace {
 
-using mlir::DialectRegistry;
-using mlir::MLIRContext;
-using mlir::ModuleOp;
-using mlir::OwningOpRef;
-using mlir::WalkResult;
-using mlir::func::FuncOp;
+using ::mlir::DialectRegistry;
+using ::mlir::MLIRContext;
+using ::mlir::ModuleOp;
+using ::mlir::OwningOpRef;
+using ::mlir::WalkResult;
+using ::mlir::func::FuncOp;
+using ::tensorflow::monitoring::testing::CellReader;
+using ::tensorflow::tf2xla::v2::testing::TestDataPath;
 
-std::string TestDataPath() {
-  return tensorflow::GetDataDependencyFilepath(
-      "tensorflow/compiler/mlir/tf2xla/api/v2/testdata/");
-}
+static constexpr char kCompilationStreamz[] =
+    "/tensorflow/core/tf_mlir_bridge_first_phase_v2_count";
 
 class FunctionClusterTensorflowDialectTest : public ::testing::Test {
  public:
@@ -58,16 +63,16 @@ class FunctionClusterTensorflowDialectTest : public ::testing::Test {
     context_.loadAllAvailableDialects();
   }
 
-  tsl::Status CreateMlirModule(std::string mlir_module_filename) {
+  absl::Status CreateMlirModule(std::string mlir_module_filename) {
     std::string mlir_module_path = TestDataPath() + mlir_module_filename;
     mlir_module_ =
         mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
     if (!mlir_module_) {
-      return tsl::Status(
+      return absl::Status(
           absl::StatusCode::kNotFound,
           absl::StrCat("Could not find MLIR module at ", mlir_module_path));
     }
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   DialectRegistry registry_;
@@ -75,61 +80,86 @@ class FunctionClusterTensorflowDialectTest : public ::testing::Test {
   OwningOpRef<mlir::ModuleOp> mlir_module_;
 };
 
-TEST_F(FunctionClusterTensorflowDialectTest, ClustersTf) {
+TEST_F(FunctionClusterTensorflowDialectTest, ClustersTfReplicatedBridge) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
-  TF_EXPECT_OK(
-      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_TPU_JIT,
-                                        /*is_in_fallback_enabled_mode=*/false));
+  TF_EXPECT_OK(RunFunctionTf2xlaClusteringBridge(
+      *mlir_module_, /*is_supported_by_replicated_brige*/ true,
+      /*is_in_fallback_enabled_mode=*/false));
 
   FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(main);
 
-  bool has_graph_op = false;
-  main.walk([&](mlir::tf_executor::GraphOp graph) {
-    has_graph_op = true;
-    return WalkResult::advance();
-  });
-
-  EXPECT_TRUE(has_graph_op);
+  EXPECT_EQ(compilation_status.Delta(mlir::TF::kMlirPh1BridgeCounterReplicated,
+                                     mlir::TF::kMlirPh1BridgeCounterV2,
+                                     mlir::TF::kMlirPh1BridgeCounterTpu,
+                                     "fallback_disabled", "success"),
+            1);
 }
 
-TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFCPU) {
-  TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
+TEST_F(FunctionClusterTensorflowDialectTest,
+       RunsOutsideCompilationReplicatedBridge) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
 
-  TF_EXPECT_OK(
-      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_CPU_JIT,
-                                        /*is_in_fallback_enabled_mode=*/false));
+  TF_ASSERT_OK(CreateMlirModule("outside_compilation.mlir"));
+
+  TF_EXPECT_OK(RunFunctionTf2xlaClusteringBridge(
+      *mlir_module_, /*is_supported_by_replicated_brige*/ true,
+      /*is_in_fallback_enabled_mode=*/false));
 
   FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(main);
 
-  bool has_graph_op = false;
-  main.walk([&](mlir::tf_executor::GraphOp graph) {
-    has_graph_op = true;
+  bool has_cluster_op = false;
+  main.walk([&](mlir::tf_device::ClusterFuncOp cluster_op) {
+    has_cluster_op = true;
     return WalkResult::advance();
   });
 
-  EXPECT_TRUE(has_graph_op);
+  EXPECT_TRUE(has_cluster_op);
+  EXPECT_EQ(compilation_status.Delta(mlir::TF::kMlirPh1BridgeCounterReplicated,
+                                     mlir::TF::kMlirPh1BridgeCounterV2,
+                                     mlir::TF::kMlirPh1BridgeCounterTpu,
+                                     "fallback_disabled", "success"),
+            1);
 }
 
-TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFGPU) {
+TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFNonReplicatedBridge) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
-  TF_EXPECT_OK(
-      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_GPU_JIT,
-                                        /*is_in_fallback_enabled_mode=*/false));
+  TF_EXPECT_OK(RunFunctionTf2xlaClusteringBridge(
+      *mlir_module_, /*is_supported_by_replicated_brige*/ false,
+      /*is_in_fallback_enabled_mode=*/false));
 
   FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(main);
 
-  bool has_graph_op = false;
-  main.walk([&](mlir::tf_executor::GraphOp graph) {
-    has_graph_op = true;
-    return WalkResult::advance();
-  });
+  EXPECT_EQ(
+      compilation_status.Delta(mlir::TF::kMlirPh1BridgeCounterNonReplicated,
+                               mlir::TF::kMlirPh1BridgeCounterV2,
+                               mlir::TF::kMlirPh1BridgeCounterNonTpu,
+                               "fallback_disabled", "success"),
+      1);
+}
 
-  EXPECT_TRUE(has_graph_op);
+TEST_F(FunctionClusterTensorflowDialectTest, LogsFallbackMode) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
+  TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
+
+  TF_EXPECT_OK(RunFunctionTf2xlaClusteringBridge(
+      *mlir_module_, /*is_supported_by_replicated_brige*/ true,
+      /*is_in_fallback_enabled_mode=*/true));
+
+  EXPECT_EQ(compilation_status.Delta(mlir::TF::kMlirPh1BridgeCounterReplicated,
+                                     mlir::TF::kMlirPh1BridgeCounterV2,
+                                     mlir::TF::kMlirPh1BridgeCounterTpu,
+                                     "fallback_enabled", "success"),
+            1);
 }
 
 }  // namespace

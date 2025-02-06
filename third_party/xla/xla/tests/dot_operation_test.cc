@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,30 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <limits>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
 #include "xla/array2d.h"
 #include "xla/array3d.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/lib/matrix.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/matrix.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/reference_util.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "tsl/platform/ml_dtypes.h"
+
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
 
 namespace xla {
 namespace {
@@ -70,7 +75,12 @@ using TypesF16F32F64CF64 = ::testing::Types<
 #endif
     float>;
 
+#if GOOGLE_CUDA
 using TypesF8 = ::testing::Types<tsl::float8_e4m3fn>;
+#endif
+#if TF_HIPBLASLT && TF_ROCM_VERSION >= 60000
+using TypesF8 = ::testing::Types<tsl::float8_e4m3fnuz>;
+#endif
 
 // Check that we can safely pass an input tuple's elements to a dot operation.
 XLA_TEST_F(DotOperationTest, DotOfInputTupleElem) {
@@ -289,6 +299,34 @@ std::string PrintDotTestParam(
 class ParametricDotTest : public DotOperationTest,
                           public ::testing::WithParamInterface<DotTestParam> {
  protected:
+  // This method runs before each test runs.
+  void SetUp() override {
+    // Several F16 tests are subject to denormal issues on MI210 architecture.
+    // For that matter, we set propagate_grad_xy_ flag for these tests, which
+    // activates adapted GEMM algorithm on ROCM. Besides, the adapted algorithm
+    // does not work well with ROCBLAS autotuning, hence we also disable it.
+    // This also serves as a test that grad_x/y attributes are correctly
+    // propagated down to a GEMM routine.
+    const auto& gpu_comp = client_->backend()
+                               .default_stream_executor()
+                               ->GetDeviceDescription()
+                               .gpu_compute_capability();
+    if (std::holds_alternative<se::RocmComputeCapability>(gpu_comp)) {
+      absl::string_view name(
+          ::testing::UnitTest::GetInstance()->current_test_info()->name());
+      if (name.find("TestF16/270x270x520_MajorToMinor") != std::string::npos) {
+        GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
+        execution_options_.mutable_debug_options()->set_xla_gpu_autotune_level(
+            0);
+        DotTestParam param = GetParam();
+        // In order to test both grad_x and grad_y attributes, we set
+        // propagate_grad_xy_ to 1 or 2 based on some alternating parameter
+        // to set it deterministically.
+        propagate_grad_xy_ = param.dot_lhs_row_major ? 1 : 2;
+      }
+    }
+  }
+
   template <typename NativeT>
   void TestImpl();
 
@@ -296,6 +334,8 @@ class ParametricDotTest : public DotOperationTest,
   void ComputeAndCompareR2WithError(XlaBuilder* builder,
                                     const Array2D<NativeT>& expected,
                                     absl::Span<GlobalData* const> arguments);
+
+  int32_t propagate_grad_xy_ = 0;
 };
 
 template <typename NativeT>
@@ -321,6 +361,34 @@ void ParametricDotTest::ComputeAndCompareR2WithError<int32_t>(
   ComputeAndCompareR2(builder, expected, arguments);
 }
 
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError<uint8_t>(
+    XlaBuilder* builder, const Array2D<uint8_t>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ComputeAndCompareR2(builder, expected, arguments);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError(
+    XlaBuilder* builder, const Array2D<tsl::float8_e5m2>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 3e-3);
+  error_spec.low_precision_fp_error_spec.type =
+      primitive_util::NativeToPrimitiveType<tsl::float8_e5m2>();
+  error_spec.low_precision_fp_error_spec.within_n_values = 1;
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError(
+    XlaBuilder* builder, const Array2D<tsl::float8_e4m3fn>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 3e-3);
+  error_spec.low_precision_fp_error_spec.type =
+      primitive_util::NativeToPrimitiveType<tsl::float8_e4m3fn>();
+  error_spec.low_precision_fp_error_spec.within_n_values = 1;
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
 template <typename NativeT>
 void ParametricDotTest::TestImpl() {
   DotTestParam param = GetParam();
@@ -356,6 +424,15 @@ void ParametricDotTest::TestImpl() {
 
   XlaBuilder builder(TestName());
   auto prim_type = primitive_util::NativeToPrimitiveType<NativeT>();
+
+  if (propagate_grad_xy_ != 0) {
+    FrontendAttributes attributes;
+    if (propagate_grad_xy_ == 1)
+      (*attributes.mutable_map())["grad_x"] = "true";
+    else
+      (*attributes.mutable_map())["grad_y"] = "true";
+    builder.SetFrontendAttributes(attributes);
+  }
   auto result =
       Dot(Parameter(&builder, 0,
                     ShapeUtil::MakeShapeWithDenseLayout(
@@ -367,6 +444,9 @@ void ParametricDotTest::TestImpl() {
                         prim_type, {param.k, param.n},
                         MinorToMajorForIsRowMajor(param.dot_rhs_row_major)),
                     "dot_rhs"));
+  if (propagate_grad_xy_ != 0) {
+    builder.ClearFrontendAttributes();
+  }
 
   if (param.has_addend) {
     result =
@@ -425,12 +505,16 @@ std::vector<DotTestParam> CreateDotTestParameters() {
 XLA_TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
-XLA_TEST_P(ParametricDotTest, TestF64) { TestImpl<double>(); }
+XLA_TEST_P(ParametricDotTest, OVERSIZE_ON_GRM(TestF64)) { TestImpl<double>(); }
 XLA_TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX128
 XLA_TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32_t>(); }
+XLA_TEST_P(ParametricDotTest, TestF8E5M2) { TestImpl<tsl::float8_e5m2>(); }
+XLA_TEST_P(ParametricDotTest, TestF8E4M3FN) { TestImpl<tsl::float8_e4m3fn>(); }
+
+XLA_TEST_P(ParametricDotTest, TestU8) { TestImpl<uint8_t>(); }
 
 INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
                         ::testing::ValuesIn(CreateDotTestParameters()),
@@ -596,7 +680,7 @@ TYPED_TEST_CASE(DotOperationTestForBatchMatMul, TypesF16F32F64);
 // Regression test for b/32055648. The root of the graph is a kFusion of 4
 // bitcasts. Although bitcasts don't map to thunks, the root should still be
 // sync-dependent on bitcasts' operands.
-XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
+XLA_TYPED_TEST(DotOperationTestForBatchMatMul, DISABLED_ON_TPU(Types)) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2, 2}),
@@ -689,7 +773,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
-#if GOOGLE_CUDA || TF_HIPBLASLT
+#if GOOGLE_CUDA || (TF_HIPBLASLT && TF_ROCM_VERSION >= 60000)
 template <typename T>
 class DotOperationTestWithCublasLt_F16F32F64CF64 : public DotOperationTest {
  public:
@@ -745,7 +829,7 @@ XLA_TYPED_TEST(DotOperationTestWithCublasLt_F16F32F64CF64,
 }
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
 template <typename T>
 class DotOperationTestWithCublasLt_F8 : public DotOperationTest {
  public:
@@ -1067,7 +1151,7 @@ XLA_TYPED_TEST(DotOperationTestWithCublasLt_F8, ScaledABScaledDWithDAmaxF8) {
                                 b_scale_data.get(), d_scale_data.get()},
                                this->error_spec_);
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
   using T = TypeParam;
@@ -1954,6 +2038,21 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_TPU(S4Dot)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s4[20,2] parameter(0)
+  arg1 = s4[2,20] parameter(1)
+  ROOT dot = s4[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
 XLA_TEST_F(DotOperationTextTest, DISABLED_ON_GPU(PackedNibbleDot)) {
   absl::string_view hlo_string =
       R"(
@@ -2251,6 +2350,22 @@ ENTRY MatrixVectorComplex {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
+XLA_TEST_F(DotOperationTextTest, MixedPrecisionDotLowPrecisionOutput) {
+  absl::string_view hlo_string =
+      R"(
+HloModule MixedPrecisionDotLowPrecisionOutput
+
+ENTRY main {
+  p0 = f16[5,5]{1,0} parameter(0)
+  p1 = f32[5,1]{0,1} parameter(1)
+  ROOT dot = f16[5,1]{1,0} dot(p0, p1), lhs_contracting_dims={1},
+                                        rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
 // This benchmark is to show the performance impact of the following
 // transformation:
 //   dot(reshape(transpose(A)), Const) ==>
@@ -2295,8 +2410,8 @@ void DOT_ReorderContracting(::testing::benchmark::State& state) {
                                         ExecutableBuildOptions()));
   auto executable = std::move(executables[0]);
 
-  se::Stream stream(executors[device_ordinal]);
-  stream.Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream,
+                          executors[device_ordinal]->CreateStream());
 
   ExecutableRunOptions options;
   options.set_allocator(&allocator);

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,14 +18,16 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/executable_run_options.h"
 #include "xla/service/backend.h"
 #include "xla/service/stream_pool.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -37,10 +39,8 @@ namespace tpu {
 // individual nodes.
 class TpuNodeContext final {
  public:
-  template <typename T>
-  using StatusOr = tsl::StatusOr<T>;
-
-  static StatusOr<std::unique_ptr<TpuNodeContext>> Create(int device_ordinal);
+  static absl::StatusOr<std::unique_ptr<TpuNodeContext>> Create(
+      int device_ordinal);
 
   explicit TpuNodeContext(int device_ordinal, XLA_TpuNodeContext* node_context)
       : device_ordinal_(device_ordinal), node_context_(node_context) {
@@ -48,9 +48,9 @@ class TpuNodeContext final {
   }
   ~TpuNodeContext();
 
-  static tsl::Status CloseTpuHost();
+  static absl::Status CloseTpuHost();
 
-  static tsl::Status Initialize(int device_ordinal);
+  static absl::Status Initialize(int device_ordinal);
 
   static TpuPlatformInterface* platform();
 

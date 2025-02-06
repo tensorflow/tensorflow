@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,21 +16,21 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_PLUGIN_PROFILER_C_API_H_
 #define XLA_BACKENDS_PROFILER_PLUGIN_PROFILER_C_API_H_
 
-#include <cstddef>
-#include <cstdint>
+#include <stddef.h>
+#include <stdint.h>
 
 #define PROFILER_STRUCT_SIZE(struct_type, last_field) \
   offsetof(struct_type, last_field) + sizeof(((struct_type*)0)->last_field)
 
 #define PROFILER_DEFINE_STRUCT_TRAITS(sname, last_field) \
   typedef struct sname sname;                            \
-  const size_t sname##_STRUCT_SIZE = PROFILER_STRUCT_SIZE(sname, last_field);
+  enum { sname##_STRUCT_SIZE = PROFILER_STRUCT_SIZE(sname, last_field) }
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define PLUGIN_PROFILER_VERSION 0
+#define PLUGIN_PROFILER_VERSION 1
 
 typedef struct PLUGIN_Profiler PLUGIN_Profiler;
 typedef struct PLUGIN_Profiler_Error PLUGIN_Profiler_Error;

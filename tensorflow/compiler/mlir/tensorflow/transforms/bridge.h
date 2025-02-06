@@ -25,17 +25,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace mlir {
-namespace TFTPU {
-
-// Run all the passes involved in transforming the graph before execution so
-// that it is suitable for targeting TPUs. When fallback_enabled is true, it
-// means if the bridge fails the old bridge will run. This is used for logging
-// and doesn't affect any logic.
-tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled = false,
-                             llvm::StringRef module_name = llvm::StringRef());
-
-}  // namespace TFTPU
-
 namespace TF {
 
 inline constexpr char kStandardPipelineBefore[] = "standard_pipeline_before";
@@ -48,14 +37,8 @@ inline constexpr char kStandardPipelineAfter[] = "standard_pipeline_after";
 ABSL_DEPRECATED(
     "This is legacy code and is unsupported. Use at your own risk. Use "
     "tf2xla/api/v2/* for specific functionality")
-tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
-                                                 bool enable_logging,
-                                                 bool enable_inliner);
-
-// Runs all passes for non TPU (GPU and CPU) graph.
-ABSL_DEPRECATED("Use tf2xla::v2::RunFunctionTf2xlaClusteringBridge instead.")
-tensorflow::Status RunTFXLABridge(
-    ModuleOp module, llvm::StringRef module_name = llvm::StringRef());
+absl::Status RunBridgeWithStandardPipeline(ModuleOp module, bool enable_logging,
+                                           bool enable_inliner);
 }  // namespace TF
 
 }  // namespace mlir

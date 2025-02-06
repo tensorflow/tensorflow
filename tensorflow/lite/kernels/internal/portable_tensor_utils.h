@@ -241,7 +241,8 @@ void SparseMatrixBatchVectorMultiplyAccumulate1x16(
     const int32_t* __restrict__ indices, int m_rows, int m_cols,
     const int8_t* __restrict__ vector, const int32_t* __restrict__ bias_vector,
     int n_batch, const int32_t input_offset, const int32_t output_multiplier,
-    const int32_t output_shift, const int32_t output_offset,
+    int32_t output_shift, const int32_t* per_channel_scale,
+    const int32_t* per_channel_shift, int32_t output_offset,
     const int32_t output_activation_min, const int32_t output_activation_max,
     int8_t* __restrict__ result);
 
@@ -259,7 +260,7 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result);
+    float* __restrict__ result, const float* per_channel_scale = nullptr);
 
 // Same as the above 8, 8, 8 integer matmul except for the presence of zero
 // point and non-accumulative.
@@ -316,7 +317,7 @@ void ApplyLayerNormFloat(const int16_t* input,
 void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                   int16_t* output);
 
-// Same as above but the internal calcualtion is float.
+// Same as above but the internal calculation is float.
 void ApplySigmoidFloat(const int16_t* input, int32_t n_batch, int32_t n_input,
                        int16_t* output);
 
@@ -332,7 +333,7 @@ void ApplySigmoidFloat(const int16_t* input, int32_t n_batch, int32_t n_input,
 void ApplyTanh(int32_t intger_bits, const int16_t* input, int32_t n_batch,
                int32_t n_input, int16_t* output);
 
-// Apply Tanh to a quantized vector. Tbe internal calculation is in float.
+// Apply Tanh to a quantized vector. The internal calculation is in float.
 //    - Input has 2^(integer_bits) as scale.
 //    - Output has Q0.15 as scale.
 void ApplyTanhFloat(const int16_t* input, int32_t n_batch, int32_t n_input,

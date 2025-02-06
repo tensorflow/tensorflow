@@ -1,0 +1,517 @@
+// Copyright 2023 The OpenXLA Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package xla.ifrt.proxy;
+
+import "google/protobuf/any.proto";
+import "xla/python/ifrt/attribute_map.proto";
+import "xla/python/ifrt/dtype.proto";
+import "xla/python/ifrt/execute_options.proto";
+import "xla/python/ifrt/remap_plan.proto";
+import "xla/python/ifrt/serdes.proto";
+import "xla/python/ifrt/shape.proto";
+import "xla/python/ifrt/sharding.proto";
+import "xla/python/ifrt_proxy/common/types.proto";
+import "xla/tsl/protobuf/status.proto";
+import "xla/xla_data.proto";
+
+option cc_enable_arenas = true;
+
+message IfrtProxyVersion {
+  int32 protocol_version = 1;
+}
+
+message IfrtRequest {
+  RequestMetadata request_metadata = 1;
+
+  oneof request {
+    InitRequest init_request = 2;
+
+    // ===== Future =====
+    CheckFutureRequest check_future_request = 3;
+
+    // ===== Value =====
+    CheckValueReadyRequest check_value_ready_request = 8;
+
+    // ===== Array =====
+    MakeArrayFromHostBufferRequest make_array_from_host_buffer_request = 4;
+    AssembleArrayFromSingleDeviceArraysRequest
+        assemble_array_from_single_device_arrays_request = 5;
+    RemapArraysRequest remap_arrays_request = 23;
+    CopyToHostBufferRequest copy_to_host_buffer_request = 6;
+    DisassembleIntoSingleDeviceArraysRequest
+        disassemble_into_single_device_arrays_request = 7;
+    DeleteArrayRequest delete_array_request = 9;
+    CopyArraysRequest copy_arrays_request = 24;
+    FullyReplicatedShardRequest fully_replicated_shard_request = 20;
+    IsArrayDeletedRequest is_array_deleted_request = 11;
+    DestructArrayRequest destruct_array_request = 12;
+
+    // ==== Compiler ====
+    CompileRequest compile_request = 13;
+
+    // ===== LoadedExecutable =====
+    LoadedExecutableMetadataRequest loaded_executable_metadata_request = 14;
+    LoadedExecutableExecuteRequest loaded_executable_execute_request = 15;
+    LoadedExecutableDeleteRequest loaded_executable_delete_request = 16;
+    LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17;
+    LoadedExecutableDestructRequest loaded_executable_destruct_request = 18;
+
+    // ===== LoadedHostCallback =====
+    LoadedHostCallbackPollRequest loaded_host_callback_poll_request = 21;
+    LoadedHostCallbackReturnRequest loaded_host_callback_return_request = 22;
+
+    // ===== Client =====
+    GetDefaultDeviceAssignmentRequest get_default_device_assignment_request =
+        19;
+  }
+
+  reserved 10;
+}
+
+message IfrtResponse {
+  ResponseMetadata response_metadata = 1;
+
+  oneof response {
+    InitResponse init_response = 2;
+
+    // ===== Future =====
+    CheckFutureResponse check_future_response = 3;
+
+    // ===== Value =====
+    CheckValueReadyResponse check_value_ready_response = 8;
+
+    // ===== Array =====
+    MakeArrayFromHostBufferResponse make_array_from_host_buffer_response = 4;
+    AssembleArrayFromSingleDeviceArraysResponse
+        assemble_array_from_single_device_arrays_response = 5;
+    RemapArraysResponse remap_arrays_response = 23;
+    CopyToHostBufferResponse copy_to_host_buffer_response = 6;
+    DisassembleIntoSingleDeviceArraysResponse
+        disassemble_into_single_device_arrays_response = 7;
+    DeleteArrayResponse delete_array_response = 9;
+    CopyArraysResponse copy_arrays_response = 24;
+    FullyReplicatedShardResponse fully_replicated_shard_response = 20;
+    IsArrayDeletedResponse is_array_deleted_response = 11;
+    DestructArrayResponse destruct_array_response = 12;
+
+    // ===== Compiler =====
+    CompileResponse compile_response = 13;
+
+    // ===== LoadedExecutable =====
+    LoadedExecutableMetadataResponse loaded_executable_metadata_response = 14;
+    LoadedExecutableExecuteResponse loaded_executable_execute_response = 15;
+    LoadedExecutableDeleteResponse loaded_executable_delete_response = 16;
+    LoadedExecutableIsDeletedResponse loaded_executable_is_deleted_response =
+        17;
+    LoadedExecutableDestructResponse loaded_executable_destruct_response = 18;
+
+    // ===== LoadedHostCallback =====
+    LoadedHostCallbackPollResponse loaded_host_callback_poll_response = 21;
+    LoadedHostCallbackReturnResponse loaded_host_callback_return_response = 22;
+
+    // ===== Client =====
+    GetDefaultDeviceAssignmentResponse get_default_device_assignment_response =
+        19;
+  }
+
+  reserved 10;
+}
+
+// Metadata of an IFRT Request.
+message RequestMetadata {
+  // Identifies a logical IFRT Operation (equivalent to an IFRT API call).
+  //
+  // For the operations that require chunking (e.g.: MakeArrayFromHostBuffer)
+  // all the request proto messages share the same op_id.
+  //
+  // Must be unique and monotonically increasing across the life of a client -
+  // may stretch across multiple successive IfrtSessions used to reconnect and
+  // resync after transient connectivity failures.
+  fixed64 op_id = 1;
+
+  // Implementation-specific payloads.
+  repeated google.protobuf.Any payloads = 4;
+
+  reserved 2, 3;
+}
+
+// Metadata of an IFRT Response.
+
+message ResponseMetadata {
+  // ID of the operation this response belongs to.
+  fixed64 op_id = 1;
+
+  // absl::Status of the operation.
+  //
+  //    In case of "chunked" responses (i.e., the full logical response is
+  //    spread across a sequence of IfrtResponse protos), the actual sequence of
+  //    IfrtResponse messages will follow only if this absl::Status is OK in the
+  //    very first message. That is, in case of errors, server sends a single
+  //    IfrtResponse with the appropriate error included.
+  //
+  //    In case of "batched" operations (i.e., where the response is carrying
+  //    the outcomes of multiple requests that were "batched" in the same
+  //    IfrtRequest proto - such as deleting a bunch of Arrays) this
+  //    absl::Status field provides a way to quickly check if none of the
+  //    individual operations encountered errors. Clients should not rely on
+  //    specific error type or string when this is not OK, they should check the
+  //    response message for individual absl::Statuses.
+  tensorflow.StatusProto status = 2;
+}
+
+// InitRequest allows the client to specify the optional startup configuration
+// parameters such as an idle timeout for this `IfrtSession`, backend servers
+// addresses, and whether to turn on tracing, etc.
+//
+// Initialization of a a session is optional, but if a client chooses to do it,
+// it must be the very first op i.e., the InitRequest must be the very first
+// request of the session.
+message InitRequest {}
+
+// InitResponse contains basic runtime system info (such as the available
+// devices, and name and type of the platform) that most clients can immediately
+// make use of. It may also carry the status for whether the optional
+// configuration requested by the InitRequest has been successfully applied.
+message InitResponse {
+  uint64 session_id = 8;
+
+  string platform_name = 1;     // == ifrt::Client::platform_name()
+  string platform_version = 2;  // == ifrt::Client::platform_version()
+  uint64 platform_id = 3;       // == ifrt::Client::platform_id()
+  uint64 process_index = 4;     // == ifrt::Client::process_index()
+  string runtime_type = 5;      // == ifrt::Client::runtime_type()
+
+  message Device {
+    int32 id = 1;
+    int32 local_device_id = 9;
+    int32 local_hardware_id = 2;
+    string device_kind = 3;
+    optional int32 default_memory_id = 7;
+    repeated int32 memory_ids = 8;
+    string debug_string = 4;
+    string to_string = 5;
+    map<string, proto.Variant> deprecated_attributes = 6
+        [deprecated = true];            // Deprecated since Version 4.
+    AttributeMapProto attributes = 10;  // New in Version 4.
+  }
+
+  repeated Device all_devices = 6;  // == ifrt::Client::GetAllDevices()
+  repeated int32 primary_device_ids =
+      10;  // == [device.id for device in ifrt::Client::devices()]
+  repeated int32 addressable_device_ids =
+      7;  // == [device.id for device in ifrt::Client::GetAllDevices() if
+          // device.IsAddressable()]
+
+  message Memory {
+    int32 id = 1;
+    string memory_space_kind = 2;
+    int32 kind_id = 6;
+    repeated int32 device_ids = 3;
+    string debug_string = 4;
+    string to_string = 5;
+  }
+
+  repeated Memory memories = 9;
+}
+
+// ================ Future-related operations ================
+
+// Checks if the given Futures are ready on the server. This is a destructive
+// read, i.e., the given future will no longer be able to be referenced.
+message CheckFutureRequest {
+  fixed64 future_handle = 1;
+}
+message CheckFutureResponse {}
+
+// ================ Value-related operations ================
+
+// Checks if the given Values are ready on the server.
+message CheckValueReadyRequest {
+  repeated fixed64 value_handles = 1 [packed = false];
+}
+message CheckValueReadyResponse {}
+
+// ================ Array-related operations ================
+
+// In the current context of the IFRT proxy service, the term `Host` in the
+// proto names below refers to the host where the proxy client and the user code
+// (e.g.: a Jax application) are running.
+
+// Makes an IFRT Array from the contents of a HostBuffer.
+// Equivalent to `ifrt::Client::MakeArrayFromHostBuffer`.
+message MakeArrayFromHostBufferRequest {
+  DTypeProto dtype = 1;
+  ShapeProto shape = 2;
+  ShardingProto sharding = 3;
+  fixed64 host_buffer_handle = 4;
+  optional proto.ByteStrides byte_strides = 5;
+  // If array_handle is provided, the server will either respond with the same
+  // handle in `MakeArrayFromHostBufferResponse` or return an error.
+  optional fixed64 array_handle = 6;
+}
+message MakeArrayFromHostBufferResponse {
+  fixed64 array_handle = 1;
+}
+
+// Makes an IFRT Array from a set of single-device Arrays.
+// Equivalent to ifrt::Client::AssembleArrayFromSingleDeviceArrays.
+message AssembleArrayFromSingleDeviceArraysRequest {
+  ShapeProto shape = 1;
+  ShardingProto sharding = 2;
+  repeated fixed64 single_device_array_handles = 3;
+  proto.ArrayCopySemantics copy_semantics = 4;
+  optional proto.SingleDeviceShardSemantics single_device_shard_semantics = 5;
+  fixed64 result_handle = 6;
+}
+message AssembleArrayFromSingleDeviceArraysResponse {
+  fixed64 array_handle = 1;
+}
+
+// Remaps the shards of given IFRT arrays to new IFRT arrays.
+// Equivalent to ifrt::Client::RemapArrays.
+message RemapArraysRequest {
+  RemapPlanProto plan = 1;
+  repeated fixed64 array_handles = 2;
+  proto.ArrayCopySemantics copy_semantics = 3;
+  repeated fixed64 result_handles = 4;
+}
+message RemapArraysResponse {
+  repeated fixed64 array_handles = 1;
+}
+
+// Reads the contents of a given IFRT Array.
+// Equivalent to ifrt::Array::CopyToHostBuffer.
+message CopyToHostBufferRequest {
+  fixed64 array_handle = 2;
+  optional proto.ByteStrides byte_strides = 3;
+  fixed64 host_buffer_handle = 1;
+}
+message CopyToHostBufferResponse {}
+
+// Breaks the given Array into its constituent per-device Arrays.
+// Equivalent to ifrt::Array::DisassmebleIntoSingleDeviceArrays.
+message DisassembleIntoSingleDeviceArraysRequest {
+  fixed64 array_handle = 1;
+  proto.ArrayCopySemantics copy_semantics = 2;
+  optional proto.SingleDeviceShardSemantics single_device_shard_semantics = 3;
+  repeated fixed64 result_handles = 4;
+}
+message DisassembleIntoSingleDeviceArraysResponse {
+  repeated fixed64 array_handles = 1;
+}
+
+message CopyArraysRequest {
+  repeated fixed64 array_handles = 1;
+  repeated int32 device_ids = 2;
+  optional string memory_kind = 3;
+  proto.ArrayCopySemantics copy_semantics = 4;
+  repeated fixed64 result_handles = 5;
+}
+message CopyArraysResponse {
+  repeated fixed64 array_handles = 1;
+}
+
+message FullyReplicatedShardRequest {
+  fixed64 array_handle = 1;
+  proto.ArrayCopySemantics copy_semantics = 2;
+  fixed64 result_handle = 3;
+}
+message FullyReplicatedShardResponse {
+  fixed64 array_handle = 1;
+}
+
+// Deletes the given Array. Response contains the handle for a Future that
+// becomes ready when the deletion completes.
+message DeleteArrayRequest {
+  // TODO(b/296144873): Remove after compatibility window.
+  optional fixed64 array_handle_deprecated = 1 [deprecated = true];
+
+  repeated fixed64 array_handle = 2;
+}
+message DeleteArrayResponse {
+  fixed64 deletion_future_handle = 1;
+}
+
+message IsArrayDeletedRequest {
+  fixed64 array_handle = 1;
+}
+message IsArrayDeletedResponse {
+  bool deleted = 1;
+}
+
+message DestructArrayRequest {
+  // TODO(b/296144873): Remove after compatibility window.
+  optional fixed64 array_handle_deprecated = 1 [deprecated = true];
+
+  repeated fixed64 array_handle = 2;
+}
+message DestructArrayResponse {}
+
+// ================ Compiler-related operations ================
+
+// Compiles `mlir_module` and returns a `LoadedExecutable`.
+message CompileRequest {
+  xla.ifrt.Serialized program = 1;
+  xla.ifrt.Serialized compile_options = 2;
+  repeated bytes host_callbacks = 3;
+}
+message CompileResponse {
+  fixed64 loaded_executable_handle = 1;
+  repeated fixed64 loaded_host_callback_handles = 8;
+
+  // A subset of LoadedExecutable's fields that are cheap to calculate. See
+  // `LoadedExecutableMetadataResponse` for the rest of metadata.
+  string name = 2;
+  int32 num_devices = 3;
+  repeated int32 addressable_device_ids = 5;
+  oneof fingerprint {
+    bytes fingerprint_value = 6;
+    tensorflow.StatusProto fingerprint_error = 7;
+  }
+  fixed64 ready_future_handle = 9;
+
+  reserved 4;
+}
+
+// ================ LoadedExecutable-related operations ================
+
+// Reads `LoadedExecutable`'s metadata that's typically available only after
+// compilation. Metadata fields that are cheaper to calculate are available
+// immediately as part of `CompileResponse`.
+message LoadedExecutableMetadataRequest {
+  fixed64 loaded_executable_handle = 1;
+}
+message LoadedExecutableMetadataResponse {
+  message ShardingList {
+    repeated xla.OpSharding shardings = 1;
+  }
+
+  optional ShardingList parameter_shardings = 1;
+  optional ShardingList output_shardings = 2;
+
+  message LayoutList {
+    repeated xla.LayoutProto layouts = 1;
+  }
+
+  oneof parameter_layouts {
+    LayoutList parameter_layouts_list = 4;
+    tensorflow.StatusProto parameter_layouts_error = 5;
+  }
+  oneof output_layouts {
+    LayoutList output_layouts_list = 6;
+    tensorflow.StatusProto output_layouts_error = 7;
+  }
+
+  message MemoryKindList {
+    repeated string memory_kinds = 1;
+  }
+
+  message OutputMemoryKind {
+    tensorflow.StatusProto status = 1;
+    repeated MemoryKindList memory_kind_lists = 2;
+  }
+
+  OutputMemoryKind output_memory_kinds = 3;
+}
+
+// Mirrors `LoadedExecutable::Execute`. Returns output array handles and a
+// future handle that becomes ready when the execution completes. The latter can
+// be checked by issuing `CheckFutureRequest`.
+message LoadedExecutableExecuteRequest {
+  fixed64 loaded_executable_handle = 1;
+  repeated fixed64 args_handles = 2;
+  xla.ifrt.ExecuteOptionsProto execute_options = 3;
+  repeated int32 device_ids = 4;
+
+  // Client-generated handles for the response.
+  repeated fixed64 result_array_handle = 5;
+  fixed64 result_status_handle = 6;
+}
+message LoadedExecutableExecuteResponse {
+  fixed64 status_handle = 1;
+
+  message Output {
+    DTypeProto dtype = 1;
+    ShapeProto shape = 2;
+    ShardingProto sharding = 3;
+    fixed64 array_handle = 4;
+  }
+
+  repeated Output outputs = 2;
+}
+
+// Mirrors `LoadedExecutable::Delete`. Returns a handle of a future that becomes
+// ready when the deletion completes.
+message LoadedExecutableDeleteRequest {
+  fixed64 loaded_executable_handle = 1;
+}
+message LoadedExecutableDeleteResponse {
+  fixed64 future_handle = 1;
+}
+
+// Mirrors `LoadedExecutable::IsDeleted`.
+message LoadedExecutableIsDeletedRequest {
+  fixed64 loaded_executable_handle = 1;
+}
+message LoadedExecutableIsDeletedResponse {
+  bool is_deleted = 1;
+}
+
+// Mirrors `LoadedExecutable::~LoadedExecutable`. The LoadedExecutable handle
+// becomes unusable after this request.
+message LoadedExecutableDestructRequest {
+  fixed64 loaded_executable_handle = 1;
+}
+message LoadedExecutableDestructResponse {}
+
+// ================ LoadedHostCallback-related operations ================
+
+// Waits for the given host callback on the server to have any pending execution
+// and retrieves its execution identifier and operands. The server serializes
+// all operands, concatenates them in the argument order, stores it as a single
+// host buffer assocatiated with the given handle.
+message LoadedHostCallbackPollRequest {
+  fixed64 loaded_host_callback_handle = 1;
+  fixed64 operand_host_buffer_handle = 2;
+}
+message LoadedHostCallbackPollResponse {
+  optional fixed64 host_callback_execution_handle = 1;
+}
+
+// Returns the results of a client-side host callback execution, requested by
+// `LoadedHostCallbackPollResponse`. The client concatenates all serialized
+// results and stores them as a single host buffer associated with the given
+// handle.
+message LoadedHostCallbackReturnRequest {
+  fixed64 host_callback_execution_handle = 1;
+  oneof result {
+    fixed64 result_host_buffer_handle = 3;
+    tensorflow.StatusProto error = 2;
+  }
+}
+message LoadedHostCallbackReturnResponse {}
+
+// =============  Operations supported by the IFRT `Client` class =============
+
+// Mirrors Client::GetDefaultDeviceAssignment.
+message GetDefaultDeviceAssignmentRequest {
+  fixed64 num_replicas = 1;
+  fixed64 num_partitions = 2;
+}
+message GetDefaultDeviceAssignmentResponse {
+  xla.DeviceAssignmentProto device_assignment = 1;
+}

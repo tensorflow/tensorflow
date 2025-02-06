@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "xla/literal.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -46,6 +46,9 @@ class ConstantValue {
   static ConstantValue GetOne(int32_t bitwidth, bool is_signed) {
     return ConstantValue(1, bitwidth, is_signed);
   }
+  static ConstantValue Get(int64_t value, int32_t bitwidth, bool is_signed) {
+    return ConstantValue(absl::bit_cast<uint64_t>(value), bitwidth, is_signed);
+  }
   static ConstantValue GetSigned(int64_t value, int32_t bitwidth) {
     return ConstantValue(absl::bit_cast<uint64_t>(value), bitwidth,
                          /*is_signed=*/true);
@@ -53,7 +56,7 @@ class ConstantValue {
   static ConstantValue GetUnsigned(uint64_t value, int32_t bitwidth) {
     return ConstantValue(value, bitwidth, /*is_signed=*/false);
   }
-  static StatusOr<ConstantValue> FromLiteral(const Literal& literal);
+  static absl::StatusOr<ConstantValue> FromLiteral(const Literal& literal);
   ConstantValue add(const ConstantValue& other) const {
     return ConstantValue(value_ + other.value_, bitwidth_, is_signed_);
   }

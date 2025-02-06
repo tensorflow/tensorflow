@@ -86,10 +86,10 @@ class OpsTestBase : public ::testing::Test {
   // and output types as output.
   //
   // Returns the status of initialization.
-  Status InitOp();
+  absl::Status InitOp();
 
   // Only use this directly if you have a deprecated op that you need to test.
-  Status InitOpWithGraphVersion(int graph_def_version);
+  absl::Status InitOpWithGraphVersion(int graph_def_version);
 
   // Adds an input for every element described by the shape.
   // 'input_mapping' maps an index (0...NumElements(shape)) to a
@@ -133,7 +133,7 @@ class OpsTestBase : public ::testing::Test {
   // Runs an operation producing 'num_outputs' outputs.
   //
   // Returns the context's status after running the operation.
-  Status RunOpKernel();
+  absl::Status RunOpKernel();
 
   // Returns the tensor input for 'input_index'.
   //
@@ -181,7 +181,7 @@ class OpsTestBase : public ::testing::Test {
 
   mutex lock_for_refs_;  // Used as the Mutex for inputs added as refs
 
-  gtl::InlinedVector<TensorValue, 4> inputs_;
+  absl::InlinedVector<TensorValue, 4> inputs_;
   // Owns Tensors.
   std::vector<Tensor*> tensors_;
   // Copies of the outputs in unified memory (host and device accessible).

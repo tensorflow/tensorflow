@@ -208,7 +208,7 @@ class ConstantTest(test.TestCase):
           shape=[2, 3, 5])
     self.assertEqual(c.get_shape(), [2, 3, 5])
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testEagerMemory(self):
     """Tests PyObject refs are managed correctly when executing eagerly."""
     constant_op.constant([[1.]])
@@ -512,7 +512,7 @@ class ZerosLikeTest(test.TestCase):
       # causes a TypeError in constant_op.constant below. Here we catch the
       # special case of tf.string and set the numpy dtype appropriately.
       if dtype == dtypes_lib.string:
-        numpy_dtype = np.string_
+        numpy_dtype = np.bytes_
       else:
         numpy_dtype = dtype.as_numpy_dtype
       if fully_defined_shape:

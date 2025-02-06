@@ -63,6 +63,6 @@ py_library(
         "//tensorflow/python/saved_model:utils",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
     ],
 )

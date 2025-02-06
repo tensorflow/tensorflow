@@ -12,14 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// WARNING: Users of TensorFlow Lite should not include this file directly, but
+// should instead include "third_party/tensorflow/lite/c/c_api_opaque.h".
+// Only the TensorFlow Lite implementation itself should include this file
+// directly.
+
 #ifndef TENSORFLOW_LITE_CORE_C_C_API_OPAQUE_H_
 #define TENSORFLOW_LITE_CORE_C_C_API_OPAQUE_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/c/operator.h"  // IWYU pragma: export
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,10 +43,24 @@ extern "C" {
 /// potentially including non-backwards-compatible changes, on a different
 /// schedule than for the other TensorFlow Lite APIs. See
 /// https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis.
+///
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/// \note Users of TensorFlow Lite should use
+/// \code
+/// #include "tensorflow/lite/c/c_api_opaque.h"
+/// \endcode
+/// to access the APIs documented on this page.
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
-/** \addtogroup c_api_opaque tensorflow/lite/c/c_api_opaque.h
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/** \defgroup c_api_opaque lite/c/c_api_opaque.h
  *  @{
  */
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 // --------------------------------------------------------------------------
 // Accessors for TfLiteOpaqueTensor.
@@ -89,6 +110,7 @@ TFL_CAPI_EXPORT extern size_t TfLiteOpaqueTensorByteSize(
     const TfLiteOpaqueTensor* opaque_tensor);
 
 /// Returns a pointer to the underlying data buffer.
+/// Returns nullptr if input is also nullptr.
 TFL_CAPI_EXPORT extern void* TfLiteOpaqueTensorData(
     const TfLiteOpaqueTensor* opaque_tensor);
 
@@ -139,105 +161,110 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueTensorCopyToBuffer(
     const TfLiteOpaqueTensor* opaque_tensor, void* output_data,
     size_t output_data_size);
 
-// Returns the number of strings stored in the provided 'tensor'.  Returns -1 in
-// case of failure.
+/// Returns the number of strings stored in the provided 'tensor'.
+/// Returns -1 in case of failure.
 int TfLiteOpaqueTensorGetStringCount(const TfLiteOpaqueTensor* tensor);
 
-// Stores the address of the n-th (denoted by the provided 'index') string
-// contained in the provided 'tensor' in the provided '*str' pointer.  Stores
-// the length of the string in the provided '*len' argument.
-//
-// Returns 'kTfLiteOk' if '*str' and '*len' have been set successfully.  Any
-// other return value indicates a failure, which leaves '*str' and '*len' in an
-// unspecified state.
-//
-// The range of valid indices is defined by the half open interval [0, N),
-// where N == TfLiteOpaqueTensorGetStringCount(tensor).
-//
-// Note that 'str' is not guaranteed to be null-terminated. Also note that this
-// function will not create a copy of the underlying string data.  The data is
-// owned by the 'tensor'.
+/// Stores the address of the n-th (denoted by the provided 'index') string
+/// contained in the provided 'tensor' in the provided '*str' pointer.  Stores
+/// the length of the string in the provided '*len' argument.
+///
+/// Returns 'kTfLiteOk' if '*str' and '*len' have been set successfully.  Any
+/// other return value indicates a failure, which leaves '*str' and '*len' in an
+/// unspecified state.
+///
+/// The range of valid indices is defined by the half open interval [0, N),
+/// where N == TfLiteOpaqueTensorGetStringCount(tensor).
+///
+/// Note that 'str' is not guaranteed to be null-terminated. Also note that this
+/// function will not create a copy of the underlying string data.  The data is
+/// owned by the 'tensor'.
 TfLiteStatus TfLiteOpaqueTensorGetString(const TfLiteOpaqueTensor* tensor,
                                          int index, const char** str, int* len);
 
-// Writes the array of strings specified by 'str_array' into
-// the specified 'tensor'.  The strings provided via the 'str_array' are being
-// copied into the 'tensor'. Returns 'kTfLiteOk' in case of success.  Any other
-// return value indicates a failure.
-//
-// The provided 'str_array_len' must denote the length of 'str_array'
-// and 'str_n_len[i]' must denote the length of the i-th string.
-//
-// The provided strings don't need to be null terminated and may contain
-// embedded null characters.  The amount of bytes copied into the 'tensor' is
-// entirely determined by 'str_n_len[i]' and it is the caller's responsibility
-// to set this value correctly to avoid undefined behavior.
-//
-// Also note that calling 'TfLiteOpaqueTensorWriteStrings' deallocates any
-// previously stored data in the 'tensor'.
+/// Writes the array of strings specified by 'str_array' into
+/// the specified 'tensor'.  The strings provided via the 'str_array' are being
+/// copied into the 'tensor'. Returns 'kTfLiteOk' in case of success.  Any other
+/// return value indicates a failure.
+///
+/// The provided 'str_array_len' must denote the length of 'str_array'
+/// and 'str_n_len[i]' must denote the length of the i-th string.
+///
+/// The provided strings don't need to be null terminated and may contain
+/// embedded null characters.  The amount of bytes copied into the 'tensor' is
+/// entirely determined by 'str_n_len[i]' and it is the caller's responsibility
+/// to set this value correctly to avoid undefined behavior.
+///
+/// Also note that calling 'TfLiteOpaqueTensorWriteStrings' deallocates any
+/// previously stored data in the 'tensor'.
 TfLiteStatus TfLiteOpaqueTensorWriteStrings(TfLiteOpaqueTensor* tensor,
                                             const char* const* str_array,
                                             int str_array_len,
                                             const int* str_n_len);
 
-// Writes the string pointed to by the provided 'str' pointer of length 'len'
-// into the provided 'tensor'.  The string provided via 'str' is
-// copied into the 'tensor'.  Returns 'kTfLiteOk' in case of success.  Any
-// other return value indicates a failure.
-//
-// Note that calling 'TfLiteOpaqueTensorWriteString' deallocates any
-// previously stored data in the 'tensor'.  E.g. suppose 't' denotes a
-// 'TfLiteOpaqueTensor*', then calling 'TfLiteOpaqueTensorWriteString(t, "AB",
-// 2)' followed by a call to 'TfLiteOpaqueTensorWriteString(t, "CD", 2)' will
-// lead to 't' containing 'CD', not 'ABCD'.
-//
-// 'TfLiteOpaqueTensorWriteString' is a convenience function for the use case
-// of writing a single string to a tensor and its effects are identical to
-// calling 'TfLiteOpaqueTensorWriteStrings' with an array of a single string.
+/// Writes the string pointed to by the provided 'str' pointer of length 'len'
+/// into the provided 'tensor'.  The string provided via 'str' is
+/// copied into the 'tensor'.  Returns 'kTfLiteOk' in case of success. Any
+/// other return value indicates a failure.
+///
+/// Note that calling 'TfLiteOpaqueTensorWriteString' deallocates any
+/// previously stored data in the 'tensor'.  E.g. suppose 't' denotes a
+/// 'TfLiteOpaqueTensor*', then calling 'TfLiteOpaqueTensorWriteString(t, "AB",
+/// 2)' followed by a call to 'TfLiteOpaqueTensorWriteString(t, "CD", 2)' will
+/// lead to 't' containing 'CD', not 'ABCD'.
+///
+/// 'TfLiteOpaqueTensorWriteString' is a convenience function for the use case
+/// of writing a single string to a tensor and its effects are identical to
+/// calling 'TfLiteOpaqueTensorWriteStrings' with an array of a single string.
 TfLiteStatus TfLiteOpaqueTensorWriteString(TfLiteOpaqueTensor* tensor,
                                            const char* str, int len);
 
-// An opaque type to create a tensor.
+/// An opaque type to create a tensor.
 typedef struct TfLiteOpaqueTensorBuilder TfLiteOpaqueTensorBuilder;
 
-// Creates an opaque tensor builder object.
+/// Creates an opaque tensor builder object.
 TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderCreate();
 
-// Deletes an opaque tensor builder object.
+/// Deletes an opaque tensor builder object.
 void TfLiteOpaqueTensorBuilderDelete(TfLiteOpaqueTensorBuilder* builder);
 
-// Sets the 'TfLiteType' of the provided 'builder' to the provided 'type'.
-// Returns the address of the provided 'builder', so that builder calls can be
-// chained together.
+/// Sets the 'TfLiteType' of the provided 'builder' to the provided 'type'.
+/// Returns the address of the provided 'builder', so that builder calls can be
+/// chained together.
 TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetType(
     TfLiteOpaqueTensorBuilder* builder, TfLiteType type);
 
-// Sets the raw data of the provided 'builder' to the provided 'data'. Returns
-// the address of the provided 'builder', so that builder calls can be chained
-// together.
+/// Sets the raw data of the provided 'builder' to the provided 'data'. Returns
+/// the address of the provided 'builder', so that builder calls can be chained
+/// together.
 TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetData(
     TfLiteOpaqueTensorBuilder* builder, void* data);
 
-// Sets the allocation type of the provided 'builder' to the provided
-// 'allocation_type'.  The 'allocation_type' must be one of the following:
-// 'kTfLiteDynamic', 'kTfLiteArenaRw' or 'kTfLiteArenaRwPersistent'.  If the
-// provided 'allocation_type' is not one of those values then
-// 'TfLiteOpaqueContextAddTensor' will return an error. Returns the address of
-// the provided 'builder', so that builder calls can be chained together.
+/// Sets the allocation type of the provided 'builder' to the provided
+/// 'allocation_type'.  The 'allocation_type' must be one of the following:
+/// 'kTfLiteDynamic', 'kTfLiteArenaRw' or 'kTfLiteArenaRwPersistent'.  If the
+/// provided 'allocation_type' is not one of those values then
+/// 'TfLiteOpaqueContextAddTensor' will return an error. Returns the address of
+/// the provided 'builder', so that builder calls can be chained together.
 TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetAllocationType(
     TfLiteOpaqueTensorBuilder* builder, TfLiteAllocationType allocation_type);
 
-// Sets the quantization params of the provided 'builder' to the provided
-// 'params'. Returns the address of the provided 'builder', so that builder
-// calls can be chained together.
+/// Sets the quantization params of the provided 'builder' to the provided
+/// 'params'. Returns the address of the provided 'builder', so that builder
+/// calls can be chained together.
 TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantizationParams(
     TfLiteOpaqueTensorBuilder* builder, TfLiteQuantizationParams params);
 
-// Sets the quantization of the provided 'builder' to the provided
-// 'quantization'. Returns the address of the provided 'builder', so that
-// builder calls can be chained together.
+/// Sets the quantization of the provided 'builder' to the provided
+/// 'quantization'. Returns the address of the provided 'builder', so that
+/// builder calls can be chained together.
 TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantization(
     TfLiteOpaqueTensorBuilder* builder, TfLiteQuantization quantization);
+
+/// Sets the allocation type of the provided 'tensor' to 'kTfLiteDynamic'.
+/// This function has no effect if the 'tensor's allocation type is already
+/// 'kTfLiteDynamic'.  The provided 'tensor' must not be null.
+void TfLiteOpaqueTensorSetAllocationTypeToDynamic(TfLiteOpaqueTensor* tensor);
 
 // --------------------------------------------------------------------------
 // Accessors for TfLiteOpaqueNode.
@@ -262,7 +289,7 @@ TFL_CAPI_EXPORT int TfLiteOpaqueNodeNumberOfOutputs(
 
 /// Returns opaque data provided by the node implementer. The value returned
 /// from this function is the value that was returned from the `init` callback
-/// that was passed to `TfLiteRegistrationExternalSetInit`.
+/// that was passed to `TfLiteOperatorSetInit`.
 TFL_CAPI_EXPORT extern void* TfLiteOpaqueNodeGetUserData(
     const TfLiteOpaqueNode* opaque_node);
 
@@ -320,6 +347,15 @@ TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeInputs(
 TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeOutputs(
     const TfLiteOpaqueNode* opaque_node, const int** outputs, int* num_outputs);
 
+/// Set tensor indices of temporary tensors used during the computations.
+/// These temporary tensors should be allocated using AddTensors().
+/// By default nodes don't have any temporary tensors, tensors, but ops are
+/// allowed to change that if they need scratch space of any sort.
+/// This will make a copy of the contents of the array pointed to by
+/// `temporaries`.
+TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueNodeSetTemporaries(
+    TfLiteOpaqueNode* opaque_node, const int* temporaries, int num_temporaries);
+
 /// Loads into the provided '*temporaries' pointer the starting address of an
 /// array of indices representing the temporary tensors associated with the
 /// provided 'opaque_node'. The length of the array is loaded into the provided
@@ -337,18 +373,18 @@ TfLiteStatus TfLiteOpaqueNodeTemporaries(const TfLiteOpaqueNode* opaque_node,
                                          const int** temporaries,
                                          int* num_temporaries);
 
-// Given an 'index_of_input', which must be in the range of [0, N), where N is
-// the number of input tensors of the provided 'opaque_node', returns the
-// (global) index of the tensor that holds the input.  Returns -1 if
-// 'index_of_input' is not within the [0, N) range.
+/// Given an 'index_of_input', which must be in the range of [0, N), where N is
+/// the number of input tensors of the provided 'opaque_node', returns the
+/// (global) index of the tensor that holds the input.  Returns -1 if
+/// 'index_of_input' is not within the [0, N) range.
 TFL_CAPI_EXPORT
 int TfLiteOpaqueNodeGetInputTensorIndex(const TfLiteOpaqueNode* opaque_node,
                                         int index_of_input);
 
-// Given an 'index_of_output', which must be in the range of [0, N), where N is
-// the number of output tensors of the provided 'opaque_node', returns the
-// (global) index of the tensor that holds the output.  Returns -1 if
-// 'index_of_output' is not within the [0, N) range.
+/// Given an 'index_of_output', which must be in the range of [0, N), where N is
+/// the number of output tensors of the provided 'opaque_node', returns the
+/// (global) index of the tensor that holds the output. Returns -1 if
+/// 'index_of_output' is not within the [0, N) range.
 TFL_CAPI_EXPORT
 int TfLiteOpaqueNodeGetOutputTensorIndex(const TfLiteOpaqueNode* opaque_node,
                                          int index_of_output);
@@ -364,6 +400,14 @@ typedef struct TfLiteIntArray TfLiteIntArray;
 /// failure and the `execution_plan` will be left in an unspecified state.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
     TfLiteOpaqueContext* opaque_context, TfLiteIntArray** execution_plan);
+
+/// Returns the external context of the specified type associated with the
+/// provided `opaque_context`. Returns `kTfLiteOk` if the external context was
+/// successfully loaded. A return value different from `kTfLiteOk` indicates a
+/// failure and the `external_context` will be left in an unspecified state.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueContextGetExternalContext(
+    TfLiteOpaqueContext* opaque_context, void** external_context,
+    TfLiteExternalContextType type);
 
 /// Given the specified 'opaque_context' and 'node_index', load the caller's
 /// opaque '*node' and '*registration_external' pointer.  Return 'kTfLiteOk' if
@@ -381,7 +425,7 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
 ///
 /// This function is expected to be called from within a delegate callback, like
 /// 'Prepare', or a delegate kernel callback (i.e., a callback registered with
-/// a 'TfLiteRegistrationExternal' object).
+/// a 'TfLiteOperator' object).
 ///
 /// The loaded '*node' and '*registration_external' pointers will generally
 /// remain valid for the lifetime of the associated 'opaque_context', but can be
@@ -393,8 +437,7 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
 // are returned to the users and which actions invalidate them.
 TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
     struct TfLiteOpaqueContext* opaque_context, int node_index,
-    TfLiteOpaqueNode** node,
-    TfLiteRegistrationExternal** registration_external);
+    TfLiteOpaqueNode** node, TfLiteOperator** registration_external);
 
 /// Entry point for C API ReplaceNodeSubsetsWithDelegateKernels
 ///
@@ -411,7 +454,7 @@ TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
 TFL_CAPI_EXPORT TfLiteStatus
 TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
     struct TfLiteOpaqueContext* opaque_context,
-    TfLiteRegistrationExternal* registration_external,
+    TfLiteOperator* registration_external,
     const TfLiteIntArray* nodes_to_replace,
     TfLiteOpaqueDelegate* opaque_delegate);
 
@@ -506,6 +549,7 @@ TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
 /// Retrieves the corresponding TfLiteOpaqueContext of a subgraph given a
 /// subgraph index and switches to the delegate context for this subgraph. If an
 /// invalid subgraph index is given, then returns kTfLiteError.
+///
 /// NOTE: This function is expected to be paired with
 /// TfLiteOpaqueContextReleaseSubgraphContext() once the delegate preparation is
 /// done and/or the delegate context functions are no longer needed.
@@ -518,6 +562,7 @@ TfLiteStatus TfLiteOpaqueContextAcquireSubgraphContext(
 ///
 /// Releases the corresponding TfLiteOpaqueContext by switching back to the
 /// TFLite kernel context for this specified subgraph.
+///
 /// NOTE: This function is expected to be used after
 /// TfLiteOpaqueContextAcquireSubgraphContext() once the delegate preparation is
 /// done and/or the delegate context functions are no longer needed.
@@ -535,6 +580,7 @@ TfLiteStatus TfLiteOpaqueContextReleaseSubgraphContext(
 /// a specific TfLiteOpaqueDelegate that is already supposed to be
 /// aware of this condition, and therefore, TfLiteInterpreter can skip invoking
 /// `ModifyGraphWithDelegate` on this subgraph.
+///
 /// NOTE: This function is expected to be called only when the subgraph that
 /// `subgraph_index` is pointing to should be skipped by
 /// interpreter::ModifyGraphWithDelegate (e.g. the subgraph is part of the list
@@ -548,56 +594,69 @@ TfLiteStatus TfLiteOpaqueContextReleaseSubgraphContext(
 ///   1. The delegate supports while op
 ///   2. Both condition subgraph `i` and body subgraph `j` can be fully
 ///   delegated to the delegate.
+///
 /// Then if the delegate decides to support the while node along with both body
 /// and condition subgraphs, it should mark subgraphs `i` and `j` skippable so
 /// that those two subgraphs won't be delegated to another delegate.
+///
 /// WARNING: It is the delegate's responsibility to define when to skip
-/// Subgraph::ModifyGraphWithDelegate, to check for any edge cases (i.e.
+/// `Subgraph::ModifyGraphWithDelegate`, to check for any edge cases (i.e.
 /// multiple references to the subgraph that `subgraph_index` is pointing to),
 /// and to mark a subgraph as skippable by using this function.
 TFL_CAPI_EXPORT
 TfLiteStatus TfLiteOpaqueContextMarkSubgraphAsDelegationSkippable(
     TfLiteOpaqueContext* opaque_context, int subgraph_index);
 
-// Loads metadata of a TF Lite node's custom initialization data.  Specifically:
-// * Loads into the supplied 'fd' the file descriptor of the file that stores
-//   the 'node's custom  initialization data.  This output parameter will be
-//   loaded if the TF Lite runtime has access to the file descriptor, though
-//   this is not always the case, e.g. if a client provides a tflite::Model
-//   directly to the TF Lite runtime.  If 'fd' can be loaded then 'kTfLiteOk'
-//   will be returned, otherwise 'kTfLiteError' is returned.
-// * Loads into the supplied 'custom_initial_data_offset_in_file' pointer the
-//   offset of the 'node's custom init data in the file associated with 'fd'.
-//   This output parameter will be set to -1 if the 'node' does not have custom
-//   init data set.
-// * Loads into the supplied 'custom_initial_data_size' the size of the
-//   custom initialization data.  This output parameter will be set to -1 if the
-//   'node' does not have custom init data set.
-//
-// Returns 'kTfLiteOk' when 'fd' has been loaded successfully and 'kTfLiteError'
-// otherwise.  Note that this means that 'kTfLiteOk' can be returned, even if
-// the 'node' does not have custom init data set.
+/// Loads metadata of a TF Lite node's custom initialization data. Specifically:
+/// * Loads into the supplied 'fd' the file descriptor of the file that stores
+///   the 'node's custom  initialization data.  This output parameter will be
+///   loaded if the TF Lite runtime has access to the file descriptor, though
+///   this is not always the case, e.g. if a client provides a tflite::Model
+///   directly to the TF Lite runtime.  If 'fd' can be loaded then 'kTfLiteOk'
+///   will be returned, otherwise 'kTfLiteError' is returned.
+/// * Loads into the supplied 'custom_initial_data_offset_in_file' pointer the
+///   offset of the 'node's custom init data in the file associated with 'fd'.
+///   This output parameter will be set to -1 if the 'node' does not have custom
+///   init data set.
+/// * Loads into the supplied 'custom_initial_data_size' the size of the
+///   custom initialization data.  This output parameter will be set to -1 if
+///   the 'node' does not have custom init data set.
+///
+/// Returns 'kTfLiteOk' when 'fd' has been loaded successfully and
+/// 'kTfLiteError' otherwise.  Note that this means that 'kTfLiteOk' can be
+/// returned, even if the 'node' does not have custom init data set.
 TFL_CAPI_EXPORT
 TfLiteStatus TfLiteOpaqueContextGetNodeInitDataMmapInfo(
     const TfLiteOpaqueContext* context, const TfLiteOpaqueNode* node, int* fd,
     int64_t* custom_initial_data_offset_in_file,
     int64_t* custom_initial_data_size);
 
-// Adds an additional tensor and configures its properties based on the provided
-// 'builder', preserving pre-existing Tensor entries.  If non-null, the value
-// pointed to by 'new_tensor_index' will be set to the index of the
-// new tensor.  Returns 'kTfLiteOk' when the tensor has been added
-// successfully.  Returns 'kTfLiteError' in case of failure.
+/// Adds an additional tensor and configures its properties based on the
+/// provided 'builder', preserving pre-existing Tensor entries. If non-null,
+/// the value pointed to by 'new_tensor_index' will be set to the index of the
+/// new tensor.  Returns 'kTfLiteOk' when the tensor has been added
+/// successfully.  Returns 'kTfLiteError' in case of failure.
 TFL_CAPI_EXPORT
 TfLiteStatus TfLiteOpaqueContextAddTensor(TfLiteOpaqueContext* context,
                                           TfLiteOpaqueTensorBuilder* builder,
                                           int* new_tensor_index);
 
-// Populates the size in bytes of a provide 'type' into 'bytes'.  Returns
-// 'kTfLiteOk' for valid types, and 'kTfLiteError' otherwise.
+/// Populates the size in bytes of a provide 'type' into 'bytes'.  Returns
+/// 'kTfLiteOk' for valid types, and 'kTfLiteError' otherwise.
 TFL_CAPI_EXPORT
 TfLiteStatus TfLiteOpaqueContextGetSizeOfType(TfLiteOpaqueContext* context,
                                               TfLiteType type, size_t* bytes);
+
+/// Retrieves named metadata buffer from the TFLite model.
+/// Returns kTfLiteOk if metadata is successfully obtained from the flatbuffer
+/// model. That is, there exists a `metadata` entry with given `name` string.
+/// (see TFLite's schema.fbs).
+/// The corresponding `buffer` information is populated in `ptr` & `bytes`.
+/// The data from `ptr` is valid for the lifetime of the Interpreter.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextGetMetadata(TfLiteOpaqueContext* context,
+                                            const char* name, const char** ptr,
+                                            size_t* bytes);
 
 /// Reports an error message formed by using the provided 'format' string in
 /// combination with the data provided via the unnamed arguments following
@@ -617,20 +676,21 @@ TFL_CAPI_EXPORT
 void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,
                                     const char* format, ...);
 
-/// Same as 'TfLiteOpaqueContextReportError', but with the variable arguments
-/// passed via a 'va_list' instead of directly.
+/// Same as `TfLiteOpaqueContextReportError`, but with the variable arguments
+/// passed via a `va_list` instead of directly.
 ///
 /// Callers that receive an ellipsis and want to forward it to
 /// to the opaque context error reporting API can add the ellipsis content to a
-/// 'va_list' and then call 'TfLiteOpaqueContextReportErrorVa'. E.g.:
+/// `va_list` and then call `TfLiteOpaqueContextReportErrorVa`. E.g.:
 ///
-/// void MyErrorReporter(struct TfLiteOpaqueContext* opaque_context,
-///                                     const char* format, ...) {
-///   va_list vlist;
-///   va_start(vlist, format);
-///   TfLiteOpaqueContextReportErrorVa(opaque_context, format, vlist);
-///   va_end(vlist);
-/// }
+///
+///     void MyErrorReporter(struct TfLiteOpaqueContext* opaque_context,
+///                                      const char* format, ...) {
+///       va_list vlist;
+///       va_start(vlist, format);
+///       TfLiteOpaqueContextReportErrorVa(opaque_context, format, vlist);
+///       va_end(vlist);
+///     }
 TFL_CAPI_EXPORT
 void TfLiteOpaqueContextReportErrorVa(
     struct TfLiteOpaqueContext* opaque_context, const char* format,
@@ -676,8 +736,8 @@ void TfLiteOpaqueContextReportErrorVa(
 
 #endif  // TF_LITE_STRIP_ERROR_STRINGS
 
-// Check whether value is true, and if not return kTfLiteError from
-// the current function (and report the error string msg).
+/// Check whether value is true, and if not return kTfLiteError from
+/// the current function (and report the error string msg).
 #if !defined(TF_LITE_OPAQUE_ENSURE_MSG)
 #define TF_LITE_OPAQUE_ENSURE_MSG(opaque_context, value, msg)        \
   do {                                                               \
@@ -688,8 +748,8 @@ void TfLiteOpaqueContextReportErrorVa(
   } while (0)
 #endif
 
-// Check whether the value `a` is true, and if not return kTfLiteError from
-// the current function, while also reporting the location of the error.
+/// Check whether the value `a` is true, and if not return kTfLiteError from
+/// the current function, while also reporting the location of the error.
 #if !defined(TF_LITE_OPAQUE_ENSURE)
 #define TF_LITE_OPAQUE_ENSURE(opaque_context, a)                           \
   do {                                                                     \
@@ -701,11 +761,12 @@ void TfLiteOpaqueContextReportErrorVa(
   } while (0)
 #endif
 
-// Check whether the value `a == b` is true, and if not return kTfLiteError from
-// the current function, while also reporting the location of the error.
-// `a` and `b` may be evaluated more than once, so no side effects or
-// extremely expensive computations should be done.
-// NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
+/// Check whether the value `a == b` is true, and if not return kTfLiteError
+/// from the current function, while also reporting the location of the error.
+/// `a` and `b` may be evaluated more than once, so no side effects or
+/// extremely expensive computations should be done.
+///
+/// NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
 #if !defined(TF_LITE_OPAQUE_ENSURE_EQ)
 #define TF_LITE_OPAQUE_ENSURE_EQ(opaque_context, a, b)                  \
   do {                                                                  \
@@ -742,6 +803,40 @@ void TfLiteOpaqueContextReportErrorVa(
     }                                                                         \
   } while (0)
 #endif
+
+#ifndef TF_LITE_STATIC_MEMORY
+/// Creates an opaque delegate and returns its address.  The opaque delegate
+/// will behave according to the provided `opaque_delegate_builder`.  The
+/// lifetime of the objects pointed to by any of the fields within the
+/// `opaque_delegate_builder` must outlive the returned
+/// `TfLiteOpaqueDelegate` and any `TfLiteInterpreter`,
+/// `TfLiteInterpreterOptions`, `tflite::Interpreter`, or
+/// `tflite::InterpreterBuilder` that the delegate is added to.  The returned
+/// address should be passed to `TfLiteOpaqueDelegateDelete` for deletion.  If
+/// `opaque_delegate_builder` is a null pointer, then a null pointer will be
+/// returned.
+TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
+    const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder);
+
+/// Deletes the provided opaque `delegate`.  This function has no effect if the
+/// `delegate` is a null pointer.
+void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
+#endif  // TF_LITE_STATIC_MEMORY
+
+/// Returns a pointer to the data associated with the provided opaque
+/// `delegate`.
+///
+/// A null pointer will be returned when:
+/// - The `delegate` is null.
+/// - The `data` field of the `TfLiteOpaqueDelegateBuilder` used to construct
+///   the `delegate` was null.
+/// - Or in case of any other error.
+/// - The `delegate` has been constructed via a `TfLiteOpaqueDelegateBuilder`,
+///   but the `data` field of the `TfLiteOpaqueDelegateBuilder` is null.
+///
+///  The data_ field of `delegate` will be returned if the
+///  `opaque_delegate_builder` field is null.
+void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
 
 #ifdef __cplusplus
 }  // extern "C"

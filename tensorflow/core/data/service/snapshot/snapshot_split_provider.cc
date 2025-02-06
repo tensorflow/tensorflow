@@ -17,7 +17,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,7 +26,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -35,8 +37,6 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/thread_annotations.h"
@@ -49,8 +49,9 @@ constexpr char kNextSplitIndex[] = "next_split_index";
 constexpr char kRepetitionIndex[] = "repetition_index";
 
 absl::StatusOr<int64_t> GetRepetitionIndex(const std::string& split_file) {
-  tsl::StringPiece repetition_dir_path = tsl::io::Dirname(split_file);
-  tsl::StringPiece repetition_dir_name = tsl::io::Basename(repetition_dir_path);
+  absl::string_view repetition_dir_path = tsl::io::Dirname(split_file);
+  absl::string_view repetition_dir_name =
+      tsl::io::Basename(repetition_dir_path);
   return ParseRepetitionDirectoryName(repetition_dir_name);
 }
 }  // namespace
@@ -219,7 +220,8 @@ absl::Status SnapshotSplitProvider::ValidateSplitFiles(
 absl::Status SnapshotSplitProvider::Reset() {
   mutex_lock l(mu_);
   ++repetition_index_;
-  LOG(INFO) << "Reset tf.data snapshot split provider for repetition "
+  LOG(INFO) << "Reset tf.data snapshot split provider for snapshot "
+            << snapshot_task_.ShortDebugString() << ", repetition "
             << repetition_index_ << ".";
   return absl::OkStatus();
 }
@@ -248,7 +250,8 @@ absl::Status SnapshotSplitProvider::Restore(
   next_split_index_ = next_split_index;
   repetition_index_ = repetition_index;
   TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
-  LOG(INFO) << "Restored snapshot split provider for split "
+  LOG(INFO) << "Restored snapshot split provider for snapshot "
+            << snapshot_task_.ShortDebugString() << ", next split "
             << next_split_index_ << ", repetition " << repetition_index_ << ".";
   return absl::OkStatus();
 }

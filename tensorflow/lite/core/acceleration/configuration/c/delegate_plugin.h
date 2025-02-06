@@ -12,17 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// NOLINTBEGIN(whitespace/line_length)
-/// WARNING: Users of TensorFlow Lite should not include this file directly,
-/// but should instead include
-/// "third_party/tensorflow/lite/acceleration/configuration/c/delegate_plugin.h".
-/// Only the TensorFlow Lite implementation itself should include this
-/// file directly.
-// NOLINTEND(whitespace/line_length)
+// WARNING: Users of TensorFlow Lite should not include this file directly,
+// but should instead include
+// "third_party/tensorflow/lite/acceleration/configuration/c/delegate_plugin.h".
+// Only the TensorFlow Lite implementation itself should include this file
+// directly.
+
 #ifndef TENSORFLOW_LITE_CORE_ACCELERATION_CONFIGURATION_C_DELEGATE_PLUGIN_H_
 #define TENSORFLOW_LITE_CORE_ACCELERATION_CONFIGURATION_C_DELEGATE_PLUGIN_H_
 
-// C API types for TF Lite delegate plugins.
+/// C API types for TF Lite delegate plugins.
+
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/// \note Users of TensorFlow Lite should use
+/// \code
+/// #include "tensorflow/lite/acceleration/configuration/c/delegate_plugin.h"
+/// \endcode
+/// to access the APIs documented on this page.
+// NOLINTEND(whitespace/line_length)
+// clang-format on
 
 #include "tensorflow/lite/core/c/common.h"
 
@@ -30,50 +39,60 @@ limitations under the License.
 extern "C" {
 #endif
 
-// Type of delegate creation function used to allocate and construct a delegate.
-//
-// The tflite_settings parameter passed to the delegate creation function should
-// be a pointer to a FlatBuffer table object of type tflite::TFLiteSettings.
-// We use 'const void *' here rather than 'const tflite::TFLiteSettings*' since
-// this is a C API so we don't want to directly reference C++ types such as
-// tflite::TFLiteSettings.  But note that this address should point to the
-// 'parsed' FlatBuffer object, not the raw byte buffer.
-// (Note that 'parsing' FlatBuffers is very cheap, it's just an offset load.)
-//
-// If you are using the FlatBuffers C API, then you can alternatively pass
-// in a value of type 'tflite_TFLiteSettings_table_t', which is a typedef for
-// 'const struct tflite_TFLiteSettings_table*' -- that is the corresponding
-// type for the 'parsed' FlatBuffer object in the FlatBuffers C API.
-//
-// Ownership of the tflite_settings flatbuffer remains with the caller.
-// The caller of a delegate creation function may end the lifetime of the
-// tflite_settings FlatBuffer immediately after the call to the function.
-// So the delegate creation function should ensure that any settings that the
-// delegate may need to reference later, after the delegate has been
-// constructed, are copied from the FlatBuffer into storage owned by the
-// delegate.
+// clang-format off
+// NOLINTBEGIN(whitespace/line_length)
+/** \defgroup delegate_plugin lite/acceleration/configuration/c/delegate_plugin.h
+ *  @{
+ */
+// NOLINTEND(whitespace/line_length)
+// clang-format on
+
+/// Type of delegate creation function used to allocate and construct a
+/// delegate.
+///
+/// The `tflite_settings` parameter passed to the delegate creation function
+/// should be a pointer to a FlatBuffer table object of type
+/// `tflite::TFLiteSettings`. We use `const void *` here rather than `const
+/// tflite::TFLiteSettings*` since this is a C API so we don't want to directly
+/// reference C++ types such as `tflite::TFLiteSettings`.  But note that this
+/// address should point to the 'parsed' FlatBuffer object, not the raw byte
+/// buffer. (Note that 'parsing' FlatBuffers is very cheap, it's just an offset
+/// load.)
+///
+/// If you are using the FlatBuffers C API, then you can alternatively pass
+/// in a value of type `tflite_TFLiteSettings_table_t`, which is a typedef for
+/// `const struct tflite_TFLiteSettings_table*` -- that is the corresponding
+/// type for the 'parsed' FlatBuffer object in the FlatBuffers C API.
+///
+/// Ownership of the `tflite_settings` flatbuffer remains with the caller.
+/// The caller of a delegate creation function may end the lifetime of the
+/// `tflite_settings` FlatBuffer immediately after the call to the function.
+/// So the delegate creation function should ensure that any settings that the
+/// delegate may need to reference later, after the delegate has been
+/// constructed, are copied from the FlatBuffer into storage owned by the
+/// delegate.
 typedef TfLiteDelegate *TfLiteDelegatePluginCreateFunc(
     const void *tflite_settings);
 
-// Type of function to destroy and deallocate a delegate.
-// The delegate argument must have been created with the corresponding
-// create function from the same delegate plugin.
+/// Type of function to destroy and deallocate a delegate.
+/// The delegate argument must have been created with the corresponding
+/// create function from the same delegate plugin.
 typedef void TfLiteDelegatePluginDestroyFunc(TfLiteDelegate *);
 
-// Type of function to return an error code for the last delegate operation.
-// The delegate argument must have been created with the corresponding
-// create function from the same delegate plugin.
+/// Type of function to return an error code for the last delegate operation.
+/// The delegate argument must have been created with the corresponding
+/// create function from the same delegate plugin.
 typedef int TfLiteDelegatePluginGetDelegateErrnoFunc(TfLiteDelegate *);
 
-// Struct to hold all the methods for a delegate plugin.
+/// Struct to hold all the methods for a delegate plugin.
 typedef struct TfLiteDelegatePlugin {
-  // Function to allocate and construct a delegate.
+  /// Function to allocate and construct a delegate.
   TfLiteDelegatePluginCreateFunc *create;
 
-  // Function to deallocate a delegate.
+  /// Function to deallocate a delegate.
   TfLiteDelegatePluginDestroyFunc *destroy;
 
-  // Function to return an error code for the last delegate operation.
+  /// Function to return an error code for the last delegate operation.
   TfLiteDelegatePluginGetDelegateErrnoFunc *get_delegate_errno;
 } TfLiteDelegatePlugin;
 
@@ -84,19 +103,20 @@ typedef struct TfLiteDelegatePlugin {
 // target. e.g. TFLite-in-Play Services initialization context.
 #if TFLITE_USE_OPAQUE_DELEGATE
 
-// Same as TfLiteDelegatePluginCreateFunc but uses truly opaque types.
+/// Same as TfLiteDelegatePluginCreateFunc but uses truly opaque types.
 typedef TfLiteOpaqueDelegateStruct *TfLiteOpaqueDelegatePluginCreateFunc(
     const void *tflite_settings);
 
-// Same as TfLiteDelegatePluginDestroyFunc but uses truly opaque types.
+/// Same as TfLiteDelegatePluginDestroyFunc but uses truly opaque types.
 typedef void TfLiteOpaqueDelegatePluginDestroyFunc(
     TfLiteOpaqueDelegateStruct *delegate);
 
-// Same as TfLiteDelegatePluginGetDelegateErrnoFunc but uses truly opaque types.
+/// Same as TfLiteDelegatePluginGetDelegateErrnoFunc but uses truly opaque
+/// types.
 typedef int TfLiteOpaqueDelegatePluginGetDelegateErrnoFunc(
     TfLiteOpaqueDelegateStruct *delegate);
 
-// Same as TfLiteDelegatePlugin but uses truly opaque types.
+/// Same as TfLiteDelegatePlugin but uses truly opaque types.
 typedef struct TfLiteOpaqueDelegatePlugin {
   TfLiteOpaqueDelegatePluginCreateFunc *create;
 
@@ -114,6 +134,8 @@ typedef TfLiteDelegatePluginGetDelegateErrnoFunc
 typedef TfLiteDelegatePlugin TfLiteOpaqueDelegatePlugin;
 
 #endif  // TFLITE_USE_OPAQUE_DELEGATE
+
+/** @} */
 
 #ifdef __cplusplus
 };  // extern "C"

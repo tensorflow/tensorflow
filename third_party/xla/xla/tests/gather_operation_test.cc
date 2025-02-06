@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,22 +13,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/types/span.h"
 #include "xla/array.h"
-#include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
 #include "xla/execution_options_util.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/status_macros.h"
-#include "xla/test.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using std::nullopt;
-
-class GatherOperationTest : public HloTestBase {
+class GatherOperationTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  protected:
   void RunTest(const std::string& hlo_text, Literal* operand,
                Literal* start_indices) {
@@ -40,7 +58,7 @@ class GatherOperationTest : public HloTestBase {
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
-    EXPECT_TRUE(RunAndCompare(std::move(module), args, nullopt));
+    EXPECT_TRUE(RunAndCompare(std::move(module), args, std::nullopt));
   }
 };
 
@@ -778,7 +796,7 @@ XLA_TEST_F(GatherClientLibraryTest,
   xla::ExecutionOptions execution_options = CreateDefaultExecutionOptions();
   *execution_options.add_device_handles() = devices[0];
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
-  std::vector<xla::Client::XlaComputationInstance> computation_instances = {
+  std::vector<xla::XlaComputationInstance> computation_instances = {
       {computation,
        {operand_arg.get(), indices_arg.get()},
        execution_options,

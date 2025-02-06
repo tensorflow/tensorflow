@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_ARRAY_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_ARRAY_H_
 
+#include "xla/tsl/util/byte_swap_array.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/util/byte_swap_array.h"
 
 namespace tensorflow {
 

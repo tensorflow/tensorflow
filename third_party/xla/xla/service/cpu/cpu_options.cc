@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,17 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_options.h"
 
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <vector>
+
+#include "absl/log/check.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace {
 
@@ -26,6 +35,7 @@ const char* const kXlaForceEnableExperimentalLlvmIrGemm =
     "xla_force_enable_experimental_llvm_ir_gemm";
 const char* const kLlvmIrGemmTileSize = "xla_llvm_ir_gemm_tile_size";
 const char* const kDisableSlpVectorizer = "xla_cpu_disable_slp_vectorizer";
+const char* const kDisableLoopUnrolling = "xla_cpu_disable_loop_unrolling";
 
 }  // namespace
 
@@ -49,6 +59,12 @@ bool SlpVectorizerDisabled(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   return extra_options_map.count(kDisableSlpVectorizer) > 0;
+}
+
+bool DisableLoopUnrolling(const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  return extra_options_map.count(kDisableLoopUnrolling) > 0;
 }
 
 std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,12 +26,13 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
-#include "tsl/lib/gtl/iterator_range.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
@@ -229,22 +230,23 @@ class ShapeTree {
     }
   }
 
-  // Like ForEach(Mutable)Element, but the callable returns a Status instead of
-  // void.  The first non-OK return value is returned by the ForEach* function.
-  Status ForEachElementWithStatus(
-      absl::FunctionRef<Status(const ShapeIndex&, const T&)> func) const {
+  // Like ForEach(Mutable)Element, but the callable returns a absl::Status
+  // instead of void.  The first non-OK return value is returned by the ForEach*
+  // function.
+  absl::Status ForEachElementWithStatus(
+      absl::FunctionRef<absl::Status(const ShapeIndex&, const T&)> func) const {
     for (const Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, node.second));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status ForEachMutableElementWithStatus(
-      absl::FunctionRef<Status(const ShapeIndex&, T*)> func) {
+  absl::Status ForEachMutableElementWithStatus(
+      absl::FunctionRef<absl::Status(const ShapeIndex&, T*)> func) {
     for (Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, &node.second));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Like the above, but traverses in post-order.  Note children are visited in
@@ -263,20 +265,20 @@ class ShapeTree {
     }
   }
 
-  Status ForEachElementPostOrderWithStatus(
-      absl::FunctionRef<Status(const ShapeIndex&, const T&)> func) const {
+  absl::Status ForEachElementPostOrderWithStatus(
+      absl::FunctionRef<absl::Status(const ShapeIndex&, const T&)> func) const {
     for (auto node = nodes_.rbegin(); node != nodes_.rend(); ++node) {
       TF_RETURN_IF_ERROR(func(node->first, node->second));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status ForEachMutableElementPostOrderWithStatus(
-      absl::FunctionRef<Status(const ShapeIndex&, T*)> func) {
+  absl::Status ForEachMutableElementPostOrderWithStatus(
+      absl::FunctionRef<absl::Status(const ShapeIndex&, T*)> func) {
     for (auto node = nodes_.rbegin(); node != nodes_.rend(); ++node) {
       TF_RETURN_IF_ERROR(func(node->first, &node->second));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Maps each element to generate a new tree with the same shape.
@@ -286,6 +288,22 @@ class ShapeTree {
     result_nodes.reserve(nodes_.size());
     for (const Node& node : nodes_) {
       result_nodes.push_back({node.first, func(node.second)});
+    }
+
+    ShapeTree<U> result(shape_, std::move(result_nodes));
+    result.index_table_ = index_table_;
+    result.shape_storage_ = shape_storage_;
+    return result;
+  }
+
+  template <typename U>
+  absl::StatusOr<ShapeTree<U>> MapWithStatus(
+      absl::FunctionRef<absl::StatusOr<U>(const T&)> func) {
+    typename ShapeTree<U>::Nodes result_nodes;
+    result_nodes.reserve(nodes_.size());
+    for (const Node& node : nodes_) {
+      TF_ASSIGN_OR_RETURN(U result, func(node.second));
+      result_nodes.push_back({node.first, std::move(result)});
     }
 
     ShapeTree<U> result(shape_, std::move(result_nodes));
@@ -324,7 +342,7 @@ class ShapeTree {
     });
   }
 
-  StatusOr<ShapeTree<T>> SubShapeTree(const ShapeIndex& index) const {
+  absl::StatusOr<ShapeTree<T>> SubShapeTree(const ShapeIndex& index) const {
     TF_ASSIGN_OR_RETURN(const Shape* sub_shape,
                         ShapeUtil::TryGetSubshape(shape(), index));
     size_t count = ShapeUtil::SubshapeCount(*sub_shape);

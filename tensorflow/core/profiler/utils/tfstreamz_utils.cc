@@ -76,8 +76,8 @@ tfstreamz::Percentiles ToProto(const monitoring::Percentiles& percentiles) {
 
 }  // namespace
 
-Status SerializeToXPlane(const std::vector<TfStreamzSnapshot>& snapshots,
-                         XPlane* plane, uint64 line_start_time_ns) {
+absl::Status SerializeToXPlane(const std::vector<TfStreamzSnapshot>& snapshots,
+                               XPlane* plane, uint64 line_start_time_ns) {
   XPlaneBuilder xplane(plane);
   XLineBuilder line = xplane.GetOrCreateLine(0);  // This plane has single line.
   line.SetTimestampNs(line_start_time_ns);
@@ -112,6 +112,9 @@ Status SerializeToXPlane(const std::vector<TfStreamzSnapshot>& snapshots,
             xevent.AddStatValue(*metadata, *xplane.GetOrCreateStatMetadata(
                                                point->string_value));
             break;
+          case monitoring::ValueType::kDouble:
+            xevent.AddStatValue(*metadata, point->double_value);
+            break;
           case monitoring::ValueType::kHistogram:
             xevent.AddStatValue(*metadata, point->histogram_value);
             break;
@@ -122,7 +125,7 @@ Status SerializeToXPlane(const std::vector<TfStreamzSnapshot>& snapshots,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace profiler

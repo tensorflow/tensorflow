@@ -18,7 +18,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tsl/platform/status.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
 
 namespace tsl {
@@ -27,16 +28,17 @@ namespace tsl {
 ///
 /// See https://en.wikipedia.org/wiki/Base64
 template <typename T>
-Status Base64Encode(StringPiece source, bool with_padding, T* encoded);
+absl::Status Base64Encode(absl::string_view source, bool with_padding,
+                          T* encoded);
 template <typename T>
-Status Base64Encode(StringPiece source,
-                    T* encoded);  // with_padding=false.
+absl::Status Base64Encode(absl::string_view source,
+                          T* encoded);  // with_padding=false.
 
 /// \brief Converts data from web-safe base64 encoding.
 ///
 /// See https://en.wikipedia.org/wiki/Base64
 template <typename T>
-Status Base64Decode(StringPiece data, T* decoded);
+absl::Status Base64Decode(absl::string_view data, T* decoded);
 
 // Explicit instantiations defined in base64.cc.
 extern template Status Base64Decode<std::string>(StringPiece data,

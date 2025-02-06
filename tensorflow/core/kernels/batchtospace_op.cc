@@ -64,8 +64,8 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
                                       orig_crops.shape().DebugString()));
   // To avoid out-of-bounds access in the case that the block_shape and/or
   // crops tensors are concurrently modified, we must copy the values.
-  gtl::InlinedVector<int64_t, 4> block_shape;
-  gtl::InlinedVector<int64_t, 8> crops;
+  absl::InlinedVector<int64_t, 4UL> block_shape;
+  absl::InlinedVector<int64_t, 8UL> crops;
   internal::spacetobatch::SubtleMustCopyFlat(orig_block_shape, &block_shape);
   internal::spacetobatch::SubtleMustCopyFlat(orig_crops, &crops);
 

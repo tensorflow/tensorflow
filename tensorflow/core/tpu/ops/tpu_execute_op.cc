@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/platform/status.h"
 #include "tsl/platform/errors.h"
 
 namespace tensorflow {
@@ -36,7 +36,7 @@ REGISTER_OP("TPUExecute")
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->UnknownShape());
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TPUExecuteAndUpdateVariables")
@@ -57,7 +57,7 @@ REGISTER_OP("TPUExecuteAndUpdateVariables")
       for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->UnknownShape());
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

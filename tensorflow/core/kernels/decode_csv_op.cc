@@ -82,7 +82,7 @@ class DecodeCSVOp : public OpKernel {
     }
 
     for (int64_t i = 0; i < records_size; ++i) {
-      const StringPiece record(records_t(i));
+      const absl::string_view record(records_t(i));
       std::vector<string> fields;
       ExtractFields(ctx, record, &fields);
       OP_REQUIRES(ctx, fields.size() == out_type_.size(),
@@ -106,7 +106,7 @@ class DecodeCSVOp : public OpKernel {
               output[f]->flat<int32>()(i) = record_defaults[f].flat<int32>()(0);
             } else {
               int32_t value;
-              OP_REQUIRES(ctx, strings::safe_strto32(fields[f], &value),
+              OP_REQUIRES(ctx, absl::SimpleAtoi(fields[f], &value),
                           errors::InvalidArgument(
                               "Field ", f, " in record ", i,
                               " is not a valid int32: ", fields[f]));
@@ -127,7 +127,7 @@ class DecodeCSVOp : public OpKernel {
                   record_defaults[f].flat<int64_t>()(0);
             } else {
               int64_t value;
-              OP_REQUIRES(ctx, strings::safe_strto64(fields[f], &value),
+              OP_REQUIRES(ctx, absl::SimpleAtoi(fields[f], &value),
                           errors::InvalidArgument(
                               "Field ", f, " in record ", i,
                               " is not a valid int64: ", fields[f]));
@@ -146,7 +146,7 @@ class DecodeCSVOp : public OpKernel {
               output[f]->flat<float>()(i) = record_defaults[f].flat<float>()(0);
             } else {
               float value;
-              OP_REQUIRES(ctx, strings::safe_strtof(fields[f], &value),
+              OP_REQUIRES(ctx, absl::SimpleAtof(fields[f], &value),
                           errors::InvalidArgument(
                               "Field ", f, " in record ", i,
                               " is not a valid float: ", fields[f]));
@@ -166,7 +166,7 @@ class DecodeCSVOp : public OpKernel {
                   record_defaults[f].flat<double>()(0);
             } else {
               double value;
-              OP_REQUIRES(ctx, strings::safe_strtod(fields[f], &value),
+              OP_REQUIRES(ctx, absl::SimpleAtod(fields[f], &value),
                           errors::InvalidArgument(
                               "Field ", f, " in record ", i,
                               " is not a valid double: ", fields[f]));
@@ -206,7 +206,7 @@ class DecodeCSVOp : public OpKernel {
   bool select_all_cols_;
   string na_value_;
 
-  void ExtractFields(OpKernelContext* ctx, StringPiece input,
+  void ExtractFields(OpKernelContext* ctx, absl::string_view input,
                      std::vector<string>* result) {
     int64_t current_idx = 0;
     int64_t num_fields_parsed = 0;

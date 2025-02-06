@@ -1,0 +1,64 @@
+op {
+  name: "XlaSparseCoreFtrl"
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulator"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "linear"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "gradient"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "beta"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate_power"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l2_regularization_strength"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_accumulator"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_linear"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+  }
+  attr {
+    name: "multiply_linear_by_learning_rate"
+    type: "bool"
+  }
+  attr {
+    name: "l1_regularization_strength"
+    type: "float"
+  }
+  is_stateful: true
+}

@@ -93,8 +93,8 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-LABEL: func private @batched_function
 func.func private @batched_function(%arg0: tensor<!tf_type.resource<tensor<1x3xf32>>>, %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
   attributes {tf._input_shapes = [#tf_type.shape<1x3>, #tf_type.shape<*>], tf.signature.is_stateful} {
-  // CHECK-DAG: [[handle1:%.*]] = "tf.VarHandleOp"() {{{.*}}, shared_name = "variable1"}
-  // CHECK-DAG: [[handle2:%.*]] = "tf.VarHandleOp"() {{{.*}}, shared_name = "variable2"}
+  // CHECK-DAG: [[handle1:%.*]] = "tf.VarHandleOp"() <{{{.*}}, shared_name = "variable1"}>
+  // CHECK-DAG: [[handle2:%.*]] = "tf.VarHandleOp"() <{{{.*}}, shared_name = "variable2"}>
   // CHECK: "tf.ReadVariableOp"([[handle1]])
   // CHECK: "tf.ReadVariableOp"([[handle2]])
   %0 = "tf.ReadVariableOp"(%arg0) {device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
@@ -298,7 +298,7 @@ func.func private @nested_batched_function(%arg0: tensor<1x3xf32>, %arg1: tensor
 }
 
 // CHECK-LABEL: func @main
-func.func @main(%arg0: tensor<1x3xf32> {tf_saved_model.index_path = ["input"]}) -> (tensor<*xf32> {tf_saved_model.index_path = ["r"]}) 
+func.func @main(%arg0: tensor<1x3xf32> {tf_saved_model.index_path = ["input"]}) -> (tensor<*xf32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["main"]} {
   // CHECK: [[handle:%.*]] = "tf.VarHandleOp"()
   %0 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shared_name = "variable"} : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>

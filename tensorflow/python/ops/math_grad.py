@@ -276,7 +276,8 @@ def _MeanGrad(op: ops.Operation, grad):
   else:
     input_shape = array_ops.shape(op.inputs[0])
     input_rank = array_ops.size(input_shape)
-    axes = (op.inputs[1] + input_rank) % input_rank
+    axes = math_ops.cast(op.inputs[1], input_rank.dtype)
+    axes = (axes + input_rank) % input_rank
     factor = math_ops.reduce_prod(array_ops.gather(input_shape, axes))
   return math_ops.truediv(sum_grad, math_ops.cast(factor, sum_grad.dtype)), None
 
@@ -306,10 +307,10 @@ def _ProdGrad(op: ops.Operation, grad):
   # copying back and forth, and since listdiff is CPU only.
   with ops.device("/cpu:0"):
     rank = array_ops.rank(op.inputs[0])
-    reduction_indices = (reduction_indices + rank) % rank
-    reduced = math_ops.cast(reduction_indices, dtypes.int32)
+    reduction_indices = math_ops.cast(reduction_indices, rank.dtype)
+    reduced = (reduction_indices + rank) % rank
     idx = math_ops.range(0, rank)
-    other, _ = gen_array_ops.list_diff(idx, reduced, dtypes.int32)
+    other, _ = gen_array_ops.list_diff(idx, reduced, reduced.dtype)
     perm = array_ops.concat([reduced, other], 0)
     reduced_num = math_ops.reduce_prod(array_ops.gather(input_shape, reduced))
     other_num = math_ops.reduce_prod(array_ops.gather(input_shape, other))
@@ -339,12 +340,12 @@ def _SegmentSumGrad(op: ops.Operation, grad):
 @ops.RegisterGradient("SegmentMean")
 def _SegmentMeanGrad(op: ops.Operation, grad):
   """Gradient for SegmentMean."""
-  input_rank = array_ops.rank(op.inputs[0])
-  ones_shape = array_ops.concat([
-      array_ops.shape(op.inputs[1]),
-      array_ops.ones(
-          array_ops.expand_dims(input_rank - 1, 0), dtype=dtypes.int32)
-  ], 0)
+  data_rank = array_ops.rank(op.inputs[0])
+  segment_ids_shape = array_ops.shape(op.inputs[1])
+  remaining_shape = array_ops.ones(
+      array_ops.expand_dims(data_rank - 1, 0), dtype=segment_ids_shape.dtype
+  )
+  ones_shape = array_ops.concat([segment_ids_shape, remaining_shape], 0)
   ones = array_ops.ones(ones_shape, dtype=grad.dtype)
   scaled_grad = math_ops.divide(grad, math_ops.segment_sum(ones, op.inputs[1]))
   return array_ops.gather(scaled_grad, op.inputs[1]), None
@@ -353,18 +354,16 @@ def _SegmentMeanGrad(op: ops.Operation, grad):
 def _SparseSegmentReduceGradV2(op, grad, norm=None):
   """Sparse gradient for SparseSegment(Sum|Mean|SqrtN)[WithNumSegments]."""
   assert norm is None or norm == "mean" or norm == "sqrtn"
-  data = op.inputs[0]
   indices = op.inputs[1]
   segment_ids = op.inputs[2]
   data_shape = array_ops.shape(op.inputs[0])
   dense_output_dim0 = data_shape[0]
-  grad_fn = (
-      math_ops.sparse_segment_mean_grad_v2
-      if norm == "mean"
-      else math_ops.sparse_segment_sqrt_n_grad_v2
-      if norm == "sqrtn"
-      else math_ops.sparse_segment_sum_grad_v2
-  )
+  if norm == "mean":
+    grad_fn = math_ops.sparse_segment_mean_grad_v2
+  elif norm == "sqrtn":
+    grad_fn = math_ops.sparse_segment_sqrt_n_grad_v2
+  else:
+    grad_fn = math_ops.sparse_segment_sum_grad_v2
   grad_values, sorted_unique_indices = grad_fn(
       grad, indices, segment_ids, dense_output_dim0
   )
@@ -1664,13 +1663,15 @@ def _MatMulGradAgainstFirstOnly(op: ops.Operation, grad):
   t_b = op.get_attr("transpose_b")
   b = math_ops.conj(op.inputs[1])
   if not t_a and not t_b:
-    grad_a = gen_math_ops.mat_mul(grad, b, transpose_b=True)
+    grad_a = gen_math_ops.mat_mul(grad, b, transpose_b=True, grad_a=True)
   elif not t_a and t_b:
-    grad_a = gen_math_ops.mat_mul(grad, b)
+    grad_a = gen_math_ops.mat_mul(grad, b, grad_a=True)
   elif t_a and not t_b:
-    grad_a = gen_math_ops.mat_mul(b, grad, transpose_b=True)
+    grad_a = gen_math_ops.mat_mul(b, grad, transpose_b=True, grad_a=True)
   elif t_a and t_b:
-    grad_a = gen_math_ops.mat_mul(b, grad, transpose_a=True, transpose_b=True)
+    grad_a = gen_math_ops.mat_mul(
+        b, grad, transpose_a=True, transpose_b=True, grad_a=True
+    )
   return grad_a, None
 
 
@@ -1680,13 +1681,15 @@ def _MatMulGradAgainstSecondOnly(op: ops.Operation, grad):
   t_b = op.get_attr("transpose_b")
   a = math_ops.conj(op.inputs[0])
   if not t_a and not t_b:
-    grad_b = gen_math_ops.mat_mul(a, grad, transpose_a=True)
+    grad_b = gen_math_ops.mat_mul(a, grad, transpose_a=True, grad_b=True)
   elif not t_a and t_b:
-    grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True)
+    grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True, grad_b=True)
   elif t_a and not t_b:
-    grad_b = gen_math_ops.mat_mul(a, grad)
+    grad_b = gen_math_ops.mat_mul(a, grad, grad_b=True)
   elif t_a and t_b:
-    grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True, transpose_b=True)
+    grad_b = gen_math_ops.mat_mul(
+        grad, a, transpose_a=True, transpose_b=True, grad_b=True
+    )
   return None, grad_b
 
 
@@ -1709,17 +1712,21 @@ def _MatMulGrad(op: ops.Operation, grad):
   a = math_ops.conj(op.inputs[0])
   b = math_ops.conj(op.inputs[1])
   if not t_a and not t_b:
-    grad_a = gen_math_ops.mat_mul(grad, b, transpose_b=True)
-    grad_b = gen_math_ops.mat_mul(a, grad, transpose_a=True)
+    grad_a = gen_math_ops.mat_mul(grad, b, transpose_b=True, grad_a=True)
+    grad_b = gen_math_ops.mat_mul(a, grad, transpose_a=True, grad_b=True)
   elif not t_a and t_b:
-    grad_a = gen_math_ops.mat_mul(grad, b)
-    grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True)
+    grad_a = gen_math_ops.mat_mul(grad, b, grad_a=True)
+    grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True, grad_b=True)
   elif t_a and not t_b:
-    grad_a = gen_math_ops.mat_mul(b, grad, transpose_b=True)
-    grad_b = gen_math_ops.mat_mul(a, grad)
+    grad_a = gen_math_ops.mat_mul(b, grad, transpose_b=True, grad_a=True)
+    grad_b = gen_math_ops.mat_mul(a, grad, grad_b=True)
   elif t_a and t_b:
-    grad_a = gen_math_ops.mat_mul(b, grad, transpose_a=True, transpose_b=True)
-    grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True, transpose_b=True)
+    grad_a = gen_math_ops.mat_mul(
+        b, grad, transpose_a=True, transpose_b=True, grad_a=True
+    )
+    grad_b = gen_math_ops.mat_mul(
+        grad, a, transpose_a=True, transpose_b=True, grad_b=True
+    )
   return grad_a, grad_b
 
 
@@ -1833,18 +1840,34 @@ def _BatchMatMulV2(op: ops.Operation, grad):
 
   if not adj_x:
     if not adj_y:
-      grad_x = math_ops.matmul(grad, y, adjoint_a=False, adjoint_b=True)
-      grad_y = math_ops.matmul(x, grad, adjoint_a=True, adjoint_b=False)
+      grad_x = math_ops.matmul(
+          grad, y, adjoint_a=False, adjoint_b=True, grad_a=True
+      )
+      grad_y = math_ops.matmul(
+          x, grad, adjoint_a=True, adjoint_b=False, grad_b=True
+      )
     else:
-      grad_x = math_ops.matmul(grad, y, adjoint_a=False, adjoint_b=False)
-      grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=False)
+      grad_x = math_ops.matmul(
+          grad, y, adjoint_a=False, adjoint_b=False, grad_a=True
+      )
+      grad_y = math_ops.matmul(
+          grad, x, adjoint_a=True, adjoint_b=False, grad_b=True
+      )
   else:
     if not adj_y:
-      grad_x = math_ops.matmul(y, grad, adjoint_a=False, adjoint_b=True)
-      grad_y = math_ops.matmul(x, grad, adjoint_a=False, adjoint_b=False)
+      grad_x = math_ops.matmul(
+          y, grad, adjoint_a=False, adjoint_b=True, grad_a=True
+      )
+      grad_y = math_ops.matmul(
+          x, grad, adjoint_a=False, adjoint_b=False, grad_b=True
+      )
     else:
-      grad_x = math_ops.matmul(y, grad, adjoint_a=True, adjoint_b=True)
-      grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=True)
+      grad_x = math_ops.matmul(
+          y, grad, adjoint_a=True, adjoint_b=True, grad_a=True
+      )
+      grad_y = math_ops.matmul(
+          grad, x, adjoint_a=True, adjoint_b=True, grad_b=True
+      )
 
   # Possibly reduce along the broadcasted batch dimensions, if broadcasting
   # is required.

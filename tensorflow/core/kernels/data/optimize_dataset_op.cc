@@ -83,8 +83,8 @@ void MakeDatasetHelper(OpKernelContext* ctx,
   };
 
   core::RefCountPtr<DatasetBase> rewritten;
-  Status s = RewriteDataset(ctx, input, std::move(config_factory),
-                            /*record_fingerprint=*/false, &rewritten);
+  absl::Status s = RewriteDataset(ctx, input, std::move(config_factory),
+                                  /*record_fingerprint=*/false, &rewritten);
   *output = rewritten.release();
   if (errors::IsDeadlineExceeded(s)) {
     // Ignore DeadlineExceeded as it implies that the attempted rewrite took too

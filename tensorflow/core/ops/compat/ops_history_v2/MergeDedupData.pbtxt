@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "MergeDedupData"
   input_arg {
     name: "integer_tensor"

@@ -174,7 +174,7 @@ TEST_F(NonMaxSuppressionOpTest, TestInconsistentBoxAndScoreShapes) {
        0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
   AddInputFromArray<float>(TensorShape({5}), {.9f, .75f, .6f, .95f, .5f});
   AddInputFromArray<int>(TensorShape({}), {30});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(absl::StrContains(s.ToString(), "scores has incompatible shape"))
@@ -186,7 +186,7 @@ TEST_F(NonMaxSuppressionOpTest, TestInvalidIOUThreshold) {
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
   AddInputFromArray<float>(TensorShape({1}), {.9f});
   AddInputFromArray<int>(TensorShape({}), {3});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
@@ -334,7 +334,7 @@ TEST_F(NonMaxSuppressionV2OpTest, TestInconsistentBoxAndScoreShapes) {
   AddInputFromArray<float>(TensorShape({5}), {.9f, .75f, .6f, .95f, .5f});
   AddInputFromArray<int>(TensorShape({}), {30});
   AddInputFromArray<float>(TensorShape({}), {.5f});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(absl::StrContains(s.ToString(), "scores has incompatible shape"))
@@ -347,7 +347,7 @@ TEST_F(NonMaxSuppressionV2OpTest, TestInvalidIOUThreshold) {
   AddInputFromArray<float>(TensorShape({1}), {.9f});
   AddInputFromArray<int>(TensorShape({}), {3});
   AddInputFromArray<float>(TensorShape({}), {1.2f});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
@@ -583,7 +583,7 @@ TYPED_TEST(NonMaxSuppressionV3OpTest, TestInconsistentBoxAndScoreShapes) {
   this->template AddInputFromList<int>(TensorShape({}), {30});
   this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.5});
   this->template AddInputFromList<ThresholdType>(TensorShape({}), {0});
-  Status s = this->RunOpKernel();
+  absl::Status s = this->RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(absl::StrContains(s.ToString(), "scores has incompatible shape"))
@@ -599,7 +599,7 @@ TYPED_TEST(NonMaxSuppressionV3OpTest, TestInvalidIOUThreshold) {
   this->template AddInputFromList<int>(TensorShape({}), {3});
   this->template AddInputFromList<ThresholdType>(TensorShape({}), {1.2f});
   this->template AddInputFromList<ThresholdType>(TensorShape({}), {0});
-  Status s = this->RunOpKernel();
+  absl::Status s = this->RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
@@ -950,7 +950,7 @@ TEST_F(NonMaxSuppressionWithOverlapsOpTest, TestInconsistentBoxAndScoreShapes) {
   AddInputFromArray<int>(TensorShape({}), {30});
   AddInputFromArray<float>(TensorShape({}), {.5f});
   AddInputFromArray<float>(TensorShape({}), {0.0f});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(absl::StrContains(s.ToString(), "scores has incompatible shape"))
@@ -964,7 +964,7 @@ TEST_F(NonMaxSuppressionWithOverlapsOpTest, TestInvalidOverlapsShape) {
   AddInputFromArray<int>(TensorShape({}), {30});
   AddInputFromArray<float>(TensorShape({}), {0.f});
   AddInputFromArray<float>(TensorShape({}), {0.0f});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(absl::StrContains(s.ToString(), "overlaps must be square")) << s;

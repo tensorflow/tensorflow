@@ -21,11 +21,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tsl/util/stats_calculator.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/tflite_inference_stage.h"
-#include "tsl/util/stats_calculator.h"
 
 namespace tflite {
 namespace evaluation {
@@ -65,7 +66,10 @@ class InferenceProfilerStage : public EvaluationStage {
   std::vector<std::vector<int8_t>> int8_tensors_;
   std::vector<std::vector<uint8_t>> uint8_tensors_;
   std::vector<std::vector<uint16_t>> float16_tensors_;
+  std::vector<std::vector<int32_t>> int32_tensors_;
   std::vector<std::vector<int64_t>> int64_tensors_;
+  // Use uint8_t for bool tensors to use void* casting.
+  std::vector<std::vector<uint8_t>> bool_tensors_;
 };
 
 }  // namespace evaluation

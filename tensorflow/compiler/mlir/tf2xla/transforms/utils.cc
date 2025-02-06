@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
 
+#include <cstdint>
+
 #include "xla/mlir_hlo/utils/hlo_utils.h"
 
 namespace mlir {

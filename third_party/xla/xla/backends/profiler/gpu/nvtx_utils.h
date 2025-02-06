@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,8 @@ namespace xla {
 namespace profiler {
 
 /***
+ * TODO: After using CUPTI activity marker, remove NVTXRangeTracker related
+ * code.
  * We have no intention to use NVTX in tensorflow right now, we use this class
  * to track NVTX instrumentation inside NVIDIA libraries (such as TensorRT).
  * This bears a lot of resemblance to ScopedAnnotation for now.  In the future,

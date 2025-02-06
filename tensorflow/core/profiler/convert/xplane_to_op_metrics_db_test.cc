@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -81,6 +82,17 @@ void AddTensorFlowOpEvent(std::string&& tf_op_fullname,
       *plane->GetOrCreateStatMetadata(std::move(tf_op_fullname)));
 }
 
+void AddXlaCpuOpEvent(std::string&& hlo_op_name, std::string&& tf_op,
+                      int64_t start_timestamp_ns, int64_t duration_ns,
+                      XPlaneBuilder* plane, XLineBuilder* line) {
+  XEventBuilder event =
+      line->AddEvent(*plane->GetOrCreateEventMetadata(hlo_op_name));
+  event.SetTimestampNs(start_timestamp_ns);
+  event.SetDurationNs(duration_ns);
+  event.ParseAndAddStatValue(
+      *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)), tf_op);
+}
+
 TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
   static constexpr char kTfOp1[] = "TfOp1";
   static constexpr char kTfOp2[] = "TfOp2";
@@ -108,10 +120,10 @@ TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
   // Op1, Op2, Idle.
   EXPECT_EQ(3, op_metrics.metrics_db_size());
   uint64 total_op_duration =
-      NanoToPico(kTfOp1DurationNs * 2 + kTfOp2DurationNs);
+      tsl::profiler::NanoToPico(kTfOp1DurationNs * 2 + kTfOp2DurationNs);
   EXPECT_EQ(total_op_duration, op_metrics.total_op_time_ps());
-  uint64 total_duration = NanoToPico(kTfOp2StartNs - kTfOp1StartNs +
-                                     kTfOp2DurationNs + kTfOp1DurationNs);
+  uint64 total_duration = tsl::profiler::NanoToPico(
+      kTfOp2StartNs - kTfOp1StartNs + kTfOp2DurationNs + kTfOp1DurationNs);
   EXPECT_EQ(total_duration, op_metrics.total_time_ps());
 
   // Verifies OpMetricsDb is built correctly.
@@ -119,19 +131,19 @@ TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
   EXPECT_EQ(kTfOp1, op_1.name());
   EXPECT_EQ(kTfOp1, op_1.category());
   EXPECT_EQ(2, op_1.occurrences());
-  EXPECT_EQ(NanoToPico(kTfOp1DurationNs) * 2, op_1.time_ps());
+  EXPECT_EQ(tsl::profiler::NanoToPico(kTfOp1DurationNs) * 2, op_1.time_ps());
 
   const OpMetrics& idle = op_metrics.metrics_db().at(1);
   EXPECT_EQ(kIdle, idle.name());
   EXPECT_EQ(kIdle, idle.category());
   // Idle time is the gap between Op2 start and the end of Op1, which is 2000ns.
-  EXPECT_EQ(NanoToPico(2000), idle.time_ps());
+  EXPECT_EQ(tsl::profiler::NanoToPico(2000), idle.time_ps());
 
   const OpMetrics& op_2 = op_metrics.metrics_db().at(2);
   EXPECT_EQ(kTfOp2, op_2.name());
   EXPECT_EQ(kTfOp2, op_2.category());
   EXPECT_EQ(1, op_2.occurrences());
-  EXPECT_EQ(NanoToPico(kTfOp2DurationNs), op_2.time_ps());
+  EXPECT_EQ(tsl::profiler::NanoToPico(kTfOp2DurationNs), op_2.time_ps());
 }
 
 TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
@@ -173,13 +185,13 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
 
   // kernel1, kernel2, kernel3, Idle.
   EXPECT_EQ(4, op_metrics.metrics_db_size());
-  uint64 total_op_duration = NanoToPico(
+  uint64 total_op_duration = tsl::profiler::NanoToPico(
       kKernel1DurationNs * 2 + kKernel2DurationNs * 2 + kKernel3DurationNs);
   EXPECT_EQ(total_op_duration, op_metrics.total_op_time_ps());
   // For device, the total_duration for each device is the total duration merged
   // from all GPU streams, which is from 100000 to 130000.
-  uint64 total_duration =
-      NanoToPico(kKernel3StartNs + kKernel3DurationNs - kKernel1StartNs);
+  uint64 total_duration = tsl::profiler::NanoToPico(
+      kKernel3StartNs + kKernel3DurationNs - kKernel1StartNs);
   EXPECT_EQ(std::max(total_duration, total_op_duration),
             op_metrics.total_time_ps());
 
@@ -188,25 +200,25 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
   EXPECT_EQ(absl::StrCat(kTfOp1, "/", kKernel1), op_1.name());
   EXPECT_EQ(kTfOp1, op_1.category());
   EXPECT_EQ(2, op_1.occurrences());
-  EXPECT_EQ(NanoToPico(kKernel1DurationNs) * 2, op_1.time_ps());
+  EXPECT_EQ(tsl::profiler::NanoToPico(kKernel1DurationNs) * 2, op_1.time_ps());
 
   const OpMetrics& op_2 = op_metrics.metrics_db().at(1);
   EXPECT_EQ(absl::StrCat(kTfOp1, "/", kKernel2), op_2.name());
   EXPECT_EQ(kTfOp1, op_2.category());
   EXPECT_EQ(2, op_2.occurrences());
-  EXPECT_EQ(NanoToPico(kKernel2DurationNs) * 2, op_2.time_ps());
+  EXPECT_EQ(tsl::profiler::NanoToPico(kKernel2DurationNs) * 2, op_2.time_ps());
 
   const OpMetrics& op_3 = op_metrics.metrics_db().at(2);
   EXPECT_EQ(absl::StrCat(kTfOp2, "/", kKernel3), op_3.name());
   EXPECT_EQ(kTfOp2, op_3.category());
   EXPECT_EQ(1, op_3.occurrences());
-  EXPECT_EQ(NanoToPico(kKernel3DurationNs), op_3.time_ps());
+  EXPECT_EQ(tsl::profiler::NanoToPico(kKernel3DurationNs), op_3.time_ps());
 
   const OpMetrics& idle = op_metrics.metrics_db().at(3);
   EXPECT_EQ(kIdle, idle.name());
   EXPECT_EQ(kIdle, idle.category());
   // GPU is always busy in this example.
-  EXPECT_EQ(NanoToPico(0), idle.time_ps());
+  EXPECT_EQ(tsl::profiler::NanoToPico(0), idle.time_ps());
 }
 
 TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
@@ -226,8 +238,11 @@ TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
 #if defined(PLATFORM_GOOGLE)
   EXPECT_THAT(op_metrics,
               EqualsProto(R"pb(metrics_db {
+                                 hlo_module_id: 1
                                  self_time_ps: 10000
                                  flops: 68
+                                 model_flops: 68
+                                 num_cores: 1
                                  occurrences: 2
                                  name: "MatMul"
                                  time_ps: 10000
@@ -238,6 +253,39 @@ TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
                                metrics_db { name: "IDLE" category: "IDLE" }
                                total_time_ps: 10000
                                total_op_time_ps: 10000
+              )pb"));
+#endif
+}
+
+TEST(ConvertXPlaneToOpMetricsDb, HostXPlaneWithXlaOps) {
+  XPlane xplane;
+  XPlaneBuilder plane(&xplane);
+  XLineBuilder line = plane.GetOrCreateLine(/*line_id=*/10);
+  AddXlaCpuOpEvent("xla_op", "tf_op", 100000, 8000, &plane, &line);
+  AddXlaCpuOpEvent("xla_op2", "tf_op2", 110000, 10000, &plane, &line);
+  OpMetricsDb op_metrics = ConvertHostThreadsXPlaneToOpMetricsDb(xplane);
+#if defined(PLATFORM_GOOGLE)
+  EXPECT_THAT(op_metrics, EqualsProto(R"pb(metrics_db {
+                                             self_time_ps: 8000000
+                                             occurrences: 1
+                                             name: "tf_op"
+                                             time_ps: 8000000
+                                           }
+                                           metrics_db {
+                                             self_time_ps: 10000000
+                                             occurrences: 1
+                                             name: "tf_op2"
+                                             time_ps: 10000000
+                                           }
+                                           metrics_db {
+                                             self_time_ps: 2000000
+                                             name: "IDLE"
+                                             time_ps: 2000000
+                                             category: "IDLE"
+                                           }
+                                           total_time_ps: 20000000
+                                           total_op_time_ps: 18000000
+                                           precision_stats {}
               )pb"));
 #endif
 }

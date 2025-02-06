@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 namespace tensorflow {
@@ -158,7 +159,8 @@ SaveOpSpecs BuildPerDeviceSave(
             builder
                 .create<mlir::TF::AddOp>(
                     prefix.getLoc(),
-                    prefix.getType().dyn_cast<mlir::RankedTensorType>(), prefix,
+                    mlir::dyn_cast<mlir::RankedTensorType>(prefix.getType()),
+                    prefix,
                     StringScalarConst(builder, prefix.getLoc(),
                                       DeviceSuffix(device_id, total_devices)))
                 .getZ();

@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_command_buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
@@ -74,7 +75,7 @@ class InferenceContext {
       Environment* env, std::vector<uint8_t>* serialized_model = nullptr,
       Buffer* shared_buffer = nullptr);
 
-  absl::Status AddToCommanBuffer(cl_command_buffer_khr cb);
+  absl::Status AddToCommandBuffer(cl_command_buffer_khr cb);
 
   // Applies OpenCL-specific transformations to the graph before the
   // initialization. These transformations are either impossible or useless in
@@ -83,6 +84,7 @@ class InferenceContext {
       const CreateGpuModelInfo& create_info, GraphFloat32* graph,
       Environment* env, std::vector<uint8_t>* serialized_model = nullptr);
 
+  void FlushQueue(CLCommandQueue* queue);
   absl::Status AddToQueue(CLCommandQueue* queue);
   absl::Status Profile(ProfilingCommandQueue* queue, ProfilingInfo* result);
   // for profiling and memory statistics
@@ -116,7 +118,7 @@ class InferenceContext {
       flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
       flatbuffers::FlatBufferBuilder* builder);
 
-  void InitFromGpuModel(GpuModel* gpu_model);
+  void InitFromGpuModel(const GpuInfo& gpu_info, GpuModel* gpu_model);
 
   absl::Status AllocateMemory(const GpuModel& gpu_model,
                               const GpuInfo& gpu_info,
@@ -148,6 +150,14 @@ class InferenceContext {
   void InitRecordableQueue(Environment* env);
 
   absl::Status ProfileTime(ProfilingCommandQueue* queue, ProfilingInfo* result);
+  absl::Status ClarifyTimeMultipleEnqueue(double ops_total_duration_ms,
+                                          int min_ops, int max_ops,
+                                          ProfilingCommandQueue* queue,
+                                          ProfilingInfo* result);
+  absl::Status ClarifyTimeWithCommandBuffer(ProfilingCommandQueue* queue,
+                                            ProfilingInfo* result);
+
+  absl::Status AddCommandBufferToQueue(CLCommandQueue* queue);
 
   struct ExecutionHints {
     bool need_flush = false;
@@ -196,6 +206,9 @@ class InferenceContext {
   std::vector<ValueId> output_ids_;
 
   std::unique_ptr<RecordableQueue> recordable_queue_ = nullptr;
+
+  bool use_command_buffer_ = false;
+  std::unique_ptr<CLCommandBuffer> command_buffer_ = nullptr;
 
   GpuInfo gpu_info_;
 };

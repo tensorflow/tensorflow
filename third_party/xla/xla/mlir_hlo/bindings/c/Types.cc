@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -14,11 +14,12 @@ limitations under the License.
 
 #include "mhlo/IR/hlo_ops.h"
 #include "mlir/CAPI/IR.h"
+#include "mlir/Support/LLVM.h"
 
 MlirType mlirMhloTokenTypeGet(MlirContext ctx) {
   return wrap(mlir::mhlo::TokenType::get(unwrap(ctx)));
 }
 
 bool mlirMhloTypeIsAToken(MlirType type) {
-  return unwrap(type).isa<mlir::mhlo::TokenType>();
+  return mlir::isa<mlir::mhlo::TokenType>(unwrap(type));
 }

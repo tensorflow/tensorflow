@@ -52,12 +52,12 @@ REGISTER_OP("DTensorAllScatter")
         "int64, uint64, bool, string}")
     .Attr("input_layout: string")
     .Attr("output_layout: string")
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       shape_inference::ShapeHandle in = c->input(0);
       if (!c->RankKnown(in)) {
         // Input shape unknown, so set unknown output shape.
         c->set_output(0, in);
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::string input_layout_string;
@@ -100,7 +100,7 @@ REGISTER_OP("DTensorAllScatter")
         }
       }
       c->set_output(0, c->MakeShape(out_dims));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("DTensorAllGather")
@@ -112,12 +112,12 @@ REGISTER_OP("DTensorAllGather")
         "bool}")
     .Attr("input_layout: string")
     .Attr("output_layout: string")
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       shape_inference::ShapeHandle in = c->input(0);
       if (!c->RankKnown(in)) {
         // Input shape unknown, so set unknown output shape.
         c->set_output(0, in);
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::string input_layout_string;
@@ -159,7 +159,7 @@ REGISTER_OP("DTensorAllGather")
         }
       }
       c->set_output(0, c->MakeShape(out_dims));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("DTensorAllToAll")
@@ -168,12 +168,12 @@ REGISTER_OP("DTensorAllToAll")
     .Attr("T: {half, bfloat16, float, float64, int32, uint32, int64, bool}")
     .Attr("input_layout: string")
     .Attr("output_layout: string")
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       shape_inference::ShapeHandle in = c->input(0);
       if (!c->RankKnown(in)) {
         // Input shape unknown, so set unknown output shape.
         c->set_output(0, in);
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::string input_layout_string;
@@ -218,7 +218,7 @@ REGISTER_OP("DTensorAllToAll")
         }
       }
       c->set_output(0, c->MakeShape(out_dims));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace dtensor

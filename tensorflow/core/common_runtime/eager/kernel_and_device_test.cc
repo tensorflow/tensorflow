@@ -118,14 +118,14 @@ void BM_KernelAndDeviceInit(::testing::benchmark::State& state) {
   KernelAndDeviceOp k(nullptr, false, env.function_library_runtime(), nullptr,
                       nullptr, env.cpu_device());
   for (auto s : state) {
-    TF_CHECK_OK(k.Init({}, ndef, nullptr));
+    TF_CHECK_OK(k.Init({}, ndef, nullptr, std::nullopt));
   }
 }
 BENCHMARK(BM_KernelAndDeviceInit);
 
 void BM_KernelAndDeviceRun(::testing::benchmark::State& state) {
   Tensor t(Input({{1.0f, 2.0f}, {3.0f, 4.0f}}).tensor());
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4UL> inputs;
   inputs.push_back(TensorValue(&t));
   inputs.push_back(TensorValue(&t));
   std::vector<EagerKernelRet> outputs;
@@ -138,7 +138,7 @@ void BM_KernelAndDeviceRun(::testing::benchmark::State& state) {
   TestEnv env;
   KernelAndDeviceOp k(nullptr, false, env.function_library_runtime(), nullptr,
                       nullptr, env.cpu_device());
-  TF_CHECK_OK(k.Init({}, ndef, nullptr));
+  TF_CHECK_OK(k.Init({}, ndef, nullptr, std::nullopt));
   const EagerKernelArgs args(std::move(inputs));
   for (auto s : state) {
     TF_CHECK_OK(k.Run(nullptr, args, &outputs, nullptr, std::nullopt,

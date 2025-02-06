@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,14 +17,17 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_REDZONE_ALLOCATOR_H_
 
 #include <cstdint>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/gpu/asm_compiler.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/scratch_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "tsl/lib/math/math_util.h"
+#include "xla/stream_executor/stream.h"
 
 namespace stream_executor {
 
@@ -45,7 +48,6 @@ class RedzoneAllocator : public ScratchAllocator {
       1LL << 23;  // 8MiB per side, 16MiB total.
   static constexpr uint8_t kDefaultRedzonePattern = -1;  // NOLINT
   RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
-                   GpuAsmOpts gpu_compilation_opts_,
                    int64_t memory_limit = (1LL << 32),  // 4GB
                    int64_t redzone_size = kDefaultRedzoneSize,
                    uint8_t redzone_pattern = kDefaultRedzonePattern);
@@ -57,7 +59,8 @@ class RedzoneAllocator : public ScratchAllocator {
     return allocated_bytes_excluding_redzones_;
   }
 
-  tsl::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
+  absl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+      int64_t byte_size) override;
 
   // Non-empty redzone check status implies that there was a write into a
   // redzone, with a string communicating the location of the write.
@@ -97,9 +100,15 @@ class RedzoneAllocator : public ScratchAllocator {
   //  - RedzoneCheckStatus with a non-empty error message iff a write into a
   //    redzone has been detected.
   //  - A stream error, if loading or launching the kernel has failed.
-  tsl::StatusOr<RedzoneCheckStatus> CheckRedzones() const;
+  absl::StatusOr<RedzoneCheckStatus> CheckRedzones() const;
 
   Stream* stream() const { return stream_; }
+
+  // Create a buffer for a given operation using redzone checker, initialize
+  // based on a given rng state.
+  absl::StatusOr<DeviceMemoryBase> CreateBuffer(const xla::Shape& shape,
+                                                bool initialize_buffers,
+                                                int64_t& rng_state);
 
  private:
   const int device_ordinal_;
@@ -116,7 +125,6 @@ class RedzoneAllocator : public ScratchAllocator {
 
   const uint8_t redzone_pattern_;
   DeviceMemoryAllocator* memory_allocator_;
-  GpuAsmOpts gpu_compilation_opts_;
 
   // The second element of the pair is the size of the user allocation.  This
   // isn't necessarily just first.size() - 2 * redzone_size_ because when the

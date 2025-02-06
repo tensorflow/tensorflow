@@ -6,6 +6,7 @@ op {
     description: <<END
 Input tensor slices in row-major order to merge across all dimensions. All
 inputs must have the same shape.
+END
   }
   out_arg {
     name: "output"

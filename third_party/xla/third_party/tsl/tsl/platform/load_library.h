@@ -16,16 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_LOAD_LIBRARY_H_
 #define TENSORFLOW_TSL_PLATFORM_LOAD_LIBRARY_H_
 
-#include "tsl/platform/status.h"
+#include <string>
+
+#include "absl/status/status.h"
 
 namespace tsl {
 
 namespace internal {
 
-Status LoadDynamicLibrary(const char* library_filename, void** handle);
-Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
-                            void** symbol);
-string FormatLibraryFileName(const string& name, const string& version);
+absl::Status LoadDynamicLibrary(const char* library_filename, void** handle);
+absl::Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
+                                  void** symbol);
+std::string FormatLibraryFileName(const std::string& name,
+                                  const std::string& version);
 
 }  // namespace internal
 

@@ -493,9 +493,7 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
 
 class ConverterTest : public ::testing::Test {
  public:
-  ConverterTest() {
-    Reset();
-  }
+  ConverterTest() { Reset(); }
 
   void Reset() {
     GetOpConverterRegistry()->Clear("MyOp");
@@ -1905,7 +1903,7 @@ class ParameterizedOpConverterTestBase
     }
   }
 
-  // Runs validation and conversion. If conversion is successfull then builds
+  // Runs validation and conversion. If conversion is successful then builds
   // the TRT network, executes it and checks the output. Handles multiple output
   // tensors.
   void TestOpConverterMultiOut(
@@ -1924,7 +1922,7 @@ class ParameterizedOpConverterTestBase
     }
   }
 
-  // Runs validation and conversion. If conversion is successfull then builds
+  // Runs validation and conversion. If conversion is successful then builds
   // the TRT network, executes it and checks the output.
   void TestOpConverter(const NodeDef& node_def,
                        const std::vector<int>& expected_output_dims,
@@ -3013,10 +3011,10 @@ TEST_P(OpConverter_FP32_Test, ConvertShape) {
   std::vector<TestParamBase> test_params = {
 // TODO(b/166274212): Enable the test parameter for TensorRT 7.1.3.
 #if !IS_TRT_VERSION_GE(7, 1, 3, 0)
-    TestParamBase{{1, 2, 3}, {}, {3}, {}, conversion_status},
+      TestParamBase{{1, 2, 3}, {}, {3}, {}, conversion_status},
 #endif
-    // Add input as weight (we use non empty param ({1}) to trigger this).
-    TestParamBase{{1, 2, 3}, {}, {3}, {1}, conversion_status},
+      // Add input as weight (we use non empty param ({1}) to trigger this).
+      TestParamBase{{1, 2, 3}, {}, {3}, {1}, conversion_status},
   };
 
   auto input_is_weight = [](const TestParamBase p) { return !p.param.empty(); };
@@ -4024,7 +4022,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
     Reset();
     // random data
     AddTestWeights("dims", {2}, {2, 2}, DT_INT32);
-    AddTestWeights("value", {1}, {42.0}, tf_type_);
+    AddTestWeights("value", {1}, {42}, tf_type_);
     RunValidationAndConversion(
         node_def, absl::StatusCode::kUnimplemented,
         convert_not_supported_implicit(node_def.op(), node_def.name()));
@@ -4042,16 +4040,19 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
       for (auto output_dims : output_dims_params) {
         for (auto value_dims : value_dims_params) {
           Reset();
-          std::vector<int32> dims_dims = {output_dims.size()};
+          std::vector<int32_t> dims_dims = {
+              static_cast<int32_t>(output_dims.size())};
           if (dims_is_tensor) {
             AddTestTensor("dims", dims_dims, DT_INT32, output_dims, dims_dims);
           } else {
             AddTestWeights("dims", dims_dims, output_dims, DT_INT32);
           }
           if (value_is_tensor) {
-            AddTestTensor("value", value_dims, tf_type_, {val});
+            AddTestTensor("value", value_dims, tf_type_,
+                          {static_cast<int>(val)});
           } else {
-            AddTestWeights("value", value_dims, {val}, tf_type_);
+            AddTestWeights("value", value_dims, {static_cast<int>(val)},
+                           tf_type_);
           }
           size_t nb_el = 1;
           for (auto d : output_dims) {
@@ -4084,7 +4085,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
         // (a) for all parameters, when shape_idx > 3
         // (b) for all parameters, except shape_idx, when shape_idx >= 0
         // (c) for none of the shape_idx < 0
-        if (shape_idx > 3 || shape_idx >= 0 && shape_idx != i) {
+        if (shape_idx > 3 || (shape_idx >= 0 && shape_idx != i)) {
           partial_shape_dims = {1};
         }
         AddTestTensor(name[i], {1}, type[i], value[i], partial_shape_dims);
@@ -4116,7 +4117,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
   const NodeDef& ndef = range.operation.node()->def();
   const std::vector<DataType> param_types{DT_FLOAT, DT_HALF, DT_INT32};
 
-  // ConverterRange is not implemented for Implicite batch mode.
+  // ConverterRange is not implemented for Implicit batch mode.
   std::vector<int> config(3, 0);
   if (trt_mode_ == TrtTestMode::kImplicitBatch) {
     const auto& err = convert_not_supported_implicit(ndef.op(), ndef.name());
@@ -4140,7 +4141,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
                                   limit_type == DT_INT32 &&
                                   delta_type == DT_INT32;
 
-        if (all_weights || all_integers && !config[2]) {
+        if (all_weights || (all_integers && !config[2])) {
           // Reject invalid parameters if delta = 0 and it's passed as a weight.
           param_value[2] = {0};
           set_parameters(param_name, param_value, param_type, config);
@@ -5904,7 +5905,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSlice) {
                  /*expected_output_dims=*/{1, 3},
                  /*expected_output=*/{2, 3, 4}, OkStatus()},
       // In dynamic shape mode we do not know the input shape during
-      // conversion, therfore we cannot check out of bound access.
+      // conversion, therefore we cannot check out of bound access.
       TestParams{
           {1, 1, 2, 3},
           /*partial_input_dims=*/{-1, -1, -1, -1},
@@ -6319,27 +6320,26 @@ TEST_P(OpConverter_FP32_Test, ConvertConv2DBackpropInput) {
                    errors::InvalidArgument("Channel dimension must be static"),
                    /*partial input dims=*/{1, -1, 2, 2}});
     // Test dynamic  batch dimension.
-    params.push_back(
-        TestParams{/*input_dims=*/{2, 1, 2, 2},
-                   /*input=*/
-                   // clang-format off
+    params.push_back(TestParams{/*input_dims=*/{2, 1, 2, 2},
+                                /*input=*/
+                                // clang-format off
                       {0, 1, 2, 3,
                        3, 2, 1, 0},
-                   // clang-format on
-                   /*filter_dims=*/{1, 2, 1, 1},
-                   /*filter=*/{-1, 1},
-                   /*strides=*/{1, 1, 1, 2},
-                   /*padding=*/"SAME",
-                   /*data_format=*/"NCHW",
-                   /*dilations=*/{1, 1, 1, 1},
-                   /*expected_output_dims=*/{2, 1, 2, 4},
-                   /*expected_output=*/
-                   // clang-format off
+                                // clang-format on
+                                /*filter_dims=*/{1, 2, 1, 1},
+                                /*filter=*/{-1, 1},
+                                /*strides=*/{1, 1, 1, 2},
+                                /*padding=*/"SAME",
+                                /*data_format=*/"NCHW",
+                                /*dilations=*/{1, 1, 1, 1},
+                                /*expected_output_dims=*/{2, 1, 2, 4},
+                                /*expected_output=*/
+                                // clang-format off
                    { 0, 0, -1, 1, -2, 2, -3, 3,
                     -3, 3, -2, 2, -1, 1, 0, 0},
-                   // clang-format on
-                   /*conversion_status=*/OkStatus(),
-                   /*partial input dims=*/{-1, 1, 2, 2}});
+                                // clang-format on
+                                /*conversion_status=*/OkStatus(),
+                                /*partial input dims=*/{-1, 1, 2, 2}});
 
     // Test dynamic height and width.
     params.push_back(TestParams{
@@ -9435,8 +9435,8 @@ void OpConverter_Select::RunTest(const string& opName) {
           std::accumulate(std::begin(expect_dims), std::end(expect_dims), 1,
                           std::multiplies<int>());
 
-      assert(rank_out == expected_out ? expected_out->size()
-                                      : rank[use_indices >= 0 ? 0 : 1]);
+      assert(rank_out == (expected_out ? expected_out->size()
+                                       : rank[use_indices >= 0 ? 0 : 1]));
 
       expected_output.resize(rank_out);
       const auto& data_then = *par_value[1];
@@ -9476,7 +9476,7 @@ void OpConverter_Select::RunTest(const string& opName) {
     const auto nMax = testing_SelectV2 ? 2 : 1;
     for (int n = 0; n < nMax; n++) {
       set_parameters();
-      if (testing_SelectV2 || same_then_else_shapes && same_cond_chape) {
+      if (testing_SelectV2 || (same_then_else_shapes && same_cond_chape)) {
         TestOpConverter(node, exp_dims, OkStatus(), OkStatus(),
                         ElementsAreArray(expected_output));
       } else {
@@ -9770,7 +9770,7 @@ void OpConverter_Select::RunTest(const string& opName) {
       // Tests for `cond` passed as a vector with N elements, where N is a batch
       // size. The subtest should not pass a ConvertSelect::Validate() when one
       // of following is true:
-      //    (a) N is NOT equal to the first dimention of dims('then');
+      //    (a) N is NOT equal to the first dimension of dims('then');
       //    (b dims('cond').nbDims > 1.
       //
       // For all these subtest dims('then') == dims('else').
@@ -9947,7 +9947,5 @@ int main(int argc, char** argv) {
   return RUN_ALL_TESTS();
 }
 #else
-int main(int, char**) {
-  return 0;
-}
+int main(int, char**) { return 0; }
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

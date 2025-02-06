@@ -44,9 +44,9 @@ string EncodeTensorNameSlice(const string& name, const TensorSlice& slice) {
   return buffer;
 }
 
-Status DecodeTensorNameSlice(const string& code, string* name,
-                             tensorflow::TensorSlice* slice) {
-  StringPiece src(code);
+absl::Status DecodeTensorNameSlice(const string& code, string* name,
+                                   tensorflow::TensorSlice* slice) {
+  absl::string_view src(code);
   uint64 x;
   if (!tensorflow::strings::OrderedCode::ReadNumIncreasing(&src, &x)) {
     return errors::Internal("Failed to parse the leading number: src = ", src);
@@ -86,11 +86,12 @@ Status DecodeTensorNameSlice(const string& code, string* name,
       slice->set_length(d, length);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ParseShapeAndSlice(const string& shape_and_slice, TensorShape* shape,
-                          TensorSlice* slice, TensorShape* shape_slice) {
+absl::Status ParseShapeAndSlice(const string& shape_and_slice,
+                                TensorShape* shape, TensorSlice* slice,
+                                TensorShape* shape_slice) {
   CHECK(!shape_and_slice.empty());
   // Syntax: dim0 dim1 dim2 ... <slice string>
   // Where slice string is defined in core/framework/tensor_slice.h

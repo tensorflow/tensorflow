@@ -56,7 +56,7 @@ class DeviceCompilationProfiler : public ResourceBase {
   };
 
   // Returns the compilation statistics for the given cluster.
-  StatusOr<ClusterCompileStats> GetCompileStats(
+  absl::StatusOr<ClusterCompileStats> GetCompileStats(
       const NameAttrList& function) const;
 
   // Determines whether the cluster should be compiled. Creates and inserts an
@@ -74,9 +74,9 @@ class DeviceCompilationProfiler : public ResourceBase {
   // Registers a cluster compilation. Increments the compilation count and
   // accumulates the compile time for the given cluster. Also broadcasts an
   // XlaJitCompilationActivity.
-  virtual Status RegisterCompilation(const NameAttrList& function,
-                                     int64_t compile_time_us,
-                                     bool used_persistent_cache);
+  virtual absl::Status RegisterCompilation(const NameAttrList& function,
+                                           int64_t compile_time_us,
+                                           bool used_persistent_cache);
 
   void IncrementOngoingAsyncCompilations();
   void DecrementOngoingAsyncCompilations();

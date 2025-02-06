@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,11 +23,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
-#include "xla/status.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
@@ -47,9 +47,11 @@ class LayoutUtil {
       absl::Span<const bool> dim_unique = {},
       absl::Span<const bool> dim_ordered = {},
       absl::Span<const Tile> tiles = {},
+      int64_t tail_padding_alignment_in_elements = 1,
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
       int64_t element_size_in_bits = 0, int64_t memory_space = 0,
+      absl::Span<const SplitConfig> split_configs = {},
       std::optional<Shape> physical_shape = std::nullopt,
       int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
@@ -88,13 +90,13 @@ class LayoutUtil {
   // Validates that the layout within the given shape is correct. The check
   // is performed for all subshapes as well. If missing layouts are allowed
   // the check does not fail on array shapes without layouts.
-  static Status ValidateLayoutInShape(const Shape& shape,
-                                      bool allow_missing_layouts = false);
+  static absl::Status ValidateLayoutInShape(const Shape& shape,
+                                            bool allow_missing_layouts = false);
 
   // Validates that the provided layout satisfies invariants for the given
   // shape.
-  static Status ValidateLayoutForShape(const Layout& layout,
-                                       const Shape& shape);
+  static absl::Status ValidateLayoutForShape(const Layout& layout,
+                                             const Shape& shape);
 
   // Clears the layout in the given Shape. After this function is called,
   // HasLayout will return false for the shape.
@@ -161,6 +163,7 @@ class LayoutUtil {
   // Returns whether the given shape has a layout. For tuple shapes, true is
   // returned only if all elements have layouts.
   static bool HasLayout(const Shape& shape);
+  static bool HasAnyLayout(const Shape& shape);
 
   // Returns whether all Shapes within the given ProgramShape have layouts.
   static bool HasLayout(const ProgramShape& program_shape);
@@ -239,7 +242,7 @@ class LayoutUtil {
   // tuples.  'src' and 'dst' need not be compatible but the two shapes must
   // have the same tuple structure (if any) and arrays must have the same
   // rank. within the shapes must have the same number of dimensions.
-  static Status CopyLayoutBetweenShapes(const Shape& src, Shape* dst);
+  static absl::Status CopyLayoutBetweenShapes(const Shape& src, Shape* dst);
 
   // Returns true if the layouts of lhs and rhs are equal, false
   // otherwise. Recursively compares layouts of tuples.
@@ -247,7 +250,9 @@ class LayoutUtil {
   // lhs and rhs need not be compatible to have the same layout but the two
   // shapes must have the same tuple structure (if any) and arrays must have the
   // same rank. Element type is ignored.
-  static bool LayoutsInShapesEqual(const Shape& lhs, const Shape& rhs);
+  static bool LayoutsInShapesEqual(
+      const Shape& lhs, const Shape& rhs,
+      std::optional<Layout::Equal> equal = std::nullopt);
 
   // Returns whether the given dimensions are consecutive in the given layout,
   // not necessarily in the order given.
@@ -285,6 +290,19 @@ class LayoutUtil {
   static bool ByteStridesIsMajorToMinor(absl::Span<const int64_t> byte_strides,
                                         absl::Span<const int64_t> dims,
                                         PrimitiveType element_type);
+
+  // The max size of the split in the given dimension. If the layout doesn't
+  // have a split config in the given dimension, the value returned from this
+  // function is equal to the Shape::dimensions(). If there is a split config in
+  // the given dimension, we then find the size of the largest split in that
+  // dimension.
+  static int64_t MaxSplitSize(const Shape& shape, int64_t dim);
+
+  // This function is analogous to ShapeUtil::ElementsIn, except we use the max
+  // split sizes for each dimension to calculate the max number of elements
+  // stored in a particular split. This can be useful for calculating how much
+  // memory to allocate in each of the memories.
+  static int64_t MaxElementsInPerSplit(const Shape& shape);
 };
 
 }  // namespace xla

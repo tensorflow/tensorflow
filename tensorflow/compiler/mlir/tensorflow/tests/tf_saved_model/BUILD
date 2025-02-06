@@ -14,7 +14,7 @@ py_strict_library(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:pywrap_mlir",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
         "@absl_py//absl/logging",
@@ -308,4 +308,5 @@ glob_lit_tests(
         for file in test_files
     },
     test_file_exts = ["py"],
+    use_lit_test_suite = False,  # Each test gets a large binary, and is too big when consolidated.
 )

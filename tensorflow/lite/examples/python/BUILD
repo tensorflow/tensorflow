@@ -5,15 +5,19 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_binary(
-    name = "label_image",
-    srcs = ["label_image.py"],
-    main = "label_image.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//third_party/py/PIL:pil",
-        "//third_party/py/numpy",
-    ],
-)
+# Commented out under the (b/279852433) because caused an error in the OSS
+# TODO(zhurakovskyi): Uncomment when fixed.
+# copybara:uncomment_begin
+# py_strict_binary(
+#     name = "label_image",
+#     srcs = ["label_image.py"],
+#     main = "label_image.py",
+#     python_version = "PY3",
+#     srcs_version = "PY3",
+#     deps = [
+#         "//third_party/py/PIL:pil",
+#         "//third_party/py/numpy",
+#         "//tensorflow:tensorflow_py",
+#     ],
+# )
+# copybara:uncomment_end

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseReduceMax"
   input_arg {
     name: "input_indices"

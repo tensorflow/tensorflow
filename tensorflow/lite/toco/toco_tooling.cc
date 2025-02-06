@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/toco_tooling.h"
 
-#include <cstdlib>
 #include <memory>
 #include <set>
 #include <string>
 
-#include "absl/memory/memory.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/allocate_transient_arrays.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/import.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/tooling_util.h"
+#include "tensorflow/lite/toco/types.pb.h"
 
 namespace toco {
 namespace {
@@ -242,8 +244,7 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
   return model;
 }
 
-tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
-                                       Model* model) {
+absl::Status TransformWithStatus(const TocoFlags& toco_flags, Model* model) {
   const FileFormat output_format = toco_flags.output_format();
   const IODataType inference_type = toco_flags.inference_type();
 
@@ -469,12 +470,11 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
     params_count += RequiredBufferSizeForShape(array.shape());
   }
   LOG(INFO) << "Number of parameters: " << params_count;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
-tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
-                          bool allow_custom_ops,
-                          std::string* output_file_contents) {
+absl::Status Export(const TocoFlags& toco_flags, const Model& model,
+                    bool allow_custom_ops, std::string* output_file_contents) {
   switch (toco_flags.output_format()) {
     case TENSORFLOW_GRAPHDEF:
       ExportTensorFlowGraphDef(model, output_file_contents);
@@ -508,7 +508,7 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
       LOG(FATAL) << "Unhandled output_format='"
                  << FileFormat_Name(toco_flags.output_format()) << "'";
   }
-  return tensorflow::Status();
+  return absl::Status();
 }
 
 }  // namespace toco

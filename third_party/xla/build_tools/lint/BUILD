@@ -1,4 +1,4 @@
-# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2023 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,23 +13,12 @@
 # limitations under the License.
 # ============================================================================
 
-load(
-    "//xla:pytype.default.bzl",
-    "pytype_strict_binary",
-    "pytype_strict_library",
-)
-# Placeholder: load py_test
+load("@rules_python//python:py_test.bzl", "py_test")
+load("//xla:pytype.default.bzl", "pytype_strict_binary", "pytype_strict_library")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
-)
-
-pytype_strict_binary(
-    name = "clang_tidy",
-    srcs = ["clang_tidy.py"],
-    deps = [":diff_parser"],
 )
 
 pytype_strict_library(
@@ -44,6 +33,11 @@ pytype_strict_library(
     visibility = ["//visibility:public"],
 )
 
+pytype_strict_library(
+    name = "generate_compile_commands",
+    srcs = ["generate_compile_commands.py"],
+)
+
 py_test(
     name = "check_contents_test",
     srcs = ["check_contents_test.py"],
@@ -51,9 +45,9 @@ py_test(
         "testdata/bad_cc.diff",
         "testdata/important_cc.diff",
     ],
-    tags = ["no_oss"],
     deps = [
         ":check_contents",
+        "//build_tools:test_utils",
         "@absl_py//absl/testing:absltest",
     ],
 )
@@ -66,9 +60,23 @@ py_test(
         "testdata/crosstool.diff",
         "testdata/important_cc.diff",
     ],
-    tags = ["no_oss"],
     deps = [
         ":diff_parser",
+        "//build_tools:test_utils",
         "@absl_py//absl/testing:absltest",
     ],
+)
+
+py_test(
+    name = "generate_compile_commands_test",
+    srcs = ["generate_compile_commands_test.py"],
+    deps = [
+        ":generate_compile_commands",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+pytype_strict_binary(
+    name = "tags",
+    srcs = ["tags.py"],
 )

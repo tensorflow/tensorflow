@@ -37,15 +37,15 @@ class SparseConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
           new SparseConditionalAccumulator<Device, T>(
               dtype_, shape_, cinfo_.name(), reduction_type_);
       *ret = accumulator;
-      return OkStatus();
+      return absl::OkStatus();
     };
   }
 
   // TODO(tanzheny): actually switch it to resource. You won't be able to use
   // it with cond2 otherwise.
-  Status CheckSignature(OpKernelContext* ctx) override {
+  absl::Status CheckSignature(OpKernelContext* ctx) override {
     TF_RETURN_IF_ERROR(ctx->MatchSignature({}, {DT_STRING_REF}));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void SetHandleToOutput(OpKernelContext* ctx)

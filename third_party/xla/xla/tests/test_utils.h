@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,15 +18,19 @@ limitations under the License.
 
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <random>
+#include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -53,12 +57,6 @@ class PseudorandomGenerator {
   std::mt19937 generator_;
 };
 
-// Generates fake data in a literal of the given shape, or returns an error
-// status if the element type is currently unhandled for fake data
-// generation. See below for documentation of pseudo_random and use_large_range.
-StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random = true,
-                                  bool use_large_range = false);
-
 // Generates a vector of arguments containing fake data. The number, shape and
 // layout of the arguments is appropriate for given HLO module.
 //
@@ -73,6 +71,10 @@ StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random = true,
 //  (3) Keys of key/value sorts should contain no duplicates.
 //
 // These constraints are best-effort only.
+//
+// If max_bits_of_precision is set to a number, then floating point & integer
+// types will be constrained to be represented in that number of bits. Setting
+// it to 5 for integers would mean it only creates integers between -32 and 32.
 //
 // If pseudo_random is true, the generated numbers will be generated
 // deterministically in a pseudo random way unless the values are constrated to
@@ -89,21 +91,24 @@ StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random = true,
 // TODO(b/79942829): Make interesting argument generation fast enough that using
 // pseudo_random does not save any noticeable amount of time so that the
 // parameter can be removed.
-StatusOr<std::vector<Literal>> MakeFakeArguments(
+absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random = true,
-    bool use_large_range = false, bool treat_gte_as_data_formatting = false);
+    bool use_large_range = false, bool treat_gte_as_data_formatting = false,
+    std::optional<int64_t> max_bits_of_precision = std::nullopt,
+    std::minstd_rand0* engine = nullptr);
 
 // Overload which accepts a random number generator. This enables generation of
 // different random values with sequential calls to MakeFakeArguments by reusing
 // the same generator.
-StatusOr<std::vector<Literal>> MakeFakeArguments(
+absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine,
-    bool use_large_range = false, bool treat_gte_as_data_formatting = false);
+    bool use_large_range = false, bool treat_gte_as_data_formatting = false,
+    std::optional<int64_t> max_bits_of_precision = std::nullopt);
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.
-Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
-                       bool allow_mixed_precision);
+absl::Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
+                             bool allow_mixed_precision);
 
 // Creates a dot op with operands 'lhs' and 'rhs' that contracts dimension 1 of
 // the LHS with dimension 0 of the RHS with no batch dimensions.
@@ -112,8 +117,18 @@ std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
                                                       HloInstruction* lhs,
                                                       HloInstruction* rhs);
 
-// Checks whether MLIR lowering is enabled through XLA_FLAGS.
-bool IsMlirLoweringEnabled();
+template <typename MessageType>
+absl::StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
+  tsl::protobuf::TextFormat::Parser parser;
+  MessageType parsed_proto;
+  tsl::protobuf::io::ArrayInputStream input_stream(
+      text_proto.data(), static_cast<int32_t>(text_proto.size()));
+  if (!parser.Parse(&input_stream, &parsed_proto)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not parse text proto: ", text_proto));
+  }
+  return parsed_proto;
+}
 
 }  // namespace xla
 

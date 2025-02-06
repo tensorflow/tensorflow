@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/lite/builtin_ops.h"
+#include "mlmodel/format/NeuralNetwork.pb.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_factory.h"

@@ -23,9 +23,9 @@ namespace tensorflow {
 class TestOptimization : public GraphOptimizationPass {
  public:
   static int count_;
-  Status Run(const GraphOptimizationPassOptions& options) override {
+  absl::Status Run(const GraphOptimizationPassOptions& options) override {
     ++count_;
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -43,14 +43,15 @@ TEST(OptimizationRegistry, OptimizationPass) {
       new FunctionLibraryDefinition(OpRegistry::Global(),
                                     FunctionDefLibrary()));
   options.flib_def = flib_def.get();
-  EXPECT_EQ(OkStatus(), OptimizationPassRegistry::Global()->RunGrouping(
-                            OptimizationPassRegistry::PRE_PLACEMENT, options));
+  EXPECT_EQ(absl::OkStatus(),
+            OptimizationPassRegistry::Global()->RunGrouping(
+                OptimizationPassRegistry::PRE_PLACEMENT, options));
   EXPECT_EQ(1, TestOptimization::count_);
 }
 
 class UpdateFuncLibPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override {
+  absl::Status Run(const GraphOptimizationPassOptions& options) override {
     return options.flib_def->AddFunctionDef(test::function::WXPlusB());
   }
 };
@@ -72,7 +73,7 @@ class OptimizationPassTest : public ::testing::Test {
     options.flib_def = flib_def_.get();
     // Note that options.graph is not set so this test checks that passes
     // properly handle this being nullptr (esp. Segfault is avoided).
-    EXPECT_EQ(OkStatus(),
+    EXPECT_EQ(absl::OkStatus(),
               OptimizationPassRegistry::Global()->RunGrouping(
                   OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, options));
   }

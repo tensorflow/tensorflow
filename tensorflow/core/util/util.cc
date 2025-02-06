@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/util.h"
 
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -22,23 +23,23 @@ limitations under the License.
 
 namespace tensorflow {
 
-StringPiece NodeNamePrefix(const StringPiece& op_name) {
-  StringPiece sp(op_name);
+absl::string_view NodeNamePrefix(const absl::string_view& op_name) {
+  absl::string_view sp(op_name);
   auto p = sp.find('/');
-  if (p == StringPiece::npos || p == 0) {
+  if (p == absl::string_view::npos || p == 0) {
     return "";
   } else {
-    return StringPiece(sp.data(), p);
+    return absl::string_view(sp.data(), p);
   }
 }
 
-StringPiece NodeNameFullPrefix(const StringPiece& op_name) {
-  StringPiece sp(op_name);
+absl::string_view NodeNameFullPrefix(const absl::string_view& op_name) {
+  absl::string_view sp(op_name);
   auto p = sp.rfind('/');
-  if (p == StringPiece::npos || p == 0) {
+  if (p == absl::string_view::npos || p == 0) {
     return "";
   } else {
-    return StringPiece(sp.data(), p);
+    return absl::string_view(sp.data(), p);
   }
 }
 
@@ -104,7 +105,7 @@ string SliceDebugString(const TensorShape& shape, const int64_t flat) {
   if (dims == 1) return strings::StrCat("[", flat, "]");
 
   // Compute strides
-  gtl::InlinedVector<int64_t, 32> strides(dims);
+  absl::InlinedVector<int64_t, 32UL> strides(dims);
   strides.back() = 1;
   for (int i = dims - 2; i >= 0; i--) {
     strides[i] = strides[i + 1] * shape.dim_size(i + 1);
@@ -124,15 +125,78 @@ string SliceDebugString(const TensorShape& shape, const int64_t flat) {
 // TODO(penporn): Remove this function from util.cc
 bool IsMKLEnabled() { return IsMklEnabled(); }
 
-bool IsBF16SupportedByOneDNNOnThisCPU() {
+void DataTypeUnsupportedWarning(const DataType& dt) {
+  static absl::once_flag cpu_dt_warn_once_flag;
+  absl::call_once(cpu_dt_warn_once_flag, [dt] {
+    LOG(ERROR) << "oneDNN supports " << DataType_Name(dt) << " only on "
+               << "platforms with AVX-512. Falling back to the default "
+               << "Eigen-based implementation if present.";
+  });
+}
+
+bool IsDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt) {
+  bool result = false;
 #ifdef INTEL_MKL
-  if (port::TestCPUFeature(port::CPUFeature::AVX512F)) {
-    return true;
+  using port::TestCPUFeature;
+  if (dt == DT_FLOAT) {
+    result = true;
+  } else if (dt == DT_BFLOAT16) {
+    result = (TestCPUFeature(port::CPUFeature::AVX512F) ||
+              TestCPUFeature(port::CPUFeature::AVX_NE_CONVERT));
+    if (result) VLOG(2) << "CPU supports " << DataType_Name(dt);
+  } else if (DataTypeIsQuantized(dt)) {
+    result = (TestCPUFeature(port::CPUFeature::AVX512F) ||
+              TestCPUFeature(port::CPUFeature::AVX_VNNI_INT8));
+    if (result) VLOG(2) << "CPU supports " << DataType_Name(dt);
+  } else if (dt == DT_HALF) {
+    // Float16 is not supported in oneDNN v2.x
+#ifdef ENABLE_ONEDNN_V3
+    // Some CPUs that don't support AVX-512 use AVX-NE-CONVERT to cast to and
+    // from FP32
+    result = ((TestCPUFeature(port::CPUFeature::AVX512BW) &&
+               (TestCPUFeature(port::CPUFeature::AVX512_FP16) ||
+                TestCPUFeature(port::CPUFeature::AMX_FP16))) ||
+              TestCPUFeature(port::CPUFeature::AVX_NE_CONVERT));
+    if (result) VLOG(2) << "CPU supports " << DataType_Name(dt);
+#endif  // ENABLE_ONEDNN_V3
   } else {
-    return false;
+    LOG(WARNING) << "Not handling type " << DataType_Name(dt);
   }
 #endif  // INTEL_MKL
-  return false;
+  return result;
+}
+
+bool IsAMXDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt) {
+  bool result = false;
+#ifdef INTEL_MKL
+  using port::TestCPUFeature;
+  if (dt == DT_BFLOAT16) {
+    result = TestCPUFeature(port::CPUFeature::AMX_BF16);
+    if (result) VLOG(2) << "CPU supports AMX " << DataType_Name(dt);
+  } else if (dt == DT_HALF) {
+    // Float16 is not supported in oneDNN v2.x
+#ifdef ENABLE_ONEDNN_V3
+    result = TestCPUFeature(port::CPUFeature::AMX_FP16);
+    if (result) VLOG(2) << "CPU supports AMX " << DataType_Name(dt);
+#endif  // ENABLE_ONEDNN_V3
+  } else if (DataTypeIsQuantized(dt)) {
+    result = TestCPUFeature(port::CPUFeature::AMX_INT8);
+    if (result) VLOG(2) << "CPU supports AMX " << DataType_Name(dt);
+  } else {
+    LOG(WARNING) << "Not handling type " << DataType_Name(dt);
+  }
+#endif  // INTEL_MKL
+  return result;
+}
+
+// Check if oneDNN supports AVX-NE-CONVERT on CPU
+bool IsAVXConvertSupportedByOneDNNOnThisCPU() {
+  bool result = false;
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  using port::TestCPUFeature;
+  result = TestCPUFeature(port::CPUFeature::AVX_NE_CONVERT);
+#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+  return result;
 }
 
 }  // namespace tensorflow

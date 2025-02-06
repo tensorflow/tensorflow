@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/match.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/dcn_slack_analysis_combiner.h"
 #include "tensorflow/core/profiler/convert/repository.h"
@@ -27,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -49,7 +49,7 @@ bool HasDcnCollectiveStatsInXSpace(const XSpace& xspace) {
   return false;
 }
 
-StatusOr<bool> GetDcnCollectiveStatsFromMultiXSpaceAndSaveToFile(
+absl::StatusOr<bool> GetDcnCollectiveStatsFromMultiXSpaceAndSaveToFile(
     const SessionSnapshot& session_snapshot) {
   DcnSlackAnalysisCombiner combiner;
   for (int idx = 0; idx < session_snapshot.XSpaceSize(); idx++) {
@@ -87,7 +87,7 @@ StatusOr<bool> GetDcnCollectiveStatsFromMultiXSpaceAndSaveToFile(
 
 }  // namespace
 
-StatusOr<bool> HasDcnCollectiveStatsInMultiXSpace(
+absl::StatusOr<bool> HasDcnCollectiveStatsInMultiXSpace(
     const SessionSnapshot& session_snapshot) {
   std::pair<bool, std::string> hasCacheFile;
   TF_ASSIGN_OR_RETURN(hasCacheFile, session_snapshot.HasCacheFile(
@@ -118,7 +118,7 @@ StatusOr<bool> HasDcnCollectiveStatsInMultiXSpace(
   }
 }
 
-StatusOr<bool> ConvertMultiXSpaceToDcnCollectiveStats(
+absl::StatusOr<bool> ConvertMultiXSpaceToDcnCollectiveStats(
     const SessionSnapshot& session_snapshot) {
   std::pair<bool, std::string> hasCacheFile;
   TF_ASSIGN_OR_RETURN(hasCacheFile, session_snapshot.HasCacheFile(
@@ -140,7 +140,7 @@ StatusOr<bool> ConvertMultiXSpaceToDcnCollectiveStats(
   }
 }
 
-StatusOr<DcnSlackAnalysis> GetDcnSlackAnalysisByHostName(
+absl::StatusOr<DcnSlackAnalysis> GetDcnSlackAnalysisByHostName(
     const SessionSnapshot& session_snapshot, const std::string hostname) {
   TF_ASSIGN_OR_RETURN(bool hasDcnCollectiveStats,
                       ConvertMultiXSpaceToDcnCollectiveStats(session_snapshot));

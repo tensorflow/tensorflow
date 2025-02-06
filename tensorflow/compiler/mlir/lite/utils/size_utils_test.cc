@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
 
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "tensorflow/core/platform/test.h"
 
 namespace mlir {

@@ -16,9 +16,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 
 // CHECK-LABEL: func @conv2d_unmatching_unit
 // CHECK: "tf.PartitionedCall"
+// CHECK-SAME: f = @composite_conv2d_fn_1
 // Check that the `_tfl_quant_trait` attribute exists since the unit is not in `unit_wise_quantization_specs`.
 // CHECK-SAME: _tfl_quant_trait = "fully_quantizable"
-// CHECK-SAME: f = @composite_conv2d_fn_1
 // CHECK-SAME: loc(callsite("Model/conv2d@conv2d_unmatching_unit"("Conv2D") at "QuantizationUnit({{.*}})"))
 
 // -----
@@ -36,9 +36,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 
 // CHECK-LABEL: func @conv2d_disable_quantization
 // CHECK: "tf.PartitionedCall"
+// CHECK-SAME: f = @composite_conv2d_fn_1
 // Check that quantization is disabled for this unit.
 // CHECK-NOT: _tfl_quant_trait = "fully_quantizable"
-// CHECK-SAME: f = @composite_conv2d_fn_1
 // CHECK-SAME: loc(callsite("test_opt_out@conv2d_disable_quantization"("Conv2D") at "QuantizationUnit({{.*}})"))
 
 // -----
@@ -58,9 +58,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 
 // CHECK-LABEL: func @conv2d_with_bias_disable_quantization
 // CHECK: "tf.PartitionedCall"
+// CHECK-SAME: f = @composite_conv2d_with_bias_fn_1
 // Check that quantization is disabled for this unit.
 // CHECK-NOT: _tfl_quant_trait = "fully_quantizable"
-// CHECK-SAME: f = @composite_conv2d_with_bias_fn_1
 // CHECK-SAME: loc(callsite("test_opt_out@conv2d_with_bias_disable_quantization"("Conv2D") at "QuantizationUnit({{.*}})"))
 
 // -----
@@ -80,9 +80,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 
 // CHECK-LABEL: func @matmul_with_reshape_disable_quantization
 // CHECK: "tf.PartitionedCall"
+// CHECK-SAME: f = @composite_matmul_with_reshape_and_bias_fn_1
 // Check that quantization is disabled for this unit.
 // CHECK-NOT: _tfl_quant_trait = "fully_quantizable"
-// CHECK-SAME: f = @composite_matmul_with_reshape_and_bias_fn_1
 // CHECK-SAME: loc(callsite("test_opt_out@matmul_with_reshape_disable_quantization"("MatMul") at "QuantizationUnit({{.*}})"))
 
 // -----
@@ -105,8 +105,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 
 // CHECK-LABEL: func @serving_default
 // CHECK: "tf.PartitionedCall"
+// CHECK-SAME: f = @composite_conv2d_fn_1
 // Check that quantization is disabled for this unit.
 // CHECK-NOT: _tfl_quant_trait = "fully_quantizable"
-// CHECK-SAME: f = @composite_conv2d_fn_1
 // CHECK-SAME: loc(callsite("test_opt_out@conv2d_with_inliner"("Conv2D") at "QuantizationUnit({{.*}})"))
 }

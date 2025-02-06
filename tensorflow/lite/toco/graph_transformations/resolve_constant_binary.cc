@@ -14,16 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -207,7 +210,7 @@ bool EvaluateBinaryOperatorOnConstantInputs(Model* model,
       binary_op->type != OperatorType::kLessEqual &&
       binary_op->type != OperatorType::kGreater &&
       binary_op->type != OperatorType::kGreaterEqual) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   CHECK_EQ(binary_op->inputs.size(), 2);
 
@@ -215,13 +218,13 @@ bool EvaluateBinaryOperatorOnConstantInputs(Model* model,
   const auto& input1_array = model->GetArray(binary_op->inputs[1]);
   // Check if both inputs are constant parameters.
   if (!input0_array.buffer || !input1_array.buffer) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   auto& output_array = model->GetArray(binary_op->outputs[0]);
   // Yield until the output array dims have been resolved.
   if (!output_array.has_shape()) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // At the moment we don't want to care about fused activation functions.
@@ -232,7 +235,7 @@ bool EvaluateBinaryOperatorOnConstantInputs(Model* model,
     AddMessageF(
         "Not resolving constant %s because it has a fused activation function",
         LogName(*binary_op));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Check that input data types agree.
@@ -245,12 +248,12 @@ bool EvaluateBinaryOperatorOnConstantInputs(Model* model,
 
   // Do the actual constants propagation
   if (!EvaluateBinaryOperatorOnConstantInputs(model, binary_op)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   DeleteOpAndArrays(model, binary_op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

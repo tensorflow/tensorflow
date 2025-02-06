@@ -1,6 +1,6 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
+load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 
 package(

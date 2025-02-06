@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse_to_dense_op_gpu.h"
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -173,15 +172,16 @@ void LaunchSparseToDense<T, Index>::operator()(
     se::DeviceMemoryBase valid_status_ptr(status_ptr, valid_status_bytes);
 
     GpuLaunchConfig config = GetGpuLaunchConfig(num_elems, d);
-    stream->ThenMemset32(&valid_status_ptr, INT_MAX, valid_status_bytes);
+    OP_REQUIRES_OK(
+        c, stream->Memset32(&valid_status_ptr, INT_MAX, valid_status_bytes));
     OP_REQUIRES_OK_ASYNC(
         c,
         GpuLaunchKernel(CheckIndicesValid<Index>, config.block_count,
                         config.thread_per_block, 0, d.stream(), indices_ptr,
                         num_elems, shape_ptr, num_dims, status_ptr),
         done);
-    stream->ThenMemcpy(reinterpret_cast<int*>(&valid_status), valid_status_ptr,
-                       valid_status_bytes);
+    OP_REQUIRES_OK(c, stream->Memcpy(reinterpret_cast<int*>(&valid_status),
+                                     valid_status_ptr, valid_status_bytes));
 
     // We capture 'shape' instead of 'shape_ptr' since this lambda outlives
     // the 'shape' tensor.
@@ -193,8 +193,8 @@ void LaunchSparseToDense<T, Index>::operator()(
         // Ensure that within the callback, the proper GPU settings are
         // configured.
         auto stream = c->op_device_context()->stream();
-        se::gpu::ScopedActivateExecutorContext scoped_activation{
-            stream->parent()};
+        std::unique_ptr<se::ActivateContext> scoped_activation =
+            stream->parent()->Activate();
 
         OP_REQUIRES_ASYNC(
             c, valid_status.valid == INT_MAX,
@@ -225,7 +225,7 @@ void LaunchSparseToDense<T, Index>::operator()(
                                  shape.flat<Index>().data(), num_dims,
                                  dense_ptr),
             done);
-      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+      }  // Release ActivateContext to prevent deadlock when done
       // inlines another Op kernel, which may assume the original cuda Context.
 
       done();

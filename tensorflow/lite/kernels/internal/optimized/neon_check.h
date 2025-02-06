@@ -17,12 +17,12 @@ limitations under the License.
 
 #if defined(__ARM_NEON__) || defined(__ARM_NEON)
 #define USE_NEON
-#include <arm_neon.h>
+#include <arm_neon.h>  // IWYU pragma: export
 #endif
 
 #if defined __GNUC__ && defined __SSE4_1__ && !defined TF_LITE_DISABLE_X86_NEON
 #define USE_NEON
-#include "NEON_2_SSE.h"
+#include "NEON_2_SSE.h"  // IWYU pragma: export
 #endif
 
 // NEON_OR_PORTABLE(SomeFunc, args) calls NeonSomeFunc(args) if USE_NEON is

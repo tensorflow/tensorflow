@@ -22,13 +22,15 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "flatbuffers/base.h"  // from @flatbuffers
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/idl.h"  // from @flatbuffers
-#include "flatbuffers/reflection.h"  // from @flatbuffers
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
 #include "flatbuffers/util.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #if FLATBUFFERS_LITTLEENDIAN == 0
 #include "tensorflow/lite/core/model_builder.h"
 #endif

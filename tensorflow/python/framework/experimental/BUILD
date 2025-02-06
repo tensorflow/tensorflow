@@ -2,6 +2,11 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_python_pybind_extension")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -16,13 +21,20 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_unified_api.pyi",
     ],
+    starlark_only = True,
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
 )
@@ -31,6 +43,10 @@ tf_python_pybind_extension(
     name = "_tape",
     srcs = ["tape.cc"],
     features = ["-layering_check"],
+    starlark_only = True,
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:lib",
@@ -38,8 +54,16 @@ tf_python_pybind_extension(
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/python:unified_api_pywrap_required_headers",
         "//tensorflow/python/lib/core:pybind11_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@pybind11",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/c/experimental/gradients/tape:tape_context",
+            "//tensorflow/c/experimental/gradients:math_grad",
+            "//tensorflow/c/experimental/gradients:nn_grad",
+        ],
+    ),
 )
 
 tf_python_pybind_extension(
@@ -49,6 +73,10 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_math_ops.pyi",
     ],
+    starlark_only = True,
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
@@ -59,7 +87,11 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/types:span",
         "@pybind11",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/c/experimental/ops:math_ops",
+        ],
+    ),
 )
 
 tf_python_pybind_extension(
@@ -69,6 +101,10 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_nn_ops.pyi",
     ],
+    starlark_only = True,
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
@@ -79,7 +115,11 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/types:span",
         "@pybind11",
-    ],
+    ] + if_pywrap(
+        if_true = [
+            "//tensorflow/c/experimental/ops:nn_ops",
+        ],
+    ),
 )
 
 py_strict_library(
@@ -178,7 +218,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "graph_building_test",
     size = "small",
     srcs = ["graph_building_test.py"],

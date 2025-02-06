@@ -271,7 +271,6 @@ class SyncReplicasOptimizerHookTest(test.TestCase):
       "train.SyncReplicasOptimizer and train.GradientDescentOptimizer "
       "are V1 only APIs.")
   def testCanCreatedBeforeMinimizeCalled(self):
-    """This behavior is required to be integrated with Estimators."""
     opt = training.SyncReplicasOptimizer(
         opt=gradient_descent.GradientDescentOptimizer(1.0),
         replicas_to_aggregate=1,

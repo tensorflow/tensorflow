@@ -20,12 +20,12 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "pthreadpool.h"  // from @pthreadpool
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
-#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
+#include "tensorflow/lite/acceleration/configuration/delegate_registry.h"
+#include "tensorflow/lite/test_util.h"
 
 namespace tflite {
 
-class XnnpackPluginTest : public testing::Test {
+class XnnpackPluginTest : public tflite::testing::Test {
  public:
   static constexpr int kNumThreadsForTest = 7;
   static constexpr tflite::XNNPackFlags kFlagsForTest =
@@ -70,22 +70,14 @@ class XnnpackPluginTest : public testing::Test {
 constexpr int XnnpackPluginTest::kNumThreadsForTest;
 
 TEST_F(XnnpackPluginTest, CanCreateAndDestroyDelegate) {
-  delegates::TfLiteDelegatePtr delegate = delegate_plugin_->Create();
+  delegates::TfLiteOpaqueDelegatePtr delegate = delegate_plugin_->Create();
   EXPECT_NE(delegate, nullptr);
 }
 
 TEST_F(XnnpackPluginTest, CanGetDelegateErrno) {
-  delegates::TfLiteDelegatePtr delegate = delegate_plugin_->Create();
+  delegates::TfLiteOpaqueDelegatePtr delegate = delegate_plugin_->Create();
   int error_number = delegate_plugin_->GetDelegateErrno(delegate.get());
   EXPECT_EQ(error_number, 0);
-}
-
-TEST_F(XnnpackPluginTest, SetsCorrectThreadCount) {
-  delegates::TfLiteDelegatePtr delegate = delegate_plugin_->Create();
-  pthreadpool_t threadpool = static_cast<pthreadpool_t>(
-      TfLiteXNNPackDelegateGetThreadPool(delegate.get()));
-  int thread_count = pthreadpool_get_threads_count(threadpool);
-  EXPECT_EQ(thread_count, kNumThreadsForTest);
 }
 
 }  // namespace tflite

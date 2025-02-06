@@ -1,8 +1,6 @@
-load("@local_tsl//tsl:tsl.bzl", "tf_openmp_copts")
-load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl")
-load("@org_tensorflow//third_party/mkl_dnn:build_defs.bzl", "if_mkldnn_openmp")
-load("@org_tensorflow//third_party/mkl:build_defs.bzl", "if_mkl_ml")
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@local_xla//xla/tsl:tsl.bzl", "tf_openmp_copts")
+load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml", "if_mkldnn_openmp")
 
 exports_files(["LICENSE"])
 
@@ -14,8 +12,9 @@ _CMAKE_COMMON_LIST = {
     "#cmakedefine DNNL_SYCL_CUDA": "#undef DNNL_SYCL_CUDA",
     "#cmakedefine DNNL_SYCL_HIP": "#undef DNNL_SYCL_HIP",
     "#cmakedefine DNNL_ENABLE_STACK_CHECKER": "#undef DNNL_ENABLE_STACK_CHECKER",
+    "#cmakedefine ONEDNN_BUILD_GRAPH": "#define ONEDNN_BUILD_GRAPH",
+    "#cmakedefine DNNL_EXPERIMENTAL_SPARSE": "#define DNNL_EXPERIMENTAL_SPARSE",
     "#cmakedefine DNNL_EXPERIMENTAL": "#undef DNNL_EXPERIMENTAL",
-    "#cmakedefine ONEDNN_BUILD_GRAPH": "#undef ONEDNN_BUILD_GRAPH",
     "#cmakedefine01 BUILD_TRAINING": "#define BUILD_TRAINING 1",
     "#cmakedefine01 BUILD_INFERENCE": "#define BUILD_INFERENCE 0",
     "#cmakedefine01 BUILD_PRIMITIVE_ALL": "#define BUILD_PRIMITIVE_ALL 1",
@@ -52,6 +51,7 @@ _CMAKE_COMMON_LIST = {
     "#cmakedefine01 BUILD_PRIMITIVE_GPU_ISA_ALL": "#define BUILD_PRIMITIVE_GPU_ISA_ALL 0",
     "#cmakedefine01 BUILD_GEN9": "#define BUILD_GEN9 0",
     "#cmakedefine01 BUILD_GEN11": "#define BUILD_GEN11 0",
+    "#cmakedefine01 BUILD_XE2": "#define BUILD_XE2 0",
     "#cmakedefine01 BUILD_XELP": "#define BUILD_XELP 0",
     "#cmakedefine01 BUILD_XEHPG": "#define BUILD_XEHPG 0",
     "#cmakedefine01 BUILD_XEHPC": "#define BUILD_XEHPC 0",
@@ -76,7 +76,7 @@ expand_template(
     name = "dnnl_config_h",
     out = "include/oneapi/dnnl/dnnl_config.h",
     substitutions = select({
-        "@org_tensorflow//third_party/mkl_dnn:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
+        "@local_xla//xla/tsl/mkl:build_with_mkldnn_openmp": _DNNL_RUNTIME_OMP,
         "//conditions:default": _DNNL_RUNTIME_THREADPOOL,
     }),
     template = "include/oneapi/dnnl/dnnl_config.h.in",
@@ -94,7 +94,7 @@ expand_template(
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "3",
-        "@DNNL_VERSION_MINOR@": "3",
+        "@DNNL_VERSION_MINOR@": "5",
         "@DNNL_VERSION_PATCH@": "0",
         "@DNNL_VERSION_HASH@": "N/A",
     },
@@ -102,13 +102,14 @@ expand_template(
 )
 
 _COPTS_LIST = select({
-    "@local_tsl//tsl:windows": [],
+    "@local_xla//xla/tsl:windows": [],
     "//conditions:default": ["-fexceptions"],
 }) + [
     "-UUSE_MKL",
     "-UUSE_CBLAS",
     "-DDNNL_ENABLE_MAX_CPU_ISA",
     "-DDNNL_ENABLE_ITT_TASKS",
+    "-DDNNL_ENABLE_GRAPH_DUMP",
 ] + tf_openmp_copts()
 
 _INCLUDES_LIST = [
@@ -119,6 +120,7 @@ _INCLUDES_LIST = [
     "src/cpu",
     "src/cpu/gemm",
     "src/cpu/x64/xbyak",
+    "src/graph",
 ]
 
 _TEXTUAL_HDRS_LIST = glob([
@@ -129,6 +131,15 @@ _TEXTUAL_HDRS_LIST = glob([
     "src/cpu/**/*.hpp",
     "src/cpu/jit_utils/**/*.hpp",
     "src/cpu/x64/xbyak/*.h",
+    "src/graph/interface/*.hpp",
+    "src/graph/backend/*.hpp",
+    "src/graph/backend/dnnl/*.hpp",
+    "src/graph/backend/fake/*.hpp",
+    "src/graph/backend/dnnl/passes/*.hpp",
+    "src/graph/backend/dnnl/patterns/*.hpp",
+    "src/graph/backend/dnnl/kernels/*.hpp",
+    "src/graph/utils/*.hpp",
+    "src/graph/utils/pm/*.hpp",
 ]) + [
     ":dnnl_config_h",
     ":dnnl_version_h",
@@ -160,6 +171,16 @@ cc_library(
             "src/cpu/**/*.cpp",
             "src/common/ittnotify/*.c",
             "src/cpu/jit_utils/**/*.cpp",
+            "src/cpu/x64/**/*.cpp",
+            "src/graph/interface/*.cpp",
+            "src/graph/backend/*.cpp",
+            "src/graph/backend/dnnl/*.cpp",
+            "src/graph/backend/fake/*.cpp",
+            "src/graph/backend/dnnl/passes/*.cpp",
+            "src/graph/backend/dnnl/patterns/*.cpp",
+            "src/graph/backend/dnnl/kernels/*.cpp",
+            "src/graph/utils/*.cpp",
+            "src/graph/utils/pm/*.cpp",
         ],
         exclude = [
             "src/cpu/aarch64/**",
@@ -171,15 +192,15 @@ cc_library(
     includes = _INCLUDES_LIST,
     # TODO(penpornk): Use lrt_if_needed from tensorflow.bzl instead.
     linkopts = select({
-        "@local_tsl//tsl:linux_aarch64": ["-lrt"],
-        "@local_tsl//tsl:linux_x86_64": ["-lrt"],
-        "@local_tsl//tsl:linux_ppc64le": ["-lrt"],
+        "@local_xla//xla/tsl:linux_aarch64": ["-lrt"],
+        "@local_xla//xla/tsl:linux_x86_64": ["-lrt"],
+        "@local_xla//xla/tsl:linux_ppc64le": ["-lrt"],
         "//conditions:default": [],
     }),
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
     deps = [":onednn_autogen"] + if_mkl_ml(
-        ["@org_tensorflow//third_party/mkl:intel_binary_blob"],
+        ["@local_xla//xla/tsl/mkl:intel_binary_blob"],
         [],
     ),
 )

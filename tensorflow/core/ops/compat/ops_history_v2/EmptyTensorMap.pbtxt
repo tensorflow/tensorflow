@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "EmptyTensorMap"
   output_arg {
     name: "handle"

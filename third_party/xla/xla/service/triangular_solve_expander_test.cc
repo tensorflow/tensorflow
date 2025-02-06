@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,15 +15,20 @@ limitations under the License.
 
 #include "xla/service/triangular_solve_expander.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
+#include "xla/array2d.h"
+#include "xla/error_spec.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/reference_util.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/types.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {

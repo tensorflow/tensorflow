@@ -1,0 +1,13 @@
+// RUN: fusion_to_mlir %s | FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  p0 = s8[1000] parameter(0)
+  cvt = pred[1000] convert(p0)
+  ROOT not = pred[1000] not(cvt)
+}
+
+// CHECK: %[[C0:.*]] = arith.constant 0 : i8
+// CHECK: %[[NONZERO:.*]] = arith.cmpi eq, {{.*}}, %[[C0]]
+// CHECK: %[[CVT:.*]] = arith.extui %[[NONZERO]] : i1 to i8
+// CHECK: return %[[CVT]]

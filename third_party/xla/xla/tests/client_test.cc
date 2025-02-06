@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,14 +16,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "xla/client/global_data.h"
+#include "absl/status/statusor.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
@@ -128,14 +127,14 @@ XLA_TEST_F(ClientTest,
   // We can't really test parallel execution on CPU since all of the cores in a
   // CPU are presented as a single device.  So for now we test "parallel"
   // execution on a single device.
-  std::vector<Client::XlaComputationInstance> computation_instances;
+  std::vector<XlaComputationInstance> computation_instances;
   TF_ASSERT_OK_AND_ASSIGN(std::vector<xla::DeviceHandle> devices,
                           client_->GetDeviceHandles(1));
   ASSERT_EQ(devices.size(), 1);
 
   ExecutionOptions options = execution_options_;
   *options.add_device_handles() = devices[0];
-  computation_instances.push_back(Client::XlaComputationInstance(
+  computation_instances.push_back(XlaComputationInstance(
       add_with_one_arg, {const_arg.get()}, options, nullptr));
 
   TF_ASSERT_OK_AND_ASSIGN(auto results,

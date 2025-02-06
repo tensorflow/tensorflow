@@ -27,15 +27,15 @@ namespace graph_transforms {
 // with Const nodes, to simplify the graph. The inputs and outputs arguments are
 // the names of all the nodes that data is fed into, or read out of, when the
 // graph is actually run.
-Status FoldConstants(const GraphDef& input_graph_def,
-                     const TransformFuncContext& context,
-                     GraphDef* output_graph_def);
+absl::Status FoldConstants(const GraphDef& input_graph_def,
+                           const TransformFuncContext& context,
+                           GraphDef* output_graph_def);
 
 // Analyzes which nodes are used for the given set of inputs and outputs, and
 // returns a copy of the graph with any that aren't used removed.
-Status RemoveUnusedNodes(const GraphDef& input_graph_def,
-                         const TransformFuncContext& context,
-                         GraphDef* output_graph_def);
+absl::Status RemoveUnusedNodes(const GraphDef& input_graph_def,
+                               const TransformFuncContext& context,
+                               GraphDef* output_graph_def);
 
 }  // namespace graph_transforms
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -31,19 +32,28 @@ namespace xla {
 namespace gpu {
 
 class HloOpProfiler {
-  static std::unique_ptr<HloModule> MakeModuleForMeasurements(
-      HloOpcode op, PrimitiveType data_type, int chain_length);
-
-  StatusOr<absl::Duration> MeasureOpChainDuration(HloOpcode op,
-                                                  PrimitiveType data_type,
-                                                  int chain_length);
-
  public:
+  class KernelTracer {
+   public:
+    virtual ~KernelTracer() = default;
+    virtual uint64_t getMedianKernelTimeNs() && = 0;
+  };
+
   explicit HloOpProfiler(HloRunner& runner);
-  StatusOr<HloInstructionProfile> MeasureClockCyclesPerOp(
+
+  static std::unique_ptr<KernelTracer> GetKernelTracer();
+
+  absl::StatusOr<HloInstructionProfile> MeasureClockCyclesPerOp(
       HloOpcode op, PrimitiveType data_type);
 
  private:
+  static std::unique_ptr<HloModule> MakeModuleForMeasurements(
+      HloOpcode op, PrimitiveType data_type, int chain_length);
+
+  absl::StatusOr<absl::Duration> MeasureOpChainDuration(HloOpcode op,
+                                                        PrimitiveType data_type,
+                                                        int chain_length);
+
   HloRunner& runner_;
   const se::DeviceDescription& dev_info_;
   absl::Duration min_duration_;

@@ -361,7 +361,7 @@ class Model(training_lib.Model):
                   parameter_server_strategy.ParameterServerStrategyV1):
       raise NotImplementedError(
           '`tf.compat.v1.distribute.experimental.ParameterServerStrategy` '
-          'currently only works with the tf.Estimator API')
+          'currently only works with the deprecated tf.Estimator API')
 
     if isinstance(self._distribution_strategy,
                   parameter_server_strategy_v2.ParameterServerStrategyV2):
@@ -1513,9 +1513,7 @@ class Model(training_lib.Model):
     """Compiles the model loss and weighted metric sub-graphs.
 
     This may be used to set graph tensors as sample weights (instead of creating
-    placeholders). This functionality is necessary for
-    `tf.keras.estimator.model_to_estimator`, which calls Keras models in a v1
-    graph, and creates iterator tensors for inputs, targets, and sample weights.
+    placeholders).
 
     Args:
       sample_weights: List of tensors to use as the sample weights. Must be the

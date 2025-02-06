@@ -18,7 +18,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/tsl/platform/types.h"
+#include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {

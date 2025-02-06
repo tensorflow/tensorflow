@@ -1,5 +1,5 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_self_contained_libs_test_suite")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite/core:special_rules.bzl", "builtin_ops_visibility_allowlist")
 
 package(
@@ -12,7 +12,10 @@ exports_files(
         "builtin_op_kernels.h",
         "register.h",
     ],
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//research/drishti/benchmarking/async:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
+    ],
 )
 
 cc_test(
@@ -21,8 +24,7 @@ cc_test(
     deps = [
         ":builtin_ops",
         "//tensorflow/lite:mutable_op_resolver",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],

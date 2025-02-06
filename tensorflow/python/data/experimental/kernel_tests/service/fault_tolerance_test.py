@@ -121,6 +121,18 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(ds, list(range(num_elements)))
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDispatcherRestartWithMultipleDatasets(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    num_elements = 100
+    datasets = []
+    for _ in range(10):
+      datasets.append(self.make_distributed_range_dataset(100, cluster))
+      cluster.restart_dispatcher()
+
+    for ds in datasets:
+      self.assertDatasetProduces(ds, list(range(num_elements)))
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testDispatcherManyRestarts(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements_start = 10

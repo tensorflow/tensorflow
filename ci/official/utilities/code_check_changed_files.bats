@@ -17,8 +17,11 @@
 
 setup_file() {
     bazel version  # Start the bazel server
-    # Without this, git errors if /tf/tensorflow directory owner is different
-    git config --global --add safe.directory .
+
+    # Fixes "fatal: detected dubious ownership in repository" for Docker.
+    git config --system --add safe.directory '*'
+    git config --system protocol.file.allow always
+
     # Note that you could generate a list of all the affected targets with e.g.:
     # bazel query $(paste -sd "+" $BATS_FILE_TMPDIR/changed_files) --keep_going
     # Only shows Added, Changed, Modified, Renamed, and Type-changed files
@@ -68,6 +71,12 @@ setup_file() {
         | grep -v "**** Module" \
         | tee $BATS_TEST_TMPDIR/needs_help.txt
     [[ ! -s $BATS_TEST_TMPDIR/needs_help.txt ]]
+}
+
+@test "API compatibility test passes, ensuring no unexpected changes to the TF API" {
+    bazel test $TFCI_BAZEL_COMMON_ARGS //tensorflow/tools/api/tests:api_compatibility_test
+    echo "You have to re-generate the TF API goldens and have the API changes reviewed."
+    echo "Look at the instructions for ':api_compatibility_test -- --update_goldens=True'"
 }
 
 teardown_file() {

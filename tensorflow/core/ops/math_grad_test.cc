@@ -40,8 +40,8 @@ class MathGradTest : public ::testing::Test {
  protected:
   // Unary
   // dst is the output dtype of op_node.
-  Status Unary(const FDH::Node& op_node, const Tensor& x, const DataType dst,
-               Tensor* y) {
+  absl::Status Unary(const FDH::Node& op_node, const Tensor& x,
+                     const DataType dst, Tensor* y) {
     const DataType src = x.dtype();
     auto adef = [](const string& name,
                    const DataType type) {  // E.g., x:float, dy:double
@@ -94,7 +94,7 @@ class MathGradTest : public ::testing::Test {
     return s;
   }
 
-  Status Unary(const string& op, const Tensor& x, Tensor* y) {
+  absl::Status Unary(const string& op, const Tensor& x, Tensor* y) {
     const FDH::Node op_node = {{"y"}, op, {"x"}, {{"T", x.dtype()}}};
     return Unary(op_node, x, x.dtype(), y);
   }
@@ -225,7 +225,7 @@ class MathGradTest : public ::testing::Test {
     *di = outputs[1];
   }
 
-  Tensor ReduceSum(const Tensor& x, gtl::ArraySlice<int32> axes) {
+  Tensor ReduceSum(const Tensor& x, absl::Span<const int32> axes) {
     int num_axes = axes.length();
     Tensor y(DT_INT32, TensorShape({num_axes}));
     for (size_t i = 0; i < axes.size(); ++i) {
@@ -412,7 +412,7 @@ class MathGradTest : public ::testing::Test {
   }
 };
 
-void HasError(const Status& s, const string& substr) {
+void HasError(const absl::Status& s, const string& substr) {
   EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }

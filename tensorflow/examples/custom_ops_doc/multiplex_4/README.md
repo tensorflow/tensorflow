@@ -41,7 +41,7 @@ variable length lists.
 This example contains C++ and Python code snippets to illustrate the code flow.
 These snippets may be missing namespace declarations, imports, and test cases.
 
-### Prerequsites - Implement `multiplex_2` and `SavedModel`
+### Prerequisites - Implement `multiplex_2` and `SavedModel`
 
 This example uses a [`SavedModel`](https://www.tensorflow.org/guide/saved_model)
 from an existing `multiplex_2` custom op.
@@ -85,7 +85,7 @@ def save(multiplex_op, path):
 This `SavedModel` has the old version of the custom op (`multiplex_2`) that only
 supports individual tensors as inputs. The following steps will register a
 kernel that accepts lists of tensors as inputs, while maintaining backward
-compatability with the previous op.
+compatibility with the previous op.
 
 ### Step 1 - Define the op interface
 
@@ -346,7 +346,7 @@ def multiplex(cond, a, b, name=None):
 
   Args:
     cond: tf.Tensor or list of tf.Tensor of type bool. Where True, yield `a`.
-      When muliple corresponding `cond` elements are true, the first one yield
+      When multiple corresponding `cond` elements are true, the first one yield
       based on the first one encountered.
     a: tf.Tensor or list of tf.Tensor, each with the same type and shape as `b`.
     b: tf.Tensor or list of tf.Tensor with the same type and shape as `a`. Yield
@@ -458,7 +458,7 @@ class MultiplexOpTest(tf.test.TestCase):
       self.evaluate(multiplex_4_op.multiplex(cond, a, b))
 ```
 
-The following `tf.function` in muliplex_4_test.py has two multiplex custom ops:
+The following `tf.function` in multiplex_4_test.py has two multiplex custom ops:
 one that takes lists for its `cond` and `a` inputs, and another that takes
 single tensors.
 

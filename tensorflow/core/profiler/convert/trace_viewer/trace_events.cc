@@ -23,26 +23,30 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/internal/endian.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/io/iterator.h"
+#include "xla/tsl/lib/io/table.h"
+#include "xla/tsl/lib/io/table_builder.h"
+#include "xla/tsl/lib/io/table_options.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_filter_interface.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_visibility.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
-#include "tsl/lib/io/table.h"
-#include "tsl/lib/io/table_builder.h"
-#include "tsl/lib/io/table_options.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/profiler/utils/timespan.h"
+#include "tsl/platform/file_system.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -57,11 +61,6 @@ constexpr uint64_t kLayerResolutions[] = {
 };
 
 constexpr int NumLevels() { return TF_ARRAYSIZE(kLayerResolutions); }
-constexpr uint64_t LayerResolutionPs(unsigned level) {
-  // This sometimes gets called in a tight loop, so levels are precomputed.
-  return level >= NumLevels() ? 0 : kLayerResolutions[level];
-}
-
 // Constants used by the LevelDB Table-based efficient trace viewer storage.
 static constexpr char kTraceMetadataKey[] = "/trace";
 static constexpr absl::string_view kLevelKey("123456789ABCDEFGHIJKLMNOPQ");
@@ -128,6 +127,26 @@ void MaybeAddEventUniqueId(std::vector<TraceEvent*>& events) {
 
 }  // namespace
 
+uint64_t LayerResolutionPs(unsigned level) {
+  // This sometimes gets called in a tight loop, so levels are precomputed.
+  return level >= NumLevels() ? 0 : kLayerResolutions[level];
+}
+
+std::pair<uint64_t, uint64_t> GetLevelBoundsForDuration(uint64_t duration_ps) {
+  int i = 0;
+  for (; i < NumLevels(); ++i) {
+    if (duration_ps > kLayerResolutions[i]) {
+      if (i == 0) {
+        return std::make_pair(kLayerResolutions[i], kint64max);
+      } else {
+        return std::make_pair(kLayerResolutions[i], kLayerResolutions[i - 1]);
+      }
+    }
+  }
+  // Tiny event. Put it in the bottom bucket. ([0, 1ps])
+  return std::make_pair(0, 1);
+}
+
 std::vector<TraceEvent*> MergeEventTracks(
     const std::vector<const TraceEventTrack*>& event_tracks) {
   std::vector<TraceEvent*> events;
@@ -169,6 +188,36 @@ std::vector<std::vector<const TraceEvent*>> GetEventsByLevel(
   return events_by_level;
 }
 
+absl::Status ReadFileTraceMetadata(std::string& filepath, Trace* trace) {
+  // 1. Open the file.
+  uint64_t file_size;
+  TF_RETURN_IF_ERROR(tsl::Env::Default()->GetFileSize(filepath, &file_size));
+
+  tsl::FileSystem* file_system;
+  TF_RETURN_IF_ERROR(
+      tsl::Env::Default()->GetFileSystemForFile(filepath, &file_system));
+
+  std::unique_ptr<tsl::RandomAccessFile> file;
+  TF_RETURN_IF_ERROR(file_system->NewRandomAccessFile(filepath, &file));
+
+  tsl::table::Options options;
+  options.block_size = 20 * 1024 * 1024;
+  tsl::table::Table* table = nullptr;
+  TF_RETURN_IF_ERROR(
+      tsl::table::Table::Open(options, file.get(), file_size, &table));
+  std::unique_ptr<tsl::table::Table> table_deleter(table);
+
+  std::unique_ptr<tsl::table::Iterator> iterator(table->NewIterator());
+  if (iterator == nullptr) return absl::UnknownError("Could not open table");
+
+  // 2. Read the metadata.
+  iterator->SeekToFirst();
+  if (!ReadTraceMetadata(iterator.get(), kTraceMetadataKey, trace)) {
+    return absl::UnknownError("Could not parse Trace proto");
+  }
+  return absl::OkStatus();
+}
+
 // Store the contents of this container in an sstable file. The format is as
 // follows:
 //
@@ -181,15 +230,9 @@ std::vector<std::vector<const TraceEvent*>> GetEventsByLevel(
 //
 // Note that each event only appears exactly once, at the first layer it's
 // eligible for.
-tsl::Status DoStoreAsLevelDbTable(
-    const std::string& filename, const Trace& trace,
+absl::Status DoStoreAsLevelDbTable(
+    std::unique_ptr<tsl::WritableFile>& file, const Trace& trace,
     const std::vector<std::vector<const TraceEvent*>>& events_by_level) {
-  std::unique_ptr<tensorflow::WritableFile> file;
-  tensorflow::FileSystem* file_system;
-  TF_RETURN_IF_ERROR(
-      tsl::Env::Default()->GetFileSystemForFile(filename, &file_system));
-  TF_RETURN_IF_ERROR(file_system->NewWritableFile(filename, &file));
-
   tsl::table::Options options;
   options.block_size = 20 * 1024 * 1024;
   options.compression = tsl::table::kSnappyCompression;
@@ -207,41 +250,40 @@ tsl::Status DoStoreAsLevelDbTable(
     uint64_t last_timestamp = std::numeric_limits<uint64_t>::max();
     uint64_t last_timestamp_repetition = 0;
     for (const TraceEvent* event : events_by_level[zoom_level]) {
-      // NOTE: temporarily mutate the event for the storage efficiency, the
-      // timestamp is restored after serialization.
-      // NOTE: runtime-proto-const-cast lint error is bogus because we are
-      // casting the top level proto.
-      TraceEvent* mutable_event = const_cast<TraceEvent*>(event);
-      auto timestamp = mutable_event->timestamp_ps();
-      mutable_event->clear_timestamp_ps();
+      uint64_t timestamp = event->timestamp_ps();
       if (timestamp != last_timestamp) {
         last_timestamp = timestamp;
         last_timestamp_repetition = 0;
       } else {
         ++last_timestamp_repetition;
       }
-      auto key =
+      std::string key =
           LevelDbTableKey(zoom_level, timestamp, last_timestamp_repetition);
       if (!key.empty()) {
-        builder.Add(key, mutable_event->SerializeAsString());
+        // To reduce file size, clear the timestamp from the value. It is
+        // redundant info because the timestamp is part of the key.
+        TraceEvent event_copy = *event;
+        event_copy.clear_timestamp_ps();
+        builder.Add(key, event_copy.SerializeAsString());
       } else {
         ++num_of_events_dropped;
       }
-      mutable_event->set_timestamp_ps(timestamp);
     }
   }
+  absl::string_view filename;
+  TF_RETURN_IF_ERROR(file->Name(&filename));
   LOG(INFO) << "Storing " << trace.num_events() - num_of_events_dropped
             << " as LevelDb table fast file: " << filename << " with "
             << num_of_events_dropped << " events dropped.";
 
   TF_RETURN_IF_ERROR(builder.Finish());
-  return tsl::OkStatus();
+  return file->Close();
 }
 
-tsl::Status DoLoadFromLevelDbTable(
+absl::Status DoLoadFromLevelDbTable(
     const std::string& filename,
     std::unique_ptr<TraceEventsFilterInterface> filter,
-    std::unique_ptr<TraceVisibilityFilter> visibility,
+    std::unique_ptr<TraceVisibilityFilter> visibility_filter,
     int64_t filter_by_visibility_threshold, Trace& trace,
     bool& filter_by_visibility,
     const std::function<TraceEvent*(const TraceEvent&)>& copy_event_to_arena,
@@ -268,7 +310,8 @@ tsl::Status DoLoadFromLevelDbTable(
   // Read the metadata.
   iterator->SeekToFirst();
   if (!ReadTraceMetadata(iterator.get(), kTraceMetadataKey, &trace)) {
-    return tsl::errors::Unknown("Could not parse Trace proto");
+    return absl::UnknownError(
+        "Could not parse Trace proto to read trace metadata");
   }
 
   if (filter) filter->SetUp(trace);
@@ -279,13 +322,14 @@ tsl::Status DoLoadFromLevelDbTable(
   filter_by_visibility = filter_by_visibility_threshold == -1LL ||
                          !trace.has_num_events() ||
                          trace.num_events() >= filter_by_visibility_threshold;
-  if (!filter_by_visibility) {
-    visibility.reset();  // disable streaming
-  }
-  if (visibility) {
-    visibility->SetUp(trace);
-    visible_span = visibility->VisibleSpan();
-    container_resolution_ps = visibility->ResolutionPs();
+  if (visibility_filter) {
+    if (!filter_by_visibility) {
+      // disable streaming
+      visibility_filter->UpdateVisibility(0);
+    }
+    visibility_filter->SetUp(trace);
+    visible_span = visibility_filter->VisibleSpan();
+    container_resolution_ps = visibility_filter->ResolutionPs();
   } else {
     visible_span = TraceSpan(trace);
   }
@@ -346,14 +390,14 @@ tsl::Status DoLoadFromLevelDbTable(
             << filtered << " events from LevelDb fast file: " << filename;
   size_t visible_events_count = 0;
   for (TraceEvent* event : loaded_events) {
-    if (!visibility || !visibility->Filter(*event)) {
+    if (!visibility_filter || !visibility_filter->Filter(*event)) {
       add_arena_event(event);
       ++visible_events_count;
     }
   }
   LOG(INFO) << "Added " << visible_events_count
             << " visible events from LevelDb fast file: " << filename;
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace profiler

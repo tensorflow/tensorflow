@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ def MHLO_Dialect : Dialect {
 
   let useDefaultAttributePrinterParser = 0;
   let useDefaultTypePrinterParser = 0;
-  let usePropertiesForAttributes = 0;
 }
 
 include "mhlo/IR/hlo_base.td"

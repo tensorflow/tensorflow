@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <stdarg.h>
 
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <memory>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
@@ -85,18 +87,31 @@ using python_utils::PyDecrefDeleter;
 std::unique_ptr<Interpreter> CreateInterpreter(
     const InterpreterWrapper::Model* model,
     const tflite::MutableOpResolver& resolver, bool preserve_all_tensors,
-    bool disable_delegate_clustering) {
+    bool disable_delegate_clustering, int num_threads,
+    bool default_delegate_latest_features) {
   if (!model) {
     return nullptr;
   }
 
   ::tflite::python::ImportNumpy();
 
+  TfLiteDelegate* xnnpack_delegate = nullptr;
+  if (default_delegate_latest_features) {
+    auto opts = TfLiteXNNPackDelegateOptionsDefault();
+    opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
+    opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING;
+    opts.num_threads = num_threads;
+    xnnpack_delegate = TfLiteXNNPackDelegateCreate(&opts);
+  }
   std::unique_ptr<Interpreter> interpreter;
   InterpreterOptions options;
   options.SetPreserveAllTensors(preserve_all_tensors);
   options.SetDisableDelegateClustering(disable_delegate_clustering);
   InterpreterBuilder builder(*model, resolver, &options);
+  if (default_delegate_latest_features) {
+    builder.AddDelegate(xnnpack_delegate);
+  }
+  builder.SetNumThreads(num_threads);
   if (builder(&interpreter) != kTfLiteOk) {
     return nullptr;
   }
@@ -135,9 +150,11 @@ PyObject* PyDictFromSparsityParam(const TfLiteSparsity& param) {
   PyDict_SetItemString(result, "traversal_order",
                        PyArrayFromIntVector(param.traversal_order->data,
                                             param.traversal_order->size));
-  PyDict_SetItemString(
-      result, "block_map",
-      PyArrayFromIntVector(param.block_map->data, param.block_map->size));
+  if (param.block_map != nullptr) {
+    PyDict_SetItemString(
+        result, "block_map",
+        PyArrayFromIntVector(param.block_map->data, param.block_map->size));
+  }
   PyObject* dim_metadata = PyList_New(param.dim_metadata_size);
   for (int i = 0; i < param.dim_metadata_size; i++) {
     PyObject* dim_metadata_i = PyDict_New();
@@ -200,29 +217,36 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
-    bool disable_delegate_clustering) {
+    bool disable_delegate_clustering, int num_threads,
+    bool default_delegate_latest_features) {
   if (!model) {
     *error_msg = error_reporter->message();
     return nullptr;
   }
 
   std::unique_ptr<tflite::MutableOpResolver> resolver;
-  switch (op_resolver_id) {
-    case kBuiltinOpResolver:
-      resolver = std::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
-      break;
-    case kBuiltinRefOpResolver:
-      resolver = std::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
-      break;
-    case kBuiltinOpResolverWithoutDefaultDelegates:
-      resolver = std::make_unique<
-          tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
-      break;
-    default:
-      // This should not never happen because the eventual caller in
-      // interpreter.py should have passed a valid id here.
-      TFLITE_DCHECK(false);
-      return nullptr;
+  if (default_delegate_latest_features) {
+    resolver = std::make_unique<
+        tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
+  } else {
+    switch (op_resolver_id) {
+      case kBuiltinOpResolver:
+        resolver = std::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+        break;
+      case kBuiltinRefOpResolver:
+        resolver =
+            std::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
+        break;
+      case kBuiltinOpResolverWithoutDefaultDelegates:
+        resolver = std::make_unique<
+            tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
+        break;
+      default:
+        // This should not never happen because the eventual caller in
+        // interpreter.py should have passed a valid id here.
+        TFLITE_DCHECK(false);
+        return nullptr;
+    }
   }
 
   for (const auto& registerer : registerers_by_name) {
@@ -232,9 +256,9 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   for (const auto& registerer : registerers_by_func) {
     registerer(reinterpret_cast<uintptr_t>(resolver.get()));
   }
-  auto interpreter =
-      CreateInterpreter(model.get(), *resolver, preserve_all_tensors,
-                        disable_delegate_clustering);
+  auto interpreter = CreateInterpreter(
+      model.get(), *resolver, preserve_all_tensors, disable_delegate_clustering,
+      num_threads, default_delegate_latest_features);
   if (!interpreter) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -266,6 +290,9 @@ PyObject* InterpreterWrapper::AllocateTensors(int subgraph_index) {
   if (subgraph_index == kUndeterminedSubgraphIndex) {
     TFLITE_PY_CHECK(interpreter_->AllocateTensors());
   } else {
+    // We don't check the return of this call. Failing is a real possiblity as
+    // the default XNNPack delegate may fail to apply on certain graphs.
+    interpreter_->ApplyLazyDelegateProviders();
     TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
     TFLITE_PY_CHECK(interpreter_->subgraph(subgraph_index)->AllocateTensors());
   }
@@ -370,6 +397,13 @@ int InterpreterWrapper::NumTensors(int subgraph_index) const {
     return 0;
   }
   return interpreter_->subgraph(subgraph_index)->tensors_size();
+}
+
+int InterpreterWrapper::NumSubgraphs() const {
+  if (interpreter_ == nullptr) {
+    return 0;
+  }
+  return interpreter_->subgraphs_size();
 }
 
 std::string InterpreterWrapper::TensorName(int tensor_index,
@@ -722,12 +756,32 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
       tensor->type != kTfLiteVariant) {
     // Make a buffer copy but we must tell Numpy It owns that data or else
     // it will leak.
-    void* data = malloc(tensor->bytes);
+    size_t numpy_bytes = tensor->bytes;
+    if (tensor->type == kTfLiteInt4) {
+      // Numpy doesn't have int4 type, so we double the size of the buffer
+      // to hold int8 type for each (4-bit packed) element.
+      numpy_bytes *= 2;
+    }
+    void* data = malloc(numpy_bytes);
     if (!data) {
       PyErr_SetString(PyExc_ValueError, "Malloc to copy tensor failed.");
       return nullptr;
     }
-    memcpy(data, tensor->data.raw, tensor->bytes);
+    if (tensor->type == kTfLiteInt4) {
+      int8_t* tensor_data = reinterpret_cast<int8_t*>(tensor->data.raw);
+      int8_t* numpy_data = static_cast<int8_t*>(data);
+      // Unpack each 4-bit value to an 8-bit container.
+      for (size_t i = 0; i < tensor->bytes; i++) {
+        int8_t byte = tensor_data[i];
+        int8_t lower = static_cast<int8_t>(byte << 4) >> 4;
+        int8_t upper = static_cast<int8_t>(byte >> 4);
+        numpy_data[2 * i] = lower;
+        numpy_data[2 * i + 1] = upper;
+      }
+    } else {
+      memcpy(data, tensor->data.raw, tensor->bytes);
+    }
+
     PyObject* np_array;
     if (tensor->sparsity == nullptr) {
       np_array =
@@ -806,14 +860,16 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
-    bool disable_delegate_clustering) {
+    bool disable_delegate_clustering, int num_threads,
+    bool default_delegate_latest_features) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromFile(model_path, error_reporter.get());
   return CreateInterpreterWrapper(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
-      disable_delegate_clustering);
+      disable_delegate_clustering, num_threads,
+      default_delegate_latest_features);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
@@ -822,7 +878,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     bool preserve_all_tensors, bool disable_delegate_clustering) {
   return CreateWrapperCPPFromFile(
       model_path, op_resolver_id, registerers, {} /*registerers_by_func*/,
-      error_msg, preserve_all_tensors, disable_delegate_clustering);
+      error_msg, preserve_all_tensors, disable_delegate_clustering,
+      /*num_threads=*/1, /*default_delegate_latest_features=*/false);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -830,7 +887,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
-    bool disable_delegate_clustering) {
+    bool disable_delegate_clustering, int num_threads,
+    bool default_delegate_latest_features) {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -839,20 +897,23 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     return nullptr;
   }
   std::unique_ptr<InterpreterWrapper::Model> model =
-      Model::BuildFromBuffer(buf, length, error_reporter.get());
+      Model::VerifyAndBuildFromBuffer(buf, length, /*extra_verifier=*/nullptr,
+                                      error_reporter.get());
   return CreateInterpreterWrapper(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
-      disable_delegate_clustering);
+      disable_delegate_clustering, num_threads,
+      default_delegate_latest_features);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     PyObject* data, int op_resolver_id,
     const std::vector<std::string>& registerers, std::string* error_msg,
     bool preserve_all_tensors, bool disable_delegate_clustering) {
-  return CreateWrapperCPPFromBuffer(data, op_resolver_id, registerers, {},
-                                    error_msg, preserve_all_tensors,
-                                    disable_delegate_clustering);
+  return CreateWrapperCPPFromBuffer(
+      data, op_resolver_id, registerers, {}, error_msg, preserve_all_tensors,
+      disable_delegate_clustering, /*num_threads=*/1,
+      /*default_delegate_latest_features=*/false);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {

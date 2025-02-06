@@ -20,6 +20,7 @@ import sys
 
 from absl import logging
 import flatbuffers
+import numpy as np
 
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
@@ -43,14 +44,15 @@ CONVERSION_METADATA_FIELD_NAME = "CONVERSION_METADATA"
 # Keras functions used by TFLite
 model_input_signature = _tflite_keras_util.model_input_signature
 trace_model_call = _tflite_keras_util.trace_model_call
+get_save_spec = _tflite_keras_util.get_save_spec
 
 # Jax functions used by TFLite
 # pylint: disable=g-import-not-at-top
 # pylint: disable=unused-import
 try:
-  from jax import xla_computation as _xla_computation
+  from jax import jit as _jit
 except ImportError:
-  _xla_computation = None
+  _jit = None
 # pylint: enable=g-import-not-at-top
 # pylint: enable=unused-import
 
@@ -998,7 +1000,7 @@ def get_sparsity_modes(model_object):
 
       # Block map is the list if indexes where the block size is larger than 1.
       # So empty block map means it is random sparsity.
-      if not tensor.sparsity.blockMap:
+      if tensor.sparsity.blockMap.size == 0 or not tensor.sparsity.blockMap:
         result.add(
             conversion_metadata_fb.ModelOptimizationMode.RANDOM_SPARSITY)
       else:
@@ -1006,6 +1008,109 @@ def get_sparsity_modes(model_object):
             conversion_metadata_fb.ModelOptimizationMode.BLOCK_SPARSITY)
 
   return list(result)
+
+
+def get_model_hash(model):
+  """Calculate a 64-bit integer hash for a TensorFlow Lite model based on its structure.
+
+  Args:
+      model: A TensorFlow Lite model object.
+
+  Returns:
+      int: A 64-bit integer hash value representing the model structure.
+  """
+  # TODO(b/344872922): Move the hashing implementation to C++ layer since not
+  # all calls to the converter come via the Python API.
+  hash_value = 0
+
+  for subgraph in model.subgraphs:
+    if subgraph.operators is not None:
+      hash_value = update_hash_with_primitive_value(
+          hash_value, len(subgraph.operators)
+      )
+
+      for operator in subgraph.operators:
+        if operator.inputs is not None:
+          hash_value = update_hash_with_array(hash_value, operator.inputs)
+
+        if operator.outputs is not None:
+          hash_value = update_hash_with_array(hash_value, operator.outputs)
+
+    if subgraph.tensors is not None:
+      hash_value = update_hash_with_primitive_value(
+          hash_value, len(subgraph.tensors)
+      )
+
+      for tensor in subgraph.tensors:
+        if tensor.buffer is not None:
+          buffer = model.buffers[tensor.buffer]
+          if buffer.data is not None:
+            hash_value = update_hash_with_primitive_value(
+                hash_value, len(buffer.data)
+            )
+
+        if tensor.shape is not None:
+          hash_value = update_hash_with_array(hash_value, tensor.shape)
+
+    if subgraph.inputs is not None:
+      hash_value = update_hash_with_primitive_value(
+          hash_value, len(subgraph.inputs)
+      )
+
+    if subgraph.outputs is not None:
+      hash_value = update_hash_with_primitive_value(
+          hash_value, len(subgraph.outputs)
+      )
+
+  return hash_value
+
+
+def update_hash_with_primitive_value(hash_value, value):
+  """Update the hash value using a primitive value.
+
+  Args:
+      hash_value (uint64): The current hash value.
+      value: The primitive value to incorporate into the hash.
+
+  Returns:
+      int: The updated hash value.
+  """
+  hash_const = np.uint64(0x9E3779B97F4A7800)
+  hash_value = np.uint64(hash_value)
+  value = np.uint64(value)
+
+  # Convert to arrays before shifting.
+  hash_value = np.array([hash_value])
+  value = np.array([value])
+
+  # Shift the values, then take the value from the first index.
+  hash_value = np.bitwise_xor(
+      hash_value,
+      (
+          value
+          + hash_const
+          + np.left_shift(hash_value, 10)
+          + np.right_shift(hash_value, 4)
+      ),
+  )[0]
+
+  return hash_value
+
+
+def update_hash_with_array(hash_value, int_array):
+  """Update the hash value using a TFLite int array.
+
+  Args:
+      hash_value (int): The current hash value.
+      int_array: A TFLite int array to incorporate into the hash.
+
+  Returns:
+      int: The updated hash value.
+  """
+  if int_array is not None:
+    for i in int_array:
+      hash_value = update_hash_with_primitive_value(hash_value, i)
+  return hash_value
 
 
 def populate_conversion_metadata(model_object, metadata):
@@ -1065,6 +1170,8 @@ def get_conversion_metadata(model_buffer):
       metadata_buf = model_object.buffers[meta.buffer].data.tobytes()
       return conversion_metadata_fb.ConversionMetadataT.InitFromObj(
           conversion_metadata_fb.ConversionMetadata.GetRootAsConversionMetadata(
-              metadata_buf, 0))
+              metadata_buf, 0
+          )
+      )
 
   return None

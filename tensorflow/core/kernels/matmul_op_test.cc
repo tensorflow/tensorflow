@@ -55,7 +55,7 @@ class FusedMatMulOpTest : public OpsTestBase {
   void RunAndFetch(const tensorflow::Scope& root, const string& fetch,
                    Tensor* output, bool allow_gpu_device,
                    const NodeDef* fetch_node = nullptr,
-                   tsl::Status* last_status = nullptr) {
+                   absl::Status* last_status = nullptr) {
     tensorflow::GraphDef graph;
     TF_ASSERT_OK(root.ToGraphDef(&graph));
 
@@ -208,7 +208,7 @@ class FusedMatMulOpTest : public OpsTestBase {
                      .Attr("transpose_b", transpose_b)
                      .Finalize(&fused_matmul));
 
-    tsl::Status last_status;
+    absl::Status last_status;
     RunAndFetch(root, fused_matmul.name(), output, allow_gpu_device,
                 &fused_matmul, &last_status);
 
@@ -416,12 +416,7 @@ REGISTER_TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest,       //
                             MatMul1x256x1WithActivation);
 
 // TODO(ezhulenev): Add support for more data types.
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 using FusedBiasAddDataTypes = ::testing::Types<float, Eigen::half>;
-#else
-// CPU doesn't support more data types.
-using FusedBiasAddDataTypes = ::testing::Types<float>;
-#endif
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedMatMulWithBiasOpTest,
                                FusedBiasAddDataTypes);
 

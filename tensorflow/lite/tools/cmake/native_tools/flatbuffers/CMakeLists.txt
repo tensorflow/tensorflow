@@ -40,4 +40,4 @@ else()
   set(FLATC_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX} CACHE PATH "Flatc installation directory")
 endif()
 
-find_package(flatbuffers)
+find_package(FlatBuffers)

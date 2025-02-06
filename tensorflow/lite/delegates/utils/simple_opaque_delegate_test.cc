@@ -14,20 +14,29 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
 #include <array>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter_builder.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model_builder.h"
 
 namespace tflite {
 
@@ -263,20 +272,19 @@ TEST(DelegateTest, TestDataMultiAddBin_MultiInputMultiOutput_FullyDelegated) {
   TfLiteModelDelete(model);
 }
 
-TfLiteRegistrationExternal* CreateDelegateKernelRegistrationImpl(
+TfLiteOperator* CreateDelegateKernelRegistrationImpl(
     SimpleOpaqueDelegateInterface* delegate) {
-  TfLiteRegistrationExternal* kernel_registration =
-      TfLiteRegistrationExternalCreate(kTfLiteBuiltinDelegate, delegate->Name(),
-                                       1);
-  TfLiteRegistrationExternalSetFree(
+  TfLiteOperator* kernel_registration = TfLiteOperatorCreate(
+      kTfLiteBuiltinDelegate, delegate->Name(), 1, /*user_data=*/nullptr);
+  TfLiteOperatorSetFreeWithData(
       kernel_registration,
-      [](TfLiteOpaqueContext* context, void* buffer) -> void {
+      [](void* user_data, TfLiteOpaqueContext* context, void* buffer) -> void {
         delete reinterpret_cast<SimpleOpaqueDelegateInterface*>(buffer);
       });
 
-  TfLiteRegistrationExternalSetInit(
+  TfLiteOperatorSetInitWithData(
       kernel_registration,
-      [](TfLiteOpaqueContext* context, const char* buffer,
+      [](void* user_data, TfLiteOpaqueContext* context, const char* buffer,
          size_t length) -> void* {
         auto* params =
             reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
@@ -293,18 +301,18 @@ TfLiteRegistrationExternal* CreateDelegateKernelRegistrationImpl(
         }
         return delegate_kernel.release();
       });
-  TfLiteRegistrationExternalSetPrepare(
+  TfLiteOperatorSetPrepareWithData(
       kernel_registration,
-      [](TfLiteOpaqueContext* context,
+      [](void* user_data, TfLiteOpaqueContext* context,
          TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
         SimpleOpaqueDelegateKernelInterface* delegate_kernel =
             reinterpret_cast<SimpleOpaqueDelegateKernelInterface*>(
                 TfLiteOpaqueNodeGetUserData(opaque_node));
         return delegate_kernel->Prepare(context, opaque_node);
       });
-  TfLiteRegistrationExternalSetInvoke(
+  TfLiteOperatorSetInvokeWithData(
       kernel_registration,
-      [](TfLiteOpaqueContext* context,
+      [](void* user_data, TfLiteOpaqueContext* context,
          TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
         SimpleOpaqueDelegateKernelInterface* delegate_kernel =
             reinterpret_cast<SimpleOpaqueDelegateKernelInterface*>(
@@ -343,7 +351,7 @@ class MySimpleOpaqueDelegateWithBufferHandleSupport
   static constexpr int kDelegateOutputValue = 42;
   TfLiteStatus CopyFromBufferHandle(TfLiteOpaqueContext* context,
                                     TfLiteBufferHandle buffer_handle,
-                                    TfLiteOpaqueTensor* tensor) {
+                                    TfLiteOpaqueTensor* tensor) override {
     auto* output = reinterpret_cast<float*>(TfLiteOpaqueTensorData(tensor));
     std::vector<float> test_output(
         example::helpers::CalculateNumElements(tensor), kDelegateOutputValue);
@@ -353,8 +361,7 @@ class MySimpleOpaqueDelegateWithBufferHandleSupport
   }
 
   void FreeBufferHandle(TfLiteOpaqueContext* context,  // NOLINT
-                        TfLiteOpaqueDelegate* delegate,
-                        TfLiteBufferHandle* handle) {
+                        TfLiteBufferHandle* handle) override {
     recorded_buffer_handle_ = *handle;
     free_buffer_handle_called_ = true;
   }
@@ -386,7 +393,7 @@ TEST_F(TestDelegate, SetBufferHandle) {
     TfLiteIntArray* execution_plan;
     TF_LITE_ENSURE_STATUS(
         TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan));
-    TfLiteRegistrationExternal* delegate_kernel_registration =
+    TfLiteOperator* delegate_kernel_registration =
         CreateDelegateKernelRegistrationImpl(simple_opaque_delegate);
 
     return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
@@ -411,7 +418,7 @@ TEST_F(TestDelegate, SetBufferHandle) {
                                                 TfLiteBufferHandle* handle) {
     auto* simple_opaque_delegate =
         reinterpret_cast<MySimpleOpaqueDelegateWithBufferHandleSupport*>(data);
-    simple_opaque_delegate->FreeBufferHandle(context, delegate, handle);
+    simple_opaque_delegate->FreeBufferHandle(context, handle);
   };
   TfLiteDelegate tflite_delegate{};
   tflite_delegate.opaque_delegate_builder = &opaque_delegate_builder;

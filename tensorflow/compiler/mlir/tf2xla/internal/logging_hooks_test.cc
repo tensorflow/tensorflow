@@ -29,12 +29,12 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/file_statistics.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/file_statistics.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -64,19 +64,20 @@ class LoggingHooksTest : public ::testing::Test {
 
     test_group_name_ = "TestGroup";
     test_dir_ = testing::TmpDir();
-    setenv("TF_DUMP_GRAPH_PREFIX", test_dir_.c_str(), 1);
+    setenv(/*name=*/"TF_DUMP_GRAPH_PREFIX", /*value=*/test_dir_.c_str(),
+           /*overwrite=*/1);
   }
 
-  tsl::Status CreateMlirModule(std::string mlir_module_filename) {
+  absl::Status CreateMlirModule(std::string mlir_module_filename) {
     std::string mlir_module_path = TestDataPath() + mlir_module_filename;
     mlir_module_ =
         mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
     if (!mlir_module_) {
-      return tsl::Status(
+      return absl::Status(
           absl::StatusCode::kNotFound,
           absl::StrCat("Could not find MLIR module at ", mlir_module_path));
     }
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   DialectRegistry registry_;

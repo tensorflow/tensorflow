@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,16 +23,23 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/stream_pool.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "tsl/platform/threadpool.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -74,12 +81,12 @@ class BackendOptions {
 class Backend {
  public:
   // Creates a new backend.
-  static StatusOr<std::unique_ptr<Backend>> CreateBackend(
+  static absl::StatusOr<std::unique_ptr<Backend>> CreateBackend(
       const BackendOptions& options);
 
   // Creates a backend for the default platform. The default platform is defined
   // in PlatformUtil.
-  static StatusOr<std::unique_ptr<Backend>> CreateDefaultBackend();
+  static absl::StatusOr<std::unique_ptr<Backend>> CreateDefaultBackend();
 
   ~Backend();
 
@@ -109,7 +116,7 @@ class Backend {
   }
 
   // Returns the stream executor for the given device ordinal.
-  StatusOr<se::StreamExecutor*> stream_executor(int device_ordinal) const;
+  absl::StatusOr<se::StreamExecutor*> stream_executor(int device_ordinal) const;
 
   // Returns the stream executor for the default device ordinal. This stream
   // executor can only be used when the number of computations is 1 (replication
@@ -122,13 +129,13 @@ class Backend {
   // Borrows a stream for use by the caller with a given priority, either by
   // grabbing it from an internal pool, or by constructing/initializating it,
   // and returns the result to the caller.
-  StatusOr<StreamPool::Ptr> BorrowStream(
+  absl::StatusOr<StreamPool::Ptr> BorrowStream(
       int device_ordinal,
       se::StreamPriority priority = se::StreamPriority::Default);
-  StatusOr<StreamPool::Ptr> BorrowStream(
+  absl::StatusOr<StreamPool::Ptr> BorrowStream(
       se::StreamExecutor* executor,
       se::StreamPriority priority = se::StreamPriority::Default);
-  StatusOr<std::vector<StreamPool::Ptr>> BorrowStreams(
+  absl::StatusOr<std::vector<StreamPool::Ptr>> BorrowStreams(
       int device_ordinal, int num_streams,
       se::StreamPriority priority = se::StreamPriority::Default);
 
@@ -136,8 +143,8 @@ class Backend {
   // as `BorrowStreams` above does.
   // Purely for convenience, the caller could rather make this anonymous
   // function itself.
-  std::function<StatusOr<std::vector<StreamPool::Ptr>>(int, int,
-                                                       se::StreamPriority)>
+  std::function<absl::StatusOr<std::vector<StreamPool::Ptr>>(
+      int, int, se::StreamPriority)>
   StreamBorrowerWithPriority() {
     return [this](int device_ordinal, int num_streams,
                   se::StreamPriority priority) {
@@ -159,7 +166,8 @@ class Backend {
   // Returns true if the devices with the given ordinals are equivalent from
   // XLA's perspective. That is, an executable compiled for one device would
   // be equivalent to an executable compiled for the other.
-  StatusOr<bool> devices_equivalent(int device_ordinal_a, int device_ordinal_b);
+  absl::StatusOr<bool> devices_equivalent(int device_ordinal_a,
+                                          int device_ordinal_b) const;
 
   // For the host platform, returns the configured eigen threadpool device to be
   // used for scheduling work. For other platforms, returns NULL.
@@ -167,7 +175,7 @@ class Backend {
   tsl::thread::ThreadPool* eigen_intra_op_thread_pool() const;
 
   // Resets the devices associated with this backend.
-  Status ResetDevices();
+  absl::Status ResetDevices();
 
  private:
   Backend(se::Platform* platform, Compiler* compiler,

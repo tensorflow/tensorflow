@@ -1,0 +1,28 @@
+// RUN: fusion_to_mlir %s |\
+// RUN:   emitters_opt --xla-gpu-test-optimize | FileCheck %s
+// RUN: test_correctness %s
+
+fusion {
+  in = c64[2,3] parameter(0)
+  updates = c64[2,2] parameter(1)
+  i0 = s32[] parameter(2)
+  i1 = s32[] parameter(3)
+  updated = c64[2,3] dynamic-update-slice(in, updates, i0, i1)
+  // Add some random epilogue to prevent in-place DUS from triggering.
+  ROOT negated = c64[2,3] negate(updated)
+}
+
+// CHECK: func.func @main
+// CHECK-SAME: %[[IN:.*]]: tensor<2x3xcomplex<f32>> {xla.slice_index = 0
+// CHECK-SAME: %[[UPDATES:.*]]: tensor<2x2xcomplex<f32>> {xla.slice_index = 1
+// CHECK-SAME: %[[I0:.*]]: tensor<i32> {xla.slice_index = 2
+// CHECK-SAME: %[[I1:.*]]: tensor<i32> {xla.slice_index = 3
+
+// No need to load i0, since its value is irrelevant.
+// CHECK-NOT: tensor.extract %[[I0]]
+// CHECK: tensor.extract %[[I1]]
+// CHECK-NOT: tensor.extract %[[I0]]
+// CHECK: scf.if
+// CHECK:   tensor.extract %[[UPDATES]]
+// CHECK: } else {
+// CHECK:   tensor.extract %[[IN]]

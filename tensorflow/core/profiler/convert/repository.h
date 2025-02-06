@@ -26,13 +26,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
+#include "tensorflow/core/profiler/utils/hlo_module_map.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/file_system_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -55,7 +56,7 @@ class SessionSnapshot {
   // <xspace_paths> are the file paths to XSpace protos.
   // Optionally, <xspaces> can contain the XSpace protos pre-loaded by the
   // profiler plugin.
-  static StatusOr<SessionSnapshot> Create(
+  static absl::StatusOr<SessionSnapshot> Create(
       std::vector<std::string> xspace_paths,
       std::optional<std::vector<std::unique_ptr<XSpace>>> xspaces);
 
@@ -64,11 +65,11 @@ class SessionSnapshot {
 
   // Gets XSpace proto.
   // The caller of this function will take ownership of the XSpace.
-  StatusOr<std::unique_ptr<XSpace>> GetXSpace(size_t index) const;
+  absl::StatusOr<std::unique_ptr<XSpace>> GetXSpace(size_t index) const;
 
   // Gets XSpace proto.
   // The caller of this function will take ownership of the XSpace.
-  StatusOr<std::unique_ptr<XSpace>> GetXSpaceByName(
+  absl::StatusOr<std::unique_ptr<XSpace>> GetXSpaceByName(
       absl::string_view name) const;
 
   // Gets host name.
@@ -86,11 +87,11 @@ class SessionSnapshot {
                                          absl::string_view host) const;
 
   // Gets the name of the host data file.
-  StatusOr<std::string> GetHostDataFileName(StoredDataType data_type,
-                                            std::string host) const;
+  absl::StatusOr<std::string> GetHostDataFileName(StoredDataType data_type,
+                                                  std::string host) const;
 
   // Gets the path of the host data file.
-  StatusOr<std::optional<std::string>> GetHostDataFilePath(
+  absl::StatusOr<std::optional<std::string>> GetHostDataFilePath(
       StoredDataType data_type, std::string host) const;
 
   /* Gets whether the cache file is present in run dir. First value indicates
@@ -102,7 +103,7 @@ class SessionSnapshot {
       3. <true, filepath>: If cache file is present and file contains data_type
      events
   */
-  StatusOr<std::pair<bool, std::string>> HasCacheFile(
+  absl::StatusOr<std::pair<bool, std::string>> HasCacheFile(
       StoredDataType data_type) const;
 
   template <typename T>
@@ -179,6 +180,18 @@ absl::Status ReadBinaryProto(const SessionSnapshot& session_snapshot,
                              const StoredDataType data_type,
                              const std::string& host, T* proto) {
   return session_snapshot.ReadBinaryProto(data_type, host, proto);
+}
+
+// Process HloModuleMap from all XSpaces in a session.
+inline absl::StatusOr<HloModuleMap> ProcessHloModuleMap(
+    const SessionSnapshot& session_snapshot) {
+  HloModuleMap hlo_module_map;
+  for (int i = 0; i < session_snapshot.XSpaceSize(); i++) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                        session_snapshot.GetXSpace(i));
+    ProcessHloModuleMapFromXSpace(hlo_module_map, xspace.get());
+  }
+  return hlo_module_map;
 }
 
 }  // namespace profiler

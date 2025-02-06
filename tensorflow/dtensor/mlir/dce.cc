@@ -17,11 +17,10 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace tensorflow {
 namespace dtensor {

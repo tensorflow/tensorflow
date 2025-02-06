@@ -33,7 +33,8 @@ RESULT_STORE_LINK_RE = re.compile(
 FAILED_BUILD_LINE = 'FAILED: Build did NOT complete successfully'
 BUILD_STATUS_LINE = 'INFO: Build'
 TESTS_FAILED_RE = re.compile(r'^INFO: Build completed, \d+ tests? FAILED')
-BAZEL_COMMAND_RE = re.compile(r'(^| )(bazel .* (test|build) .+)')
+BAZEL_COMMAND_RE = re.compile(
+    r'(^| )(?P<command>bazel (.*? )?(?P<type>test|build) .+)')
 
 
 class InvokeStatus:
@@ -136,8 +137,8 @@ def parse_log(file_path: str,
       if 'bazel ' in backtrack_line and not backtrack_line.endswith('\\'):
         bazel_line = BAZEL_COMMAND_RE.search(backtrack_line)
         if bazel_line:
-          lines['command'] = bazel_line.group(2)
-          lines['command_type'] = bazel_line.group(3)
+          lines['command'] = bazel_line.group('command')
+          lines['command_type'] = bazel_line.group('type')
           break
       k -= 1
       continue
@@ -247,11 +248,12 @@ def create_xml_file(result_store_dict: ResultDictType,
     f.write(b'<?xml version="1.0"?>\n')
     tree.write(f)
     if verbose:
-      print(f'Wrote to {file_path}')
+      print(f'\nWrote XML with Bazel invocation results to {file_path}')
 
 
 def print_invocation_results(result_store_dict: ResultDictType):
   """Prints out a short summary of the found ResultStore links (if any)."""
+  print()
   if not result_store_dict:
     print('Found no ResultStore links for Bazel build/test invocations.')
   else:

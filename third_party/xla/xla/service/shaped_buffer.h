@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,13 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -42,14 +45,18 @@ class ShapedBuffer {
   // both the on-host and on-device shape are required. The on-device shape
   // determines the number of device allocations (DeviceMemoryBase) held by the
   // ShapedBuffer.
-  ShapedBuffer(Shape on_device_shape, int device_ordinal);
+  // Specify `physical_device_ordinal` if multiple devices share the same
+  // physical device, e.g., virtual GPUs.
+  ShapedBuffer(Shape on_device_shape, int device_ordinal,
+               int physical_device_ordinal = -1);
 
   // TODO(b/170310047): remove this overload.
-  ShapedBuffer(Shape on_host_shape, Shape on_device_shape, int device_ordinal);
+  ShapedBuffer(Shape on_host_shape, Shape on_device_shape, int device_ordinal,
+               int physical_device_ordinal = -1);
 
   // Movable, but not copyable.
-  ShapedBuffer(ShapedBuffer&& s);
-  ShapedBuffer& operator=(ShapedBuffer&&);
+  ShapedBuffer(ShapedBuffer&& s) noexcept;
+  ShapedBuffer& operator=(ShapedBuffer&&) noexcept;
   ShapedBuffer(const ShapedBuffer&) = delete;
   ShapedBuffer& operator=(const ShapedBuffer&) = delete;
 
@@ -68,6 +75,7 @@ class ShapedBuffer {
   const Shape& on_device_shape() const { return on_device_shape_; }
 
   int device_ordinal() const { return device_ordinal_; }
+  int physical_device_ordinal() const { return physical_device_ordinal_; }
 
   // Return the root buffer of the shape (shape index {}).
   const se::DeviceMemoryBase& root_buffer() const {
@@ -115,7 +123,7 @@ class ShapedBuffer {
   const ShapeTree<se::DeviceMemoryBase>& buffers() const { return buffers_; }
   ShapeTree<se::DeviceMemoryBase>& buffers() { return buffers_; }
 
-  StatusOr<ShapedBuffer> SubShapedBuffer(const ShapeIndex& index) const;
+  absl::StatusOr<ShapedBuffer> SubShapedBuffer(const ShapeIndex& index) const;
 
   // Set all device memory pointers in the object to null.
   void clear();
@@ -130,6 +138,7 @@ class ShapedBuffer {
 
   // The device the memory is allocated on.
   int device_ordinal_;
+  int physical_device_ordinal_;
 
   // The tree of device buffers. Its shape is on_device_shape().
   ShapeTree<se::DeviceMemoryBase> buffers_;
@@ -150,11 +159,13 @@ class ScopedShapedBuffer : public ShapedBuffer {
   // Creates a ScopedShapedBuffer with null DeviceMemoryBases at each index.
   explicit ScopedShapedBuffer(Shape on_device_shape,
                               se::DeviceMemoryAllocator* allocator,
-                              int device_ordinal);
+                              int device_ordinal,
+                              int physical_device_ordinal = -1);
   // TODO(b/170310047): remove this overload.
   explicit ScopedShapedBuffer(Shape on_host_shape, Shape on_device_shape,
                               se::DeviceMemoryAllocator* allocator,
-                              int device_ordinal);
+                              int device_ordinal,
+                              int physical_device_ordinal = -1);
 
   // Create a ScopedShapedBuffer by taking over the memory from the incoming
   // ShapedBuffer.
@@ -162,8 +173,8 @@ class ScopedShapedBuffer : public ShapedBuffer {
                               se::DeviceMemoryAllocator* allocator);
 
   // Movable, but not copyable.
-  ScopedShapedBuffer(ScopedShapedBuffer&& s);
-  ScopedShapedBuffer& operator=(ScopedShapedBuffer&&);
+  ScopedShapedBuffer(ScopedShapedBuffer&& s) noexcept;
+  ScopedShapedBuffer& operator=(ScopedShapedBuffer&&) noexcept;
   ScopedShapedBuffer(const ScopedShapedBuffer&) = delete;
   ScopedShapedBuffer& operator=(const ScopedShapedBuffer&) = delete;
 

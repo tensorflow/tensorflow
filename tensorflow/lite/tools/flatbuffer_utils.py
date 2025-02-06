@@ -58,9 +58,38 @@ def read_model(input_tflite_file):
     raise RuntimeError('Input file not found at %r\n' % input_tflite_file)
   with gfile.GFile(input_tflite_file, 'rb') as input_file_handle:
     model_bytearray = bytearray(input_file_handle.read())
+  return read_model_from_bytearray(model_bytearray)
+
+
+def read_model_from_bytearray(model_bytearray):
+  """Reads a tflite model as a python object.
+
+  Args:
+    model_bytearray: TFLite model in bytearray format.
+
+  Returns:
+    A python object corresponding to the input tflite file.
+  """
   model = convert_bytearray_to_object(model_bytearray)
   if sys.byteorder == 'big':
     byte_swap_tflite_model_obj(model, 'little', 'big')
+
+  # Offset handling for models > 2GB
+  for buffer in model.buffers:
+    if buffer.offset:
+      buffer.data = model_bytearray[buffer.offset : buffer.offset + buffer.size]
+      buffer.offset = 0
+      buffer.size = 0
+  for subgraph in model.subgraphs:
+    for op in subgraph.operators:
+      if op.largeCustomOptionsOffset:
+        op.customOptions = model_bytearray[
+            op.largeCustomOptionsOffset : op.largeCustomOptionsOffset
+            + op.largeCustomOptionsSize
+        ]
+        op.largeCustomOptionsOffset = 0
+        op.largeCustomOptionsSize = 0
+
   return model
 
 
@@ -294,14 +323,10 @@ def byte_swap_buffer_content(buffer, chunksize, from_endiness, to_endiness):
       buffer.data[i : i + chunksize]
       for i in range(0, len(buffer.data), chunksize)
   ]
-  buffer.data = b''.join(
-      [
-          int.from_bytes(byteswap, from_endiness).to_bytes(
-              chunksize, to_endiness
-          )
-          for byteswap in to_swap
-      ]
-  )
+  buffer.data = b''.join([
+      int.from_bytes(byteswap, from_endiness).to_bytes(chunksize, to_endiness)
+      for byteswap in to_swap
+  ])
 
 
 def byte_swap_string_content(buffer, from_endiness, to_endiness):
@@ -314,14 +339,12 @@ def byte_swap_string_content(buffer, from_endiness, to_endiness):
   """
   num_of_strings = int.from_bytes(buffer.data[0:4], from_endiness)
   string_content = bytearray(buffer.data[4 * (num_of_strings + 2) :])
-  prefix_data = b''.join(
-      [
-          int.from_bytes(buffer.data[i : i + 4], from_endiness).to_bytes(
-              4, to_endiness
-          )
-          for i in range(0, (num_of_strings + 1) * 4 + 1, 4)
-      ]
-  )
+  prefix_data = b''.join([
+      int.from_bytes(buffer.data[i : i + 4], from_endiness).to_bytes(
+          4, to_endiness
+      )
+      for i in range(0, (num_of_strings + 1) * 4 + 1, 4)
+  ])
   buffer.data = prefix_data + string_content
 
 

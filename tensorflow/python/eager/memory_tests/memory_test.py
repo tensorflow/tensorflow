@@ -61,7 +61,7 @@ class MemoryTest(test.TestCase):
     memory_test_util.assert_no_leak(
         f, num_iters=1000, increase_threshold_absolute_mb=30)
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testNestedFunctionsDeleted(self):
 
     @def_function.function

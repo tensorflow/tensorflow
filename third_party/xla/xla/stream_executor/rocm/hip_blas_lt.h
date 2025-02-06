@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,24 +13,19 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_HIP_BLAS_LT_H_
 #define XLA_STREAM_EXECUTOR_ROCM_HIP_BLAS_LT_H_
 
+#include "absl/status/status.h"
+#include "rocm/rocm_config.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/host_or_device_scalar.h"
 #include "xla/types.h"
-#include "tsl/platform/status.h"
 
 #if TF_HIPBLASLT
 
-#include "rocm/rocm_config.h"
 #include "xla/stream_executor/rocm/hip_blas_utils.h"
-#include "xla/stream_executor/rocm/hipblaslt_wrapper.h"
 
 namespace stream_executor {
-
-namespace gpu {
-class GpuExecutor;
-}  // namespace gpu
 
 namespace rocm {
 
@@ -41,41 +36,49 @@ class BlasLt : public gpu::BlasLt {
 
  public:
   struct MatrixLayout {
-    static tsl::StatusOr<MatrixLayout> Create(const gpu::MatrixLayout& m);
+    static absl::StatusOr<MatrixLayout> Create(const gpu::MatrixLayout& m);
 
-    hipblasDatatype_t type() const { return HIPBLAS_R_32F; }
+    hipDataType type() const { return datatype_; }
     hipblasLtMatrixLayout_t get() const { return handle_.get(); }
 
    private:
-    explicit MatrixLayout(hipblasLtMatrixLayout_t handle)
-        : handle_(handle, wrap::hipblasLtMatrixLayoutDestroy) {}
+    MatrixLayout(hipblasLtMatrixLayout_t handle, hipDataType datatype)
+        : handle_(handle, wrap::hipblasLtMatrixLayoutDestroy),
+          datatype_(datatype) {}
 
     Owned<hipblasLtMatrixLayout_t> handle_;
+    hipDataType datatype_;
   };
 
   class MatmulDesc {
    public:
-    static tsl::StatusOr<MatmulDesc> Create(
+    static absl::StatusOr<MatmulDesc> Create(
         blas::ComputationType compute_type, blas::DataType scale_type,
         blas::Transpose trans_a = blas::Transpose::kNoTranspose,
         blas::Transpose trans_b = blas::Transpose::kNoTranspose,
         Epilogue epilogue = Epilogue::kDefault,
         PointerMode pointer_mode = PointerMode::kHost);
 
-    hipblasLtComputeType_t compute_type() const {
-      return HIPBLASLT_COMPUTE_F32;
-    }
-    hipblasDatatype_t scale_type() const { return HIPBLAS_R_32F; }
+    hipblasComputeType_t compute_type() const { return compute_type_; }
+    hipDataType scale_type() const { return datatype_; }
+    bool has_bias_epilogue() const { return has_bias_epilogue_; }
     hipblasPointerMode_t pointer_mode() const {
       return HIPBLAS_POINTER_MODE_HOST;
     }
     hipblasLtMatmulDesc_t get() const { return handle_.get(); }
 
    private:
-    explicit MatmulDesc(hipblasLtMatmulDesc_t handle)
-        : handle_(handle, wrap::hipblasLtMatmulDescDestroy) {}
+    MatmulDesc(hipblasLtMatmulDesc_t handle, hipblasComputeType_t compute_type,
+               hipDataType datatype, bool bias_epilogue)
+        : handle_(handle, wrap::hipblasLtMatmulDescDestroy),
+          compute_type_(compute_type),
+          datatype_(datatype),
+          has_bias_epilogue_(bias_epilogue) {}
 
     Owned<hipblasLtMatmulDesc_t> handle_;
+    hipblasComputeType_t compute_type_;
+    hipDataType datatype_;
+    bool has_bias_epilogue_;
   };
 
   struct MatmulPlan : public gpu::BlasLt::MatmulPlan {
@@ -95,7 +98,7 @@ class BlasLt : public gpu::BlasLt {
 
     ~MatmulPlan() override = default;
 
-    tsl::Status ExecuteOnStream(
+    absl::Status ExecuteOnStream(
         Stream* stream, DeviceMemoryBase a_buffer, DeviceMemoryBase b_buffer,
         DeviceMemoryBase c_buffer, DeviceMemoryBase d_buffer,
         DeviceMemoryBase bias_buffer,  // may be null
@@ -103,28 +106,30 @@ class BlasLt : public gpu::BlasLt {
         DeviceMemoryBase a_scale_buffer, DeviceMemoryBase b_scale_buffer,
         DeviceMemoryBase c_scale_buffer, DeviceMemoryBase d_scale_buffer,
         DeviceMemoryBase d_amax_buffer, const MatmulAlgorithm& algorithm,
-        ScratchAllocator& scratch_allocator,
-        blas::ProfileResult* profile_result = nullptr) const override;
+        std::optional<DeviceMemoryBase> workspace,
+        std::optional<ScratchAllocator*> scratch_allocator,
+        blas::ProfileResult* profile_result) const override;
 
-    tsl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
+    absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
         size_t max_algorithm_count, size_t max_workspace_size) const override;
 
    protected:
-    tsl::Status ValidateInputs(blas::DataType scale_type, bool alpha_on_device,
-                               bool beta_on_device, blas::DataType A_type,
-                               blas::DataType B_type, blas::DataType C_type,
-                               blas::DataType D_type) const override;
+    absl::Status ValidateInputs(blas::DataType scale_type, bool alpha_on_device,
+                                bool beta_on_device, blas::DataType A_type,
+                                blas::DataType B_type, blas::DataType C_type,
+                                blas::DataType D_type) const override;
 
-    tsl::Status DoMatmul(Stream* stream, const void* alpha, DeviceMemoryBase a,
-                         DeviceMemoryBase b, const void* beta,
-                         DeviceMemoryBase c, DeviceMemoryBase d,
-                         const MatmulAlgorithm& algorithm,
-                         ScratchAllocator& scratch_allocator,
-                         DeviceMemoryBase bias, DeviceMemoryBase aux,
-                         DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-                         DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
-                         DeviceMemoryBase d_amax,
-                         blas::ProfileResult* profile_result) const override;
+    absl::Status DoMatmul(Stream* stream, const void* alpha, DeviceMemoryBase a,
+                          DeviceMemoryBase b, const void* beta,
+                          DeviceMemoryBase c, DeviceMemoryBase d,
+                          const MatmulAlgorithm& algorithm,
+                          DeviceMemoryBase bias, DeviceMemoryBase aux,
+                          DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+                          DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
+                          DeviceMemoryBase d_amax,
+                          std::optional<DeviceMemoryBase> workspace,
+                          std::optional<ScratchAllocator*> scratch_allocator,
+                          blas::ProfileResult* profile_result) const override;
 
    private:
     const BlasLt& blas_lt_ref_;
@@ -139,18 +144,18 @@ class BlasLt : public gpu::BlasLt {
     bool must_swap_operands_;
   };  // class MatmulPlan
 
-  explicit BlasLt(gpu::GpuExecutor* parent)
+  explicit BlasLt(StreamExecutor* parent)
       : parent_(parent), blas_lt_(nullptr, wrap::hipblasLtDestroy) {}
 
-  tsl::Status Init() override;
+  absl::Status Init() override;
 
-  tsl::StatusOr<MatmulPlanPtr> GetMatmulPlan(const gpu::GemmConfig& cfg,
-                                             Epilogue epilogue) const override;
+  absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(const gpu::GemmConfig& cfg,
+                                              Epilogue epilogue) const override;
 
   ~BlasLt() override = default;
 
  private:
-  gpu::GpuExecutor* parent_;
+  StreamExecutor* parent_;
   mutable absl::Mutex mu_;
   Owned<hipblasLtHandle_t> blas_lt_ ABSL_GUARDED_BY(mu_);
 };

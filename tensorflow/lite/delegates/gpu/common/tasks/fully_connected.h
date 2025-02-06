@@ -25,10 +25,15 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -166,7 +171,7 @@ void FullyConnected::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
   if (weights_are_buffer) {
     BufferDescriptor desc;
     desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc.element_size = 16;
+    desc.element_size = 4;
     desc.size = float4_size * elements_count;
     desc.data.resize(desc.size);
 

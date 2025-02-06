@@ -254,15 +254,32 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
   def testBfloat16(self):
     test_type = dtypes.bfloat16.as_numpy_dtype
     t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=test_type))
-    self.assertProtoEquals("""
-      dtype: DT_BFLOAT16
-      tensor_shape {
-        dim {
-          size: 2
-        }
+    if sys.byteorder == "big":
+      self.assertProtoEquals(
+          """
+        dtype: DT_BFLOAT16
+        tensor_shape {
+          dim {
+            size: 2
+          }
       }
+      tensor_content: "\x41\x20\x41\x5C\x32\x34\x30"
+      """,
+          t,
+      )
+    else:
+      self.assertProtoEquals(
+          """
+        dtype: DT_BFLOAT16
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
       tensor_content: "\x20\x41\x5C\x32\x34\x30\x41"
-      """, t)
+      """,
+          t,
+      )
 
     a = tensor_util.MakeNdarray(t)
     self.assertEqual(test_type, a.dtype)
@@ -303,6 +320,60 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
       }
       tensor_content: "RZ"
       """, t)
+
+  def testFloat8e4m3fnuz(self):
+    test_type = dtypes.float8_e4m3fnuz.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=test_type))
+    # 10.0: "Z" = 90 = 1010 010: 2^(10 - 7) * (1 + 1/4) + 8
+    # 20.0: "b" = 98 = 1011 010: 2^(11 - 7) * (1 + 1/4) + 8
+    self.assertProtoEquals(
+        """
+      dtype: DT_FLOAT8_E4M3FNUZ
+      tensor_shape {
+        dim {
+          size: 2
+        }
+      }
+      tensor_content: "Zb"
+      """,
+        t,
+    )
+
+  def testFloat8e4m3b11fnuz(self):
+    test_type = dtypes.float8_e4m3b11fnuz.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=test_type))
+    # 10.0: "r" = 114 = 1010 010: 2^(10 - 7) * (1 + 1/4) + 36
+    # 20.0: "z" = 126 = 1011 010: 2^(11 - 7) * (1 + 1/4) + 36
+    self.assertProtoEquals(
+        """
+      dtype: DT_FLOAT8_E4M3B11FNUZ
+      tensor_shape {
+        dim {
+          size: 2
+        }
+      }
+      tensor_content: "rz"
+      """,
+        t,
+    )
+
+  def testFloat8e5m2fnuz(self):
+    test_type = dtypes.float8_e5m2fnuz.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=test_type))
+    # 10.0: "M" = 77 = 1010 010: 2^(10 - 7) * (1 + 1/4) - 3
+    # 20.0: "Q" = 87 = 1011 010: 2^(11 - 7) * (1 + 1/4) - 3
+    self.assertProtoEquals(
+        """
+      dtype: DT_FLOAT8_E5M2FNUZ
+      tensor_shape {
+        dim {
+          size: 2
+        }
+      }
+      tensor_content: "MQ"
+      """,
+        t,
+    )
 
   def testInt(self):
     t = tensor_util.make_tensor_proto(10)

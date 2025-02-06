@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/AtomicOrdering.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_to_ir_bindings.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/ir_builder_mixin.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
@@ -56,32 +59,34 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   IrEmitter(const IrEmitter&) = delete;
   IrEmitter& operator=(const IrEmitter&) = delete;
 
-  Status DefaultAction(HloInstruction* hlo) override;
-  Status HandleConstant(HloInstruction* constant) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
-  Status HandleConvolution(HloInstruction* convolution) override;
-  Status HandleFft(HloInstruction* fft) override;
-  Status HandleAllReduce(HloInstruction* crs) override;
-  Status HandleInfeed(HloInstruction* infeed) override;
-  Status HandleOutfeed(HloInstruction* outfeed) override;
-  Status HandleSend(HloInstruction* send) override;
-  Status HandleSendDone(HloInstruction* send_done) override;
-  Status HandleRecv(HloInstruction* recv) override;
-  Status HandleRecvDone(HloInstruction* recv_done) override;
-  Status HandleParameter(HloInstruction* parameter) override;
-  Status HandleTuple(HloInstruction* tuple) override;
-  Status HandleScatter(HloInstruction* scatter) override;
-  Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleCall(HloInstruction* call) override;
-  Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleBatchNormInference(HloInstruction* batch_norm) override;
-  Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
-  Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
-  Status HandleAddDependency(HloInstruction* add_dependency) override;
+  absl::Status DefaultAction(HloInstruction* hlo) override;
+  absl::Status HandleConstant(HloInstruction* constant) override;
+  absl::Status HandleGetTupleElement(
+      HloInstruction* get_tuple_element) override;
+  absl::Status HandleConvolution(HloInstruction* convolution) override;
+  absl::Status HandleFft(HloInstruction* fft) override;
+  absl::Status HandleAllReduce(HloInstruction* crs) override;
+  absl::Status HandleInfeed(HloInstruction* infeed) override;
+  absl::Status HandleOutfeed(HloInstruction* outfeed) override;
+  absl::Status HandleSend(HloInstruction* send) override;
+  absl::Status HandleSendDone(HloInstruction* send_done) override;
+  absl::Status HandleRecv(HloInstruction* recv) override;
+  absl::Status HandleRecvDone(HloInstruction* recv_done) override;
+  absl::Status HandleParameter(HloInstruction* parameter) override;
+  absl::Status HandleTuple(HloInstruction* tuple) override;
+  absl::Status HandleScatter(HloInstruction* scatter) override;
+  absl::Status HandleCall(HloInstruction* call) override;
+  absl::Status HandleCustomCall(HloInstruction* custom_call) override;
+  absl::Status HandleBatchNormInference(HloInstruction* batch_norm) override;
+  absl::Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
+  absl::Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
+  absl::Status HandleAddDependency(HloInstruction* add_dependency) override;
 
-  Status FinishVisit(HloInstruction* root) override { return OkStatus(); }
+  absl::Status FinishVisit(HloInstruction* root) override {
+    return absl::OkStatus();
+  }
 
-  llvm::IRBuilder<>* builder() { return &b_; }
+  llvm::IRBuilderBase* builder() { return &b_; }
 
  protected:
   // Constructs an IrEmitter with the given IrEmitter context.
@@ -115,7 +120,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // in the result of the given HLO instruction. This produces a series of
   // nested loops (e.g. one for each dimension of the `hlo`'s shape). The body
   // of the inner-most loop is provided by the body_emitter function.
-  virtual Status EmitTargetElementLoop(
+  virtual absl::Status EmitTargetElementLoop(
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& body_emitter) = 0;
 
@@ -132,21 +137,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Bind all argument IrArrays of `fusion` to `fused_emitter`.
   void BindFusionArguments(const HloInstruction* fusion,
                            FusedIrEmitter* fused_emitter);
-
-  // Emit a fence for AMDGPU if necessary.
-  void MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering atomic_ordering,
-                               const char* sync_scope_id);
-
- private:
-  // A helper method for HandleSort(). It adds the inner comparison loop where
-  // we compare elements pointed to by 'keys_index' and 'compare_keys_index'.
-  void EmitCompareLoop(int64_t dimension_to_sort,
-                       const llvm_ir::IrArray::Index& keys_index,
-                       const llvm_ir::IrArray::Index& compare_keys_index,
-                       const llvm_ir::IrArray& keys_array);
-
-  // A convenience method to determine whether or not IR is emitted for AMDGPU.
-  bool IsEmittingForAMDGPU() const;
 };
 
 }  // namespace gpu

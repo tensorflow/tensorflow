@@ -287,3 +287,9 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     outputs = ReadAssign(number_of_states)(inputs)
     model = tf.keras.Model(inputs, outputs)
     return model, calibration_gen
+
+  def _getInfFloatModel(self):
+    root = autotrackable.AutoTrackable()
+    root.v = constant_op.constant([np.inf], shape=(), dtype=dtypes.float32)
+    root.f = def_function.function(lambda x: root.v)
+    return root

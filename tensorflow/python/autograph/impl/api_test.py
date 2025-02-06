@@ -1291,22 +1291,30 @@ class ApiTest(test.TestCase):
       else:
         return a + a
 
+    @def_function.function
+    def test_func2(a):
+      if constant_op.constant(True):
+        return a
+      else:
+        return a + a
+
     patch = test.mock.patch
     with patch.dict(os.environ, {'AUTOGRAPH_STRICT_CONVERSION': '0'}), \
-         patch.object(inspect, 'findsource', side_effect=OSError()), \
-         patch.object(ag_logging, 'warning') as warning_log_mock:
+        patch.object(inspect, 'findsource', side_effect=OSError()), \
+        self.assertLogs(level='WARNING') as logs:
 
-      with patch.object(ag_ctx, 'INSPECT_SOURCE_SUPPORTED', False):
-        with self.assertRaisesRegex(tf_errors.OperatorNotAllowedInGraphError,
-                                    'source code may not be visible'):
-          test_func(2)
-      warning_log_mock.assert_not_called()
+      with patch.object(ag_ctx, 'INSPECT_SOURCE_SUPPORTED', False), \
+          self.assertRaisesRegex(tf_errors.OperatorNotAllowedInGraphError,
+                                 'source code may not be visible'):
+        test_func(2)
+      self.assertEmpty(logs.output)
 
-      with patch.object(ag_ctx, 'INSPECT_SOURCE_SUPPORTED', True):
-        with self.assertRaisesRegex(tf_errors.OperatorNotAllowedInGraphError,
-                                    'using an unsupported feature'):
-          test_func(2)
-      warning_log_mock.called_once_with('AutoGraph could not transform')
+      with patch.object(ag_ctx, 'INSPECT_SOURCE_SUPPORTED', True), \
+          self.assertRaisesRegex(tf_errors.OperatorNotAllowedInGraphError,
+                                 'using an unsupported feature'):
+        test_func2(2)
+    self.assertLen(logs.output, 1)
+    self.assertRegex(logs.output[0], r'^.+:AutoGraph could not transform.+')
 
 
 if __name__ == '__main__':

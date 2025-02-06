@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,23 +15,25 @@ limitations under the License.
 
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 
+#include <cstdint>
+
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/model/hlo_op_profiles.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 
 class GpuHloCostAnalysisTest : public HloTestBase {
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
-
  public:
-  HloCostAnalysis::Options options_{ShapeSizeBytesFunction(),
-                                    /*per_second_rates=*/{},
-                                    /*count_multiple_input_accesses=*/true};
+  HloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
   GpuHloCostAnalysis analysis_{options_};
   GpuHloCostAnalysisTest() : HloTestBase() {}
 };
@@ -148,13 +150,13 @@ f {
   a1 = s8[] add(p1, p1)
   b1 = s8[10000] broadcast(a1), dimensions={}
   a2 = s8[10000] add(b1, b1)
-  s1 = s8[8000] slice(a2), slice={[0:8000]}
-  s2 = s8[8000] slice(a2), slice={[2000:10000]}
+  slice1 = s8[8000] slice(a2), slice={[0:8000]}
+  slice2 = s8[8000] slice(a2), slice={[2000:10000]}
   c = s8[10000] constant({...})
-  sc1 = s8[8000] slice(c), slice={[0:8000]}
-  sc2 = s8[8000] slice(c), slice={[2000:10000]}
-  a3 = s8[8000] add(s1, s2)
-  a4 = s8[8000] add(sc1, sc2)
+  slicec1 = s8[8000] slice(c), slice={[0:8000]}
+  slicec2 = s8[8000] slice(c), slice={[2000:10000]}
+  a3 = s8[8000] add(slice1, slice2)
+  a4 = s8[8000] add(slicec1, slicec2)
   ROOT a5 = s8[8000] add(a3, a4)
 }
 
@@ -242,9 +244,9 @@ f {
   p1 = s8[100] parameter(0)
   i1 = s8[100] iota(), iota_dimension=0
   a1 = s8[100] add(p1, i1)
-  s1 = s8[1] slice(a1), slice={[0:1]}
-  s2 = s8[1] slice(a1), slice={[3:4]}
-  ROOT r = s8[1] add(s1, s2)
+  slice1 = s8[1] slice(a1), slice={[0:1]}
+  slice2 = s8[1] slice(a1), slice={[3:4]}
+  ROOT r = s8[1] add(slice1, slice2)
 }
 
 ENTRY e {
@@ -305,8 +307,8 @@ f {
   m0 = s8[10] multiply(n0, n0)
   a0 = s8[10] add(n0, n0)
   s0 = s8[5] slice(a0), slice={[0:5]}
-  s1 = s8[2] slice(n0), slice={[4:6]}
-  n1 = s8[2] negate(s1)
+  svar1 = s8[2] slice(n0), slice={[4:6]}
+  n1 = s8[2] negate(svar1)
   ROOT c0 = s8[17] concatenate(s0, m0, n1), dimensions={0}
 }
 
@@ -528,6 +530,291 @@ TEST_F(GpuHloCostAnalysisTest, CommonElementwiseUseParameterAndRoot) {
                 fusion->fused_parameter(1), fusion->fused_expression_root()),
             0.f);
 }
+
+TEST_F(GpuHloCostAnalysisTest,
+       CommonElementwiseUseParameterAndRootMultiOutputFusion) {
+  const char* hlo_fusion_module_str = R"(
+  HloModule m
+
+  f {
+    p0 = s8[10] parameter(0)
+    p1 = s8[] parameter(1)
+    p1b = s8[10] broadcast(p1)
+    a = s8[10] add(p0, p1b)
+    neg = s8[10] negate(a)
+    ROOT _ = (s8[10], s8[10]) tuple(a, neg)
+  }
+
+  ENTRY _ {
+    p0 = s8[10] parameter(0)
+    p1 = s8[] parameter(1)
+    ROOT _ = (s8[10], s8[10]) fusion(p0, p1), kind=kLoop, calls=f
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(analysis_.CommonElementwiseUtilization(
+                fusion->fused_parameter(0), fusion->fused_expression_root()),
+            1.f);
+  EXPECT_EQ(analysis_.CommonElementwiseUtilization(
+                fusion->fused_parameter(1), fusion->fused_expression_root()),
+            0.f);
+}
+
+TEST_F(GpuHloCostAnalysisTest, Reduce) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add.0 = f32[] add(param_0, param_1)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[32,40]{1,0} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[32]{0} reduce(param_0.3, constant), dimensions={1}, to_apply=add
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+
+  int64_t input_bytes_accessed = 4 * 32 * 40;
+  int64_t init_bytes_accessed = 4 * 32;
+  int64_t output_bytes_accessed = 4 * 32;
+
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*reduce, 0), input_bytes_accessed);
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*reduce, 1), init_bytes_accessed);
+  EXPECT_EQ(analysis_.output_bytes_accessed(*reduce), output_bytes_accessed);
+  EXPECT_EQ(analysis_.bytes_accessed(*reduce),
+            input_bytes_accessed + init_bytes_accessed + output_bytes_accessed);
+  EXPECT_EQ(analysis_.flop_count(*reduce), 32 * 39 * 3);
+}
+
+TEST_F(GpuHloCostAnalysisTest, VariadicReduce) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  param_2 = f32[] parameter(2)
+  param_3 = f32[] parameter(3)
+  add.0 = f32[] add(param_0, param_2)
+  add.1 = f32[] add(param_1, param_3)
+  ROOT t = (f32[], f32[]) tuple(add.0, add.1)
+}
+
+ENTRY entry_computation {
+  param_0.3 = f32[32,40]{1,0} parameter(0)
+  param_1.3 = f32[32,40]{1,0} parameter(1)
+  param_2.2 = f32[] parameter(2)
+  constant = f32[] constant(0)
+  ROOT reduce = (f32[32]{0}, f32[32]{0}) reduce(param_0.3, param_1.3, param_2.2, constant), dimensions={1}, to_apply=add
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+
+  int64_t input_bytes_accessed = 4 * 32 * 40;
+  int64_t init_bytes_accessed = 4 * 32;
+  int64_t output_bytes_accessed = 2 * 4 * 32;
+
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*reduce, 0), input_bytes_accessed);
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*reduce, 1), input_bytes_accessed);
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*reduce, 2), init_bytes_accessed);
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*reduce, 3), init_bytes_accessed);
+  EXPECT_EQ(analysis_.output_bytes_accessed(*reduce), output_bytes_accessed);
+  EXPECT_EQ(analysis_.bytes_accessed(*reduce), 2 * input_bytes_accessed +
+                                                   2 * init_bytes_accessed +
+                                                   output_bytes_accessed);
+  EXPECT_EQ(analysis_.flop_count(*reduce), 32 * 39 * 6);
+}
+
+TEST_F(GpuHloCostAnalysisTest, AsyncAllReduce) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT t = f32[] add(param_0, param_1)
+}
+
+ENTRY entry_computation {
+  p = f32[4096] parameter(0)
+  ar-start = f32[4096] all-reduce-start(p), to_apply=add
+  ROOT _ = f32[4096] all-reduce-done(ar-start)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  const HloInstruction* all_reduce =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_EQ(analysis_.BytesTransferred(*all_reduce), 4096 * 4);
+}
+
+TEST_F(GpuHloCostAnalysisTest, AllGather) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+ENTRY entry_computation {
+  p = f32[1024] parameter(0)
+  ROOT _ = f32[4096] all-gather(p), dimensions={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  const HloInstruction* all_gather =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis_.BytesTransferred(*all_gather), 4096 * 4);
+}
+
+TEST_F(GpuHloCostAnalysisTest, AsyncAllGather) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+ENTRY entry_computation {
+  p.0 = f32[1024] parameter(0)
+  p.1 = f32[512] parameter(1)
+  ag-start = ((f32[1024],f32[512]), (f32[4096],f32[2048])) all-gather-start(p.0,p.1),
+    dimensions={0}
+  ROOT _ = (f32[4096],f32[2048]) all-gather-done(ag-start)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  const HloInstruction* all_gather =
+      module->entry_computation()->root_instruction()->operand(0);
+  // Output is (f32[4096], f32[2048]).
+  EXPECT_EQ(analysis_.BytesTransferred(*all_gather), 4096 * 4 + 2048 * 4);
+}
+
+TEST_F(GpuHloCostAnalysisTest, ReduceScatter) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT t = f32[] add(param_0, param_1)
+}
+
+ENTRY entry_computation {
+  p = f32[4096] parameter(0)
+  ROOT _ = f32[1024] reduce-scatter(p), dimensions={0}, to_apply=add
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  const HloInstruction* reduce_scatter =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis_.BytesTransferred(*reduce_scatter), 4096 * 4);
+}
+
+TEST_F(GpuHloCostAnalysisTest, AsyncReduceScatter) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT t = f32[] add(param_0, param_1)
+}
+
+async_computation {
+  param_3 = f32[4096] parameter(0)
+  param_4 = f32[2048] parameter(1)
+  ROOT r = (f32[1024],f32[512]) reduce-scatter(param_3,param_4),
+    dimensions={0},
+    to_apply=add
+}
+
+ENTRY entry_computation {
+  p.0 = f32[4096] parameter(0)
+  p.1 = f32[2048] parameter(1)
+  rs-start = ((f32[4096],f32[2048]),(f32[1024],f32[512])) async-start(p.0,p.1), calls=async_computation
+  ROOT _ = (f32[1024],f32[512]) async-done(rs-start)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  const HloInstruction* reduce_scatter =
+      module->entry_computation()->root_instruction()->operand(0);
+  // Output is (f32[1024],f32[512]).
+  EXPECT_EQ(analysis_.BytesTransferred(*reduce_scatter), 4096 * 4 + 2048 * 4);
+}
+
+TEST_F(GpuHloCostAnalysisTest, CustomOpProfileIsUsed) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+ENTRY entry_computation {
+  param_0 = f32[10] parameter(0)
+  param_1 = f32[10] parameter(1)
+  param_2 = f32[10] parameter(2)
+  param_3 = f32[10] parameter(3)
+  tanh = f32[10] tanh(param_0)
+  mul = f32[10] multiply(tanh, param_1)
+  ROOT clamp = f32[10] clamp(mul, param_2, param_3)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloOpProfiles::HloOpProfile hlo_op_profile;
+
+  const int kF32ClampFlopsPerElement = 7;
+  const int kF32MultiplyFlopsPerElement = 11;
+  const int kF32TanhFlopsPerElement = 13;
+
+  const int kNumElements = 10;
+
+  hlo_op_profile[{HloOpcode::kClamp, PrimitiveType::F32}] =
+      kF32ClampFlopsPerElement;
+  hlo_op_profile[{HloOpcode::kMultiply, PrimitiveType::F32}] =
+      kF32MultiplyFlopsPerElement;
+  hlo_op_profile[{HloOpcode::kTanh, PrimitiveType::F32}] =
+      kF32TanhFlopsPerElement;
+
+  GpuHloCostAnalysis analysis(options_, hlo_op_profile);
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis));
+
+  const HloInstruction* clamp = module->entry_computation()->root_instruction();
+  const HloInstruction* mul = clamp->operand(0);
+  const HloInstruction* tanh = mul->operand(0);
+
+  EXPECT_EQ(analysis.flop_count(*clamp),
+            kF32ClampFlopsPerElement * kNumElements);
+  EXPECT_EQ(analysis.flop_count(*mul),
+            kF32MultiplyFlopsPerElement * kNumElements);
+  EXPECT_EQ(analysis.flop_count(*tanh), kF32TanhFlopsPerElement * kNumElements);
+};
 
 }  // namespace gpu
 }  // namespace xla

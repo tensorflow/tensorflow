@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 
-#include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -25,11 +25,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/experimental/next_pluggable_device/tensor_pjrt_buffer_util.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_buffer.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -39,14 +42,17 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 TF_Device* TF_GetDevice(TF_OpKernelContext* ctx) {
   auto* cc_ctx = reinterpret_cast<tensorflow::OpKernelContext*>(ctx);
@@ -86,7 +92,7 @@ void TF_LookupOrCreatePluginResource(
         void* opaque_plugin_resource = create_func(create_func_args);
         *new_resource = new tensorflow::PluginResource(
             opaque_plugin_resource, plugin_resource_name, delete_func);
-        return tensorflow::OkStatus();
+        return absl::OkStatus();
       });
 
   if (cc_status.ok()) {
@@ -213,16 +219,13 @@ void TF_CoordinationServiceInsertKeyValue(const char* key, int64_t key_size,
                                           TF_CoordinationServiceAgent* agent,
                                           TF_Status* status) {
   auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  absl::Status cc_status =
-      cc_agent->InsertKeyValue(key, key_size, value, value_size);
+  absl::Status cc_status = cc_agent->InsertKeyValue(
+      absl::string_view(key, key_size), absl::string_view(value, value_size));
   status->status = cc_status;
 }
 
-TF_Buffer* TF_CoordinationServiceGetKeyValue(const char* key, int64_t key_size,
-                                             TF_CoordinationServiceAgent* agent,
-                                             TF_Status* status) {
-  auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  auto value = cc_agent->GetKeyValue(key, key_size);
+TF_Buffer* ProcessGetKeyValueResult(absl::StatusOr<std::string> value,
+                                    TF_Status* status) {
   status->status = value.status();
   if (!value.ok()) {
     return nullptr;
@@ -238,11 +241,43 @@ TF_Buffer* TF_CoordinationServiceGetKeyValue(const char* key, int64_t key_size,
   return result;
 }
 
+TF_Buffer* TF_CoordinationServiceGetKeyValue(const char* key, int64_t key_size,
+                                             TF_CoordinationServiceAgent* agent,
+                                             TF_Status* status) {
+  auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
+  auto value = cc_agent->GetKeyValue(absl::string_view(key, key_size));
+  return ProcessGetKeyValueResult(value, status);
+}
+
+TF_Buffer* TF_CoordinationServiceGetKeyValueWithTimeout(
+    const char* key, int64_t key_size, int64_t timeout_seconds,
+    TF_CoordinationServiceAgent* agent, TF_Status* status) {
+  if (timeout_seconds <= 0) {
+    status->status = absl::InvalidArgumentError(
+        "TF_CoordinationServiceGetKeyValueWithTimeout invoked with invalid "
+        "timeout_seconds <= 0.");
+    return nullptr;
+  }
+  auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
+  auto value = cc_agent->GetKeyValue(absl::string_view(key, key_size),
+                                     absl::Seconds(timeout_seconds));
+  return ProcessGetKeyValueResult(value, status);
+}
+
+TF_Buffer* TF_CoordinationServiceTryGetKeyValue(
+    const char* key, int64_t key_size, TF_CoordinationServiceAgent* agent,
+    TF_Status* status) {
+  auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
+  auto value = cc_agent->TryGetKeyValue(absl::string_view(key, key_size));
+  return ProcessGetKeyValueResult(value, status);
+}
+
 void TF_CoordinationServiceDeleteKeyValue(const char* key, int64_t key_size,
                                           TF_CoordinationServiceAgent* agent,
                                           TF_Status* status) {
   auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  absl::Status cc_status = cc_agent->DeleteKeyValue(key, key_size);
+  absl::Status cc_status =
+      cc_agent->DeleteKeyValue(absl::string_view(key, key_size));
   status->status = cc_status;
 }
 

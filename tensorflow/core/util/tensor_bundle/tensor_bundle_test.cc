@@ -23,6 +23,8 @@ limitations under the License.
 #include <windows.h>
 #endif  // _WIN32
 
+#include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -146,7 +149,7 @@ std::vector<string> AllTensorKeys(BundleReader* reader) {
 
 // Writes out the metadata file of a bundle again, with the endianness marker
 // bit flipped.
-Status FlipEndiannessBit(const string& prefix) {
+absl::Status FlipEndiannessBit(const string& prefix) {
   Env* env = Env::Default();
   const string metadata_tmp_path = Prefix("some_tmp_path");
   std::unique_ptr<WritableFile> metadata_file;
@@ -326,7 +329,7 @@ TEST(TensorBundleTest, SwapBytes) {
   // functions. As a workaround, we make some dummy calls here.
   // TODO(frreiss): Remove this workaround when the compiler bug is fixed.
   ByteSwap(Constant_2x3<int>(42));
-  EXPECT_NE(OkStatus(), FlipEndiannessBit(Prefix("not_a_valid_prefix")));
+  EXPECT_NE(absl::OkStatus(), FlipEndiannessBit(Prefix("not_a_valid_prefix")));
 
   // Test patterns, manually swapped so that we aren't relying on the
   // correctness of our own byte-swapping macros when testing those macros.
@@ -515,7 +518,7 @@ void TestNonStandardShapes() {
 }
 
 // Writes a bundle to disk with a bad "version"; checks for "expected_error".
-void VersionTest(const VersionDef& version, StringPiece expected_error) {
+void VersionTest(const VersionDef& version, absl::string_view expected_error) {
   const string path = Prefix("version_test");
   {
     // Prepare an empty bundle with the given version information.
@@ -882,8 +885,8 @@ TEST(TensorBundleTest, DirectoryStructure) {
 
   // Ensures we have the expected files.
   auto CheckDirFiles = [env](const string& bundle_prefix,
-                             gtl::ArraySlice<string> expected_files) {
-    StringPiece dir = io::Dirname(bundle_prefix);
+                             absl::Span<const string> expected_files) {
+    absl::string_view dir = io::Dirname(bundle_prefix);
     for (const string& expected_file : expected_files) {
       TF_EXPECT_OK(env->FileExists(io::JoinPath(dir, expected_file)));
     }
@@ -995,7 +998,7 @@ TEST(TensorBundleTest, Checksum) {
   auto ExpectLookupFails = [](const string& prefix, const string& key,
                               const string& expected_msg, Tensor& val) {
     BundleReader reader(Env::Default(), Prefix(prefix));
-    Status status = reader.Lookup(key, &val);
+    absl::Status status = reader.Lookup(key, &val);
     EXPECT_TRUE(errors::IsDataLoss(status));
     EXPECT_TRUE(absl::StrContains(status.ToString(), expected_msg));
   };
@@ -1049,8 +1052,8 @@ TEST(TensorBundleTest, TruncatedTensorContents) {
   string data;
   TF_ASSERT_OK(ReadFileToString(env, datafile, &data));
   ASSERT_TRUE(!data.empty());
-  TF_ASSERT_OK(WriteStringToFile(env, datafile,
-                                 StringPiece(data.data(), data.size() - 1)));
+  TF_ASSERT_OK(WriteStringToFile(
+      env, datafile, absl::string_view(data.data(), data.size() - 1)));
 
   BundleReader reader(env, Prefix("end"));
   TF_ASSERT_OK(reader.status());
@@ -1145,6 +1148,72 @@ TEST(TensorBundleTest, LargeVariableLoadingTest) {
     Expect<float>(&reader, "foo_001", Constant_100x100<float>(1));
     Expect<float>(&reader, "foo_002", Constant_100x100<float>(2));
     Expect<float>(&reader, "foo_003", Constant_100x100<float>(3));
+  }
+}
+
+absl::Status CreateFile(Env* env, const std::string& fname) {
+  std::unique_ptr<WritableFile> file;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  return file->Close();
+}
+
+TEST(BundleCacheTest, SameFile) {
+  Env* env = Env::Default();
+  BundleCache cache(env);
+  const std::string fname = Prefix("foo");
+  TF_EXPECT_OK(CreateFile(env, fname));
+
+  RandomAccessFile* f1;
+  RandomAccessFile* f2;
+  TF_EXPECT_OK(cache.GetFile(fname, &f1));
+  TF_EXPECT_OK(cache.GetFile(fname, &f2));
+  EXPECT_EQ(f1, f2);
+}
+
+TEST(BundleCacheTest, DifferentFiles) {
+  Env* env = Env::Default();
+  BundleCache cache(env);
+  const std::string fname1 = Prefix("foo");
+  const std::string fname2 = Prefix("bar");
+  TF_EXPECT_OK(CreateFile(env, fname1));
+  TF_EXPECT_OK(CreateFile(env, fname2));
+
+  RandomAccessFile* f1;
+  RandomAccessFile* f2;
+  TF_EXPECT_OK(cache.GetFile(fname1, &f1));
+  TF_EXPECT_OK(cache.GetFile(fname2, &f2));
+  EXPECT_NE(f1, f2);
+}
+
+TEST(BundleCacheTest, OpenError) {
+  Env* env = Env::Default();
+  BundleCache cache(env);
+  const std::string fname = Prefix("no_such_file");
+
+  RandomAccessFile* f;
+  absl::Status s = cache.GetFile(fname, &f);
+  EXPECT_TRUE(absl::IsNotFound(s)) << s;
+}
+
+TEST(BundleCacheTest, ConcurrentGetFile) {
+  // Have several threads attempt to open files. They should get same files
+  // back.
+  Env* env = Env::Default();
+  BundleCache cache(env);
+  const std::string fname = Prefix("foo");
+  TF_EXPECT_OK(CreateFile(env, fname));
+
+  constexpr int n = 10;
+  RandomAccessFile* files[n];
+  {
+    thread::ThreadPool threads(Env::Default(), "concurrent_reads", n);
+    for (int i = 0; i < n; i++) {
+      threads.Schedule(
+          [&, i] { TF_EXPECT_OK(cache.GetFile(fname, &files[i])); });
+    }
+  }
+  for (int i = 0; i < n; i++) {
+    EXPECT_EQ(files[i], files[0]);
   }
 }
 

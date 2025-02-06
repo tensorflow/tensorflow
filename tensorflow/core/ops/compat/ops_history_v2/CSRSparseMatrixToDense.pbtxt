@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CSRSparseMatrixToDense"
   input_arg {
     name: "sparse_input"

@@ -29,7 +29,6 @@ manual_symbol_renames = {
     "tf.batch_gather": "tf.compat.v1.batch_gather",
     "tf.space_to_batch_nd": "tf.space_to_batch",
     "tf.nn.space_to_batch": "tf.space_to_batch",
-    "tf.estimator.inputs": "tf.compat.v1.estimator.inputs",
     "tf.extract_image_patches": "tf.image.extract_patches",
     "tf.image.extract_image_patches": "tf.image.extract_patches",
     "tf.gfile.Copy": "tf.io.gfile.copy",
@@ -144,21 +143,6 @@ manual_symbol_renames = {
     "tf.contrib.distribute.ReductionToOneDeviceCrossDeviceOps": (
         "tf.distribute.ReductionToOneDevice"
     ),
-    "tf.contrib.estimator.make_early_stopping_hook": (
-        "tf.estimator.experimental.make_early_stopping_hook"
-    ),
-    "tf.contrib.estimator.stop_if_higher_hook": (
-        "tf.estimator.experimental.stop_if_higher_hook"
-    ),
-    "tf.contrib.estimator.stop_if_lower_hook": (
-        "tf.estimator.experimental.stop_if_lower_hook"
-    ),
-    "tf.contrib.estimator.stop_if_no_decrease_hook": (
-        "tf.estimator.experimental.stop_if_no_decrease_hook"
-    ),
-    "tf.contrib.estimator.stop_if_no_increase_hook": (
-        "tf.estimator.experimental.stop_if_no_increase_hook"
-    ),
     "tf.contrib.framework.CriticalSection": "tf.CriticalSection",
     "tf.contrib.framework.is_tensor": "tf.is_tensor",
     "tf.contrib.framework.load_variable": "tf.train.load_variable",
@@ -214,15 +198,6 @@ manual_symbol_renames = {
     "tf.contrib.summary.scalar": "tf.compat.v2.summary.scalar",
     "tf.contrib.tpu.CrossShardOptimizer": (
         "tf.compat.v1.tpu.CrossShardOptimizer"
-    ),
-    "tf.contrib.tpu.InputPipelineConfig": (
-        "tf.compat.v1.estimator.tpu.InputPipelineConfig"
-    ),
-    "tf.contrib.tpu.RunConfig": "tf.compat.v1.estimator.tpu.RunConfig",
-    "tf.contrib.tpu.TPUConfig": "tf.compat.v1.estimator.tpu.TPUConfig",
-    "tf.contrib.tpu.TPUEstimator": "tf.compat.v1.estimator.tpu.TPUEstimator",
-    "tf.contrib.tpu.TPUEstimatorSpec": (
-        "tf.compat.v1.estimator.tpu.TPUEstimatorSpec"
     ),
     "tf.contrib.tpu.batch_parallel": "tf.compat.v1.tpu.batch_parallel",
     "tf.contrib.tpu.bfloat16_scope": "tf.compat.v1.tpu.bfloat16_scope",

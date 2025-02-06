@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -67,7 +68,7 @@ mlir::LogicalResult GetDevicesFromOp(mlir::Operation* op,
   for (const auto& kv : llvm::enumerate(array_attr)) {
     const int idx = kv.index();
 
-    auto string_attr = kv.value().dyn_cast<mlir::StringAttr>();
+    auto string_attr = mlir::dyn_cast<mlir::StringAttr>(kv.value());
     if (!string_attr)
       return op->emitOpError(llvm::formatv(
           "bad '{0}' attribute at index {1}, not a string", kDevicesAttr, idx));
@@ -100,7 +101,7 @@ mlir::LogicalResult GetDevicesFromOp(mlir::Operation* op,
           llvm::formatv("bad '{0}' attribute, '{1}', not a valid device",
                         kDevicesAttr, name.strref()));
 
-    if (auto gpu_metadata = attr.dyn_cast<mlir::TF::GpuDeviceMetadata>()) {
+    if (auto gpu_metadata = mlir::dyn_cast<mlir::TF::GpuDeviceMetadata>(attr)) {
       devices->AddGpuDevice(device, gpu_metadata);
     } else {
       devices->AddDevice(device);
@@ -144,10 +145,11 @@ mlir::LogicalResult GetDevicesFromOp(mlir::Operation* op,
   auto devices_attr = op->getAttr(kDevicesAttr);
   if (!devices_attr) return mlir::success();
 
-  if (auto array_attr = devices_attr.dyn_cast<mlir::ArrayAttr>()) {
+  if (auto array_attr = mlir::dyn_cast<mlir::ArrayAttr>(devices_attr)) {
     return GetDevicesFromOp(op, array_attr, devices);
 
-  } else if (auto dict_attr = devices_attr.dyn_cast<mlir::DictionaryAttr>()) {
+  } else if (auto dict_attr =
+                 mlir::dyn_cast<mlir::DictionaryAttr>(devices_attr)) {
     return GetDevicesFromOp(op, dict_attr, devices);
   }
 

@@ -196,7 +196,7 @@ class Input {
       return tensor_proto;
     }
 
-    Status status;
+    absl::Status status;
     Tensor tensor;
   };
 
@@ -221,7 +221,7 @@ class Input {
         tensor_(init.tensor) {}
 
   Input(const Tensor& t)  // NOLINT(runtime/explicit)
-      : status_(OkStatus()), tensor_(t) {}
+      : status_(absl::OkStatus()), tensor_(t) {}
 
   Input(const std::initializer_list<Initializer>&
             init) {  // NOLINT(runtime/explicit)
@@ -243,11 +243,11 @@ class Input {
   std::string node_name() const { return node_name_; }
   int32 index() const { return node_name_.empty() ? output_.index() : index_; }
   DataType data_type() const { return data_type_; }
-  Status status() const { return status_; }
+  absl::Status status() const { return status_; }
   const Tensor& tensor() const { return tensor_; }
 
  private:
-  Status status_;
+  absl::Status status_;
   Output output_ = Output(Operation(nullptr), 0);
   Tensor tensor_;
   const std::string node_name_ = "";
@@ -274,8 +274,7 @@ class InputList {
       const std::initializer_list<Input>& inputs)  // NOLINT(runtime/explicit)
       : inputs_(inputs.begin(), inputs.end()) {}
 
-  InputList(const tensorflow::gtl::ArraySlice<Input>&
-                inputs)  // NOLINT(runtime/explicit)
+  InputList(const absl::Span<const Input>& inputs)  // NOLINT(runtime/explicit)
       : inputs_(inputs.begin(), inputs.end()) {}
 
   InputList(

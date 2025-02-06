@@ -15,15 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/func_to_graph/func_to_graph.h"
 
+#include <cstdint>
+
+#include "absl/status/status.h"
+#include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace mlir {
 namespace tfg {
 
-tensorflow::Status FuncToGraph(GraphFuncOp func) {
+absl::Status FuncToGraph(GraphFuncOp func) {
   MLIRContext *context = func->getContext();
   auto version = func->getAttrOfType<VersionAttr>("tfg.lifted_graph_version");
   if (!version) {
@@ -47,8 +57,9 @@ tensorflow::Status FuncToGraph(GraphFuncOp func) {
 
       // Init the entry with nullptr and it'll be updated with associated op
       // later.
-      referred_ops.insert({lifted_value_attr[0].cast<StringAttr>().getValue(),
-                           /*Operation=*/nullptr});
+      referred_ops.insert(
+          {mlir::cast<StringAttr>(lifted_value_attr[0]).getValue(),
+           /*Operation=*/nullptr});
     }
   }
 
@@ -59,7 +70,7 @@ tensorflow::Status FuncToGraph(GraphFuncOp func) {
   }
 
   for (const auto &it : llvm::enumerate(func.getArguments())) {
-    if (it.value().getType().isa<ControlType>()) continue;
+    if (mlir::isa<ControlType>(it.value().getType())) continue;
 
     auto lifted_value_attr =
         func.getArgAttrOfType<ArrayAttr>(it.index(), lifted_value_attr_name);
@@ -70,7 +81,7 @@ tensorflow::Status FuncToGraph(GraphFuncOp func) {
     }
 
     StringRef value_defining_op_name =
-        lifted_value_attr[0].cast<StringAttr>().getValue();
+        mlir::cast<StringAttr>(lifted_value_attr[0]).getValue();
     Operation *op = referred_ops[value_defining_op_name];
     if (!op) {
       return tensorflow::errors::InvalidArgument(
@@ -79,7 +90,7 @@ tensorflow::Status FuncToGraph(GraphFuncOp func) {
     }
 
     uint64_t result_index =
-        lifted_value_attr[1].cast<IntegerAttr>().getValue().getZExtValue();
+        mlir::cast<IntegerAttr>(lifted_value_attr[1]).getValue().getZExtValue();
     if (result_index >= op->getNumResults()) {
       return tensorflow::errors::InvalidArgument(
           "result index out of bound: seeing index ", result_index,
@@ -98,7 +109,7 @@ tensorflow::Status FuncToGraph(GraphFuncOp func) {
   graph.getRegion().takeBody(func.getRegion());
   func.erase();
 
-  return tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tfg

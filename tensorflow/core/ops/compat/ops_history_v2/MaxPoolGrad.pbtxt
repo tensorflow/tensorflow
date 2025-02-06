@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "MaxPoolGrad"
   input_arg {
     name: "orig_input"

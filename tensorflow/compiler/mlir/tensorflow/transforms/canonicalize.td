@@ -87,13 +87,13 @@ def GatherToV2 : Pat<
 // with V1.
 def BatchMatMulToV2 : Pat<
   (TF_BatchMatMulOp:$src AnyStaticShapeTensor:$x, AnyStaticShapeTensor:$y,
-    $adj_x, $adj_y),
-  (TF_BatchMatMulV2Op:$dest $x, $y, $adj_x, $adj_y),
+    $adj_x, $adj_y, $grad_x, $grad_y),
+  (TF_BatchMatMulV2Op:$dest $x, $y, $adj_x, $adj_y, $grad_x, $grad_y),
   [], [(CopyAttrs $src, $dest)]>;
 
 def BatchMatMulToMatMul : Pat<
-  (TF_BatchMatMulOp:$src $x, $y, $adj_x, $adj_y),
-  (TF_MatMulOp:$dest $x, $y, $adj_x, $adj_y),
+  (TF_BatchMatMulOp:$src $x, $y, $adj_x, $adj_y, $grad_x, $grad_y),
+  (TF_MatMulOp:$dest $x, $y, $adj_x, $adj_y, $grad_x, $grad_y),
   [(IsRank2Tensor $x), (IsRank2Tensor $y)],
   [(CopyAttrs $src, $dest)]>;
 
@@ -102,8 +102,8 @@ def BatchMatMulToMatMul : Pat<
 //===----------------------------------------------------------------------===//
 
 def BatchMatMulV2ToMatMul : Pat<
-  (TF_BatchMatMulV2Op:$src $x, $y, $adj_x, $adj_y),
-  (TF_MatMulOp:$dest $x, $y, $adj_x, $adj_y),
+  (TF_BatchMatMulV2Op:$src $x, $y, $adj_x, $adj_y, $grad_x, $grad_y),
+  (TF_MatMulOp:$dest $x, $y, $adj_x, $adj_y, $grad_x, $grad_y),
   [(IsRank2Tensor $x), (IsRank2Tensor $y)],
   [(CopyAttrs $src, $dest)]>;
 

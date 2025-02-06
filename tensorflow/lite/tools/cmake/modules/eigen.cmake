@@ -23,7 +23,7 @@ OverridableFetchContent_Declare(
   eigen
   GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
   # Sync with tensorflow/third_party/eigen3/workspace.bzl
-  GIT_TAG 66e8f38891841bf88ee976a316c0c78a52f0cee5
+  GIT_TAG 33d0937c6bdf5ec999939fb17f2a553183d14a74
   # It's not currently (cmake 3.17) possible to shallow clone with a GIT TAG
   # as cmake attempts to git checkout the commit hash after the clone
   # which doesn't work as it's a shallow clone hence a different commit hash.

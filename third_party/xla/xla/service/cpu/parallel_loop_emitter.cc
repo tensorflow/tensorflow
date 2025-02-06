@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,13 @@ limitations under the License.
 
 #include "xla/service/cpu/parallel_loop_emitter.h"
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "absl/log/check.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
@@ -25,7 +31,7 @@ namespace cpu {
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
     const llvm_ir::IrArray& target_array,
-    const DynamicLoopBounds* dynamic_loop_bounds, llvm::IRBuilder<>* b)
+    const DynamicLoopBounds* dynamic_loop_bounds, llvm::IRBuilderBase* b)
     : LoopEmitter(target_element_generator, target_array, b),
       dynamic_loop_bounds_(dynamic_loop_bounds) {}
 
@@ -51,6 +57,10 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   for (int i = LayoutUtil::MinorToMajor(shape_).size() - 1; i >= 0; --i) {
     const int64_t dimension = LayoutUtil::Minor(shape_.layout(), i);
     const int bounds_index = num_dims - 1 - i;
+    // Only unroll the most minor dimension, this seems to give us good runtime
+    // performance with a large improvement in compile time.
+    auto unroll_mode = (i == 0) ? llvm_ir::UnrollMode::kDefaultUnroll
+                                : llvm_ir::UnrollMode::kNoUnroll;
     if (bounds_index < dynamic_loop_bounds_->size()) {
       // Emit dynamic loop bounds for this dimension. Dynamic loop bounds
       // are read from ir function dynamic loop bounds argument.
@@ -59,14 +69,14 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
 
       std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
           /*suffix=*/absl::StrFormat("dim.%d", dimension), start_index,
-          end_index);
+          end_index, unroll_mode);
       array_multi_index[dimension] = loop->GetIndVarValue();
     } else {
       // Emit static loop bounds for this dimension.
       std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
           /*start_index=*/0,
           /*end_index=*/shape_.dimensions(dimension),
-          /*suffix=*/absl::StrFormat("dim.%d", dimension));
+          /*suffix=*/absl::StrFormat("dim.%d", dimension), unroll_mode);
       array_multi_index[dimension] = loop->GetIndVarValue();
     }
   }

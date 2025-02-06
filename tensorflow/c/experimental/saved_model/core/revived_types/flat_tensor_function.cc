@@ -17,18 +17,21 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -38,14 +41,14 @@ FlatTensorFunction::FlatTensorFunction(
     : name_(name), captures_(std::move(captures)), ctx_(ctx) {}
 
 FlatTensorFunction::~FlatTensorFunction() {
-  Status status = ctx_->RemoveFunction(name_);
+  absl::Status status = ctx_->RemoveFunction(name_);
   if (!status.ok()) {
     LOG(ERROR) << "Failed to remove functiondef " << name_ << ". "
                << status.message();
   }
 }
 
-Status FlatTensorFunction::Create(
+absl::Status FlatTensorFunction::Create(
     const FunctionDef* function_def,
     std::vector<ImmediateExecutionTensorHandle*> captures,
     ImmediateExecutionContext* ctx, std::unique_ptr<FlatTensorFunction>* out) {
@@ -59,10 +62,10 @@ Status FlatTensorFunction::Create(
 
   out->reset(new FlatTensorFunction(function_def->signature().name(),
                                     std::move(owned_captures), ctx));
-  return Status();
+  return absl::Status();
 }
 
-Status FlatTensorFunction::MakeCallOp(
+absl::Status FlatTensorFunction::MakeCallOp(
     absl::Span<AbstractTensorHandle* const> inputs, ImmediateOpPtr* out) const {
   out->reset(ctx_->CreateOperation());
   // In eager mode, TF2 python executes functions by constructing an op with
@@ -85,7 +88,7 @@ Status FlatTensorFunction::MakeCallOp(
 
   // Adding the captures of the function.
   TF_RETURN_IF_ERROR((*out)->AddInputList(captures));
-  return Status();
+  return absl::Status();
 }
 
 }  // namespace tensorflow

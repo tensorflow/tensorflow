@@ -1,5 +1,8 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "tf_py_benchmark_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,7 +25,7 @@ py_strict_library(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "meta_benchmark",
     srcs = ["meta_benchmark.py"],
     deps = [
@@ -36,7 +39,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "batch_benchmark",
     srcs = ["batch_benchmark.py"],
     deps = [
@@ -49,7 +52,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "filter_benchmark",
     srcs = ["filter_benchmark.py"],
     deps = [
@@ -59,7 +62,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "from_tensor_slices_benchmark",
     srcs = ["from_tensor_slices_benchmark.py"],
     deps = [
@@ -74,7 +77,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "interleave_benchmark",
     srcs = ["interleave_benchmark.py"],
     deps = [
@@ -85,7 +88,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "list_files_benchmark",
     srcs = ["list_files_benchmark.py"],
     deps = [
@@ -94,7 +97,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "map_benchmark",
     srcs = ["map_benchmark.py"],
     deps = [
@@ -109,7 +112,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "prefetch_benchmark",
     srcs = ["prefetch_benchmark.py"],
     deps = [
@@ -118,7 +121,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+tf_py_benchmark_test(
     name = "range_benchmark",
     srcs = ["range_benchmark.py"],
     deps = [

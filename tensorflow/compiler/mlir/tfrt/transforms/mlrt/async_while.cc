@@ -227,7 +227,7 @@ class AsyncWhilePass
         auto empty_string_attr = builder.getStringAttr("");
         auto init_predicate = builder.create<mlir::TF::PartitionedCallOp>(
             while_op->getLoc(), predicate_fn.getResultTypes()[0],
-            predicate_input,
+            predicate_input, /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
             mlir::FlatSymbolRefAttr::get(new_predicate_fn.getSymNameAttr()),
             empty_string_attr, empty_string_attr, empty_string_attr);
 
@@ -448,7 +448,7 @@ class AsyncWhilePass
     auto empty_string_attr = builder.getStringAttr("");
     auto predicate_op = builder.create<mlir::TF::PartitionedCallOp>(
         earliest_op->getLoc(), new_predicate_fn.getResultTypes(),
-        predicate_inputs,
+        predicate_inputs, /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
         mlir::FlatSymbolRefAttr::get(new_predicate_fn.getSymNameAttr()),
         empty_string_attr, empty_string_attr, empty_string_attr);
 

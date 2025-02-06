@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,51 +21,62 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/client_library.h"
-#include "xla/client/xla_builder.h"
+#include "xla/client/local_client.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_comparison.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
 namespace {
 
-xla::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
+absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("Host"));
-  se::StreamExecutorConfig config;
-  config.ordinal = 0;
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
-                      platform->GetExecutor(config));
+                      platform->ExecutorForDevice(0));
   auto device_state = std::make_unique<LocalDeviceState>(
       executor, local_client, LocalDeviceState::kSynchronous,
       /*max_inflight_computations=*/32,
       /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
-  auto device = std::make_unique<PjRtStreamExecutorDevice>(
-      0, std::move(device_state), "cpu");
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
-  devices.emplace_back(std::move(device));
+  devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
+      0, std::move(device_state), "cpu"));
+  std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
+  memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
+      0, devices.back().get(), "cpu", 0));
+  devices.back()->AttachMemorySpace(memory_spaces.back().get(),
+                                    /*is_default=*/true);
   return std::make_unique<PjRtStreamExecutorClient>(
-      "cpu", local_client, std::move(devices), /*process_index=*/0,
-      /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
+      "cpu", local_client, std::move(devices),
+      /*process_index=*/0, std::move(memory_spaces), /*allocator=*/nullptr,
+      /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr);
 }
 
-StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
     PjRtStreamExecutorClient& client, Shape shape,
     absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases) {
   CompileOptions compile_options;
@@ -83,13 +94,15 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
   return executable;
 }
 
-Status ExecuteWithSameInputBuffer(
+absl::Status ExecuteWithSameInputBuffer(
     absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases) {
   auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
   TF_ASSIGN_OR_RETURN(auto client, GetClient());
-  TF_ASSIGN_OR_RETURN(auto* device0, client->LookupDevice(0));
+  TF_RET_CHECK(!client->addressable_devices().empty());
+  auto* device0 = client->addressable_devices().front();
   TF_ASSIGN_OR_RETURN(auto buffer,
-                      client->CreateUninitializedBuffer(shape, device0));
+                      client->CreateUninitializedBuffer(
+                          shape, *device0->default_memory_space()));
   TF_ASSIGN_OR_RETURN(auto executable,
                       ToyExecutable(*client, shape, std::move(set_up_aliases)));
   return executable->Execute({{buffer.get(), buffer.get()}}, /*options=*/{})
@@ -128,10 +141,10 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   auto literal = LiteralUtil::CreateR2({{1, 2, 3}, {4, 5, 6}});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
-      client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
 
-  auto avr = tsl::MakeUnconstructedAsyncValueRef<absl::Status>();
-  PjRtFuture<absl::Status> future(avr);
+  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
   auto blocked_buffer =
       std::move(*(buffer->DonateWithControlDependency(future)));
   EXPECT_TRUE(buffer->IsDeleted());
@@ -141,7 +154,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   auto result_literal = std::make_shared<Literal>(
       ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
   bool got_literal = false;
-  blocked_buffer->ToLiteral(result_literal.get(), [&](absl::Status s) {
+  blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
     absl::MutexLock l(&mu);
     TF_ASSERT_OK(s);
     got_literal = true;
@@ -150,7 +163,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
 
   EXPECT_FALSE(got_literal);
 
-  avr.emplace(tsl::OkStatus());
+  promise.Set();
   EXPECT_TRUE(future.IsReady());
 
   {

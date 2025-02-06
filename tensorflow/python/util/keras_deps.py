@@ -30,7 +30,6 @@ _KERAS_CALL_CONTEXT_FUNCTION = None
 _KERAS_CLEAR_SESSION_FUNCTION = None
 _KERAS_GET_SESSION_FUNCTION = None
 _KERAS_LOAD_MODEL_FUNCTION = None
-_KERAS_LOAD_CONTEXT_FUNCTION = None
 
 # TODO(b/169898786): Use the Keras public API when TFLite moves out of TF
 
@@ -60,15 +59,6 @@ def register_load_model_function(func):
   _KERAS_LOAD_MODEL_FUNCTION = func
 
 
-# This is used to register the in_load_context function in
-# third_party/py/tf_keras/saving/saved_model/load_context.py for use in
-# third_party/tensorflow library.
-@tf_export('__internal__.register_load_context_function', v1=[])
-def register_load_context_function(func):
-  global _KERAS_LOAD_CONTEXT_FUNCTION
-  _KERAS_LOAD_CONTEXT_FUNCTION = func
-
-
 # Get functions
 def get_call_context_function():
   global _KERAS_CALL_CONTEXT_FUNCTION
@@ -88,8 +78,3 @@ def get_get_session_function():
 def get_load_model_function():
   global _KERAS_LOAD_MODEL_FUNCTION
   return _KERAS_LOAD_MODEL_FUNCTION
-
-
-def get_load_context_function():
-  global _KERAS_LOAD_CONTEXT_FUNCTION  # pylint: disable=global-variable-not-assigned
-  return _KERAS_LOAD_CONTEXT_FUNCTION

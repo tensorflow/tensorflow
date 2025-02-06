@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteRegistration Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteRegistration</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p><code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> defines the implementation of an operation (a built-in op, custom op, or custom delegate kernel). </p>
+  <h2>Summary</h2>
+  <p>It is a struct containing "methods" (C function pointers) that will be invoked by the TF Lite runtime to evaluate instances of the operation.</p>
+  <p>See also <code>TfLiteRegistrationExternal</code> which is a more ABI-stable equivalent. </p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_registration_1a1a98307d27c2ea9c39bcd4b48da2c4fa">async_kernel</a>)(TfLiteContext *context, TfLiteNode *node)</code>
+      </td>
+      <td>
+        <div>
+          <code>struct TfLiteAsyncKernel *(*</code>
+        </div>
+        <div>Retrieves asynchronous kernel. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_registration_1a1a87f0c20fb23deaa745c25a4e84a08f">builtin_code</a></code>
+      </td>
+      <td>
+        <div>
+          <code>int32_t</code>
+        </div>
+        <div>Builtin codes. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_registration_1aacbf4a103db7471e451428f409481c20">custom_name</a></code>
+      </td>
+      <td>
+        <div>
+          <code>const char *</code>
+        </div>
+        <div>Custom op name. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_registration_1acb0eef469a41aa024925e88d0486eca8">free</a>)(TfLiteContext *context, void *buffer)</code>
+      </td>
+      <td>
+        <div>
+          <code>void(*</code>
+        </div>
+        <div>The pointer <code>buffer</code> is the data previously returned by an init invocation. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_registration_1a93d4631a7edc80ef73cbebb579ab3a93">init</a>)(TfLiteContext *context, const char *buffer, size_t length)</code>
+      </td>
+      <td>
+        <div>
+          <code>void *(*</code>
+        </div>
+        <div>Initializes the op from serialized data. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_registration_1a343fad1f4d69c5007ec9da7f084b32d9">inplace_operator</a></code>
+      </td>
+      <td>
+        <div>
+          <code>uint64_t</code>
+        </div>
+        <div>Indicates if an operator's output may safely overwrite its inputs. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_registration_1aa146bb84a2c7c75d3590d8e556ddfb97">invoke</a>)(TfLiteContext *context, TfLiteNode *node)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Execute the node (should read <code>node->inputs</code> and output to <code>node->outputs</code>). </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_registration_1a6ecffde4e6466f86aa8f28d25de553d7">prepare</a>)(TfLiteContext *context, TfLiteNode *node)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>prepare is called when the inputs this node depends on have been resized. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_registration_1ae06b37ce1c0e8bd2445948fe68797b77">profiling_string</a>)(const TfLiteContext *context, const TfLiteNode *node)</code>
+      </td>
+      <td>
+        <div>
+          <code>const char *(*</code>
+        </div>
+        <div><code>profiling_string</code> is called during summarization of profiling information in order to group executions together. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_registration_1a37b871c080e442f44926c13564032438">registration_external</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/common.html#group__common_1gac0d70c820dfb7187a23e38e14deec7eb">TfLiteRegistrationExternal</a> *</code>
+        </div>
+        <div>The external version of <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_registration_1a8b6739c5e206a0976db9bad12e150f86">version</a></code>
+      </td>
+      <td>
+        <div>
+          <code>int</code>
+        </div>
+        <div>The version of the op. </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_registration_1a1a98307d27c2ea9c39bcd4b48da2c4fa">
+    <h3>async_kernel</h3>
+    <pre class="prettyprint">struct TfLiteAsyncKernel *(* TfLiteRegistration::async_kernel)(TfLiteContext *context, TfLiteNode *node)</pre>
+    <div>
+      <p>Retrieves asynchronous kernel. </p>
+      <p>If the <code>async_kernel</code> field is nullptr, it means the operation described by this <a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a> object does not support asynchronous execution. Otherwise, the function that the field points to should only be called for delegate kernel nodes, i.e. <code>node</code> should be a delegate kernel node created by applying a delegate. If the function returns nullptr, that means that the underlying delegate does not support asynchronous execution for this <code>node</code>. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_registration_1a1a87f0c20fb23deaa745c25a4e84a08f">
+    <h3>builtin_code</h3>
+    <pre class="prettyprint">int32_t TfLiteRegistration::builtin_code</pre>
+    <div>
+      <p>Builtin codes. </p>
+      <p>If this kernel refers to a builtin this is the code of the builtin. This is so we can do marshaling to other frameworks like NN API.</p>
+      <p>Note: It is the responsibility of the registration binder to set this properly. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_registration_1aacbf4a103db7471e451428f409481c20">
+    <h3>custom_name</h3>
+    <pre class="prettyprint">const char * TfLiteRegistration::custom_name</pre>
+    <div>
+      <p>Custom op name. </p>
+      <p>If the op is a builtin, this will be <code>null</code>.</p>
+      <p>Note: It is the responsibility of the registration binder to set this properly.</p>
+      <p>WARNING: This is an experimental interface that is subject to change. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_registration_1acb0eef469a41aa024925e88d0486eca8">
+    <h3>free</h3>
+    <pre class="prettyprint">void(* TfLiteRegistration::free)(TfLiteContext *context, void *buffer)</pre>
+    <div>
+      <p>The pointer <code>buffer</code> is the data previously returned by an init invocation. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_registration_1a93d4631a7edc80ef73cbebb579ab3a93">
+    <h3>init</h3>
+    <pre class="prettyprint">void *(* TfLiteRegistration::init)(TfLiteContext *context, const char *buffer, size_t length)</pre>
+    <div>
+      <p>Initializes the op from serialized data. </p>
+      <p>Called only <i>once</i> for the lifetime of the op, so any one-time allocations should be made here (unless they depend on tensor sizes).</p>
+      <p>
+        <ul>
+          <li>If a built-in op:<ul>
+              <li><code>buffer</code> is the op's params data (TfLiteLSTMParams*).</li>
+              <li><code>length</code> is zero.</li>
+            </ul></li>
+          <li>If custom op:<ul>
+              <li><code>buffer</code> is the op's <code>custom_options</code>.</li>
+              <li><code>length</code> is the size of the buffer.</li>
+            </ul></li>
+        </ul>
+      </p>
+      <p>Returns a type-punned (i.e. void*) opaque data (e.g. a primitive pointer or an instance of a struct).</p>
+      <p>The returned pointer will be stored with the node in the <code>user_data</code> field, accessible within prepare and invoke functions below.</p>
+      <p>NOTE: if the data is already in the desired format, simply implement this function to return <code>nullptr</code> and implement the free function to be a no-op. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_registration_1a343fad1f4d69c5007ec9da7f084b32d9">
+    <h3>inplace_operator</h3>
+    <pre class="prettyprint">uint64_t TfLiteRegistration::inplace_operator</pre>
+    <div>
+      <p>Indicates if an operator's output may safely overwrite its inputs. </p>
+      <p>See the comments in <code>TfLiteInPlaceOp</code>. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_registration_1aa146bb84a2c7c75d3590d8e556ddfb97">
+    <h3>invoke</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteRegistration::invoke)(TfLiteContext *context, TfLiteNode *node)</pre>
+    <div>
+      <p>Execute the node (should read <code>node->inputs</code> and output to <code>node->outputs</code>). </p>
+      <p>Returns <code>kTfLiteOk</code> on success. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_registration_1a6ecffde4e6466f86aa8f28d25de553d7">
+    <h3>prepare</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteRegistration::prepare)(TfLiteContext *context, TfLiteNode *node)</pre>
+    <div>
+      <p>prepare is called when the inputs this node depends on have been resized. </p>
+      <p><code>context->ResizeTensor()</code> can be called to request output tensors to be resized. Can be called multiple times for the lifetime of the op.</p>
+      <p>Returns <code>kTfLiteOk</code> on success. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_registration_1ae06b37ce1c0e8bd2445948fe68797b77">
+    <h3>profiling_string</h3>
+    <pre class="prettyprint">const char *(* TfLiteRegistration::profiling_string)(const TfLiteContext *context, const TfLiteNode *node)</pre>
+    <div>
+      <p><code>profiling_string</code> is called during summarization of profiling information in order to group executions together. </p>
+      <p>Providing a value here will cause a given op to appear multiple times is the profiling report. This is particularly useful for custom ops that can perform significantly different calculations depending on their <code>user-data</code>. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_registration_1a37b871c080e442f44926c13564032438">
+    <h3>registration_external</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/common.html#group__common_1gac0d70c820dfb7187a23e38e14deec7eb">TfLiteRegistrationExternal</a> * TfLiteRegistration::registration_external</pre>
+    <div>
+      <p>The external version of <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code>. </p>
+      <p>Since we can't use internal types (such as <code><a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a></code>) for C API to maintain ABI stability. C API user will provide <code>TfLiteRegistrationExternal</code> to implement custom ops. We keep it inside of <code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> and use it to route callbacks properly. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_registration_1a8b6739c5e206a0976db9bad12e150f86">
+    <h3>version</h3>
+    <pre class="prettyprint">int TfLiteRegistration::version</pre>
+    <div>
+      <p>The version of the op. </p>
+      <p>Note: It is the responsibility of the registration binder to set this properly. </p>
+    </div>
+  </div>
+</body>
+</html>

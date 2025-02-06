@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,11 +29,47 @@ limitations under the License.
 
 namespace xla {
 
-static StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
+static absl::StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
+  if (conditional->shape().IsTuple()) {
+    VLOG(1) << "Not transforming tuples to 'select'";
+    return false;
+  }
+  bool is_form2 = false;
+  HloInstruction* true_operand;
+  HloInstruction* false_operand;
+  HloComputation* true_computation;
+  HloComputation* false_computation;
+
+  if (ShapeUtil::IsScalarWithElementType(conditional->operand(0)->shape(),
+                                         PrimitiveType::PRED)) {
+    // Form 1
+    // Conditional(pred, true_oprnd, true_comp, false_oprnd, false_comp)
+    true_operand = conditional->mutable_operand(1);
+    false_operand = conditional->mutable_operand(2);
+    true_computation = conditional->true_computation();
+    false_computation = conditional->false_computation();
+  } else if (ShapeUtil::IsScalarWithElementType(
+                 conditional->operand(0)->shape(), PrimitiveType::S32)) {
+    // Form 2
+    // Conditional(branch_index, branch_computations, branch_operands)
+    if (conditional->branch_computations().size() != 2) {
+      VLOG(1)
+          << "Not transforming conditional; branch_computations size is not 2";
+      return false;
+    }
+    false_operand = conditional->mutable_operand(1);
+    true_operand = conditional->mutable_operand(2);
+    false_computation = conditional->branch_computations()[0];
+    true_computation = conditional->branch_computations()[1];
+    is_form2 = true;
+  } else {
+    VLOG(1) << "Not transforming conditional; Unexpected operand0 type";
+    return false;
+  }
+
   // Only allow conditional to select if the called computations
   // do not have side effects.
-  if (conditional->true_computation()->HasSideEffect() ||
-      conditional->false_computation()->HasSideEffect()) {
+  if (true_computation->HasSideEffect() || false_computation->HasSideEffect()) {
     VLOG(1) << "Not transforming conditional; branches have side effects:"
             << conditional->ToString();
     return false;
@@ -44,18 +80,18 @@ static StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
   // Create new instructions
   HloInstruction* if_call_op =
       computation->AddInstruction(HloInstruction::CreateCall(
-          conditional->shape(), {conditional->mutable_operand(1)},
-          conditional->true_computation()));
+          conditional->shape(), {true_operand}, true_computation));
   conditional->SetupDerivedInstruction(if_call_op);
   HloInstruction* else_call_op =
       computation->AddInstruction(HloInstruction::CreateCall(
-          conditional->shape(), {conditional->mutable_operand(2)},
-          conditional->false_computation()));
+          conditional->shape(), {false_operand}, false_computation));
   conditional->SetupDerivedInstruction(else_call_op);
   HloInstruction* condition = conditional->mutable_operand(0);
-  if (else_call_op->shape().IsTuple()) {
-    VLOG(1) << "Not transforming tuples to 'select'";
-    return false;
+  if (is_form2) {
+    // If Form2 => convert operand0 of type S32 to PRED
+    condition = computation->AddInstruction(HloInstruction::CreateConvert(
+        ShapeUtil::ChangeElementType(condition->shape(), PrimitiveType::PRED),
+        condition));
   }
   TF_ASSIGN_OR_RETURN(
       HloInstruction * select_op,
@@ -66,17 +102,17 @@ static StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
   return true;
 }
 
-StatusOr<bool> ConditionalToSelect::Run(
+absl::StatusOr<bool> ConditionalToSelect::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   bool did_mutate = false;
   VLOG(1) << "Running conditional-to-select pass";
   TF_RETURN_IF_ERROR(
-      call_graph->VisitNodes([&](const CallGraphNode& node) -> Status {
+      call_graph->VisitNodes([&](const CallGraphNode& node) -> absl::Status {
         std::vector<HloInstruction*> ToInline;
         if (node.context() != CallContext::kEmbedded) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         for (const CallSite& callsite : node.callsites()) {
           if (callsite.instruction()->opcode() == HloOpcode::kConditional) {
@@ -87,7 +123,7 @@ StatusOr<bool> ConditionalToSelect::Run(
             did_mutate |= result;
           }
         }
-        return OkStatus();
+        return absl::OkStatus();
       }));
   return did_mutate;
 }

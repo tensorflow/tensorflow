@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -88,6 +88,7 @@ CUptiResult CuptiErrorManager::ActivityGetNextRecord(
   CUptiResult error = interface_->ActivityGetNextRecord(
       buffer, valid_buffer_size_bytes, record);
   ALLOW_ERROR(error, CUPTI_ERROR_MAX_LIMIT_REACHED);
+  ALLOW_ERROR(error, CUPTI_ERROR_INVALID_KIND);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -122,6 +123,21 @@ CUptiResult CuptiErrorManager::ActivityRegisterCallbacks(
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
+
+CUptiResult CuptiErrorManager::ActivityUsePerThreadBuffer() {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivityUsePerThreadBuffer();
+  // Don't disable cupti just because the gpu driver or cuda don't support
+  // per-thread activity buffer.
+  return error;
+}
+
+CUptiResult CuptiErrorManager::SetActivityFlushPeriod(uint32_t period_ms) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->SetActivityFlushPeriod(period_ms);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+};
 
 CUptiResult CuptiErrorManager::GetDeviceId(CUcontext context,
                                            uint32_t* device_id) {
@@ -159,6 +175,10 @@ CUptiResult CuptiErrorManager::EnableCallback(uint32_t enable,
                          0 /* DISABLE */, subscriber, domain, callback_id);
       RegisterUndoFunction(f);
     }
+  } else {
+    LOG(ERROR) << "cupti" << __func__
+               << ": error with domain:" << static_cast<int>(domain)
+               << " and callback_id:" << static_cast<int>(callback_id);
   }
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
@@ -202,242 +222,6 @@ CUptiResult CuptiErrorManager::Unsubscribe(CUpti_SubscriberHandle subscriber) {
   return error;
 }
 
-CUptiResult CuptiErrorManager::DeviceEnumEventDomains(
-    CUdevice device, size_t* array_size_bytes,
-    CUpti_EventDomainID* domain_array) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->DeviceEnumEventDomains(
-      device, array_size_bytes, domain_array);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::DeviceGetEventDomainAttribute(
-    CUdevice device, CUpti_EventDomainID event_domain,
-    CUpti_EventDomainAttribute attrib, size_t* value_size, void* value) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->DeviceGetEventDomainAttribute(
-      device, event_domain, attrib, value_size, value);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::DisableKernelReplayMode(CUcontext context) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->DisableKernelReplayMode(context);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::EnableKernelReplayMode(CUcontext context) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->EnableKernelReplayMode(context);
-  if (error == CUPTI_SUCCESS) {
-    auto f =
-        std::bind(&CuptiErrorManager::DisableKernelReplayMode, this, context);
-    RegisterUndoFunction(f);
-  }
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::DeviceEnumMetrics(CUdevice device,
-                                                 size_t* arraySizeBytes,
-                                                 CUpti_MetricID* metricArray) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error =
-      interface_->DeviceEnumMetrics(device, arraySizeBytes, metricArray);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::DeviceGetNumEventDomains(CUdevice device,
-                                                        uint32_t* num_domains) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->DeviceGetNumEventDomains(device, num_domains);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::EventDomainEnumEvents(
-    CUpti_EventDomainID event_domain, size_t* array_size_bytes,
-    CUpti_EventID* event_array) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->EventDomainEnumEvents(
-      event_domain, array_size_bytes, event_array);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::EventDomainGetNumEvents(
-    CUpti_EventDomainID event_domain, uint32_t* num_events) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error =
-      interface_->EventDomainGetNumEvents(event_domain, num_events);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::EventGetAttribute(CUpti_EventID event,
-                                                 CUpti_EventAttribute attrib,
-                                                 size_t* value_size,
-                                                 void* value) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error =
-      interface_->EventGetAttribute(event, attrib, value_size, value);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::EventGetIdFromName(CUdevice device,
-                                                  const char* event_name,
-                                                  CUpti_EventID* event) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->EventGetIdFromName(device, event_name, event);
-  ALLOW_ERROR(error, CUPTI_ERROR_INVALID_EVENT_NAME);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::EventGroupDisable(CUpti_EventGroup event_group) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->EventGroupDisable(event_group);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::EventGroupEnable(CUpti_EventGroup event_group) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->EventGroupEnable(event_group);
-  if (error == CUPTI_SUCCESS) {
-    auto f =
-        std::bind(&CuptiErrorManager::EventGroupDisable, this, event_group);
-    RegisterUndoFunction(f);
-  }
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::EventGroupGetAttribute(
-    CUpti_EventGroup event_group, CUpti_EventGroupAttribute attrib,
-    size_t* value_size, void* value) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->EventGroupGetAttribute(event_group, attrib,
-                                                         value_size, value);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::EventGroupReadEvent(
-    CUpti_EventGroup event_group, CUpti_ReadEventFlags flags,
-    CUpti_EventID event, size_t* event_value_buffer_size_bytes,
-    uint64_t* event_value_buffer) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->EventGroupReadEvent(
-      event_group, flags, event, event_value_buffer_size_bytes,
-      event_value_buffer);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::EventGroupSetAttribute(
-    CUpti_EventGroup event_group, CUpti_EventGroupAttribute attrib,
-    size_t value_size, void* value) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->EventGroupSetAttribute(event_group, attrib,
-                                                         value_size, value);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::EventGroupSetsCreate(
-    CUcontext context, size_t event_id_array_size_bytes,
-    CUpti_EventID* event_id_array, CUpti_EventGroupSets** event_group_passes) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->EventGroupSetsCreate(
-      context, event_id_array_size_bytes, event_id_array, event_group_passes);
-  if (error == CUPTI_SUCCESS) {
-    auto f = std::bind(&CuptiErrorManager::EventGroupSetsDestroy, this,
-                       *event_group_passes);
-    RegisterUndoFunction(f);
-  }
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::EventGroupSetsDestroy(
-    CUpti_EventGroupSets* event_group_sets) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->EventGroupSetsDestroy(event_group_sets);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-// CUPTI metric API
-CUptiResult CuptiErrorManager::DeviceGetNumMetrics(CUdevice device,
-                                                   uint32_t* num_metrics) {
-  IGNORE_CALL_IF_DISABLED;
-  // Disable heap checking for the first CUPTI metric API. See b/22091576.
-  absl::LeakCheckDisabler disabler;
-  CUptiResult error = interface_->DeviceGetNumMetrics(device, num_metrics);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::MetricGetIdFromName(CUdevice device,
-                                                   const char* metric_name,
-                                                   CUpti_MetricID* metric) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error =
-      interface_->MetricGetIdFromName(device, metric_name, metric);
-  ALLOW_ERROR(error, CUPTI_ERROR_INVALID_METRIC_NAME);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::MetricGetNumEvents(CUpti_MetricID metric,
-                                                  uint32_t* num_events) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->MetricGetNumEvents(metric, num_events);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::MetricEnumEvents(
-    CUpti_MetricID metric, size_t* event_id_array_size_bytes,
-    CUpti_EventID* event_id_array) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->MetricEnumEvents(
-      metric, event_id_array_size_bytes, event_id_array);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::MetricGetAttribute(CUpti_MetricID metric,
-                                                  CUpti_MetricAttribute attrib,
-                                                  size_t* value_size,
-                                                  void* value) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error =
-      interface_->MetricGetAttribute(metric, attrib, value_size, value);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
-CUptiResult CuptiErrorManager::MetricGetValue(
-    CUdevice device, CUpti_MetricID metric, size_t event_id_array_size_bytes,
-    CUpti_EventID* event_id_array, size_t event_value_array_size_bytes,
-    uint64_t* event_value_array, uint64_t time_duration,
-    CUpti_MetricValue* metric_value) {
-  IGNORE_CALL_IF_DISABLED;
-  CUptiResult error = interface_->MetricGetValue(
-      device, metric, event_id_array_size_bytes, event_id_array,
-      event_value_array_size_bytes, event_value_array, time_duration,
-      metric_value);
-  LOG_AND_DISABLE_IF_ERROR(error);
-  return error;
-}
-
 void CuptiErrorManager::UndoAndDisable() {
   if (undo_disabled_) {  // prevent deadlock
     return;
@@ -476,6 +260,29 @@ CUptiResult CuptiErrorManager::GetStreamIdEx(CUcontext context, CUstream stream,
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error =
       interface_->GetStreamIdEx(context, stream, per_thread_stream, stream_id);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::GetGraphId(CUgraph graph, uint32_t* graph_id) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->GetGraphId(graph, graph_id);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::GetGraphExecId(CUgraphExec graph_exec,
+                                              uint32_t* graph_id) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->GetGraphExecId(graph_exec, graph_id);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::SetThreadIdType(
+    CUpti_ActivityThreadIdType type) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->SetThreadIdType(type);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }

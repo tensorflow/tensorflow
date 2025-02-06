@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -657,7 +657,6 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
-
 // GPU definitions of both ops.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -719,6 +718,9 @@ void LaunchConvBackpropInputOpImpl(
 
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+  auto* blas = stream->parent()->AsBlas();
+  OP_REQUIRES(context, blas != nullptr,
+              absl::InternalError("No BLAS for stream."));
 
   bool is_grouped_convolution = filter_shape.dim_size(3) != dims.in_depth;
   if (!is_grouped_convolution && dims.filter_size(0) == 1 &&
@@ -741,9 +743,10 @@ void LaunchConvBackpropInputOpImpl(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(context, stream->ThenBlasGemm(transpose, no_transpose, n, m,
-                                                 k, b_ptr, k, a_ptr, k, &c_ptr,
-                                                 n, GetNumericOptions()));
+    OP_REQUIRES_OK(
+        context, blas->BlasGemm(stream, transpose, no_transpose, n, m, k, b_ptr,
+                                k, a_ptr, k, &c_ptr, n, GetNumericOptions(),
+                                se::blas::CallContext::kNone));
     return;
   } else if (!is_grouped_convolution &&
              dims.filter_size(0) == dims.input_size(0) &&
@@ -765,9 +768,10 @@ void LaunchConvBackpropInputOpImpl(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(context, stream->ThenBlasGemm(transpose, no_transpose, n, m,
-                                                 k, b_ptr, k, a_ptr, k, &c_ptr,
-                                                 n, GetNumericOptions()));
+    OP_REQUIRES_OK(
+        context, blas->BlasGemm(stream, transpose, no_transpose, n, m, k, b_ptr,
+                                k, a_ptr, k, &c_ptr, n, GetNumericOptions(),
+                                se::blas::CallContext::kNone));
     return;
   }
 
@@ -1023,11 +1027,8 @@ struct LaunchConvBackpropInputOp<Eigen::bfloat16> {
                      const std::vector<int32>& dilation,
                      const std::vector<int32>& strides, const Padding& padding,
                      Tensor* in_backprop, TensorFormat data_format) {
-    // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-    // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
     auto* stream = ctx->op_device_context()->stream();
-    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-        se::CudaComputeCapability::AMPERE);
+    const bool cast_to_float = !IsBF16SupportedInOps(stream);
 
     if (cast_to_float) {
       Tensor casted_out_backprop = out_backprop;
@@ -1151,15 +1152,14 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
   bool cudnn_use_autotune_;
 };
 
-
-#define REGISTER_GPU_KERNEL(T)                                                \
-  REGISTER_KERNEL_BUILDER(                                                    \
-      Name("Conv3DBackpropInput").Device(DEVICE_GPU).TypeConstraint<T>("T"),  \
-      Conv3DBackpropInputOp<GPUDevice, T>);                                   \
-  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")                       \
-                              .Device(DEVICE_GPU)                             \
-                              .TypeConstraint<T>("T")                         \
-                              .HostMemory("input_sizes"),                     \
+#define REGISTER_GPU_KERNEL(T)                                               \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("Conv3DBackpropInput").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      Conv3DBackpropInputOp<GPUDevice, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("Conv3DBackpropInputV2")                      \
+                              .Device(DEVICE_GPU)                            \
+                              .TypeConstraint<T>("T")                        \
+                              .HostMemory("input_sizes"),                    \
                           Conv3DBackpropInputOp<GPUDevice, T>);
 TF_CALL_half(REGISTER_GPU_KERNEL);
 TF_CALL_bfloat16(REGISTER_GPU_KERNEL);

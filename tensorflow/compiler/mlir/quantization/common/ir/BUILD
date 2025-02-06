@@ -1,0 +1,80 @@
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
+
+td_library(
+    name = "QuantizationOpsTdFiles",
+    srcs = [
+        "QuantOps.td",
+        "QuantOpsBase.td",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:QuantizationOpsTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "QuantOpsIncGen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-op-decls"],
+            "QuantOps.h.inc",
+        ),
+        (
+            ["-gen-op-defs"],
+            "QuantOps.cc.inc",
+        ),
+        (
+            [
+                "-gen-dialect-decls",
+                "-dialect=quantization",
+            ],
+            "QuantOpsDialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+                "-dialect=quantization",
+            ],
+            "QuantOpsDialect.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "QuantOps.td",
+    deps = [":QuantizationOpsTdFiles"],
+)
+
+cc_library(
+    name = "QuantOps",
+    srcs = [
+        "FakeQuantSupport.cc",
+        "QuantOps.cc",
+        "UniformSupport.cc",
+    ],
+    hdrs = [
+        "FakeQuantSupport.h",
+        "QuantOps.h",
+        "UniformSupport.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":QuantOpsIncGen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeOpInterface",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
+    ],
+)

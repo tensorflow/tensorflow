@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gtest/gtest.h>
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/BasicBlock.h"
@@ -25,10 +26,12 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/test.h"
-#include "xla/tests/filecheck.h"
-#include "tsl/platform/statusor.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -89,7 +92,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddress) {
   llvm::Argument* array_index = function->getArg(1);
 
   Shape shape = ShapeUtil::MakeShape(F32, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -113,7 +116,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddressNonLinear) {
   llvm::Argument* array_index = function->getArg(1);
 
   Shape shape = ShapeUtil::MakeShape(F32, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -141,21 +144,21 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4) {
   llvm::Argument* array_index = function->getArg(1);
 
   Shape shape = ShapeUtil::MakeShape(S4, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
-  llvm::Value* is_high_order_bits;
+  llvm::Value* bit_offset;
   ir_array.EmitArrayElementAddress(index, &builder_, /*name=*/"",
                                    /*use_linear_index=*/true,
-                                   /*is_high_order_bits=*/&is_high_order_bits);
+                                   /*bit_offset=*/&bit_offset);
   std::string ir_str = DumpToString(&module_);
 
-  // The index is divided by 2 and used as an index to the i8 array. A
-  // is also computed to calculate is_high_order_bits.
+  // The index is divided by 2 and used as an index to the i8 array. A remainder
+  // is also computed to calculate bit_offset.
   const char* filecheck_pattern = R"(
     CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx:[0-9]+]]) {
-    CHECK: %[[rem:[0-9]+]] = srem i32 %[[idx]], 2
+    CHECK: %[[rem:[0-9]+]] = urem i32 %[[idx]], 2
     CHECK: %[[div:[0-9]+]] = udiv i32 %[[idx]], 2
     CHECK: getelementptr inbounds i8, ptr %[[ptr]], i32 %[[div]]
   )";
@@ -174,19 +177,19 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4NonLinear) {
   llvm::Argument* array_index1 = function->getArg(2);
 
   Shape shape = ShapeUtil::MakeShape(S4, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index({array_index0, array_index1}, shape,
                        builder_.getInt32Ty());
-  llvm::Value* is_high_order_bits;
+  llvm::Value* bit_offset;
   ir_array.EmitArrayElementAddress(index, &builder_, /*name=*/"",
                                    /*use_linear_index=*/false,
-                                   /*is_high_order_bits=*/&is_high_order_bits);
+                                   /*bit_offset=*/&bit_offset);
   std::string ir_str = DumpToString(&module_);
 
   // The index is linearized despite use_linear_index=false being passed because
-  // non-linaer indices are not supported with int4
+  // non-linear indices are not supported with int4
   const char* filecheck_pattern = R"(
     CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx0:[0-9]+]], i32 %[[idx1:[0-9]+]]) {
     CHECK: %[[mul1:[0-9]+]] = mul nuw nsw i32 %[[idx1]], 1
@@ -209,7 +212,7 @@ TEST_F(IrArrayTest, EmitReadArrayElementInt4) {
   llvm::Argument* array_index = function->getArg(1);
 
   Shape shape = ShapeUtil::MakeShape(S4, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -220,17 +223,17 @@ TEST_F(IrArrayTest, EmitReadArrayElementInt4) {
     CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx0:[0-9]+]]) {
 
     COM: Calculate the address.
-    CHECK: %[[srem:[0-9]+]] = srem i32 %[[idx0]], 2
+    CHECK: %[[urem:[0-9]+]] = urem i32 %[[idx0]], 2
     CHECK: %[[addr:[0-9]+]] = udiv i32 %[[idx0]], 2
-    CHECK: %[[isodd:[0-9]+]] = icmp eq i32 %[[srem]], 0
+    CHECK: %[[mul:[0-9]+]] = mul i32 %[[urem]], 4
+    CHECK: %[[sub:[0-9]+]] = sub i32 4, %[[mul]]
+    CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[sub]] to i8
     CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[addr]]
 
-    COM: Load the element and mask out 4 bits.
+    COM: Load the element, optionally shift, and truncate.
     CHECK: %[[load:[0-9]+]] = load i8, ptr %[[gep]], align 1
-    CHECK: %[[shift:[0-9]+]] = ashr i8 %[[load]], 4
-    CHECK: %[[trunc:[0-9]+]] = trunc i8 %[[load]] to i4
-    CHECK: %[[sext:[0-9]+]] = sext i4 %[[trunc]] to i8
-    CHECK: select i1 %[[isodd]], i8 %[[shift]], i8 %[[sext]]
+    CHECK: %[[shift:[0-9]+]] = lshr i8 %[[load]], %[[trunc]]
+    CHECK: trunc i8 %[[shift]] to i4
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_match,
@@ -240,13 +243,13 @@ TEST_F(IrArrayTest, EmitReadArrayElementInt4) {
 
 TEST_F(IrArrayTest, EmitWriteArrayElementInt4) {
   llvm::Function* function = EmitFunctionAndSetInsertPoint(
-      {builder_.getPtrTy(), builder_.getInt32Ty(), builder_.getInt8Ty()});
+      {builder_.getPtrTy(), builder_.getInt32Ty(), builder_.getIntNTy(4)});
   llvm::Argument* array_ptr = function->getArg(0);
   llvm::Argument* array_index = function->getArg(1);
   llvm::Argument* val_to_write = function->getArg(2);
 
   Shape shape = ShapeUtil::MakeShape(S4, {3, 5});
-  llvm::Type* type = llvm_ir::ShapeToIrType(shape, &module_);
+  llvm::Type* type = llvm_ir::ShapeToIrType(shape, module_.getContext());
   IrArray ir_array(array_ptr, type, shape);
 
   IrArray::Index index(array_index, shape, &builder_);
@@ -254,23 +257,23 @@ TEST_F(IrArrayTest, EmitWriteArrayElementInt4) {
   std::string ir_str = DumpToString(&module_);
 
   const char* filecheck_pattern = R"(
-    CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx0:[0-9]+]], i8 %[[val:[0-9]+]]) {
+    CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx0:[0-9]+]], i4 %[[val:[0-9]+]]) {
 
     COM: Calculate the address.
-    CHECK: %[[srem:[0-9]+]] = srem i32 %[[idx0]], 2
+    CHECK: %[[urem:[0-9]+]] = urem i32 %[[idx0]], 2
     CHECK: %[[addr:[0-9]+]] = udiv i32 %[[idx0]], 2
-    CHECK: %[[isodd:[0-9]+]] = icmp eq i32 %[[srem]], 0
+    CHECK: %[[mul:[0-9]+]] = mul i32 %[[urem]], 4
+    CHECK: %[[sub:[0-9]+]] = sub i32 4, %[[mul]]
+    CHECK: %[[trunc:[0-9]+]] = trunc i32 %[[sub]] to i8
     CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[addr]]
 
     COM: Load address, replace 4 bits with the value, and write to address.
     CHECK: %[[load:[0-9]+]] = load i8, ptr %[[gep]], align 1
-    CHECK: %[[shl:[0-9]+]] = shl i8 %[[val]], 4
-    CHECK: %[[and1:[0-9]+]] = and i8 %[[load]], 15
-    CHECK: %[[or1:[0-9]+]] = or i8 %[[shl]], %[[and1]]
-    CHECK: %[[and2:[0-9]+]] = and i8 %[[val]], 15
-    CHECK: %[[and3:[0-9]+]] = and i8 %[[load]], -16
-    CHECK: %[[or2:[0-9]+]] = or i8 %[[and2]], %[[and3]]
-    CHECK: %[[towrite:[0-9]+]] = select i1 %[[isodd]], i8 %[[or1]], i8 %[[or2]]
+    CHECK: %[[zext:[0-9]+]] = zext i4 %[[val]] to i8
+    CHECK: %[[shifted_val:[0-9]+]] = shl i8 %[[zext]], %[[trunc]]
+    CHECK: %[[mask:[0-9]+]] = call i8 @llvm.fshl.i8(i8 -16, i8 -16, i8 %[[trunc]])
+    CHECK: %[[and:[0-9]+]] = and i8 %[[load]], %[[mask]]
+    CHECK: %[[towrite:[0-9]+]] = or i8 %[[and]], %[[shifted_val]]
     CHECK: store i8 %[[towrite]], ptr %[[gep]], align 1
   )";
 

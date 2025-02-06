@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "PaddingFIFOQueueV2"
   output_arg {
     name: "handle"

@@ -12,24 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-::tensorflow::Status DropIm2colArrays::Run(Model* model, std::size_t op_index,
-                                           bool* modified) {
+absl::Status DropIm2colArrays::Run(Model* model, std::size_t op_index,
+                                   bool* modified) {
   *modified = false;
   auto conv_it = model->operators.begin() + op_index;
   if (conv_it->get()->type != OperatorType::kConv) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   auto* conv_op = static_cast<ConvOperator*>(conv_it->get());
   if (conv_op->outputs.size() < 2) {
     // Conv op does not have im2col.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Drop the im2col array.
@@ -39,7 +41,7 @@ namespace toco {
   AddMessageF("Dropped an im2col array for %s", LogName(*conv_op));
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

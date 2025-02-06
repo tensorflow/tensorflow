@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/delegates/compatibility/nnapi/nnapi_compatibility_lib.h"
 
+#include <cstdint>
 #include <map>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
