@@ -408,6 +408,7 @@ void OpaqueSharding::Hash(absl::HashState state) const {
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     tsl::RCReference<DeviceList> devices, MemoryKind memory_kind, Shape shape,
     std::vector<Shape> shard_shapes) {
+  CHECK_EQ(devices->size(), shard_shapes.size());
   memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ConcreteSharding>(
       new ConcreteSharding(std::move(devices), memory_kind, std::move(shape),
@@ -418,6 +419,7 @@ std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
     DynamicShape dynamic_shape,
     std::vector<DynamicShape> shard_dynamic_shapes) {
+  CHECK_EQ(devices->size(), shard_dynamic_shapes.size());
   memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ConcreteSharding>(new ConcreteSharding(
       std::move(devices), memory_kind, std::move(dynamic_shape),
@@ -526,31 +528,19 @@ ConcreteSharding::Disassemble(
   std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
   const std::vector<Shape>& shard_shapes =
       std::get<std::vector<Shape>>(shard_shapes_);
-
-  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
-      devices_->size() != shard_shapes.size()) {
-    return InvalidArgument(
-        "SingleDeviceShardSemantics::kAllShards was requested, but the "
-        "ConcreteSharding contains non-addressable devices. Saw %d devices, "
-        "with %d addressable devices.",
-        devices_->size(), shard_shapes.size());
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
+    result.reserve(devices_->size());
+  } else {
+    result.reserve(devices_->AddressableDeviceList()->size());
   }
-
-  const absl::Span<Device* const> addressable_devices =
-      devices_->AddressableDeviceList()->devices();
-  if (shard_shapes.size() != addressable_devices.size()) {
-    return InvalidArgument(
-        "ConcreteSharding must have the same number of "
-        "shard shapes and addressable devices. Saw %d shard shapes, with %d "
-        "addressable devices.",
-        shard_shapes.size(), addressable_devices.size());
-  }
-
-  result.reserve(addressable_devices.size());
-  for (int i = 0; i < addressable_devices.size(); ++i) {
-    result.push_back(
-        {shard_shapes[i],
-         SingleDeviceSharding::Create(addressable_devices[i], memory_kind_)});
+  const absl::Span<Device* const> devices = devices_->devices();
+  for (int i = 0; i < devices.size(); ++i) {
+    if (single_device_shard_semantics ==
+            SingleDeviceShardSemantics::kAllShards ||
+        devices[i]->IsAddressable()) {
+      result.push_back({shard_shapes[i], SingleDeviceSharding::Create(
+                                             devices[i], memory_kind_)});
+    }
   }
   return result;
 }
@@ -584,31 +574,20 @@ ConcreteSharding::Disassemble(
   std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>> result;
   const std::vector<DynamicShape>& shard_dynamic_shapes =
       std::get<std::vector<DynamicShape>>(shard_shapes_);
-
-  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
-      devices_->size() != shard_dynamic_shapes.size()) {
-    return InvalidArgument(
-        "SingleDeviceShardSemantics::kAllShards was requested, but the "
-        "ConcreteSharding contains non-addressable devices. Saw %d devices, "
-        "with %d addressable devices.",
-        devices_->size(), shard_dynamic_shapes.size());
+  const absl::Span<Device* const> devices = devices_->devices();
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
+    result.reserve(devices_->size());
+  } else {
+    result.reserve(devices_->AddressableDeviceList()->size());
   }
-
-  const absl::Span<Device* const> addressable_devices =
-      devices_->AddressableDeviceList()->devices();
-  if (shard_dynamic_shapes.size() != addressable_devices.size()) {
-    return InvalidArgument(
-        "ConcreteSharding must have the same number of "
-        "shard shapes and addressable devices. Saw %d shard shapes, with %d "
-        "addressable devices.",
-        shard_dynamic_shapes.size(), addressable_devices.size());
-  }
-
-  result.reserve(addressable_devices.size());
-  for (int i = 0; i < addressable_devices.size(); ++i) {
-    result.push_back(
-        {shard_dynamic_shapes[i],
-         SingleDeviceSharding::Create(addressable_devices[i], memory_kind_)});
+  for (int i = 0; i < devices.size(); ++i) {
+    if (single_device_shard_semantics ==
+            SingleDeviceShardSemantics::kAllShards ||
+        devices[i]->IsAddressable()) {
+      result.push_back(
+          {shard_dynamic_shapes[i],
+           SingleDeviceSharding::Create(devices[i], memory_kind_)});
+    }
   }
   return result;
 }

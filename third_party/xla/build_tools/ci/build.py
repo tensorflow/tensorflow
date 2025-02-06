@@ -98,7 +98,6 @@ class BuildType(enum.Enum):
   JAX_CPU_SELF_HOSTED = enum.auto()
   JAX_GPU = enum.auto()
 
-  TENSORFLOW_CPU = enum.auto()
   TENSORFLOW_CPU_SELF_HOSTED = enum.auto()
   TENSORFLOW_GPU = enum.auto()
 
@@ -211,7 +210,6 @@ class Build:
     # MacOS VM, and slightly change TF config (likely by specifying tag_filters
     # manually).
     if self.type_ not in (
-        BuildType.TENSORFLOW_CPU,
         BuildType.TENSORFLOW_CPU_SELF_HOSTED,
         BuildType.TENSORFLOW_GPU,
         BuildType.MACOS_CPU_X86,
@@ -404,29 +402,6 @@ _JAX_GPU_BUILD = Build(
     ),
 )
 
-_TENSORFLOW_CPU_BUILD = Build(
-    type_=BuildType.TENSORFLOW_CPU,
-    repo="tensorflow/tensorflow",
-    image_url=_ML_BUILD_IMAGE,
-    configs=(
-        "release_cpu_linux",
-        "rbe_linux_cpu",
-        "linux_cpu_pycpp_test_filters",
-    ),
-    target_patterns=(
-        "//tensorflow/compiler/...",
-        "-//tensorflow/compiler/tf2tensorrt/...",
-        "//tensorflow/python/...",
-        "-//tensorflow/python/distribute/...",
-        "-//tensorflow/python/compiler/tensorrt/...",
-    ),
-    options=dict(
-        verbose_failures=True,
-        test_output="errors",
-        override_repository="xla=/github/xla",
-        profile="profile.json.gz",
-    ),
-)
 _TENSORFLOW_CPU_SELF_HOSTED_BUILD = Build(
     type_=BuildType.TENSORFLOW_CPU_SELF_HOSTED,
     repo="tensorflow/tensorflow",
@@ -481,7 +456,6 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_BUILD,
     "tensorflow/xla/macos/github_continuous/cpu_py39_full": _MACOS_X86_BUILD,
     "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
-    "tensorflow/xla/tensorflow/cpu/build_cpu": _TENSORFLOW_CPU_BUILD,
     "tensorflow/xla/tensorflow/gpu/build_gpu": _TENSORFLOW_GPU_BUILD,
     "xla-linux-x86-cpu": _CPU_X86_SELF_HOSTED_BUILD,
     "xla-linux-arm64-cpu": _CPU_ARM64_SELF_HOSTED_BUILD,
