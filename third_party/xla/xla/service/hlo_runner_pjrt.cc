@@ -104,22 +104,36 @@ absl::StatusOr<bool> MustFlattenInputTuple(
 absl::StatusOr<ExecuteOptions> GenerateExecuteOptions(const HloModule& module) {
   ExecuteOptions execute_options;
 
-  // If any output leaf buffer is in host memory, PJRT requires untuple_result.
-  auto output_has_tuple_leaf_in_host_memory_space =
-      [&module]() -> absl::StatusOr<bool> {
-    if (!module.result_shape().IsTuple()) {
-      return false;
-    }
-    TF_ASSIGN_OR_RETURN(
-        std::vector<Layout> output_layouts,
-        module.entry_computation_layout().FlattenedResultLayouts());
-    return absl::c_any_of(output_layouts, [](const Layout& layout) {
-      return layout.memory_space() == Layout::kHostMemorySpace;
-    });
-  };
-  TF_ASSIGN_OR_RETURN(execute_options.untuple_result,
-                      output_has_tuple_leaf_in_host_memory_space());
+  // PjRt requires untuple_result if any output leaf buffer is in host memory,
+  // or if any output leaf buffer is not an array.
+  if (module.result_shape().IsTuple()) {
+    bool has_array_output_in_host_memory = false;
+    bool has_non_array_output = false;
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+        module.entry_computation_layout().result_shape(),
+        [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+          if (!subshape.IsArray()) {
+            if (!subshape.IsTuple()) {
+              has_non_array_output = true;
+            }
+            // Skip token, opaque, and tuple outputs.
+            return absl::OkStatus();
+          }
+          // Arrays require a layout.
+          if (!subshape.has_layout()) {
+            return absl::InvalidArgumentError(
+                "GenerateExecuteOptions requires that all array subshapes of "
+                "the result shape have layouts.");
+          }
+          if (subshape.layout().memory_space() == Layout::kHostMemorySpace) {
+            has_array_output_in_host_memory = true;
+          }
+          return absl::OkStatus();
+        }));
 
+    execute_options.untuple_result =
+        has_array_output_in_host_memory || has_non_array_output;
+  }
   return execute_options;
 }
 
@@ -395,14 +409,28 @@ absl::StatusOr<Literal> HloRunnerPjRt::ExecuteWithExecutable(
       ExecuteWithDeviceBuffers(wrapped_executable->GetPjRtLoadedExecutable(),
                                execute_options, std::move(argument_handles)));
   if (!execute_options.untuple_result) {
+    // If not flattened, the tuple should only contain arrays with layouts.
     TF_RET_CHECK(output_buffers.size() == 1)
         << ", got " << output_buffers.size();
     return TransferLiteralFromDevice(*output_buffers[0]);
   }
   std::vector<Literal> result_leaves;
-  for (const auto& leaf_buffer : output_buffers) {
-    TF_ASSIGN_OR_RETURN(Literal leaf, TransferLiteralFromDevice(*leaf_buffer));
-    result_leaves.push_back(std::move(leaf));
+  for (const std::unique_ptr<PjRtBuffer>& leaf_buffer : output_buffers) {
+    const Shape& leaf_shape = leaf_buffer->on_device_shape();
+    if (leaf_shape.IsArray()) {
+      TF_ASSIGN_OR_RETURN(Literal leaf,
+                          TransferLiteralFromDevice(*leaf_buffer));
+      result_leaves.push_back(std::move(leaf));
+    } else {
+      // Untupled non-array buffers are not supported by
+      // TransferLiteralFromDevice. We skip token, opaque, and tuple outputs.
+      // This is similar to how this case is handled for HloRunner:
+      // cs/symbol:xla::GenericTransferManager::TransferLiteralFromDevice
+      //
+      // Since we still need to return a tuple literal, create an empty literal
+      // for the non-array buffer.
+      result_leaves.push_back(Literal(leaf_shape));
+    }
   }
   return Literal::MoveIntoTuple(absl::MakeSpan(result_leaves));
 }
