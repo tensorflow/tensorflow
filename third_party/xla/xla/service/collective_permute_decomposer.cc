@@ -379,6 +379,25 @@ static std::vector<HloInstruction*> FindAllConflictingCollectives(
   return FindAllConflictingCollectives(computation, seed_collectives);
 }
 
+static void AddCollectiveStreamAnnotationP2P(
+    std::vector<HloInstruction*>& instructions) {
+  xla::FrontendAttributes attributes;
+  (*attributes.mutable_map())[kCollectiveStreamAttrName] = kCollectiveStreamP2P;
+  for (HloInstruction* instr : instructions) {
+    instr->add_frontend_attributes(attributes);
+  }
+}
+
+static void AddCollectiveStreamAnnotationP2P(
+    std::vector<DecomposedCp>& decomposed) {
+  std::vector<HloInstruction*> instructions;
+  for (DecomposedCp& cp : decomposed) {
+    instructions.push_back(cp.send);
+    instructions.push_back(cp.recv);
+  }
+  AddCollectiveStreamAnnotationP2P(instructions);
+}
+
 // Inserts control dependencies to enforce send/recv chain order.
 // The order protects from a potential deadlock when every device tries to
 // execute recv with no devices executing send - if there are no constraints,
@@ -492,9 +511,13 @@ absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
     }  // for MakeInstructionPostOrder
 
     // Find all collectives conflicting with the collective permutes that we
-    // want to decompose. This is needed to add control dependencies to these
-    // conflicting collectives so that they cannot move in between the
-    // decomposed send/recv, which would lead to deadlocks.
+    // want to decompose. We need this information to achieve two things:
+    // 1. We want to run these in parallel with non-conflicting collectives,
+    // e.g. those used on inner sharding strategies. The annotation allows us to
+    // later execute them on a separate stream.
+    // 2. We want to add control dependencies to these conflicting collectives
+    // so that they cannot move in between the decomposed send/recv, which would
+    // lead to deadlocks.
     std::vector<HloInstruction*> conflicing_collectives =
         FindAllConflictingCollectives(computation, cps_to_decompose);
 
@@ -516,6 +539,16 @@ absl::StatusOr<bool> CollectivePermuteDecomposer::Run(
           DecomposeCollectivePermute(cp, computation, pipeline_decision,
                                      pipeline_parallelism_opt_level_));
       deco_post_order.push_back(decomposed_ops);
+    }
+
+    // Move all decomposed and conflicting collectives to a separate stream for
+    // p2p communication. This will allow for overlap of pipeline parallelism
+    // with other inner sharding strategies. We can remove this when XLA:GPU
+    // supports multi-stream collectives more generally.
+    if (pipeline_parallelism_opt_level_ !=
+        DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE) {
+      AddCollectiveStreamAnnotationP2P(conflicing_collectives);
+      AddCollectiveStreamAnnotationP2P(deco_post_order);
     }
 
     // Enforce order of send/recv pairs at the beginning of the loop body. Also

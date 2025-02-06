@@ -673,8 +673,10 @@ TEST_F(DecomposerTest, OneSendRecvWithOneConflictingCollectivePermute) {
   // is waiting on its send/recv peer while its peer expects to perform a
   // collective-permute.
   HloInstruction* cp_cycle = FindInstruction(module.get(), "cp_cycle");
+  HloInstruction* cp_fwd_recv = FindInstruction(module.get(), "cp_fwd-recv");
   HloInstruction* cp_fwd_recv_done =
       FindInstruction(module.get(), "cp_fwd-recv-done");
+  HloInstruction* cp_fwd_send = FindInstruction(module.get(), "cp_fwd-send");
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(cp_cycle, NotNull());
@@ -683,6 +685,17 @@ TEST_F(DecomposerTest, OneSendRecvWithOneConflictingCollectivePermute) {
   EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));
+
+  // Expect all conflicting collectives to be annotated with the collective
+  // stream attribute.
+  EXPECT_EQ(
+      cp_fwd_recv->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
+  EXPECT_EQ(
+      cp_fwd_send->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
+  EXPECT_EQ(cp_cycle->frontend_attributes().map().at(kCollectiveStreamAttrName),
+            kCollectiveStreamP2P);
 }
 
 TEST_F(DecomposerTest, OneSendRecvWithOneConflictingAllReduce) {
@@ -744,8 +757,10 @@ TEST_F(DecomposerTest, OneSendRecvWithOneConflictingAllReduce) {
   // all-reduce. This is to avoid deadlocks where one device is waiting on its
   // send/recv peer while its peer expects to perform an all-reduce.
   HloInstruction* ar = FindInstruction(module.get(), "ar");
+  HloInstruction* cp_fwd_recv = FindInstruction(module.get(), "cp_fwd-recv");
   HloInstruction* cp_fwd_recv_done =
       FindInstruction(module.get(), "cp_fwd-recv-done");
+  HloInstruction* cp_fwd_send = FindInstruction(module.get(), "cp_fwd-send");
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(ar, NotNull());
@@ -754,6 +769,17 @@ TEST_F(DecomposerTest, OneSendRecvWithOneConflictingAllReduce) {
   EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(ar->control_predecessors(), ElementsAre(cp_fwd_send_done));
+
+  // Expect all conflicting collectives to be annotated with the collective
+  // stream attribute.
+  EXPECT_EQ(
+      cp_fwd_recv->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
+  EXPECT_EQ(
+      cp_fwd_send->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
+  EXPECT_EQ(ar->frontend_attributes().map().at(kCollectiveStreamAttrName),
+            kCollectiveStreamP2P);
 }
 
 TEST_F(DecomposerTest, OneSendRecvWithConflictingSendRecv) {
@@ -817,8 +843,10 @@ TEST_F(DecomposerTest, OneSendRecvWithConflictingSendRecv) {
   // different send/recv communication.
   HloInstruction* conflicting_recv = FindInstruction(module.get(), "recv_ctx");
   HloInstruction* conflicting_send = FindInstruction(module.get(), "send_ctx");
+  HloInstruction* cp_fwd_recv = FindInstruction(module.get(), "cp_fwd-recv");
   HloInstruction* cp_fwd_recv_done =
       FindInstruction(module.get(), "cp_fwd-recv-done");
+  HloInstruction* cp_fwd_send = FindInstruction(module.get(), "cp_fwd-send");
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(conflicting_recv, NotNull());
@@ -831,6 +859,21 @@ TEST_F(DecomposerTest, OneSendRecvWithConflictingSendRecv) {
               ElementsAre(cp_fwd_send_done));
   EXPECT_THAT(conflicting_send->control_predecessors(),
               ElementsAre(cp_fwd_send_done));
+
+  // Expect all conflicting collectives to be annotated with the collective
+  // stream attribute.
+  EXPECT_EQ(
+      cp_fwd_recv->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
+  EXPECT_EQ(
+      cp_fwd_send->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
+  EXPECT_EQ(conflicting_recv->frontend_attributes().map().at(
+                kCollectiveStreamAttrName),
+            kCollectiveStreamP2P);
+  EXPECT_EQ(conflicting_send->frontend_attributes().map().at(
+                kCollectiveStreamAttrName),
+            kCollectiveStreamP2P);
 }
 
 TEST_F(DecomposerTest, OneSendRecvWithNonConflictingAllReduce) {
@@ -892,8 +935,10 @@ TEST_F(DecomposerTest, OneSendRecvWithNonConflictingAllReduce) {
   // non-conflicting all-reduce. These collectivves will not deadlock as their
   // NCCL cliques overlap in no more than one rank.
   HloInstruction* ar = FindInstruction(module.get(), "ar");
+  HloInstruction* cp_fwd_recv = FindInstruction(module.get(), "cp_fwd-recv");
   HloInstruction* cp_fwd_recv_done =
       FindInstruction(module.get(), "cp_fwd-recv-done");
+  HloInstruction* cp_fwd_send = FindInstruction(module.get(), "cp_fwd-send");
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(ar, NotNull());
@@ -902,6 +947,21 @@ TEST_F(DecomposerTest, OneSendRecvWithNonConflictingAllReduce) {
   EXPECT_THAT(cp_fwd_send_done->control_predecessors(),
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(ar->control_predecessors(), ElementsAre());
+
+  // Expect all conflicting collectives to be annotated with the collective
+  // stream attribute.
+  EXPECT_EQ(
+      cp_fwd_recv->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
+  EXPECT_EQ(
+      cp_fwd_send->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
+
+  // Expect all non-conflicting collectives to not be annotated with the
+  // collective
+  // stream attribute.
+  EXPECT_FALSE(
+      ar->frontend_attributes().map().contains(kCollectiveStreamAttrName));
 }
 
 TEST_F(DecomposerTest, OneSendRecvWithConflictingAndNonConflictingCollectives) {
@@ -976,8 +1036,10 @@ TEST_F(DecomposerTest, OneSendRecvWithConflictingAndNonConflictingCollectives) {
   HloInstruction* cp_cycle = FindInstruction(module.get(), "cp_cycle");
   HloInstruction* ar = FindInstruction(module.get(), "ar");
   HloInstruction* arc = FindInstruction(module.get(), "arc");
+  HloInstruction* cp_fwd_recv = FindInstruction(module.get(), "cp_fwd-recv");
   HloInstruction* cp_fwd_recv_done =
       FindInstruction(module.get(), "cp_fwd-recv-done");
+  HloInstruction* cp_fwd_send = FindInstruction(module.get(), "cp_fwd-send");
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(cp_cycle, NotNull());
@@ -990,6 +1052,24 @@ TEST_F(DecomposerTest, OneSendRecvWithConflictingAndNonConflictingCollectives) {
   EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));
   EXPECT_THAT(ar->control_predecessors(), ElementsAre());
   EXPECT_THAT(arc->control_predecessors(), ElementsAre(cp_fwd_send_done));
+
+  // Expect all conflicting collectives to be annotated with the collective
+  // stream attribute.
+  EXPECT_EQ(
+      cp_fwd_recv->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
+  EXPECT_EQ(
+      cp_fwd_send->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
+  EXPECT_EQ(cp_cycle->frontend_attributes().map().at(kCollectiveStreamAttrName),
+            kCollectiveStreamP2P);
+  EXPECT_EQ(arc->frontend_attributes().map().at(kCollectiveStreamAttrName),
+            kCollectiveStreamP2P);
+
+  // Expect all non-conflicting collectives to not be annotated with the
+  // collective stream attribute.
+  EXPECT_FALSE(
+      ar->frontend_attributes().map().contains(kCollectiveStreamAttrName));
 }
 
 TEST_F(DecomposerTest, OneSendRecvWithIndirectlyConflictingCollectives) {
@@ -1057,8 +1137,10 @@ TEST_F(DecomposerTest, OneSendRecvWithIndirectlyConflictingCollectives) {
   // collective-permute.
   HloInstruction* cp_cycle = FindInstruction(module.get(), "cp_cycle");
   HloInstruction* cp_cycle2 = FindInstruction(module.get(), "cp_cycle2");
+  HloInstruction* cp_fwd_recv = FindInstruction(module.get(), "cp_fwd-recv");
   HloInstruction* cp_fwd_recv_done =
       FindInstruction(module.get(), "cp_fwd-recv-done");
+  HloInstruction* cp_fwd_send = FindInstruction(module.get(), "cp_fwd-send");
   HloInstruction* cp_fwd_send_done =
       FindInstruction(module.get(), "cp_fwd-send-done");
   ASSERT_THAT(cp_cycle, NotNull());
@@ -1069,6 +1151,20 @@ TEST_F(DecomposerTest, OneSendRecvWithIndirectlyConflictingCollectives) {
               ElementsAre(cp_fwd_recv_done));
   EXPECT_THAT(cp_cycle->control_predecessors(), ElementsAre(cp_fwd_send_done));
   EXPECT_THAT(cp_cycle2->control_predecessors(), ElementsAre(cp_fwd_send_done));
+
+  // Expect all conflicting collectives to be annotated with the collective
+  // stream attribute.
+  EXPECT_EQ(
+      cp_fwd_recv->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
+  EXPECT_EQ(
+      cp_fwd_send->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
+  EXPECT_EQ(cp_cycle->frontend_attributes().map().at(kCollectiveStreamAttrName),
+            kCollectiveStreamP2P);
+  EXPECT_EQ(
+      cp_cycle2->frontend_attributes().map().at(kCollectiveStreamAttrName),
+      kCollectiveStreamP2P);
 }
 
 }  // namespace
