@@ -71,6 +71,12 @@ class PjrtCApiTestBase : public ::testing::Test {
 
   std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
             xla::PjRtFuture<>>
+  create_buffer_from_data(const std::vector<float>& float_data,
+                          const xla::Shape& shape,
+                          PJRT_Device* device = nullptr);
+
+  std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
+            xla::PjRtFuture<>>
   create_buffer(PJRT_Device* device = nullptr);
 
   std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> ToUniquePtr(

@@ -475,6 +475,12 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
 // should be destroyed with PJRT_Client_Destroy.
 PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client);
 
+// Searches `client` for a PJRT_Memory* that wraps a provided
+// `xla::PjRtMemorySpace *` (`cpp_memory`). If a match is found, that
+// PJRT_Memory* is returned. Otherwise, returns nullptr.
+PJRT_Memory* PJRT_Client_FindMemoryWrapper(xla::PjRtMemorySpace* cpp_memory,
+                                           PJRT_Client* client);
+
 // Helper functions for converting C key-value store callbacks to C++ callbacks.
 std::shared_ptr<xla::KeyValueStoreInterface> ToCppKeyValueStore(
     PJRT_KeyValueGetCallback c_get_callback, void* get_user_arg,

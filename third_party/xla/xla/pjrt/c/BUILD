@@ -126,6 +126,49 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_raw_buffer_extension_hdrs",
+    hdrs = ["pjrt_c_api_raw_buffer_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_raw_buffer_internal",
+    srcs = ["pjrt_c_api_raw_buffer_internal.cc"],
+    hdrs = ["pjrt_c_api_raw_buffer_internal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_raw_buffer_extension_hdrs",
+        ":pjrt_c_api_wrapper_impl",
+        "//xla/pjrt:raw_buffer",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_raw_buffer_external",
+    srcs = ["pjrt_c_api_raw_buffer_external.cc"],
+    hdrs = ["pjrt_c_api_raw_buffer_external.h"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_raw_buffer_extension_hdrs",
+        "//xla/pjrt:pjrt_c_api_client",
+        "//xla/pjrt:pjrt_future",
+        "//xla/pjrt:raw_buffer",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_custom_partitioner_extension_hdrs",
     hdrs = ["pjrt_c_api_custom_partitioner_extension.h"],
     visibility = ["//visibility:public"],

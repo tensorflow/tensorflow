@@ -51,6 +51,10 @@ docker exec xla_ci bazel test --build_tag_filters= --test_tag_filters= --config=
 docker exec xla_ci bazel analyze-profile profile.json.gz
 docker stop xla_ci
 # END BuildType.TENSORFLOW_CPU
+# BEGIN BuildType.TENSORFLOW_CPU_SELF_HOSTED
+bazel test --build_tag_filters= --test_tag_filters= --config=release_cpu_linux --config=rbe_linux_cpu --config=linux_cpu_pycpp_test_filters --verbose_failures --test_output=errors --override_repository=xla=$GITHUB_WORKSPACE/openxla/xla --profile=profile.json.gz -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/compiler/tensorrt/...
+bazel analyze-profile profile.json.gz
+# END BuildType.TENSORFLOW_CPU_SELF_HOSTED
 # BEGIN BuildType.TENSORFLOW_GPU
 $KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 git clone --depth=1 https://github.com/tensorflow/tensorflow ./github/tensorflow
