@@ -297,6 +297,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       const bool allow_control_flow_sync_execution,
       const bool shape_inference_on_tfe_dialect_import,
       const bool int_args_and_retvals_on_device,
+      const bool function_runs_at_most_once,
       std::optional<string> xla_compile_device_type,
       const bool allow_soft_placement, Rendezvous::Factory rendezvous_factory,
       std::function<int64_t()> get_op_id)
@@ -310,6 +311,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
         shape_inference_on_tfe_dialect_import_(
             shape_inference_on_tfe_dialect_import),
         int_args_and_retvals_on_device_(int_args_and_retvals_on_device),
+        function_runs_at_most_once_(function_runs_at_most_once),
         xla_compile_device_type_(xla_compile_device_type),
         allow_soft_placement_(allow_soft_placement),
         input_devices_(std::move(input_devices)),
@@ -397,6 +399,8 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   const bool shape_inference_on_tfe_dialect_import_;
 
   const bool int_args_and_retvals_on_device_;
+
+  const bool function_runs_at_most_once_;
 
   const absl::optional<string> xla_compile_device_type_;
 
