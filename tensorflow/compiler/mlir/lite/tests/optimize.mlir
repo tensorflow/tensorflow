@@ -1067,7 +1067,7 @@ func.func @FuseSqueezingReshapesAroundBMM(%arg0: tensor<1x128x8x256xf32>) -> (te
   // CHECK:  %cst_1 = arith.constant dense<[1, 128, 2048]> : tensor<3xi32>
   // CHECK:  %0 = "tfl.reshape"(%arg0, %cst_1) : (tensor<1x128x8x256xf32>, tensor<3xi32>) -> tensor<1x128x2048xf32>
   // CHECK:  %1 = "tfl.batch_matmul"(%0, %cst) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<1x128x2048xf32>, tensor<2048x1792xf32>) -> tensor<1x128x1792xf32>
-  // CHECK:  %2 = tfl.mul %1, %1 {fused_activation_function = "NONE"} : tensor<1x128x1792xf32>
+  // CHECK:  %2 = "tfl.square"(%1) : (tensor<1x128x1792xf32>) -> tensor<1x128x1792xf32>
   // CHECK:  %3 = "tfl.sum"(%2, %cst_0) <{keep_dims = false}> : (tensor<1x128x1792xf32>, tensor<1xi32>) -> tensor<1x128xf32>
   // CHECK:  return %3 : tensor<1x128xf32>
 }
@@ -2264,7 +2264,7 @@ func.func @ConvertPow2ToSquare(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   func.return %0 : tensor<2x2xf32>
 
 // CHECK-LABEL: ConvertPow2ToSquare
-// CHECK: %[[RESULT:.*]] = tfl.mul %arg0, %arg0 {fused_activation_function = "NONE"} : tensor<2x2xf32>
+// CHECK: %[[RESULT:.*]] = "tfl.square"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
 // CHECK: return %[[RESULT]]
 }
 
@@ -2797,7 +2797,7 @@ func.func @NotReorderReshapeAndMul_MultipleUsers(%arg0: tensor<3x40xf32>, %arg1:
   return %3, %9 : tensor<1x3x8x5xf32>, tensor<1x3x8x5xf32>
   // CHECK:  %cst = arith.constant dense<[1, 3, 8, 5]> : tensor<4xi32>
   // CHECK:  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<3x40xf32>, tensor<4xi32>) -> tensor<1x3x8x5xf32>
-  // CHECK:  %1 = tfl.mul %0, %0 {fused_activation_function = "NONE"} : tensor<1x3x8x5xf32>
+  // CHECK:  %1 = "tfl.square"(%0) : (tensor<1x3x8x5xf32>) -> tensor<1x3x8x5xf32>
   // CHECK:  %2 = tfl.mul(%0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x3x8x5xf32>, tensor<1x3x8x1xf32>) -> tensor<1x3x8x5xf32>
   // CHECK:  return %1, %2 : tensor<1x3x8x5xf32>, tensor<1x3x8x5xf32>
 }
@@ -3739,6 +3739,38 @@ func.func @gelu_approximate_not_oneuse(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 
 // CHECK-LABEL:gelu_approximate
 // CHECK: "tfl.tanh"
+}
+
+// CHECK-LABEL: @CovertMulsToPower
+func.func @CovertMulsToPower(%arg0: tensor<1x4x4x1xf32>) -> (tensor<1x4x4x1xf32>) {
+  %0 = tfl.mul %arg0, %arg0 {fused_activation_function = "NONE"} : tensor<1x4x4x1xf32>
+  %1 = tfl.mul %0, %arg0 {fused_activation_function = "NONE"} : tensor<1x4x4x1xf32>
+  return %1: tensor<1x4x4x1xf32>
+  // CHECK:  %cst = arith.constant dense<3.000000e+00> : tensor<f32>
+  // CHECK:  %0 = tfl.pow(%arg0, %cst) : (tensor<1x4x4x1xf32>, tensor<f32>) -> tensor<1x4x4x1xf32>
+  // CHECK:  return %0 : tensor<1x4x4x1xf32>
+}
+
+// CHECK-LABEL: @FusedMulsAndPowerLhs
+func.func @FusedMulsAndPowerLhs(%arg0: tensor<1x4x4x1xf32>) -> (tensor<1x4x4x1xf32>) {
+  %cst = arith.constant dense<3.000000e+00> : tensor<f32>
+  %0 = tfl.pow(%arg0, %cst) : (tensor<1x4x4x1xf32>, tensor<f32>) -> tensor<1x4x4x1xf32>
+  %1 = tfl.mul %0, %arg0 {fused_activation_function = "NONE"} : tensor<1x4x4x1xf32>
+  return %1: tensor<1x4x4x1xf32>
+  // CHECK:  %cst = arith.constant dense<4.000000e+00> : tensor<f32>
+  // CHECK:  %0 = tfl.pow(%arg0, %cst) : (tensor<1x4x4x1xf32>, tensor<f32>) -> tensor<1x4x4x1xf32>
+  // CHECK:  return %0 : tensor<1x4x4x1xf32>
+}
+
+// CHECK-LABEL: @FusedMulsAndPowerRhs
+func.func @FusedMulsAndPowerRhs(%arg0: tensor<1x4x4x1xf32>) -> (tensor<1x4x4x1xf32>) {
+  %cst = arith.constant dense<3.000000e+00> : tensor<f32>
+  %0 = tfl.pow(%arg0, %cst) : (tensor<1x4x4x1xf32>, tensor<f32>) -> tensor<1x4x4x1xf32>
+  %1 = tfl.mul %arg0, %0 {fused_activation_function = "NONE"} : tensor<1x4x4x1xf32>
+  return %1: tensor<1x4x4x1xf32>
+  // CHECK:  %cst = arith.constant dense<4.000000e+00> : tensor<f32>
+  // CHECK:  %0 = tfl.pow(%arg0, %cst) : (tensor<1x4x4x1xf32>, tensor<f32>) -> tensor<1x4x4x1xf32>
+  // CHECK:  return %0 : tensor<1x4x4x1xf32>
 }
 
 // CHECK-LABEL:   func @eliminateExtraSelectLhs
