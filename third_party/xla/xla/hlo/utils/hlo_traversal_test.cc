@@ -146,37 +146,6 @@ TEST_F(HloTraversalTest, AdaptorUsers) {
   EXPECT_TRUE(neg.GetUsers().empty());
 }
 
-TEST_F(HloTraversalTest, NestedFusionIsTraversedCorrectly) {
-  auto module = ParseAndReturnVerifiedModule(
-                    R"(
-    inner {
-      p0 = f32[] parameter(0)
-      ROOT mul = f32[] multiply(p0, p0)
-    }
-
-    outer {
-      p0 = f32[] parameter(0)
-      inner = f32[] fusion(p0), kind=kLoop, calls=inner
-      ROOT neg = f32[] negate(inner)
-    }
-
-    ENTRY entry {
-      p0 = f32[] parameter(0)
-      ROOT fusion = f32[] fusion(p0), kind=kLoop, calls=outer
-    }
-  )")
-                    .value();
-
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
-      module->entry_computation()->root_instruction());
-
-  HloInstructionAdaptor negate_instruction = fusion_adaptor->GetRoots()[0];
-
-  EXPECT_THAT(negate_instruction, InstructionAdaptorName("neg"));
-  EXPECT_THAT(negate_instruction.GetOperands(),
-              ElementsAre(InstructionAdaptorName("mul")));
-}
-
 TEST_F(HloTraversalTest, TraverseFusionConsumerFirst) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> visited_nodes;

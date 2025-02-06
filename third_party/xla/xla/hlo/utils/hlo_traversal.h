@@ -81,12 +81,12 @@ bool IsOpcodeAnyOf(const HloInstruction* instr) {
 namespace internal {
 
 // An interface to abstract away the difference between a single instruction
-// and a fusion instruction with all it's (potentially nbested) computations.
+// and a fusion instruction with all it's computations.
 class HloFusionInstructionAdaptor {
  public:
   virtual ~HloFusionInstructionAdaptor() = default;
   // Returns true if the given 'instruction' is either the adapted instruction
-  // or contained in one of its nested computations.
+  // or contained in its computation.
   virtual bool ContainsInstruction(const HloInstruction* instruction) const = 0;
   // If it is a regular multi-output fusion, the order of the returned roots
   // matches the order of the tuple elements of the tuple root of the fusion
@@ -97,8 +97,8 @@ class HloFusionInstructionAdaptor {
       const = 0;
   // Returns the adapted instruction.
   virtual const HloInstruction& FusionInstruction() const = 0;
-  // Returns the single instruction or the instructions of the (potentially
-  // nested) computations, in post order.
+  // Returns the single instruction or the instructions of the computations, in
+  // post order.
   virtual absl::InlinedVector<HloInstructionAdaptor, 2>
   MakeInstructionPostOrder() const = 0;
   // Calls 'fn' the single instruction or all instructions in the (potentially
