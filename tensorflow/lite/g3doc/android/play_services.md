@@ -11,7 +11,7 @@ Lite in Google Play services is the recommended way to use TensorFlow Lite on
 Android.
 
 You can get started with the Play services runtime with the
-[Quickstart](../android/quickstart), which provides a step-by-step guide to
+[Quickstart](../android/quickstart.md), which provides a step-by-step guide to
 implement a sample application. If you are already using stand-alone TensorFlow
 Lite in your app, refer to the
 [Migrating from stand-alone TensorFlow Lite](#migrating) section to update an
@@ -30,8 +30,8 @@ the APIs. </aside>
 The TensorFlow Lite in Google Play services is available through the following
 programming language apis:
 
--   Java API - [see guide](../android/java)
--   C API - [see guide](../android/native)
+-   Java API - [see guide](../android/java.md)
+-   C API - [see guide](../android/native.md)
 
 ## Limitations
 
