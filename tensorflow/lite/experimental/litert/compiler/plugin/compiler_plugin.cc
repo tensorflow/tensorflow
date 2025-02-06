@@ -18,6 +18,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -46,6 +47,7 @@
 #include "tensorflow/lite/experimental/litert/core/model/ir_allocator.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/model/model_serialize.h"
+#include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin_api.h"
 
@@ -339,8 +341,8 @@ Expected<std::vector<LiteRtOp>> CompilerPlugin::Partition(
   return ops.Vec();
 }
 
-Expected<CompiledResult> CompilerPlugin::Compile(
-    absl::Span<LiteRtSubgraph> partitions, absl::string_view soc_model) {
+Expected<CompiledResult> CompilerPlugin::Compile(LiteRtModel partitions,
+                                                 absl::string_view soc_model) {
   CompiledResult result = MakeResult();
   // If the user has passed an soc_model, then we use it; otherwise we let the
   // backend pick the appropriate one by passing nullptr as soc_model. This is
@@ -348,7 +350,7 @@ Expected<CompiledResult> CompilerPlugin::Compile(
   // SoC model based on the user device.
   const char* soc_model_str = !soc_model.empty() ? soc_model.data() : nullptr;
   LITERT_RETURN_IF_ERROR(plugin_api_.compiler_plugin_compile(
-      plugin_handle_, soc_model_str, partitions.data(), partitions.size(),
+      plugin_handle_, soc_model_str, partitions,
       &result.compiled_result_handle_));
   return result;
 }
@@ -408,9 +410,23 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
   auto& dispatch_ops = partitions->first;
   auto& subgraphs = partitions->second;
 
+  // Wrap the partitioned subgraphs in a LiteRtModel.
+  LiteRtModelT sliced_model;
+  sliced_model.TransferSubgraphs(std::move(subgraphs));
+
+  // Copy op codes.
+  const auto& op_codes = detail::GetTflOpCodes(model);
+
+  LiteRtModelT::TflOpCodes codes;
+  codes.reserve(op_codes.size());
+  for (const auto& op_code : op_codes) {
+    codes.emplace_back(std::make_unique<TflOpCode>(*op_code));
+  }
+
+  detail::SetTflOpCodes(sliced_model, std::move(codes));
+
   // Pass sliced subgraphs to plugin for compilation.
-  auto compiled_result =
-      compiler_plugin.Compile(subgraphs.Elements(), soc_model);
+  auto compiled_result = compiler_plugin.Compile(&sliced_model, soc_model);
   if (!compiled_result) {
     return compiled_result.Error();
   }

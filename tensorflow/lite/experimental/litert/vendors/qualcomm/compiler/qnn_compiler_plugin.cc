@@ -257,8 +257,10 @@ LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
 
 LiteRtStatus LiteRtCompilerPluginCompile(
     LiteRtCompilerPlugin compiler_plugin, const char* soc_model,
-    LiteRtSubgraph* partitions, LiteRtParamIndex num_partitions,
-    LiteRtCompiledResult* compiled_result) {
+    LiteRtModel partitions, LiteRtCompiledResult* compiled_result) {
+  auto model = litert::Model::CreateFromNonOwnedHandle(partitions);
+  const auto num_partitions = model.NumSubgraphs();
+
   LITERT_LOG(LITERT_INFO,
              "Starting QNN Compilation for %d subgraphs, soc_model=%s",
              num_partitions, soc_model);
@@ -304,8 +306,9 @@ LiteRtStatus LiteRtCompilerPluginCompile(
   {
     std::string& entry_point_name = result->graph_names.emplace_back();
     entry_point_name = "qnn_partition_0";
+    LiteRtSubgraph partition = model.Subgraph(0)->Get();
     LITERT_RETURN_IF_ERROR(litert::qnn::ComposeGraph(
-        **qnn_manager, context_handle->get(), partitions[0], entry_point_name));
+        **qnn_manager, context_handle->get(), partition, entry_point_name));
   }
   LITERT_LOG(LITERT_INFO, "%s", "Graph composed");
 
