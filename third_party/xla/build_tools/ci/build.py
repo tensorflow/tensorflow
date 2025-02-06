@@ -95,7 +95,6 @@ class BuildType(enum.Enum):
 
   MACOS_CPU_X86 = enum.auto()
 
-  JAX_CPU = enum.auto()
   JAX_CPU_SELF_HOSTED = enum.auto()
   JAX_GPU = enum.auto()
 
@@ -364,25 +363,6 @@ _MACOS_X86_BUILD = Build(
     ),
 )
 
-_JAX_CPU_BUILD = Build(
-    type_=BuildType.JAX_CPU,
-    repo="google/jax",
-    image_url=_DEFAULT_IMAGE,
-    configs=(
-        "rbe_linux_x86_64",
-    ),
-    target_patterns=("//tests:cpu_tests", "//tests:backend_independent_tests"),
-    test_env=dict(
-        JAX_NUM_GENERATED_CASES=25,
-        JAX_SKIP_SLOW_TESTS=1,
-    ),
-    options=dict(
-        **_DEFAULT_BAZEL_OPTIONS,
-        override_repository="xla=/github/xla",
-        repo_env="HERMETIC_PYTHON_VERSION=3.12",
-    ),
-)
-
 _JAX_CPU_SELF_HOSTED_BUILD = Build(
     type_=BuildType.JAX_CPU_SELF_HOSTED,
     repo="google/jax",
@@ -476,7 +456,6 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/gpu/build_gpu": _GPU_BUILD,
     "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_BUILD,
     "tensorflow/xla/macos/github_continuous/cpu_py39_full": _MACOS_X86_BUILD,
-    "tensorflow/xla/jax/cpu/build_cpu": _JAX_CPU_BUILD,
     "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
     "tensorflow/xla/tensorflow/cpu/build_cpu": _TENSORFLOW_CPU_BUILD,
     "tensorflow/xla/tensorflow/gpu/build_gpu": _TENSORFLOW_GPU_BUILD,
