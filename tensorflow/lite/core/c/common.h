@@ -1093,9 +1093,11 @@ typedef enum {
   /// Indicates that an op's third input may be shared with the first output
   /// if kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput is not set
   /// or third output if kTfLiteInplaceInputCanBeSharedWithCorrespondingOutput
-  /// is
-  /// set.
+  /// is set.
   kTfLiteInplaceOpInput2Shared = 16,
+  /// This indicates that an op may overwrite a subgraph input tensor, for
+  /// example Dynamic Update Slice.
+  kTfLiteInplaceOpOverwriteInput = 32,
   /// Placeholder to ensure that enum can hold 64 bit values to accommodate
   /// future fields.
   kTfLiteInplaceOpMaxValue = UINT64_MAX,
