@@ -36,8 +36,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/command_line_flags.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
