@@ -158,6 +158,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
     ],
 )
 
