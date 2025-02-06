@@ -38,8 +38,8 @@ class UniformDequantizeOpTest : public OpsTestBase {
   };
 
   template <typename Tin, typename Tout>
-  void TestUniformDequantize(std::vector<Tin> &input, std::vector<long> &shape,
-                             QParams &q_params,
+  void TestUniformDequantize(std::vector<Tin> &input,
+                             std::vector<int64_t> &shape, QParams &q_params,
                              std::vector<Tout> &expected_result) {
     TF_ASSERT_OK(NodeDefBuilder("test", "UniformDequantize")
                      .Input(FakeInput(DataTypeToEnum<Tin>::v()))
@@ -53,10 +53,10 @@ class UniformDequantizeOpTest : public OpsTestBase {
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
 
-    const long scale_size = static_cast<long>(q_params.scale.size());
+    const int64_t scale_size = static_cast<int64_t>(q_params.scale.size());
     TensorShape scale_shape(scale_size > 1 ? TensorShape({scale_size})
                                            : TensorShape({}));
-    const long zp_size = static_cast<long>(q_params.zp.size());
+    const int64_t zp_size = static_cast<int64_t>(q_params.zp.size());
     TensorShape zp_shape(zp_size > 1 ? TensorShape({zp_size})
                                      : TensorShape({}));
     AddInputFromArray<Tin>(TensorShape(shape), input);
@@ -72,7 +72,7 @@ class UniformDequantizeOpTest : public OpsTestBase {
 
 TEST_F(UniformDequantizeOpTest, PerTensorDequantize) {
   std::vector<qint8> input{-128, -100, -20, -16, 0, 20};
-  std::vector<long> shape{2, 3};
+  std::vector<int64_t> shape{2, 3};
   QParams qparams(-1, -128, 127, {0.25}, {-20});
   std::vector<float> expected{-27.0, -20.0, 0.0, 1.0, 5.0, 10.0};
   TestUniformDequantize<qint8, float>(input, shape, qparams, expected);
@@ -80,7 +80,7 @@ TEST_F(UniformDequantizeOpTest, PerTensorDequantize) {
 
 TEST_F(UniformDequantizeOpTest, PerTensorQuint8Dequantize) {
   std::vector<quint8> input{128, 100, 255, 16, 0, 20};
-  std::vector<long> shape{2, 3};
+  std::vector<int64_t> shape{2, 3};
   QParams qparams(-1, 0, 255, {0.25}, {-2});
   std::vector<float> expected{32.5, 25.5, 64.25, 4.5, 0.5, 5.5};
   TestUniformDequantize<quint8, float>(input, shape, qparams, expected);
@@ -88,7 +88,7 @@ TEST_F(UniformDequantizeOpTest, PerTensorQuint8Dequantize) {
 
 TEST_F(UniformDequantizeOpTest, PerChannelDequantize) {
   std::vector<qint8> input{-128, -100, -20, -8, 0, 5, 10, 15, 20, 40, 50, 55};
-  std::vector<long> shape{2, 2, 3};
+  std::vector<int64_t> shape{2, 2, 3};
   QParams qparams(1, -128, 127, {0.25, 0.5}, {-20, -10});
   std::vector<float> expected{-27.0, -20.0, 0.0,  1.0,  5.0,  7.5,
                               7.5,   8.75,  10.0, 25.0, 30.0, 32.5};
@@ -97,7 +97,7 @@ TEST_F(UniformDequantizeOpTest, PerChannelDequantize) {
 
 TEST_F(UniformDequantizeOpTest, PerChannelQuint8Dequantize) {
   std::vector<quint8> input{255, 200, 20, 8, 0, 5, 10, 15, 20, 40, 50, 55};
-  std::vector<long> shape{2, 2, 3};
+  std::vector<int64_t> shape{2, 2, 3};
   QParams qparams(1, 0, 255, {0.25, 0.5}, {-2, -4});
   std::vector<float> expected{64.25, 50.5, 5.5, 6.0,  2.0,  4.5,
                               3.0,   4.25, 5.5, 22.0, 27.0, 29.5};
