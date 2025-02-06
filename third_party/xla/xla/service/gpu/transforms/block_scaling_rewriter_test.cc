@@ -38,7 +38,7 @@ ENTRY main {
       custom_call_target="__op$quantize"
 })";
 
-  BlockScalingRewriter pass;
+  BlockScalingRewriter pass(/*allow_cudnn=*/false);
   RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
   CHECK: [[input:%.+]] = f32[10,256]{1,0} parameter(0)
   CHECK: [[blocks:%.+]] = f32[10,8,32]{2,1,0} reshape([[input]])
@@ -68,7 +68,7 @@ ENTRY main {
       custom_call_target="__op$dequantize"
 })";
 
-  BlockScalingRewriter pass;
+  BlockScalingRewriter pass(/*allow_cudnn=*/false);
   RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
   CHECK: [[input:%.+]] = f8e4m3fn[10,256]{1,0} parameter(0)
   CHECK: [[input_cvt:%.+]] = f32[10,256]{1,0} convert([[input]])
@@ -93,7 +93,7 @@ ENTRY main {
       custom_call_target="__op$block_scaled_dot"
 })";
 
-  BlockScalingRewriter pass;
+  BlockScalingRewriter pass(/*allow_cudnn=*/false);
   RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
   CHECK: [[lhs_quant:%.+]] = f8e4m3fn[4,16,256]{2,1,0} parameter(0)
   CHECK: [[lhs_quant_cvt:%.+]] = f32[4,16,256]{2,1,0} convert([[lhs_quant]])
@@ -127,7 +127,7 @@ ENTRY main {
       custom_call_target="__op$block_scaled_dot"
 })";
 
-  BlockScalingRewriter pass;
+  BlockScalingRewriter pass(/*allow_cudnn=*/false);
   RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
   CHECK: [[lhs_quant:%.+]] = f8e4m3fn[16,256]{1,0} parameter(0)
   CHECK: [[lhs_quant_cvt:%.+]] = f16[16,256]{1,0} convert([[lhs_quant]])
@@ -157,7 +157,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto test_module,
                           ParseAndReturnUnverifiedModule(hlo_test));
 
-  BlockScalingRewriter pass;
+  BlockScalingRewriter pass(/*allow_cudnn=*/false);
   TF_ASSERT_OK_AND_ASSIGN(
       auto changed, pass.Run(test_module.get(), /*execution_threads=*/{}));
   EXPECT_TRUE(changed);
@@ -174,6 +174,76 @@ ENTRY main {
                                       std::move(reference_module),
                                       ErrorSpec(/*aabs=*/0.01, /*arel=*/0.07),
                                       /*run_hlo_passes=*/false));
+}
+
+TEST_F(BlockScalingRewriterTest, CudnnScaledDotSimple) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  %lhs = f8e4m3fn[4,128,128] parameter(0)
+  %rhs = f8e4m3fn[4,128,128] parameter(1)
+  %lhs_scale = f8e8m0fnu[4,128,4] parameter(2)
+  %rhs_scale = f8e8m0fnu[4,128,4] parameter(3)
+  ROOT %result = f16[4,128,128] custom-call(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      custom_call_target="__op$block_scaled_dot"
+})";
+
+  BlockScalingRewriter pass(/*allow_cudnn=*/true);
+  RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
+  CHECK: [[lhs:%.+]] = f8e4m3fn[4,128,128]{2,1,0} parameter(0)
+  CHECK: [[rhs:%.+]] = f8e4m3fn[4,128,128]{2,1,0} parameter(1)
+  CHECK: [[lhs_scale:%.+]] = f8e8m0fnu[4,128,4]{2,1,0} parameter(2)
+  CHECK: [[lhs_scale_rs:%.+]] = f8e8m0fnu[4,1,4,32,1,4]{5,4,3,2,1,0} reshape([[lhs_scale]])
+  CHECK: [[lhs_scale_tr:%.+]] = f8e8m0fnu[4,1,1,32,4,4]{5,2,3,4,1,0} transpose([[lhs_scale_rs]]), dimensions={0,1,4,3,2,5}
+  CHECK: [[lhs_scale_swizzle:%.+]] = f8e8m0fnu[4,128,4]{2,1,0} reshape([[lhs_scale_tr]])
+  CHECK: [[rhs_scale:%.+]] = f8e8m0fnu[4,128,4]{2,1,0} parameter(3)
+  CHECK: [[rhs_scale_rs:%.+]] = f8e8m0fnu[4,1,4,32,1,4]{5,4,3,2,1,0} reshape([[rhs_scale]])
+  CHECK: [[rhs_scale_tr:%.+]] = f8e8m0fnu[4,1,1,32,4,4]{5,2,3,4,1,0} transpose([[rhs_scale_rs]]), dimensions={0,1,4,3,2,5}
+  CHECK: [[rhs_scale_swizzle:%.+]] = f8e8m0fnu[4,128,4]{2,1,0} reshape([[rhs_scale_tr]])
+  CHECK: [[call:%.+]] = ({{.+}}) custom-call([[lhs]], [[rhs]], [[lhs_scale_swizzle]], [[rhs_scale_swizzle]])
+  CHECK-SAME: custom_call_target="__cudnn$blockScaledDot"
+  CHECK: ROOT {{.+}} = f16[4,128,128]{2,1,0} get-tuple-element([[call]]), index=0
+})");
+}
+
+TEST_F(BlockScalingRewriterTest, CudnnScaledDotTransforms) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  %lhs = f8e4m3fn[128,96] parameter(0)
+  %rhs = f8e4m3fn[120,96] parameter(1)
+  %lhs_scale = f8e8m0fnu[128,3] parameter(2)
+  %rhs_scale = f8e8m0fnu[120,3] parameter(3)
+  ROOT %result = f16[128,120] custom-call(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      custom_call_target="__op$block_scaled_dot"
+})";
+
+  BlockScalingRewriter pass(/*allow_cudnn=*/true);
+  RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
+  CHECK: [[lhs:%.+]] = f8e4m3fn[128,96]{1,0} parameter(0)
+  CHECK: [[lhs_rs:%.+]] = f8e4m3fn[1,128,96]{2,1,0} reshape([[lhs]])
+  CHECK: [[rhs:%.+]] = f8e4m3fn[120,96]{1,0} parameter(1)
+  CHECK: [[rhs_rs:%.+]] = f8e4m3fn[1,120,96]{2,1,0} reshape([[rhs]])
+  CHECK: [[rhs_pad:%.+]] = f8e4m3fn[1,128,96]{2,1,0} pad([[rhs_rs]], {{.+}}), padding=0_0x0_8x0_0
+  CHECK: [[lhs_scale:%.+]] = f8e8m0fnu[128,3]{1,0} parameter(2)
+  CHECK: [[lhs_scale_rs:%.+]] = f8e8m0fnu[1,128,3]{2,1,0} reshape([[lhs_scale]])
+  CHECK: [[lhs_scale_pad:%.+]] = f8e8m0fnu[1,128,4]{2,1,0} pad([[lhs_scale_rs]], {{.+}}), padding=0_0x0_0x0_1
+  CHECK: [[lhs_scale_rs2:%.+]] = f8e8m0fnu[1,1,4,32,1,4]{5,4,3,2,1,0} reshape([[lhs_scale_pad]])
+  CHECK: [[lhs_scale_tr2:%.+]] = f8e8m0fnu[1,1,1,32,4,4]{5,2,3,4,1,0} transpose([[lhs_scale_rs2]]), dimensions={0,1,4,3,2,5}
+  CHECK: [[lhs_scale_swizzle:%.+]] = f8e8m0fnu[1,128,4]{2,1,0} reshape([[lhs_scale_tr2]])
+  CHECK: [[rhs_scale:%.+]] = f8e8m0fnu[120,3]{1,0} parameter(3)
+  CHECK: [[rhs_scale_rs:%.+]] = f8e8m0fnu[1,120,3]{2,1,0} reshape([[rhs_scale]])
+  CHECK: [[rhs_scale_pad:%.+]] = f8e8m0fnu[1,128,4]{2,1,0} pad([[rhs_scale_rs]], {{.+}}), padding=0_0x0_8x0_1
+  CHECK: [[rhs_scale_rs2:%.+]] = f8e8m0fnu[1,1,4,32,1,4]{5,4,3,2,1,0} reshape([[rhs_scale_pad]])
+  CHECK: [[rhs_scale_tr2:%.+]] = f8e8m0fnu[1,1,1,32,4,4]{5,2,3,4,1,0} transpose([[rhs_scale_rs2]]), dimensions={0,1,4,3,2,5}
+  CHECK: [[rhs_scale_swizzle:%.+]] = f8e8m0fnu[1,128,4]{2,1,0} reshape([[rhs_scale_tr2]])
+  CHECK: [[call:%.+]] = ({{.+}}) custom-call([[lhs_rs]], [[rhs_pad]], [[lhs_scale_swizzle]], [[rhs_scale_swizzle]])
+  CHECK: [[gte:%.+]] = f16[1,128,128]{2,1,0} get-tuple-element([[call]]), index=0
+  CHECK: [[slice:%.+]] = f16[1,128,120]{2,1,0} slice([[gte]]), slice={[0:1], [0:128], [0:120]}
+  CHECK: ROOT {{.+}} = f16[128,120]{1,0} reshape([[slice]])
+})");
 }
 
 }  // namespace

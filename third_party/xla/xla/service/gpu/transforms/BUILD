@@ -442,10 +442,12 @@ cc_library(
         "//xla:util",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/builder/lib:constants",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_creation_utils",
         "//xla/service:op_expander_pass",
         "//xla/service:shape_inference",
+        "//xla/service/gpu:cublas_cudnn",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -467,6 +469,20 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
+    name = "block_scaling_rewriter_cudnn_test",
+    srcs = ["block_scaling_rewriter_cudnn_test.cc"],
+    backends = ["gpu_b100"],
+    deps = [
+        ":block_scaling_rewriter",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:status_matchers",
     ],
 )
 
@@ -1242,6 +1258,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@local_config_cuda//cuda:cudnn_header",
+        ":block_scaling_rewriter",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",

@@ -2721,7 +2721,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       if (IsCustomCallToDnnNorm(*instr)) {
         return EmitNormThunk(custom_call);
       }
-      if (IsCustomCallTofMHA(*instr) || IsCustomCallTofMHAF8(*instr)) {
+      if (IsCustomCallTofMHA(*instr) || IsCustomCallTofMHAF8(*instr) ||
+          IsCustomCallToBlockScaledDot(*instr)) {
         return EmitCuDnnThunk(custom_call);
       }
       if (IsCustomCallToTopK(*instr)) {
