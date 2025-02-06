@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -127,7 +128,8 @@ NcclRaggedAllToAllStartThunk::NcclRaggedAllToAllStartThunk(
     : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info,
                           IsGPUSyncCollective(*instr)),
       config_(GetNcclRaggedAllToAllConfig(instr)),
-      buffers_(std::move(buffers)) {
+      buffers_(std::move(buffers)),
+      p2p_memcpy_enabled_(p2p_memcpy_enabled) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
@@ -153,6 +155,7 @@ NcclRaggedAllToAllStartThunk::NcclRaggedAllToAllStartThunk(
 absl::Status NcclRaggedAllToAllStartThunk::Initialize(
     const InitializeParams& params) {
   TF_RETURN_IF_ERROR(NcclCollectiveThunk::Initialize(params));
+  device_count_ = params.local_device_count;
 
   // Allocate temp buffers in the host memory to load the sizes and offsets of
   // ragged tensors from device memory.
@@ -180,6 +183,34 @@ absl::Status NcclRaggedAllToAllStartThunk::Initialize(
                                   output_offsets_device_buffer);
   }
 
+  if (should_use_memcpy()) {
+    TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
+                        GetGpuCollectives(params));
+    const CollectiveStreamId stream_id = nccl_stream_id();
+    AsyncStreamKind stream_kind = GetAsyncStreamKind();
+    TF_ASSIGN_OR_RETURN(
+        CommunicatorHandle comm_handle,
+        GetNcclComm(collectives, *params.collective_params,
+                    *params.collective_cliques, config().replica_groups,
+                    config().group_mode, stream_id, stream_kind));
+    TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
+    se::StreamExecutor* executor = params.executor;
+    {
+      absl::MutexLock lock(&pointers_mutex_);
+      if (!send_pointers_.count(executor)) {
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> alloc,
+                            executor->HostMemoryAllocate(sizeof(uint64_t)));
+        bool inserted =
+            send_pointers_.insert({executor, std::move(alloc)}).second;
+        CHECK(inserted);
+        TF_ASSIGN_OR_RETURN(
+            alloc, executor->HostMemoryAllocate(num_ranks * sizeof(uint64_t)));
+        inserted =
+            receive_pointer_maps_.insert({executor, std::move(alloc)}).second;
+        CHECK(inserted);
+      }
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -194,6 +225,20 @@ absl::Status NcclRaggedAllToAllStartThunk::Cleanup(
   }
 
   return absl::OkStatus();
+}
+
+bool NcclRaggedAllToAllStartThunk::is_local() const {
+  CHECK_NE(device_count_, -1);
+  for (const auto& replica_group : config_.config.replica_groups) {
+    const int64_t node_id = replica_group.replica_ids().at(0) / device_count_;
+    if (!absl::c_all_of(replica_group.replica_ids(),
+                        [this, node_id](const int64_t rank) {
+                          return rank / device_count_ == node_id;
+                        })) {
+      return false;
+    }
+  }
+  return true;
 }
 
 absl::Status NcclRaggedAllToAllStartThunk::RunNcclCollective(
@@ -223,6 +268,27 @@ absl::Status NcclRaggedAllToAllStartThunk::RunNcclCollective(
     auto jt = device_buffer_allocs_.find(stream.parent());
     CHECK(jt != device_buffer_allocs_.end());
     output_offsets_device_buffer = jt->second;
+  }
+
+  if (should_use_memcpy()) {
+    uint64_t* send_pointer = nullptr;
+    uint64_t* receive_pointer_map = nullptr;
+    {
+      TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
+
+      absl::MutexLock lock(&pointers_mutex_);
+      CHECK_EQ(send_pointers_[stream.parent()]->size(), sizeof(*send_pointer));
+      send_pointer = reinterpret_cast<uint64_t*>(
+          send_pointers_[stream.parent()]->opaque());
+      CHECK_EQ(receive_pointer_maps_[stream.parent()]->size(),
+               sizeof(*receive_pointer_map) * num_ranks);
+      receive_pointer_map = reinterpret_cast<uint64_t*>(
+          receive_pointer_maps_[stream.parent()]->opaque());
+    }
+    return xla::gpu::RunMemCpyRaggedAllToAll(
+        collectives, config_.ragged_row_element_size, device_buffers, stream,
+        comm_handle.comm, ragged_metadata_allocs, send_pointer,
+        receive_pointer_map);
   }
 
   return xla::gpu::RunRaggedAllToAll(
@@ -319,6 +385,62 @@ absl::Status RunRaggedAllToAll(
   }
 
   return collectives->GroupEnd();
+}
+
+// TODO(b/380457503): Memcpy AllToAll implementation must be moved to
+// NcclCommunicator implementation.
+absl::Status RunMemCpyRaggedAllToAll(
+    GpuCollectives* collectives, int64_t ragged_row_element_size,
+    const std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+    Communicator* comm, const std::vector<int64_t*>& ragged_metadata_allocs,
+    uint64_t* send_pointer, uint64_t receive_pointer_map[]) {
+  int device_ordinal = stream.parent()->device_ordinal();
+  VLOG(3) << "Performing mem-copy-ragged-all-to-all from device ordinal: "
+          << device_ordinal;
+  TF_RETURN_IF_ERROR(
+      MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
+
+  TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
+  const DeviceBufferPair& data_buffer = buffers[0];
+
+  // Send the current device's output buffer to all other devices.
+  static_assert(sizeof(uint64_t) ==
+                sizeof(data_buffer.destination_buffer.opaque()));
+  *send_pointer =
+      reinterpret_cast<uint64_t>(data_buffer.destination_buffer.opaque());
+  se::DeviceMemoryBase send_buffer(send_pointer, sizeof(uint64_t));
+  se::DeviceMemoryBase recv_buffer(receive_pointer_map,
+                                   sizeof(uint64_t) * num_ranks);
+  TF_RETURN_IF_ERROR(comm->AllGather(send_buffer, recv_buffer, U64, 1,
+                                     GpuCollectives::On(stream)));
+  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<IntegerOperandData> ragged_metadata,
+      LoadRaggedTensorMetadata(stream, buffers, ragged_metadata_allocs));
+
+  const IntegerOperandData& input_offsets = ragged_metadata[0];
+  const IntegerOperandData& send_sizes = ragged_metadata[1];
+  const IntegerOperandData& output_offsets = ragged_metadata[2];
+
+  // Transfer a slice of data to each peer's output buffer.
+  for (int peer = 0; peer < num_ranks; ++peer) {
+    se::DeviceMemoryBase send_slice =
+        collectives->Slice(data_buffer.source_buffer, data_buffer.element_type,
+                           input_offsets[peer] * ragged_row_element_size,
+                           send_sizes[peer] * ragged_row_element_size);
+    se::DeviceMemoryBase base_dst_addr =
+        se::DeviceMemoryBase(reinterpret_cast<void*>(receive_pointer_map[peer]),
+                             data_buffer.destination_buffer.size());
+    se::DeviceMemoryBase dst_slice =
+        collectives->Slice(base_dst_addr, data_buffer.element_type,
+                           output_offsets[peer] * ragged_row_element_size,
+                           send_sizes[peer] * ragged_row_element_size);
+    TF_RETURN_IF_ERROR(
+        stream.MemcpyD2D(&dst_slice, send_slice, send_slice.size()));
+  }
+
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

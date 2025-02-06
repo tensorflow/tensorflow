@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -140,14 +141,15 @@ class CollectiveOpsTestE2E : public HloTestBase {
 // for collectives (for example, sync -> async conversion) and correct
 // execution of the transformed HLO.
 
-// E2E test for async collectives. Tested with both async collective enabled
-// and disabled. Verify that async collective is generated when enabled
-// in the end-to-end compilation for GPU's and that the execution produces
-// correct result.
-class AsyncCollectiveOps : public CollectiveOpsTestE2E,
-                           public ::testing::WithParamInterface<bool> {
+// E2E test for collectives with flags set. Has constructor arguments specifying
+// whether to enable/disable async collectives, and to set the memcpy_local_p2p
+// flag. Subclasses pass in constructor arguments based on GetParam().
+class CollectiveOpsWithFlagsBase : public CollectiveOpsTestE2E {
  public:
-  AsyncCollectiveOps() : num_devices_(backend().device_count()) {
+  CollectiveOpsWithFlagsBase(bool enable_async, bool enable_p2p_memcpy)
+      : enable_async_(enable_async),
+        enable_p2p_memcpy_(enable_p2p_memcpy),
+        num_devices_(backend().device_count()) {
     VLOG(1) << "Running with " << num_devices_ << " devices";
   }
 
@@ -156,8 +158,7 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
 
     // Enable or disable all async collectives based on test parameter.
-    bool enable_async = GetParam();
-    if (!enable_async) {
+    if (!enable_async_) {
       for (auto option :
            {DebugOptions::NOOP, DebugOptions::ALLREDUCE,
             DebugOptions::ALLGATHER, DebugOptions::REDUCESCATTER,
@@ -168,6 +169,9 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
     }
     debug_options.add_xla_disable_hlo_passes(
         "gpu-convert-async-collectives-to-sync");
+    if (enable_p2p_memcpy_) {
+      debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
+    }
     return debug_options;
   }
 
@@ -191,7 +195,34 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
                 .is_sync();
   }
 
+  const bool enable_async_;
+  const bool enable_p2p_memcpy_;
   const int64_t num_devices_;
+};
+
+class AsyncCollectiveOps : public CollectiveOpsWithFlagsBase,
+                           public ::testing::WithParamInterface<bool> {
+ public:
+  AsyncCollectiveOps()
+      : CollectiveOpsWithFlagsBase(/*enable_async=*/GetParam(),
+                                   /*enable_p2p_memcpy=*/false) {}
+};
+
+class MemcpyCollectiveOps : public CollectiveOpsWithFlagsBase,
+                            public ::testing::WithParamInterface<bool> {
+ public:
+  MemcpyCollectiveOps()
+      : CollectiveOpsWithFlagsBase(/*enable_async=*/true,
+                                   /*enable_p2p_memcpy=*/GetParam()) {}
+};
+
+class AsyncMemcpyCollectiveOps
+    : public CollectiveOpsWithFlagsBase,
+      public ::testing::WithParamInterface<std::tuple<bool, bool>> {
+ public:
+  AsyncMemcpyCollectiveOps()
+      : CollectiveOpsWithFlagsBase(std::get<0>(GetParam()),
+                                   std::get<1>(GetParam())) {}
 };
 
 XLA_TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
@@ -605,7 +636,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({40, 60, 44, 64}, results[1]);
 }
 
-XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
+XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
   const absl::string_view kModuleStr = R"(
   HloModule test
 
@@ -623,29 +654,25 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
                  << test_runner().device_count() << " available)";
   }
 
-  for (bool use_memcpy : {true, false}) {
-    SCOPED_TRACE(use_memcpy ? "memcpy" : "no_memcpy");
-    HloModuleConfig config =
-        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-    config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(use_memcpy);
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(kModuleStr, config));
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto executable,
-        CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
 
-    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                            ExecuteReplicated(executable.get(), kNumReplicas));
-    ASSERT_EQ(results.size(), kNumReplicas);
-    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 13}, results[0]);
-    LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 12}, results[1]);
-    LiteralTestUtil::ExpectR1Equal<uint32_t>({21, 22}, results[2]);
-    LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 23}, results[3]);
-  }
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 13}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 12}, results[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({21, 22}, results[2]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 23}, results[3]);
 }
 
-XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllDegenerate) {
+XLA_TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerate) {
   const absl::string_view kModuleStr = R"(
   HloModule test
 
@@ -663,27 +690,23 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllDegenerate) {
                  << test_runner().device_count() << " available)";
   }
 
-  for (bool use_memcpy : {true, false}) {
-    SCOPED_TRACE(use_memcpy ? "memcpy" : "no_memcpy");
-    HloModuleConfig config =
-        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-    config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(use_memcpy);
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(kModuleStr, config));
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto executable,
-        CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
 
-    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                            ExecuteReplicated(executable.get(), kNumReplicas));
-    ASSERT_EQ(results.size(), kNumReplicas);
-    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 20}, results[0]);
-    LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 21}, results[1]);
-  }
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 20}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 21}, results[1]);
 }
 
-TEST_F(CollectiveOpsTestE2E, AllToAll8Gpus) {
+XLA_TEST_P(MemcpyCollectiveOps, AllToAll8Gpus) {
   // Module computes the a2a of (10*replica-id + iota).
   const absl::string_view kModuleStr = R"(
   HloModule test
@@ -705,32 +728,28 @@ TEST_F(CollectiveOpsTestE2E, AllToAll8Gpus) {
                  << " available)";
   }
 
-  for (bool use_memcpy : {true, false}) {
-    SCOPED_TRACE(use_memcpy ? "memcpy" : "no_memcpy");
-    HloModuleConfig config =
-        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-    config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(use_memcpy);
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(kModuleStr, config));
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto executable,
-        CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
 
-    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                            ExecuteReplicated(executable.get(), kNumReplicas));
-    ASSERT_EQ(results.size(), kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
 
-    Array<uint32_t> expected({16});
-    expected.SetValues(
-        {0, 1, 10, 11, 20, 21, 30, 31, 40, 41, 50, 51, 60, 61, 70, 71});
-    for (int device_id = 0; device_id < kNumReplicas; ++device_id) {
-      LiteralTestUtil::ExpectR1Equal<uint32_t>(
-          absl::MakeSpan(expected.data(), expected.num_elements()),
-          results[device_id]);
-      expected.Each(
-          [&](absl::Span<const int64_t> indices, uint32_t* val) { *val += 2; });
-    }
+  Array<uint32_t> expected({16});
+  expected.SetValues(
+      {0, 1, 10, 11, 20, 21, 30, 31, 40, 41, 50, 51, 60, 61, 70, 71});
+  for (int device_id = 0; device_id < kNumReplicas; ++device_id) {
+    LiteralTestUtil::ExpectR1Equal<uint32_t>(
+        absl::MakeSpan(expected.data(), expected.num_elements()),
+        results[device_id]);
+    expected.Each(
+        [&](absl::Span<const int64_t> indices, uint32_t* val) { *val += 2; });
   }
 }
 
@@ -815,6 +834,13 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
 
 INSTANTIATE_TEST_SUITE_P(AsyncCollectiveOps, AsyncCollectiveOps,
                          ::testing::Bool());
+
+INSTANTIATE_TEST_SUITE_P(MemcpyCollectiveOps, MemcpyCollectiveOps,
+                         ::testing::Bool());
+
+INSTANTIATE_TEST_SUITE_P(AsyncMemcpyCollectiveOps, AsyncMemcpyCollectiveOps,
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool()));
 
 // Tests for HLO level transforms.
 TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
@@ -1766,7 +1792,7 @@ ENTRY entry {
   EXPECT_TRUE(executable->has_module());
 }
 
-class RaggedAllToAllTest : public AsyncCollectiveOps {
+class RaggedAllToAllTest : public AsyncMemcpyCollectiveOps {
  public:
   // Creates random test data for a ragged-all-to-all.
   //
@@ -1790,6 +1816,7 @@ class RaggedAllToAllTest : public AsyncCollectiveOps {
   template <typename IndexType>
   void CreateRandomTestData(HloModule* module,
                             const Array<IndexType>& input_sizes) {
+    CHECK(inputs_.empty());
     auto ragged_all_to_all =
         FindInstruction(module, HloOpcode::kRaggedAllToAll);
     EXPECT_THAT(ragged_all_to_all, NotNull());
@@ -2103,7 +2130,8 @@ XLA_TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
 }
 
 INSTANTIATE_TEST_SUITE_P(RaggedAllToAllTest, RaggedAllToAllTest,
-                         ::testing::Bool());
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool()));
 
 TEST_F(CollectiveOpsTestE2E, MemcpyP2pWhileLoopCorrectness) {
   absl::string_view hlo_string = R"(
