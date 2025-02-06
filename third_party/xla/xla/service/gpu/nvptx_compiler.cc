@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
+#include "xla/service/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/service/gpu/transforms/conv_padding_legalization.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
 #include "xla/service/gpu/transforms/cublas_pad_for_gemms.h"
@@ -282,6 +283,9 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
   }
 
+  pre_pipeline.AddPass<BlockScalingRewriter>(
+      /*allow_cudnn=*/cuda_compute_capability.IsAtLeastBlackwell() &&
+      gpu_target_config.dnn_version_info >= se::dnn::VersionInfo(9, 7));
   pre_pipeline.AddPass<DotDimensionMerger>();
   pre_pipeline.AddPass<DotSparsityRewriter>();
 

@@ -1223,6 +1223,12 @@ cudnn_frontend::DataType_t ToCudnnFrontendDataType(
     case dnn::DataType::kF8E5M2:
       return cudnn_frontend::DataType_t::FP8_E5M2;
 #endif
+#if CUDNN_VERSION >= 90700
+    case dnn::DataType::kF4E2M1FN:
+      return cudnn_frontend::DataType_t::FP4_E2M1;
+    case dnn::DataType::kF8E8M0FNU:
+      return cudnn_frontend::DataType_t::FP8_E8M0;
+#endif
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }
@@ -5508,6 +5514,91 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
 #else
   return absl::UnimplementedError(
       "Cudnn flash attention only supported with Cudnn >= 9.1.0");
+#endif
+}
+
+absl::StatusOr<CudnnGraph> GetCudnnBlockScaledDotOperationGraph(
+    dnn::DnnSupport& dnn_support, const dnn::TensorDescriptor& lhs_data,
+    const dnn::TensorDescriptor& lhs_scale,
+    const dnn::TensorDescriptor& rhs_data,
+    const dnn::TensorDescriptor& rhs_scale, dnn::DataType result_type,
+    int block_size) {
+#if CUDNN_VERSION >= 90700
+  using cudnn_frontend::graph::Block_scale_dequantize_attributes;
+  using cudnn_frontend::graph::Matmul_attributes;
+  using cudnn_frontend::graph::Tensor_attributes;
+
+  VLOG(4) << "\n lhs_data: " << lhs_data.ToString()
+          << "\n lhs_scale: " << lhs_scale.ToString()
+          << "\n rhs_data: " << rhs_data.ToString()
+          << "\n rhs_scale: " << rhs_scale.ToString()
+          << "\n result_type: " << dnn::DataType_Name(result_type)
+          << "\n block_size: " << block_size;
+
+  cudnn_frontend::graph::Graph graph;
+  auto compute_type = cudnn_frontend::DataType_t::FLOAT;
+  graph.set_compute_data_type(compute_type);
+  graph.set_intermediate_data_type(compute_type);
+
+  auto next_uid = [uid = 0]() mutable -> int { return CuDnnTensorUID(uid++); };
+  auto get_tensor_attr = [&](const dnn::TensorDescriptor& desc,
+                             bool is_rhs) -> absl::StatusOr<Tensor_attributes> {
+    TF_ASSIGN_OR_RETURN(std::vector<int64_t> dimensions,
+                        desc.GetPhysicalDimensionsMajorToMinor());
+    std::vector<int64_t> strides = desc.GetPhysicalStridesMajorToMinor();
+    if (dimensions.size() == 2) {
+      dimensions.insert(dimensions.begin(), 1);
+      strides.insert(strides.begin(), dimensions[1] * dimensions[2]);
+    }
+    CHECK_EQ(dimensions.size(), 3);
+    if (is_rhs) {
+      std::swap(dimensions[1], dimensions[2]);
+      std::swap(strides[1], strides[2]);
+    }
+    return Tensor_attributes()
+        .set_uid(next_uid())
+        .set_dim(dimensions)
+        .set_stride(strides)
+        .set_data_type(ToCudnnFrontendDataType(desc.type()));
+  };
+  TF_ASSIGN_OR_RETURN(auto a_data_attr, get_tensor_attr(lhs_data, false));
+  TF_ASSIGN_OR_RETURN(auto b_data_attr, get_tensor_attr(rhs_data, true));
+  TF_ASSIGN_OR_RETURN(auto a_scale_attr, get_tensor_attr(lhs_scale, false));
+  TF_ASSIGN_OR_RETURN(auto b_scale_attr, get_tensor_attr(rhs_scale, true));
+
+  a_scale_attr.set_reordering_type(
+      cudnn_frontend::TensorReordering_t::F8_128x4);
+  b_scale_attr.set_reordering_type(
+      cudnn_frontend::TensorReordering_t::F8_128x4);
+
+  auto a_data = graph.tensor(a_data_attr.set_name("a_data"));
+  auto b_data = graph.tensor(b_data_attr.set_name("b_data"));
+  auto a_scale = graph.tensor(a_scale_attr.set_name("a_scale"));
+  auto b_scale = graph.tensor(b_scale_attr.set_name("b_scale"));
+
+  auto dq_attr = Block_scale_dequantize_attributes().set_block_size(block_size);
+  auto a_dq = graph.block_scale_dequantize(a_data, a_scale, dq_attr);
+  auto b_dq = graph.block_scale_dequantize(b_data, b_scale, dq_attr);
+
+  auto matmul_attr = Matmul_attributes().set_compute_data_type(compute_type);
+  auto d_tensor = graph.matmul(a_dq, b_dq, matmul_attr);
+  d_tensor->set_uid(next_uid());
+  d_tensor->set_data_type(ToCudnnFrontendDataType(result_type));
+  d_tensor->set_is_virtual(false);
+
+  CudnnGraph cudnnGraph(std::move(graph));
+  TF_RETURN_IF_ERROR(cudnnGraph.Prepare(
+      dnn_support, NumericOptions{/*require_determinism=*/false,
+                                  /*allow_tf32=*/true}));
+  TF_RETURN_IF_ERROR(cudnnGraph.Build(dnn_support, /*plan_id=*/std::nullopt));
+
+  VLOG(4) << "\b workspace size:" << cudnnGraph.Graph().get_workspace_size();
+  VLOG(4) << "\b block scaled dot graph: " << cudnnGraph.Graph();
+
+  return cudnnGraph;
+#else
+  return absl::UnimplementedError(
+      "Cudnn block scaled dot only supported with Cudnn >= 9.7.0");
 #endif
 }
 
