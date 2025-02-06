@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/function.h"

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_GLOBAL_INIT_H_
 #define TENSORFLOW_CORE_TPU_TPU_GLOBAL_INIT_H_
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/platform/env.h"
