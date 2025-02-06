@@ -30,7 +30,7 @@ inline const char* TargetTriple() {
 // NVPTXTargetMachine.cpp.
 inline const char* DataLayout() {
   static constexpr char kDataLayout[] =
-      "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
+      "e-p6:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64";
   return kDataLayout;
 }
 }  // namespace nvptx
