@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
+#include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -398,6 +399,11 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       op_stats.mutable_performance_counter_result()
           ->set_matrix_unit_utilization_percent(stat->DoubleValue());
     }
+    TfFunctionDb* tf_function_db = op_stats.mutable_tf_function_db();
+    visitor.ForEachLine([&](const XLineVisitor& line) {
+      CombineTfFunctionDb(ConvertHostThreadsXLineToTfFunctionDb(line),
+                          tf_function_db);
+    });
   }
   if (options.generate_step_db) {
     if (is_tpu) {

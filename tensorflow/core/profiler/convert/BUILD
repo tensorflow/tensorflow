@@ -394,6 +394,7 @@ cc_library(
         ":xplane_to_kernel_stats_db",
         ":xplane_to_op_metrics_db",
         ":xplane_to_step_events",
+        ":xplane_to_tf_functions",
         "//tensorflow/core/profiler/protobuf:diagnostics_proto_cc",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
