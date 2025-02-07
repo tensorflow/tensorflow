@@ -1,5 +1,5 @@
 # Description:
-#   Tensor Standard Libraries.
+#   Tensor Standard Libraries - common utilities for implementing XLA.
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
@@ -344,4 +344,25 @@ filegroup(
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/util:__pkg__",
     ]),
+)
+
+cc_library(
+    name = "fixed_option_set_flag",
+    srcs = ["fixed_option_set_flag.cc"],
+    hdrs = ["fixed_option_set_flag.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tsl_cc_test(
+    name = "fixed_option_set_flag_test",
+    srcs = ["fixed_option_set_flag_test.cc"],
+    deps = [
+        ":fixed_option_set_flag",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
