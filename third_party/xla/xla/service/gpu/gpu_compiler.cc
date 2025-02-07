@@ -968,7 +968,8 @@ absl::Status RunCollectiveOptimizationPasses(
   if (debug_options.xla_gpu_enable_pipelined_collectives() ||
       debug_options.xla_gpu_enable_pipelined_p2p() ||
       enable_partial_send_recv_pipelining) {
-    AddP2PPipeliner(collectives_pipeline, enable_partial_send_recv_pipelining);
+    collectives_pipeline.AddPass<GpuP2PPipeliner>(
+        enable_partial_send_recv_pipelining);
   }
 
   // Run algebraic simplifier to reshape(broadcast) into a broadcast when

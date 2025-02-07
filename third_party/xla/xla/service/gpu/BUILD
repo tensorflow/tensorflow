@@ -2212,6 +2212,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/service:collective_ops_utils",
         "//xla/service:collective_pipeliner",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
