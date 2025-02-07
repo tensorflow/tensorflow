@@ -292,6 +292,10 @@ void TfLiteOpaqueTensorSetAllocationTypeToDynamic(TfLiteOpaqueTensor* tensor) {
   tflite::SetTensorToDynamic(Convert(tensor));
 }
 
+void TfLiteOpaqueTensorSetNonCpuAllocation(TfLiteOpaqueTensor* opaque_tensor) {
+  Convert(opaque_tensor)->allocation_type = kTfLiteNonCpu;
+}
+
 const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
     const TfLiteOpaqueContext* opaque_context,
     const TfLiteOpaqueNode* opaque_node, int index) {
