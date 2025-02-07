@@ -789,6 +789,10 @@ bool HloDataflowAnalysis::UpdateRecvDoneValueSet(HloInstruction* recv_done) {
 
 bool HloDataflowAnalysis::UpdateCallValueSet(HloInstruction* call) {
   CHECK_EQ(call->opcode(), HloOpcode::kCall);
+  if (!HloInstruction::IsThreadIncluded(call->to_apply()->execution_thread(),
+                                        execution_threads_)) {
+    return false;
+  }
   InstructionValueSet& value_set = GetInstructionValueSet(call);
   InstructionValueSet& root_value_set =
       GetInstructionValueSet(call->to_apply()->root_instruction());

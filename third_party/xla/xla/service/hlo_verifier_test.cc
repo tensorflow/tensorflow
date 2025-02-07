@@ -225,7 +225,10 @@ TEST_F(HloVerifierTest, CheckCallThreadMismatch) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
 
-  auto status = verifier().Run(module.get()).status();
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
+          .Run(module.get())
+          .status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
               HasSubstr("mycall top_apply computation execution thread does "
@@ -2263,8 +2266,14 @@ TEST_F(HloVerifierTest, FusionNestedComputationThreadVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status =
+      HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
+          .Run(module.get())
+          .status();
+  ASSERT_FALSE(status.ok());
   EXPECT_THAT(
-      verifier().Run(module.get()).status().message(),
+      status.message(),
       HasSubstr("crs0 top_apply computation execution thread does not match "
                 "(parallel_thread vs main)"));
 }
@@ -3003,8 +3012,7 @@ TEST_F(HloVerifierTest, VerifyCustomCallThread) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status =
-      HloVerifier{
-          HloVerifierOpts{}.VerifyCustomCallNestedComputationThreadName()}
+      HloVerifier{HloVerifierOpts{}.VerifyCallNestedComputationThreadName()}
           .Run(module.get())
           .status();
   ASSERT_FALSE(status.ok());
