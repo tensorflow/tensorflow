@@ -193,7 +193,7 @@ class GemmFusionCollector : public ConstDfsHloVisitorWithDefault {
     AutotuneCacheKey key = AutotunerUtil::GetKey(hlo, impl_->GetConfig());
     auto [iterator, inserted] = result_.fusion_count_map.insert({key, 1});
     if (inserted) {
-      result_.fingerprint += ToCanonicalString(hlo);
+      result_.fingerprint += key.GetHlo();
     } else {
       ++(iterator->second);
     }
@@ -1391,10 +1391,15 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
   return DumpAutotuningLogs(debug_options_, autotuning_logs);
 }
 
-// Exchange the results with the other ranks.
+// Exchanges the results with the other hosts. The provided fingerprint must be
+// sufficiently unique to avoid collisions when invoking the autotuner several
+// times without invalidating the relevant key-value store. Collisions may
+// result in the wrong results being fetched, leading to non-deterministic
+// compilation. A good fingerprint uniquely identifies the input module, and
+// the fusions that are being autotuned (up to 128-bit collisions :)).
 static absl::Status ExchangeResults(KeyValueStoreInterface& key_value_store,
                                     const AutotuneCacheKeySet& keys_to_send,
-                                    absl::string_view fusion_set_fingerprint,
+                                    absl::string_view fingerprint,
                                     const int shard_index,
                                     const int shard_count) {
   AutotuneResults results;
@@ -1403,17 +1408,33 @@ static absl::Status ExchangeResults(KeyValueStoreInterface& key_value_store,
   TF_ASSIGN_OR_RETURN(std::string results_str,
                       AutotuneResultsToString(results, true));
   constexpr absl::string_view kKeyPrefix = "gemm_fusion_autotuning_results";
-  TF_RET_CHECK(!fusion_set_fingerprint.empty());
-  const std::string local_key = absl::StrFormat(
-      "%s_%s_%d", kKeyPrefix, fusion_set_fingerprint, shard_index);
-  TF_RETURN_IF_ERROR(key_value_store.Set(local_key, results_str));
+  TF_RET_CHECK(!fingerprint.empty());
+  const std::string local_key =
+      absl::StrFormat("%s_%s_%d", kKeyPrefix, fingerprint, shard_index);
+
+  absl::StatusOr<std::string> stored_result = key_value_store.TryGet(local_key);
+  // Given a sufficiently unique fingerprint, if the result already exists, then
+  // we may be recompiling a module that has already been autotuned within the
+  // scope of the relevant key-value store. In that case, we don't need to do
+  // anything.
+  if (stored_result.status().code() == absl::StatusCode::kNotFound) {
+    VLOG(2) << "Storing results for " << local_key;
+    TF_RETURN_IF_ERROR(key_value_store.Set(local_key, results_str));
+  } else if (!stored_result.ok()) {
+    return stored_result.status();
+  } else {
+    // TODO(bchetioui): we should optimize this to avoid even computing the
+    // results if they already exist.
+    VLOG(2) << "Results already exist for " << local_key << ", skipping store.";
+  }
+
   VLOG(2) << "Rank " << shard_index << ": published results at " << local_key;
   for (int i = 0; i < shard_count; ++i) {
     if (i == shard_index) {
       continue;
     }
     const std::string remote_key =
-        absl::StrFormat("%s_%s_%d", kKeyPrefix, fusion_set_fingerprint, i);
+        absl::StrFormat("%s_%s_%d", kKeyPrefix, fingerprint, i);
     VLOG(2) << "Rank " << shard_index << ": waiting for results from rank " << i
             << " / " << shard_count << " at " << remote_key;
     TF_ASSIGN_OR_RETURN(
@@ -1506,11 +1527,44 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
                                           std::move(fusions.fusion_count_map)));
     VLOG(1) << "Done autotuning.";
 
+    // Construct a fingerprint corresponding to a hash of the module as well as
+    // the fusions. It is important to fingerprint the module in addition to the
+    // fusion to avoid collisions in the key-value store when several distinct
+    // modules have the same fusions, and are compiled at different times by the
+    // same PjRt client.
+
+    // TODO(b/394763704): find a reliable way to perform sharded autotuning,
+    // or eliminate the feature. See below for an explanation of some issues.
+    //
+    // Theoretically, we also want to include the hash of the module config
+    // to ensure that a module compiled twice with different configs is
+    // autotuned twice.
+    //
+    // This is important since the config could e.g. affect codegen, or the
+    // space of possible parameters for autotuning. As a result, the autotuning
+    // results could look very different for the same module.
+    //
+    // Why is it not done here? Well, proto serialization is non-deterministic
+    // and may change across different builds. Which means that users who run
+    // on several hosts with different CPUs may end up generating different
+    // fingerprints for the same module config. They would then fail to
+    // exchange results through the key value store, which would lead to
+    // deadlocks. Therefore, we don't hash the module config here.
+    //
+    // The flip side is this: if we compile the same module twice in the same
+    // client, but with a different module config each time, we may hit the
+    // cache the second time and recover potentially inferior, or incomplete
+    // autotuning results. This seems like a fairly contrived use case though,
+    // and there seems to be no easy way to handle this without breaking through
+    // a whole bunch of abstraction layers---so we do this for the time being
+    // and will revisit this as we work on fixing the whole autotuning story.
+    std::string fingerprint =
+        absl::StrCat(module->GetFingerprint128(), "_", fusions.fingerprint);
+
     if (shard_autotuning && number_of_fusions_in_module > 0) {
-      TF_RETURN_IF_ERROR(ExchangeResults(*key_value_store_.key_value_store,
-                                         keys_of_this_rank, fusions.fingerprint,
-                                         key_value_store_.process_index,
-                                         key_value_store_.process_count));
+      TF_RETURN_IF_ERROR(ExchangeResults(
+          *key_value_store_.key_value_store, keys_of_this_rank, fingerprint,
+          key_value_store_.process_index, key_value_store_.process_count));
     }
   }
 
