@@ -17,11 +17,11 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
