@@ -110,7 +110,6 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef HAVE_SYS_MMAN_H": "#define HAVE_SYS_MMAN_H 1",
     "#undef HAVE_SYS_PARAM_H": "#define HAVE_SYS_PARAM_H 1",
     "#undef HAVE_SYS_STAT_H": "#define HAVE_SYS_STAT_H 1",
-    "#undef HAVE_SYS_SYSCTL_H": "#define HAVE_SYS_SYSCTL_H 1",
     "#undef HAVE_SYS_TYPES_H": "#define HAVE_SYS_TYPES_H 1",
     "#undef HAVE_SYS_UTSNAME_H": "#define HAVE_SYS_UTSNAME_H 1",
     "#undef HAVE_TIME_H": "#define HAVE_TIME_H 1",
