@@ -15,6 +15,12 @@ limitations under the License.
 
 #include <memory>
 
+#include "third_party/py/numpy/core/include/numpy/arrayobject.h"
+#include "third_party/py/numpy/core/include/numpy/ndarrayobject.h"
+#include "third_party/py/numpy/core/include/numpy/ndarraytypes.h"
+#include "third_party/py/numpy/core/include/numpy/npy_common.h"
+#include "tensorflow/lite/string_util.h"
+
 #define TFLITE_IMPORT_NUMPY  // See numpy.h for explanation.
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
