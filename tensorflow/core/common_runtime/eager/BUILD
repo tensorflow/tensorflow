@@ -90,7 +90,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
@@ -250,13 +250,13 @@ tf_cuda_library(
             "@com_google_absl//absl/synchronization",
             "@com_google_absl//absl/time",
             "@local_tsl//tsl/platform:mutex",
-            "@local_tsl//tsl/platform:statusor",
             "@local_xla//xla/pjrt:pjrt_stream_executor_client",
             "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
             "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
             "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
             "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_impl",
             "@local_xla//xla/tsl/distributed_runtime/preemption:preemption_notifier",
+            "@local_xla//xla/tsl/platform:statusor",
         ],
     }) + if_google(
         # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.
@@ -312,7 +312,7 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -905,10 +905,10 @@ cc_library(
     hdrs = ["rendezvous_cache.h"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:refcount",
         "@local_tsl//tsl/platform:thread_annotations",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 

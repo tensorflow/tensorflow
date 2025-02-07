@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/service/cpu/cpu_event.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
