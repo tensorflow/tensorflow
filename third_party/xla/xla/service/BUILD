@@ -289,6 +289,18 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "collective_permute_key",
+    srcs = ["collective_permute_key.cc"],
+    hdrs = ["collective_permute_key.h"],
+    deps = [
+        ":hlo_domain_map",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log",
+    ],
+)
+
+cc_library(
     name = "collective_permute_decomposer",
     srcs = ["collective_permute_decomposer.cc"],
     hdrs = ["collective_permute_decomposer.h"],
