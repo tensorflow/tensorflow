@@ -1096,6 +1096,10 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
       require_use_buffer_offset_ = true;
       return empty_buffer_;
     }
+    if (custom_option_alignment_.has_value()) {
+      builder_.ForceVectorAlignment(tensor_data.size(), sizeof(uint8_t),
+                                    custom_option_alignment_.value());
+    }
     auto buffer_data = builder_.CreateVector(
         reinterpret_cast<const uint8_t*>(tensor_data.data()),
         tensor_data.size());
