@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -50,6 +51,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
 // Use the "reserved" keys for these properties so lookups are fast.
 static constexpr absl::string_view kIRSizeKey = HloCostAnalysis::kReserved0Key;
 
@@ -60,6 +62,47 @@ static constexpr absl::string_view kCollNumDevicesKey =
     "Number of devices of a collective group";
 static constexpr absl::string_view kCollBytesTransferred =
     "Number of bytes transferred.";
+
+template <typename T>
+absl::StatusOr<int64_t> NumRanks(const T& instr) {
+  const HloModuleConfig& config = instr.GetModule()->config();
+  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                      GetCollectiveOpGroupMode(instr.channel_id().has_value(),
+                                               instr.use_global_device_ids()));
+
+  // Get number of ranks for this instruction based on replica groups and mode.
+  int64_t num_devices = config.num_partitions();
+  int64_t num_replicas = config.replica_count();
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> participant_counts,
+      GetPariticipantCountsForReplicaGroups(
+          num_replicas, num_devices, instr.replica_groups(), group_mode));
+  int64_t num_ranks = 1;
+
+  for (auto count : participant_counts) {
+    num_ranks = std::max(num_ranks, count);
+  }
+  return num_ranks;
+}
+
+int64_t ShapeSize(const Shape& shape,
+                  const GpuHloCostAnalysis::ShapeSizeFunction& get_shape,
+                  int64_t index_to_skip = -1) {
+  int64_t shape_size = 0;
+  ShapeUtil::ForEachLeafShape(
+      shape, [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!index.empty() && index.front() == index_to_skip) {
+          return;
+        }
+
+        if (subshape.IsArray()) {
+          shape_size += get_shape(subshape);
+        }
+      });
+  return shape_size;
+}
+
+}  // namespace
 
 // We use static tables to look up system bandwidths for different
 // type of hardware below.
@@ -333,25 +376,8 @@ int64_t GpuHloCostAnalysis::GetFlopsForElementwiseOp(
 
 absl::Status GpuHloCostAnalysis::HandleAllReduce(
     const HloInstruction* allreduce) {
-  const HloModuleConfig& config = allreduce->GetModule()->config();
-  TF_ASSIGN_OR_RETURN(
-      CollectiveOpGroupMode group_mode,
-      GetCollectiveOpGroupMode(
-          allreduce->channel_id().has_value(),
-          Cast<HloAllReduceInstruction>(allreduce)->use_global_device_ids()));
-
-  // Get number of ranks for this instruction based on replica groups and mode.
-  int64_t num_devices = config.num_partitions();
-  int64_t num_replicas = config.replica_count();
-  TF_ASSIGN_OR_RETURN(
-      std::vector<int64_t> participant_counts,
-      GetPariticipantCountsForReplicaGroups(
-          num_replicas, num_devices, allreduce->replica_groups(), group_mode));
-  int64_t num_ranks = 1;
-
-  for (auto count : participant_counts) {
-    num_ranks = std::max(num_ranks, count);
-  }
+  TF_ASSIGN_OR_RETURN(int64_t num_ranks,
+                      NumRanks(*Cast<HloAllReduceInstruction>(allreduce)));
 
   VLOG(5) << "Computing cost for " << num_ranks << " ranks in "
           << allreduce->ToString();
@@ -463,47 +489,44 @@ absl::Status GpuHloCostAnalysis::HandleReduce(const HloInstruction* hlo) {
 
 absl::Status GpuHloCostAnalysis::HandleAllReduceStart(
     const HloInstruction* hlo) {
-  int64_t output_bytes_accessed = 0;
-  ShapeUtil::ForEachLeafShape(
-      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (subshape.IsArray()) {
-          output_bytes_accessed += GetShapeSize(subshape);
-        }
-      });
-  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
-  current_properties_[kCollBytesTransferred] = output_bytes_accessed;
+  int64_t bytes_transferred = ShapeSize(hlo->shape(), options_.shape_size);
+
+  current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(
+      hlo->to_apply()->root_instruction()->opcode(), hlo->shape());
+  current_properties_[kBytesAccessedKey] = bytes_transferred;
+  current_properties_[kCollBytesTransferred] = bytes_transferred;
   return absl::OkStatus();
 }
 
 absl::Status GpuHloCostAnalysis::HandleAllGather(const HloInstruction* hlo) {
-  int64_t output_bytes_accessed = 0;
-  ShapeUtil::ForEachLeafShape(
-      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (subshape.IsArray()) {
-          output_bytes_accessed += GetShapeSize(subshape);
-        }
-      });
-  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
-  current_properties_[kCollBytesTransferred] = output_bytes_accessed;
+  TF_ASSIGN_OR_RETURN(int64_t num_ranks,
+                      NumRanks(*Cast<HloAllGatherInstruction>(hlo)));
+
+  int64_t bytes_transferred = ShapeSize(hlo->shape(), options_.shape_size);
+  int64_t rank_size_bytes = bytes_transferred / num_ranks;
+  int64_t write_bytes = rank_size_bytes * (2 * num_ranks - 1);
+  int64_t read_bytes = rank_size_bytes * num_ranks;
+
+  current_properties_[kBytesAccessedKey] = write_bytes + read_bytes;
+  current_properties_[kCollBytesTransferred] = bytes_transferred;
+
   return absl::OkStatus();
 }
 
 absl::Status GpuHloCostAnalysis::HandleAllGatherStart(
     const HloInstruction* hlo) {
-  int64_t output_bytes_accessed = 0;
-  ShapeUtil::ForEachLeafShape(
-      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        // Skip first element of a tuple as it expresses the input of the
-        // collective operation.
-        if (index.empty() || index.front() == 0) {
-          return;
-        }
-        if (subshape.IsArray()) {
-          output_bytes_accessed += GetShapeSize(subshape);
-        }
-      });
-  current_properties_.set_output_bytes_accessed(output_bytes_accessed);
-  current_properties_[kCollBytesTransferred] = output_bytes_accessed;
+  TF_ASSIGN_OR_RETURN(int64_t num_ranks,
+                      NumRanks(*Cast<HloAllGatherInstruction>(hlo)));
+
+  int64_t bytes_transferred =
+      ShapeSize(hlo->shape(), options_.shape_size, /*index_to_skip=*/0);
+  int64_t rank_size_bytes = bytes_transferred / num_ranks;
+  int64_t write_bytes = rank_size_bytes * (2 * num_ranks - 1);
+  int64_t read_bytes = rank_size_bytes * num_ranks;
+
+  current_properties_[kBytesAccessedKey] = write_bytes + read_bytes;
+  current_properties_[kCollBytesTransferred] = bytes_transferred;
+
   return absl::OkStatus();
 }
 
@@ -513,37 +536,27 @@ absl::Status GpuHloCostAnalysis::HandleAsyncStart(const HloInstruction* hlo) {
     VLOG(2) << "Only Reduce Scatter is supported.";
     return absl::OkStatus();
   }
-  int index_to_skip = 1;
-  int64_t bytes_transferred = 0;
-  ShapeUtil::ForEachLeafShape(
-      hlo->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        // Skip second element of a tuple as it is an output but it is not
-        // actual bytes transferred.
-        if (index.empty() || index.front() == index_to_skip) {
-          return;
-        }
-        if (subshape.IsArray()) {
-          bytes_transferred += GetShapeSize(subshape);
-        }
-      });
 
-  current_properties_[kCollBytesTransferred] = bytes_transferred;
-  return absl::OkStatus();
+  return HandleReduceScatter(async_start->async_wrapped_instruction());
 }
 
 absl::Status GpuHloCostAnalysis::HandleReduceScatter(
     const HloInstruction* hlo) {
-  int64_t bytes_transferred = 0;
+  TF_ASSIGN_OR_RETURN(int64_t num_ranks,
+                      NumRanks(*Cast<HloReduceScatterInstruction>(hlo)));
 
-  for (auto* operand : hlo->operands()) {
-    ShapeUtil::ForEachLeafShape(
-        operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-          if (subshape.IsArray()) {
-            bytes_transferred += GetShapeSize(subshape);
-          }
-        });
+  int64_t bytes_transferred = 0;
+  for (HloInstruction* operand : hlo->operands()) {
+    bytes_transferred += ShapeSize(operand->shape(), options_.shape_size);
   }
+  int64_t rank_size_bytes = bytes_transferred / num_ranks;
+  int64_t write_bytes = rank_size_bytes * num_ranks;
+  int64_t read_bytes = rank_size_bytes * (2 * num_ranks - 1);
+
+  current_properties_[kBytesAccessedKey] = write_bytes + read_bytes;
   current_properties_[kCollBytesTransferred] = bytes_transferred;
+  current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(
+      hlo->to_apply()->root_instruction()->opcode(), hlo->shape());
 
   return absl::OkStatus();
 }
