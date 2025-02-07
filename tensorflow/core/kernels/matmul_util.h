@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/tsl/platform/types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tsl/platform/types.h"
 
 namespace tensorflow {
 

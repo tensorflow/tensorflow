@@ -12,11 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/uniform_quant_ops/math_utils.h"
 #include "tensorflow/core/kernels/uniform_quant_ops/tensor_utils.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {

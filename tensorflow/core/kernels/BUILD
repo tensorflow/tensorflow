@@ -710,7 +710,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/platform:types",
+        "@local_xla//xla/tsl/platform:types",
     ],
     alwayslink = 1,
 )
@@ -1668,9 +1668,9 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:blocking_counter",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:refcount",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
@@ -3925,7 +3925,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )
 
