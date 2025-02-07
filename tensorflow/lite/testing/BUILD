@@ -690,6 +690,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )
