@@ -20,7 +20,6 @@ limitations under the License.
 #include <dlfcn.h>
 
 #include <cinttypes>
-#include <cstring>
 #include <memory>
 #include <string>
 
