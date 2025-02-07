@@ -341,7 +341,6 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCall:
     case HloOpcode::kCholesky:
-    case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
@@ -363,13 +362,11 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
-    case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReverse:
-    case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
