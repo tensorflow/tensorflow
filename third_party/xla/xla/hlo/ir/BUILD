@@ -322,6 +322,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/log:globals",
         "@com_google_googletest//:gtest_main",
     ],
 )
