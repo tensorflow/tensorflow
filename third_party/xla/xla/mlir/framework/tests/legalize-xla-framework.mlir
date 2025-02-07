@@ -23,7 +23,7 @@ func.func @buffer_type(%arg: !xla_framework.buffer {xla_framework.input_mapping 
 // CHECK: %[[PTRS:.*]] = llvm.getelementptr %[[BUFFERS]][%[[C0]]] : (!llvm.ptr, i32) -> !llvm.ptr
 // CHECK: %[[PTR0:.*]] = llvm.load %[[PTRS]] : !llvm.ptr
 // Create memref descriptor as the buffer_to_mem lowering.
-// CHECK: %[[MEMREF:.*]] = llvm.mlir.undef : !llvm.struct<(ptr, ptr, i64)>
+// CHECK: %[[MEMREF:.*]] = llvm.mlir.poison : !llvm.struct<(ptr, ptr, i64)>
 // CHECK: %[[MEMREF1:.*]] = llvm.insertvalue %[[PTR0]], %[[MEMREF]][0] : !llvm.struct<(ptr, ptr, i64)>
 // CHECK: %[[MEMREF:.*]] = llvm.insertvalue %[[PTR0]], %[[MEMREF1]][1] : !llvm.struct<(ptr, ptr, i64)>
 // CHECK: %[[C0_0:.*]] = llvm.mlir.constant(0 : index) : i64
