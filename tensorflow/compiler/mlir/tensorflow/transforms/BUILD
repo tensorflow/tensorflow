@@ -789,7 +789,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -833,13 +833,13 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@local_tsl//tsl/platform:errors",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:window_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@local_xla//xla/service:shape_inference",
+        "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/util:env_var",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:version",
@@ -1115,6 +1115,6 @@ tf_cc_test(
         ":shape_inference_pass",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:env",
+        "@local_xla//xla/tsl/platform:env",
     ],
 )

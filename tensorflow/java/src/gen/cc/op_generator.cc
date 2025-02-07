@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/ascii.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/java/src/gen/cc/java_defs.h"
 #include "tensorflow/java/src/gen/cc/op_specs.h"
 #include "tensorflow/java/src/gen/cc/source_writer.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace java {

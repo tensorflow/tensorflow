@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/framework/op_reg_offset.pb.h"
 #include "tensorflow/python/framework/python_op_gen.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/str_util.h"
 
 namespace tensorflow {

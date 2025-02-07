@@ -20,11 +20,11 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/check.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/java/src/gen/cc/java_defs.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace java {

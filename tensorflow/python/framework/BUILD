@@ -220,10 +220,10 @@ tf_cc_binary(
         ":offset_counter_helper",
         ":op_reg_offset_proto_cc",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:types",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:types",
         "@local_xla//xla/tsl/util:command_line_flags",
     ],
 )
@@ -236,11 +236,11 @@ cc_library(
     deps = [
         ":op_reg_offset_proto_cc",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:regexp",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:types",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
