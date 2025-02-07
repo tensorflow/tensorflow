@@ -113,5 +113,6 @@ cc_library(
         "@llvm-project//mlir:UBDialect",
         "@local_tsl//tsl/platform:errors",
         "@stablehlo//:register",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
 )

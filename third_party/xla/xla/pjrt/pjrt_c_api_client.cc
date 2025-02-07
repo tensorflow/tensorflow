@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
+#include "stablehlo/transforms/optimization/Passes.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -1417,6 +1418,8 @@ PjRtCApiExecutable::GetHloModules() const {
         mlir::OwningOpRef<mlir::ModuleOp> module,
         ParseMlirModuleString(code, ctx));
     mlir::PassManager pm(&ctx);
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     if (mlir::failed(pm.run(module.get())))
       return xla::Internal("failed to convert to MHLO");

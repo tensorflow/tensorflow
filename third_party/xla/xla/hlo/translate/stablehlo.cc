@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "stablehlo/dialect/Register.h"
+#include "stablehlo/transforms/optimization/Passes.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_module_importer.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
@@ -64,6 +65,10 @@ absl::Status MhloToStablehlo(mlir::ModuleOp module) {
 absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
   mlir::MLIRContext* context = module->getContext();
   mlir::PassManager pm(context);
+  if (run_canonicalizer) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
+  }
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createChloLegalizeToHloPass());

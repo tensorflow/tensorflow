@@ -624,6 +624,7 @@ cc_library(
         "@stablehlo//:register",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
         "@stablehlo//:stablehlo_portable_api",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:version",
@@ -830,6 +831,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:fingerprint",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
 )
 

@@ -1904,6 +1904,7 @@ cc_library(
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/mlir_hlo:stablehlo_extension_passes",
         "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
 )
 
