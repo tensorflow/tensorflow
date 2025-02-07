@@ -4715,6 +4715,7 @@ cc_library(
         ":hlo_module_util",
         ":hlo_runner_interface",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status_macros",

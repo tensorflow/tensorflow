@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -277,7 +278,13 @@ absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralFromDevice(
     PjRtBuffer& buffer) {
   TF_RETURN_IF_ERROR(buffer.GetReadyFuture().Await());
 
-  TF_ASSIGN_OR_RETURN(auto literal, buffer.ToLiteralSync());
+  // Implementations of ToLiteralSync() do not support empty tuples. Since an
+  // empty tuple literal is easy to construct, we do so here.
+  if (const Shape& on_device_shape = buffer.on_device_shape();
+      on_device_shape.IsTuple() && on_device_shape.tuple_shapes_size() == 0) {
+    return LiteralUtil::MakeTuple({});
+  }
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, buffer.ToLiteralSync());
   return std::move(*literal);
 }
 
