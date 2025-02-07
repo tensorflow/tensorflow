@@ -326,3 +326,15 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+xla_cc_test(
+    name = "hlo_casting_utils_test",
+    srcs = ["hlo_casting_utils_test.cc"],
+    deps = [
+        ":hlo",
+        "//xla:shape_util",
+        "//xla/tsl/platform:test_main",
+        "@com_google_benchmark//:benchmark",
+        "@com_google_googletest//:gtest",
+    ],
+)
