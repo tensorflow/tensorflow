@@ -267,9 +267,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughReverse) {
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
-        offset_map: (d0) -> (-d0 + 179)
+        offset_map: (d0) -> (178)
         size_map: (d0) -> (d0)
-        stride_map: (d0) -> (1)
+        stride_map: (d0) -> (-1)
       )")));
 }
 
@@ -518,16 +518,14 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReshapeOfReverse) {
     }
   )"));
 
-  // TODO(b/331257678): the expected expressions should be simplified.
   EXPECT_THAT(
       SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
-        offset_map: (d0, d1) ->
-          (0, -((d0 + 5) floordiv 6) + 8, -(d0 - ((d0 - 1) floordiv 6) * 6) + 6, 0)
+        offset_map: (d0, d1) -> (0, 7, 5, 0)
         size_map: (d0, d1) ->
           (1, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, d1)
-        stride_map: (d0, d1) -> (0, 1, 1, 1)
+        stride_map: (d0, d1) -> (0, -1, -1, 1)
       )")));
 }
 

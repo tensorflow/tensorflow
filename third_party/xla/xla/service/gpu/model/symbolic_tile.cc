@@ -1049,20 +1049,6 @@ void ConstraintExpression::Simplify() {
     constraints = constraints && maybe_size_and_stride->constraints;
   }
 
-  // Eliminate negative strides and recalculate offsets.
-  // TODO(b/340555497): handle normalization of more complex expressions.
-  for (auto [offset, size, stride] :
-       llvm::zip(offset_expressions, size_expressions, stride_expressions)) {
-    auto constant = llvm::dyn_cast<AffineConstantExpr>(stride);
-    if (constant && constant.getValue() < 0) {
-      offset = offset + size * stride - stride;
-      stride = -stride;
-    } else if (!constant) {
-      VLOG(1) << "Unexpected non-constant stride expression: "
-              << xla::ToString(stride);
-    }
-  }
-
   // DimVars in `indexing_map` represent indices, but in `tile_map` they will
   // represent the size of the tile. So we need to add 1 to the bounds.
   // For example: indices: [0, 9] -> sizes: [1, 10].

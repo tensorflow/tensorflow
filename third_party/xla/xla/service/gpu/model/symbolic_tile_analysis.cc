@@ -489,6 +489,21 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
     }
   }
 
+  // Check that all strides are >= 0. Our codegen doesn't support negative
+  // strides at the moment if padding is required. Also, for the Reverse op it
+  // might make sense to emit code for it, and normalizing strides to >= 0.
+  for (const std::unique_ptr<SymbolicTiledHloInstruction>& symbolic_tiled_hlo :
+       symbolic_tiled_hlo_instructions_) {
+    llvm::SmallVector<int64_t> tile_strides =
+        symbolic_tiled_hlo->TileStrides(tile_parameters);
+    if (absl::c_any_of(tile_strides,
+                       [](int64_t stride) { return stride < 0; })) {
+      return absl::UnimplementedError(
+          absl::StrCat("Full support for negative strides is not implemented ",
+                       symbolic_tiled_hlo->ToString()));
+    }
+  }
+
   // Offset indexing is needed to emit loads/stores and to deduplicate
   // instructions. In some cases, for example in Cost Model, we need to only
   // deduplicate instructions.

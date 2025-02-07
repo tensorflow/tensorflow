@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -504,6 +505,30 @@ ENTRY main {
   ROOT fusion = f32[2,3] fusion(p0, p1), kind=kLoop, calls=fusion
 })"));
   EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
+}
+
+TEST_F(SymbolicTileAnalysisTest, BailOutOnUnsupportedNegativeStrides) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  p0 = f32[16] parameter(0)
+  ROOT reverse = f32[16] reverse(p0), dimensions={0}
+}
+
+ENTRY main {
+  p0 = f32[16] parameter(0)
+  ROOT fusion = f32[16] fusion(p0), kind=kLoop, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  auto result = analysis->ComputeTiledHloInstructions(
+      /*tile_parameters=*/{2},
+      /*constraints_are_known_satisfied=*/false,
+      /*compute_all_tile_offset_indexing_maps=*/true);
+  ASSERT_THAT(result.status(),
+              tsl::testing::StatusIs(tsl::error::UNIMPLEMENTED,
+                                     ::testing::HasSubstr("negative stride")));
 }
 
 TEST_F(SymbolicTileAnalysisTest, MultiOutputFusionIsNotSupported) {
