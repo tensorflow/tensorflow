@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/custom_call_batch_partitioner.h"
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
 #include "xla/service/custom_call_target_registry.h"
@@ -108,7 +109,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       allocator_config.kind = xla::GpuAllocatorConfig::Kind::kCudaAsync;
     } else {
       return new PJRT_Error{absl::UnimplementedError(absl::StrFormat(
-          "Allocator %s not supported for PJRT GPU plugin. Supported allocator "
+          "Allocator %s not supported for PJRT GPU plugin. Supported "
+          "allocator "
           "options are: 'default', 'platform', 'bfc' and 'cuda_async'.",
           allocator_name))};
     }
@@ -256,9 +258,10 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
     // If the user did not specify the topology and we did not
     // get any devices from the client, then error out because
     // we do not know how many devices the topology should have.
-    return new PJRT_Error{absl::FailedPreconditionError(
-        "Cannot create topology without an explicit topology shape or without "
-        "a client")};
+    return new PJRT_Error{
+        absl::FailedPreconditionError("Cannot create topology without an "
+                                      "explicit topology shape or without "
+                                      "a client")};
   }
 
   if (sizes.GetDeviceCount() != device_ids.size()) {
@@ -314,6 +317,17 @@ PJRT_Error* PJRT_Register_Custom_Partitioner(
   std::string name(args->name, args->name_size);
   RegisterCustomCallPartitioner(
       name, jax::CreateCApiCustomCallPartitioner(args->callbacks));
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Register_Batch_Partitionable(
+    PJRT_Register_Batch_Partitionable_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Register_Batch_Partitionable_Args",
+      PJRT_Register_Batch_Partitionable_Args_STRUCT_SIZE, args->struct_size));
+  std::string name(args->name, args->name_size);
+  RegisterCustomCallPartitioner(
+      name, std::make_unique<xla::CustomCallBatchPartitioner>());
   return nullptr;
 }
 
