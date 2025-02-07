@@ -64745,6 +64745,7 @@ op {
     allowed_values {
       list {
         type: DT_QINT8
+        type: DT_QUINT8
         type: DT_QINT32
       }
     }
@@ -64807,6 +64808,7 @@ op {
     allowed_values {
       list {
         type: DT_QINT8
+        type: DT_QUINT8
         type: DT_QINT32
       }
     }
