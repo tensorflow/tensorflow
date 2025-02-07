@@ -17,8 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <deque>
+#include <functional>
+#include <unordered_set>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
