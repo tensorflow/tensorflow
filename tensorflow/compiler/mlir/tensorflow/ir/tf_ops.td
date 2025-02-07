@@ -2734,6 +2734,66 @@ def XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSizeOp : TF_Op<"XlaSparseDens
   );
 }
 
+def TF_UniformDequantizeOp : TF_Op<"UniformDequantize", [Pure]> {
+  let summary = "Perform dequantization on the quantized Tensor `input`.";
+
+  let description = [{
+Given quantized `input` which was quantized using `scales` and `zero_points`, performs dequantization using the formula:
+dequantized_data = (quantized_data - zero_point) * scale.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Qint32, TF_Qint8, TF_Quint8]>, [{Must be a Tensor of Tin.}]>:$input,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale(s) when quantizing original data that input represents.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point(s) when quantizing original data that input represents.
+Same shape condition as scales.}]>:$zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
+    I64Attr:$quantization_min_val,
+    I64Attr:$quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Float32Tensor, [{The output dequantized Tensor of Tout, whose shape is same as input.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
+}
+
+def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [Pure]> {
+  let summary = "Perform quantization on Tensor `input`.";
+
+  let description = [{
+Given `input`, `scales` and `zero_points`, performs quantization using the formula:
+quantized_data = floor(input_data * (1.0f / scale) + 0.5f) + zero_point
+  }];
+
+  let arguments = (ins
+    Arg<TF_Float32Tensor, [{Must be a Tensor of Tin.}]>:$input,
+    Arg<TF_Float32Tensor, [{The float value(s) to use as scale(s) to quantize `input`.
+Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) to use as zero_point(s) to quantize `input`.
+Same shape condition as scales.}]>:$zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
+    I64Attr:$quantization_min_val,
+    I64Attr:$quantization_max_val
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Qint32, TF_Qint8, TF_Quint8]>, [{The output quantized Tensor of Tout, whose shape is same as input.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
+}
+
 def TF_XlaSparseDenseMatmulGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradWithCsrInput", [AttrSizedOperandSegments, Pure]> {
   let summary = "A XLA op which performs the custom optimizer per-row update for the dense-sparse matrix multiplication.";
 
