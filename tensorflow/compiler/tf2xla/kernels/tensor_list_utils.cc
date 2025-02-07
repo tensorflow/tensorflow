@@ -27,13 +27,13 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 // TensorList is represented by a tuple.
 // - The first part of the tuple is a buffer containing all the tensors,

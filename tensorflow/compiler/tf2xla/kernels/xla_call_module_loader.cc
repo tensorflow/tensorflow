@@ -69,6 +69,8 @@ limitations under the License.
 #include "xla/python/refine_polymorphic_shapes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace tensorflow {
 

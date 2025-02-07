@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/loops.h"
 #include "xla/hlo/builder/lib/sorting.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

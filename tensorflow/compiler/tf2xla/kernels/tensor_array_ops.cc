@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
