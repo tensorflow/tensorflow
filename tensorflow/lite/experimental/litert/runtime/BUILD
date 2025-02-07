@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("//tensorflow/lite/experimental/litert/build_common:special_rule.bzl", "litert_extra_gles_deps", "litert_gles_linkopts")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
@@ -236,4 +238,14 @@ cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_test(
+    name = "gl_base_test",
+    srcs = ["gl_base_test.cc"],
+    linkopts = litert_gles_linkopts(),
+    deps = [
+        "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+        "@com_google_googletest//:gtest_main",
+    ] + litert_extra_gles_deps(),
 )
