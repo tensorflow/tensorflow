@@ -226,6 +226,7 @@ xla_test(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
@@ -243,5 +244,6 @@ xla_test(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )

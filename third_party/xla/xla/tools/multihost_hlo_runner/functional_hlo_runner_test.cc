@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -650,6 +652,32 @@ TEST_F(FunctionalHloRunnerTest, FixFakeArguments) {
       *client, debug_options, preproc_options, compile_options, running_options,
       {GetHloPath("single_device.hlo")}, InputFormat::kText,
       /*arguments=*/{}, /*engine=*/&engine));
+}
+
+TEST(FunctionalHloRunnerTest, TestHloUnoptimizedSnapshotDeSerialization) {
+  FunctionalHloRunner::HloModuleAndArguments hlo_module_and_arguments_from_text;
+  std::string path_to_text_hlo =
+      GetHloPath("sharded_unoptimized_hlo_snapshot.pbtxt");
+
+  // Read the text proto
+  HloUnoptimizedSnapshot snapshot;
+  TF_ASSERT_OK(
+      tsl::ReadTextProto(tsl::Env::Default(), path_to_text_hlo, &snapshot));
+
+  // Serialize the snapshot to string
+  std::string output;
+  tsl::protobuf::io::StringOutputStream output_stream(&output);
+  TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
+
+  // Read the snapshot back from the string
+  tsl::protobuf::io::ArrayInputStream input_stream(output.data(),
+                                                   output.size());
+  auto maybe_deserialized_snapshot =
+      DeserializeHloUnoptimizedSnapshot(&input_stream);
+  ASSERT_TRUE(maybe_deserialized_snapshot.ok());
+
+  EXPECT_EQ(snapshot.SerializeAsString(),
+            maybe_deserialized_snapshot->SerializeAsString());
 }
 
 }  // namespace
