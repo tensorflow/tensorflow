@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/scatter_simplifier.h"
 #include "xla/service/select_and_scatter_expander.h"
 #include "xla/service/sharding_remover.h"
+#include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/triangular_solve_expander.h"
@@ -164,6 +165,7 @@ void CompiledOptProvider::RegisterSharedHardwareSpecificPasses() {
   RegisterPass<ScatterDeterminismExpander>();
   RegisterPass<ScatterSimplifier>();
   RegisterPass<ScatterSliceSimplifier>();
+  RegisterPass<ScheduleAwareCollectiveOpsCSE>(100, false);
   RegisterPass<SelectAndScatterExpander>();
   RegisterPass<ShardingRemover>();
   RegisterPass<TopkDecomposer>();
