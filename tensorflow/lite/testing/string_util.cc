@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/testing/string_util.h"
 
-#include <memory>
+#include <Python.h>
+
+#include <cstddef>
+#include <cstdlib>
 
 #include "absl/strings/escaping.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
