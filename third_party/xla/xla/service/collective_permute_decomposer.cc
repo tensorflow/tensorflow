@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
@@ -71,7 +72,8 @@ static bool ShouldDecompose(
   }
 
   // Do not decompose cycles as this leads to deadlocks in NCCL.
-  if (SourceTargetPairs(collective_permute.source_target_pairs()).HasCycles()) {
+  if (collective_permute_cycle::HasCycles(
+          SourceTargetPairs(collective_permute.source_target_pairs()))) {
     return false;
   }
 
@@ -205,13 +207,13 @@ CheckCyclePatterns(HloCollectivePermuteInstruction* cp0,
                    HloCollectivePermuteInstruction* cp1) {
   const SourceTargetPairs cp0_pairs(cp0->source_target_pairs());
   const SourceTargetPairs cp1_pairs(cp1->source_target_pairs());
-  if (SourceTargetPairs::IsForwardCycle(cp0_pairs, cp1_pairs) ||
-      SourceTargetPairs::IsBackwardCycle(cp0_pairs, cp1_pairs)) {
+  if (collective_permute_cycle::IsForwardCycle(cp0_pairs, cp1_pairs) ||
+      collective_permute_cycle::IsBackwardCycle(cp0_pairs, cp1_pairs)) {
     // cp0 represents the backedge for the cycle.
     return std::make_pair(cp0, cp1);
   }
-  if (SourceTargetPairs::IsForwardCycle(cp1_pairs, cp0_pairs) ||
-      SourceTargetPairs::IsBackwardCycle(cp1_pairs, cp0_pairs)) {
+  if (collective_permute_cycle::IsForwardCycle(cp1_pairs, cp0_pairs) ||
+      collective_permute_cycle::IsBackwardCycle(cp1_pairs, cp0_pairs)) {
     // cp1 represents the forward edge for the cycle.
     return std::make_pair(cp1, cp0);
   }

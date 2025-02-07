@@ -500,6 +500,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:collective_ops_utils",
+        "//xla/service:collective_permute_cycle",
         "//xla/service:source_target_pairs",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tsl/platform:errors",
@@ -614,6 +615,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:collective_ops_utils",
+        "//xla/service:collective_permute_cycle",
         "//xla/service:pattern_matcher",
         "//xla/service:source_target_pairs",
         "//xla/tsl/platform:statusor",
@@ -621,7 +623,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
