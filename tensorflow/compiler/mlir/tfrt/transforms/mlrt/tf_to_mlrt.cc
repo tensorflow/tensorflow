@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "google/protobuf/text_format.h"
+#include "absl/log/log.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -544,7 +545,8 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
           fallback_state_.process_function_library_runtime());
       // TODO(290630314): Use LOG_IF when absl logging is available
       if (!op_kernel_runner.ok()) {
-        std::cerr << op_kernel_runner.status() << "\n";
+        LOG(ERROR) << "Failed to create op_kernel_runner for " << node_def_text
+                   << " with error: " << op_kernel_runner.status();
       }
 
       if (op_kernel_runner.ok() && (*op_kernel_runner)->IsAsync()) {
@@ -869,6 +871,10 @@ void CreateFallbackInitializationFunction(
       builder.create<tf_mlrt::CreateOp>(
           func_op.getLoc(), /*resultTypes=*/mlir::TypeRange{},
           /*operands=*/mlir::ValueRange{}, op->getAttrs());
+    } else {
+      // TODO: b/381849919 - Remove this log once the bug is fixed.
+      LOG_FIRST_N(WARNING, 100)
+          << "Skip creation of fallback kernel for op index " << op_index;
     }
   }
 

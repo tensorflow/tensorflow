@@ -83,6 +83,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner_cache",
+        "@com_google_absl//absl/log",
         "@com_google_protobuf//:protobuf_headers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

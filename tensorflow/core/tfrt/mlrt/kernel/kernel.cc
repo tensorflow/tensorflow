@@ -758,7 +758,7 @@ void ExecuteOpInternal(Frame& frame) {
     // TODO: b/381849919 - Remove this log once the bug is fixed and replace
     // with DCHECK. For now, let this error fall through to the
     // ExecuteKernelRunner below for debugging purposes.
-    LOG(ERROR) << "ExecuteOp: OpKenrl not found: op_Key= " << op_key
+    LOG(ERROR) << "ExecuteOp: OpKernel not found: op_Key= " << op_key
                << " , node_def= " << frame.node_def_text() << " , model= "
                << fallback_request_state.session_metadata().name();
   }
