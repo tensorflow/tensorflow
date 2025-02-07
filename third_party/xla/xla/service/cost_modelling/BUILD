@@ -41,11 +41,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "op_cost_test_utils",
+    testonly = True,
+    hdrs = ["op_cost_test_utils.h"],
+    deps = [
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_cc_test(
     name = "op_cost_test",
     srcs = ["op_cost_test.cc"],
     deps = [
         ":op_cost",
+        ":op_cost_test_utils",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
