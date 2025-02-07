@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <iterator>
 #include <optional>
 #include <ostream>
@@ -327,8 +328,10 @@ void SortByStride(std::vector<SizeAndStrideExpression>& sizes_and_strides,
                   bool reverse = false) {
   absl::c_sort(sizes_and_strides, [&](const SizeAndStrideExpression& sas1,
                                       const SizeAndStrideExpression& sas2) {
-    int64_t stride1 = llvm::cast<AffineConstantExpr>(sas1.stride).getValue();
-    int64_t stride2 = llvm::cast<AffineConstantExpr>(sas2.stride).getValue();
+    int64_t stride1 =
+        std::abs(llvm::cast<AffineConstantExpr>(sas1.stride).getValue());
+    int64_t stride2 =
+        std::abs(llvm::cast<AffineConstantExpr>(sas2.stride).getValue());
     if (reverse) {
       return stride1 > stride2;
     }
@@ -443,7 +446,8 @@ std::optional<AffineExpr> CombineStrides(
           llvm::cast<AffineConstantExpr>(previous_size_and_stride.stride)
               .getValue();
 
-      if (*previous_size_expression_range_size * previous_stride != stride) {
+      if (*previous_size_expression_range_size * std::abs(previous_stride) !=
+          std::abs(stride)) {
         VLOG(1) << "Attempted to combine strides but stride did not grow "
                 << "exactly as expected: got "
                 << *previous_size_expression_range_size << " * "
