@@ -18,6 +18,12 @@ limitations under the License.
 // should not depend on the code here. And please do not take example on it as
 // "the path forward" for this.
 
+#include <array>
+#include <cassert>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
