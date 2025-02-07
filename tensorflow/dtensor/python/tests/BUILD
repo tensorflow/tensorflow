@@ -76,7 +76,6 @@ py_strict_test(
     srcs = [
         "api_test.py",
     ],
-    python_version = "PY3",
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
