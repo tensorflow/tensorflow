@@ -37,6 +37,8 @@ class GemmRewriteTestBase : public GpuCodegenTest {
 
   bool IsRocm() const;
 
+  bool IsBlackwell() const;
+
   stream_executor::GpuComputeCapability CudaHopperOrRocmMI300();
 
   DebugOptions GetDebugOptionsForTest() const override;

@@ -96,6 +96,8 @@ struct CudaComputeCapability {
     return major >= CudaComputeCapabilities::BLACKWELL;
   }
 
+  bool IsBlackwell() const { return *this == Blackwell(); }
+
   bool operator<(const CudaComputeCapability &other) const {
     return ToPair() < other.ToPair();
   }

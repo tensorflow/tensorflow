@@ -256,7 +256,7 @@ tflite::SignatureRunner* LiteRtCompiledModelT::GetSignatureRunner(
 }
 
 Expected<void> LiteRtCompiledModelT::RegisterBuffer(
-    tflite::SignatureRunner* runner, const TfLiteTensor* tensor,
+    tflite::SignatureRunner* runner, TfLiteTensor* tensor,
     const char* tensor_name, LiteRtTensorBuffer buffer, bool is_input,
     std::vector<LiteRtTensorBuffer>& locked_buffers) {
   bool backend_requires_cpu_buffer = false;
@@ -279,6 +279,9 @@ Expected<void> LiteRtCompiledModelT::RegisterBuffer(
           return Unexpected(kLiteRtStatusErrorRuntimeFailure,
                             "Failed to register tensor buffer");
         }
+        // Mark the tensor as non-CPU to avoid TFLite from allocating it.
+        tensor->allocation_type = kTfLiteNonCpu;
+        tensor->data.data = nullptr;
         return {};
       }
       if (type == kLiteRtTensorBufferTypeHostMemory) {
@@ -389,9 +392,9 @@ Expected<void> LiteRtCompiledModelT::Run(
   for (int i = 0; i < runner->output_names().size(); ++i) {
     const auto& output_name = runner->output_names()[i];
     auto* output_tensor = runner->output_tensor(output_name);
-    auto res =
-        RegisterBuffer(runner, output_tensor, output_name, output_buffers[i],
-                       /*is_input=*/false, locked_buffers);
+    auto res = RegisterBuffer(runner, const_cast<TfLiteTensor*>(output_tensor),
+                              output_name, output_buffers[i],
+                              /*is_input=*/false, locked_buffers);
     if (!res) {
       return Unexpected(
           kLiteRtStatusErrorRuntimeFailure,

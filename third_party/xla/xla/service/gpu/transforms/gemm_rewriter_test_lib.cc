@@ -59,6 +59,13 @@ bool GemmRewriteTestBase::IsRocm() const {
       Capability());
 }
 
+bool GemmRewriteTestBase::IsBlackwell() const {
+  if (IsCuda()) {
+    return std::get<se::CudaComputeCapability>(Capability()).IsBlackwell();
+  }
+  return false;
+}
+
 stream_executor::GpuComputeCapability
 GemmRewriteTestBase::CudaHopperOrRocmMI300() {
   if (IsCuda()) {

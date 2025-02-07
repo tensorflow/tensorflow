@@ -309,24 +309,6 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
   bool must_swap_operands =
       MakeOutputColumnMajor(lhs_layout, rhs_layout, output_layout, &c_layout);
 
-  // Do not transpose either input. Note the cuBLASLt documentation somewhat
-  // incorrectly claims "A must be transposed and B non-transposed" when A and B
-  // are FP8 (https://docs.nvidia.com/cuda/cublas/#cublasltmatmul). In reality,
-  // this is only true if A and B are column-major. If A is row-major, A must
-  // *not* be transposed, and if B is row-major, B must be transposed. We never
-  // transpose A or B, and expect the caller to ensure A is row-major and B is
-  // column when A and B are FP8.
-  auto trans_a = lhs_layout.transpose, trans_b = rhs_layout.transpose;
-
-  if (xla::primitive_util::IsF8Type(lhs_layout.dtype) &&
-      lhs_layout.order == gpu::MatrixLayout::Order::kColumnMajor) {
-    return xla::Internal("The F8 LHS must be row-major");
-  }
-  if (xla::primitive_util::IsF8Type(rhs_layout.dtype) &&
-      rhs_layout.order == gpu::MatrixLayout::Order::kRowMajor) {
-    return xla::Internal("The F8 RHS must be column-major");
-  }
-
   TF_ASSIGN_OR_RETURN(auto output_dtype,
                       gpu::AsBlasDataType(output_layout.dtype));
 
@@ -344,6 +326,7 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
   bool enable_fast_accum =
       IsFastAccumEnabled(cfg.precision_algorithm, lhs_layout.dtype,
                          rhs_layout.dtype, cfg.compute_precision);
+  auto trans_a = lhs_layout.transpose, trans_b = rhs_layout.transpose;
   TF_ASSIGN_OR_RETURN(
       auto op_desc,
       MatmulDesc::Create(*compute_type,
