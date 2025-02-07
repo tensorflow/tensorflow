@@ -132,8 +132,10 @@ class LiteRtCompiledModelT {
   // If the TensorBuffer can be directly consumed as CPU Tensors, they'll be
   // locked and use it with CustomAllocation. The locked buffer is kept in the
   // `locked_buffers`. Caller is responsible for unlocking of these buffers.
+  // If the TensorBuffer can be consumed by the delegate, then `tensor` will be
+  // marked as non-CPU to avoid TFLite from allocating it.
   litert::Expected<void> RegisterBuffer(
-      tflite::SignatureRunner* runner, const TfLiteTensor* tensor,
+      tflite::SignatureRunner* runner, TfLiteTensor* tensor,
       const char* tensor_name, LiteRtTensorBuffer buffer, bool is_input,
       std::vector<LiteRtTensorBuffer>& locked_buffers);
 
