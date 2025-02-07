@@ -45,26 +45,31 @@ void ResolveUsers(const HloInstruction* value, const HloInstruction* user,
     if (auto* fusion = user->parent()->FusionInstruction()) {
       // Skip through the tuple -> get-tuple-element ops and directly go to the
       // "real" users.
-      for (const auto* gte : fusion->users()) {
-        if (gte->opcode() != HloOpcode::kGetTupleElement) {
-          if (fusion_adaptor.ContainsInstruction(value)) {
-            add_user(gte);
+      for (const auto* fusion_user : fusion->users()) {
+        if (fusion_user->opcode() == HloOpcode::kGetTupleElement) {
+          for (const auto* gte_user : fusion_user->users()) {
+            ResolveUsers(fusion_user, gte_user, fusion_adaptor, add_user);
           }
-          continue;
-        }
-        for (const auto* gte_user : gte->users()) {
-          ResolveUsers(gte, gte_user, fusion_adaptor, add_user);
+        } else if (fusion_adaptor.ContainsInstruction(value)) {
+          add_user(fusion_user);
         }
       }
     }
-  } else if (fusion_adaptor.ContainsInstruction(user) &&
-             user->opcode() == HloOpcode::kFusion) {
+    return;
+  }
+
+  if (fusion_adaptor.ContainsInstruction(user)) {
+    add_user(user);
+    return;
+  }
+
+  if (user->opcode() == HloOpcode::kFusion &&  // Not a nested fusion.
+      fusion_adaptor.ContainsInstruction(user->fused_expression_root())) {
+    // Add users of the computation's parameter.
     auto* param = user->fused_parameter(user->operand_index(value));
     for (const auto* param_user : param->users()) {
       add_user(param_user);
     }
-  } else if (fusion_adaptor.ContainsInstruction(user)) {
-    add_user(user);
   }
 }
 
@@ -73,20 +78,20 @@ const HloInstruction* ResolveOperand(const HloInstruction* operand,
   // Deal with multi-output fusion operands, which are reached via a
   // get-tuple-element op.
   if (operand->opcode() == HloOpcode::kGetTupleElement &&
-      operand->operand(0)->opcode() == HloOpcode::kFusion &&
-      operand->operand(0)->fused_expression_root()->opcode() ==
-          HloOpcode::kTuple &&
-      fusion_adaptor.ContainsInstruction(operand->operand(0))) {
-    return operand->operand(0)->fused_expression_root()->operand(
-        operand->tuple_index());
+      operand->operand(0)->opcode() == HloOpcode::kFusion) {
+    HloInstruction* root = operand->operand(0)->fused_expression_root();
+    if (root->opcode() == HloOpcode::kTuple &&
+        fusion_adaptor.ContainsInstruction(root)) {
+      return root->operand(operand->tuple_index());
+    }
   }
 
   if (!fusion_adaptor.ContainsInstruction(operand)) {
+    if (operand->opcode() == HloOpcode::kFusion &&  // Not a nested fusion.
+        fusion_adaptor.ContainsInstruction(operand->fused_expression_root())) {
+      return operand->fused_expression_root();
+    }
     return operand;
-  }
-
-  if (operand->opcode() == HloOpcode::kFusion) {
-    return operand->fused_expression_root();
   }
 
   if (operand->opcode() == HloOpcode::kParameter) {
@@ -207,13 +212,7 @@ class HloComputationFusion : public HloFusionInstructionAdaptor {
   }
 
   bool ContainsInstruction(const HloInstruction* instruction) const override {
-    if (instruction->parent() == computation_) {
-      return true;
-    }
-    // For convenience, we consider that the adaptor also contains the  parent
-    // fusion instruction. This is useful in ResolveUsers/ResolveOperand to
-    // check if the given fusion instruction is part of the fusion adaptor.
-    return instruction == computation_->FusionInstruction();
+    return instruction->parent() == computation_;
   }
 
   absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const override {

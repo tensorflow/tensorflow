@@ -751,5 +751,44 @@ TEST_F(HloTraversalTest, HloFindUseChain) {
   EXPECT_THAT(HloFindUseChain(call, p0), IsEmpty());
 }
 
+TEST_F(HloTraversalTest, DoNotResolveIntoNestedFusions) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    computation1 {
+      p0.1 = f32[] parameter(0)
+      ROOT mul = f32[] multiply(p0.1, p0.1)
+    }
+
+    computation2 {
+      p0.2 = f32[] parameter(0)
+      fusion.2 = f32[] fusion(p0.2), kind=kLoop, calls=computation1
+      ROOT neg = f32[] negate(fusion.2)
+    }
+
+    ENTRY entry {
+      p0.3 = f32[] parameter(0)
+      ROOT fusion.3 = f32[] fusion(p0.3), kind=kLoop, calls=computation2
+    }
+  )"));
+
+  auto* computation2 = module->GetComputationWithName("computation2");
+  auto fusion_adaptor = HloFusionAdaptor::ForComputation(computation2);
+
+  HloInstructionAdaptor param0(*computation2->GetInstructionWithName("p0.2"),
+                               fusion_adaptor.get());
+  EXPECT_THAT(param0.GetUsers(),
+              ElementsAre(InstructionAdaptorName("fusion.2")));
+
+  HloInstructionAdaptor fusion2(
+      *computation2->GetInstructionWithName("fusion.2"), fusion_adaptor.get());
+  EXPECT_THAT(fusion2.GetOperands(),
+              ElementsAre(InstructionAdaptorName("p0.3")));
+  EXPECT_THAT(fusion2.GetUsers(), ElementsAre(InstructionAdaptorName("neg")));
+
+  HloInstructionAdaptor negate(*computation2->GetInstructionWithName("neg"),
+                               fusion_adaptor.get());
+  EXPECT_THAT(negate.GetOperands(),
+              ElementsAre(InstructionAdaptorName("fusion.2")));
+}
+
 }  // namespace
 }  // namespace xla
