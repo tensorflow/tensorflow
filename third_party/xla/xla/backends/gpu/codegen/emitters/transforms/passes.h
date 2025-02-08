@@ -39,7 +39,6 @@ std::optional<std::unique_ptr<mlir::Pass>> MaybeCreateConvertFloatNvidiaPass(
 std::unique_ptr<mlir::Pass> CreateConvertIndexTypePass();
 std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass();
 std::unique_ptr<mlir::Pass> CreateFuseLoopsPass();
-std::unique_ptr<mlir::Pass> CreatePeelLoopsPass();
 std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
     const std::string& gpu_device_info = "");
 std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(

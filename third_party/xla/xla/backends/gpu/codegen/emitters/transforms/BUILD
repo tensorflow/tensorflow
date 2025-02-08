@@ -42,7 +42,6 @@ cc_library(
         "convert_index_type.cc",
         "fuse_loops.cc",
         "optimize_loops.cc",
-        "peel_loops.cc",
         "vectorize_loads_stores.cc",
     ],
     hdrs = ["passes.h"],

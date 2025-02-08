@@ -592,7 +592,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   }));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<FuncOp>(CreatePeelLoopsPass());
+  pm.addNestedPass<FuncOp>(emitters::CreatePeelLoopsPass());
   pm.addNestedPass<FuncOp>(emitters::CreateLowerXlaLoopsToScfPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
   pm.addPass(emitters::CreatePropagateSliceIndicesPass());

@@ -201,6 +201,9 @@ message DebugOptions {
   // value is `256` (AVX2 on x86 platforms).
   int32 xla_cpu_prefer_vector_width = 308;
 
+  // If set, XLA:CPU uses "fusion emitters" for codegen.
+  bool xla_cpu_use_fusion_emitters = 366;
+
   // When true, XLA:CPU uses the thunk runtime to execute compiled program.
   bool xla_cpu_use_thunk_runtime = 298;
 

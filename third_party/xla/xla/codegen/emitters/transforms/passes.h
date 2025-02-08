@@ -45,6 +45,7 @@ std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(
 std::unique_ptr<mlir::Pass> CreateLowerXlaToScfPass(int64_t warp_size = 32);
 std::unique_ptr<mlir::Pass> CreateLowerXlaLoopsToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
+std::unique_ptr<mlir::Pass> CreatePeelLoopsPass();
 std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
 std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();
 std::unique_ptr<mlir::Pass> CreateSimplifyArithPass();
