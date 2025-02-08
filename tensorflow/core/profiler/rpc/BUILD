@@ -47,6 +47,7 @@ cc_library(
         "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -80,6 +81,7 @@ cc_library(
     deps = [
         ":profiler_service_impl",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",

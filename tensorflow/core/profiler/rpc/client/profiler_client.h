@@ -17,23 +17,44 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_RPC_CLIENT_PROFILER_CLIENT_H_
 #define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_PROFILER_CLIENT_H_
 
-#include <memory>
 #include <string>
 
-#include "absl/strings/string_view.h"
-#include "absl/time/time.h"
+#include "absl/base/macros.h"
+#include "absl/status/status.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client.h"
-#include "tensorflow/core/platform/status.h"
-#include "tsl/profiler/protobuf/profiler_analysis.grpc.pb.h"
-#include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
+
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
 
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::MonitorGrpc;            // NOLINT
-using tsl::profiler::NewSessionGrpc;         // NOLINT
-using tsl::profiler::ProfileGrpc;            // NOLINT
-using tsl::profiler::RemoteProfilerSession;  // NOLINT
+ABSL_DEPRECATE_AND_INLINE()
+inline absl::Status MonitorGrpc(const std::string& service_address,
+                                const tensorflow::MonitorRequest& request,
+                                tensorflow::MonitorResponse* response) {
+  return tsl::profiler::MonitorGrpc(service_address, request, response);
+}
+
+ABSL_DEPRECATE_AND_INLINE()
+inline absl::Status NewSessionGrpc(
+    const std::string& service_address,
+    const tensorflow::NewProfileSessionRequest& request,
+    tensorflow::NewProfileSessionResponse* response) {
+  return tsl::profiler::NewSessionGrpc(service_address, request, response);
+}
+
+ABSL_DEPRECATE_AND_INLINE()
+inline absl::Status ProfileGrpc(const std::string& service_address,
+                                const tensorflow::ProfileRequest& request,
+                                tensorflow::ProfileResponse* response) {
+  return tsl::profiler::ProfileGrpc(service_address, request, response);
+}
+
+using RemoteProfilerSession ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::RemoteProfilerSession;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow
