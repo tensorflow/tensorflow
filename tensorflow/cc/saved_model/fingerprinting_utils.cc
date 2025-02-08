@@ -27,6 +27,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/io/coded_stream.h"
+#include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
 #include "tensorflow/cc/saved_model/constants.h"
