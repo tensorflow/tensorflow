@@ -68,7 +68,7 @@ cc_library(
 #         "@com_google_googletest//:gtest_main",
 #         "@com_google_absl//absl/strings:string_view",
 #         "//tensorflow/lite/experimental/litert/c:litert_common",
-#         "//tensorflow/lite/experimental/litert/c:litert_environment",
+#         "//tensorflow/lite/experimental/litert/c:litert_model",
 #         "//tensorflow/lite/experimental/litert/c:litert_op_code",
 #         "//tensorflow/lite/experimental/litert/cc:litert_environment",
 #         "//tensorflow/lite/experimental/litert/core:build_stamp",

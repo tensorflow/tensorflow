@@ -357,18 +357,11 @@ Expected<CompiledResult> CompilerPlugin::Compile(LiteRtModel partitions,
 
 namespace {
 
-LiteRtStatus PartitionSubgraph(CompilerPlugin& compiler_plugin,
+LiteRtStatus PartitionSubgraph(std::vector<LiteRtOp> selected_ops,
                                LiteRtSubgraphT& subgraph,
                                PartitionResult& result) {
-  // Get selected ops from plugin.
-  auto selected_ops = compiler_plugin.Partition(Subgraph(&subgraph));
-  if (!selected_ops) {
-    LITERT_LOG(LITERT_ERROR, "Failed to get partitions from plugin");
-    return selected_ops.Error().Status();
-  }
-
   // Group selected ops into connected islands.
-  auto islands = GroupPartitions(*selected_ops);
+  auto islands = GroupPartitions(selected_ops);
   if (islands.empty()) {
     LITERT_LOG(LITERT_ERROR, "Failed to group partitions");
     return kLiteRtStatusErrorRuntimeFailure;
@@ -392,23 +385,40 @@ Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
   // Accumulate partition results for each subgraph in model.
   PartitionResult result;
   for (auto* subgraph : model.Subgraphs()) {
-    LITERT_RETURN_IF_ERROR(
-        PartitionSubgraph(compiler_plugin, *subgraph, result));
+    // Get selected ops from plugin.
+    auto selected_ops = compiler_plugin.Partition(Subgraph(subgraph));
+    if (!selected_ops) {
+      LITERT_LOG(LITERT_ERROR, "Failed to get partitions from plugin");
+      return selected_ops.Error();
+    }
+
+    LITERT_RETURN_IF_ERROR(PartitionSubgraph(*selected_ops, *subgraph, result));
   }
   ABSL_DCHECK_EQ(result.first.size(), result.second.Size());
   return result;
 }
 
-Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
-                           absl::string_view soc_model) {
-  // Collect partitions to pass to compilation.
-  auto partitions = PartitionModel(compiler_plugin, model);
-  if (!partitions) {
-    return partitions.Error();
+Expected<PartitionResult> PartitionModelDirect(
+    std::vector<LiteRtOp> selected_ops, LiteRtModelT& model) {
+  if (model.Subgraphs().size() != 1) {
+    // Only single subgraphs supported for direct partitioning.
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure);
   }
+  // Accumulate partition results for each subgraph in model.
+  PartitionResult result;
+  auto* subgraph = model.Subgraphs().front();
+  LITERT_RETURN_IF_ERROR(
+      PartitionSubgraph(std::move(selected_ops), *subgraph, result));
+  ABSL_DCHECK_EQ(result.first.size(), result.second.Size());
+  return result;
+}
 
-  auto& dispatch_ops = partitions->first;
-  auto& subgraphs = partitions->second;
+Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
+                                        LiteRtModelT& model,
+                                        PartitionResult partitions,
+                                        absl::string_view soc_model) {
+  auto& dispatch_ops = partitions.first;
+  auto& subgraphs = partitions.second;
 
   // Wrap the partitioned subgraphs in a LiteRtModel.
   LiteRtModelT sliced_model;
@@ -483,6 +493,17 @@ Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
   }
 
   return {};
+}
+
+Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
+                           absl::string_view soc_model) {
+  // Collect partitions to pass to compilation.
+  auto partitions = PartitionModel(compiler_plugin, model);
+  if (!partitions) {
+    return partitions.Error();
+  }
+  return ApplyPluginWithPartition(compiler_plugin, model,
+                                  std::move(*partitions), soc_model);
 }
 
 Expected<ApplyPluginsResult> ApplyPlugins(

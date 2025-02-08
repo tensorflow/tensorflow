@@ -150,10 +150,22 @@ using PartitionResult =
 Expected<PartitionResult> PartitionModel(CompilerPlugin& compiler_plugin,
                                          LiteRtModelT& model);
 
+// Same as "PartitionModel" choose partitions directly based on the selected
+// ops. Selected ops may contain any ops in the the main subgraph of the model.
+// This function will seperate them into DAGs and slice the model accordingly.
+Expected<PartitionResult> PartitionModelDirect(
+    std::vector<LiteRtOp> selected_ops, LiteRtModelT& model);
+
 // Applies both the partition and compile steps to the model. Generated
 // byte_code will be internalized within the model for later serialization.
 Expected<void> ApplyPlugin(CompilerPlugin& compiler_plugin, LiteRtModelT& model,
                            absl::string_view soc_model = "");
+
+// Applies the compilation step to the model given a pre-determined partition.
+Expected<void> ApplyPluginWithPartition(CompilerPlugin& compiler_plugin,
+                                        LiteRtModelT& model,
+                                        PartitionResult partitions,
+                                        absl::string_view soc_model = "");
 
 // Apply all available plugins providing the selected HW accelerators to the
 // given model, modify the model accordingly, and return (1) the number of
