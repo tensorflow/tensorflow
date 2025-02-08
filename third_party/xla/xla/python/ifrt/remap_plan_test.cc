@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "xla/python/ifrt/remap_plan.h"
 
+#include <cstdint>
 #include <memory>
+#include <numeric>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -374,22 +377,30 @@ TEST_P(RemapPlanTest, InvalidIntervalCount) {
 }
 
 TEST_P(RemapPlanTest, InvalidShardIndex) {
-  auto run = [&](RemapPlan::Interval from, RemapPlan::Interval to) {
+  auto run = [&](RemapPlan::Interval from, RemapPlan::Interval to,
+                 absl::Span<const int64_t> shape = {2, 3},
+                 absl::Span<const int64_t> shard_shape = {2, 3}) {
+    int num_shards = 1;
+    for (int i = 0; i < shape.size(); ++i) {
+      num_shards *= shape[i] / shard_shape[i];
+    }
+    std::vector<int> devices(num_shards);
+    std::iota(devices.begin(), devices.end(), 0);
     RemapPlan plan;
-    plan.input_specs.push_back(
-        ArraySpec{/*dtype=*/DType(DType::kS32),
-                  /*shape=*/Shape({2, 3}),
-                  /*sharding=*/
-                  ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                               /*shape=*/Shape({2, 3}),
-                                               /*shard_shape=*/Shape({2, 3}))});
-    plan.output_specs.push_back(
-        ArraySpec{/*dtype=*/DType(DType::kS32),
-                  /*shape=*/Shape({2, 3}),
-                  /*sharding=*/
-                  ConcreteEvenSharding::Create(GetDevices({0}), MemoryKind(),
-                                               /*shape=*/Shape({2, 3}),
-                                               /*shard_shape=*/Shape({2, 3}))});
+    plan.input_specs.push_back(ArraySpec{
+        /*dtype=*/DType(DType::kS32),
+        /*shape=*/Shape({2, 3}),
+        /*sharding=*/
+        ConcreteEvenSharding::Create(GetDevices(devices), MemoryKind(),
+                                     /*shape=*/Shape(shape),
+                                     /*shard_shape=*/Shape(shard_shape))});
+    plan.output_specs.push_back(ArraySpec{
+        /*dtype=*/DType(DType::kS32),
+        /*shape=*/Shape({2, 3}),
+        /*sharding=*/
+        ConcreteEvenSharding::Create(GetDevices(devices), MemoryKind(),
+                                     /*shape=*/Shape(shape),
+                                     /*shard_shape=*/Shape(shard_shape))});
     plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
     plan.mappings->push_back(RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                                                 /*from=*/{from},
@@ -422,6 +433,10 @@ TEST_P(RemapPlanTest, InvalidShardIndex) {
   EXPECT_THAT(run(RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{0, 2, 1}),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("end must be in [0, 1], but is 2")));
+  EXPECT_THAT(run(RemapPlan::Interval{0, 6, 2}, RemapPlan::Interval{0, 2, 1},
+                  /*shape=*/{4, 6}, /*shard_shape=*/{2, 3}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("end must be in [0, 5], but is 6")));
 
   EXPECT_THAT(run(RemapPlan::Interval{0, 1, 0}, RemapPlan::Interval{0, 1, 1}),
               StatusIs(absl::StatusCode::kInvalidArgument,
