@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/status/statusor.h"
+#include <gtest/gtest.h>
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/test.h"
 #include "xla/tsl/lib/core/status_test_util.h"

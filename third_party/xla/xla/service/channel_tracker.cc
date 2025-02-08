@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/service/channel_tracker.h"
 
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

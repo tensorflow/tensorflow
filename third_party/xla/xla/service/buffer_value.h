@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/attributes.h"
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"

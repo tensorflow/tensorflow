@@ -16,14 +16,18 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/status/status.h"
+#include "absl/base/const_init.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/literal.h"
 #include "xla/service/global_device_id.h"
 #include "xla/shape_util.h"
@@ -34,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"

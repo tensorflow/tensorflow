@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_COMPILE_ONLY_SERVICE_H_
 #define XLA_SERVICE_COMPILE_ONLY_SERVICE_H_
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/service.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
