@@ -475,7 +475,7 @@ xla_cc_test(
 xla_test(
     name = "block_scaling_rewriter_cudnn_test",
     srcs = ["block_scaling_rewriter_cudnn_test.cc"],
-    backends = ["gpu_b100"],
+    backends = ["gpu_b200"],
     deps = [
         ":block_scaling_rewriter",
         "//xla/tests:hlo_test_base",
@@ -1410,7 +1410,7 @@ xla_test(
         "gpu_a100",
         "gpu_p100",
         "gpu_v100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     deps = if_gpu_is_configured(
@@ -3226,7 +3226,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
     ],
     deps = [
         ":triton_fusion_numerics_verifier",

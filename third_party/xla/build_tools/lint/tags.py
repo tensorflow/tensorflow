@@ -81,7 +81,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_gpu_v100": "Runs on a v100.",
     "xla_gpu_a100": "Runs on an a100.",
     "xla_gpu_h100": "Runs on an h100.",
-    "xla_gpu_b100": "Runs on an b100.",
+    "xla_gpu_b200": "Runs on a b200.",
     # Below tags are consumed by `xla_test`.
     "test_xla_cpu_no_thunks": (
         "Internally, `xla_test` sets `--xla_cpu_use_thunk_runtime` to false."

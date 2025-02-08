@@ -625,7 +625,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     shard_count = 20,
@@ -680,7 +680,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     tags = [
@@ -718,7 +718,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     shard_count = 30,
@@ -763,7 +763,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     tags = [
@@ -908,7 +908,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     tags = [
@@ -936,7 +936,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     shard_count = 10,
@@ -1023,7 +1023,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     tags = ["no_mac"],

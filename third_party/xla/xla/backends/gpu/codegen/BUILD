@@ -61,7 +61,7 @@ xla_test(
     srcs = if_cuda_is_configured(["cudnn_test.cc"]),
     backends = [
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
     ],
     deps = [
         "//xla:comparison_util",

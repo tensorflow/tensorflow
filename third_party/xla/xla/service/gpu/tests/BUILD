@@ -320,7 +320,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_v100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ],
     deps = [
@@ -685,7 +685,7 @@ xla_test(
     srcs = ["tensor_float_32_global_var_test.cc"],
     backends = [
         "gpu_a100",
-        "gpu_b100",
+        "gpu_b200",
         "gpu_amd_any",
     ] + if_oss([
         "gpu_any",
@@ -704,7 +704,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
     ],
     tags = ["cuda-only"],
     deps = if_cuda_is_configured(
@@ -748,7 +748,7 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_h100",
-        "gpu_b100",
+        "gpu_b200",
     ],
     shard_count = 2,
     deps = [
