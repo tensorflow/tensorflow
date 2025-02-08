@@ -322,6 +322,71 @@ func.func @maximal_sharding_no_results(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32
   return %arg0 : tensor<8x8xf32>
 }
 
+// CHECK-LABEL: func @while_with_sharding
+func.func @while_with_sharding(
+    %arg0: tensor<32x96xf32>, %arg1: tensor<32x96xf32>)
+    -> tensor<32x96xf32> {
+  // CHECK: %[[C0:.*]] = stablehlo.constant dense<0>
+  // CHECK: stablehlo.while(%iterArg = %arg0, %iterArg_1 = %[[C0]])
+  // CHECK-SAME{LITERAL}: attributes {mhlo.sharding = "{{devices=[8,1,4]<=[32] last_tile_dim_replicate}, {replicated}}"}
+  %0 = stablehlo.constant dense<0> : tensor<i32>
+  %1 = stablehlo.constant dense<32> : tensor<i32>
+  %3:2 = stablehlo.while(%iterArg = %arg0, %iterArg_1 = %0) : tensor<32x96xf32>, tensor<i32> attributes {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"x"}, {}]>, <@mesh_2, []>]>}
+    cond {
+    %4 = stablehlo.compare LT, %iterArg_1, %1 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    stablehlo.return %4 : tensor<i1>
+  } do {
+    stablehlo.return %iterArg, %iterArg_1 : tensor<32x96xf32>, tensor<i32>
+  }
+  return %3#0 : tensor<32x96xf32>
+}
+
+// CHECK-LABEL: func @while_with_no_sharding
+func.func @while_with_no_sharding(
+    %arg0: tensor<32x96xf32>, %arg1: tensor<32x96xf32>)
+    -> tensor<32x96xf32> {
+  // CHECK: %[[C0:.*]] = stablehlo.constant dense<0>
+  // CHECK: stablehlo.while(%iterArg = %arg0, %iterArg_1 = %[[C0]])
+  // CHECK-SAME: attributes {mhlo.sharding = "{replicated}"}
+  %0 = stablehlo.constant dense<0> : tensor<i32>
+  %1 = stablehlo.constant dense<32> : tensor<i32>
+  %3:2 = stablehlo.while(%iterArg = %arg0, %iterArg_1 = %0) : tensor<32x96xf32>, tensor<i32>
+    cond {
+    %4 = stablehlo.compare LT, %iterArg_1, %1 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    stablehlo.return %4 : tensor<i1>
+  } do {
+    stablehlo.return %iterArg, %iterArg_1 : tensor<32x96xf32>, tensor<i32>
+  }
+  return %3#0 : tensor<32x96xf32>
+}
+
+// CHECK-LABEL: func @while_with_no_sharding_inside_manual_comp
+func.func @while_with_no_sharding_inside_manual_comp(
+      %arg0: tensor<32x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", "y"}, {}]>})
+      -> (tensor<32x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", "y"}, {}]>}) {
+  // CHECK-NEXT: %[[COPY_0:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[32,1]<=[32]}"}
+  // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%0)
+  // CHECK:      %[[C0:.*]] = stablehlo.constant {mhlo.sharding = "{manual}"} dense<0>
+  // CHECK:      %[[WHILE:.*]]:2 = stablehlo.while(%iterArg = %[[FULL_TO_SHARD]], %iterArg_1 = %[[C0]])
+  // CHECK-SAME:   attributes {mhlo.sharding = "{manual}"}
+  // CHECK:      %[[COPY_1:.*]] = mhlo.copy %[[WHILE]]#0
+  // CHECK-NEXT: %[[SHARD_TO_FULL:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_1]])
+  // CHECK-NEXT: return %[[SHARD_TO_FULL]]
+  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh_2, [{"x", "y"}, {}]>] out_shardings=[<@mesh_2, [{"x", "y"}, {}]>] manual_axes={"x", "y"} (%arg1: tensor<1x2xi32>) {
+    %1 = stablehlo.constant dense<0> : tensor<i32>
+    %2 = stablehlo.constant dense<32> : tensor<i32>
+    %3:2 = stablehlo.while(%iterArg = %arg1, %iterArg_1 = %1) : tensor<1x2xi32>, tensor<i32>
+      cond {
+      %4 = stablehlo.compare LT, %iterArg_1, %2 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      stablehlo.return %4 : tensor<i1>
+    } do {
+      stablehlo.return %iterArg, %iterArg_1 : tensor<1x2xi32>, tensor<i32>
+    }
+    sdy.return %3#0 : tensor<1x2xi32>
+  } : (tensor<32x2xi32>) -> tensor<32x2xi32>
+  return %0 : tensor<32x2xi32>
+}
+
 
 // CHECK-LABEL: func private @foo
 // CHECK-SAME:    %arg0: tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}"}
