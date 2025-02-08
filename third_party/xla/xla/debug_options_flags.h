@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/command_line_flags.h"
