@@ -21,11 +21,22 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 
 namespace xla {
+
+// Controls FixedOptionSetFlagParser's behavior.
+struct FixedOptionSetFlagParserConfig {
+  // If true, allows aliases for flag options. The first option listed for a
+  // given name takes precedence when unparsing.
+  bool allow_aliases = false;
+  // Whether the flag values are case sensitive. It's a bad practice to have
+  // case-insensitive flag values. DO NOT SET THIS FIELD TO FALSE IN NEW CODE.
+  bool case_sensitive_do_not_use_in_new_code = true;
+};
 
 // A parser for a flag of type T that takes a fixed set of options. This makes
 // it easier and safer to define flags that take a fixed set of options.
@@ -75,8 +86,11 @@ class FixedOptionSetFlagParser {
   // Creates a parser for a flag of type T that takes a fixed set of options.
   // The options must be valid, i.e., there must be no duplicate names or
   // values.
-  explicit FixedOptionSetFlagParser(const std::vector<FlagOption>& options)
-      : options_(ValidateFlagOptionsOrDie(options)) {}
+  explicit FixedOptionSetFlagParser(
+      const std::vector<FlagOption>& options,
+      const FixedOptionSetFlagParserConfig& config)
+      : options_(ValidateFlagOptionsOrDie(options, config)),
+        case_sensitive_(config.case_sensitive_do_not_use_in_new_code) {}
 
   // Parses the flag from the given text. Returns true if the text is
   // valid, and sets the value to the corresponding option. Otherwise, returns
@@ -84,7 +98,8 @@ class FixedOptionSetFlagParser {
   [[nodiscard]] bool Parse(absl::string_view text, T* value,
                            std::string* error) const {
     for (const auto& option : options_) {
-      if (text == option.name) {
+      if ((case_sensitive_ && text == option.name) ||
+          (!case_sensitive_ && absl::EqualsIgnoreCase(text, option.name))) {
         *value = option.value;
         return true;
       }
@@ -117,22 +132,27 @@ class FixedOptionSetFlagParser {
   // Validates the flag options and returns them. Dies if the options are not
   // valid.
   static std::vector<FlagOption> ValidateFlagOptionsOrDie(
-      const std::vector<FlagOption>& options) {
+      const std::vector<FlagOption>& options,
+      const FixedOptionSetFlagParserConfig& config) {
     // Check that the same name or value is not used multiple times.
     absl::flat_hash_set<std::string> names;
     absl::flat_hash_set<T> values;
     for (const auto& option : options) {
       CHECK(!names.contains(option.name))
           << "Duplicate flag option name: " << option.name;
-      CHECK(!values.contains(option.value))
-          << "Duplicate flag option value: " << absl::StrCat(option.value);
       names.insert(option.name);
-      values.insert(option.value);
+
+      if (!config.allow_aliases) {
+        CHECK(!values.contains(option.value))
+            << "Duplicate flag option value: " << absl::StrCat(option.value);
+        values.insert(option.value);
+      }
     }
     return options;
   }
 
   const std::vector<FlagOption> options_;
+  const bool case_sensitive_ = true;
 };
 
 // Returns the parser for a flag of type T that takes a fixed set of options.
@@ -146,12 +166,14 @@ class FixedOptionSetFlagParser {
 template <typename T>
 [[nodiscard]] const FixedOptionSetFlagParser<T>& GetFixedOptionSetFlagParser(
     const std::vector<typename FixedOptionSetFlagParser<T>::FlagOption>&
-        options) {
+        options,
+    const FixedOptionSetFlagParserConfig& config = {}) {
   // Per Google C++ style guide, we use a function-local static
   // variable to ensure that the parser is only created once and never
   // destroyed. We cannot use absl::NoDestructor here because it is not
   // available in the version of Abseil that openxla uses.
-  static const auto* const parser = new FixedOptionSetFlagParser<T>(options);
+  static const auto* const parser =
+      new FixedOptionSetFlagParser<T>(options, config);
   return *parser;
 }
 
