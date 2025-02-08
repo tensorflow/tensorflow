@@ -54,6 +54,7 @@ tf_cc_test(
         ":uniform_quant_ops_params",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
+        "//third_party/protobuf",
         "@com_google_googletest//:gtest_main",
     ],
 )
