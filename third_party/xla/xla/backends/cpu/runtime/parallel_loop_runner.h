@@ -115,7 +115,11 @@ class ParallelLoopRunner {
   const Eigen::ThreadPoolDevice* device() const { return device_; }
   void set_device(const Eigen::ThreadPoolDevice* device) { device_ = device; }
 
+  // Returns the number of threads in the underlying thread pool.
   size_t num_threads() const;
+
+  // Returns true if the current thread belongs to the underlying thread pool.
+  bool is_in_runner() const;
 
  private:
   // Forward declarations of the parallel tasks.

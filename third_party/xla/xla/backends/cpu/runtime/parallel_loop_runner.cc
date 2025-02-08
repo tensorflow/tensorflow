@@ -65,6 +65,10 @@ size_t ParallelLoopRunner::num_threads() const {
   return device_.load()->numThreadsInPool();
 }
 
+bool ParallelLoopRunner::is_in_runner() const {
+  return device_.load()->currentThreadId() > -1;
+}
+
 tsl::AsyncValueRef<tsl::Chain> ParallelLoopRunner::TakeDoneEvent(
     ParallelLoopRunner&& runner) {
   return std::move(runner.done_event_);
