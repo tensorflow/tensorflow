@@ -1752,7 +1752,7 @@ custom_op_cc_header_only_library(
     ],
 )
 
-cc_header_only_library(
+custom_op_cc_header_only_library(
     name = "stream_executor_headers_lib",
     # Fully depend on external repositories, because identifying the headers
     # is fragile.
