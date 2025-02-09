@@ -243,38 +243,38 @@ absl::StatusOr<BufferAllocation::Slice> GetUniqueSlice(
   return buffer_assignment->GetUniqueSlice(instruction, index);
 }
 
+}  // namespace
+
 absl::StatusOr<std::vector<KernelApiIrBuilder::KernelParameter>>
-GetKernelArgumentsParameters(const HloInstruction* instruction,
-                             const BufferAssignment* buffer_assignment) {
-  std::vector<KernelApiIrBuilder::KernelParameter> arguments;
+KernelApiIrBuilder::GetKernelArgumentsParameters(
+    const HloInstruction* instruction,
+    const BufferAssignment* buffer_assignment) {
+  std::vector<KernelParameter> arguments;
 
   for (HloInstruction* operand : instruction->operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
       TF_ASSIGN_OR_RETURN(
           BufferAllocation::Slice slice,
           GetUniqueSlice(buffer_assignment, operand, indexed.index));
-      arguments.push_back(
-          KernelApiIrBuilder::KernelParameter{indexed.shape, slice});
+      arguments.push_back(KernelParameter{indexed.shape, slice});
     }
   }
   return arguments;
 }
 
 absl::StatusOr<std::vector<KernelApiIrBuilder::KernelParameter>>
-GetKernelResultsParameters(const HloInstruction* instruction,
-                           const BufferAssignment* buffer_assignment) {
-  std::vector<KernelApiIrBuilder::KernelParameter> results;
+KernelApiIrBuilder::GetKernelResultsParameters(
+    const HloInstruction* instruction,
+    const BufferAssignment* buffer_assignment) {
+  std::vector<KernelParameter> results;
   for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
     TF_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         GetUniqueSlice(buffer_assignment, instruction, indexed.index));
-    results.push_back(
-        KernelApiIrBuilder::KernelParameter{indexed.shape, slice});
+    results.push_back(KernelParameter{indexed.shape, slice});
   }
   return results;
 }
-
-}  // namespace
 
 auto KernelApiIrBuilder::Options::FromHloModuleConfig(
     const HloModuleConfig& config) -> Options {
@@ -493,6 +493,11 @@ llvm::Function* KernelApiIrBuilder::EmitKernelFunction(llvm::Module& module,
   llvm::Function* function = llvm::Function::Create(
       kernel_function_ty_, llvm::GlobalValue::ExternalLinkage, name, module);
 
+  SetKernelFunctionAttributes(function);
+  return function;
+}
+
+void KernelApiIrBuilder::SetKernelFunctionAttributes(llvm::Function* function) {
   // We use external linkage because we'll be resolving this function from the
   // XLA runtime.
   function->setCallingConv(llvm::CallingConv::C);
@@ -509,8 +514,6 @@ llvm::Function* KernelApiIrBuilder::EmitKernelFunction(llvm::Module& module,
   // Always keep a frame pointer for the host kernel so we can see them in all
   // performance profiling tools.
   function->addFnAttr("frame-pointer", "all");
-
-  return function;
 }
 
 }  // namespace xla::cpu
