@@ -109,7 +109,6 @@ void AsyncValue::EnqueueWaiter(absl::AnyInvocable<void()> waiter,
   // ensures that prior changes to waiter list are visible here as we may call
   // RunWaiter() on it. The release barrier ensures that prior changes to *node
   // appear to happen before it's added to the list.
-  node->next_ = old_value.waiter();
   auto new_value = WaitersAndState(node, old_state);
   while (!waiters_and_state_.compare_exchange_weak(old_value, new_value,
                                                    std::memory_order_acq_rel,
