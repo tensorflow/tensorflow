@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/java/src/main/native/graph_jni.h"
 
+#include <cstddef>
 #include <limits>
 #include <memory>
+
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
 #include "tensorflow/java/src/main/native/utils_jni.h"

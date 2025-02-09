@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/java/src/main/native/eager_session_jni.h"
 
 #include <cstring>
-#include <memory>
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
