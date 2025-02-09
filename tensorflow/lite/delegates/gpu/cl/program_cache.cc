@@ -47,9 +47,9 @@ inline uint64_t CombineFingerprints(uint64_t l, uint64_t h) {
 
 uint64_t GetProgramFingerprint(const std::string& code,
                                const std::string& compiler_options) {
-  const uint64_t code_fingerprint = ::util::Fingerprint64(code);
+  const uint64_t code_fingerprint = ::util::Fingerprint64(code.c_str(), code.size());
   const uint64_t options_fingerprint =
-      ::util::Fingerprint64(compiler_options);
+      ::util::Fingerprint64(compiler_options.c_str(), compiler_options.size());
   return CombineFingerprints(code_fingerprint, options_fingerprint);
 }
 

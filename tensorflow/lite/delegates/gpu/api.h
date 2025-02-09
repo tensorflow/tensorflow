@@ -230,7 +230,7 @@ bool IsValid(const TensorObjectDef& def);
 uint32_t NumElements(const TensorObjectDef& def);
 
 using TensorObject =
-    absl::variant<std::monostate, OpenGlBuffer, OpenGlTexture, CpuMemory,
+    std::variant<std::monostate, OpenGlBuffer, OpenGlTexture, CpuMemory,
                   OpenClBuffer, OpenClTexture, VulkanBuffer, VulkanTexture>;
 
 // @return true if object is set and corresponding values are defined.
