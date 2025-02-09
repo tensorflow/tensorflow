@@ -1684,18 +1684,19 @@ void HloDataflowAnalysis::OptimizePhiValues() {
       instruction_value_set.ForEachMutableElement(
           [&](const xla::ShapeIndex& index, HloValueSet* value_set) {
             auto values = value_set->values();
-            if (!(values.size() == 1 && values[0]->is_phi())) {
-              return;
-            }
-            HloValue::Id phi_id = values[0]->id();
-            HloValue::Id new_id = phi_graph_.FindOptimizedValue(phi_id);
-            if (new_id != phi_id) {
-              VLOG(1) << "Replacing " << values[0]->ToShortString() << " with "
-                      << GetValue(new_id).ToShortString();
-              value_set->Clear();
-              const HloValue& new_value = GetValue(new_id);
-              value_set->AddValue(&new_value);
-              MarkValueForDeletion(phi_id);
+            for (const HloValue* value : values) {
+              if (value->is_phi()) {
+                HloValue::Id phi_id = value->id();
+                HloValue::Id new_id = phi_graph_.FindOptimizedValue(phi_id);
+                if (new_id != phi_id) {
+                  VLOG(1) << "Replacing " << values[0]->ToShortString()
+                          << " with " << GetValue(new_id).ToShortString();
+                  value_set->Clear();
+                  const HloValue& new_value = GetValue(new_id);
+                  value_set->AddValue(&new_value);
+                  MarkValueForDeletion(phi_id);
+                }
+              }
             }
           });
     }

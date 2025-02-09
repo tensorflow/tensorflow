@@ -64,13 +64,16 @@ class HloDataflowAnalysisTest : public HloHardwareIndependentTestBase,
   // reference to the generated analysis stored in analysis_.
   const HloDataflowAnalysis& RunAnalysis(bool ssa_form,
                                          bool bitcast_defines_value = false,
-                                         bool run_dce = true) {
+                                         bool run_dce = true,
+                                         bool run_fcg = true) {
     if (run_dce) {
       HloDCE dce;
       EXPECT_TRUE(dce.Run(module_.get()).ok());
     }
-    FlattenCallGraph flatten;
-    EXPECT_TRUE(flatten.Run(module_.get()).ok());
+    if (run_fcg) {
+      FlattenCallGraph flatten;
+      EXPECT_TRUE(flatten.Run(module_.get()).ok());
+    }
     analysis_ =
         HloDataflowAnalysis::Run(*module_, ssa_form, bitcast_defines_value)
             .value();
@@ -913,6 +916,70 @@ TEST_P(HloDataflowAnalysisTest, SwizzlingWhile) {
     EXPECT_TRUE(analysis.GetValueDefinedAt(constant1).live_out_of_module());
     EXPECT_TRUE(analysis.GetValueDefinedAt(constant2).live_out_of_module());
   }
+}
+
+TEST_P(HloDataflowAnalysisTest, NonFlatAsyncWhile) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+comp {
+  arg.0 = s32[] parameter(0)
+  arg.1 = s32[] parameter(1)
+  ROOT add.0 = add(arg.0, arg.1)
+}
+
+body {
+  input.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(input.0), index=0
+  gte.1 = get-tuple-element(input.0), index=1
+  call-start.0 = ((s32[], s32[]), s32[], s32[]) call-start(gte.0, gte.1), to_apply=comp, async_execution_thread="thread"
+  call-done.0 = s32[] call-done(call-start.0)
+  ROOT output.0 = tuple(call-done.0, gte.1)
+}
+
+condition {
+  input.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(input.0), index=0
+  gte.1 = get-tuple-element(input.0), index=1
+  call-start.0 = ((s32[], s32[]), s32[], s32[]) call-start(gte.0, gte.1), to_apply=comp, async_execution_thread="thread"
+  call-done.0 = s32[] call-done(call-start.0)
+  ROOT convert.0 = pred[] convert(call-done.0)
+}
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  arg.1 = s32[] parameter(1)
+  tuple.0 = tuple(arg.0, arg.1)
+  while.0 = (s32[], s32[]) while(tuple.0), condition=condition, body=body
+  ROOT gte.0 = get-tuple-element(while.0), index=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis =
+      RunAnalysis(ssa_form, /*bitcast_defines_value=*/false, /*run_dce=*/false,
+                  /*run_fcg=*/false);
+
+  HloInstruction* while_inst = FindInstruction(module_.get(), "while.0");
+  HloComputation* while_body = while_inst->while_body();
+  HloComputation* while_cond = while_inst->while_condition();
+  if (ssa_form) {
+    EXPECT_TRUE(analysis.ValueIsDefinedAt(while_body->parameter_instruction(0),
+                                          /*index=*/{0}));
+    EXPECT_TRUE(analysis.ValueIsDefinedAt(while_cond->parameter_instruction(0),
+                                          /*index=*/{0}));
+  } else {
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(while_body->parameter_instruction(0),
+                                           /*index=*/{0}));
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(while_cond->parameter_instruction(0),
+                                           /*index=*/{0}));
+  }
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(while_body->parameter_instruction(0),
+                                         /*index=*/{1}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(while_cond->parameter_instruction(0),
+                                         /*index=*/{1}));
 }
 
 TEST_P(HloDataflowAnalysisTest, ArraySelect) {
