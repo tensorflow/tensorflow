@@ -19,9 +19,11 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iterator>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include <CL/cl.h>
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
@@ -367,8 +369,10 @@ Expected<void> LiteRtTensorBufferT::IsValid() {
       !num_bytes) {
     return Unexpected(num_bytes.Error());
   } else if (*num_bytes > buffer_size() - buffer_offset()) {
-    return Unexpected(kLiteRtStatusErrorRuntimeFailure,
-                      "Insufficient buffer size");
+    const std::string error_message = absl::StrFormat(
+        "Insufficient buffer size: Required %d bytes, actual size %d bytes",
+        *num_bytes, buffer_size() - buffer_offset());
+    return Unexpected(kLiteRtStatusErrorRuntimeFailure, error_message);
   }
 
   // Check for proper alignment.
