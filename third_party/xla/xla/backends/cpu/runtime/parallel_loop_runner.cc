@@ -278,6 +278,11 @@ void ParallelLoopRunner::Parallelize(size_t range, size_t tile,
   ScheduleAll(num_tasks, ParallelTask1DTile1D{range, tile, std::move(task)});
 }
 
+void ParallelLoopRunner::ParallelizeDynamic(size_t range, size_t tile,
+                                            Task1DTile1DDynamic task) {
+  Parallelize(range, tile, std::move(task));
+}
+
 struct ParallelLoopRunner::ParallelTask2DTile1D {
   ABSL_ATTRIBUTE_ALWAYS_INLINE void operator()(size_t task_index) const {
     auto x = Delinearize(task_index, range_i, range_j, tile_j);
@@ -310,6 +315,12 @@ void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
 
   ScheduleAll(num_tasks,
               ParallelTask2DTile1D{range_i, range_j, tile_j, std::move(task)});
+}
+
+void ParallelLoopRunner::ParallelizeDynamic(size_t range_i, size_t range_j,
+                                            size_t tile_j,
+                                            Task2DTile1DDynamic task) {
+  Parallelize(range_i, range_j, tile_j, std::move(task));
 }
 
 struct ParallelLoopRunner::ParallelTask3DTile2D {
@@ -349,6 +360,13 @@ void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
 
   ScheduleAll(num_tasks, ParallelTask3DTile2D{range_i, range_j, range_k, tile_j,
                                               tile_k, std::move(task)});
+}
+
+void ParallelLoopRunner::ParallelizeDynamic(size_t range_i, size_t range_j,
+                                            size_t range_k, size_t tile_j,
+                                            size_t tile_k,
+                                            Task3DTile2DDynamic task) {
+  Parallelize(range_i, range_j, range_k, tile_j, tile_k, std::move(task));
 }
 
 }  // namespace xla::cpu
