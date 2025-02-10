@@ -22,8 +22,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/array2d.h"
 #include "xla/service/global_device_id.h"
 #include "xla/stream_executor/platform.h"

@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "xla/service/batchnorm_expander.h"
 
+#include <cstdint>
 #include <memory>
-#include <utility>
 
+#include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

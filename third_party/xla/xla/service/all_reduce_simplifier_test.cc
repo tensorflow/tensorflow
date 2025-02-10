@@ -16,8 +16,9 @@ limitations under the License.
 #include "xla/service/all_reduce_simplifier.h"
 
 #include <memory>
-#include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"

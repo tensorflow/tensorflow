@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <vector>
 
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"

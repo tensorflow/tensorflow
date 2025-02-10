@@ -15,8 +15,15 @@ limitations under the License.
 
 #include "xla/service/compilation_cache.h"
 
+#include <cstdint>
+#include <memory>
 #include <utility>
 
+#include "absl/base/const_init.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
