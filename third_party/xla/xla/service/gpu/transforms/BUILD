@@ -1768,8 +1768,10 @@ xla_cc_test(
         "//xla/service/gpu:cublas_padding_requirements",
         "//xla/service/gpu:triton_fusion_analysis",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",

@@ -530,6 +530,13 @@ message DebugOptions {
   // Pre-existing block-level fusions are left unmodified.
   bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
 
+  // Enable fusion for the subchannel dequantisation sequences like
+  // [x,z]param -> [x,y,z]broadcast -> [x*y,z]bitcast -> multiply -> dot.
+  // Compilation can fail with Broadcast has a different size than the block
+  // size. Performance can be worse, because some block sizes / split-k > 1 is
+  // not considered for subchannel dequant fusions.
+  bool xla_gpu_experimental_enable_subchannel_dequantisation_fusion = 368;
+
   // If true, enable synchronous collective combining.
   bool xla_gpu_experimental_enable_sync_collective_combining = 366;
 
@@ -1145,7 +1152,7 @@ message DebugOptions {
 
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
-  // Next id: 368
+  // Next id: 369
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

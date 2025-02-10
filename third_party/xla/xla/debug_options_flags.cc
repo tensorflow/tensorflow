@@ -202,6 +202,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_pipeline_parallelism_opt_level(
       DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE);
 
+  opts.set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(false);
   opts.set_xla_partitioning_algorithm(
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
 
@@ -1760,6 +1761,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
   flag_list->push_back(tsl::Flag("xla_gpu_enable_priority_fusion",
                                  noop_flag_setter<bool>, true,
                                  "[Deprecated, do not use]"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_subchannel_dequantisation_fusion",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion),
+      debug_options
+          ->xla_gpu_experimental_enable_subchannel_dequantisation_fusion(),
+      "Enable fusion for the subchannel dequantisation sequences like "
+      "[x,z]param -> [x,y,z]broadcast -> [x*y,z]bitcast -> multiply -> dot. "
+      "Compilation can fail with Broadcast has a different size than the block "
+      "size. Performance can be worse, because some block sizes / split-k > 1 "
+      "is not considered for subchannel dequant fusions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_triton_heroless_priority_fusion",
       bool_setter_for(

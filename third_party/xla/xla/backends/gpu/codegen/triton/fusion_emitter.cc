@@ -1101,7 +1101,7 @@ absl::StatusOr<TritonModule> CreateTritonModule(
     if (type == U16) {
       ir_type = b.getI16Type();
     } else if (type == S4) {
-        ir_type = b.getI4Type();
+      ir_type = b.getI4Type();
     } else {
       TF_ASSIGN_OR_RETURN(ir_type, TritonType(b, type));
     }
@@ -1149,13 +1149,17 @@ absl::StatusOr<TritonModule> CreateTritonModule(
   b.create<ttir::ReturnOp>();
 
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
+    auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir");
     DumpToFileInDirOrStdout(
-        *hlo_computation->parent(), "triton_ir", "before_validation.ttir",
+        *hlo_computation->parent(), "", suffix,
         DumpTritonIR(triton_module.get(),
                      fusion->GetModule()
                          ->config()
                          .debug_options()
                          .xla_gpu_unsupported_annotate_with_emitter_loc()));
+    std::string fusion_suffix = absl::StrCat(hlo_computation->name(), ".hlo");
+    DumpToFileInDirOrStdout(*hlo_computation->parent(), "", fusion_suffix,
+                            hlo_computation->ToString());
   }
 
   if (mlir::failed(mlir::verify(*triton_module))) {
@@ -1179,8 +1183,9 @@ absl::StatusOr<TritonModule> CreateTritonModule(
   // TODO(loislo): Remove this dump once we have the Triton IR dump in
   // CompileTritonToLLVM after the Triton optimization passes.
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
+    std::string suffix = absl::StrCat(fusion->name(), ".ttir");
     DumpToFileInDirOrStdout(
-        *hlo_computation->parent(), "triton_ir", "ttir",
+        *hlo_computation->parent(), "", suffix,
         DumpTritonIR(triton_module.get(),
                      fusion->GetModule()
                          ->config()
