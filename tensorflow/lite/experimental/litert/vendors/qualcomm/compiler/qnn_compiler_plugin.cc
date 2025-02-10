@@ -31,6 +31,8 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/qnn_compose_graph.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/tensor_pool.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/core/wrappers/op_wrapper.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
 using ::litert::qnn::QnnManager;
@@ -221,35 +223,51 @@ void LiteRtDestroyCompilerPlugin(LiteRtCompilerPlugin compiler_plugin) {
   delete compiler_plugin;
 }
 
-namespace {
-
-// TODO update this function to match the new legalizations.
-bool IsOpSupported(const litert::Op& op) {
-  // NOTE: Currently we are demoing by just mapping simple f32 mul ops.
-  // In the limit this function withh want to leverage QNN SDK's getSuportedOps
-  // feature (along with our op/type mappings).
-  // Use a very loose guard for now -- only checking if op code is supported.
-
-  for (auto supported_op : kSupportedOps) {
-    if (op.Code() == supported_op) {
-      return true;
-    }
-  }
-  return false;
-}
-
-}  // namespace
-
 LiteRtStatus LiteRtCompilerPluginPartition(LiteRtCompilerPlugin compiler_plugin,
                                            LiteRtSubgraph subgraph,
                                            LiteRtOpList selected_ops) {
   ::litert::Subgraph graph(subgraph);
+
+  auto backend_configs = QnnManager::DefaultBackendConfigs();
+  // TODO: pass soc_model as parameter
+  auto qnn_manager = QnnManager::Create(backend_configs, std::nullopt,
+                                        {QNN_HTP_DEVICE_ARCH_V75});
+  if (!qnn_manager) {
+    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.Error().Message().data());
+    return qnn_manager.Error().Status();
+  }
+  LITERT_LOG(LITERT_INFO, "%s", "QNN manager created");
+
   for (const auto& op : graph.Ops()) {
-    if (!IsOpSupported(op)) {
-      continue;
+    // default constructed, won't add tensor to QNN
+    ::qnn::TensorPool tensor_pool;
+    std::vector<::qnn::TensorWrapperRef> input_tensors;
+    for (const auto& input : op.Inputs()) {
+      ::qnn::TensorWrapper* res{nullptr};
+      LITERT_RETURN_IF_ERROR(
+          litert::qnn::ConvertTensor(input, tensor_pool, res));
+      input_tensors.emplace_back(*res);
     }
 
-    LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
+    std::vector<::qnn::TensorWrapperRef> output_tensors;
+    for (const auto& output : op.Outputs()) {
+      ::qnn::TensorWrapper* res{nullptr};
+      LITERT_RETURN_IF_ERROR(
+          litert::qnn::ConvertTensor(output, tensor_pool, res));
+      output_tensors.emplace_back(*res);
+    }
+
+    std::vector<::qnn::OpWrapper> op_wrappers;
+    LITERT_RETURN_IF_ERROR(litert::qnn::ConvertOp(
+        op, tensor_pool, input_tensors, output_tensors, op_wrappers));
+    if (std::all_of(
+            op_wrappers.begin(), op_wrappers.end(),
+            [&qnn_manager](const ::qnn::OpWrapper& op_wrapper) -> bool {
+              return kLiteRtStatusOk ==
+                     (*qnn_manager)->ValidateOp(op_wrapper.GetOpConfig());
+            })) {
+      LITERT_RETURN_IF_ERROR(LiteRtPushOp(selected_ops, op.Get()));
+    }
   }
 
   return kLiteRtStatusOk;

@@ -10,8 +10,7 @@ std::vector<OpWrapper> BuildGeluOp(
     const std::vector<TensorWrapperRef>& outputs) {
   std::vector<OpWrapper> res;
 
-  auto& gelu_op =
-      CreateSimpleActivationOp(res, QNN_OP_GELU, inputs[0], outputs[0]);
+  CreateSimpleActivationOp(res, QNN_OP_GELU, inputs[0], outputs[0]);
 
   return res;
 }

@@ -10,8 +10,7 @@ std::vector<OpWrapper> BuildTanhOp(
     const std::vector<TensorWrapperRef>& outputs) {
   std::vector<OpWrapper> res;
 
-  auto& tanh_op =
-      CreateSimpleActivationOp(res, QNN_OP_TANH, inputs[0], outputs[0]);
+  CreateSimpleActivationOp(res, QNN_OP_TANH, inputs[0], outputs[0]);
 
   return res;
 }

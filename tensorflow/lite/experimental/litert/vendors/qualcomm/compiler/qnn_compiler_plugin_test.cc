@@ -243,6 +243,27 @@ TEST(TestLegalization, QuantizeOpLegalizedToQuantizeOp) {
   EXPECT_EQ(qnn_op_name, kQnnOpName);
 }
 
+class QnnPluginOpValidationTest : public ::testing::TestWithParam<std::string> {
+};
+
+TEST_P(QnnPluginOpValidationTest, SupportedOpsTest) {
+  LITERT_LOG(LITERT_INFO, "Validating TFLite model: %s", GetParam().c_str());
+  auto plugin = CreatePlugin();
+  auto model = testing::LoadTestFileModel(GetParam());
+
+  const auto subgraph = model.MainSubgraph();
+  LiteRtSubgraph litert_subgraph = subgraph->Get();
+
+  LiteRtOpListT selected_ops;
+  LITERT_ASSERT_OK(LiteRtCompilerPluginPartition(plugin.get(), litert_subgraph,
+                                                 &selected_ops));
+
+  EXPECT_EQ(selected_ops.Vec().size(), litert_subgraph->Ops().size());
+}
+
+INSTANTIATE_TEST_SUITE_P(SupportedOpsTest, QnnPluginOpValidationTest,
+                         kSupportedOps);
+
 class QnnPluginOpCompatibilityTest
     : public ::testing::TestWithParam<std::string> {};
 
