@@ -246,9 +246,9 @@ TEST_F(SingleMachineTest, TimeOuts) {
 
   TF_CHECK_OK(cluster_->Initialize(item));
   RunMetadata metadata;
-  Status s1 = cluster_->Run(item.graph, item.feed, item.fetch, &metadata);
+  absl::Status s1 = cluster_->Run(item.graph, item.feed, item.fetch, &metadata);
   EXPECT_TRUE(errors::IsDeadlineExceeded(s1));
-  Status s2 = cluster_->Run(item.graph, item.feed, item.fetch, &metadata);
+  absl::Status s2 = cluster_->Run(item.graph, item.feed, item.fetch, &metadata);
   EXPECT_TRUE(errors::IsDeadlineExceeded(s2));
 }
 
@@ -334,7 +334,7 @@ static void RunInfiniteTFLoop() {
   TF_CHECK_OK(cluster.Provision());
   TF_CHECK_OK(cluster.Initialize(item));
 
-  Status s1 = cluster.Run(item.graph, item.feed, item.fetch, nullptr);
+  absl::Status s1 = cluster.Run(item.graph, item.feed, item.fetch, nullptr);
   if (!errors::IsDeadlineExceeded(s1)) {
     LOG(ERROR) << "Expected 'deadline exceeded' error, got " << s1;
     // Exit to break the infinite loop
@@ -342,7 +342,7 @@ static void RunInfiniteTFLoop() {
   }
 
   // Attempt to shutdown the cluster and make sure we get the proper error code.
-  Status s2 = cluster.Shutdown();
+  absl::Status s2 = cluster.Shutdown();
   if (!errors::IsUnavailable(s2)) {
     LOG(ERROR) << "Expected 'unavailable' error, got " << s2;
     // Exit to break the infinite loop
@@ -628,7 +628,7 @@ TEST_F(SingleMachineTest, PeakMemoryStatsNotEnabled) {
   TF_CHECK_OK(cluster.Initialize(item));
 
   std::unordered_map<string, uint64> device_peak_memory;
-  Status s = cluster.GetPeakMemoryUsage(&device_peak_memory);
+  absl::Status s = cluster.GetPeakMemoryUsage(&device_peak_memory);
   TF_CHECK_OK(cluster.Shutdown());
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(errors::IsInvalidArgument(s));

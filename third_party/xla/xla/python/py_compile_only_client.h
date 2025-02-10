@@ -19,7 +19,9 @@ limitations under the License.
 #include <memory>
 
 // placeholder for index annotation headers
-#include "xla/pjrt/pjrt_compiler.h"
+#include "nanobind/nanobind.h"
+#include "xla/python/nb_class_ptr.h"
+#include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/py_client.h"
 
 namespace xla {
@@ -33,10 +35,10 @@ namespace xla {
 // Python duck typing to treat the unloaded executable like a loaded executable
 // (except it will raise errors if you try to run it, which is what we want for
 // AOT environments).
-std::shared_ptr<PyClient> MakeCompileOnlyClient(
-    std::shared_ptr<PjRtTopologyDescription>);
+nb_class_ptr<PyClient> MakeCompileOnlyClient(
+    std::shared_ptr<ifrt::PjRtTopology>);
 
-void RegisterCompileOnlyClient(pybind11::module& m);
+void RegisterCompileOnlyClient(nanobind::module_& m);
 
 }  // namespace xla
 

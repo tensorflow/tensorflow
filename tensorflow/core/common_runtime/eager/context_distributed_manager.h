@@ -26,8 +26,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
@@ -44,18 +44,18 @@ class EagerContextDistributedManager
   // When running in a distributed context, `init_timeout_in_ms` requests the
   // amount of time to wait for remote workers to respond.
 
-  Status SetOrUpdateServerDef(const ServerDef& server_def, bool reset_context,
-                              int keep_alive_secs, int64_t init_timeout_in_ms,
-                              int retries,
-                              bool clear_existing_contexts = false) override;
+  absl::Status SetOrUpdateServerDef(
+      const ServerDef& server_def, bool reset_context, int keep_alive_secs,
+      int64_t init_timeout_in_ms, int retries,
+      bool clear_existing_contexts = false) override;
 
-  Status InitializeLocalOnlyContext(const ServerDef& server_def,
-                                    int keep_alive_secs) override;
+  absl::Status InitializeLocalOnlyContext(const ServerDef& server_def,
+                                          int keep_alive_secs) override;
 
-  Status EnableCollectiveOps(const ServerDef& server_def) override;
+  absl::Status EnableCollectiveOps(const ServerDef& server_def) override;
 
-  Status CheckRemoteAlive(const std::string& remote_task_name,
-                          bool* is_alive) override;
+  absl::Status CheckRemoteAlive(const std::string& remote_task_name,
+                                bool* is_alive) override;
 
   tsl::CoordinationServiceAgent* GetCoordinationServiceAgent() override {
     return coordination_service_agent_;

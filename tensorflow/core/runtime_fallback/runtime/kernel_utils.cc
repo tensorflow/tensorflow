@@ -35,14 +35,14 @@ tfrt::Expected<OwnedEagerContext> InitEagerContext(
     bool is_async) {
   // Copied from TFE_NewContext.
   std::vector<std::unique_ptr<tensorflow::Device>> devices;
-  tensorflow::Status status = tensorflow::DeviceFactory::AddDevices(
+  absl::Status status = tensorflow::DeviceFactory::AddDevices(
       session_opts, "/job:localhost/replica:0/task:0", &devices);
   if (!status.ok()) {
     return tfrt::MakeStringError(status.message());
   }
 
   if (device_mgr != nullptr) {
-    Status s = device_mgr->AddDevices(std::move(devices));
+    absl::Status s = device_mgr->AddDevices(std::move(devices));
     DCHECK_OK(s) << "Failed to initialize device manager.";
     auto r = tsl::core::RefCountPtr<IntraProcessRendezvous>(
         new tensorflow::IntraProcessRendezvous(device_mgr));

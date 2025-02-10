@@ -23,11 +23,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -48,10 +49,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       "optimal_seconds";
   static inline constexpr absl::string_view kUtilizationKey = "utilization";
 
-  // Keys reserved for use by subclasses.  These get the same special "fast
+  // Key reserved for use by subclasses.  This gets the same special "fast
   // path" treatment in Properties as the other keys above.
   static inline constexpr absl::string_view kReserved0Key = "reserved0";
-  static inline constexpr absl::string_view kReserved1Key = "reserved1";
 
   // A data structure like hash_map<string, float> for storing info about an HLO
   // instruction or computation.
@@ -100,8 +100,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
           operand0_bytes_accessed_(0),
           operand1_bytes_accessed_(0),
           output_root_bytes_accessed_(0),
-          reserved0_(0),
-          reserved1_(0) {
+          reserved0_(0) {
       DCHECK_EQ(kOperand0UtilizationKey, GetOperandUtilizationKey(0, {}));
       DCHECK_EQ(kOperand1UtilizationKey, GetOperandUtilizationKey(1, {}));
       DCHECK_EQ(kOperand0BytesAccessedKey, GetOperandBytesAccessedKey(0, {}));
@@ -143,9 +142,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       if (property == kReserved0Key) {
         return reserved0_;
       }
-      if (property == kReserved1Key) {
-        return reserved1_;
-      }
 
       auto it = named_props_.lazy_emplace(property, [&](const auto& ctor) {
         ctor(std::string(property), 0.f);
@@ -186,9 +182,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       }
       if (property == kReserved0Key) {
         return reserved0_;
-      }
-      if (property == kReserved1Key) {
-        return reserved1_;
       }
 
       auto it = named_props_.find(property);
@@ -233,10 +226,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       if (reserved0_ != 0) {
         fn(kReserved0Key, reserved0_);
       }
-      if (reserved1_ != 0) {
-        fn(kReserved1Key, reserved1_);
-      }
-
       for (const auto& [k, v] : named_props_) {
         if (v != 0) {
           fn(k, v);
@@ -331,6 +320,27 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       }
     }
 
+    std::string ToString() const {
+      return absl::StrFormat(
+          "HloCostAnalysis::Properties{\n"
+          " flops: %f,\n"
+          " transcendentals: %f\n"
+          " bytes_accessed: %f\n"
+          " optimal_seconds: %f\n"
+          " utilization: %f\n"
+          " operand0_utilization: %f\n"
+          " operand1_utilization: %f\n"
+          " operand0_bytes_accessed: %f\n"
+          " operand1_bytes_accessed: %f\n"
+          " output_root_bytes_accessed: %f\n"
+          " reserved0: %f\n"
+          "}",
+          flops_, transcendentals_, bytes_accessed_, optimal_seconds_,
+          utilization_, operand0_utilization_, operand1_utilization_,
+          operand0_bytes_accessed_, operand1_bytes_accessed_,
+          output_root_bytes_accessed_, reserved0_);
+    }
+
    private:
     // These must match GetOperandUtilizationKey(0, {}) etc.
     static inline constexpr absl::string_view kOperand0UtilizationKey =
@@ -358,9 +368,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
     float output_root_bytes_accessed_;
 
-    // Fields reserved for use by subclasses.
+    // Field reserved for use by subclasses.
     float reserved0_;
-    float reserved1_;
 
     absl::flat_hash_map<std::string, float> named_props_;
   };
@@ -368,6 +377,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // shape_size is a function which returns the size in bytes of the top-level
   // buffer of a shape.
   using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
+
+  static constexpr int64_t kDefaultPointerSize = 8;
+  static int64_t DefaultShapeSize(const Shape& shape);
 
   // A struct to encapsulate hardware-related options. This includes the shape
   // size function, which is used to encode hardware-specific padding and per
@@ -377,11 +389,16 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     // Function which computes the size of the top-level of a given shape (not
     // including nested elements, if any). If null then bytes_accessed methods
     // return an error.
-    ShapeSizeFunction shape_size;
+    ShapeSizeFunction shape_size = DefaultShapeSize;
     // How much of each property can be processed per second. E.g. if the
     // property is bytes accessed, this is the number of bytes that can be
     // processed per second. Is empty if no rates have been set.
     Properties per_second_rates = {};
+    // The minimum amount of time (in seconds) required to process per each
+    // property. Hardware design choices (e.g., clock speeds, memory access
+    // latencies) impose a lower bound on the duration of any operation, even
+    // the simplest ones.
+    Properties min_latencies_seconds;
     // Operations like broadcast with reused inputs are not handled
     // efficiently on some platforms. Depending on the goal of the analysis
     // we may need to count or ignore them.
@@ -391,117 +408,152 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     void set_flops_per_second(float value) {
       per_second_rates[kFlopsKey] = value;
     }
+    void set_flops_min_latency_second(float value) {
+      min_latencies_seconds[kFlopsKey] = value;
+    }
     void set_transcendentals_per_second(float value) {
       per_second_rates[kTranscendentalsKey] = value;
     }
     void set_bytes_per_second(float value) {
       per_second_rates[kBytesAccessedKey] = value;
     }
+    void set_bytes_min_latency_second(float value) {
+      min_latencies_seconds[kBytesAccessedKey] = value;
+    }
 
     // Returns the specified per-second rate used by cost analysis.
     float per_second_rate(absl::string_view key) const {
       return per_second_rates[key];
     }
+
+    float min_latency_seconds(absl::string_view key) const {
+      return min_latencies_seconds[key];
+    }
+
+    std::string ToString() const {
+      return absl::StrFormat(
+          "HloCostAnalysis::Options{\n"
+          " per_second_rates: %s\n"
+          " min_latency_seconds: %s\n"
+          " count_multiple_input_accesses: %d\n"
+          "}",
+          per_second_rates.ToString(), min_latencies_seconds.ToString(),
+          count_multiple_input_accesses);
+    }
   };
 
   explicit HloCostAnalysis(const Options& options);
-  explicit HloCostAnalysis(ShapeSizeFunction shape_size,
-                           const Properties& per_second_rates = {});
+  explicit HloCostAnalysis(ShapeSizeFunction shape_size = DefaultShapeSize,
+                           const Properties& per_second_rates = {},
+                           const Properties& min_latency_seconds = {});
 
-  Status HandleElementwiseUnary(const HloInstruction* hlo) override;
-  Status HandleElementwiseBinary(const HloInstruction* hlo) override;
-  Status HandleConstant(const HloInstruction* constant) override;
-  Status HandleIota(const HloInstruction* iota) override;
-  Status HandleGetTupleElement(
+  // For all element-wise instruction we call HandleElementwiseOp. If necessary,
+  // override HandleElementwiseOp instead.
+  absl::Status HandleElementwiseUnary(const HloInstruction* hlo) final;
+  absl::Status HandleElementwiseBinary(const HloInstruction* hlo) final;
+  absl::Status HandleSelect(const HloInstruction* hlo) final;
+  absl::Status HandleCompare(const HloInstruction* compare) final;
+  absl::Status HandleClamp(const HloInstruction* clamp) final;
+  absl::Status HandleConvert(const HloInstruction* convert) final;
+
+  // Utility function to handle all element-wise operations.
+  virtual absl::Status HandleElementwiseOp(
+      const HloInstruction* hlo_instruction);
+
+  absl::Status HandleConstant(const HloInstruction* constant) override;
+  absl::Status HandleIota(const HloInstruction* iota) override;
+  absl::Status HandleGetTupleElement(
       const HloInstruction* get_tuple_element) override;
-  Status HandleSelect(const HloInstruction* hlo) override;
-  Status HandleCompare(const HloInstruction* compare) override;
-  Status HandleClamp(const HloInstruction* clamp) override;
-  Status HandleReducePrecision(const HloInstruction* hlo) override;
-  Status HandleConcatenate(const HloInstruction* concatenate) override;
-  Status HandleAsyncStart(const HloInstruction* async_start) override;
-  Status HandleAsyncUpdate(const HloInstruction* async_update) override;
-  Status HandleAsyncDone(const HloInstruction* async_done) override;
-  Status HandleCopyStart(const HloInstruction* send) override;
-  Status HandleCopyDone(const HloInstruction* send_done) override;
-  Status HandleSend(const HloInstruction* send) override;
-  Status HandleSendDone(const HloInstruction* send_done) override;
-  Status HandleRecv(const HloInstruction* recv) override;
-  Status HandleRecvDone(const HloInstruction* recv_done) override;
-  Status HandleConvert(const HloInstruction* convert) override;
-  Status HandleCopy(const HloInstruction* copy) override;
-  Status HandleDomain(const HloInstruction* domain) override;
-  Status HandleDot(const HloInstruction* dot) override;
-  Status HandleConvolution(const HloInstruction* convolution) override;
-  Status HandleFft(const HloInstruction* fft) override;
-  Status HandleTriangularSolve(const HloInstruction* hlo) override;
-  Status HandleCholesky(const HloInstruction* hlo) override;
-  Status HandleOptimizationBarrier(const HloInstruction* hlo) override;
-  Status HandleAllGather(const HloInstruction* hlo) override;
-  Status HandleAllGatherStart(const HloInstruction* hlo) override;
-  Status HandleAllGatherDone(const HloInstruction* hlo) override;
-  Status HandleAllReduce(const HloInstruction* crs) override;
-  Status HandleReduceScatter(const HloInstruction* hlo) override;
-  Status HandleAllReduceStart(const HloInstruction* hlo) override;
-  Status HandleAllReduceDone(const HloInstruction* hlo) override;
-  Status HandleAllToAll(const HloInstruction* hlo) override;
-  Status HandleCollectiveBroadcast(const HloInstruction* hlo) override;
-  Status HandleCollectivePermute(const HloInstruction* hlo) override;
-  Status HandleCollectivePermuteStart(const HloInstruction* hlo) override;
-  Status HandleCollectivePermuteDone(const HloInstruction* hlo) override;
-  Status HandleReplicaId(const HloInstruction* hlo) override;
-  Status HandlePartitionId(const HloInstruction* hlo) override;
-  Status HandleInfeed(const HloInstruction* infeed) override;
-  Status HandleOutfeed(const HloInstruction* outfeed) override;
-  Status HandleRng(const HloInstruction* random) override;
-  Status HandleRngBitGenerator(const HloInstruction* random) override;
-  Status HandleRngGetAndUpdateState(const HloInstruction* random) override;
-  Status HandleReverse(const HloInstruction* reverse) override;
-  Status HandleSort(const HloInstruction* sort) override;
-  Status HandleParameter(const HloInstruction* parameter) override;
-  Status HandleReduce(const HloInstruction* reduce) override;
-  Status HandleBatchNormTraining(
+  absl::Status HandleReducePrecision(const HloInstruction* hlo) override;
+  absl::Status HandleConcatenate(const HloInstruction* concatenate) override;
+  absl::Status HandleAsyncStart(const HloInstruction* async_start) override;
+  absl::Status HandleAsyncUpdate(const HloInstruction* async_update) override;
+  absl::Status HandleAsyncDone(const HloInstruction* async_done) override;
+  absl::Status HandleCopyStart(const HloInstruction* send) override;
+  absl::Status HandleCopyDone(const HloInstruction* send_done) override;
+  absl::Status HandleSend(const HloInstruction* send) override;
+  absl::Status HandleSendDone(const HloInstruction* send_done) override;
+  absl::Status HandleRecv(const HloInstruction* recv) override;
+  absl::Status HandleRecvDone(const HloInstruction* recv_done) override;
+  absl::Status HandleCopy(const HloInstruction* copy) override;
+  absl::Status HandleDomain(const HloInstruction* domain) override;
+  absl::Status HandleDot(const HloInstruction* dot) override;
+  absl::Status HandleRaggedDot(const HloInstruction* dot) override;
+  absl::Status HandleConvolution(const HloInstruction* convolution) override;
+  absl::Status HandleFft(const HloInstruction* fft) override;
+  absl::Status HandleTriangularSolve(const HloInstruction* hlo) override;
+  absl::Status HandleCholesky(const HloInstruction* hlo) override;
+  absl::Status HandleOptimizationBarrier(const HloInstruction* hlo) override;
+  absl::Status HandleAllGather(const HloInstruction* hlo) override;
+  absl::Status HandleAllGatherStart(const HloInstruction* hlo) override;
+  absl::Status HandleAllGatherDone(const HloInstruction* hlo) override;
+  absl::Status HandleAllReduce(const HloInstruction* crs) override;
+  absl::Status HandleReduceScatter(const HloInstruction* hlo) override;
+  absl::Status HandleAllReduceStart(const HloInstruction* hlo) override;
+  absl::Status HandleAllReduceDone(const HloInstruction* hlo) override;
+  absl::Status HandleAllToAll(const HloInstruction* hlo) override;
+  absl::Status HandleRaggedAllToAll(const HloInstruction* hlo) override;
+  absl::Status HandleCollectiveBroadcast(const HloInstruction* hlo) override;
+  absl::Status HandleCollectivePermute(const HloInstruction* hlo) override;
+  absl::Status HandleCollectivePermuteStart(const HloInstruction* hlo) override;
+  absl::Status HandleCollectivePermuteDone(const HloInstruction* hlo) override;
+  absl::Status HandleReplicaId(const HloInstruction* hlo) override;
+  absl::Status HandlePartitionId(const HloInstruction* hlo) override;
+  absl::Status HandleInfeed(const HloInstruction* infeed) override;
+  absl::Status HandleOutfeed(const HloInstruction* outfeed) override;
+  absl::Status HandleRng(const HloInstruction* random) override;
+  absl::Status HandleRngBitGenerator(const HloInstruction* random) override;
+  absl::Status HandleRngGetAndUpdateState(
+      const HloInstruction* random) override;
+  absl::Status HandleReverse(const HloInstruction* reverse) override;
+  absl::Status HandleSort(const HloInstruction* sort) override;
+  absl::Status HandleParameter(const HloInstruction* parameter) override;
+  absl::Status HandleReduce(const HloInstruction* reduce) override;
+  absl::Status HandleBatchNormTraining(
       const HloInstruction* batch_norm_training) override;
-  Status HandleBatchNormInference(
+  absl::Status HandleBatchNormInference(
       const HloInstruction* batch_norm_inference) override;
-  Status HandleBatchNormGrad(const HloInstruction* batch_norm_grad) override;
-  Status HandleFusion(const HloInstruction* fusion) override;
-  Status HandleCall(const HloInstruction* call) override;
-  Status HandleCustomCall(const HloInstruction* custom_call) override;
-  Status HandleSlice(const HloInstruction* slice) override;
-  Status HandleDynamicSlice(const HloInstruction* dynamic_slice) override;
-  Status HandleDynamicUpdateSlice(
+  absl::Status HandleBatchNormGrad(
+      const HloInstruction* batch_norm_grad) override;
+  absl::Status HandleFusion(const HloInstruction* fusion) override;
+  absl::Status HandleCall(const HloInstruction* call) override;
+  absl::Status HandleCustomCall(const HloInstruction* custom_call) override;
+  absl::Status HandleSlice(const HloInstruction* slice) override;
+  absl::Status HandleDynamicSlice(const HloInstruction* dynamic_slice) override;
+  absl::Status HandleDynamicUpdateSlice(
       const HloInstruction* dynamic_update_slice) override;
-  Status HandleTuple(const HloInstruction* tuple) override;
-  Status HandleMap(const HloInstruction* map) override;
-  Status HandleReduceWindow(const HloInstruction* reduce_window) override;
-  Status HandleSelectAndScatter(const HloInstruction* instruction) override;
-  Status HandleBitcast(const HloInstruction* bitcast) override;
-  Status HandleBroadcast(const HloInstruction* broadcast) override;
-  Status HandlePad(const HloInstruction* pad) override;
-  Status HandleReshape(const HloInstruction* reshape) override;
-  Status HandleDynamicReshape(const HloInstruction* reshape) override;
-  Status HandleAddDependency(const HloInstruction* add_dependency) override;
-  Status HandleAfterAll(const HloInstruction* token) override;
-  Status HandleTranspose(const HloInstruction* transpose) override;
-  Status HandleWhile(const HloInstruction* xla_while) override;
-  Status HandleConditional(const HloInstruction* conditional) override;
-  Status HandleGather(const HloInstruction* gather) override;
-  Status HandleScatter(const HloInstruction* hlo) override;
-  Status HandleGetDimensionSize(const HloInstruction* get_size) override;
-  Status HandleSetDimensionSize(const HloInstruction* set_size) override;
-  Status HandleTopK(const HloInstruction* topk) override;
-  Status FinishVisit(const HloInstruction* root) override;
+  absl::Status HandleTuple(const HloInstruction* tuple) override;
+  absl::Status HandleMap(const HloInstruction* map) override;
+  absl::Status HandleReduceWindow(const HloInstruction* reduce_window) override;
+  absl::Status HandleSelectAndScatter(
+      const HloInstruction* instruction) override;
+  absl::Status HandleBitcast(const HloInstruction* bitcast) override;
+  absl::Status HandleBroadcast(const HloInstruction* broadcast) override;
+  absl::Status HandlePad(const HloInstruction* pad) override;
+  absl::Status HandleReshape(const HloInstruction* reshape) override;
+  absl::Status HandleDynamicReshape(const HloInstruction* reshape) override;
+  absl::Status HandleAddDependency(
+      const HloInstruction* add_dependency) override;
+  absl::Status HandleAfterAll(const HloInstruction* token) override;
+  absl::Status HandleTranspose(const HloInstruction* transpose) override;
+  absl::Status HandleWhile(const HloInstruction* xla_while) override;
+  absl::Status HandleConditional(const HloInstruction* conditional) override;
+  absl::Status HandleGather(const HloInstruction* gather) override;
+  absl::Status HandleScatter(const HloInstruction* hlo) override;
+  absl::Status HandleGetDimensionSize(const HloInstruction* get_size) override;
+  absl::Status HandleSetDimensionSize(const HloInstruction* set_size) override;
+  absl::Status HandleTopK(const HloInstruction* topk) override;
+  absl::Status FinishVisit(const HloInstruction* root) override;
 
-  Status Preprocess(const HloInstruction* hlo) override;
-  Status Postprocess(const HloInstruction* hlo) override;
+  absl::Status Preprocess(const HloInstruction* hlo) override;
+  absl::Status Postprocess(const HloInstruction* hlo) override;
 
   // Enable efficient updates if a known small set of instructions within an
   // HLO graph was modified.
   // Updates the cost analysis by removing one instruction.
-  Status RemoveInstruction(HloInstruction* instruction);
+  absl::Status RemoveInstruction(HloInstruction* instruction);
   // Updates the cost analysis by re-doing the analysis of one instruction.
-  Status RevisitInstruction(HloInstruction* instruction);
+  absl::Status RevisitInstruction(HloInstruction* instruction);
 
   // Decorates shape_size_ by returning 0 immediately if the shape does not have
   // a layout.
@@ -513,6 +565,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   float bytes_accessed() const;
   float optimal_seconds() const;
 
+  Properties properties(const HloInstruction& hlo) const;
   // Returns the respective cost computed for a particular HLO instruction, or 0
   // if the HLO was not found to have a cost in the analysis.
   //
@@ -550,6 +603,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   float per_second_rate(absl::string_view key) const {
     return options_.per_second_rate(key);
   }
+  // Returns the specified minimum latency used by cost analysis.
+  float min_latency_seconds(absl::string_view key) const {
+    return options_.min_latency_seconds(key);
+  }
 
   // Return the key that is used to index into Properties for the specified
   // input/output at the shape index.
@@ -575,14 +632,17 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
  protected:
   // Computes the bytes accessed based on the outputs produced by the fusion
   // instruction.
-  virtual Status FusionProcessOutputBytesAccessed(const HloInstruction* fusion);
+  virtual absl::Status FusionProcessOutputBytesAccessed(
+      const HloInstruction* fusion);
 
   // Computes the bytes accessed (read) based on the inputs consumed by the
   // fusion instruction.
-  virtual Status FusionProcessOperandBytesRead(const HloInstruction* fusion);
+  virtual absl::Status FusionProcessOperandBytesRead(
+      const HloInstruction* fusion);
 
   // Computes memory access to all larger constants in the fusion instruction.
-  virtual Status FusionCountConstantsMemoryAccess(const HloInstruction* fusion);
+  virtual absl::Status FusionCountConstantsMemoryAccess(
+      const HloInstruction* fusion);
 
   // Allows exclusion of certain types of inputs from bytes accessed during
   // FusionProcessOperandBytesRead.
@@ -621,11 +681,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // given hlo. The cost of visited sub HLO instructions is saved to
   // hlo_properties_, which will be used by functions such as
   // flop_count(hlo_instruction) to return cost of a particular HLO instruction.
-  virtual StatusOr<Properties> ProcessSubcomputation(
+  virtual absl::StatusOr<Properties> ProcessSubcomputation(
       HloComputation* computation);
-
-  // Utility function to handle all element-wise operations.
-  Status HandleElementwiseOp(const HloInstruction* hlo_instruction);
 
   // Returns 0.0f if the hlo is not present in hlo_to_properties or if the key
   // is not present in hlo_to_properties[hlo]. Otherwise, returns the value that
@@ -640,7 +697,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Traverses a fusion counting total utilization of every instruction inside.
   // Currently implemented non-trivially only in the GPU cost analysis.
-  virtual Status FusionCalculateUtilizations(const HloInstruction* fusion);
+  virtual absl::Status FusionCalculateUtilizations(
+      const HloInstruction* fusion);
 
   HloToProperties hlo_properties_;
 

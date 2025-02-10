@@ -17,8 +17,6 @@
 # pylint: disable=g-bad-name
 import functools
 import threading
-
-
 # Used by py_util.cc to get tracebacks.
 import traceback  # pylint: disable=unused-import
 import weakref
@@ -46,6 +44,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -226,12 +225,12 @@ class FuncRegistry:
     Returns:
       A numpy array.
     """
-    result = np.asarray(value, dtype=dtype, order="C")
+    result = numpy_compat.np_asarray(value, dtype=dtype, order="C")
     if result.dtype.char == "S" and result is not value:
-      return np.asarray(value, order="C", dtype=object)
+      return numpy_compat.np_asarray(value, order="C", dtype=object)
     elif result.dtype.char == "U" and result is not value:
       value = np.vectorize(lambda x: x.encode("utf8"))(value)
-      return np.asarray(value, order="C", dtype=object)
+      return numpy_compat.np_asarray(value, order="C", dtype=object)
     elif result.dtype.char == "U":
       return result.astype(np.bytes_)
     else:
@@ -461,6 +460,9 @@ def _check_args_and_maybe_make_decorator(
 @tf_export("py_function")
 @dispatch.add_dispatch_support
 def eager_py_func(func=None, inp=None, Tout=None, name=None):
+  # TODO(b/338268835): Remove "pyformat: disable" and the "pyformat: enable"
+  # line below if this feature request is implemented.
+  # pyformat: disable
   """Wraps a python function into a TensorFlow op that executes it eagerly.
 
   Using `tf.py_function` inside a `tf.function` allows you to run a python
@@ -609,13 +611,13 @@ def eager_py_func(func=None, inp=None, Tout=None, name=None):
       `CompositeTensors` (such as `tf.RaggedTensor`); or a single `Tensor` or
       `CompositeTensor`. Do not set `inp` when using `tf.py_function` as a
       decorator.
-    Tout: The type(s) of the value(s) returned by `func`.  One of the following.
+    Tout: The type(s) of the value(s) returned by `func`. One of the following:
       * If `func` returns a `Tensor` (or a value that can be converted to a
-      Tensor): the `tf.DType` for that value. * If `func` returns a
-      `CompositeTensor`: The `tf.TypeSpec` for that value. * If `func` returns
-      `None`: the empty list (`[]`). * If `func` returns a list of `Tensor` and
-      `CompositeTensor` values: a corresponding list of `tf.DType`s and
-      `tf.TypeSpec`s for each value.
+        Tensor): the `tf.DType` for that value.
+      * If `func` returns a `CompositeTensor`: The `tf.TypeSpec` for that value.
+      * If `func` returns `None`: the empty list (`[]`).
+      * If `func` returns a list of `Tensor` and `CompositeTensor` values: a
+        corresponding list of `tf.DType`s and `tf.TypeSpec`s for each value.
     name: A name for the operation (optional).
 
   Returns:
@@ -626,6 +628,8 @@ def eager_py_func(func=None, inp=None, Tout=None, name=None):
     and returns the result: a `Tensor`, `CompositeTensor`, or list of
     `Tensor` and `CompositeTensor`; or an empty list if `func` returns `None`.
   """
+  # pyformat: enable
+
   decorator = _check_args_and_maybe_make_decorator(
       eager_py_func, "tf.py_function", func=func, inp=inp, Tout=Tout, name=name
   )

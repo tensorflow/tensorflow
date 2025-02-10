@@ -108,6 +108,12 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
+  llvm::Value* ConstInBoundsGEP1_64(Args&&... args) {
+    return mixin_builder()->CreateConstInBoundsGEP1_64(
+        std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
   llvm::Value* FAdd(Args&&... args) {
     return mixin_builder()->CreateFAdd(std::forward<Args>(args)...);
   }
@@ -436,7 +442,7 @@ class IrBuilderMixin {
   }
 
  private:
-  llvm::IRBuilder<>* mixin_builder() {
+  llvm::IRBuilderBase* mixin_builder() {
     return static_cast<Derived*>(this)->builder();
   }
 };

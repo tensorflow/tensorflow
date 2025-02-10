@@ -20,6 +20,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework.constant_op import constant as tf_constant
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.trackable import base as trackable_base
@@ -149,7 +150,9 @@ class SparseCoreLayoutsTrackable(trackable_base.Trackable):
   def _restore_from_tensors(
       self, restored_tensors: Dict[str, tensor.Tensor]
   ) -> None:
-    self.value = restored_tensors[trackable_base.VARIABLE_VALUE_KEY]
+    # Do not restore the layouts proto from checkpoint, it should always match
+    # the embedding, which is set at build time.
+    gen_control_flow_ops.no_op()
 
 
 class SparseCoreStackedTableTrackable(trackable_base.Trackable):

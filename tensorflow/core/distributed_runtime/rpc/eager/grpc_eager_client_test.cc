@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 
+#include <memory>
+
+#include "absl/status/status.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -46,7 +50,7 @@ TEST(GrpcEagerClientCache, TestGetClientThreadSafety) {
     Env::Default()->SchedClosure([&client_cache, i, &counter]() {
       string target = strings::StrCat("/job:worker/replica:0/task:", i);
       core::RefCountPtr<EagerClient> eager_client;
-      Status s = client_cache->GetClient(target, &eager_client);
+      absl::Status s = client_cache->GetClient(target, &eager_client);
       // With 6 tasks added to the job, querying client for 0--5 should be OK,
       // and querying client for 6+ should give invalid argument error.
       error::Code expected_code = i <= 5 ? error::OK : error::INVALID_ARGUMENT;

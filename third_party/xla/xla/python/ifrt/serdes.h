@@ -20,17 +20,19 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/serdes.pb.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 
-// Base class for serializable IFRT types.
-class Serializable : public llvm::RTTIExtends<Serializable, llvm::RTTIRoot> {
- public:
+// Base class for serialization options to be passed to `Serialize`.
+struct SerializeOptions : llvm::RTTIExtends<SerializeOptions, llvm::RTTIRoot> {
   static char ID;  // NOLINT
 };
 
@@ -38,6 +40,17 @@ class Serializable : public llvm::RTTIExtends<Serializable, llvm::RTTIRoot> {
 struct DeserializeOptions
     : llvm::RTTIExtends<DeserializeOptions, llvm::RTTIRoot> {
   static char ID;  // NOLINT
+};
+
+// Base class for serializable IFRT types.
+class Serializable : public llvm::RTTIExtends<Serializable, llvm::RTTIRoot> {
+ public:
+  static char ID;  // NOLINT
+
+  // Expected `SerializeOptions` and `DeserializeOptions` types. A subclass of
+  // `Serializable` can customize them.
+  using SerializeOptions = ::xla::ifrt::SerializeOptions;
+  using DeserializeOptions = ::xla::ifrt::DeserializeOptions;
 };
 
 // Serializer and deserializer implementations for one `Serializable` type.
@@ -49,7 +62,9 @@ class SerDes : public llvm::RTTIExtends<SerDes, llvm::RTTIRoot> {
   // qualified type name of the class that implements `Serializable`.
   virtual absl::string_view type_name() const = 0;
 
-  virtual absl::StatusOr<std::string> Serialize(Serializable& serializable) = 0;
+  virtual absl::StatusOr<std::string> Serialize(
+      Serializable& serializable,
+      std::unique_ptr<SerializeOptions> options) = 0;
 
   virtual absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
       const std::string& serialized,
@@ -75,24 +90,46 @@ void RegisterSerDes(std::unique_ptr<SerDes> serdes) {
   RegisterSerDes(T::classID(), std::move(serdes));
 }
 
+namespace serdes_internal {
+
+// Internal implementation of Deserialize(). Performs deserialization with type
+// erased.
+absl::StatusOr<std::unique_ptr<Serializable>> DeserializeUnchecked(
+    const Serialized& serialized, std::unique_ptr<DeserializeOptions> options);
+
+}  // namespace serdes_internal
+
 // Serializes the given `Serializable` object. The returned proto message can be
 // deserialized by `Deserialize`.
 //
 // Returns an error if the `Serializable` type does not have a corresponding
 // `SerDes` registered or the `SerDes` returns an error.
-absl::StatusOr<Serialized> Serialize(Serializable& serializable);
+absl::StatusOr<Serialized> Serialize(Serializable& serializable,
+                                     std::unique_ptr<SerializeOptions> options);
 
-// Deserializes the given proto message produced by `Serialize()` back to a
-// `Serializable` object of the original type.
+// Deserializes the given proto message produced by `Serialize()` back to an
+// object of type `InterfaceType`, where `serialized.type_name()` is expected to
+// be the same type or a subclass of `InterfaceType`.
 //
 // `options` is passed as-is to `SerDes::Deserialize()`, so it can be nullptr as
 // long as the `SerDes` implementation can handle nullptr options.
 //
-// Returns an error if the `Serializable` type from which `serialized` was
-// produced does not have a corresponding `SerDes` registered or the `SerDes`
+// Returns an error if the type indicated by `serialized.type_name()` does not
+// have a corresponding `SerDes` registered or the if the registered `SerDes`
 // returns an error.
-absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
-    const Serialized& serialized, std::unique_ptr<DeserializeOptions> options);
+template <typename InterfaceType>
+absl::StatusOr<std::unique_ptr<InterfaceType>> Deserialize(
+    const Serialized& serialized,
+    std::unique_ptr<typename InterfaceType::DeserializeOptions> options) {
+  TF_ASSIGN_OR_RETURN(auto result, serdes_internal::DeserializeUnchecked(
+                                       serialized, std::move(options)));
+  if (!llvm::isa<InterfaceType>(result.get())) {
+    return absl::InternalError(
+        "Unexpected Serializable type after deserialization");
+  }
+  return std::unique_ptr<InterfaceType>(
+      static_cast<InterfaceType*>(result.release()));
+}
 
 }  // namespace ifrt
 }  // namespace xla

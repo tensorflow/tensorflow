@@ -12,12 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/kernels/data/experimental/distributed_save_op.h"
 
+#include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "xla/tsl/lib/io/compression.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
@@ -26,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tsl/lib/io/compression.h"
 
 namespace tensorflow {
 namespace data {
@@ -65,11 +67,19 @@ void DistributedSaveOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(ctx, !address.empty(),
               errors::InvalidArgument(kAddress, " must be nonempty"));
 
+  bool has_atomic_move = false;
+  OP_REQUIRES_OK(ctx, ctx->env()->HasAtomicMove(directory, &has_atomic_move));
+  OP_REQUIRES(ctx, has_atomic_move,
+              absl::FailedPreconditionError(absl::StrCat(
+                  "The file system for ", std::string(directory),
+                  " does not support atomic move (rename), which is required "
+                  "to write tf.data snapshots.")));
+
   SerializationContext::Params params(ctx);
   SerializationContext serialization_ctx(params);
   DatasetDef dataset_def;
-  Status s = AsGraphDef(dataset, std::move(serialization_ctx),
-                        dataset_def.mutable_graph());
+  absl::Status s = AsGraphDef(dataset, std::move(serialization_ctx),
+                              dataset_def.mutable_graph());
   if (!s.ok()) {
     OP_REQUIRES_OK(
         ctx,

@@ -18,18 +18,19 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
-#include "xla/status.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla::gpu {
 
@@ -61,11 +62,11 @@ namespace xla::gpu {
 // XLA:GPU has multiple strategies for executing this fusion on device:
 //
 // (1) cuBLAS library call: a lot of simple gemm operations are supported by
-//     cuBLAS out of the box. However some combinations of paramters casting and
-//     epilogue fusion are not supported, which means that XLA has to form
+//     cuBLAS out of the box. However some combinations of parameters casting
+//     and epilogue fusion are not supported, which means that XLA has to form
 //     smaller fusions or use code generation to compiled a device kernel.
 //
-// (2) Triton: XLA:GPU uses Triton to codegen gemm fusion into devie kernels
+// (2) Triton: XLA:GPU uses Triton to codegen gemm fusion into device kernels
 //     (PTX and CUBIN for NVIDIA gpus).
 //
 // (3) Custom kernel fusion is another mechanism to execute fusion on device,
@@ -127,7 +128,7 @@ class CustomKernelFusionRegistry {
                         std::unique_ptr<CustomKernelFusion> fusion);
 
   // Looks up custom kernel fusion by name. Return nullptr if it's not found.
-  CustomKernelFusion* Lookup(std::string_view name) const;
+  CustomKernelFusion* Lookup(absl::string_view name) const;
 
  private:
   mutable absl::Mutex mutex_;
@@ -143,14 +144,14 @@ class CustomKernelFusionRegistry {
 #define XLA_REGISTER_CUSTOM_FUSION_(NAME, FUSION, N) \
   XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)
 
-#define XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)                    \
-  ABSL_ATTRIBUTE_UNUSED static const bool                                \
-      xla_custom_fusion_##N##_registered_ = [] {                         \
-        absl::Status status =                                            \
-            ::xla::gpu::CustomKernelFusionRegistry::Default()->Register( \
-                NAME, std::make_unique<FUSION>());                       \
-        if (!status.ok()) LOG(ERROR) << status;                          \
-        return status.ok();                                              \
+#define XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)                      \
+  [[maybe_unused]] static const bool xla_custom_fusion_##N##_registered_ = \
+      [] {                                                                 \
+        absl::Status status =                                              \
+            ::xla::gpu::CustomKernelFusionRegistry::Default()->Register(   \
+                NAME, std::make_unique<FUSION>());                         \
+        if (!status.ok()) LOG(ERROR) << status;                            \
+        return status.ok();                                                \
       }()
 
 #endif  // XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_FUSION_H_

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 
-#include "xla/status.h"
+#include "absl/status/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/executable_run_options.h"
-#include "tsl/platform/dynamic_annotations.h"
+#include "xla/tsl/platform/dynamic_annotations.h"
 #include "tsl/platform/types.h"
 #ifdef XLA_CPU_USE_ACL
 #include "absl/base/call_once.h"
@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime_lightweight_check.h"
 #include "tsl/platform/logging.h"
 #define EIGEN_USE_THREADS
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace {
 int32_t ACLDepthwiseConvImpl(

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -20,14 +21,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
 #include "xla/shape_util.h"
-#include "xla/tests/filecheck.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 namespace {
+
 class CpuExternalConstantsTest : public CpuCodegenTest {
  public:
   void TestWithArray(int64_t rows, int64_t cols,
@@ -55,21 +58,12 @@ class CpuExternalConstantsTest : public CpuCodegenTest {
   }
 };
 
-TEST_F(CpuExternalConstantsTest, Basic) {
-  TestWithArray(/*rows=*/1024, /*cols=*/1024, R"(
-CHECK-NOT: @constant_global_0 = external unnamed_addr constant [1024 x [1024 x float]], align 16
-CHECK: @constant = private unnamed_addr constant [4194304 x i8] {{.*}}, align 16
+TEST_F(CpuExternalConstantsTest, DoNotExternalizeConstants) {
+  TestWithArray(/*rows=*/4, /*cols=*/4, R"(
+CHECK-NOT: external unnamed_addr constant [16 x float]
+CHECK: @[[CST:.+]] = private unnamed_addr constant [64 x i8] {{.*}}, align {{[0-9]+}}
 )");
 }
 
-TEST_F(CpuExternalConstantsTest, BasicNegative) {
-  // The constant array in this test case is small enough that there is no need
-  // to externalize it.
-  TestWithArray(/*rows=*/4, /*cols=*/4, R"(
-CHECK-NOT: @constant_global_0 = external unnamed_addr constant [16 x float]
-CHECK: @constant = private unnamed_addr constant [64 x i8] {{.*}}, align 16
-)");
-}
 }  // namespace
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu

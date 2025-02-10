@@ -75,7 +75,8 @@ bool RpcResponseCache::QueueRequest(int64_t request_id, int64_t step_id,
 }
 
 void RpcResponseCache::RequestFinished(int64_t request_id, const Tensor& tensor,
-                                       bool is_dead, const Status& status) {
+                                       bool is_dead,
+                                       const absl::Status& status) {
   ResponseCacheEntry entry_copy;
 
   {

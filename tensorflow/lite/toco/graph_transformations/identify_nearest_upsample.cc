@@ -17,8 +17,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -79,14 +80,13 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
 // It's possible the model uses mul-broadcast to implement nearest neighbor
 // upsample which may involve 5-d, 6-d tensors. We can actually change this
 // pattern to be pack-based which is easier for us to handle.
-::tensorflow::Status IdentifyNearestUpsample::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status IdentifyNearestUpsample::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   auto op_it = model->operators.begin() + op_index;
   auto* op = op_it->get();
   if (op->type != OperatorType::kMul) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // We only support one operand being constant.
@@ -96,12 +96,12 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
 
   Operator* next_op = GetOpWithOutput(*model, output);
   if (next_op == nullptr) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (IsConstantParameterArray(*model, lhs) ==
       IsConstantParameterArray(*model, rhs)) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   Array& const_array = IsConstantParameterArray(*model, lhs)
@@ -115,30 +115,30 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
   // Wait for shape propogation finished.
   if (!const_array.has_shape() || !nonconst_array.has_shape() ||
       !output_array.has_shape()) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // We need to make sure they have same dimension count & the const parameter
   // only contain ones.
   if (const_array.shape().dimensions_count() !=
       nonconst_array.shape().dimensions_count()) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (const_array.data_type == ArrayDataType::kFloat) {
     if (!HasSameValues<ArrayDataType::kFloat, float>(const_array, 1))
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
   } else if (const_array.data_type == ArrayDataType::kInt32) {
     if (!HasSameValues<ArrayDataType::kInt32, int>(const_array, 1))
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
   } else if (const_array.data_type == ArrayDataType::kInt8) {
     if (!HasSameValues<ArrayDataType::kInt8, int8_t>(const_array, 127))
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
   } else if (const_array.data_type == ArrayDataType::kUint8) {
     if (!HasSameValues<ArrayDataType::kUint8, uint8_t>(const_array, 255))
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
   } else {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // We're recognizing the following patterns:
@@ -177,7 +177,7 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
   }
 
   if (pack_axis.empty()) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<Operator*> to_be_inserted_ops;
@@ -276,7 +276,7 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
   model->operators.erase(FindOperator(model, *op));
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

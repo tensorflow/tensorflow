@@ -1,0 +1,24 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize \
+// RUN:   --inline="default-pipeline='cse'" | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=reduce:0 \
+// RUN:   --bijection_outputs=reduce
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+fusion {
+  param_0 = f32[8,2048] parameter(0)
+  param_1 = f32[] parameter(1)
+  reduce = f32[8] reduce(param_0, param_1), dimensions={1}, to_apply=add
+  ROOT log = f32[8] log(reduce)
+}
+
+// CHECK:      shuffle_reduce
+// CHECK:      allocate_shared
+// CHECK:      sync_threads
+// CHECK:      shuffle_reduce
+// CHECK-NEXT: %[[OUT:.*]] = math.log
+// CHECK:      predicated_insert %[[OUT]]

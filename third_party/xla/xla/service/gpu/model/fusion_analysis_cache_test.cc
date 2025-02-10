@@ -15,12 +15,11 @@ limitations under the License.
 
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -56,18 +55,15 @@ TEST_F(FusionAnalysisCacheTest, CachesAndInvalidates) {
   auto* negate = computation->GetInstructionWithName("n0");
   auto* fusion = module->entry_computation()->root_instruction();
 
-  EXPECT_THAT(cache_.Get(*fusion).fusion_roots(),
-              ::testing::ElementsAre(negate));
+  EXPECT_EQ(&cache_.Get(*fusion).fusion_root(0).instruction(), negate);
 
   computation->set_root_instruction(broadcast);
 
-  EXPECT_THAT(cache_.Get(*fusion).fusion_roots(),
-              ::testing::ElementsAre(negate))
+  EXPECT_EQ(&cache_.Get(*fusion).fusion_root(0).instruction(), negate)
       << "Analysis should be cached.";
 
   cache_.Invalidate(*fusion);
-  EXPECT_THAT(cache_.Get(*fusion).fusion_roots(),
-              ::testing::ElementsAre(broadcast))
+  EXPECT_EQ(&cache_.Get(*fusion).fusion_root(0).instruction(), broadcast)
       << "Analysis should have been recomputed";
 }
 

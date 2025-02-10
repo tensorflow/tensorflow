@@ -19,7 +19,6 @@
 
 #include <cstdint>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
@@ -33,26 +32,22 @@ class ClientHostBufferStore {
  public:
   virtual ~ClientHostBufferStore() = default;
 
-  virtual uint64_t NextHandle() = 0;
-
   // Stores the data associated with the given handle. Returns an error if the
   // handle already exists.
-  virtual Future<absl::Status> Store(uint64_t handle,
-                                     absl::string_view data) = 0;
+  virtual Future<> Store(uint64_t handle, absl::string_view data) = 0;
 
   // Stores the data associated with the given handle. Returns an error if the
   // handle already exists.
   // TODO(b/315023499) Find a way to increase the chunk size
-  virtual Future<absl::Status> Store(uint64_t handle,
-                                     const absl::Cord& data) = 0;
+  virtual Future<> Store(uint64_t handle, const absl::Cord& data) = 0;
 
   // Retrieves the data associated with the handle. Returns an error if the
   // handle does not exist.
-  virtual Future<absl::StatusOr<absl::Cord>> Lookup(uint64_t handle) = 0;
+  virtual Future<absl::Cord> Lookup(uint64_t handle) = 0;
 
   // Deletes the host buffer associated with the handle. Returns an error if the
   // handle does not exist.
-  virtual Future<absl::Status> Delete(uint64_t handle) = 0;
+  virtual Future<> Delete(uint64_t handle) = 0;
 };
 
 }  // namespace proxy

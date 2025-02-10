@@ -67,7 +67,7 @@ void TPUReshardVariablesOpKernel::ComputeAsync(OpKernelContext* context,
   done();
 }
 
-Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
+absl::Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
   VLOG(1) << "Cloud TPU: TPUReshardVariablesOpKernel::DoWork";
   TF_RET_CHECK(context->input_dtype(num_vars_) == DT_STRING);
   const Tensor* new_format_key;
@@ -124,7 +124,7 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
   return absl::OkStatus();
 }
 
-Status TPUReshardVariablesOpKernel::DoTpuExecute(
+absl::Status TPUReshardVariablesOpKernel::DoTpuExecute(
     OpKernelContext* context, const Tensor& format_key,
     tpu::CompilationCacheFetchTarget fetch_target) {
   const XlaDevice::Metadata* metadata;
@@ -136,14 +136,15 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<tpu::TpuNodeContext> node_interfaces,
                       tpu::TpuNodeContext::Create(device_ordinal));
 
-  profiler::TraceMe trace_me(
+  tsl::profiler::TraceMe trace_me(
       [device_ordinal] {
-        return profiler::TraceMeEncode("TPUReshardVariablesOpKernel",
-                                       {{"device_ordinal", device_ordinal}});
+        return tsl::profiler::TraceMeEncode(
+            "TPUReshardVariablesOpKernel",
+            {{"device_ordinal", device_ordinal}});
       },
       /*level=*/2);
-  profiler::TraceMe trace_me_init("TPUReshardVariablesOpKernel::Init",
-                                  /*level=*/2);
+  tsl::profiler::TraceMe trace_me_init("TPUReshardVariablesOpKernel::Init",
+                                       /*level=*/2);
 
   string rendezvous_key_base;
   std::unique_ptr<tpu::CompilationCacheEntryRef> entry_ref;
@@ -215,9 +216,8 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
   TF_RET_CHECK(!executable->has_session_module())
       << "session module not supported in sharding/unsharding program.";
 
-  auto definition_event = std::make_shared<se::Event>(stream->parent());
-  TF_RET_CHECK(definition_event->Init())
-      << "TPU definition event initialization failed";
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<se::Event> definition_event,
+                      stream->parent()->CreateEvent());
 
   trace_me_init.Stop();
 

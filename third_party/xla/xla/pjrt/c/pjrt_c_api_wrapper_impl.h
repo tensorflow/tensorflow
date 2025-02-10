@@ -25,10 +25,14 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -37,11 +41,9 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/shape.h"
-#include "xla/status.h"
-#include "tsl/platform/casts.h"
 
 struct PJRT_Error {
-  xla::Status status;
+  absl::Status status;
 };
 
 struct PJRT_TopologyDescription {
@@ -85,6 +87,18 @@ struct PJRT_Client {
   explicit PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client);
 };
 
+struct PJRT_MemoryDescription {
+  xla::PjRtMemorySpaceDescription memory_space_description;
+};
+
+// PJRT_AsyncHostToDeviceTransferManager is owned by its corresponding
+// PJRT_Client.
+struct PJRT_AsyncHostToDeviceTransferManager {
+  std::unique_ptr<xla::PjRtClient::AsyncHostToDeviceTransferManager>
+      transfer_manager;
+  PJRT_Client* client;
+};
+
 // PJRT_DeviceDescriptions are owned by their corresponding PJRT_Device.
 struct PJRT_DeviceDescription {
   // The xla::PjRtDeviceDescription* is owned transitively by the
@@ -108,6 +122,10 @@ struct PJRT_Memory {
   xla::PjRtMemorySpace* memory_space;
   std::vector<PJRT_Device*> devices;
   PJRT_Client* client;
+};
+
+struct PJRT_ExecuteContext {
+  std::shared_ptr<xla::ExecuteContext> execute_context;
 };
 
 struct PJRT_Executable {
@@ -177,12 +195,7 @@ struct PJRT_Buffer {
 };
 
 struct PJRT_Event {
-  xla::PjRtFuture<xla::Status> future;
-  // Set and stored upon future.Await(), as PjRtFuture only allows its result to
-  // be queried through Await() and Await() can only safely be called once. This
-  // variable allows C API users to check for error status any time after
-  // Await() has been called.
-  std::optional<xla::Status> status;
+  xla::PjRtFuture<> future;
 };
 
 struct PJRT_SerializedExecutable {
@@ -204,6 +217,14 @@ struct PJRT_CopyToDeviceStream {
   std::unique_ptr<xla::CopyToDeviceStream> stream;
 };
 
+struct PJRT_Layouts_MemoryLayout {
+  std::shared_ptr<const xla::PjRtLayout> layout;
+};
+
+struct PJRT_Layouts_SerializedLayout {
+  std::string serialized;
+};
+
 namespace pjrt {
 // C API definitions
 
@@ -211,7 +232,8 @@ void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
 void PJRT_Error_Message(PJRT_Error_Message_Args* args);
 PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
 
-PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args);
+PJRT_Error* PJRT_Plugin_Attributes_Empty(PJRT_Plugin_Attributes_Args* args);
+PJRT_Error* PJRT_Plugin_Attributes_Xla(PJRT_Plugin_Attributes_Args* args);
 
 PJRT_Error* PJRT_Event_Destroy(PJRT_Event_Destroy_Args* args);
 PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args);
@@ -240,7 +262,26 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
 PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
     PJRT_Client_CreateViewOfDeviceBuffer_Args* args);
-
+PJRT_Error* PJRT_Client_CreateBuffersForAsyncHostToDevice(
+    PJRT_Client_CreateBuffersForAsyncHostToDevice_Args* args);
+PJRT_Error* PJRT_Client_DmaMap(PJRT_Client_DmaMap_Args* args);
+PJRT_Error* PJRT_Client_DmaUnmap(PJRT_Client_DmaUnmap_Args* args);
+PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_Destroy(
+    PJRT_AsyncHostToDeviceTransferManager_Destroy_Args* args);
+PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferData(
+    PJRT_AsyncHostToDeviceTransferManager_TransferData_Args* args);
+PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer(
+    PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer_Args* args);
+PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_Device(
+    PJRT_AsyncHostToDeviceTransferManager_Device_Args* args);
+PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_BufferCount(
+    PJRT_AsyncHostToDeviceTransferManager_BufferCount_Args* args);
+PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_BufferSize(
+    PJRT_AsyncHostToDeviceTransferManager_BufferSize_Args* args);
+PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_SetBufferError(
+    PJRT_AsyncHostToDeviceTransferManager_SetBufferError_Args* args);
+PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_AddMetadata(
+    PJRT_AsyncHostToDeviceTransferManager_AddMetadata_Args* args);
 PJRT_Error* PJRT_DeviceDescription_Id(PJRT_DeviceDescription_Id_Args* args);
 PJRT_Error* PJRT_DeviceDescription_ProcessIndex(
     PJRT_DeviceDescription_ProcessIndex_Args* args);
@@ -262,6 +303,7 @@ PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args);
 
 PJRT_Error* PJRT_Memory_Id(PJRT_Memory_Id_Args* args);
 PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args);
+PJRT_Error* PJRT_Memory_Kind_Id(PJRT_Memory_Kind_Id_Args* args);
 PJRT_Error* PJRT_Memory_DebugString(PJRT_Memory_DebugString_Args* args);
 PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args);
 PJRT_Error* PJRT_Memory_AddressableByDevices(
@@ -323,6 +365,7 @@ PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args);
 PJRT_Error* PJRT_Buffer_Memory(PJRT_Buffer_Memory_Args* args);
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
+PJRT_Error* PJRT_Buffer_CopyRawToHost(PJRT_Buffer_CopyRawToHost_Args* args);
 PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args);
 PJRT_Error* PJRT_Buffer_CopyToMemory(PJRT_Buffer_CopyToMemory_Args* args);
 PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args);
@@ -362,11 +405,20 @@ PJRT_Error* PJRT_TopologyDescription_Attributes(
 
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
+PJRT_Error* PJRT_Layouts_MemoryLayout_Destroy(
+    PJRT_Layouts_MemoryLayout_Destroy_Args* args);
+PJRT_Error* PJRT_Layouts_MemoryLayout_Serialize(
+    PJRT_Layouts_MemoryLayout_Serialize_Args* args);
+PJRT_Error* PJRT_Layouts_PJRT_Client_GetDefaultLayout(
+    PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args* args);
+PJRT_Error* PJRT_Layouts_PJRT_Buffer_MemoryLayout(
+    PJRT_Layouts_PJRT_Buffer_MemoryLayout_Args* args);
+
 // Helper macros and functions
 
 #define PJRT_RETURN_IF_ERROR(expr)                                \
   do {                                                            \
-    xla::Status _status = (expr);                                 \
+    absl::Status _status = (expr);                                \
     if (!_status.ok()) {                                          \
       PJRT_Error* _c_status = new PJRT_Error{std::move(_status)}; \
       return _c_status;                                           \
@@ -394,6 +446,13 @@ PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 // Does not check the program format itself.
 std::string ProgramFormatErrorMsg(absl::string_view program_format);
 
+// Creates a C PJRT execute context from a C++ PJRT execute context.
+//
+// The returned execute context is owned by the caller and should be destroyed
+// with PJRT_ExecuteContext_Destroy.
+PJRT_ExecuteContext* CreateWrapperExecuteContext(
+    std::unique_ptr<xla::ExecuteContext> cpp_execute_context);
+
 // Creates a C PJRT topology from a C++ PJRT topology.
 //
 // The returned topology is owned by the caller and should be destroyed with
@@ -416,9 +475,16 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
 // should be destroyed with PJRT_Client_Destroy.
 PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client);
 
+// Searches `client` for a PJRT_Memory* that wraps a provided
+// `xla::PjRtMemorySpace *` (`cpp_memory`). If a match is found, that
+// PJRT_Memory* is returned. Otherwise, returns nullptr.
+PJRT_Memory* PJRT_Client_FindMemoryWrapper(xla::PjRtMemorySpace* cpp_memory,
+                                           PJRT_Client* client);
+
 // Helper functions for converting C key-value store callbacks to C++ callbacks.
 std::shared_ptr<xla::KeyValueStoreInterface> ToCppKeyValueStore(
     PJRT_KeyValueGetCallback c_get_callback, void* get_user_arg,
+    PJRT_KeyValueTryGetCallback c_try_get_callback, void* try_get_user_arg,
     PJRT_KeyValuePutCallback c_put_callback, void* put_user_arg);
 
 // A method that does not nothing other than returning a nullptr. Can be used as
@@ -426,12 +492,21 @@ std::shared_ptr<xla::KeyValueStoreInterface> ToCppKeyValueStore(
 // specific initialization.
 PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args);
 
+PJRT_Layouts_Extension CreateLayoutsExtension(
+    PJRT_Extension_Base* next = nullptr);
+
+PJRT_MemoryDescriptions_Extension CreateMemoryDescriptionsExtension(
+    PJRT_Extension_Base* next = nullptr);
+
 // Creates a PJRT_Api with create_fn from the input and other functions in
 // pjrt_c_api_wrapper_impl.
 PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
+                       PJRT_ExecuteContext_Create* execute_context_create_fn,
                        PJRT_TopologyDescription_Create* topology_create_fn,
                        PJRT_Plugin_Initialize* plugin_initialize_fn,
-                       PJRT_Extension_Base* extension_start = nullptr);
+                       PJRT_Extension_Base* extension_start = nullptr,
+                       PJRT_Plugin_Attributes* plugin_attributes_fn =
+                           pjrt::PJRT_Plugin_Attributes_Empty);
 
 }  // namespace pjrt
 

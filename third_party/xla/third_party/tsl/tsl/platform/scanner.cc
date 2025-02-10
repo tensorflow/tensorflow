@@ -41,7 +41,8 @@ void Scanner::ScanUntilImpl(char end_ch, bool escaped) {
   }
 }
 
-bool Scanner::GetResult(StringPiece* remaining, StringPiece* capture) {
+bool Scanner::GetResult(absl::string_view* remaining,
+                        absl::string_view* capture) {
   if (error_) {
     return false;
   }
@@ -50,7 +51,7 @@ bool Scanner::GetResult(StringPiece* remaining, StringPiece* capture) {
   }
   if (capture != nullptr) {
     const char* end = capture_end_ == nullptr ? cur_.data() : capture_end_;
-    *capture = StringPiece(capture_start_, end - capture_start_);
+    *capture = absl::string_view(capture_start_, end - capture_start_);
   }
   return true;
 }

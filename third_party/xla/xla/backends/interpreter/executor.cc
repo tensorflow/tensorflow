@@ -15,19 +15,26 @@ limitations under the License.
 
 #include "xla/backends/interpreter/executor.h"
 
+#include <cstdint>
 #include <cstring>
+#include <ctime>
+#include <memory>
 #include <utility>
 
-#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "xla/status_macros.h"
+#include "absl/status/status.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/host/host_stream.h"
+#include "xla/stream_executor/stream.h"
 
 namespace stream_executor {
 namespace interpreter {
 
 host::HostStream *AsExecutorStream(Stream *stream) {
   DCHECK(stream != nullptr);
-  return dynamic_cast<host::HostStream *>(stream->implementation());
+  return dynamic_cast<host::HostStream *>(stream);
 }
 
 DeviceMemoryBase XlaInterpreterExecutor::Allocate(uint64_t size,
@@ -37,27 +44,6 @@ DeviceMemoryBase XlaInterpreterExecutor::Allocate(uint64_t size,
 
 void XlaInterpreterExecutor::Deallocate(DeviceMemoryBase *mem) {
   delete[] static_cast<char *>(mem->opaque());
-}
-
-absl::Status XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
-                                            const DeviceMemoryBase &dev_src,
-                                            uint64_t size) {
-  AsExecutorStream(stream)->EnqueueTask([this, host_dst, dev_src, size]() {
-    // Ignore errors.
-    absl::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
-  });
-  return AsExecutorStream(stream)->BlockUntilDone();
-}
-
-absl::Status XlaInterpreterExecutor::Memcpy(Stream *stream,
-                                            DeviceMemoryBase *dev_dst,
-                                            const void *host_src,
-                                            uint64_t size) {
-  AsExecutorStream(stream)->EnqueueTask([this, dev_dst, host_src, size]() {
-    // Ignore errors.
-    absl::Status ok = SynchronousMemcpy(dev_dst, host_src, size);
-  });
-  return AsExecutorStream(stream)->BlockUntilDone();
 }
 
 absl::Status XlaInterpreterExecutor::SynchronousMemcpy(
@@ -72,42 +58,17 @@ absl::Status XlaInterpreterExecutor::SynchronousMemcpy(
   return absl::OkStatus();
 }
 
-bool XlaInterpreterExecutor::HostCallback(
-    Stream *stream, absl::AnyInvocable<absl::Status() &&> callback) {
-  AsExecutorStream(stream)->EnqueueTaskWithStatus(std::move(callback));
-  return true;
-}
-
-bool XlaInterpreterExecutor::CreateStreamDependency(Stream *dependent,
-                                                    Stream *other) {
-  AsExecutorStream(dependent)->EnqueueTaskWithStatus(
-      [other]() { return other->BlockHostUntilDone(); });
-  absl::Status status = AsExecutorStream(dependent)->BlockUntilDone();
-  if (status.ok()) {
-    return true;
-  }
-
-  // TODO(b/199316985): Return 'tsl::Status' instead of 'bool', so we don't need
-  // to throw away error information here.
-  LOG(WARNING) << "CreateStreamDependency: error on stream: " << status;
-  return false;
-}
-
-absl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
-  return AsExecutorStream(stream)->BlockUntilDone();
-}
-
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 XlaInterpreterExecutor::CreateDeviceDescription(int device_ordinal) {
-  internal::DeviceDescriptionBuilder builder;
+  DeviceDescription desc;
 
-  builder.set_device_address_bits(64);
+  desc.set_device_address_bits(64);
 
-  builder.set_name("Interpreter");
-  builder.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
-  builder.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
+  desc.set_name("Interpreter");
+  desc.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
+  desc.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
 
-  return builder.Build();
+  return std::make_unique<DeviceDescription>(std::move(desc));
 }
 
 }  // namespace interpreter

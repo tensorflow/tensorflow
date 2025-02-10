@@ -15,22 +15,23 @@ limitations under the License.
 
 #include "xla/service/computation_placer.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/literal.h"
 #include "xla/service/global_device_id.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -49,9 +50,8 @@ DeviceAssignment::LogicalIdForDevice(GlobalDeviceId device_id) const {
     for (int c = 0; c < computation_count(); ++c) {
       if ((*this)(r, c) == device_id.value()) {
         if (logical_id.has_value()) {
-          return Internal(
-              "Device %d appears twice in DeviceAssignment: %s",
-              device_id.value(), ToString());
+          return Internal("Device %d appears twice in DeviceAssignment: %s",
+                          device_id.value(), ToString());
         }
         logical_id.emplace(DeviceAssignment::LogicalID{r, c});
       }
@@ -61,7 +61,7 @@ DeviceAssignment::LogicalIdForDevice(GlobalDeviceId device_id) const {
     return *logical_id;
   } else {
     return Internal("Device %d doesn't appear in DeviceAssignment: %s",
-                         device_id.value(), ToString());
+                    device_id.value(), ToString());
   }
 }
 
@@ -70,6 +70,13 @@ absl::StatusOr<int> DeviceAssignment::ReplicaIdForDevice(
   TF_ASSIGN_OR_RETURN(const LogicalID logical_id,
                       LogicalIdForDevice(device_id));
   return logical_id.replica_id;
+}
+
+absl::StatusOr<int> DeviceAssignment::PartitionIdForDevice(
+    GlobalDeviceId device_id) const {
+  TF_ASSIGN_OR_RETURN(const LogicalID logical_id,
+                      LogicalIdForDevice(device_id));
+  return logical_id.computation_id;
 }
 
 absl::flat_hash_map<GlobalDeviceId, DeviceAssignment::LogicalID>
@@ -85,7 +92,7 @@ DeviceAssignment::GetDeviceToLogicalIdMap() const {
   return device_to_logical_id;
 }
 
-Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
+void DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
   proto->set_replica_count(replica_count());
   proto->set_computation_count(computation_count());
   for (int computation = 0; computation < computation_count(); ++computation) {
@@ -95,7 +102,6 @@ Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
       computation_device->add_replica_device_ids((*this)(replica, computation));
     }
   }
-  return OkStatus();
 }
 
 /* static */ absl::StatusOr<std::unique_ptr<DeviceAssignment>>
@@ -112,8 +118,9 @@ DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
   for (int computation = 0; computation < proto.computation_count();
        ++computation) {
     const auto& computation_device = proto.computation_devices(computation);
-    TF_RET_CHECK(computation_device.replica_device_ids_size() ==
-                 proto.replica_count());
+    int64_t replica_count = proto.replica_count();
+    int64_t ids = computation_device.replica_device_ids_size();
+    TF_RET_CHECK(ids == replica_count);
     for (int replica = 0; replica < proto.replica_count(); ++replica) {
       (*assignment)(replica, computation) =
           computation_device.replica_device_ids(replica);
@@ -216,6 +223,8 @@ static bool InitModule() {
       stream_executor::cuda::kCudaPlatformId, &CreateComputationPlacer);
   xla::ComputationPlacer::RegisterComputationPlacer(
       stream_executor::rocm::kROCmPlatformId, &CreateComputationPlacer);
+  xla::ComputationPlacer::RegisterComputationPlacer(
+      stream_executor::sycl::kSyclPlatformId, &CreateComputationPlacer);
   return true;
 }
 static bool module_initialized = InitModule();

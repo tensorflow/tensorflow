@@ -20,14 +20,16 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_HIPSPARSE_WRAPPER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_HIPSPARSE_WRAPPER_H_
 
+#include "rocm/rocm_config.h"
+
 #if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/hipsparse/hipsparse.h"
 #else
 #include "rocm/include/hipsparse.h"
 #endif
-#include "xla/stream_executor/platform/dso_loader.h"
-#include "xla/stream_executor/platform/port.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "tsl/platform/dso_loader.h"
+#include "tsl/platform/platform.h"
 
 namespace stream_executor {
 namespace wrap {
@@ -38,40 +40,38 @@ namespace wrap {
   struct WrapperShim__##__name {                    \
     template <typename... Args>                     \
     hipsparseStatus_t operator()(Args... args) {    \
-      hipSparseStatus_t retval = ::__name(args...); \
+      hipsparseStatus_t retval = ::__name(args...); \
       return retval;                                \
     }                                               \
   } __name;
 
 #else
 
-#define HIPSPARSE_API_WRAPPER(__name)                                          \
-  struct DynLoadShim__##__name {                                               \
-    static const char* kName;                                                  \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;               \
-    static void* GetDsoHandle() {                                              \
-      auto s =                                                                 \
-          stream_executor::internal::CachedDsoLoader::GetHipsparseDsoHandle(); \
-      return s.value();                                                        \
-    }                                                                          \
-    static FuncPtrT LoadOrDie() {                                              \
-      void* f;                                                                 \
-      auto s = tsl::Env::Default()                                             \
-          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);                  \
-      CHECK(s.ok()) << "could not find " << kName                              \
-                    << " in miopen DSO; dlerror: " << s.message();             \
-      return reinterpret_cast<FuncPtrT>(f);                                    \
-    }                                                                          \
-    static FuncPtrT DynLoad() {                                                \
-      static FuncPtrT f = LoadOrDie();                                         \
-      return f;                                                                \
-    }                                                                          \
-    template <typename... Args>                                                \
-    hipsparseStatus_t operator()(Args... args) {                               \
-      return DynLoad()(args...);                                               \
-    }                                                                          \
-  } __name;                                                                    \
-  const char* DynLoadShim__##__name::kName = #__name;
+#define HIPSPARSE_API_WRAPPER(__name)                                    \
+  static struct DynLoadShim__##__name {                                  \
+    constexpr static const char* kName = #__name;                        \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
+    static void* GetDsoHandle() {                                        \
+      auto s = tsl::internal::CachedDsoLoader::GetHipsparseDsoHandle();  \
+      return s.value();                                                  \
+    }                                                                    \
+    static FuncPtrT LoadOrDie() {                                        \
+      void* f;                                                           \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                         kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                        \
+                    << " in miopen DSO; dlerror: " << s.message();       \
+      return reinterpret_cast<FuncPtrT>(f);                              \
+    }                                                                    \
+    static FuncPtrT DynLoad() {                                          \
+      static FuncPtrT f = LoadOrDie();                                   \
+      return f;                                                          \
+    }                                                                    \
+    template <typename... Args>                                          \
+    hipsparseStatus_t operator()(Args... args) {                         \
+      return DynLoad()(args...);                                         \
+    }                                                                    \
+  } __name;
 
 #endif
 
@@ -128,7 +128,7 @@ namespace wrap {
   __macro(hipsparseDcsru2csr_bufferSizeExt)     \
   __macro(hipsparseDcsru2csr)                   \
   __macro(hipsparseScsru2csr_bufferSizeExt)     \
-  __macro(hipsparseScsru2csr)                   \  
+  __macro(hipsparseScsru2csr)                   \
   __macro(hipsparseSpMM_bufferSize)             \
   __macro(hipsparseSpMM)                        \
   __macro(hipsparseZcsru2csr_bufferSizeExt)     \

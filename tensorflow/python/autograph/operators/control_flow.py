@@ -856,7 +856,7 @@ def _py_while_stmt(test, body, get_state, set_state, opts):
           1,
           'Caught error while evaluating while loop condition',
           exc_info=True)
-      # TODO(mdan): distinguish beteen these two cases.
+      # TODO(mdan): distinguish between these two cases.
       raise NotImplementedError(
           'The condition of while loop started as non-Tensor, then changed to'
           ' Tensor. This may happen either because variables changed type, or'
@@ -903,7 +903,7 @@ def _placeholder_value(like, shape_invariant, original=None):
       when a placeholder is needed.
 
   Returns:
-    Either a zero value of structure, shape and dtype mathing 'like', or
+    Either a zero value of structure, shape and dtype matching 'like', or
     'original', if no such zero value could be created.
   """
   if like is None:

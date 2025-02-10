@@ -15,9 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/tfprof_options.h"
 
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/tfprof_options.pb.h"
 
 namespace tensorflow {
@@ -33,8 +42,8 @@ string KeyValueToStr(const std::map<string, string>& kv_map) {
 }
 }  // namespace
 
-tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
-                               std::map<string, string>* output_options) {
+absl::Status ParseOutput(const string& output_opt, string* output_type,
+                         std::map<string, string>* output_options) {
   // The default is to use stdout.
   if (output_opt.empty()) {
     *output_type = kOutput[1];
@@ -47,7 +56,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
   std::vector<string> kv_split;
   if (opt_split == output_opt.npos) {
     if (output_types.find(output_opt) == output_types.end()) {
-      return tensorflow::Status(
+      return absl::Status(
           absl::StatusCode::kInvalidArgument,
           absl::StrFormat("E.g. Unknown output type: %s, Valid types: %s\n",
                           output_opt, absl::StrJoin(output_types, ",")));
@@ -56,7 +65,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
   } else {
     *output_type = output_opt.substr(0, opt_split);
     if (output_types.find(*output_type) == output_types.end()) {
-      return tensorflow::Status(
+      return absl::Status(
           absl::StatusCode::kInvalidArgument,
           absl::StrFormat("E.g. Unknown output type: %s, Valid types: %s\n",
                           *output_type, absl::StrJoin(output_types, ",")));
@@ -94,12 +103,12 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
     const std::vector<string> kv =
         absl::StrSplit(kv_str, '=', absl::SkipEmpty());
     if (kv.size() < 2) {
-      return tensorflow::Status(
+      return absl::Status(
           absl::StatusCode::kInvalidArgument,
           "Visualize format: -output timeline:key=value,key=value,...");
     }
     if (valid_options.find(kv[0]) == valid_options.end()) {
-      return tensorflow::Status(
+      return absl::Status(
           absl::StatusCode::kInvalidArgument,
           absl::StrFormat("Unrecognized options %s for output_type: %s\n",
                           kv[0], *output_type));
@@ -110,7 +119,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
 
   for (const string& opt : required_options) {
     if (output_options->find(opt) == output_options->end()) {
-      return tensorflow::Status(
+      return absl::Status(
           absl::StatusCode::kInvalidArgument,
           absl::StrFormat("Missing required output_options for %s\n"
                           "E.g. -output %s:%s=...\n",
@@ -120,11 +129,11 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
   return absl::OkStatus();
 }
 
-tensorflow::Status Options::FromProtoStr(const string& opts_proto_str,
-                                         Options* opts) {
+absl::Status Options::FromProtoStr(const string& opts_proto_str,
+                                   Options* opts) {
   OptionsProto opts_pb;
   if (!opts_pb.ParseFromString(opts_proto_str)) {
-    return tensorflow::Status(
+    return absl::Status(
         absl::StatusCode::kInternal,
         absl::StrCat("Failed to parse option string from Python API: ",
                      opts_proto_str));
@@ -132,8 +141,7 @@ tensorflow::Status Options::FromProtoStr(const string& opts_proto_str,
 
   string output_type;
   std::map<string, string> output_options;
-  tensorflow::Status s =
-      ParseOutput(opts_pb.output(), &output_type, &output_options);
+  absl::Status s = ParseOutput(opts_pb.output(), &output_type, &output_options);
   if (!s.ok()) return s;
 
   if (!opts_pb.dump_to_file().empty()) {

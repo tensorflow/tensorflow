@@ -20,29 +20,43 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_set.h"
-#include "llvm/ADT/STLExtras.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/raw_os_ostream.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
+#include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 
@@ -67,6 +81,14 @@ auto* mlir_function_pass_graph_conversion_count = monitoring::Counter<1>::New(
     "/tensorflow/core/mlir_function_pass_graph_conversion_count",
     /* metric description */
     "Track success/failure of Graph to MLIR conversions in function "
+    "optimization pass",
+    /* metric field */ "status");
+
+auto* mlir_v1_compat_graph_conversion_count = monitoring::Counter<1>::New(
+    /* metric name */
+    "/tensorflow/core/mlir_v1_compat_graph_conversion_count",
+    /* metric description */
+    "Track success/failure of Graph to MLIR conversions in MLIR V1 compat "
     "optimization pass",
     /* metric field */ "status");
 
@@ -141,7 +163,7 @@ static void RegisterDialects(mlir::DialectRegistry& registry) {
   // clang-format on
 }
 
-Status MlirFunctionOptimizationPass::Run(
+absl::Status MlirFunctionOptimizationPass::Run(
     const std::string& function_name, const DeviceSet& device_set,
     const ConfigProto& config_proto,
     const FunctionOptimizationPass::FunctionOptions& function_options,
@@ -224,8 +246,10 @@ Status MlirFunctionOptimizationPass::Run(
       tensorflow::metrics::GetGraphOptimizationCounter(),
       {kTfMlirCategory, "convert_graph_to_mlir"});
 
-  auto module_ref_status = ConvertGraphToMlir(**graph, debug_info, *flib_def,
-                                              import_config, &context);
+  auto module_ref_status = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+      **graph, debug_info, *flib_def, import_config, &context,
+      /*tf_name_to_mlir_name*/ nullptr, config_proto,
+      tensorflow::TF2XLABridgeVersion::kNominal);
   mlir_function_pass_graph_conversion_count
       ->GetCell(absl::StatusCodeToString(module_ref_status.status().code()))
       ->IncrementBy(1);
@@ -263,7 +287,7 @@ Status MlirFunctionOptimizationPass::Run(
           *module_ref, llvm::StringRef(), nullptr);
     }
 
-    Status pass_status = absl::OkStatus();
+    absl::Status pass_status = absl::OkStatus();
     auto pass_state = per_pass_state[per_pass_state_index++];
     if (pass_state == MlirOptimizationPassState::Enabled) {
       VLOG(2) << "Run MLIR graph optimization pass: " << StringRefToView(name);
@@ -347,8 +371,8 @@ Status MlirFunctionOptimizationPass::Run(
   timings.Reset({kTfMlirCategory, "convert_mlir_to_graph"});
   // Some or all passes are enabled. Convert MLIR module and return back
   // resulted graph.
-  Status status = ConvertMlirToGraph(*module_ref, export_config, graph,
-                                     flib_def, &control_ret_nodes);
+  absl::Status status = tensorflow::tf2xla::v2::ConvertTfExecutorToGraph(
+      *module_ref, export_config, graph, flib_def, &control_ret_nodes);
   if (!status.ok()) {
     errors::AppendToMessage(&status,
                             "Error converting MLIR module back to graph");
@@ -373,8 +397,21 @@ MlirV1CompatOptimizationPassRegistry::Global() {
   return *global;
 }
 
-Status MlirV1CompatGraphOptimizationPass::Run(
+absl::Status MlirV1CompatGraphOptimizationPass::Run(
     const GraphOptimizationPassOptions& options) {
+  // Skip MLIR V1 optimization pass if it is not enabled in compiling
+  // SavedModel.
+  if (!options.enable_tf2xla_mlir_bridge) {
+    LOG(INFO)
+        << "MLIR V1 optimization pass is not enabled in compiling SavedModel.";
+    metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+        /*bridge_type*/ mlir::TF::kMlirPh1BridgeCounterReplicated,
+        /*bridge_version*/ mlir::TF::kMlirPh1BridgeCounterV1,
+        /*device_type*/ mlir::TF::kMlirPh1BridgeCounterTpu,
+        /*fallback_enabled*/ true,
+        /*result*/ "disabled_by_user");
+    return absl::OkStatus();
+  }
   // Skip function graphs as MlirOptimizationPassRegistry_ will be used instead.
   // Skip if no underlying pass was registered.
   if (options.is_function_graph || !registry_->pass()) return absl::OkStatus();
@@ -401,8 +438,13 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   // session runtime.
   import_config.restrict_functionalization_to_compiled_nodes = true;
 
-  auto module_ref_status = ConvertGraphToMlir(
-      **options.graph, debug_info, *options.flib_def, import_config, &context);
+  auto module_ref_status = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+      **options.graph, debug_info, *options.flib_def, import_config, &context,
+      /*tf_name_to_mlir_name*/ nullptr, options.session_options->config,
+      tensorflow::TF2XLABridgeVersion::kV1Compat);
+  mlir_v1_compat_graph_conversion_count
+      ->GetCell(absl::StatusCodeToString(module_ref_status.status().code()))
+      ->IncrementBy(1);
   if (!module_ref_status.ok()) {
     if (pass_state == MlirOptimizationPassState::Enabled) {
       return module_ref_status.status();
@@ -425,7 +467,7 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   if (VLOG_IS_ON(1)) {
     DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
   }
-  Status pass_status = pass->Run(options, *module_ref);
+  absl::Status pass_status = pass->Run(options, *module_ref);
 
   bool is_module_updated = !mlir::OperationEquivalence::isEquivalentTo(
       module_ref_clone, *module_ref,
@@ -462,9 +504,11 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   }
 
   GraphExportConfig export_config;
+  absl::flat_hash_set<Node*> control_ret_nodes;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      ConvertMlirToGraph(*module_ref, export_config, options.graph,
-                         options.flib_def),
+      tensorflow::tf2xla::v2::ConvertTfExecutorToGraph(
+          *module_ref, export_config, options.graph, options.flib_def,
+          &control_ret_nodes),
       "Error converting MLIR module back to graph");
 
   return absl::OkStatus();

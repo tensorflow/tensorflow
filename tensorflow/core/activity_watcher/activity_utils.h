@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "xla/tsl/platform/types.h"
 #include "tensorflow/core/activity_watcher/activity.h"
 
 namespace tensorflow {

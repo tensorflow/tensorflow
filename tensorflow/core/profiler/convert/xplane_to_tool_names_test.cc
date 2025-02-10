@@ -90,7 +90,7 @@ SessionSnapshot CreateSessionSnapshot(std::unique_ptr<XSpace> xspace,
   std::vector<std::unique_ptr<XSpace>> xspaces;
   xspaces.push_back(std::move(xspace));
 
-  StatusOr<SessionSnapshot> session_snapshot =
+  absl::StatusOr<SessionSnapshot> session_snapshot =
       SessionSnapshot::Create(paths, std::move(xspaces));
   TF_CHECK_OK(session_snapshot.status());
   return std::move(session_snapshot.value());
@@ -107,19 +107,25 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
       CreateSessionSnapshot(std::move(xspace), test_case.has_hlo_module,
                             test_case.has_dcn_collective_stats);
 
-  StatusOr<std::string> toolsString = GetAvailableToolNames(sessionSnapshot);
+  absl::StatusOr<std::string> toolsString =
+      GetAvailableToolNames(sessionSnapshot);
   ASSERT_TRUE(toolsString.ok());
 
   std::vector<std::string> tools = absl::StrSplit(toolsString.value(), ',');
 
-  std::vector<std::string> expected_tools = {"trace_viewer",
-                                             "overview_page",
-                                             "input_pipeline_analyzer",
-                                             "framework_op_stats",
-                                             "memory_profile",
-                                             "pod_viewer",
-                                             "tf_data_bottleneck_analysis",
-                                             "op_profile"};
+  std::vector<std::string> expected_tools = {
+      "trace_viewer",
+      "overview_page",
+      "input_pipeline_analyzer",
+      "framework_op_stats",
+      "memory_profile",
+      "pod_viewer",
+      "tf_data_bottleneck_analysis",
+      "op_profile",
+      "hlo_stats",
+      "roofline_model",
+      "inference_profile",
+  };
   expected_tools.insert(expected_tools.end(), test_case.expected_tools.begin(),
                         test_case.expected_tools.end());
   EXPECT_THAT(tools, ::testing::UnorderedElementsAreArray(expected_tools));

@@ -30,9 +30,7 @@ namespace internal {
 
 namespace {
 
-using llvm::DenseSet;
 using mlir::Operation;
-using mlir::TypeID;
 using mlir::WalkResult;
 
 #define GEN_PASS_DEF_INPUTLOWERINGMETRICSPASS

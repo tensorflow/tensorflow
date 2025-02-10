@@ -76,6 +76,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <stack>
 #include <string>
 #include <tuple>
@@ -87,6 +88,9 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -95,10 +99,9 @@ limitations under the License.
 #include "xla/ef57.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -189,6 +192,12 @@ template <typename T, int inner_bs,
 void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
                int outer_bs_b, TransposePlan::Node const* __restrict node,
                void* __restrict scratch) {
+  tsl::profiler::TraceMe traceme([&]() {
+    return tsl::profiler::TraceMeEncode("Transpose",
+                                        {{"inner_bs", inner_bs},
+                                         {"outer_bs_a", outer_bs_a},
+                                         {"outer_bs_b", outer_bs_b}});
+  });
   DVLOG(10) << "Transpose " << outer_bs_a << " " << outer_bs_b;
   DCHECK_GT(outer_bs_a, 0);
   DCHECK_GT(outer_bs_b, 0);
@@ -400,6 +409,13 @@ void TransposeConstStride1(const char* __restrict a, char* __restrict b,
 template <typename T, TransposePlan::Transformation transformation>
 void TransposePlan::ExecuteTyped(const char* a, char* b,
                                  absl::Span<Node const> nodes) const {
+  tsl::profiler::TraceMe traceme([&]() {
+    return tsl::profiler::TraceMeEncode(
+        "TransposePlan::ExecuteTyped",
+        {{"inner_kernel_is_memcpy", inner_kernel_is_memcpy_},
+         {"inner_block_elems", inner_block_elems_}});
+  });
+
   if (inner_kernel_is_memcpy_) {
     DCHECK(transformation_ == Transformation::kNone);
     TransposeConstStride1<T>(a, b, nodes.data());
@@ -450,10 +466,12 @@ static_assert(sizeof(uint128) == 16, "uint128 should be 16 bytes in size");
 
 void TransposePlan::Execute(
     const void* a, void* b,
-    const std::function<void(std::function<void(void)>)>& schedule_work) const {
+    std::optional<absl::FunctionRef<void(std::function<void(void)>)>>
+        schedule_work) const {
   if (num_elems_ == 0) {
     return;
   }
+  tsl::profiler::TraceMe traceme("Transpose::Execute", /*level=*/2);
 
   const char* ac = static_cast<const char*>(a);
   char* bc = static_cast<char*>(b);
@@ -493,8 +511,7 @@ void TransposePlan::Execute(
     absl::BlockingCounter counter(nodes_.size() - 1);
     for (size_t i = 1; i < nodes_.size(); ++i) {
       absl::Span<Node const> nodes = nodes_[i];
-      schedule_work([&, nodes]() {
-        tsl::profiler::TraceMe traceme("Transpose::Execute", /*level=*/2);
+      (*schedule_work)([&, nodes]() {
         execute_by_type(nodes);
         counter.DecrementCount();
       });
@@ -664,7 +681,7 @@ int64_t TransposePlan::OutputNumElems() const {
 }
 
 // Parses and validates a tiling specification, and populates `tiling`.
-static Status ParseTilingSpecification(
+static absl::Status ParseTilingSpecification(
     int ndim, absl::Span<int64_t const> tiling_spec,
     absl::InlinedVector<int64_t, 4>& tiling) {
   tiling.resize(ndim, 1);
@@ -681,12 +698,12 @@ static Status ParseTilingSpecification(
   if (ndim == 1) {
     // Tiling doesn't do anything for a rank-1 array, except add padding. Since
     // we're not going to touch any padding elements, we can ignore it.
-    return OkStatus();
+    return absl::OkStatus();
   }
   int offset = ndim;
   offset -= tiling_spec.size();
   absl::c_copy(tiling_spec, tiling.begin() + offset);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Helper function that builds a plan.
@@ -881,9 +898,9 @@ void TransposePlan::BuildPlanNodes(
   }
 }
 
-StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
+absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
     const Options& o) {
-  auto is_negative = [](int d) { return d < 0; };
+  auto is_negative = [](int64_t d) { return d < 0; };
   if (absl::c_find_if(o.dims, is_negative) != o.dims.end()) {
     return InvalidArgument("dims must be non-negative, got %s",
                            absl::StrJoin(o.dims, ","));
@@ -1347,7 +1364,7 @@ TransposePlanCache::TransposePlanCache(int capacity)
 
 TransposePlanCache::~TransposePlanCache() = default;
 
-StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
+absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
     const TransposePlan::Options& o) {
   TransposePlanCacheKey key;
   key.elem_size_in_bytes = o.elem_size_in_bytes;
@@ -1375,7 +1392,7 @@ StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
   return cache_.GetOrCreateIfAbsent(
       key,
       [&](const TransposePlanCacheKey& key)
-          -> StatusOr<std::shared_ptr<TransposePlan>> {
+          -> absl::StatusOr<std::shared_ptr<TransposePlan>> {
         TF_ASSIGN_OR_RETURN(std::unique_ptr<TransposePlan> plan,
                             TransposePlan::Create(o));
         return std::shared_ptr<TransposePlan>(std::move(plan));

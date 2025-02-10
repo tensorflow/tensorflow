@@ -52,7 +52,11 @@ class OpCompatibilityLib {
 
   // Should match the contents of ops_file().  Run before calling
   // ValidateCompatible().
-  string OpsString() const { return op_list_.DebugString(); }
+  string OpsString() const {
+    string result;
+    google::protobuf::TextFormat::PrintToString(op_list_, &result);
+    return result;
+  }
 
   // Returns the number of ops in OpsString(), includes all ops, not
   // just stable ops.
@@ -66,8 +70,8 @@ class OpCompatibilityLib {
   // generate a new history adding all changed ops.  Sets
   // *changed_ops/*added_ops to the number of changed/added ops
   // (ignoring doc changes).
-  Status ValidateCompatible(Env* env, int* changed_ops, int* added_ops,
-                            OpHistory* out_op_history);
+  absl::Status ValidateCompatible(Env* env, int* changed_ops, int* added_ops,
+                                  OpHistory* out_op_history);
 
  private:
   const string ops_file_;

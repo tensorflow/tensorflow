@@ -74,7 +74,7 @@ XlaDeviceCompiler* CreateXlaDeviceCompiler(bool enable_persistence = false) {
                                std::move(xla_compiler_client));
 }
 
-StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
+absl::StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
@@ -85,7 +85,7 @@ StatusOr<std::unique_ptr<Graph>> SampleGraphAddXY() {
   return graph;
 }
 
-StatusOr<FunctionDef> SampleFuntionAddXY(const std::string& name) {
+absl::StatusOr<FunctionDef> SampleFuntionAddXY(const std::string& name) {
   TF_ASSIGN_OR_RETURN(auto graph, SampleGraphAddXY());
   FunctionDef fdef;
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*graph, name, &fdef));
@@ -110,7 +110,7 @@ class MockXlaDeviceExecutablePersistor
       : DeviceExecutablePersistor<xla::LocalExecutable, xla::LocalClient>(
             Config{testing::TmpDir(), false, "xla"},
             DeviceType(DEVICE_CPU_XLA_JIT)) {}
-  MOCK_METHOD(Status, TryToPersistExecutable,
+  MOCK_METHOD(absl::Status, TryToPersistExecutable,
               (uint64, const std::string&, const XlaCompiler::Options&,
                const XlaCompiler::CompilationResult&,
                const xla::LocalExecutable&,
@@ -124,7 +124,7 @@ class MockDeviceCompilationProfiler : public DeviceCompilationProfiler {
               (const NameAttrList& function, DeviceCompileMode compile_mode,
                int64_t current_request_count),
               (override));
-  MOCK_METHOD(Status, RegisterCompilation,
+  MOCK_METHOD(absl::Status, RegisterCompilation,
               (const NameAttrList& function, int64_t compile_time_us,
                bool used_persistent_cache),
               (override));
@@ -161,7 +161,8 @@ class DeviceCompilerTest : public ::testing::Test {
     return options;
   }
 
-  StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildSampleXlaExecutable() {
+  absl::StatusOr<std::unique_ptr<xla::LocalExecutable>>
+  BuildSampleXlaExecutable() {
     TF_ASSIGN_OR_RETURN(auto graph, SampleGraphAddXY());
     auto args = SampleArgsForAddXY();
 

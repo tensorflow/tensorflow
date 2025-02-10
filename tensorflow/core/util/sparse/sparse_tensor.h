@@ -41,20 +41,20 @@ namespace sparse {
 
 class SparseTensor {
  public:
-  typedef typename gtl::ArraySlice<int64_t> VarDimArray;
-  typedef typename gtl::InlinedVector<int64_t, 8> ShapeArray;
+  typedef absl::Span<const int64_t> VarDimArray;
+  typedef absl::InlinedVector<int64_t, 8UL> ShapeArray;
 
-  static Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
-                       const VarDimArray order, SparseTensor* result);
+  static absl::Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
+                             const VarDimArray order, SparseTensor* result);
 
-  static Status Create(Tensor ix, Tensor vals, const TensorShape& shape,
-                       SparseTensor* result);
+  static absl::Status Create(Tensor ix, Tensor vals, const TensorShape& shape,
+                             SparseTensor* result);
 
-  static Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
-                       SparseTensor* result);
+  static absl::Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
+                             SparseTensor* result);
 
-  static Status Create(Tensor ix, Tensor vals, const TensorShape& shape,
-                       const VarDimArray order, SparseTensor* result);
+  static absl::Status Create(Tensor ix, Tensor vals, const TensorShape& shape,
+                             const VarDimArray order, SparseTensor* result);
 
   SparseTensor() : dims_(0) {}
 
@@ -81,7 +81,7 @@ class SparseTensor {
   SparseTensor(const SparseTensor& other)
       : SparseTensor(other.ix_, other.vals_, other.shape_, other.order_) {}
 
-  SparseTensor(SparseTensor&& other)
+  SparseTensor(SparseTensor&& other) noexcept
       : SparseTensor(std::move(other.ix_), std::move(other.vals_),
                      std::move(other.shape_), std::move(other.order_)) {}
 
@@ -94,7 +94,7 @@ class SparseTensor {
     return *this;
   }
 
-  SparseTensor& operator=(SparseTensor&& other) {
+  SparseTensor& operator=(SparseTensor&& other) noexcept {
     ix_ = std::move(other.ix_);
     vals_ = std::move(other.vals_);
     shape_ = std::move(other.shape_);
@@ -113,7 +113,7 @@ class SparseTensor {
 
   DataType dtype() const { return vals_.dtype(); }
 
-  Status IndicesValid() const;
+  absl::Status IndicesValid() const;
 
   VarDimArray shape() const { return shape_; }
 
@@ -163,15 +163,16 @@ class SparseTensor {
   // having any order and a Reorder<T>() should be called on it before
   // performing any subsequent operations.
   template <typename T>
-  static SparseTensor Concat(const gtl::ArraySlice<SparseTensor>& tensors);
+  static SparseTensor Concat(const absl::Span<const SparseTensor>& tensors);
 
   // Split() will split the input SparseTensor into a list of num_split
   // SparseTensor given a splitting dimension. If the input dimension range
   // isn't an integer multiple of split_dim, we add one extra dimension for
   // each slice.
   template <typename T>
-  static Status Split(const SparseTensor& tensor, const int split_dim,
-                      const int num_split, std::vector<SparseTensor>* result);
+  static absl::Status Split(const SparseTensor& tensor, const int split_dim,
+                            const int num_split,
+                            std::vector<SparseTensor>* result);
 
   // Slice() will slice the input SparseTensor into a SparseTensor based on
   // specified start and size. Both start and size are 1-D array with each
@@ -179,11 +180,11 @@ class SparseTensor {
   // index at each dimension and the size is the size at each dimension.
   template <typename T>
   static absl::StatusOr<SparseTensor> Slice(
-      const SparseTensor& tensor, const gtl::ArraySlice<int64_t> start,
-      const gtl::ArraySlice<int64_t> size);
+      const SparseTensor& tensor, const absl::Span<const int64_t> start,
+      const absl::Span<const int64_t> size);
 
   // Picks out the dimensions according to `dim_indices`.
-  std::vector<int64_t> PickDims(gtl::ArraySlice<int64_t> dim_indices) const {
+  std::vector<int64_t> PickDims(absl::Span<const int64_t> dim_indices) const {
     std::vector<int64_t> res(dim_indices.size());
     for (size_t i = 0; i < dim_indices.size(); ++i) {
       res[i] = shape_[dim_indices[i]];
@@ -212,7 +213,7 @@ class SparseTensor {
   bool IndicesValidMatrix32BitFastPath() const;
 
   template <bool standard_order>
-  Status IndicesValidHelper() const;
+  absl::Status IndicesValidHelper() const;
 
   // Helper for ToDense<T>()
   template <typename T>
@@ -392,7 +393,7 @@ inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
     return true;
   } else {
     // General path for N-dimensional sparse tensors.
-    gtl::InlinedVector<int64_t, 4> strides(dims_);
+    absl::InlinedVector<int64_t, 4UL> strides(dims_);
     const auto& out_shape = out->shape().dim_sizes();
     if (dims_ > 0) {
       strides[dims_ - 1] = 1;
@@ -420,7 +421,7 @@ inline bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 
 template <typename T>
 inline SparseTensor SparseTensor::Concat(
-    const gtl::ArraySlice<SparseTensor>& tensors) {
+    const absl::Span<const SparseTensor>& tensors) {
   DCHECK_GE(tensors.size(), size_t{1}) << "Cannot concat 0 SparseTensors";
   const int dims = tensors[0].dims_;
   DCHECK_GE(dims, 1) << "Cannot concat 0-dimensional SparseTensors";
@@ -447,8 +448,8 @@ inline SparseTensor SparseTensor::Concat(
           << "All SparseTensors' shapes must match except on the concat dim.  "
           << "Concat dim: " << primary_dim
           << ", mismatched shape at dim: " << cdim
-          << ".  Expecting shape like: [" << str_util::Join(final_shape, ",")
-          << "] but saw shape: [" << str_util::Join(st_shape, ",") << "]";
+          << ".  Expecting shape like: [" << absl::StrJoin(final_shape, ",")
+          << "] but saw shape: [" << absl::StrJoin(st_shape, ",") << "]";
     }
 
     // Update dimension of final shape
@@ -493,9 +494,10 @@ inline SparseTensor SparseTensor::Concat(
 }
 
 template <typename T>
-inline Status SparseTensor::Split(const SparseTensor& input_tensor,
-                                  const int split_dim, const int num_split,
-                                  std::vector<SparseTensor>* result) {
+inline absl::Status SparseTensor::Split(const SparseTensor& input_tensor,
+                                        const int split_dim,
+                                        const int num_split,
+                                        std::vector<SparseTensor>* result) {
   std::vector<Tensor> output_indices;
   std::vector<Tensor> output_values;
   std::vector<TensorShape> output_shapes;
@@ -567,20 +569,20 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
   result->reserve(num_split);
   for (int i = 0; i < num_split; ++i) {
     SparseTensor tensor;
-    Status create_status =
+    absl::Status create_status =
         Create(output_indices[i], output_values[i], output_shapes[i], &tensor);
     if (!create_status.ok()) {
       return create_status;
     }
     result->push_back(std::move(tensor));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
 inline absl::StatusOr<SparseTensor> SparseTensor::Slice(
-    const SparseTensor& input_tensor, const gtl::ArraySlice<int64_t> start,
-    const gtl::ArraySlice<int64_t> size) {
+    const SparseTensor& input_tensor, const absl::Span<const int64_t> start,
+    const absl::Span<const int64_t> size) {
   TensorShape output_shape(input_tensor.shape());
 
   const int dims = input_tensor.dims();

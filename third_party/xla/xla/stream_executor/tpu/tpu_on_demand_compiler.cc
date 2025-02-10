@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/service/compiler.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_id.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -70,8 +71,7 @@ class TpuCompiler : public Compiler {
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunHloPassesFn(
         compiler_, &hlo_module,
-        static_cast<stream_executor::tpu::TpuExecutor*>(
-            executor->implementation())
+        static_cast<stream_executor::tpu::TpuExecutor*>(executor)
             ->se_executor(),
         &allocator, &result, status.c_status);
     if (!status.ok()) {
@@ -100,8 +100,7 @@ class TpuCompiler : public Compiler {
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunBackendFn(
         compiler_, &hlo_module,
-        static_cast<stream_executor::tpu::TpuExecutor*>(
-            executor->implementation())
+        static_cast<stream_executor::tpu::TpuExecutor*>(executor)
             ->se_executor(),
         &allocator, &result, status.c_status);
     if (!status.ok()) {
@@ -141,9 +140,9 @@ class TpuCompiler : public Compiler {
       se_lists_storage.emplace_back(stream_exec[i].size());
       se_lists[i].exec = se_lists_storage.back().data();
       for (int j = 0; j < stream_exec[i].size(); ++j) {
-        se_lists[i].exec[j] = static_cast<stream_executor::tpu::TpuExecutor*>(
-                                  stream_exec[i][j]->implementation())
-                                  ->se_executor();
+        se_lists[i].exec[j] =
+            static_cast<stream_executor::tpu::TpuExecutor*>(stream_exec[i][j])
+                ->se_executor();
       }
     }
 

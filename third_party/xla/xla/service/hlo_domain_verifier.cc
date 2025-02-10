@@ -31,19 +31,20 @@ class HloDomainVerifier::RunContext {
   RunContext(HloModule* module, HloDomainVerifier* verifier)
       : module_(module), verifier_(verifier) {}
 
-  Status Run(const absl::flat_hash_set<absl::string_view>& execution_threads);
+  absl::Status Run(
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
  private:
   // If the verifier caller passed an empty vector for kinds, we collect all the
   // available domain types.
-  Status PopulateDomainKinds(
+  absl::Status PopulateDomainKinds(
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   HloModule* module_;
   HloDomainVerifier* verifier_;
 };
 
-Status HloDomainVerifier::RunContext::PopulateDomainKinds(
+absl::Status HloDomainVerifier::RunContext::PopulateDomainKinds(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (verifier_->kinds_.empty()) {
     // The caller specified no domain kinds, collect all the ones available.
@@ -62,10 +63,10 @@ Status HloDomainVerifier::RunContext::PopulateDomainKinds(
     verifier_->kinds_.insert(verifier_->kinds_.end(), kinds.begin(),
                              kinds.end());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloDomainVerifier::RunContext::Run(
+absl::Status HloDomainVerifier::RunContext::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(4) << "Running HLO Domain Verifier";
   TF_RETURN_IF_ERROR(PopulateDomainKinds(execution_threads));
@@ -81,10 +82,10 @@ Status HloDomainVerifier::RunContext::Run(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<bool> HloDomainVerifier::Run(
+absl::StatusOr<bool> HloDomainVerifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   RunContext run_context(module, this);
@@ -92,7 +93,7 @@ StatusOr<bool> HloDomainVerifier::Run(
   return false;
 }
 
-StatusOr<const DomainMetadata*> HloDomainVerifier::VerifyDomain(
+absl::StatusOr<const DomainMetadata*> HloDomainVerifier::VerifyDomain(
     const DomainMetadata::Domain& domain) {
   const DomainMetadata* ref_metadata = nullptr;
   VLOG(4) << "Reach set:";

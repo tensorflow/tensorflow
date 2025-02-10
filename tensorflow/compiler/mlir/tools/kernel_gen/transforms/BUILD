@@ -1,13 +1,13 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -39,6 +39,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -57,6 +59,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
     ],
@@ -73,6 +76,8 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -148,6 +153,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:ToLLVMIRTranslation",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorToLLVM",
@@ -159,12 +165,14 @@ cc_library(
         "@local_xla//xla/mlir_hlo:type_conversion",
         "@local_xla//xla/service/gpu:gpu_asm_opts_util",
         "@local_xla//xla/service/gpu:target_constants",
-        "@local_xla//xla/service/gpu/llvm_gpu_backend",
+        "@local_xla//xla/stream_executor:device_description",
     ] + if_cuda_is_configured([
-        "@local_tsl//tsl/platform:cuda_libdevice_path",
-        "@local_xla//xla/stream_executor/gpu:asm_compiler",
+        "@local_tsl//tsl/platform:cuda_root_path",
+        "@local_xla//xla/stream_executor/cuda:cuda_asm_compiler",
+        "@local_xla//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
     ]) + if_rocm_is_configured([
         "@local_xla//xla/stream_executor/gpu:asm_compiler",
+        "@local_xla//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
         "//tensorflow/core/platform:rocm_rocdl_path",
     ]),
 )
@@ -213,8 +221,10 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo:transforms_passes",
     ],

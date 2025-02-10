@@ -38,10 +38,10 @@ TfPjRtBuffer::~TfPjRtBuffer() { client_->UntrackBuffer(this); }
 PjRtClient* TfPjRtBuffer::client() const { return client_; }
 PjRtClient* TfPjRtExecutable::client() const { return client_; }
 
-StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtBuffer::CopyToDevice(
-    PjRtDevice* dst_device) {
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtBuffer::CopyToMemorySpace(
+    PjRtMemorySpace* dst_memory_space) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> result,
-                      wrapped_->CopyToDevice(dst_device));
+                      wrapped_->CopyToMemorySpace(dst_memory_space));
   return std::unique_ptr<PjRtBuffer>(
       std::make_unique<TfPjRtBuffer>(client_, std::move(result)));
 }
@@ -50,11 +50,11 @@ TfPjRtExecutable::TfPjRtExecutable(
     TfPjRtClient* client, std::unique_ptr<PjRtLoadedExecutable> wrapped)
     : client_(client), wrapped_(std::move(wrapped)) {}
 
-StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfPjRtExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
   std::vector<std::vector<PjRtBuffer*>> unwrapped_argument_handles;
   unwrapped_argument_handles.reserve(argument_handles.size());
   for (auto& handles : argument_handles) {
@@ -76,11 +76,12 @@ TfPjRtExecutable::Execute(
   return out;
 }
 
-StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-TfPjRtExecutable::ExecuteSharded(
-    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options,
-    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+TfPjRtExecutable::ExecuteSharded(absl::Span<PjRtBuffer* const> argument_handles,
+                                 PjRtDevice* device,
+                                 const ExecuteOptions& options,
+                                 std::optional<PjRtFuture<>>& returned_future,
+                                 bool fill_future) {
   std::vector<PjRtBuffer*> unwrapped_argument_handles;
   unwrapped_argument_handles.reserve(argument_handles.size());
   for (PjRtBuffer* buffer : argument_handles) {
@@ -95,11 +96,11 @@ TfPjRtExecutable::ExecuteSharded(
   }
   return out;
 }
-StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfPjRtExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options,
-    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
+    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    bool fill_future) {
   std::vector<PjRtBuffer*> unwrapped_argument_handles;
   unwrapped_argument_handles.reserve(argument_handles.size());
   for (PjRtBuffer* buffer : argument_handles) {
@@ -128,15 +129,16 @@ TfPjRtClient::TfPjRtClient(std::unique_ptr<PjRtClient> wrapped)
 
 TfPjRtClient::~TfPjRtClient() { LOG(INFO) << "TfPjRtClient destroyed."; }
 
-StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtClient::WrapBuffer(
-    StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap) {
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfPjRtClient::WrapBuffer(
+    absl::StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer, std::move(to_wrap));
   return std::unique_ptr<PjRtBuffer>(
       std::make_unique<TfPjRtBuffer>(this, std::move(buffer)));
 }
 
-StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfPjRtClient::WrapExecutable(
-    StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap) {
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfPjRtClient::WrapExecutable(
+    absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       std::move(to_wrap));
   return std::unique_ptr<PjRtLoadedExecutable>(

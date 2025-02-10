@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_UTILS_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_UTILS_UTILS_H_
 
+#include <optional>
 #include <string>
 
 #include "absl/status/status.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 
 namespace mlir {
@@ -36,9 +38,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
     llvm::SourceMgr* source_mgr, mlir::MLIRContext* context);
 
 // Export the module to file, can be either mlir or flatbuffer.
-absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,
-                                    bool output_mlir, mlir::ModuleOp module,
-                                    bool enable_select_tf_ops);
+absl::Status ExportFlatbufferOrMlir(
+    const std::string& output_filename, bool output_mlir, mlir::ModuleOp module,
+    bool enable_select_tf_ops,
+    std::optional<int> custom_option_alignment = std::nullopt);
 
 }  // namespace tac
 }  // namespace TFL

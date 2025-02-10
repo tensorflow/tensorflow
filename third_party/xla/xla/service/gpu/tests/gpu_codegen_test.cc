@@ -23,12 +23,12 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
-#include "xla/tests/filecheck.h"
-#include "xla/tests/verified_hlo_module.h"
 
 namespace xla {
 namespace gpu {
@@ -50,8 +50,8 @@ GpuCodegenTest::CreateNewVerifiedModuleWithFTZ(bool ftz) {
 
 void GpuCodegenTest::CompileAndOptionallyVerifyPtx(
     std::unique_ptr<VerifiedHloModule> hlo_module, absl::string_view pattern) {
-  std::unique_ptr<Executable> executable =
-      std::move(CompileToExecutable(std::move(hlo_module)).value());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                          CompileToExecutable(std::move(hlo_module)));
   std::string ptx_str(static_cast<GpuExecutable*>(executable.get())->text());
 
   // On the ROCM platform the "ptx" string is not populated for the compiled
@@ -68,10 +68,10 @@ std::string GpuCodegenTest::MakePlatformSpecificLlvm(absl::string_view input) {
   return absl::StrReplaceAll(
       input,
       {{"KERNEL_ANNOTATION",
-        is_built_with_rocm_ ? "amdgpu_kernel void" : "void"},
+        is_built_with_rocm_ ? "amdgpu_kernel void" : "ptx_kernel void"},
        {"BARRIER",
         is_built_with_rocm_ ? "@llvm.amdgcn.s.barrier" : "@llvm.nvvm.barrier0"},
-       {"SHUFFLE", is_built_with_rocm_ ? "i32 @llvm.amdgcn.ds.bpermute"
+       {"SHUFFLE", is_built_with_rocm_ ? "i32 @llvm.amdgcn.ds.swizzle"
                                        : "float @llvm.nvvm.shfl.sync.down.f32"},
        {"TIDX", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
                                     : "@llvm.nvvm.read.ptx.sreg.tid.x"},

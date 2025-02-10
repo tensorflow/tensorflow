@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseMatrixSoftmax"
   input_arg {
     name: "logits"

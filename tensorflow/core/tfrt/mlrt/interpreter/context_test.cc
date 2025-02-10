@@ -18,6 +18,8 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 
 namespace mlrt {
 namespace {
@@ -85,8 +87,9 @@ TEST(ContextTest, UserContext) {
   EXPECT_EQ(execution_context.GetUserContext<TestContext0>().v, 0);
   EXPECT_EQ(execution_context.GetUserContext<TestContext1>().v, 1);
 
-  ExecutionContext execution_context_copy(/*loaded_executable=*/nullptr,
-                                          execution_context.CopyUserContexts());
+  ExecutionContext execution_context_copy(
+      /*loaded_executable=*/nullptr, execution_context.CopyUserContexts(),
+      execution_context.user_error_loggers());
   EXPECT_NE(&execution_context_copy.GetUserContext<TestContext0>(), test_0_ptr);
   EXPECT_NE(&execution_context_copy.GetUserContext<TestContext1>(), test_1_ptr);
 
@@ -107,11 +110,42 @@ TEST(ContextTest, PartialUserContext) {
   EXPECT_EQ(&execution_context.GetUserContext<TestContext1>(), test_1_ptr);
   EXPECT_EQ(execution_context.GetUserContext<TestContext1>().v, 1);
 
-  ExecutionContext execution_context_copy(/*loaded_executable=*/nullptr,
-                                          execution_context.CopyUserContexts());
+  ExecutionContext execution_context_copy(
+      /*loaded_executable=*/nullptr, execution_context.CopyUserContexts(),
+      execution_context.user_error_loggers());
   EXPECT_NE(&execution_context_copy.GetUserContext<TestContext1>(), test_1_ptr);
 
   EXPECT_EQ(execution_context_copy.GetUserContext<TestContext1>().v, 1);
+}
+
+TEST(ContextTest, UserErrorLoggerCanBeCopied) {
+  int num_error_reported = 0;
+  ExecutionContext execution_context(/*loaded_executable=*/nullptr);
+  execution_context.AddUserErrorLogger(
+      [&num_error_reported](absl::Status status) {
+        num_error_reported++;
+        LOG(INFO) << "User error logger called";
+      });
+
+  execution_context.LogError(absl::InternalError("Test error"));
+
+  ExecutionContext execution_context_copy(
+      /*loaded_executable=*/nullptr, execution_context.CopyUserContexts(),
+      execution_context.user_error_loggers());
+
+  execution_context_copy.LogError(absl::InternalError("Test error"));
+
+  ASSERT_EQ(num_error_reported, 2);
+}
+
+TEST(ContextTest, NoUserErrorLoggerRunOk) {
+  ExecutionContext execution_context(/*loaded_executable=*/nullptr);
+  execution_context.LogError(absl::InternalError("Test error"));
+
+  ExecutionContext execution_context_copy(
+      /*loaded_executable=*/nullptr, execution_context.CopyUserContexts(),
+      execution_context.user_error_loggers());
+  execution_context_copy.LogError(absl::InternalError("Test error"));
 }
 
 }  // namespace

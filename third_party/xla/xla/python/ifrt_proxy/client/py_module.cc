@@ -11,7 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "xla/python/ifrt_proxy/client/py_module.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -21,24 +23,23 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/log_entry.h"
-#include "absl/log/log_sink.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "pybind11/cast.h"  // from @pybind11
-#include "pybind11/detail/common.h"  // from @pybind11
-#include "pybind11/functional.h"  // from @pybind11  // NOLINT  // IWYU pragma: keep
-#include "pybind11/gil.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
-#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil  // NOLINT  // IWYU pragma: keep
-#include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
+#include "absl/time/time.h"
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/function.h"  // IWYU pragma: keep
+#include "nanobind/stl/optional.h"  // IWYU pragma: keep
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt_proxy/client/registry.h"
+#include "xla/python/nb_class_ptr.h"
 #include "xla/python/py_client.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
+
+namespace nb = ::nanobind;
 
 namespace xla {
 namespace ifrt {
@@ -46,11 +47,12 @@ namespace proxy {
 namespace {
 
 struct PyClientConnectionOptions {
-  std::function<void(absl::Status)> on_disconnect;
-  std::function<void(std::string)> on_connection_update;
+  std::optional<std::function<void(std::string)>> on_disconnect;
+  std::optional<std::function<void(std::string)>> on_connection_update;
+  std::optional<int64_t> connection_timeout_in_seconds;
 };
 
-absl::StatusOr<std::shared_ptr<xla::PyClient>> GetClient(
+absl::StatusOr<nb_class_ptr<PyClient>> GetClient(
     std::string proxy_server_address,
     const PyClientConnectionOptions& py_options) {
   DCHECK(PyGILState_Check());
@@ -64,16 +66,16 @@ absl::StatusOr<std::shared_ptr<xla::PyClient>> GetClient(
     // or even deadlock. A unique_ptr or `absl::AnyInvocable` is not sufficient
     // because downstream code can make copies. Reference:
     // https://pybind11.readthedocs.io/en/stable/advanced/misc.html#common-sources-of-global-interpreter-lock-errors
-    auto py_on_disconnect = std::make_shared<std::function<void(absl::Status)>>(
-        std::move(py_options.on_disconnect));
+    auto py_on_disconnect = std::make_shared<std::function<void(std::string)>>(
+        std::move(*py_options.on_disconnect));
 
     options.on_disconnect =
         [on_disconnect = std::move(py_on_disconnect)](absl::Status s) mutable {
           LOG(WARNING) << "Connection to server failed, calling supplied "
                        << "`on_disconnect` function: " << s;
           tsl::Env::Default()->SchedClosure([s, on_disconnect]() mutable {
-            pybind11::gil_scoped_acquire gil_acquire;
-            (*on_disconnect)(s);
+            nb::gil_scoped_acquire gil_acquire;
+            (*on_disconnect)(s.ToString());
             on_disconnect = nullptr;
           });
         };
@@ -81,39 +83,49 @@ absl::StatusOr<std::shared_ptr<xla::PyClient>> GetClient(
 
   if (py_options.on_connection_update) {
     auto fn = std::make_shared<std::function<void(std::string)>>(
-        std::move(py_options.on_connection_update));
+        std::move(*py_options.on_connection_update));
     options.on_connection_update = [fn](absl::string_view log_line) -> void {
       tsl::Env::Default()->SchedClosure([fn, str = std::string(log_line)] {
-        pybind11::gil_scoped_acquire gil_acquire;
+        nb::gil_scoped_acquire gil_acquire;
         (*fn)(std::string(str));
       });
     };
   }
 
+  if (py_options.connection_timeout_in_seconds.has_value()) {
+    options.connection_timeout =
+        absl::Seconds(*py_options.connection_timeout_in_seconds);
+  }
+
   {
-    pybind11::gil_scoped_release gil_release;
+    nb::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(client, CreateClient(proxy_server_address, options));
   }
 
   // Constructing `xla::PyClient` requires GIL as it may dec-ref Python objects.
-  return std::make_shared<xla::PyClient>(std::move(client));
+  return xla::PyClient::Make(std::move(client));
 }
 
 }  // namespace
+
+void BuildIfrtProxySubmodule(nb::module_& m) {
+  nb::module_ sub_module = m.def_submodule("ifrt_proxy", "IFRT proxy");
+
+  nb::class_<PyClientConnectionOptions>(sub_module, "ClientConnectionOptions")
+      .def(nb::init<>())
+      .def_rw("on_disconnect", &PyClientConnectionOptions::on_disconnect,
+              nb::arg().none())
+      .def_rw("on_connection_update",
+              &PyClientConnectionOptions::on_connection_update,
+              nb::arg().none())
+      .def_rw("connection_timeout_in_seconds",
+              &PyClientConnectionOptions::connection_timeout_in_seconds,
+              nb::arg().none());
+
+  sub_module.def("get_client", xla::ValueOrThrowWrapper(GetClient),
+                 nb::arg("proxy_server_address"), nb::arg("options"));
+}
+
 }  // namespace proxy
 }  // namespace ifrt
 }  // namespace xla
-
-PYBIND11_MODULE(py_module, m) {
-  pybind11_protobuf::ImportNativeProtoCasters();
-
-  using ::xla::ifrt::proxy::PyClientConnectionOptions;
-  pybind11::class_<PyClientConnectionOptions>(m, "ClientConnectionOptions")
-      .def(pybind11::init<>())
-      .def_readwrite("on_disconnect", &PyClientConnectionOptions::on_disconnect)
-      .def_readwrite("on_connection_update",
-                     &PyClientConnectionOptions::on_connection_update);
-
-  m.def("get_client", xla::ValueOrThrowWrapper(xla::ifrt::proxy::GetClient),
-        pybind11::arg("proxy_server_address"), pybind11::arg("options"));
-}

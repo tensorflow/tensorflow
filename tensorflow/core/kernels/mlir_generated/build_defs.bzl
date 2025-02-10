@@ -1,15 +1,15 @@
 """Generates cubin headers for TF dialect ops."""
 
+load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures")
-load(
-    "@local_xla//xla/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
-)
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "rocm_gpu_architectures",
 )
-load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
+load(
+    "@local_xla//xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
 
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""
@@ -152,7 +152,7 @@ def _gen_kernel_bin_impl(ctx):
 
     # cc_binary seems not to bring its dependencies with it, so do that explicitly here.
     ctx.actions.run(
-        inputs = [ctx.file.mlir_op, ctx.file._tfso],
+        inputs = [ctx.file.mlir_op],
         outputs = [gpu_bin],
         executable = ctx.executable._tool,
         arguments = cmd_args + [
@@ -197,12 +197,6 @@ _gen_kernel_bin_rule = rule(
         "jit": attr.bool(),
         "jit_i64_indexed_for_large_tensors": attr.bool(),
         "extra_args": attr.string_list(),
-        # cc_binary seems not to bring its dependencies with it, so do that explicitly here.
-        "_tfso": attr.label(
-            default = Label("//tensorflow:libtensorflow_framework.so.2"),
-            cfg = "exec",
-            allow_single_file = True,
-        ),
         "_tool": attr.label(
             executable = True,
             default = Label("//tensorflow/compiler/mlir/tools/kernel_gen:hlo_to_kernel"),

@@ -24,13 +24,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
-#include "tsl/platform/env.h"
 
 namespace tensorflow {
 namespace data {
@@ -38,7 +38,10 @@ namespace {
 constexpr const char kProtocol[] = "grpc";
 }  // namespace
 
-TestCluster::TestCluster(int num_workers) : num_workers_(num_workers) {}
+TestCluster::TestCluster(int num_workers,
+                         std::optional<std::string> data_transfer_protocol)
+    : num_workers_(num_workers),
+      data_transfer_protocol_(data_transfer_protocol) {}
 
 TestCluster::TestCluster(const TestCluster::Config& config)
     : num_workers_(config.num_workers), config_(config) {}
@@ -52,7 +55,7 @@ TestCluster::~TestCluster() {
   }
 }
 
-Status TestCluster::Initialize() {
+absl::Status TestCluster::Initialize() {
   if (initialized_) {
     return errors::FailedPrecondition(
         "Test cluster has already been initialized.");
@@ -80,18 +83,24 @@ Status TestCluster::Initialize() {
   workers_.reserve(num_workers_);
   worker_addresses_.reserve(num_workers_);
   for (int i = 0; i < num_workers_; ++i) {
-    TF_RETURN_IF_ERROR(AddWorker());
+    TF_RETURN_IF_ERROR(
+        AddWorker(/*port=*/std::nullopt, data_transfer_protocol_));
   }
   return absl::OkStatus();
 }
 
-Status TestCluster::AddWorker(std::optional<int> port) {
+absl::Status TestCluster::AddWorker(
+    std::optional<int> port,
+    std::optional<std::string> data_transfer_protocol) {
   std::unique_ptr<WorkerGrpcDataServer> worker;
   experimental::WorkerConfig config;
   if (port.has_value()) {
     config.set_port(*port);
   }
   config.set_protocol(kProtocol);
+  if (data_transfer_protocol.has_value()) {
+    config.set_data_transfer_protocol(*data_transfer_protocol);
+  }
   config.set_dispatcher_address(dispatcher_address_);
   std::string worker_address =
       port.has_value() ? absl::StrCat("localhost:", *port) : "localhost:%port%";

@@ -51,14 +51,14 @@ DType ConvertTfDTypeToTfrtDType(tensorflow::DataType dtype) {
   }
 }
 
-tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
-                                         tfrt::BEFFile* bef_file,
-                                         absl::string_view fallback_init_func) {
+absl::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
+                                   tfrt::BEFFile* bef_file,
+                                   absl::string_view fallback_init_func) {
   auto* host = exec_ctx.host();
 
   auto* func = bef_file->GetFunction(
       {fallback_init_func.data(), fallback_init_func.size()});
-  if (func == nullptr) return ::tensorflow::OkStatus();
+  if (func == nullptr) return absl::OkStatus();
 
   if (func->function_kind() == FunctionKind::kBEFFunction) {
     auto ready_chain = GetReadyChain();
@@ -84,7 +84,7 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
     }
   }
 
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 void CreateDummyTfDevices(

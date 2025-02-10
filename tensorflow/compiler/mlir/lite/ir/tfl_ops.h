@@ -25,6 +25,8 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/TypeSupport.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/LoopLikeInterface.h"  // from @llvm-project
@@ -34,10 +36,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_dialect.h.inc"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_enums.h.inc"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 #define GET_ATTRDEF_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_attrdefs.h.inc"
 

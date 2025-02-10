@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU pragma: keep
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep
@@ -24,12 +24,12 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/testing/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep
 
 namespace mlir::quant::stablehlo::testing {
@@ -39,8 +39,9 @@ namespace mlir::quant::stablehlo::testing {
 
 namespace {
 
+using ::stablehlo::quantization::ExpandPresets;
 using ::stablehlo::quantization::PipelineConfig;
-using ::stablehlo::quantization::StaticRangePtqPreset;
+using ::stablehlo::quantization::QuantizationConfig;
 
 class TestPostCalibrationComponentPass
     : public impl::TestPostCalibrationComponentPassBase<
@@ -61,16 +62,16 @@ void TestPostCalibrationComponentPass::runOnOperation() {
 
   OpPassManager pm(ModuleOp::getOperationName());
 
-  StaticRangePtqPreset static_range_ptq_preset;
+  QuantizationConfig config = QuantizationConfig::default_instance();
+  config.mutable_static_range_ptq_preset();
+
+  const QuantizationConfig new_config = ExpandPresets(config);
+
   PipelineConfig pipeline_config;
   pipeline_config.set_unpack_quantized_types(unpack_quantized_types_);
 
   PostCalibrationComponent component(&ctx);
-  component.AddPasses(pm, static_range_ptq_preset, pipeline_config);
-
-  // Adds a XlaCallModuleOp deserialization pass for easier testing by
-  // inspecting the contents of serialized StableHLO function.
-  pm.addPass(TF::CreateXlaCallModuleDeserializationPass());
+  component.AddPasses(pm, new_config.specs(), pipeline_config);
 
   if (failed(runPipeline(pm, module_op))) {
     signalPassFailure();

@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/base/attributes.h"
-#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Core"
 #include "xla/service/cpu/runtime_single_threaded_matmul_common.h"
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void

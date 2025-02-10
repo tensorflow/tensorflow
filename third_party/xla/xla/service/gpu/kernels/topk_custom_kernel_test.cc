@@ -22,6 +22,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/random/random.h"
 #include "absl/strings/ascii.h"
@@ -32,11 +33,11 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla::gpu::kernel::topk {
 
@@ -110,16 +111,16 @@ TEST_P(TopKKernelTest, TopKFloat) {
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto kernel, se::Kernel::Create(executor, custom_kernel->kernel_spec()));
+  TF_ASSERT_OK_AND_ASSIGN(auto kernel,
+                          executor->LoadKernel(custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(
       std::vector<se::DeviceMemoryBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
-                                custom_kernel->block_dims(), *kernel, arr));
+  TF_ASSERT_OK(kernel->Launch(custom_kernel->thread_dims(),
+                              custom_kernel->block_dims(), stream.get(), arr));
 
   std::vector<T> got(k);
   ASSERT_TRUE(stream->BlockHostUntilDone().ok());
@@ -164,16 +165,16 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
   auto custom_kernel =
       GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto kernel, se::Kernel::Create(executor, custom_kernel->kernel_spec()));
+  TF_ASSERT_OK_AND_ASSIGN(auto kernel,
+                          executor->LoadKernel(custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
   se::KernelArgsDeviceMemoryArray arr(
       std::vector<se::DeviceMemoryBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
-  TF_ASSERT_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
-                                custom_kernel->block_dims(), *kernel, arr));
+  TF_ASSERT_OK(kernel->Launch(custom_kernel->thread_dims(),
+                              custom_kernel->block_dims(), stream.get(), arr));
 
   std::vector<T> got(k);
   ASSERT_TRUE(stream->BlockHostUntilDone().ok());

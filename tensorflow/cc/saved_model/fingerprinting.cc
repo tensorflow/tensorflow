@@ -19,9 +19,11 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/btree_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/cc/saved_model/constants.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
+#include "tsl/platform/random.h"
 // b/291933687, b/291001524
 #if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__)
 #include "tensorflow/cc/saved_model/fingerprinting_utils.h"
@@ -68,6 +71,7 @@ uint64_t HashCheckpointIndexFile(absl::string_view model_dir) {
   if (read_status.ok()) {
     return tensorflow::Fingerprint64(data);
   } else {
+    LOG(WARNING) << "Failed to read checkpoint file: " << read_status;
     return 0;
   }
 }
@@ -179,6 +183,8 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefPb(
   fingerprint_def.set_saved_object_graph_hash(object_graph_hash);
   // Set fingerprint field #5.
   fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));
+  // Assign a random UUID to the fingerprint.
+  fingerprint_def.set_uuid(absl::StrFormat("%016d", tsl::random::New64()));
   // Set version of the fingerprint.
   VersionDef* version = fingerprint_def.mutable_version();
   version->set_producer(kFingerprintProducer);
@@ -209,8 +215,7 @@ absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(
     absl::string_view export_dir) {
   const std::string fingerprint_pb_path =
       io::JoinPath(export_dir, kFingerprintFilenamePb);
-  absl::Status found_pb = Env::Default()->FileExists(fingerprint_pb_path);
-  if (!found_pb.ok()) return found_pb;
+  TF_RETURN_IF_ERROR(Env::Default()->FileExists(fingerprint_pb_path));
 
   FingerprintDef fingerprint_proto;
   absl::Status result =

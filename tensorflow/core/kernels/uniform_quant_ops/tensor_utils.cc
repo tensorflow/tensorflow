@@ -18,10 +18,10 @@ namespace tensorflow {
 
 using tensorflow::errors::InvalidArgument;
 
-Status QuantizationAxisAndShapeValid(const TensorShape& data_shape,
-                                     const TensorShape& scales_shape,
-                                     const TensorShape& zero_points_shape,
-                                     int quantization_axis) {
+absl::Status QuantizationAxisAndShapeValid(const TensorShape& data_shape,
+                                           const TensorShape& scales_shape,
+                                           const TensorShape& zero_points_shape,
+                                           int quantization_axis) {
   if (!scales_shape.IsSameSize(zero_points_shape)) {
     return InvalidArgument(
         "scales and zero_points shape must be same, but given scales shape ",
@@ -57,7 +57,7 @@ Status QuantizationAxisAndShapeValid(const TensorShape& data_shape,
 }
 
 TensorShape TransposedShape(const TensorShape& in_shape,
-                            const gtl::ArraySlice<int32_t> perm) {
+                            const absl::Span<const int32_t> perm) {
   TensorShape out_shape = in_shape;
   for (int i = 0; i < out_shape.dims(); ++i) {
     out_shape.set_dim(i, in_shape.dim_size(perm[i]));

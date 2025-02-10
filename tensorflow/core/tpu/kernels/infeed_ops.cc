@@ -36,6 +36,9 @@ limitations under the License.
 #include "xla/stream_executor/tpu/noncopyable_buffer.h"
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -53,9 +56,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -88,7 +88,7 @@ xla::Shape GetTPUInfeedLayout(const xla::Shape& shape) {
 absl::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
                                        const Tensor& input_tensor,
                                        const xla::Shape& xla_shape) {
-  profiler::TraceMe trace_me("TransposeTensor", /*level=*/2);
+  tsl::profiler::TraceMe trace_me("TransposeTensor", /*level=*/2);
   const int64_t rank = xla_shape.rank();
   std::vector<int32_t> permutation(rank);
   std::vector<int64_t> transposed_shapes(rank);
@@ -134,10 +134,10 @@ absl::StatusOr<bool> GetLayoutOverride(OpKernelConstruction* ctx,
   return !minor_to_major->empty();
 }
 
-Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
-                                const char* attrn_name,
-                                const xla::Shape& input_shape,
-                                xla::Shape* output_shape) {
+absl::Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
+                                      const char* attrn_name,
+                                      const xla::Shape& input_shape,
+                                      xla::Shape* output_shape) {
   std::vector<int64_t> minor_to_major;
   TF_ASSIGN_OR_RETURN(bool has_override,
                       GetLayoutOverride(ctx, attrn_name, &minor_to_major));
@@ -154,7 +154,7 @@ Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
       *output_shape->mutable_layout() =
           GetTPUInfeedLayout(*output_shape).layout();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto layout_func = [](const xla::Shape& shape) -> xla::Layout {
@@ -205,11 +205,10 @@ struct LinearizedBuffersWrapper {
   std::vector<tensorflow::Tensor> tensors;
 };
 
-Status AutoTransposeAndLinearize(OpKernelContext* ctx,
-                                 const Tensor& input_tensor,
-                                 const xla::Shape& shape,
-                                 LinearizerBufferList* linearized_buffers,
-                                 std::vector<Tensor>* saved_input_tensors) {
+absl::Status AutoTransposeAndLinearize(
+    OpKernelContext* ctx, const Tensor& input_tensor, const xla::Shape& shape,
+    LinearizerBufferList* linearized_buffers,
+    std::vector<Tensor>* saved_input_tensors) {
   const Tensor* tensor = &input_tensor;
   // If the given layout is not in dim0major layout, transposes the tensor.
   bool has_transposed = false;
@@ -247,146 +246,8 @@ Status AutoTransposeAndLinearize(OpKernelContext* ctx,
       break;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
-
-// PrelinearizeOp is used to linearize one tensor to the device format.
-class PrelinearizeOp : public OpKernel {
- public:
-  explicit PrelinearizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &shape_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
-    xla::Shape shape;
-    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape_, &shape));
-    OP_REQUIRES_OK(ctx,
-                   GetInfeedShapeWithLayout(ctx, "layout", shape, &xla_shape_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor& input_tensor = ctx->input(0);
-    // Validate input.
-    OP_REQUIRES(
-        ctx, input_tensor.dtype() == dtype_,
-        absl::InvalidArgumentError(absl::StrCat(
-            "Prelinearize dtype mismatch; expected ", DataType_Name(dtype_),
-            ", got ", DataType_Name(input_tensor.dtype()))));
-    OP_REQUIRES(
-        ctx, input_tensor.shape() == shape_,
-        absl::InvalidArgumentError(absl::StrCat(
-            "Prelinearize shape mismatch; expected ", shape_.DebugString(),
-            ", got ", input_tensor.shape().DebugString())));
-    // Auto-transpose and prelinearize.
-    LinearizerBufferList linearized_buffers;
-    std::vector<Tensor> saved_input_tensors;
-    auto status =
-        AutoTransposeAndLinearize(ctx, input_tensor, xla_shape_,
-                                  &linearized_buffers, &saved_input_tensors);
-    OP_REQUIRES_OK(ctx, status);
-
-    // Write to output.
-    tensorflow::Tensor* output;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_output(0, tensorflow::TensorShape{}, &output));
-    output->scalar<tensorflow::Variant>()() = LinearizedBuffersWrapper{
-        std::move(linearized_buffers), std::move(saved_input_tensors)};
-  }
-
-  bool IsExpensive() override { return true; }
-
- private:
-  TensorShape shape_;
-  DataType dtype_;
-  xla::Shape xla_shape_;
-
-  // PrelinearizeOp is neither copyable nor movable.
-  PrelinearizeOp(const PrelinearizeOp&) = delete;
-  PrelinearizeOp& operator=(const PrelinearizeOp&) = delete;
-};
-
-// PrelinearizeTupleOp is used to linearize multiple tensors to the device
-// format.
-class PrelinearizeTupleOp : public OpKernel {
- public:
-  explicit PrelinearizeTupleOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shapes", &shapes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
-    OP_REQUIRES(
-        ctx, shapes_.size() == dtypes_.size(),
-        absl::InvalidArgumentError(absl::StrCat(
-            "shapes and dtypes must be the same length. shapes length = ",
-            shapes_.size(), ", dtypes length = ", dtypes_.size())));
-
-    std::vector<xla::Shape> xla_shapes;
-    for (int i = 0; i < shapes_.size(); i++) {
-      xla::Shape xla_shape;
-      OP_REQUIRES_OK(ctx,
-                     TensorShapeToXLAShape(dtypes_[i], shapes_[i], &xla_shape));
-      xla_shapes.push_back(xla_shape);
-    }
-    OP_REQUIRES_OK(
-        ctx, GetInfeedShapeWithLayout(
-                 ctx, "layouts", xla::ShapeUtil::MakeTupleShape(xla_shapes),
-                 &tuple_shape_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    OpInputList values;
-    OP_REQUIRES_OK(ctx, ctx->input_list("inputs", &values));
-    OP_REQUIRES(ctx, values.size() == shapes_.size(),
-                absl::InvalidArgumentError(
-                    "Wrong number of inputs to PrelinearizeTuple."));
-
-    LinearizerBufferList all_linearized_buffers;
-    std::vector<Tensor> all_saved_input_tensors;
-    for (int i = 0; i < values.size(); i++) {
-      // Validate input.
-      const Tensor& input_tensor = values[i];
-      OP_REQUIRES(ctx, input_tensor.dtype() == dtypes_[i],
-                  absl::InvalidArgumentError(absl::StrCat(
-                      "PrelinearizeTuple dtype mismatch at tuple element ", i,
-                      "; expected ", DataType_Name(dtypes_[i]), ", got ",
-                      DataType_Name(input_tensor.dtype()))));
-      OP_REQUIRES(ctx, input_tensor.shape() == shapes_[i],
-                  absl::InvalidArgumentError(absl::StrCat(
-                      "PrelinearizeTuple shape mismatch at tuple element ", i,
-                      "; expected ", shapes_[i].DebugString(), ", got ",
-                      input_tensor.shape().DebugString())));
-
-      // Auto-transpose and prelinearize.
-      LinearizerBufferList linearized_buffers;
-      std::vector<Tensor> saved_input_tensors;
-      auto status = AutoTransposeAndLinearize(
-          ctx, input_tensor, tuple_shape_.tuple_shapes(i), &linearized_buffers,
-          &saved_input_tensors);
-      OP_REQUIRES_OK(ctx, status);
-      all_linearized_buffers.insert(
-          all_linearized_buffers.end(),
-          std::make_move_iterator(linearized_buffers.begin()),
-          std::make_move_iterator(linearized_buffers.end()));
-      all_saved_input_tensors.insert(
-          all_saved_input_tensors.end(),
-          std::make_move_iterator(saved_input_tensors.begin()),
-          std::make_move_iterator(saved_input_tensors.end()));
-    }
-
-    tensorflow::Tensor* output;
-    OP_REQUIRES_OK(ctx,
-                   ctx->allocate_output(0, tensorflow::TensorShape{}, &output));
-    output->scalar<tensorflow::Variant>()() = LinearizedBuffersWrapper{
-        std::move(all_linearized_buffers), std::move(all_saved_input_tensors)};
-  }
-
-  bool IsExpensive() override { return true; }
-
- private:
-  std::vector<TensorShape> shapes_;
-  DataTypeVector dtypes_;
-  xla::Shape tuple_shape_;
-
-  // PrelinearizeTupleOp is neither copyable nor movable.
-  PrelinearizeTupleOp(const PrelinearizeTupleOp&) = delete;
-  PrelinearizeTupleOp& operator=(const PrelinearizeTupleOp&) = delete;
-};
 
 class StreamExecutorInfeedEnqueueOp : public TpuInfeedEnqueueOp {
  public:
@@ -443,7 +304,8 @@ TpuInfeedEnqueueOp::TpuInfeedEnqueueOp(
                  GetInfeedShapeWithLayout(ctx, "layout", shape, &xla_shape_));
 }
 
-Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx, int device_ordinal) {
+absl::Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx,
+                                        int device_ordinal) {
   VLOG(1) << "TpuInfeedEnqueueOp::DoWork. iter_id=" << ctx->frame_iter().iter_id
           << " device_ordinal=" << device_ordinal;
   const Tensor& input_tensor = ctx->input(0);
@@ -475,7 +337,7 @@ Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx, int device_ordinal) {
       transfer_op_->TransferLiteralToInfeed(device_ordinal, literal));
   VLOG(1) << "TpuInfeedEnqueueOp completes. iter_id="
           << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(
@@ -502,8 +364,8 @@ TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(
                                     &tuple_shape_));
 }
 
-Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
-                                       int device_ordinal) {
+absl::Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
+                                             int device_ordinal) {
   VLOG(1) << "TpuInfeedEnqueueTupleOp::DoWork. iter_id="
           << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
   OpInputList values;
@@ -551,7 +413,7 @@ Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
   VLOG(1) << "TpuInfeedEnqueueTupleOp completes. iter_id="
           << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 InfeedEnqueuePrelinearizedBufferOp::InfeedEnqueuePrelinearizedBufferOp(
@@ -559,8 +421,8 @@ InfeedEnqueuePrelinearizedBufferOp::InfeedEnqueuePrelinearizedBufferOp(
     std::unique_ptr<TpuTransferOpInterface> transfer_op)
     : TpuTransferAsyncOpKernel(ctx, "prelinearized_buffers_to_infeed", 8,
                                std::move(transfer_op)) {}
-Status InfeedEnqueuePrelinearizedBufferOp::DoWork(OpKernelContext* ctx,
-                                                  int device_ordinal) {
+absl::Status InfeedEnqueuePrelinearizedBufferOp::DoWork(OpKernelContext* ctx,
+                                                        int device_ordinal) {
   const Tensor& input_tensor = ctx->input(0);
   const LinearizedBuffersWrapper* wrapper =
       input_tensor.scalar<tensorflow::Variant>()()
@@ -568,7 +430,7 @@ Status InfeedEnqueuePrelinearizedBufferOp::DoWork(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(
       transfer_op_->TransferBuffersToInfeed(device_ordinal, wrapper->buffers));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // These ops execute on either the TPU device or the CPU device. When running on
@@ -585,12 +447,6 @@ REGISTER_KERNEL_BUILDER(
     StreamExecutorInfeedEnqueueTupleOp);
 REGISTER_KERNEL_BUILDER(Name("InfeedEnqueueTuple").Device(DEVICE_CPU),
                         StreamExecutorInfeedEnqueueTupleOp);
-
-// Prelinearize ops run on CPU as part of tf.data input pipeline.
-REGISTER_KERNEL_BUILDER(Name("Prelinearize").Device(DEVICE_CPU),
-                        PrelinearizeOp);
-REGISTER_KERNEL_BUILDER(Name("PrelinearizeTuple").Device(DEVICE_CPU),
-                        PrelinearizeTupleOp);
 
 // InfeedEnqueuePrelinearizedBuffer op run on CPU and takes a device_ordinal to
 // select the right device to infeed.

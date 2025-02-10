@@ -22,7 +22,9 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_target_cpu")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_friends", "tfcompile_target_cpu")
+
+visibility(tfcompile_friends())
 
 def _tfcompile_model_library_rule_impl(ctx):
     header_file = ctx.outputs.header_out
@@ -319,8 +321,6 @@ def _tf_library(
         ] or []) + (include_standard_runtime_deps and [
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
-            "@local_xla//xla/service/cpu/runtime:convolution_ffi",
-            "@local_xla//xla/service/cpu/runtime:rng_ffi",
             "@local_xla//xla/service/cpu:runtime_conv2d",
             "@local_xla//xla/service/cpu:runtime_custom_call_status",
             "@local_xla//xla/service/cpu:runtime_key_value_sort",
@@ -480,6 +480,9 @@ def tf_library(
                       gen_benchmark=True.
     The output header is called <name>.h.
 
+    Deprecated:
+      tfcompile is deprecated (b/389018081). As an alternative, consider using
+      XLA:CPU's AOT capabilities directly.
     Args:
       name: The name of the build rule.
       graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt'

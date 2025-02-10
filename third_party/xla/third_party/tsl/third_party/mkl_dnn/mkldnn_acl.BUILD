@@ -1,6 +1,6 @@
-exports_files(["LICENSE"])
-
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+
+exports_files(["LICENSE"])
 
 _DNNL_COPTS_THREADPOOL = [
     "-fopenmp-simd",
@@ -117,7 +117,7 @@ expand_template(
     name = "dnnl_config_h",
     out = "include/oneapi/dnnl/dnnl_config.h",
     substitutions = select({
-        "@local_tsl//third_party/mkl_dnn:build_with_mkl_aarch64_openmp": _DNNL_RUNTIME_OMP,
+        "@local_xla//xla/tsl/mkl:build_with_mkl_aarch64_openmp": _DNNL_RUNTIME_OMP,
         "//conditions:default": _DNNL_RUNTIME_THREADPOOL,
     }),
     template = "include/oneapi/dnnl/dnnl_config.h.in",
@@ -149,7 +149,7 @@ cc_library(
         ],
     ),
     copts = select({
-        "@local_tsl//third_party/mkl_dnn:build_with_mkl_aarch64_openmp": _DNNL_COPTS_OMP,
+        "@local_xla//xla/tsl/mkl:build_with_mkl_aarch64_openmp": _DNNL_COPTS_OMP,
         "//conditions:default": _DNNL_COPTS_THREADPOOL,
     }),
     defines = ["DNNL_AARCH64_USE_ACL=1"],
@@ -167,6 +167,7 @@ cc_library(
             "include/**/*",
             "include/*",
             "src/common/*.hpp",
+            "src/common/**/*.h",
             "src/cpu/**/*.hpp",
             "src/cpu/*.hpp",
             "src/cpu/aarch64/xbyak_aarch64/**/*.h",

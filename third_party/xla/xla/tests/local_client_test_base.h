@@ -21,22 +21,22 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/local_service.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/manifest_checking_test.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -50,7 +50,8 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
   absl::StatusOr<se::OwningDeviceMemory> Allocate(
       int device_ordinal, uint64_t size, bool retry_on_failure,
       int64_t memory_space) override;
-  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
+  absl::Status Deallocate(int device_ordinal,
+                          se::DeviceMemoryBase mem) override;
 
   // Return the number of allocations that have been performed.
   int64_t allocation_count() const;
@@ -74,7 +75,7 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
 };
 
 // A base class for tests which exercise the LocalClient interface.
-class LocalClientTestBase : public ManifestCheckingTest {
+class LocalClientTestBase : public ::testing::Test {
  protected:
   struct EigenThreadPoolWrapper;
   explicit LocalClientTestBase(se::Platform* platform = nullptr);

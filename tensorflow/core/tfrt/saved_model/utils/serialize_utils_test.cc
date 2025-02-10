@@ -15,23 +15,27 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/saved_model/utils/serialize_utils.h"
 
+#include <cstdlib>
 #include <memory>
 #include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
+#include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/env.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -39,10 +43,9 @@ namespace tfrt_stub {
 namespace {
 
 TEST(SerializeBEFTest, HandlesCompleteProcess) {
-  // Create Empty BEF Buffer
   tfrt::BefBuffer old_bef;
 
-  // Load BEF Buffer Data
+  // Load BEF Buffer Data.
 
   const std::string saved_model_mlir_path =
       "third_party/tensorflow/compiler/mlir/tfrt/tests/saved_model/testdata/"
@@ -64,25 +67,24 @@ TEST(SerializeBEFTest, HandlesCompleteProcess) {
   TF_ASSERT_OK(ConvertTfMlirToBef(options.compile_options, module.get(),
                                   &old_bef, model_context));
 
-  // Create Filepath for .mlir.bef
+  // Create Filepath for .mlir.bef.
   const std::string filepath =
       io::JoinPath(getenv("TEST_UNDECLARED_OUTPUTS_DIR"),
                    std::string("serialized_bef.mlir.bef"));
 
-  // Serialize BEF Buffer
+  // Serialize BEF Buffer.
   TF_ASSERT_OK(tensorflow::tfrt_stub::SerializeBEF(old_bef, filepath));
-  // Check that Bef Buffer is not empty
   ASSERT_NE(old_bef.size(), 0);
 
-  // Create new empty BEF buffer and deserialize to verify data
+  // Create new empty BEF buffer and deserialize to verify data.
 
   TF_ASSERT_OK_AND_ASSIGN(const tfrt::BefBuffer bef,
                           DeserializeBEFBuffer(filepath));
 
-  // Check for any data loss during deserialization process
+  // Check for any data loss during deserialization process.
   ASSERT_TRUE(old_bef.size() == bef.size());
 
-  // Check file creation
+  // Check file creation.
   std::unique_ptr<Runtime> default_runtime =
       DefaultTfrtRuntime(/*num_threads=*/1);
   SavedModel::Options default_options =
@@ -92,12 +94,10 @@ TEST(SerializeBEFTest, HandlesCompleteProcess) {
                    .status());
 }
 
-TEST(SerializeMLRTTest, HandlesSerializeProcess) {
-  // Create Empty MLRT Bytecode
-  // tfrt::BefBuffer old_bef;
-  mlrt::bc::Buffer old_byteCode;
+TEST(SerializeMLRTTest, HandlesSerializeAndDeserializeProcess) {
+  mlrt::bc::Buffer old_bytecode;
 
-  // Load MLRT Bytecode Data
+  // Load MLRT Bytecode Data.
 
   const std::string saved_model_mlir_path =
       "third_party/tensorflow/compiler/mlir/tfrt/tests/saved_model/testdata/"
@@ -121,20 +121,41 @@ TEST(SerializeMLRTTest, HandlesSerializeProcess) {
   tfrt_stub::ModelRuntimeContext model_context(
       &options, options.compile_options.saved_model_dir, &resource_context);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, mlrt_compiler::ConvertTfMlirToBytecode(
-                       options.compile_options, *fallback_state, module.get(),
-                       model_context, &module_with_op_keys));
+      old_bytecode, mlrt_compiler::ConvertTfMlirToBytecode(
+                        options.compile_options, *fallback_state, module.get(),
+                        model_context, &module_with_op_keys));
 
-  // Create Filepath for .mlir.mlrt
+  // Create Filepath for .mlir.mlrt.
+  const std::string aot_package_path = GetAotPackagePath(
+      absl::NullSafeStringView(getenv("TEST_UNDECLARED_OUTPUTS_DIR")));
+  tsl::Env* env = tsl::Env::Default();
+  TF_ASSERT_OK(env->RecursivelyCreateDir(aot_package_path));
+
   const std::string filepath =
-      io::JoinPath(getenv("TEST_UNDECLARED_OUTPUTS_DIR"),
-                   std::string("serialized_mlrt.mlir.mlrt"));
+      io::JoinPath(aot_package_path, std::string("serialized_mlrt.mlir.mlrt"));
 
-  // Serialize MLRT Bytecode
+  // Serialize MLRT Bytecode.
   TF_ASSERT_OK(
-      tensorflow::tfrt_stub::SerializeMLRTBytecode(old_byteCode, filepath));
-  // Check that MLRT Bytecode is not empty
-  ASSERT_NE(buffer.size(), 0);
+      tensorflow::tfrt_stub::SerializeMLRTBytecode(old_bytecode, filepath));
+  ASSERT_NE(old_bytecode.size(), 0);
+
+  // Create new MLRT Bytecode and deserialize to verify data.
+  mlrt::bc::Buffer bytecode;
+  TF_ASSERT_OK_AND_ASSIGN(bytecode, DeserializeMlrtBytecodeBuffer(filepath));
+
+  // Check for any data loss during deserialization process.
+  ASSERT_TRUE(old_bytecode.size() == bytecode.size());
+  EXPECT_STREQ(old_bytecode.data(), bytecode.data());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bytecode,
+      LoadMlrtAndMlir(options.compile_options, module_with_op_keys.get(),
+                      getenv("TEST_UNDECLARED_OUTPUTS_DIR"),
+                      fallback_state.get()));
+
+  // Check for any data loss during deserialization process.
+  ASSERT_TRUE(old_bytecode.size() == bytecode.size());
+  EXPECT_STREQ(old_bytecode.data(), bytecode.data());
 }
 }  // namespace
 }  // namespace tfrt_stub

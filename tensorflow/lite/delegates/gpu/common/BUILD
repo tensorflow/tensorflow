@@ -44,6 +44,7 @@ cc_library(
     deps = [
         ":data_type",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -532,6 +533,8 @@ cc_test(
     name = "winograd_util_test",
     srcs = ["winograd_util_test.cc"],
     deps = [
+        ":operations",
+        ":shape",
         ":winograd_util",
         "@com_google_googletest//:gtest_main",
     ],

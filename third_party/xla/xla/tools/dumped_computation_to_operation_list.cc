@@ -15,26 +15,36 @@ limitations under the License.
 
 // Dumps out the operations that are present in a serialized computation.
 
+#include <cstdio>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/client/client.h"
 #include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/service.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
+#include "xla/service/local_service.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace tools {
@@ -43,7 +53,7 @@ class OperationDumper : public DfsHloVisitorWithDefault {
  public:
   explicit OperationDumper(const std::string& path) : path_(path) {}
 
-  Status DefaultAction(HloInstruction* hlo) override {
+  absl::Status DefaultAction(HloInstruction* hlo) override {
     std::string params = absl::StrJoin(
         hlo->operands(), ", ",
         [](std::string* out, const HloInstruction* operand) {
@@ -53,7 +63,7 @@ class OperationDumper : public DfsHloVisitorWithDefault {
     std::cout << absl::StrFormat("%s :: (%s) -> %s :: %s\n",
                                  HloOpcodeString(hlo->opcode()), params,
                                  ShapeUtil::HumanString(hlo->shape()), path_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

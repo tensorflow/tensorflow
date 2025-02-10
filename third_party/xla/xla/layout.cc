@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -28,17 +29,22 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
 TileProto Tile::ToProto() const {
   TileProto tile_proto;
+  SetProto(tile_proto);
+  return tile_proto;
+}
+
+void Tile::SetProto(TileProto& tile_proto) const {
+  tile_proto.Clear();
   for (int64_t i : dimensions()) {
     tile_proto.add_dimensions(i);
   }
-  return tile_proto;
 }
 
 void Tile::Print(Printer* printer) const {
@@ -77,6 +83,14 @@ SplitConfigProto SplitConfig::ToProto() const {
   return split_config_proto;
 }
 
+void SplitConfig::SetProto(SplitConfigProto& split_config_proto) const {
+  split_config_proto.Clear();
+  split_config_proto.set_dimension(dimension_);
+  for (int64_t i : split_indices_) {
+    split_config_proto.add_split_indices(i);
+  }
+}
+
 std::string SplitConfig::ToString() const {
   return absl::StrCat("(", dimension_, ":", absl::StrJoin(split_indices_, ","),
                       ")");
@@ -86,6 +100,14 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major)
     : index_primitive_type_(PRIMITIVE_TYPE_INVALID),
       pointer_primitive_type_(PRIMITIVE_TYPE_INVALID),
       minor_to_major_(minor_to_major.begin(), minor_to_major.end()) {}
+
+Layout::Layout(absl::Span<const int64_t> minor_to_major,
+               absl::Span<const Tile> tiles, int64_t element_size_in_bits)
+    : index_primitive_type_(PRIMITIVE_TYPE_INVALID),
+      pointer_primitive_type_(PRIMITIVE_TYPE_INVALID),
+      element_size_in_bits_(element_size_in_bits),
+      minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
+      tiles_(tiles.begin(), tiles.end()) {}
 
 Layout::Layout(absl::Span<const int64_t> minor_to_major,
                absl::Span<const DimLevelType> dim_level_types,
@@ -219,6 +241,12 @@ Layout& Layout::operator=(Layout&& other) = default;
 
 LayoutProto Layout::ToProto() const {
   LayoutProto proto;
+  SetProto(proto);
+  return proto;
+}
+
+void Layout::SetProto(LayoutProto& proto) const {
+  proto.Clear();
   for (int i = 0; i < n_dim_level_types_; i++) {
     proto.add_dim_level_types(dim_level_type(i));
   }
@@ -233,7 +261,7 @@ LayoutProto Layout::ToProto() const {
     proto.add_minor_to_major(dimension);
   }
   for (const Tile& tile : tiles()) {
-    *proto.add_tiles() = tile.ToProto();
+    tile.SetProto(*proto.add_tiles());
   }
   proto.set_tail_padding_alignment_in_elements(
       tail_padding_alignment_in_elements());
@@ -242,14 +270,13 @@ LayoutProto Layout::ToProto() const {
   proto.set_element_size_in_bits(element_size_in_bits_);
   proto.set_memory_space(memory_space_);
   for (const SplitConfig& split_config : split_configs()) {
-    *proto.add_split_configs() = split_config.ToProto();
+    split_config.SetProto(*proto.add_split_configs());
   }
   if (has_physical_shape()) {
     *proto.mutable_physical_shape() = physical_shape_->ToProto();
   }
   proto.set_dynamic_shape_metadata_prefix_bytes(
       dynamic_shape_metadata_prefix_bytes_);
-  return proto;
 }
 
 namespace {

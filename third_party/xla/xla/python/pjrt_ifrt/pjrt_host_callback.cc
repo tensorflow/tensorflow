@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
+
 namespace xla {
 namespace ifrt {
 
 char PjRtHostSendAndRecvLoadedHostCallback::ID = 0;
 
-StatusOr<std::string> PjRtHostSendAndRecvLoadedHostCallback::Serialize() const {
+absl::StatusOr<std::string> PjRtHostSendAndRecvLoadedHostCallback::Serialize()
+    const {
   return Unimplemented(
       "PjRtHostSendAndRecvLoadedHostCallback serialization is not supported");
 }

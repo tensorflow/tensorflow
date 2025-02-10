@@ -59,7 +59,11 @@ class NamedAttr<string attr_name> :
 // Checks if the value is not defined inside a lifted function by checking the
 // `tf_quant.composite_function` attribute.
 def IsNotInLiftedFunc :
-      Constraint<CPred<"!IsInLiftedFunc(*$0.getDefiningOp())">>;
+      Constraint<CPred<"!IsInLiftedFunc($0.getDefiningOp())">>;
+
+// Checks if the value is not inside a StableHLO op with region.
+def IsNotInStableHloOpRegion :
+      Constraint<CPred<"!IsInStableHloOpRegion($0.getDefiningOp())">>;
 
 // Checks if the given einsum op is supported for XlaDotV2 quantization.
 def IsEinsumSupportedByXlaDotV2 :

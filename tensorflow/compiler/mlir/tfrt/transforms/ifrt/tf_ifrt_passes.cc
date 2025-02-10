@@ -44,6 +44,55 @@ using mlir::OpPassManager;
 using mlir::PassManager;
 using mlir::func::FuncOp;
 
+void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
+                                            llvm::StringRef module_name) {
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::CreateExecutorDialectToFunctionalConversionPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(CreateTfIdentityPropagationPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestoreSplittingPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestorePruningPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestoreMergingPass());
+
+  // Convert reference variable to resource variable since
+  // LowerToIfrtRestoreVariablePass does not support reference variable.
+  pm.addPass(CreateConvertReferenceVariableToResourceVariablePass());
+  pm.addPass(CreateLowerToIfrtRestoreVariablePass());
+
+  pm.addPass(CreateRewriteClusterToIfrtCallPass());
+
+  // After device program is extracted, we can clean up device attributes from
+  // all ops.
+  pm.addNestedPass<mlir::func::FuncOp>(CreateTfDeviceCleanupPass());
+
+  // Sink VarHandle with ReadVariableOp: subsequent SinkVariableAsNamedArrayPass
+  // rely on the co-existence of VarHandle and ReadVariable in the same
+  // function.
+  // First, we inline all the function calls. This will sink VarHandle
+  // with ReadVariable in most cases. Then SinkInvariantOpsPass will sink
+  // VarHandle to a few special Ops that inliner does not handle.
+  // TODO(b/319045348): the bridge before this pipeline already does some
+  // inlining. Consider removing this inliner.
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(::tensorflow::CreateSinkInInvariantOpsPass());
+
+  // Decompose resource ops as resource variables are loaded by ReadVariableOp
+  // and can be lowered to IfrtLoadVariableOp in the subsequent
+  // SinkVariableAsNamedArrayPass.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFDevice::CreateDecomposeResourceOpsPass());
+
+  // Sink variable tensor as named array in IFRT.
+  pm.addPass(CreateSinkVariableAsNamedArrayPass());
+}
+
+}  // namespace
+
 // Setup the input pass manager to enable IR dumping after each pass.
 // Note a side effect of this method is that multi threading will be disabled.
 void EnablePassIRPrinting(PassManager& pm, const std::string& dump_group_name,
@@ -61,33 +110,6 @@ void EnablePassIRPrinting(PassManager& pm, const std::string& dump_group_name,
       /*print_module_scope=*/true));
   pm.enableTiming();
 }
-
-void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
-                                            llvm::StringRef module_name) {
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::CreateExecutorDialectToFunctionalConversionPass());
-
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
-
-  pm.addPass(CreateRewriteClusterToIfrtCallPass());
-
-  // Sink VarHandle with ReadVariableOp: subsequent SinkVariableAsNamedArrayPass
-  // rely on the co-existence of VarHandle and ReadVariable in the same
-  // function.
-  // First, we inline all the function calls. This will sink VarHandle
-  // with ReadVariable in most cases. Then SinkInvariantOpsPass will sink
-  // VarHandle to a few special Ops that inliner does not handle.
-  // TODO(b/319045348): the bridge before this pipeline already does some
-  // inlining. Consider removing this inliner.
-  pm.addPass(mlir::createInlinerPass());
-  pm.addPass(::tensorflow::CreateSinkInInvariantOpsPass());
-
-  // Sink variable tensor as named array in IFRT.
-  pm.addPass(CreateSinkVariableAsNamedArrayPass());
-}
-
-}  // namespace
 
 absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
     mlir::ModuleOp module, llvm::StringRef module_name) {

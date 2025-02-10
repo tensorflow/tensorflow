@@ -123,6 +123,20 @@ class AdamOptimizerTest(test.TestCase):
           self.evaluate(variables.global_variables_initializer())
           minimize_op.run()
 
+  def testGatherGradientWithBadIndicesPolicy(self):
+    with ops.Graph().as_default():
+      with self.cached_session(force_gpu=test.is_gpu_available()):
+        var = variables.Variable([1.0, 2.0])
+        indices = constant_op.constant([[1], [-1], [0]], dtype=dtypes.int32)
+        out = array_ops.gather_nd(var,
+                                  array_ops.expand_dims(indices, axis=-1),
+                                  batch_dims=0,
+                                  bad_indices_policy="IGNORE")
+        optimizer = adam.AdamOptimizer(2.0, 0.0, 1.0)
+        minimize_op = optimizer.minimize(out)
+        self.evaluate(variables.global_variables_initializer())
+        minimize_op.run()
+
   def testSparseRepeatedIndices(self):
     with ops.Graph().as_default():
       for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:

@@ -38,8 +38,10 @@ class SparseCoreLayoutStacker {
   //     into (usually one per TPU chip).
   //       NOTE: As of Q4 2023, SPMD is not supported by the sparse core python
   //       libraries so we don't support it here.
-  //   sparse_cores_per_partition:
+  //   sparse_cores_per_partition: Number of sparsecore per partition
+  //   disable_table_stacking: Should not stack tables.
   explicit SparseCoreLayoutStacker(int num_partitions,
+                                   bool disable_table_stacking = false,
                                    int sparse_cores_per_partition = 4);
 
   // Change various limits. You must call these before calling Addtable.
@@ -82,8 +84,8 @@ class SparseCoreLayoutStacker {
   //
   // Be sure you call AddTable in a deterministic order; the details of the
   // stacking will depend on the order you call AddTable.
-  absl::Status AddTable(tsl::StringPiece table_name, int64_t table_height,
-                        int64_t table_width, tsl::StringPiece group,
+  absl::Status AddTable(absl::string_view table_name, int64_t table_height,
+                        int64_t table_width, absl::string_view group,
                         int64_t output_samples);
 
   // Get the information about each table out.

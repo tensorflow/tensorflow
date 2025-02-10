@@ -22,9 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -36,7 +36,7 @@ struct FakeExecutable {
 using Cache = DeviceCompilationCache<FakeExecutable>;
 using Signature = DeviceCompilationClusterSignature;
 
-StatusOr<Signature> BuildSampleSignature(const std::string& fn_name) {
+absl::StatusOr<Signature> BuildSampleSignature(const std::string& fn_name) {
   NameAttrList fn;
   fn.set_name(fn_name);
   std::vector<XlaCompiler::Argument> args(1);

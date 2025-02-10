@@ -30,12 +30,12 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Declare here, so we don't need a public header.
-Status BackportConcatV2Transform(const GraphDef& input_graph_def,
-                                 const TransformFuncContext& context,
-                                 GraphDef* output_graph_def);
-Status BackportTensorArrayV3Transform(const GraphDef& input_graph_def,
-                                      const TransformFuncContext& context,
-                                      GraphDef* output_graph_def);
+absl::Status BackportConcatV2Transform(const GraphDef& input_graph_def,
+                                       const TransformFuncContext& context,
+                                       GraphDef* output_graph_def);
+absl::Status BackportTensorArrayV3Transform(const GraphDef& input_graph_def,
+                                            const TransformFuncContext& context,
+                                            GraphDef* output_graph_def);
 
 class BackportConcatV2Test : public ::testing::Test {
  protected:
@@ -192,7 +192,7 @@ TEST(BackportTensorArrayV3Test, TestBackportTensorArrayV3Subtypes) {
     std::map<string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
     ASSERT_EQ(1, node_lookup.count("v3_node"));
-    EXPECT_TRUE(str_util::EndsWith(node_lookup.at("v3_node")->op(), "V2"));
+    EXPECT_TRUE(absl::EndsWith(node_lookup.at("v3_node")->op(), "V2"));
   }
 }
 

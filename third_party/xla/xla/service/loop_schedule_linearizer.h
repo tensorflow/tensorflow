@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_LOOP_SCHEDULE_LINEARIZER_H_
 #define XLA_SERVICE_LOOP_SCHEDULE_LINEARIZER_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -41,7 +45,7 @@ class LoopScheduleLinearizer : public HloModulePass {
       : can_share_buffer_(can_share_buffer) {}
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

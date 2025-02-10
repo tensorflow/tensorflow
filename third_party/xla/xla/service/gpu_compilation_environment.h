@@ -18,7 +18,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "xla/statusor.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -32,7 +33,8 @@ GpuCompilationEnvironment CreateGpuCompEnvWithDefaultValues();
 
 // Returns non-OK status if XLA_FLAGS env var has malformed values or
 // if it has conflict with the GpuCompilationEnvironment proto
-Status InitializeMissingFieldsFromXLAFlags(GpuCompilationEnvironment& env);
+absl::Status InitializeMissingFieldsFromXLAFlags(
+    GpuCompilationEnvironment& env);
 
 }  // namespace xla
 #endif  // XLA_SERVICE_GPU_COMPILATION_ENVIRONMENT_H_

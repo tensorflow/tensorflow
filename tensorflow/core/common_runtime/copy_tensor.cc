@@ -53,7 +53,7 @@ std::vector<RegistrationInfo>* MutableRegistry() {
 }
 
 void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
-                      Allocator* out_allocator, StringPiece edge_name,
+                      Allocator* out_allocator, absl::string_view edge_name,
                       Device* dst, Tensor* output,
                       DeviceContext* recv_dev_context, StatusCallback done,
                       bool sync_dst_compute) {
@@ -62,7 +62,7 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
     auto* status_cb = new ReffedStatusCallback(std::move(done));
     core::ScopedUnref status_cb_unref(status_cb);
 
-    auto wrapped_done = [status_cb](const Status& s) {
+    auto wrapped_done = [status_cb](const absl::Status& s) {
       status_cb->UpdateStatus(s);
       status_cb->Unref();
     };
@@ -77,7 +77,7 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
         return absl::OkStatus();
       } else {
         if (!DMAHelper::CanUseDMA(&from)) {
-          Status err = errors::InvalidArgument(
+          absl::Status err = errors::InvalidArgument(
               "During Variant Host->Device Copy: "
               "non-DMA-copy attempted of tensor type: ",
               DataTypeString(from.dtype()));
@@ -98,7 +98,7 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
 
     const Variant* v = input->flat<Variant>().data();
     Variant* v_out = copy.flat<Variant>().data();
-    Status s_copy_init;
+    absl::Status s_copy_init;
     for (int64_t i = 0; i < input->NumElements(); ++i) {
       s_copy_init = VariantDeviceCopy(
           VariantDeviceCopyDirection::HOST_TO_DEVICE, v[i], &v_out[i], copier);
@@ -132,7 +132,7 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
     auto* status_cb = new ReffedStatusCallback(std::move(done));
     core::ScopedUnref status_cb_unref(status_cb);
 
-    auto wrapped_done = [status_cb](const Status& s) {
+    auto wrapped_done = [status_cb](const absl::Status& s) {
       status_cb->UpdateStatus(s);
       status_cb->Unref();
     };
@@ -151,7 +151,7 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
         return absl::OkStatus();
       } else {
         if (!DMAHelper::CanUseDMA(&from)) {
-          Status err = errors::InvalidArgument(
+          absl::Status err = errors::InvalidArgument(
               "During Variant Device->Device Copy: ", src->name(), " to ",
               dst->name(), " non-DMA-copy attempted of tensor type: ",
               DataTypeString(from.dtype()));
@@ -173,7 +173,7 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
 
     const Variant* v = input->flat<Variant>().data();
     Variant* v_out = copy.flat<Variant>().data();
-    Status s_copy_init;
+    absl::Status s_copy_init;
     for (int64_t i = 0; i < input->NumElements(); ++i) {
       s_copy_init =
           VariantDeviceCopy(VariantDeviceCopyDirection::DEVICE_TO_DEVICE, v[i],
@@ -199,14 +199,15 @@ void CopyDeviceToDevice(CopyTensor::CopyFunction copy_function,
 }  // namespace
 
 // static
-void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
+void CopyTensor::ViaDMA(absl::string_view edge_name,
+                        DeviceContext* send_dev_context,
                         DeviceContext* recv_dev_context, Device* src,
                         Device* dst, const AllocatorAttributes src_alloc_attr,
                         const AllocatorAttributes dst_alloc_attr,
                         const Tensor* input, Tensor* output,
                         int dev_to_dev_stream_index, StatusCallback done,
                         bool sync_dst_compute) {
-  profiler::ScopedAnnotation annotation(
+  tsl::profiler::ScopedAnnotation annotation(
       [&] { return absl::StrCat("#edge_name=", edge_name, "#"); });
   VLOG(4) << "Copy " << edge_name;
 
@@ -254,15 +255,15 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
 
     Tensor* cpu_tensor =
         new Tensor(cpu_allocator, input->dtype(), input->shape());
-    auto delete_and_done = [cpu_tensor,
-                            done = std::move(done)](const Status& status) {
-      delete cpu_tensor;
-      done(status);
-    };
+    auto delete_and_done =
+        [cpu_tensor, done = std::move(done)](const absl::Status& status) {
+          delete cpu_tensor;
+          done(status);
+        };
     auto then_copy_to_other_device =
         [delete_and_done = std::move(delete_and_done), recv_dev_context,
          cpu_tensor, cpu_allocator, out_allocator, edge_name, dst, output,
-         sync_dst_compute](Status status) {
+         sync_dst_compute](absl::Status status) {
           if (!status.ok()) {
             delete_and_done(status);
             return;
@@ -301,10 +302,10 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
 }
 
 // static
-Status CopyTensor::Register(DeviceType sender_device_type,
-                            DeviceType receiver_device_type,
-                            CopyFunction copy_function,
-                            bool is_pluggable_device) {
+absl::Status CopyTensor::Register(DeviceType sender_device_type,
+                                  DeviceType receiver_device_type,
+                                  CopyFunction copy_function,
+                                  bool is_pluggable_device) {
   std::vector<RegistrationInfo>* registry = MutableRegistry();
   registry->emplace_back(sender_device_type, receiver_device_type,
                          copy_function, is_pluggable_device);
@@ -315,7 +316,7 @@ namespace {
 
 // The following registrations enable a DT_VARIANT tensor element that contains
 // a wrapped `tensorflow::Tensor` to be copied between devices.
-static Status WrappedTensorDeviceCopy(
+static absl::Status WrappedTensorDeviceCopy(
     const Tensor& from, Tensor* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
   if (DMAHelper::CanUseDMA(&from)) {
@@ -338,7 +339,7 @@ REGISTER_WRAPPED_TENSOR_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
 }  // namespace
 
 void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
-                      Allocator* out_allocator, StringPiece edge_name,
+                      Allocator* out_allocator, absl::string_view edge_name,
                       Device* src, Tensor* output,
                       DeviceContext* send_dev_context, StatusCallback done) {
   if (input->dtype() == DT_VARIANT) {
@@ -346,7 +347,7 @@ void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
     auto* status_cb = new ReffedStatusCallback(std::move(done));
     core::ScopedUnref status_cb_unref(status_cb);
 
-    auto wrapped_done = [status_cb](const Status& s) {
+    auto wrapped_done = [status_cb](const absl::Status& s) {
       status_cb->UpdateStatus(s);
       status_cb->Unref();
     };
@@ -360,7 +361,7 @@ void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
         return absl::OkStatus();
       } else {
         if (!DMAHelper::CanUseDMA(&from)) {
-          Status err = errors::InvalidArgument(
+          absl::Status err = errors::InvalidArgument(
               "During Variant Device->Host Copy: "
               "non-DMA-copy attempted of tensor type: ",
               DataTypeString(from.dtype()));
@@ -381,7 +382,7 @@ void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
 
     const Variant* v = input->flat<Variant>().data();
     Variant* v_out = copy.flat<Variant>().data();
-    Status s_copy_init;
+    absl::Status s_copy_init;
     for (int64_t i = 0; i < input->NumElements(); ++i) {
       s_copy_init = VariantDeviceCopy(
           VariantDeviceCopyDirection::DEVICE_TO_HOST, v[i], &v_out[i], copier);

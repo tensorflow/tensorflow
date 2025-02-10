@@ -154,6 +154,8 @@ absl::Status CreateVectorCopyData(const TfLiteTensor& src, T* dst) {
         return absl::OkStatus();
       case kTfLiteFloat16:
         return absl::UnimplementedError("src can't be float16.");
+      case kTfLiteBFloat16:
+        return absl::UnimplementedError("src can't be bfloat16.");
       case kTfLiteFloat64:
         for (int i = 0; i < n; ++i) {
           dst[i] = tflite::GetTensorData<double>(&src)[i];

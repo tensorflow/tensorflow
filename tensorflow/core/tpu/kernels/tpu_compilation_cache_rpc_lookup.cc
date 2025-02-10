@@ -65,12 +65,12 @@ TpuCompilationCacheRpcLookup::TpuCompilationCacheRpcLookup(
   VLOG(1) << "Created RPC lookup cache size " << max_cache_size_ << " bytes.";
 }
 
-Status TpuCompilationCacheRpcLookup::Lookup(
+absl::Status TpuCompilationCacheRpcLookup::Lookup(
     const std::string& proto_key,
     std::unique_ptr<CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target) {
-  profiler::TraceMe proto_lookup_traceme("Remote TPU proto cache lookup",
-                                         /*level=*/2);
+  tsl::profiler::TraceMe proto_lookup_traceme("Remote TPU proto cache lookup",
+                                              /*level=*/2);
   entry->reset();
   std::shared_ptr<CacheEntry> cache_entry;
   // Keep a reference to CacheEntry objects evicted from the cache so that the
@@ -100,12 +100,13 @@ Status TpuCompilationCacheRpcLookup::Lookup(
   return absl::OkStatus();
 }
 
-Status TpuCompilationCacheRpcLookup::Lookup(
+absl::Status TpuCompilationCacheRpcLookup::Lookup(
     int64_t uid, int proto_index,
     std::unique_ptr<CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target) {
-  profiler::TraceMe proto_lookup_traceme("Remote TPU proto cache lookup by uid",
-                                         /*level=*/2);
+  tsl::profiler::TraceMe proto_lookup_traceme(
+      "Remote TPU proto cache lookup by uid",
+      /*level=*/2);
   entry->reset();
   std::shared_ptr<CacheEntry> cache_entry;
   // Keep a reference to CacheEntry objects evicted from the cache so that the
@@ -145,12 +146,12 @@ Status TpuCompilationCacheRpcLookup::Lookup(
   return absl::OkStatus();
 }
 
-Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
+absl::Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
     const std::string& local_proto_key,
     const tpu::GetTpuProgramRequest& request,
     std::shared_ptr<CacheEntry>* cache_entry) {
-  profiler::TraceMe proto_lookup_traceme("Remote TPU proto cache fetch",
-                                         /*level=*/2);
+  tsl::profiler::TraceMe proto_lookup_traceme("Remote TPU proto cache fetch",
+                                              /*level=*/2);
   // Perform the RPC while holding the lock unless it is demonstrated that
   // this causes a performance problem.
   ::grpc::ClientContext client_context;
@@ -158,7 +159,7 @@ Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
   client_context.set_compression_algorithm(GRPC_COMPRESS_GZIP);
 
   ResponseType response;
-  Status s =
+  absl::Status s =
       FromGrpcStatus(stub_->GetTpuProgram(&client_context, request, &response));
   VLOG(1) << "Looked up key " << local_proto_key
           << " in remote subgraph cache status " << s;

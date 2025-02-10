@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "xla/tsl/c/tsl_status_internal.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tsl/c/tsl_status_internal.h"  // IWYU pragma: keep
 
 // Required for IS_MOBILE_PLATFORM definition
 #include "tsl/platform/platform.h"  // IWYU pragma: keep
@@ -59,11 +59,11 @@ limitations under the License.
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_internal.h"
 #include "tensorflow/core/framework/device.h"
-#include "tsl/framework/device_id_utils.h"
-#include "tsl/platform/statusor.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 // This file forms the basis of a stable ABI for third-party kernel
@@ -360,7 +360,7 @@ SP_Stream TF_GetStream(TF_OpKernelContext* ctx, TF_Status* status) {
   } else {  // Is a PluggableDevice
     TF_SetStatus(status, TF_OK, "");
     auto c_stream = static_cast<stream_executor::CStream*>(
-        cc_ctx->op_device_context()->stream()->implementation());
+        cc_ctx->op_device_context()->stream());
     return c_stream->Handle();
   }
 #endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
@@ -794,10 +794,7 @@ int TF_GetDeviceId(TF_OpKernelContext* ctx) {
 #else
   const auto* device = reinterpret_cast<const tensorflow::Device*>(
       device_base->UnderlyingDevice());
-  const absl::StatusOr<int> id = tsl::GetDeviceIdFromDeviceParsedName(
-      device->parsed_name(), tensorflow::DeviceType(device->device_type()));
-  if (!id.ok()) return -1;
-  return *id;
+  return tsl::GetDeviceIdFromDeviceParsedName(device->parsed_name());
 #endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 

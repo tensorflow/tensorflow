@@ -89,8 +89,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
 
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                                 stream);
-    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                      se::GpuAsmOpts());
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter);
     se::DeviceMemory<T> output_ptr_rz(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
@@ -105,7 +104,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
         element_type, element_type, conv_scale, side_input_scale,
         leakyrelu_alpha, stream, input_desc, filter_desc, bias_desc,
         output_desc, conv_desc, /*use_fallback=*/false, activation_mode,
-        GetNumericOptions(), &runners));
+        GetNumericOptionsForCuDnn(), &runners));
 
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
@@ -156,7 +155,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
           element_type, element_type, conv_scale, side_input_scale,
           leakyrelu_alpha, stream, input_desc, filter_desc, bias_desc,
           output_desc, conv_desc, /*use_fallback=*/true, activation_mode,
-          GetNumericOptions(), &fallback_runners));
+          GetNumericOptionsForCuDnn(), &fallback_runners));
 
       TF_ASSIGN_OR_RETURN(auto fallback_results,
                           internal::AutotuneConvImpl(
@@ -256,8 +255,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
 #if GOOGLE_CUDA
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                                 stream);
-    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                      se::GpuAsmOpts());
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter);
 
     // TODO(awpr): second-guess whether it's okay that this profiles
     // convolutions on uninitialized memory.
@@ -290,8 +288,8 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
         CudnnUseFrontend(), kind, element_type, element_type, stream,
         input_desc, input_ptr, filter_desc, filter_ptr, output_desc, output_ptr,
-        conv_desc, /*use_fallback=*/false, &rz_allocator, GetNumericOptions(),
-        &runners));
+        conv_desc, /*use_fallback=*/false, &rz_allocator,
+        GetNumericOptionsForCuDnn(), &runners));
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
             const std::unique_ptr<const se::dnn::ConvRunner>& runner,
@@ -336,7 +334,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
           CudnnUseFrontend(), kind, element_type, element_type, stream,
           input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
           output_ptr, conv_desc, /*use_fallback=*/true, &rz_allocator,
-          GetNumericOptions(), &fallback_runners));
+          GetNumericOptionsForCuDnn(), &fallback_runners));
 
       TF_ASSIGN_OR_RETURN(auto fallback_results,
                           internal::AutotuneConvImpl(

@@ -260,13 +260,13 @@ class ArrayCreationTest(test.TestCase):
       # Dtype specified.
       self.match_expected_attrs(
           np_array_ops.array(a, dtype=dtype, ndmin=ndmin, copy=copy),
-          np.array(a, dtype=dtype, ndmin=ndmin, copy=copy),
+          np.array(a, dtype=dtype, ndmin=ndmin),
           dtype,
           tensor.Tensor,
       )
       # No dtype specified.
       actual = np_array_ops.array(a, ndmin=ndmin, copy=copy)
-      expected = np.array(a, ndmin=ndmin, copy=copy)
+      expected = np.array(a, ndmin=ndmin)
       self.match_expected_attrs(
           actual,
           expected,

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Unique"
   input_arg {
     name: "x"

@@ -25,13 +25,6 @@ def UnaryToBinaryEinsumEq : NativeCodeCall<
 def GetI64DenseElementsAttr : NativeCodeCall<
   "$0.mapValues($_builder.getI64Type(), [](llvm::APInt x) { return x.sext(64); })">;
 
-// Convert UnaryEinsumOp to EinsumOp with two operands with redundant first
-// operand.
-def UnaryEinsumToEinsum : Pat<
-  (MHLO_UnaryEinsumOp $operand, $equation),
-  (MHLO_EinsumOp (MHLO_ConstantOp (GetScalarOfType<1> $operand)),
-                $operand, (UnaryToBinaryEinsumEq $equation))>;
-
 // A dynamic reshape of a dynamic reshape is a dynamic reshape.
 def RemoveRedundantDynamicReshape : Pat<
   (MHLO_DynamicReshapeOp (MHLO_DynamicReshapeOp $operand, $shape1), $shape2),

@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #define ALWAYS_INLINE EIGEN_ALWAYS_INLINE
@@ -1136,7 +1136,8 @@ ALWAYS_INLINE void CopyAndMayBeInterleaveBfloat16(void* bdst, const void* bsrc,
     dst += kNumOperands;
   }
   if (num % kStep != 0) {
-    memcpy(dst, src, (num % kStep) * sizeof(bfloat16));
+    memcpy(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src),
+           (num % kStep) * sizeof(bfloat16));
   }
 }
 

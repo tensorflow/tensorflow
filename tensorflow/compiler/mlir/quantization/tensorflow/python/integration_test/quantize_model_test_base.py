@@ -44,7 +44,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop as while_loop_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import tf_logging as logging  # pylint: disable=unused-import
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import signature_def_utils_impl
@@ -107,40 +107,6 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
             log_record_list,
         )
     )
-
-  def assertSizeRatioGreaterThan(
-      self, path_a: str, path_b: str, threshold: float
-  ):
-    """Check if the size ratio of the given paths is greater than the threshold.
-
-    Args:
-      path_a: Path of a directory or a file to be the nominator of the ratio.
-      path_b: Path of a directory or a file to be the denominator of the ratio.
-      threshold: a number to compare with.
-
-    Returns:
-      True if the size ratio of path_a / path_b is greater than threshold.
-    """
-    size_a = self._get_dir_size(path_a)
-    size_b = self._get_dir_size(path_b)
-    size_ratio = size_a / size_b
-    return self.assertGreater(size_ratio, threshold)
-
-  def assertSizeRatioLessThan(self, path_a: str, path_b: str, threshold: float):
-    """Check if the size ratio of the given paths is less than the threshold.
-
-    Args:
-      path_a: Path of a directory or a file to be the nominator of the ratio.
-      path_b: Path of a directory or a file to be the denominator of the ratio.
-      threshold: a number to compare with.
-
-    Returns:
-      True if the size ratio of path_a / path_b is less than threshold.
-    """
-    size_a = self._get_dir_size(path_a)
-    size_b = self._get_dir_size(path_b)
-    size_ratio = size_a / size_b
-    return self.assertLess(size_ratio, threshold)
 
   def _is_quantized_function(self, func: function_pb2.FunctionDef) -> bool:
     """Determine whether a FunctionDef is quantized.
@@ -1341,7 +1307,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
 
         return {'output': out}
 
-    # If bias_size is not explictly given, it should default to width of weight.
+    # If bias_size is not explicitly given, it should default to width of weight.
     if bias_size is None and has_bias:
       bias_size = weight_shape[-1]
 

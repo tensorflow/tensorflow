@@ -246,7 +246,12 @@ def maybe_saved_model_directory(export_dir):
   """
   txt_path = file_io.join(export_dir, constants.SAVED_MODEL_FILENAME_PBTXT)
   pb_path = file_io.join(export_dir, constants.SAVED_MODEL_FILENAME_PB)
-  return file_io.file_exists(txt_path) or file_io.file_exists(pb_path)
+  cpb_path = file_io.join(export_dir, constants.SAVED_MODEL_FILENAME_CPB)
+  return (
+      file_io.file_exists(txt_path)
+      or file_io.file_exists(pb_path)
+      or file_io.file_exists(cpb_path)
+  )
 
 
 @tf_export("saved_model.contains_saved_model", v1=[])

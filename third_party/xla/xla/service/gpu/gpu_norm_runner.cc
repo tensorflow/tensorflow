@@ -20,8 +20,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/lazy_op_runner.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -40,29 +44,15 @@ absl::Status RunGpuNorm(const gpu::GpuNormConfig& config,
                         se::Stream* stream, RunNormOptions options) {
   se::dnn::LazyOpRunner<se::dnn::NormOp>* lazy_runner =
       options.norm_runner->AsNormRunner();
-  std::optional<se::dnn::LazyOpRunner<se::dnn::NormOp>> local_runner;
-
-  TF_ASSIGN_OR_RETURN(se::dnn::NormKind kind,
-                      GetDNNNormKindFromCudnnNormKind(config.kind));
-
-  se::dnn::NormOp::Config ln_config{kind,
-                                    config.epsilon,
-                                    config.x_descriptor,
-                                    config.scale_descriptor,
-                                    config.y_or_dx_descriptor,
-                                    config.bias_descriptor,
-                                    config.dy_descriptor,
-                                    config.expectation_descriptor,
-                                    config.norm_factor_descriptor,
-                                    config.dscale_descriptor,
-                                    config.dbias_descriptor};
+  TF_ASSIGN_OR_RETURN(se::dnn::NormOp::Config ln_config,
+                      config.AsDnnNormOpConfig());
   TF_ASSIGN_OR_RETURN(auto* runner,
                       lazy_runner->GetOrCreateRunner(ln_config, stream));
 
   std::vector<se::DeviceMemoryBase> operands;
-  operands.emplace_back(x_buffer);
-  operands.emplace_back(scale_buffer);
-  operands.emplace_back(y_or_dx_buffer);
+  operands.push_back(x_buffer);
+  operands.push_back(scale_buffer);
+  operands.push_back(y_or_dx_buffer);
 
   // The remaining operands are composed of inputs followed by outputs of the
   // library call. The expectation and norm factor are outputs of the forward

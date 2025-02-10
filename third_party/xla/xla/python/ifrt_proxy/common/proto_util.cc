@@ -18,7 +18,8 @@
 #include <memory>
 
 #include "absl/status/status.h"
-#include "tsl/platform/status_to_from_proto.h"
+#include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
 
 namespace xla {
 namespace ifrt {

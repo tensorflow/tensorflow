@@ -1,8 +1,8 @@
 """Generate custom flex delegate library."""
 
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "clean_dep",
     "if_android",
     "if_ios",
     "if_mobile",
@@ -16,13 +16,13 @@ load(
 )
 load(
     "//tensorflow/lite:build_def.bzl",
+    "clean_dep",
     "tflite_cc_shared_object",
     "tflite_copts",
     "tflite_jni_binary",
     "tflite_jni_linkopts",
 )
 load("//tensorflow/lite:special_rules.bzl", "flex_portable_tensorflow_deps")
-load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 def generate_flex_kernel_header(
         name,
@@ -137,7 +137,7 @@ def tflite_flex_cc_library(
                 full = [],
                 lite = ["TENSORFLOW_LITE_PROTOS"],
             ) + tf_defines_nortti_if_lite_protos(),
-            features = tf_features_nomodules_if_mobile() + tf_features_nolayering_check_if_ios(),
+            features = tf_features_nomodules_if_mobile() + tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
             linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
             includes = [
                 CUSTOM_KERNEL_HEADER.include_path,
@@ -168,7 +168,7 @@ def tflite_flex_cc_library(
         hdrs = [
             clean_dep("//tensorflow/lite/delegates/flex:delegate.h"),
         ],
-        features = tf_features_nolayering_check_if_ios(),
+        features = tf_features_nolayering_check_if_ios() + if_android(["-layering_check"]),
         compatible_with = compatible_with,
         visibility = visibility,
         deps = [

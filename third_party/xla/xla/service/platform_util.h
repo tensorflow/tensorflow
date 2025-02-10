@@ -16,13 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_PLATFORM_UTIL_H_
 #define XLA_SERVICE_PLATFORM_UTIL_H_
 
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
 
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
+#include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -35,7 +37,7 @@ class PlatformUtil {
   // there are multiple implementations. For example, GPU platform may be
   // cuda(Nvidia) or rocm(AMD)
   static absl::StatusOr<std::string> CanonicalPlatformName(
-      const std::string& platform_name);
+      absl::string_view platform_name);
 
   // Returns the platforms present on the system and supported by XLA.
   //
@@ -53,7 +55,7 @@ class PlatformUtil {
   // Returns the platform according to the given name. Returns error if there is
   // no such platform.
   static absl::StatusOr<se::Platform*> GetPlatform(
-      const std::string& platform_name);
+      absl::string_view platform_name);
 
   // Returns a vector of StreamExecutors for the given platform.
   // If populated, only the devices in allowed_devices will have

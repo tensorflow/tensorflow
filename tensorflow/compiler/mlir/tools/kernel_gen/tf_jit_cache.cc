@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_jit_cache.h"
 
+#include <cstddef>
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "llvm/Support/Error.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"  // from @llvm-project
 #include "tensorflow/core/platform/mutex.h"
@@ -28,7 +31,7 @@ namespace mlir {
 namespace kernel_gen {
 namespace tf_framework {
 
-tensorflow::Status JITCache::Create(JITCache** dst) {
+absl::Status JITCache::Create(JITCache** dst) {
   *dst = new JITCache;
   return absl::OkStatus();
 }

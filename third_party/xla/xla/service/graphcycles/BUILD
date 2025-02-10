@@ -1,6 +1,6 @@
 load("//xla:xla.bzl", "xla_cc_test")
-load("@local_tsl//tsl:tsl.bzl", "internal_visibility")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -40,11 +40,12 @@ xla_cc_test(
     srcs = ["graphcycles_test.cc"],
     deps = [
         ":graphcycles",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/random",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -53,7 +54,7 @@ xla_cc_test(
     srcs = ["ordered_set_test.cc"],
     deps = [
         ":ordered_set",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )

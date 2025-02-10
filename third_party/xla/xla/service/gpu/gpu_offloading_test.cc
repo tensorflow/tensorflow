@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -22,50 +21,34 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/base/log_severity.h"
-#include "absl/log/scoped_mock_log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
+#include "xla/hlo/transforms/simplifiers/hlo_rematerialization.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout.h"
-#include "xla/service/gpu/horizontal_loop_fusion.h"
-#include "xla/service/gpu/metrics.h"
+#include "xla/service/buffer_value.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/transforms/stream_attribute_annotator.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_memory_scheduler.h"
-#include "xla/service/hlo_rematerialization.h"
-#include "xla/service/hlo_rematerialization_test_utils.h"
-#include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
-#include "xla/service/xla_debug_info_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-namespace m = ::xla::match;
 namespace op = xla::testing::opcode_matchers;
 
-using ::testing::IsEmpty;
-using ::testing::Not;
-using ::testing::TempDir;
-
-class GpuCompilerTest : public HloTestBase {
- public:
-  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* module) {
-    auto compiler = backend().compiler();
-    return compiler->AssignBuffers(module, backend().default_stream_executor());
-  }
-
+class GpuOffloadingTest : public HloTestBase {
  protected:
   absl::StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
                                                HloModule* module,
@@ -118,7 +101,7 @@ class GpuCompilerTest : public HloTestBase {
   float transcendentals_per_second_{1.0f};
 };
 
-TEST_F(GpuCompilerTest, OriginalTest) {
+TEST_F(GpuOffloadingTest, CopyStartDoneHloStringTest) {
   const char* hlo_text = R"(
   HloModule test
 
@@ -144,10 +127,65 @@ ENTRY %main (param_0: f32[1024], param_1: f32[1024]) -> f32[1024] {
   ROOT %res_11 = f32[1024]{0} tanh(f32[1024]{0} %res_10)
 }
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-3}));
 }
 
-TEST_F(GpuCompilerTest, CompiledProgramsCount) {
+TEST_F(GpuOffloadingTest, FusedComputationOffloadingTest) {
+  const char* hlo_text = R"(
+  HloModule test
+
+  mul {
+    %param_1 = f32[1024]{0} parameter(1)
+    %param_0 = f32[1024]{0} parameter(0)
+    ROOT m = f32[1024]{0} multiply(%param_0, %param_1)
+  }
+
+  exp {
+    %param_0 = f32[1024]{0} parameter(0)
+    e = f32[1024]{0} exponential(%param_0)
+    ROOT t = f32[1024]{0} tanh(e)
+  }
+
+  ENTRY %main (param_0: f32[1024], param_1: f32[1024]) -> f32[1024] {
+  %param_1 = f32[1024]{0} parameter(1)
+  %param_0 = f32[1024]{0} parameter(0)
+  %res_3 = f32[1024]{0} fusion(%param_1, %param_0), kind=kInput, calls=mul
+  %copy-start = (f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) copy-start(f32[1024]{0} %res_3)
+  %res_4 = f32[1024]{0} fusion(%res_3), kind=kInput, calls=exp
+  %copy-start.2 = (f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) copy-start(f32[1024]{0} %res_4)
+  %res_5 = f32[1024]{0} tanh(f32[1024]{0} %res_4)
+  %copy-done = f32[1024]{0:S(5)} copy-done((f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) %copy-start)
+  %res_6 = f32[1024]{0} tanh(f32[1024]{0} %res_5)
+  %copy-done.2 = f32[1024]{0:S(5)} copy-done((f32[1024]{0:S(5)}, f32[1024]{0}, u32[]) %copy-start.2)
+  %copy-start.3 = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start(f32[1024]{0:S(5)} %copy-done.2)
+  %res_7 = f32[1024]{0} add(f32[1024]{0} %res_6, f32[1024]{0} %res_6)
+  %copy-start.1 = (f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) copy-start(f32[1024]{0:S(5)} %copy-done)
+  %res_8 = f32[1024]{0} add(f32[1024]{0} %res_7, f32[1024]{0} %res_5)
+  %copy-done.3 = f32[1024]{0} copy-done((f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) %copy-start.3)
+  %res_9 = f32[1024]{0} add(f32[1024]{0} %res_8, f32[1024]{0} %copy-done.3)
+  %copy-done.1 = f32[1024]{0} copy-done((f32[1024]{0}, f32[1024]{0:S(5)}, u32[]) %copy-start.1)
+  %res_10 = f32[1024]{0} add(f32[1024]{0} %res_9, f32[1024]{0} %copy-done.1)
+  ROOT %res_11 = f32[1024]{0} tanh(f32[1024]{0} %res_10)
+}
+)";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-3}));
+}
+
+TEST_F(GpuOffloadingTest, WeightOffloadingD2HWithWaitTest) {
+  const char* hlo_offloading_d2h = R"(
+  HloModule jit__lambda_, is_scheduled=true,
+      entry_computation_layout={(s32[4,1]{1,0})->s32[4,1]{1,0:S(5)}}
+
+  ENTRY main.5_spmd {
+    param.1 = s32[4,1]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+    copy-start.1 = (s32[4,1]{1,0:S(5)}, s32[4,1]{1,0}, u32[]) copy-start(param.1)
+    ROOT copy-done.1 = s32[4,1]{1,0:S(5)} copy-done(copy-start.1)
+  }
+)";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_offloading_d2h, ErrorSpec{1e-3}));
+}
+
+TEST_F(GpuOffloadingTest, CopyIRCreationTest) {
   const char* hlo_text = R"(
   HloModule test
 
@@ -180,6 +218,20 @@ TEST_F(GpuCompilerTest, CompiledProgramsCount) {
                           RunHloRematerialization(
                               /*memory_limit_bytes=*/10 * 1024, module.get()));
   ASSERT_TRUE(changed);
+  stream_executor::StreamExecutor* executor =
+      backend().default_stream_executor();
+  StreamAttributeAnnotator attr_annotator(executor->GetDeviceDescription());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed_attr, attr_annotator.Run(module.get()));
+  EXPECT_TRUE(changed_attr);
+  // Verify that the stream attribute for a copy-start is annotated
+  for (std::string i : {"", ".1", ".2", ".3"}) {
+    const HloInstruction* cp_start =
+        FindInstruction(module.get(), "copy-start" + i);
+    EXPECT_TRUE(cp_start->has_backend_config());
+    TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                            cp_start->backend_config<GpuBackendConfig>());
+    EXPECT_GT(gpu_config.operation_queue_id(), 0);
+  }
 
   // The module should still have a schedule.
   ASSERT_TRUE(module->has_schedule());
@@ -211,6 +263,19 @@ TEST_F(GpuCompilerTest, CompiledProgramsCount) {
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module_ref),
                                       ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
                                       /*run_hlo_passes=*/false));
+}
+
+// The memory management operations (allocation and deallocation) for the host
+// in unit test below mirror those employed for host offloading in this file.
+TEST_F(GpuOffloadingTest, XLAHostMemoryAllocationDeallocationTest) {
+  stream_executor::StreamExecutor* executor =
+      backend().default_stream_executor();
+  stream_executor::DeviceMemoryBase host_ptr =
+      executor->Allocate(64, (int64_t)(stream_executor::MemoryType::kHost));
+  TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
+                          executor->GetPointerMemorySpace(host_ptr.opaque()));
+  EXPECT_EQ(memory_space, stream_executor::MemoryType::kHost);
+  executor->Deallocate(&host_ptr);
 }
 
 }  // namespace

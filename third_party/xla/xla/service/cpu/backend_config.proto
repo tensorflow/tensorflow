@@ -2,47 +2,41 @@ syntax = "proto3";
 
 package xla.cpu;
 
+import "xla/service/cpu/onednn_config.proto";
+
+// Backend config for a general custom call instruction, e.g. XLA FFI.
+message CustomCallBackendConfig {
+  // Generic configurations that can be parsed by XLA.
+  oneof raw_backend_config_oneof {
+    // An opaque ASCII string could be parsed by the compiler.
+    string opaque = 1;
+    // Attributes parsed by XLA FFI.
+    string attributes = 2;
+  }
+}
+
+message FusionBackendConfig {
+  string kind = 1;
+}
+
 // Backend config for XLA:CPU.
 message BackendConfig {
   // Number of partitions per outer dimension (in order, starting with
   // outer-most dimension first). Used by the parallel cpu backend to partition
   // HLOs into parallel tasks.
   repeated int64 outer_dimension_partitions = 1;
-  // Configuration to be used by oneDNN matmul
-  OneDnnMatMulConfig onednn_matmul_config = 2;
-  OneDnnLayerNormConfig onednn_layer_norm_config = 3;
-}
-
-message OneDnnMatMulConfig {
-  bool transpose_a = 1;
-  bool transpose_b = 2;
-  // These enum needs to be mapped to oneDNN enum for post_op algorithm.
-  // TODO(intel-tf): Add kinds supported by oneDNN.
-  enum FusionKind {
-    UNDEFINED = 0;
-    BIAS = 1;
-    RELU = 2;
-    TANH = 3;
-    GELU_ERF = 4;
-    GELU_TANH = 5;
-    BINARY_ADD = 6;
-    LINEAR = 7;
+  oneof backend_config_oneof {
+    // Configuration to be used by oneDNN matmul
+    OneDnnMatMulConfig onednn_matmul_config = 2;
+    // Configuration to be used by oneDNN layer norm
+    OneDnnNormConfig onednn_layer_norm_config = 3;
+    // Configuration to be used by oneDNN softmax
+    OneDnnSoftmaxConfig onednn_softmax_config = 4;
+    // Configuration to be used by oneDNN convolution
+    OneDnnConvolutionConfig onednn_conv_config = 5;
+    // Configuration to be used by general custom call, e.g., FFI.
+    CustomCallBackendConfig custom_call_config = 6;
+    // Configuration for custom fusions.
+    FusionBackendConfig fusion_config = 7;
   }
-  repeated FusionKind fused_ops = 3;
-  bool bias_broadcast = 4;
-  // To avoid protobuf failures for specific decimal values,
-  // the original float value alpha is type-casted to int32.
-  int32 alpha_typecast = 5;
-}
-
-message OneDnnLayerNormConfig {
-  // These enum needs to be mapped to oneDNN enum for post_op algorithm.
-  // TODO(intel-tf): Add kinds supported by oneDNN.
-  enum FusionKind {
-    UNDEFINED = 0;
-    SCALE = 1;
-    SHIFT = 2;
-    SCALE_AND_SHIFT = 3;
-  }
-  FusionKind fused_ops = 1;
 }

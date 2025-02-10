@@ -1,4 +1,4 @@
-/* Copyright 2019-2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -50,7 +49,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/model_transformations.h"
 #include "tensorflow/lite/delegates/utils.h"
-#include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
@@ -2123,84 +2121,66 @@ class SelectV2OperationParser : public TFLiteOperationParser {
   absl::Status Parse(const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration,
                      GraphFloat32* graph, ObjectReader* reader) final {
-    Node* node = graph->NewNode();
     SelectV2Attributes attr;
-    const TfLiteTensor* cond_tensor = reader->GetInputTensor(0);
-    const TfLiteTensor* true_tensor = reader->GetInputTensor(1);
-    const TfLiteTensor* false_tensor = reader->GetInputTensor(2);
-    const bool is_if_constant = true_tensor->allocation_type == kTfLiteMmapRo;
-    const bool is_else_constant =
-        false_tensor->allocation_type == kTfLiteMmapRo;
-    BHWC cond_shape, true_shape, false_shape;
-    if (cond_tensor->dims->size == 0) {
-      attr.scalar_cond = true;
-    } else {
-      RETURN_IF_ERROR(ExtractTensorShape(*cond_tensor, &cond_shape));
-      attr.scalar_cond = cond_shape.DimensionsProduct() == 1;
-    }
-    if (true_tensor->dims->size == 0) {
-      attr.broadcast_true = true;
-    } else {
-      RETURN_IF_ERROR(ExtractTensorShape(*true_tensor, &true_shape));
-      attr.broadcast_true = true_shape.DimensionsProduct() == 1;
-    }
-    if (false_tensor->dims->size == 0) {
-      attr.broadcast_false = true;
-    } else {
-      RETURN_IF_ERROR(ExtractTensorShape(*false_tensor, &false_shape));
-      attr.broadcast_false = false_shape.DimensionsProduct() == 1;
-    }
+    attr.scalar_cond = NumElements(reader->GetInputTensor(0)) < 2;
+
+    Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::SELECT_V2);
-    Value* if_value;
-    Value* else_value;
-    Tensor<BHWC, DataType::FLOAT32> if_tensor;
-    Tensor<BHWC, DataType::FLOAT32> else_tensor;
-    if (!attr.broadcast_true) {
-      if (is_if_constant) {
-        RETURN_IF_ERROR(reader->ReadTensor(1, &if_tensor));
-      }
-    } else {
-      Tensor<Scalar, DataType::FLOAT32> if_scalar_tensor;
-      RETURN_IF_ERROR(reader->ReadTensor(1, &if_scalar_tensor));
-      if_tensor.shape = BHWC(1, 1, 1, 1);
-      if_tensor.data.push_back(if_scalar_tensor.data[0]);
-    }
-    if (!attr.broadcast_false) {
-      // Support 3D version of the else_tensor if needed. Convert it to 4D.
-      if (is_else_constant &&
-          absl::IsInvalidArgument(reader->ReadTensor(2, &else_tensor))) {
-        Tensor<HWC, DataType::FLOAT32> else_tensor_3d;
-        RETURN_IF_ERROR(reader->ReadTensor(2, &else_tensor_3d));
-        else_tensor.shape =
-            BHWC(1, else_tensor_3d.shape.h, else_tensor_3d.shape.w,
-                 else_tensor_3d.shape.c);
-        else_tensor.id = else_tensor_3d.id;
-        else_tensor.data.reserve(else_tensor_3d.data.size());
-        for (int i = 0; i < else_tensor_3d.data.size(); ++i) {
-          else_tensor.data.push_back(else_tensor_3d.data[i]);
+
+    RETURN_IF_ERROR(reader->AddInput(node, 0));  // input #0
+
+    {  // input #1
+      const TfLiteTensor* tfl_tensor = reader->GetInputTensor(1);
+      attr.broadcast_true = NumElements(tfl_tensor) < 2;  // 0 or 1
+      if (IsConstantTensor(tfl_tensor)) {
+        Tensor<BHWC, DataType::FLOAT32> tensor;
+        if (attr.broadcast_true) {
+          Tensor<Scalar, DataType::FLOAT32> temp;
+          RETURN_IF_ERROR(reader->ReadTensor(1, &temp));
+          tensor.shape = BHWC(1, 1, 1, 1);
+          tensor.data.push_back(temp.data[0]);
+        } else {
+          RETURN_IF_ERROR(reader->ReadTensor(1, &tensor));
         }
+        Value* value;
+        RETURN_IF_ERROR(NewConstNode(tensor, graph, &value));
+        RETURN_IF_ERROR(graph->AddConsumer(node->id, value->id));
+      } else {
+        RETURN_IF_ERROR(reader->AddInput(node, 1));
       }
-    } else {
-      Tensor<Scalar, DataType::FLOAT32> else_scalar_tensor;
-      RETURN_IF_ERROR(reader->ReadTensor(2, &else_scalar_tensor));
-      else_tensor.shape = BHWC(1, 1, 1, 1);
-      else_tensor.data.push_back(else_scalar_tensor.data[0]);
     }
-    node->operation.attributes = std::move(attr);
-    RETURN_IF_ERROR(reader->AddInput(node, 0));
-    if (is_if_constant) {
-      RETURN_IF_ERROR(NewConstNode(if_tensor, graph, &if_value));
-      RETURN_IF_ERROR(graph->AddConsumer(node->id, if_value->id));
-    } else {
-      RETURN_IF_ERROR(reader->AddInput(node, 1));
+
+    {  // input #2
+      const TfLiteTensor* tfl_tensor = reader->GetInputTensor(2);
+      attr.broadcast_false = NumElements(tfl_tensor) < 2;  // 0 or 1
+      if (IsConstantTensor(tfl_tensor)) {
+        Tensor<BHWC, DataType::FLOAT32> tensor;
+        if (attr.broadcast_false) {
+          Tensor<Scalar, DataType::FLOAT32> temp;
+          RETURN_IF_ERROR(reader->ReadTensor(2, &temp));
+          tensor.shape = BHWC(1, 1, 1, 1);
+          tensor.data.push_back(temp.data[0]);
+        } else if (absl::IsInvalidArgument(reader->ReadTensor(2, &tensor))) {
+          // Support 3D version of the else_tensor if needed. Convert it to 4D.
+          // TODO: who/eignasheva - Perform a separate check rather than relying
+          //                        on InvalidArgumentError.
+          Tensor<HWC, DataType::FLOAT32> temp;
+          RETURN_IF_ERROR(reader->ReadTensor(2, &temp));
+          tensor.shape = BHWC(1, temp.shape.h, temp.shape.w, temp.shape.c);
+          tensor.id = temp.id;
+          tensor.data.reserve(temp.data.size());
+          for (float data : temp.data) tensor.data.push_back(data);
+        }
+        Value* value;
+        RETURN_IF_ERROR(NewConstNode(tensor, graph, &value));
+        RETURN_IF_ERROR(graph->AddConsumer(node->id, value->id));
+      } else {
+        RETURN_IF_ERROR(reader->AddInput(node, 2));
+      }
     }
-    if (is_else_constant) {
-      RETURN_IF_ERROR(NewConstNode(else_tensor, graph, &else_value));
-      RETURN_IF_ERROR(graph->AddConsumer(node->id, else_value->id));
-    } else {
-      RETURN_IF_ERROR(reader->AddInput(node, 2));
-    }
+
     RETURN_IF_ERROR(reader->AddOutputs(node));
+    node->operation.attributes = std::move(attr);
     return absl::OkStatus();
   }
 };

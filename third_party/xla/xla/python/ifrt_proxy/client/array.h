@@ -35,13 +35,14 @@
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/types.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -70,7 +71,16 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
       Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-      ArrayCopySemantics semantics);
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics);
+
+  // `Array::RemapArrays()` implements `Client::RemapArrays()`.
+  // TODO(b/261226026): Implement logic directly in client.cc.
+  static absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  RemapArrays(xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+              const RemapPlan& plan,
+              absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+              ArrayCopySemantics semantics);
 
   // Destructs the array associated with the given handle. The corresponding
   // array becomes unusable afterwards.
@@ -91,8 +101,8 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   ArrayHandle handle() const { return handle_; }
 
   xla::ifrt::Client* client() const override;
-  Future<absl::Status> GetReadyFuture() const override;
-  Future<absl::Status> Delete() override;
+  Future<> GetReadyFuture() const override;
+  Future<> Delete() override;
   bool IsDeleted() const override;
   std::string DebugString() const override;
 
@@ -102,20 +112,24 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   std::shared_ptr<const Sharding> shared_ptr_sharding() const override {
     return sharding_;
   }
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override {
+    return absl::UnimplementedError(
+        "Array::layout() not implemented for IFRT proxy");
+  };
 
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
+  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  DisassembleIntoSingleDeviceArrays(
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics) override;
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> FullyReplicatedShard(
       xla::ifrt::ArrayCopySemantics semantics) override;
 
   ABSL_MUST_USE_RESULT
-  Future<absl::Status> CopyToHostBuffer(
+  Future<> CopyToHostBuffer(
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
-      ArrayCopySemantics semantics) override;
-
-  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> Reshard(
-      std::shared_ptr<const Sharding> new_sharding,
       ArrayCopySemantics semantics) override;
 
   static char ID;  // NOLINT
@@ -123,6 +137,10 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
  private:
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
+
+  Future<> CopyToStringHostBuffer(
+      void* data, std::optional<absl::Span<const int64_t>> byte_strides,
+      ArrayCopySemantics semantics);
 
   // Not owned. Used only for implementing `client()` interface method. Note
   // that `client()` will still return the pointer even if the pointed-to memory

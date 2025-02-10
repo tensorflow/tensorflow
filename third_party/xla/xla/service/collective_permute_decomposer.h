@@ -16,20 +16,29 @@ limitations under the License.
 #ifndef XLA_SERVICE_COLLECTIVE_PERMUTE_DECOMPOSER_H_
 #define XLA_SERVICE_COLLECTIVE_PERMUTE_DECOMPOSER_H_
 
+#include <cstdint>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
-// CollectivePermuteDecomposer is a pass that converts asynchronous
-// CollectivePermute operations without any cycle in the (source, target)
-// relationship to Send/Recv. We currently restrict this transformation to
-// CollectivePermuteStart with one input and without any context data.
+inline constexpr absl::string_view kCollectiveStreamAttrName =
+    "_xla_gpu_collective_stream";
+inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
+
+// CollectivePermuteDecomposer is a pass that (1) converts CollectivePermute
+// operations without any cycle in their (source, target) relationship to
+// Send/Recv, and (2) annotates the Send/Recv for pipelining with a frontend
+// attribute. We currently restrict the decomposition to CollectivePermute with
+// one input and without any context data.
 //
 // before transformation:
-//     start = (<rt>, <rt>) collective-permute-start(data),
+//     cp = (<rt>, <rt>) collective-permute(data),
 //       source_target_pairs={...}
-//     done = <rt> collective-permute-done(start)
 //
 // after transformation:
 //    after-all = token[] after-all()
@@ -41,17 +50,28 @@ namespace xla {
 //    recv-done = (<rt>, token[]) recv-done(recv), channel_id=0
 //    send-done = token[] send-done(send), channel_id=0,
 //      control-predecessors={recv-done}
-//    done = <rt> get-tuple-element(recv-done), index=0
+//    cp = <rt> get-tuple-element(recv-done), index=0
+//
+// For pipelining, we first make pipelining decision on CollectivePermute
+// operations, and then record the decision on the decomposed Send/Recv via
+// frontend attributes. We currently only pipeline CollectivePermute operations
+// that send loop input data. As a simple heuristics, we pick the first
+// encountered pipelineable CollectivePermute for pipelining. Then, if there is
+// another pipelineable CollectivePermute that forms a forward or backward
+// cycle with the first CollectivePermute, we mark both CollectivePermute
+// for pipelining. Otherwise, we only mark one CollectivePermute for pipelining.
 //
 class CollectivePermuteDecomposer : public HloModulePass {
  public:
-  explicit CollectivePermuteDecomposer(int64_t threshold_in_bytes)
-      : threshold_in_bytes_(threshold_in_bytes) {}
+  explicit CollectivePermuteDecomposer(
+      int64_t threshold_in_bytes,
+      DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level)
+      : threshold_in_bytes_(threshold_in_bytes),
+        pipeline_parallelism_opt_level_(pipeline_parallelism_opt_level) {}
   absl::string_view name() const override {
     return "collective-permute-decomposer";
   }
 
-  using HloPassInterface::Run;
   // Runs CollectivePermuteDecomposer pass on computations in 'module'.
   // Returns whether the 'module' was changed.
   absl::StatusOr<bool> Run(
@@ -61,6 +81,8 @@ class CollectivePermuteDecomposer : public HloModulePass {
  private:
   // Transform only if the size of the collective permute is >= threshold.
   int64_t threshold_in_bytes_;
+
+  DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level_;
 };
 
 }  // namespace xla

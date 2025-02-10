@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_client_test.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -22,16 +23,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/cpu_function_runtime.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
-#include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -42,20 +45,20 @@ namespace {
 class TestClientFactory {
  public:
   void Register(
-      std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
+      std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
     absl::MutexLock lock(&mu_);
     CHECK(!factory_);
     factory_ = std::move(factory);
   }
 
-  std::function<StatusOr<std::unique_ptr<PjRtClient>>()> Get() const {
+  std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> Get() const {
     absl::MutexLock lock(&mu_);
     return factory_;
   }
 
  private:
   mutable absl::Mutex mu_;
-  std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory_
+  std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> factory_
       ABSL_GUARDED_BY(mu_);
 };
 
@@ -64,14 +67,14 @@ TestClientFactory& GetGlobalTestClientFactory() {
   return *factory;
 }
 
-StatusOr<std::unique_ptr<PjRtClient>> GetClient() {
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetClient() {
   return GetGlobalTestClientFactory().Get()();
 }
 
 }  // namespace
 
 void RegisterTestClientFactory(
-    std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
+    std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> factory) {
   GetGlobalTestClientFactory().Register(std::move(factory));
 }
 
@@ -118,7 +121,7 @@ TEST_P(PjRtClientTest, Execute) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -147,7 +150,7 @@ TEST_P(PjRtClientTest, ExecuteWithImmutableUntilTransferCompletes) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
-          nullptr, client->addressable_devices()[0]));
+          nullptr, client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -176,7 +179,7 @@ TEST_P(PjRtClientTest, ExecuteWithTupleZeroCopy) {
                        /*byte_strides=*/std::nullopt,
                        // Use kZeroCopy to test the correctness of
                        // `on_done_with_host_buffer`.
-                       PjRtClient::HostBufferSemantics::kZeroCopy,
+                       PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
                        /*on_done_with_host_buffer=*/
                        [&data]() {
                          // Deliberately modifying the content of `data`. A
@@ -184,7 +187,7 @@ TEST_P(PjRtClientTest, ExecuteWithTupleZeroCopy) {
                          // after `on_done_with_host_buffer` is called.
                          std::fill(data.begin(), data.end(), 1);
                        },
-                       client->addressable_devices()[0]));
+                       client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -213,11 +216,12 @@ TEST_P(PjRtClientTest, ExecuteWithDonation) {
   std::vector<int32_t> data(4, 0);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->BufferFromHostBuffer(
-                       data.data(), shape.element_type(), shape.dimensions(),
-                       /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kZeroCopy, nullptr,
-                       client->addressable_devices()[0]));
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -246,11 +250,12 @@ TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
   std::vector<int32_t> data(4, 0);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->BufferFromHostBuffer(
-                       data.data(), shape.element_type(), shape.dimensions(),
-                       /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kZeroCopy, nullptr,
-                       client->addressable_devices()[0]));
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   auto external_reference = buffer->AcquireExternalReference();
 
@@ -277,7 +282,7 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsage) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -320,11 +325,12 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
   std::vector<int32_t> expected(4, 1);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->BufferFromHostBuffer(
-                       data.data(), shape.element_type(), shape.dimensions(),
-                       /*byte_strides=*/std::nullopt,
-                       PjRtClient::HostBufferSemantics::kZeroCopy, nullptr,
-                       client->addressable_devices()[0]));
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableZeroCopy, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   ExecuteOptions options;
   options.execution_mode = GetParam();
@@ -347,9 +353,11 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
         auto& results = *results_or;
         CHECK_EQ(results.size(), 1);
         CHECK_EQ(results[0].size(), 1);
-        auto literal = results[0][0]->ToLiteralSync().value();
-        CHECK(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
-                                     *literal));
+        auto literal_or = results[0][0]->ToLiteralSync();
+        if (literal_or.ok()) {
+          CHECK(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                       *literal_or.value()));
+        }
       }
       blocking_counter.DecrementCount();
     });
@@ -390,11 +398,12 @@ TEST(PjRtClientTest, CopyToDevice) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   auto* device_1 = client->addressable_devices()[1];
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, buffer->CopyToDevice(device_1));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, buffer->CopyToMemorySpace(
+                                           *device_1->default_memory_space()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
 
@@ -415,7 +424,7 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
           data.data(), shape.element_type(), shape.dimensions(),
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-          client->addressable_devices()[0]));
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
 
   auto* device_1 = client->addressable_devices()[1];
 
@@ -426,7 +435,8 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
   constexpr int kConcurrentCopy = 16;
   std::vector<std::unique_ptr<PjRtBuffer>> results(kConcurrentCopy);
   for (int i = 0; i < kConcurrentCopy; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(results[i], buffer->CopyToDevice(device_1));
+    TF_ASSERT_OK_AND_ASSIGN(results[i], buffer->CopyToMemorySpace(
+                                            *device_1->default_memory_space()));
   }
 
   // The destructor of TfrtCpuBuffer should wait for outstanding copy.
@@ -447,18 +457,20 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
   ASSERT_GT(client->addressable_devices().size(), 1);
 
   // Skip non-CPU platforms.
-  if (client->platform_id() != CpuId()) return;
+  if (client->platform_id() != CpuId()) {
+    GTEST_SKIP() << "This test is for CPU only.";
+  }
 
-  std::vector<int32_t> data(4, 0);
+  alignas(cpu_function_runtime::MinAlign()) std::array<int32_t, 4> data;
+  data.fill(0);
   auto* data_ptr = data.data();
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->CreateViewOfDeviceBuffer(
-          data_ptr, shape, client->addressable_devices()[0],
+          data_ptr, shape, client->memory_spaces()[0],
           /*on_delete_callback=*/[data = std::move(data)]() mutable {
-            data.clear();
-            data.shrink_to_fit();
+            (void)data;
           }));
 
   auto* device_1 = client->addressable_devices()[1];
@@ -470,7 +482,8 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
   constexpr int kConcurrentCopy = 16;
   std::vector<std::unique_ptr<PjRtBuffer>> results(kConcurrentCopy);
   for (int i = 0; i < kConcurrentCopy; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(results[i], buffer->CopyToDevice(device_1));
+    TF_ASSERT_OK_AND_ASSIGN(results[i], buffer->CopyToMemorySpace(
+                                            *device_1->default_memory_space()));
   }
 
   // The destructor of TfrtCpuBuffer should wait for outstanding copy.
@@ -486,7 +499,37 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
   }
 }
 
-StatusOr<std::unique_ptr<PjRtBuffer>> MakeFloatBuffer(
+TEST(PjRtClientTest, CreateViewOfUnalignedBufferReturnsErrorCpuOnly) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  ASSERT_GT(client->addressable_devices().size(), 1);
+
+  // Skip non-CPU platforms.
+  if (client->platform_id() != CpuId()) {
+    GTEST_SKIP() << "This test is for CPU only.";
+  }
+
+  alignas(cpu_function_runtime::MinAlign()) std::array<int32_t, 5> data;
+  auto* data_ptr = data.data();
+
+  // Pointer to the second element is always unaligned, because it's shifted by
+  // 4 bytes (size of int32_t) from the original pointer.
+  auto* unaligned_ptr = data_ptr + 1;
+
+  // Shape with a size smaller than the original data vector, because the
+  // 'unaligned_ptr' points to the second element.
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+
+  // Attempt to create a view of the unaligned buffer. Expect an error.
+  auto result = client->CreateViewOfDeviceBuffer(
+      unaligned_ptr, shape, client->memory_spaces()[0],
+      /*on_delete_callback=*/std::function<void()>());
+
+  ASSERT_FALSE(result.ok());
+  EXPECT_THAT(result.status().message(),
+              ::testing::HasSubstr("unaligned data"));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakeFloatBuffer(
     PjRtClient* client, const std::vector<float>& data,
     absl::Span<const int64_t> dimensions) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
@@ -494,7 +537,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> MakeFloatBuffer(
       data.data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,
       PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-      client->addressable_devices()[0]);
+      client->memory_spaces()[0], /*device_layout=*/nullptr);
 }
 
 TEST(PjRtClientTest, DuplicateDonationError) {

@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl  # pylint: disable=unused-import
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -229,11 +230,11 @@ def _compute_numeric_jacobian(f, y_size, y_dtype, xs, param, delta):
   xs_shapes = [x.shape for x in xs]
   # Converts xs to numpy arrays to do in-place perturbation.
   # Calls asarray() to avoid copying in ravel() later.
-  xs = [np.asarray(_to_numpy(x)) for x in xs]
+  xs = [numpy_compat.np_asarray(_to_numpy(x)) for x in xs]
   x = xs[param]
 
   # Make sure we have the right types
-  scale = np.asarray(2 * delta, dtype=y_dtype)[()]
+  scale = numpy_compat.np_asarray(2 * delta, dtype=y_dtype)[()]
 
   jacobian = np.zeros((y_size, x_size), dtype=x_dtype)
 

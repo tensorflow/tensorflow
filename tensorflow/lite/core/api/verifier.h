@@ -18,22 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_API_VERIFIER_H_
 #define TENSORFLOW_LITE_CORE_API_VERIFIER_H_
 
-#include "tensorflow/lite/core/api/error_reporter.h"
-
-namespace tflite {
-
-/// Abstract interface that verifies whether a given model is legit.
-/// It facilitates the use-case to verify and build a model without loading it
-/// twice.
-/// (See also "tensorflow/lite/tools/verifier.h".)
-class TfLiteVerifier {
- public:
-  /// Returns true if the model is legit.
-  virtual bool Verify(const char* data, int length,
-                      ErrorReporter* reporter) = 0;
-  virtual ~TfLiteVerifier() {}
-};
-
-}  // namespace tflite
+#include "tensorflow/compiler/mlir/lite/core/api/verifier.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_CORE_API_VERIFIER_H_

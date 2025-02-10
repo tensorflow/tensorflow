@@ -26,15 +26,15 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace {
@@ -70,7 +70,7 @@ TEST(XlaNDSplitterTest, NoSplits) {
     *tensor = &output_tensors[i];
     return absl::OkStatus();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors[0] = input;
     return absl::OkStatus();
   };
@@ -109,7 +109,7 @@ TEST(XlaNDSplitterTest, NoSplitsWithPadding) {
     *tensor = &output_tensors[i];
     return absl::OkStatus();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors[0] = input;
     return absl::OkStatus();
   };
@@ -151,7 +151,7 @@ TEST(XlaNDSplitterTest, SplitNoPadding) {
     *tensor = &output_tensors[i];
     return absl::OkStatus();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors[0] = input;
     return absl::OkStatus();
   };
@@ -201,7 +201,7 @@ TEST(XlaNDSplitterTest, SplitPartialPadding) {
     *tensor = &output_tensors[i];
     return absl::OkStatus();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors[0] = input;
     return absl::OkStatus();
   };
@@ -250,7 +250,7 @@ TEST(XlaNDSplitterTest, SplitCompletePadding) {
     *tensor = &output_tensors[i];
     return absl::OkStatus();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors[0] = input;
     return absl::OkStatus();
   };
@@ -296,7 +296,7 @@ TEST(XlaNDConcatenatorTest, NoConcats) {
     output_tensors.push_back(Tensor(tensorflow::DT_INT32, output_shape));
     return &output_tensors.back();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors.push_back(input);
     return absl::OkStatus();
   };
@@ -341,7 +341,7 @@ TEST(XlaNDConcatenatorTest, ConcatNoPadding) {
     output_tensors.push_back(Tensor(tensorflow::DT_INT32, output_shape));
     return &output_tensors.back();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors.push_back(input);
     return absl::OkStatus();
   };
@@ -386,7 +386,7 @@ TEST(XlaNDConcatenatorTest, ConcatPartialPadding) {
     output_tensors.push_back(Tensor(tensorflow::DT_INT32, output_shape));
     return &output_tensors.back();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors.push_back(input);
     return absl::OkStatus();
   };
@@ -431,7 +431,7 @@ TEST(XlaNDConcatenatorTest, ConcatCompletePadding) {
     output_tensors.push_back(Tensor(tensorflow::DT_INT32, output_shape));
     return &output_tensors.back();
   };
-  auto assign_or_copy_value_fn = [&](const Tensor& input) -> Status {
+  auto assign_or_copy_value_fn = [&](const Tensor& input) -> absl::Status {
     output_tensors.push_back(input);
     return absl::OkStatus();
   };

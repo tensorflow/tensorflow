@@ -8,7 +8,6 @@ package(
 py_strict_library(
     name = "data",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/data/experimental",

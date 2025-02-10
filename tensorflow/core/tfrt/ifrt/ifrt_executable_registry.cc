@@ -48,6 +48,27 @@ ServingExecutableRegistry::Handle& ServingExecutableRegistry::Handle::operator=(
 
 ServingExecutableRegistry::Handle::~Handle() { Release(); }
 
+absl::Status ServingExecutableRegistry::Handle::Freeze() {
+  if (!program_id_.has_value()) {
+    return absl::FailedPreconditionError("Program is not registered");
+  }
+
+  absl::MutexLock l(&ServingExecutableRegistry::mu_);
+
+  const auto it = ServingExecutableRegistry::executables_->find(*program_id_);
+  if (it == ServingExecutableRegistry::executables_->end()) {
+    return absl::NotFoundError(
+        absl::StrCat("Program ", *program_id_, " not found in the registry"));
+  }
+
+  VLOG(1) << "Freeze the program " << *program_id_ << " from signature '"
+          << it->second->signature_name() << "' of model '"
+          << it->second->model_name() << "'";
+
+  it->second->Freeze();
+  return absl::OkStatus();
+}
+
 void ServingExecutableRegistry::Handle::Release() {
   if (!program_id_.has_value()) {
     return;
@@ -74,7 +95,7 @@ ServingExecutableRegistry::Handle::Handle(int64_t program_id)
 
 absl::StatusOr<ServingExecutableRegistry::Handle>
 ServingExecutableRegistry::Register(
-    int64_t program_id, std::shared_ptr<IfrtServingExecutable> executable) {
+    int64_t program_id, std::unique_ptr<IfrtServingExecutable> executable) {
   absl::MutexLock l(&mu_);
   VLOG(1) << "Registering program " << program_id << " from signature '"
           << executable->signature_name() << "' of model '"
@@ -87,20 +108,19 @@ ServingExecutableRegistry::Register(
   return Handle(program_id);
 }
 
-std::shared_ptr<IfrtServingExecutable> ServingExecutableRegistry::Lookup(
-    int64_t program_id) {
+IfrtServingExecutable* ServingExecutableRegistry::Lookup(int64_t program_id) {
   absl::ReaderMutexLock l(&mu_);
   VLOG(1) << "Looking up program " << program_id;
   const auto it = executables_->find(program_id);
-  return it != executables_->end() ? it->second : nullptr;
+  return it != executables_->end() ? it->second.get() : nullptr;
 }
 
 ABSL_CONST_INIT absl::Mutex ServingExecutableRegistry::mu_(absl::kConstInit);
 
-absl::flat_hash_map<int64_t, std::shared_ptr<IfrtServingExecutable>>* const
+absl::flat_hash_map<int64_t, std::unique_ptr<IfrtServingExecutable>>* const
     ServingExecutableRegistry::executables_ =
         new absl::flat_hash_map<int64_t,
-                                std::shared_ptr<IfrtServingExecutable>>();
+                                std::unique_ptr<IfrtServingExecutable>>();
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

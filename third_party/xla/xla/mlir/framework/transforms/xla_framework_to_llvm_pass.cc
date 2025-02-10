@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <cassert>
+#include <cstdint>
 #include <memory>
-#include <stdexcept>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -23,20 +24,20 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Constants.h"
-#include "mlir/Conversion/LLVMCommon/LoweringOptions.h"  // from @llvm-project
-#include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/TypeRange.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "mlir/Conversion/LLVMCommon/LoweringOptions.h"
+#include "mlir/Conversion/LLVMCommon/Pattern.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/IRMapping.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/TypeRange.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/mlir/framework/ir/xla_framework.h"
 #include "xla/mlir/framework/transforms/passes.h"
 
@@ -138,11 +139,11 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
           Value inner_index = rewriter.create<LLVM::ConstantOp>(
               loc, typeConverter->convertType(rewriter.getIntegerType(32)),
               rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                  funcOp
-                      ->getAttrOfType<mlir::ArrayAttr>(
-                          "xla_framework.result_inner_mapping")
-                      .getValue()[current_index]
-                      .cast<mlir::IntegerAttr>()
+                  mlir::cast<mlir::IntegerAttr>(
+                      funcOp
+                          ->getAttrOfType<mlir::ArrayAttr>(
+                              "xla_framework.result_inner_mapping")
+                          .getValue()[current_index])
                       .getValue()
                       .getSExtValue())));
 
@@ -227,10 +228,11 @@ class LegalizeXLAFrameworkToLLVMPass
     target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
     target.addIllegalDialect<xla_framework::XLAFrameworkDialect>();
     target.addDynamicallyLegalOp<func::FuncOp>([](func::FuncOp op) {
-      if (llvm::any_of(
-              llvm::concat<const Type>(op.getArgumentTypes(),
-                                       op.getResultTypes()),
-              [](Type type) { return type.isa<xla_framework::BufferType>(); }))
+      if (llvm::any_of(llvm::concat<const Type>(op.getArgumentTypes(),
+                                                op.getResultTypes()),
+                       [](Type type) {
+                         return mlir::isa<xla_framework::BufferType>(type);
+                       }))
         return false;
       return true;
     });

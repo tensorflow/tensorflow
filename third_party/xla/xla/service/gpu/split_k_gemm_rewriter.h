@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/status.h"
 
 namespace xla {
 namespace gpu {

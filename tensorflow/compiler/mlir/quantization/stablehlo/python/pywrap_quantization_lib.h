@@ -41,9 +41,23 @@ absl::Status PywrapQuantizeStaticRangePtq(
     const tensorflow::quantization::PyFunctionLibrary& py_function_library);
 
 // Function used by the pywrap_quantization module to mirror
+// `::mlir::quant::stablehlo::QuantizeWeightOnlyPtq`.
+absl::Status PywrapQuantizeWeightOnlyPtq(
+    absl::string_view src_saved_model_path,
+    absl::string_view dst_saved_model_path, const QuantizationConfig& config,
+    const std::vector<std::string>& signature_keys,
+    const absl::flat_hash_map<std::string, tensorflow::SignatureDef>&
+        signature_def_map,
+    const tensorflow::quantization::PyFunctionLibrary& py_function_library);
+
+// Function used by the pywrap_quantization module to mirror
 // `::stablehlo::quantization::PopulateDefaults`.
 QuantizationConfig PywrapPopulateDefaults(
     const QuantizationConfig& user_provided_config);
+
+// Function used by the pywrap_quantization module to mirror
+// `::stablehlo::quantization::ExpandPresets`.
+QuantizationConfig PywrapExpandPresets(const QuantizationConfig& config);
 
 }  // namespace stablehlo::quantization::pywrap
 

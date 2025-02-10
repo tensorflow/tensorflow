@@ -42,6 +42,7 @@ mlir_tf_tools_dirs = [
     'tensorflow/compiler/mlir/lite',
     'tensorflow/compiler/mlir/lite/experimental/tac',
     'tensorflow/compiler/mlir/lite/stablehlo',
+    'tensorflow/compiler/mlir/lite/stablehlo/odml_converter',
     'tensorflow/compiler/mlir/quantization/tensorflow',
     'tensorflow/compiler/mlir/tensorflow',
     'tensorflow/compiler/mlir/tfrt',

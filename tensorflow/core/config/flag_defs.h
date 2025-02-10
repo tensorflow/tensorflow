@@ -59,6 +59,16 @@ class Flags {
   TF_DECLARE_FLAG(enable_colocation_key_propagation_in_while_op_lowering, false,
                   "If true, colocation key attributes for the ops will be "
                   "propagated during while op lowering to switch/merge ops.")
+  TF_DECLARE_FLAG(enable_tf2min_ici_weight, false,
+                  "If true, ici weight optimization will be used in tf2/min.")
+  // TODO(b/341325107): Make this behavior the default and remove the flag.
+  TF_DECLARE_FLAG(enable_function_pruning_before_inlining, false,
+                  "If true, functions will be pruned before inlining.")
+  TF_DECLARE_FLAG(enable_skip_encapsulation_for_non_tpu_graphs, false,
+                  "If true, TF2XLA encapsulation will be skipped for non-TPU "
+                  "graphs.")
+  TF_DECLARE_FLAG(enable_graph_debug_info_caching_for_stack_frames, true,
+                  "If true, graph debug info will cache the stack frames.")
   // LINT.ThenChange(//tensorflow/core/config/flags_api_wrapper.cc)
 };
 

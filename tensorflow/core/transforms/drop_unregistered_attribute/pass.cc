@@ -17,10 +17,11 @@ limitations under the License.
 
 #include <memory>
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/core/ir/ops.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace tfg {

@@ -17,18 +17,39 @@ syntax = "proto3";
 
 package xla.cpu;
 
-import "xla/service/cpu/xla_framework.proto";
+import "xla/backends/cpu/runtime/thunk.proto";
 import "xla/service/hlo.proto";
 import "xla/xla.proto";
 
-message XlaRuntimeCpuExecutableProto {
-  optional XlaRuntimeExecutableProto xla_runtime_executable = 1;
-  optional XlaFrameworkMappingProto xla_framework_mapping = 2;
+message SymbolProto {
+  enum FunctionTypeId {
+    UNKNOWN = 0;
+    KERNEL = 1;
+    COMPARATOR = 2;
+  }
+  FunctionTypeId function_type_id = 1;
+  string name = 2;
 }
 
 message CompilationResultProto {
+  enum ObjFileKind {
+    UNKNOWN = 0;
+
+    // Object file contains a single entry function that implements the XLA
+    // computation. This is the mode for legacy XLA:CPU backends where we
+    // compile HLO module to a single LLVM function.
+    CLASSIC = 1;
+
+    // Object file contains a set of host kernel functions that are loaded by
+    // the XLA:CPU runtime and instantiated as a ThunkSequence.
+    KERNELS = 2;
+  }
+
   HloModuleProtoWithConfig hlo_module = 1;
   BufferAssignmentProto buffer_assignment = 2;
   string entry_function_name = 3;
-  bytes obj_file = 4;
+  repeated bytes obj_files = 4;
+  ObjFileKind obj_files_kind = 5;
+  ThunkSequenceProto thunk_sequence = 6;
+  repeated SymbolProto compiled_symbols = 7;
 }

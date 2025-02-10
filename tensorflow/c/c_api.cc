@@ -176,7 +176,7 @@ void TF_CloseDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
 }
 
 void TF_DeleteDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
   if (s == nullptr) return;
   delete s->session;
   delete s;
@@ -285,8 +285,8 @@ void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
 }
 
 // Helpers for loading a TensorFlow plugin (a .so file).
-Status LoadDynamicLibrary(const char* library_filename, void** result,
-                          const void** buf, size_t* len);
+absl::Status LoadDynamicLibrary(const char* library_filename, void** result,
+                                const void** buf, size_t* len);
 
 // TODO(josh11b,mrry): Change Session to be able to use a Graph*
 // directly, instead of requiring us to serialize to a GraphDef and
@@ -352,7 +352,7 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
 
 static void TF_Run_Setup(int noutputs, TF_Tensor** c_outputs,
                          TF_Status* status) {
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
   for (int i = 0; i < noutputs; ++i) {
     c_outputs[i] = nullptr;
   }
@@ -388,9 +388,9 @@ static Status TF_TensorToTensorV1(const TF_Tensor* src, Tensor* dst) {
       return InvalidArgument(
           "Malformed TF_RESOURCE tensor: unable to parse resource handle");
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 static bool TF_Run_Inputs(TF_Tensor* const* c_inputs,
@@ -832,7 +832,7 @@ void TF_ColocateWith(TF_OperationDescription* desc, TF_Operation* op) {
 
 void TF_SetAttrString(TF_OperationDescription* desc, const char* attr_name,
                       const void* value, size_t length) {
-  tensorflow::StringPiece s(static_cast<const char*>(value), length);
+  absl::string_view s(static_cast<const char*>(value), length);
   desc->node_builder.Attr(attr_name, s);
 }
 
@@ -846,7 +846,7 @@ void TF_SetAttrStringList(TF_OperationDescription* desc, const char* attr_name,
                                            lengths[i]);
     }
   } else {
-    std::vector<tensorflow::StringPiece> v;
+    std::vector<absl::string_view> v;
     v.reserve(num_values);
     for (int i = 0; i < num_values; ++i) {
       v.emplace_back(static_cast<const char*>(values[i]), lengths[i]);
@@ -959,7 +959,7 @@ void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
   TensorShapeProto shape;
   if (shape.ParseFromArray(proto, static_cast<int>(proto_len))) {
     desc->node_builder.Attr(attr_name, shape);
-    status->status = ::tensorflow::OkStatus();
+    status->status = absl::OkStatus();
   } else {
     status->status = InvalidArgument("Unparseable TensorShapeProto");
   }
@@ -986,7 +986,7 @@ void TF_SetAttrTensorShapeProtoList(TF_OperationDescription* desc,
     }
   }
   desc->node_builder.Attr(attr_name, shapes);
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 void TF_SetAttrTensor(TF_OperationDescription* desc, const char* attr_name,
@@ -999,7 +999,7 @@ void TF_SetAttrTensor(TF_OperationDescription* desc, const char* attr_name,
 void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
                           TF_Tensor* const* values, int num_values,
                           TF_Status* status) {
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
   std::vector<Tensor> t;
   t.reserve(num_values);
 
@@ -1037,7 +1037,7 @@ void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
     desc->node_builder.Attr(attr_name, std::move(attr_value));
   }
 
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
@@ -1552,7 +1552,7 @@ void TF_OperationGetAttrName(TF_Operation* oper, int i, char* output,
   for (it = attrs.begin(); it != attrs.end(); it++) {
     if (count == i) {
       strncpy(output, it->first.c_str(), it->first.length());
-      status->status = ::tensorflow::OkStatus();
+      status->status = absl::OkStatus();
       return;
     }
     count++;
@@ -1931,7 +1931,7 @@ Status CopyGraph(Graph* src_graph, Graph* dst_graph,
   for (const auto& pair : results.return_tensors) {
     return_nodes->emplace_back(pair.first, pair.second);
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 bool ValidateConstWhileParams(const TF_WhileParams& params, TF_Status* s) {
@@ -2063,7 +2063,7 @@ void TF_FinishWhileHelper(const TF_WhileParams* params, TF_Status* status,
             scope.impl()->control_deps(), &params->cond_output,
             /* nreturn_nodes */ 1, &cond_output));
         *output = cond_output[0];
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
       };
 
   // 'body_fn' copies the body graph into the parent graph.
@@ -2078,7 +2078,7 @@ void TF_FinishWhileHelper(const TF_WhileParams* params, TF_Status* status,
                       &parent->refiner, params->body_inputs, inputs,
                       scope.impl()->name(), scope.impl()->control_deps(),
                       params->body_outputs, num_loop_vars, outputs));
-        return ::tensorflow::OkStatus();
+        return absl::OkStatus();
       };
 
   // Create the while loop using an internal scope.
@@ -2312,7 +2312,7 @@ void TF_CloseSession(TF_Session* s, TF_Status* status) {
 }
 
 void TF_DeleteSession(TF_Session* s, TF_Status* status) {
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
   if (s == nullptr) return;
   TF_Graph* const graph = s->graph;
   if (graph != nullptr) {
@@ -2472,7 +2472,7 @@ TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer, TF_Status* status) {
     status->status = InvalidArgument("Unparseable OpList");
     return nullptr;
   }
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
   return new TF_ApiDefMap(op_list);
 }
 

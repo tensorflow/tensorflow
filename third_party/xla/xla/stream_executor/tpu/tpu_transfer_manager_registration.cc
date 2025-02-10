@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 
 #include "xla/service/transfer_manager.h"
-#include "xla/stream_executor/tpu/tpu_platform.h"
 #include "xla/stream_executor/tpu/tpu_platform_id.h"
 #include "xla/stream_executor/tpu/tpu_transfer_manager.h"
 

@@ -81,8 +81,8 @@ struct ValueComparator {
     if (lhs == rhs) return false;
 
     // Block arguments are less than results.
-    bool lhsIsBBArg = lhs.isa<BlockArgument>();
-    if (lhsIsBBArg != rhs.isa<BlockArgument>()) {
+    bool lhsIsBBArg = isa<BlockArgument>(lhs);
+    if (lhsIsBBArg != isa<BlockArgument>(rhs)) {
       return lhsIsBBArg;
     }
 

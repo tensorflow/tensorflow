@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "XlaSparseCoreSgd"
   input_arg {
     name: "indices"

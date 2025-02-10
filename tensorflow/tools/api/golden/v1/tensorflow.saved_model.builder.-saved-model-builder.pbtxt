@@ -17,6 +17,6 @@ tf_class {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'self\', \'as_text\', \'experimental_image_format\'], varargs=None, keywords=None, defaults=[\'False\', \'False\'], "
+    argspec: "args=[\'self\', \'as_text\', \'experimental_image_format\', \'experimental_image_writer_options\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
 }

@@ -149,9 +149,14 @@ class _Optimizer(metaclass=abc.ABCMeta):
     raise NotImplementedError
 
   def _create_slots(
-      self, table: "TableConfig",
-      variable_creator: Callable[[Text, init_ops_v2.Initializer],
-                                 tf_variables.Variable]
+      self,
+      table: "TableConfig",
+      variable_creator: Callable[
+          [Text, init_ops_v2.Initializer], tf_variables.Variable
+      ],
+      initializer_wrapper: Optional[
+          Callable[[str, init_ops_v2.Initializer], init_ops_v2.Initializer]
+      ] = None,
   ) -> Dict[Text, tf_variables.Variable]:
     """Creates slot variables for table.
 
@@ -159,17 +164,25 @@ class _Optimizer(metaclass=abc.ABCMeta):
       table: The table variable to create slots for.
       variable_creator: A function which creates variables. Takes parameters
         'name', 'initializer'.
+      initializer_wrapper: A function that wraps the initializer.
 
     Returns:
       A dict of variables, keyed by self._slot_names().
     """
+    names = self._slot_names()
+    initializers = self._slot_initializers()
+
+    if initializer_wrapper is not None:
+      initializers = [
+          initializer_wrapper(name, initializer)
+          for name, initializer in zip(names, initializers)
+      ]
+
     if self.slot_variable_creation_fn is not None:
-      return self.slot_variable_creation_fn(table, self._slot_names(),
-                                            self._slot_initializers())
+      return self.slot_variable_creation_fn(table, names, initializers)
     else:
       slots = {}
-      for slot, initializer in zip(self._slot_names(),
-                                   self._slot_initializers()):
+      for slot, initializer in zip(names, initializers):
         slots[slot] = variable_creator(slot, initializer)
       return slots
 
@@ -184,6 +197,167 @@ class _Optimizer(metaclass=abc.ABCMeta):
 
   def __hash__(self) -> int:
     return hash(tuple(self.__dict__.items()))
+
+
+@tf_export("tpu.experimental.embedding.CustomOptimizer")
+class CustomOptimizer(_Optimizer):
+  """Optimization parameters for custom optimizer for TPU embeddings.
+
+  This optimizer gives the user the ability to define a custom optimizer
+  for running embedding lookups on TPU v5p.
+
+  The custom computation should be a function which takes gradient, embedding
+  table, a list of slot variables, learning_rate and a list of hyperparameters.
+  The function should perform the gradient update on the embedding_table +
+  slot_variables and return the updated embedding_table and slot_variables. e.g.
+
+  ```python
+  @tf.function
+  def sgd_optimizer_computation(
+      gradient,
+      embedding_table,
+      slot_variables,
+      learning_rate,
+      hyperparameters,
+  ):
+    del slot_variables, hyperparameters
+    return embedding_table - gradient * learning_rate
+  ```
+
+  Above is a simple example of a sgd optimizer. You can also define a more
+  complex optimizer which updates multiple tables and slot variables.
+
+  ```python
+  @def_function.function
+  def adagrad_optimizer_computation(
+      gradient,
+      embedding_table,
+      slot_variables,
+      learning_rate,
+      hyperparameters,
+  ):
+    del hyperparameters
+    accumulator = slot_variables[0]
+    new_accumulator = accumulator + gradient * gradient
+    updated_embedding_table = (
+        embedding_table
+        - learning_rate * gradient / math_ops.sqrt(new_accumulator)
+    )
+    return (updated_embedding_table, new_accumulator)
+  ```
+
+  The custom computation is defined as a per-row update function and it will be
+  auto scaled for the entire table (slot variables).
+
+  NOTE: This optimizer can only be used with the `TPUEmbeddingV2` class.
+
+  Pass this to `tf.tpu.experimental.embedding.TPUEmbeddingV2` via the
+  `optimizer` argument to set the global optimizer and its parameters:
+
+  ```python
+  optimizer = tf.tpu.experimental.embedding.CustomOptimizer(
+        custom_computation=adagrad_optimizer_computation,
+        learning_rate=1.0,
+        slot_names=['accumulators'],
+        slot_initializers=[
+            tf.constant_initializer(0.1, support_partition=True)
+        ],
+    )
+  embedding = tf.tpu.experimental.embedding.TPUEmbeddingV2(
+      ...
+      optimizer=optimizer)
+  ```
+
+  This can also be used in a `tf.tpu.experimental.embedding.TableConfig` as the
+  optimizer parameter to set a table specific optimizer. This will override the
+  optimizer and parameters for global embedding optimizer defined above:
+
+  ```python
+  table_one = tf.tpu.experimental.embedding.TableConfig(
+      vocabulary_size=...,
+      dim=...,
+      optimizer=optimizer)
+  table_two = tf.tpu.experimental.embedding.TableConfig(
+      vocabulary_size=...,
+      dim=...)
+
+  feature_config = (
+      tf.tpu.experimental.embedding.FeatureConfig(
+          table=table_one),
+      tf.tpu.experimental.embedding.FeatureConfig(
+          table=table_two))
+
+  embedding = tf.tpu.experimental.embedding.TPUEmbedding(
+      feature_config=feature_config,
+      batch_size=...
+      optimizer=optimizer)
+  ```
+  In this example, the optimizer of the first table will be the one specified
+  in the table config. The second table will use the optimizer specified in the
+  TPUEmbedding argument.
+  """
+
+  def __init__(
+      self,
+      custom_computation: core.PolymorphicFunction,
+      learning_rate: Union[float, Callable[[], float]] = 0.01,
+      slot_names: Optional[List[str]] = None,
+      slot_initializers: Optional[List[init_ops_v2.Initializer]] = None,
+      hyperparameters: Optional[List[Union[float, Callable[[], float]]]] = None,
+  ) -> Any:
+    super().__init__(  # pytype: disable=wrong-arg-types
+        learning_rate,
+        use_gradient_accumulation=False,
+        clip_weight_min=None,
+        clip_weight_max=None,
+        weight_decay_factor=None,
+        multiply_weight_decay_factor_by_learning_rate=None,
+        clipvalue=None,
+        slot_variable_creation_fn=None,
+        low_dimensional_packing_status=False,
+    )
+    # We need to convert the slot names and initializers to tuples to make
+    # them hashable.
+    self._slot_names_attr = tuple(slot_names if slot_names else ())
+    self._slot_initializers_attr = tuple(
+        slot_initializers if slot_initializers else ()
+    )
+    num_slot_names = len(self._slot_names_attr)
+    num_slot_initializers = len(self._slot_initializers_attr)
+    if num_slot_names != num_slot_initializers:
+      raise ValueError(
+          f"The number of slot_names ({num_slot_names}) must match"
+          " the number of slot_initializers"
+          f" ({num_slot_initializers})."
+      )
+    self._hyperparameters = tuple(hyperparameters if hyperparameters else ())
+    self._custom_computation = custom_computation
+
+  def _slot_names(self) -> List[Text]:
+    return list(self._slot_names_attr)
+
+  def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
+    return list(self._slot_initializers_attr)
+
+  def _load(self) -> Callable[..., ops.Operation]:
+    raise NotImplementedError(
+        "Custom optimizer does not support load op since it is only used for"
+        " TPUEmbeddingV2."
+    )
+
+  def _retrieve(self) -> Callable[..., core.Tensor]:
+    raise NotImplementedError(
+        "Custom optimizer does not support retrieve op since it is only used"
+        " for TPUEmbeddingV2."
+    )
+
+  @property
+  def hyperparameters(self) -> Tuple[Union[float, Callable[[], float]], ...]:
+    return self._hyperparameters
+
+  @property
+  def custom_computation(self) -> core.ConcreteFunction:
+    return self._custom_computation
 
 
 @tf_export("tpu.experimental.embedding.SGD")
@@ -935,7 +1109,7 @@ class QuantizationConfig:
   if input > upper
     input = upper
   quantum = (upper - lower) / (num_buckets - 1)
-  input = math.floor((input - lower) / quantum + 0.5) * quantium + lower
+  input = math.floor((input - lower) / quantum + 0.5) * quantum + lower
   ```
 
   See tensorflow/core/protobuf/tpu/optimization_parameters.proto for more

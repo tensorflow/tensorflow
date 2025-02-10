@@ -20,29 +20,49 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/frontend_attributes.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/map_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/compile_time_cap.h"
 #include "xla/service/dump.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
-#include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_ordering.h"
-#include "xla/service/tuple_simplifier.h"
+#include "xla/service/hlo_value.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -98,7 +118,9 @@ bool ShouldCopyRootValue(const HloValue& value,
 // Deep copy the given instructions 'from' and 'to' at the ShapeIndexes given in
 // 'indices_to_copy'. Add control edges from the respective kCopy instructions
 // in deep copy of 'from' to the respective kCopy instruction in the deep copy
-// of 'to'.
+// of 'to'. These control edges are necessary to prevent live range interference
+// between the kCopy instructions in the deep copy of 'from' and the kCopy
+// instructions in the deep copy of 'to'.
 //
 // Requirements: 'from' and 'to' must have compatible shapes.
 //
@@ -106,11 +128,11 @@ bool ShouldCopyRootValue(const HloValue& value,
 // the only index to copy. Prior to deep-copying we have:
 //
 //
-//      'from'
-//         |
-//        ...
-//         |
-//       'to'
+//       'from'
+//          |
+//         ...
+//          |
+//        'to'
 //
 // DeepCopyAndAddControlEdges produces:
 //
@@ -167,6 +189,22 @@ DeepCopyAndAddControlEdges(HloInstruction* from, HloInstruction* to,
   return std::make_pair(from_deep_copy, to_deep_copy);
 }
 
+bool IsSendRecv(const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kSend ||
+         instruction->opcode() == HloOpcode::kRecv;
+}
+
+bool IsSendRecvDone(const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kSendDone ||
+         instruction->opcode() == HloOpcode::kRecvDone;
+}
+
+bool IsSendRecvInInit(const HloInstruction* init, const ShapeIndex& index) {
+  if (index.empty()) return false;
+  int64_t i = index.front();
+  return i < init->operand_count() && IsSendRecv(init->operand(i));
+}
+
 // Compute the indices of the loop state which need copies in order to avoid
 // live range interference. Generally, an element in the loop state does not
 // need to be copied if the element is passed through transparently through the
@@ -183,9 +221,14 @@ bool IndicesToCopyForWhile(const HloDataflowAnalysis& dataflow,
   for (auto& pair : *indices_to_copy) {
     const ShapeIndex& index = pair.first;
     bool& should_copy = pair.second;
-    // If there is any ambiguity, then loop state must be copied.
-    if (dataflow.GetValueSet(init, index).values().size() > 1 ||
-        dataflow.GetValueSet(xla_while, index).values().size() > 1) {
+    if (IsSendRecvInInit(init, index)) {
+      // Do not copy partially pipelined send/recv ops. The required copies will
+      // be inserted specifically for the send/recv ops.
+      should_copy = false;
+      continue;
+    } else if (dataflow.GetValueSet(init, index).values().size() > 1 ||
+               dataflow.GetValueSet(xla_while, index).values().size() > 1) {
+      // If there is any ambiguity, then loop state must be copied.
       should_copy = true;
     } else {
       // If the output of the while instruction is not the same as the init
@@ -284,8 +327,8 @@ bool IndicesToCopyForConditional(const HloDataflowAnalysis& dataflow,
 // If the loop state is a tuple then the above kCopy instructions are a deep
 // copy constructed of kCopy, kGetTupleElement, and kTuple instruction as
 // constructed by HloInstruction::DeepCopyInstruction.
-Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
-                         HloInstruction* xla_while) {
+absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
+                               HloInstruction* xla_while) {
   VLOG(2) << "Adding copies for kWhile instruction " << xla_while->name();
   TF_RET_CHECK(xla_while->opcode() == HloOpcode::kWhile);
 
@@ -294,7 +337,7 @@ Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
                              &indices_to_copy)) {
     VLOG(2) << "No copies necessary for kWhile instruction "
             << xla_while->name();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   VLOG(2) << "Adding copies for " << xla_while->name() << " at indices:";
@@ -337,34 +380,34 @@ Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
   }
 
   body->set_root_instruction(root_copy);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Add copies for the operands of in-place operations. RemoveUnnecessaryCopies
 // will remove the unnecessary copies.
-Status AddCopiesForInPlaceOperation(const HloAliasAnalysis& alias_analysis,
-                                    HloInstruction* in_place_op,
-                                    int64_t operand_number) {
+absl::Status AddCopiesForInPlaceOperation(
+    const HloAliasAnalysis& alias_analysis, HloInstruction* in_place_op,
+    int64_t operand_number) {
   VLOG(2) << "Adding copies for in-place operation " << in_place_op->name();
   HloInstruction* operand = in_place_op->mutable_operand(operand_number);
   TF_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
                       in_place_op->parent()->DeepCopyInstruction(operand));
   TF_RETURN_IF_ERROR(
       operand->ReplaceUseWith(in_place_op, operand_number, deep_copy));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Conservatively adds copies before root instruction of entry computation and
 // each aliased parameter to resolve interference of aliased input and output
 // buffer. We later rely on RemoveUnnecessaryCopies to drop the unnecessary
 // ones.
-Status AddCopiesForAliasedInputOutputs(
+absl::Status AddCopiesForAliasedInputOutputs(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   HloComputation* entry = module->entry_computation();
   if (!HloInstruction::IsThreadIncluded(entry->execution_thread(),
                                         execution_threads)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   HloInstruction* root = entry->root_instruction();
 
@@ -415,7 +458,7 @@ Status AddCopiesForAliasedInputOutputs(
   }
 
   if (!has_alias) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Add copies before root instruction.
@@ -429,9 +472,9 @@ Status AddCopiesForAliasedInputOutputs(
   // Add control dependencies between the input/output copies.
   TF_RETURN_IF_ERROR(module->input_output_alias_config().ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
-          const HloInputOutputAliasConfig::Alias& alias) -> Status {
+          const HloInputOutputAliasConfig::Alias& alias) -> absl::Status {
         if (!copied_parameters[alias.parameter_number]) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         HloInstruction* from =
             copied_parameters[alias.parameter_number]->element(
@@ -441,16 +484,16 @@ Status AddCopiesForAliasedInputOutputs(
         TF_RET_CHECK(from != nullptr);
         TF_RET_CHECK(to != nullptr);
         TF_RETURN_IF_ERROR(from->AddControlDependencyTo(to));
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   entry->set_root_instruction(root_copied);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Removes any control dependencies to or from the given instruction.
-Status StripControlDependenciesFrom(HloInstruction* instruction) {
+absl::Status StripControlDependenciesFrom(HloInstruction* instruction) {
   while (!instruction->control_successors().empty()) {
     TF_RETURN_IF_ERROR(instruction->RemoveControlDependencyTo(
         instruction->control_successors().front()));
@@ -462,7 +505,7 @@ Status StripControlDependenciesFrom(HloInstruction* instruction) {
             instruction));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class LiveRangeRegions {
@@ -894,7 +937,7 @@ class ComputeRelativeLocation {
             }
             VLOG(3) << "instr2 relation: " << instr2_relation.ToString();
           }
-          // Here instru2_relation is guaranteed to have at most a single entry,
+          // Here instr2_relation is guaranteed to have at most a single entry,
           // because it was initialized to be empty, and has been updated only
           // via instr2_relation.UnionRelationFromSameSource(rel), which
           // maintains that the updated result has only a single entry.
@@ -1001,7 +1044,8 @@ class ComputeRelativeLocation {
       }
     }
     for (const InstructionEntry& entry1 : unordered_ops) {
-      Save(entry2.first, entry1.first, desired_relation, true);
+      Save(entry2.first, entry1.first, desired_relation,
+           /*is_unordered_originally=*/true);
     }
     return true;
   }
@@ -1287,42 +1331,6 @@ class CopyRemover {
       if (buffer.values().at(0)->defining_instruction()->IsFused()) {
         continue;
       }
-      if (check_live_range_ordering) {
-        // Skip checking if execution thread is not included.
-        auto should_skip_value = [&execution_threads](const HloValue* value) {
-          return value->defining_instruction()->parent() != nullptr &&
-                 !HloInstruction::IsThreadIncluded(value->defining_instruction()
-                                                       ->parent()
-                                                       ->execution_thread(),
-                                                   execution_threads);
-        };
-        // Verify values contained in the buffer are strictly ordered. This
-        // should always be the case after adding copies to eliminate
-        // interference. Specifically, the addition of the control flow edges
-        // between copies added around aliased operations (kWhile) guarantees
-        // this strict order.
-        for (const HloValue* value_a : buffer.values()) {
-          if (value_a->shape().IsToken()) {
-            // Token values have no representation and cannot interfere.
-            continue;
-          }
-          if (should_skip_value(value_a)) {
-            continue;
-          }
-          for (const HloValue* value_b : buffer.values()) {
-            if (!should_skip_value(value_b) && value_a != value_b) {
-              DCHECK(ordering_->LiveRangeStrictlyBefore(
-                         *value_a, *value_b, dataflow_,
-                         /*use_is_always_before_def_in_same_instr=*/true) ||
-                     ordering_->LiveRangeStrictlyBefore(
-                         *value_b, *value_a, dataflow_,
-                         /*use_is_always_before_def_in_same_instr=*/true))
-                  << value_a->ToString() << " and " << value_b->ToString()
-                  << " are not ordered";
-            }
-          }
-        }
-      }
 
       std::vector<const HloValue*> values = buffer.values();
       absl::c_sort(values, [this, &instruction_ids](const HloValue* a,
@@ -1454,7 +1462,7 @@ class CopyRemover {
   }
 
   // Verify invariants within the linked lists.
-  Status Verify() const {
+  absl::Status Verify() const {
     for (const ValueNode* head : value_lists_) {
       const ValueNode* p = head;
       do {
@@ -1476,7 +1484,7 @@ class CopyRemover {
         p = p->next;
       } while (p != head);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Compute the set of instructions where values are alive and organize these
@@ -1506,6 +1514,18 @@ class CopyRemover {
                     int64_t* region_analysis_limit) {
     VLOG(2) << "Trying to remove " << copy->name();
     CHECK_NE(region_analysis_limit, nullptr);
+    if (copy->shape().has_layout() && copy->operand(0)->shape().has_layout()) {
+      if (copy->shape().layout().memory_space() == Layout::kHostMemorySpace &&
+          copy->operand(0)->shape().layout().memory_space() !=
+              Layout::kHostMemorySpace) {
+        return false;
+      }
+      if (copy->shape().layout().memory_space() != Layout::kHostMemorySpace &&
+          copy->operand(0)->shape().layout().memory_space() ==
+              Layout::kHostMemorySpace) {
+        return false;
+      }
+    }
 
     if (!ContainsKey(copy_map_, copy)) {
       VLOG(2) << copy->name() << " is not removable";
@@ -1603,7 +1623,7 @@ class CopyRemover {
     //  totally ordered live ranges; otherwise the merged buffer would have
     //  live range interference.
     if (copy_node.src->next == copy_node.dest) {
-      // In the process of eliding copies, its possible for a copy to have the
+      // In the process of eliding copies, it's possible for a copy to have the
       // same source and destination buffer. In this case, the copy can be
       // safely removed.
       VLOG(2) << copy->name() << " source and destination buffers are same.";
@@ -1673,6 +1693,8 @@ class CopyRemover {
               << copy_node.src->value->ToShortString() << ") in its buffer";
       bool live_range_before =
           // Live range of d_0, ..., d_{y-1} must be before s_0;
+          // Since copy_node.src is tail for this if branch, copy_node.src->next
+          // is s0 because the list is circularly linked.
           CheckLiveRangeBefore(Prev(*copy_node.dest), copy_node.src->next) &&
           // Live range of 'last_src' must be before next_dest d_{y+1}.
           CheckLiveRangeBefore(copy_node.src, Next(*copy_node.dest));
@@ -1906,7 +1928,7 @@ class CopyRemover {
         StrAppend(&result, ", ", node->value->ToShortString());
       }
     };
-    VisitValueNode(element);
+    ForEachValueInRange(element, VisitValueNode);
     StrAppend(&result, "}");
     return result;
   }
@@ -1967,7 +1989,7 @@ class CopyRemover {
 // We add copies for all phi indices of the true and false computation
 // roots, in order to resolve interference. We later rely on
 // RemoveUnnecessaryCopies to drop the unnecessary ones.
-Status CopyInsertion::AddCopiesForConditional(
+absl::Status CopyInsertion::AddCopiesForConditional(
     const HloAliasAnalysis& alias_analysis, HloInstruction* conditional) {
   VLOG(2) << "Adding copies for kConditional instruction "
           << conditional->name();
@@ -1977,7 +1999,7 @@ Status CopyInsertion::AddCopiesForConditional(
                                    conditional, &indices_to_copy)) {
     VLOG(2) << "No copies necessary for kConditional instruction "
             << conditional->name();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (HloComputation* computation : conditional->branch_computations()) {
@@ -1991,13 +2013,130 @@ Status CopyInsertion::AddCopiesForConditional(
     }
     computation->set_root_instruction(deep_copy);
   }
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+HloInstruction* FindAsyncSendRecvDoneInWhileBody(
+    const HloComputation* while_body, const HloInstruction* start_op) {
+  // Partially pipelined send/recv must have a single user.
+  if (start_op->user_count() != 1) return nullptr;
+  HloInstruction* unique_user = start_op->users().front();
+  // Send/recv must be consumed by send/recv-done op or be passed through the
+  // loop.
+  if (IsSendRecvDone(unique_user)) return unique_user;
+  if (unique_user->opcode() != HloOpcode::kTuple || !unique_user->IsRoot())
+    return nullptr;
+  int64_t index = unique_user->operand_index(start_op);
+  for (const HloInstruction* it :
+       while_body->parameter_instruction(0)->users()) {
+    const auto* gte = DynCast<HloGetTupleElementInstruction>(it);
+    if (gte->tuple_index() == index) {
+      CHECK_EQ(gte->user_count(), 1) << "send/recv in next loop iteration must "
+                                        "be consumed by unique send/recv-done.";
+      HloInstruction* next_unique_user = gte->users().front();
+      if (IsSendRecvDone(next_unique_user)) return next_unique_user;
+    }
+  }
+  return nullptr;
+}
+
+// Add copies for partially pipelined async send/recv. Copies are added before
+// starting to send and after finishing to recv. This is to prevent overlapping
+// live times of the buffers. The control flow edges from the added copy to the
+// recv or send-done operation guarantee disjoint live times of the buffers.
+// Note that we have anchor these control flow edges to the copies as the send
+// and recv-done ops are aliasing.
+//
+//
+// Before:
+//
+//      kParameter                kParameter
+//          |                         |
+//      kSendDone                 kRecvDone
+//                                    |
+//         ...                     consumer
+//
+//       producer                    ...
+//          |
+//        kSend                     kRecv
+//          |                         |
+//     (body root)               (body root)
+//
+//
+// After:
+//
+//      kParameter                kParameter
+//          |                         |
+//      kSendDone ----+           kRecvDone
+//                    |               |
+//                   ctrl           kCopy ----+
+//       producer    edge             |       |
+//          |         |            consumer  ctrl
+//        kCopy <-----+                      edge
+//          |                                 |
+//        kSend                     kRecv <---+
+//          |                         |
+//     (body root)               (body root)
+//
+absl::Status CopyInsertion::AddCopiesForAsyncSendRecv(
+    const HloAliasAnalysis& alias_analysis, HloInstruction* start_op) {
+  // If start op has multiple users, this must be the synchronous use of
+  // send/recv.
+  // TODO(b/369589022): Disambiguate sync and async use of send/recv.
+  if (start_op->users().size() != 1) return absl::OkStatus();
+
+  // If start feeds directly into done, the live time is contained and we don't
+  // need to add any copies.
+  HloInstruction* unique_user = start_op->users().front();
+  const HloOpcode done_opcode = start_op->opcode() == HloOpcode::kSend
+                                    ? HloOpcode::kSendDone
+                                    : HloOpcode::kRecvDone;
+  if (unique_user->opcode() == done_opcode) {
+    return absl::OkStatus();
+  }
+
+  // For send/recv outside of the while loop, live times are disjoint. No copies
+  // needed.
+  HloComputation* while_body = start_op->parent();
+  if (!while_body->IsWhileBodyComputation()) return absl::OkStatus();
+
+  // Handle send case.
+  HloInstruction* done_op =
+      FindAsyncSendRecvDoneInWhileBody(while_body, start_op);
+  // TODO(b/369589022): Disambiguate sync and async use of send/recv.
+  if (done_op == nullptr) return absl::OkStatus();
+  if (start_op->opcode() == HloOpcode::kSend) {
+    HloInstruction* operand = start_op->mutable_operand(0);
+    HloInstruction* copied_operand =
+        while_body->AddInstruction(HloInstruction::CreateUnary(
+            operand->shape(), HloOpcode::kCopy, operand));
+    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(start_op, copied_operand));
+    TF_RETURN_IF_ERROR(done_op->AddControlDependencyTo(copied_operand));
+    return absl::OkStatus();
+  }
+
+  // Handle recv case.
+  CHECK_EQ(start_op->opcode(), HloOpcode::kRecv);
+  PtrVec<HloInstruction*> done_op_users = done_op->users();
+  ShapeTree<HloInstruction*> copies_added(done_op->shape());
+  TF_ASSIGN_OR_RETURN(HloInstruction * done_op_copy,
+                      while_body->DeepCopyInstruction(
+                          done_op, /*indices_to_copy=*/nullptr, &copies_added));
+  for (auto [shape_index, instr] : copies_added) {
+    if (instr != nullptr)
+      TF_RETURN_IF_ERROR(instr->AddControlDependencyTo(start_op));
+  }
+  TF_RETURN_IF_ERROR(done_op->AddControlDependencyTo(start_op));
+  for (HloInstruction* it : done_op_users) {
+    TF_RETURN_IF_ERROR(done_op->ReplaceUseWith(it, done_op_copy));
+  }
+  return absl::OkStatus();
 }
 
 // Add kCopy instructions to the given module to guarantee there is no
 // live-range interference. Generally interference can only occur around kWhile
 // instructions which have update-in-place semantics.
-Status CopyInsertion::AddCopiesToResolveInterference(
+absl::Status CopyInsertion::AddCopiesToResolveInterference(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -2014,6 +2153,10 @@ Status CopyInsertion::AddCopiesToResolveInterference(
       } else if (instruction->opcode() == HloOpcode::kConditional) {
         TF_RETURN_IF_ERROR(
             AddCopiesForConditional(*alias_analysis, instruction));
+      } else if (IsSendRecv(instruction)) {
+        // TODO(b/371225893): Generalize this to all async collectives.
+        TF_RETURN_IF_ERROR(
+            AddCopiesForAsyncSendRecv(*alias_analysis, instruction));
       } else {
         // When an operand is a tuple, we avoid copying the operand multiple
         // times by recording and checking the operand number of operands that
@@ -2068,17 +2211,17 @@ Status CopyInsertion::AddCopiesToResolveInterference(
 
   TF_RETURN_IF_ERROR(
       AddCopiesForAliasedInputOutputs(module, execution_threads));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CopyInsertion::AddSpecialCaseCopies(
+absl::Status CopyInsertion::AddSpecialCaseCopies(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   return AddSpecialCaseCopies(*call_graph, execution_threads, module);
 }
 
-Status CopyInsertion::AddSpecialCaseCopies(
+absl::Status CopyInsertion::AddSpecialCaseCopies(
     const CallGraph& call_graph,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     HloModule* module) {
@@ -2228,7 +2371,7 @@ Status CopyInsertion::AddSpecialCaseCopies(
       instruction->parent()->set_root_instruction(deep_copy);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static int64_t GetNumExistingCopies(
@@ -2245,7 +2388,7 @@ static int64_t GetNumExistingCopies(
   return num_existing_copies;
 }
 
-Status CopyInsertion::RemoveUnnecessaryCopies(
+absl::Status CopyInsertion::RemoveUnnecessaryCopies(
     HloModule* module, bool check_live_range_ordering,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
@@ -2272,8 +2415,6 @@ Status CopyInsertion::RemoveUnnecessaryCopies(
       LOG(INFO) << "    HloBuffer " << buffer.id();
     }
   }
-
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
 
   int64_t num_existing_copies = GetNumExistingCopies(module, execution_threads);
   bool changed = true;
@@ -2317,7 +2458,7 @@ Status CopyInsertion::RemoveUnnecessaryCopies(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> CopyInsertion::Run(

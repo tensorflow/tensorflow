@@ -84,4 +84,11 @@ limitations under the License.
 
 #define TSL_IS_IN_OSS 1
 
+#ifdef __cplusplus
+namespace tsl {
+// Constant which is false internally and true in open source.
+inline constexpr bool kIsOpenSource = TSL_IS_IN_OSS;
+}  // namespace tsl
+#endif
+
 #endif  // TENSORFLOW_TSL_PLATFORM_PLATFORM_H_

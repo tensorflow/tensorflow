@@ -13,16 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <memory>
 #include <optional>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/gpu/buffer_sharing.h"
-#include "xla/test.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -58,7 +66,38 @@ void ExpectOptionalFalse(std::optional<bool> value) {
   EXPECT_FALSE(*value);
 }
 
-using GpuCopyInsertionTest = HloTestBase;
+class CanShareBufferWrapper {
+ public:
+  CanShareBufferWrapper()
+      : can_share_buffer_([&](const HloInstruction* fusion,
+                              const HloInstruction* operand,
+                              const ShapeIndex& user_index) {
+          return FusionCanShareBufferHint(fusion, operand, user_index,
+                                          device_description_);
+        }) {}
+
+  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const {
+    return can_share_buffer_;
+  }
+
+ private:
+  const se::DeviceDescription device_description_{
+      xla::gpu::TestGpuDeviceInfo::CudaOrRocmDeviceInfo()};
+  const HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
+};
+
+class GpuCopyInsertionTest : public HloTestBase {
+ public:
+  using HloTestBase::HloTestBase;
+
+  CopyInsertion CreateCopyInsertion() const {
+    return CopyInsertion(can_share_buffer_wrapper_.GetCanShareBuffer(),
+                         /*use_region_based_live_range_analysis=*/0);
+  }
+
+ private:
+  const CanShareBufferWrapper can_share_buffer_wrapper_;
+};
 
 // This is some kind of end-to-end test for FusionCanShareBufferHint.
 TEST_F(GpuCopyInsertionTest, DUSBitcastNoCopy) {
@@ -110,8 +149,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(FusionCanShareBufferHint,
-                               /*use_region_based_live_range_analysis=*/0);
+  CopyInsertion copy_insertion = CreateCopyInsertion();
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
   VLOG(2) << module->ToString();
   // Copy insertion adds two copies inside the entry computation.
@@ -121,7 +159,21 @@ ENTRY main {
   EXPECT_EQ(CountCopies(*module), 2);
 }
 
-using FusionCanShareBufferHintTest = HloTestBase;
+class FusionCanShareBufferHintTest : public HloTestBase {
+ public:
+  FusionCanShareBufferHintTest()
+      : can_share_buffer_(can_share_buffer_wrapper_.GetCanShareBuffer()) {}
+
+  std::optional<bool> FusionCanShareBufferHint(const HloInstruction* fusion,
+                                               const HloInstruction* operand,
+                                               const ShapeIndex& user_index) {
+    return can_share_buffer_(fusion, operand, user_index);
+  }
+
+ private:
+  const CanShareBufferWrapper can_share_buffer_wrapper_;
+  const HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
+};
 
 TEST_F(FusionCanShareBufferHintTest, BufferCanBeSharedSameShape) {
   const char* const kModuleString = R"(
@@ -721,6 +773,42 @@ ENTRY main {
 }
 
 TEST_F(FusionCanShareBufferHintTest,
+       BufferCannotBeSharedWhenOtherUserIsTransposeUser) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  p0 = f32[100,110,120]{2,1,0} parameter(0)
+  p1 = f32[120,110,100]{2,1,0} parameter(1)
+  zero = f32[] constant(0.0)
+  broadcast = f32[120,110,100]{2,1,0} broadcast(zero), dimensions={}
+  maximum = f32[120,110,100]{2,1,0} maximum(broadcast, p1)
+  t = f32[120,110,100]{2,1,0} transpose(p0), dimensions={2,1,0}
+  add = f32[120,110,100]{2,1,0} add(t, maximum)
+  ROOT res = (f32[120,110,100]{2,1,0}, f32[120,110,100]{2,1,0}) tuple(add, maximum)
+}
+
+ENTRY main {
+  param_0 = f32[100,110,120]{2,1,0} parameter(0)
+  param_1 = f32[120,110,100]{2,1,0} parameter(1)
+  ROOT fusion = (f32[120,110,100]{2,1,0}, f32[120,110,100]{2,1,0}) fusion(param_0, param_1), kind=kInput, calls=fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(0), {0}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(0), {1}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(1), {0}));
+  ExpectOptionalFalse(
+      FusionCanShareBufferHint(fusion, fusion->operand(1), {1}));
+}
+
+TEST_F(FusionCanShareBufferHintTest,
        BufferCannotBeSharedDynamicUpdateSliceAndOtherUser) {
   // This is a fusion that we would normally not create because it cannot be
   // emitted in-place. Still check whether buffer sharing logic would handle it
@@ -948,8 +1036,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(FusionCanShareBufferHint,
-                               /*use_region_based_live_range_analysis=*/0);
+  CopyInsertion copy_insertion = CreateCopyInsertion();
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
   VLOG(2) << module->ToString();
   EXPECT_EQ(CountCopies(*module), 0);

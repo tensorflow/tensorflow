@@ -14,24 +14,33 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
-Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
+absl::Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
   auto check_arg_def = [&](const auto& arg_def) {
     if (arg_def.is_ref())
       return tensorflow::errors::Internal(
           "TFRT kernel fallback error: Unsupported ref args in ",
           op_def.name());
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   for (const auto& arg_def : op_def.input_arg())
@@ -39,13 +48,14 @@ Status CheckOpDefCompatibility(const tensorflow::OpDef& op_def) {
   for (const auto& arg_def : op_def.output_arg())
     TF_RETURN_IF_ERROR(check_arg_def(arg_def));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Create a tensorflow::NodeDef from the tensorflow::OpDef and the attributes.
-StatusOr<tensorflow::NodeDef> BuildNodeDef(
+absl::StatusOr<tensorflow::NodeDef> BuildNodeDef(
     const tensorflow::OpDef& op_def, absl::string_view node_name, int num_args,
-    const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder) {
+    const std::function<absl::Status(tensorflow::AttrValueMap*)>&
+        attr_builder) {
   tensorflow::NodeDef node_def;
   node_def.set_name(std::string(node_name));
   node_def.set_op(op_def.name());
@@ -69,29 +79,29 @@ StatusOr<tensorflow::NodeDef> BuildNodeDef(
   return node_def;
 }
 
-tensorflow::Status CreateOpKernel(
-    tensorflow::FunctionLibraryRuntime* flr, tensorflow::NodeDef ndef,
-    std::unique_ptr<tensorflow::OpKernel>* result) {
+absl::Status CreateOpKernel(tensorflow::FunctionLibraryRuntime* flr,
+                            tensorflow::NodeDef ndef,
+                            std::unique_ptr<tensorflow::OpKernel>* result) {
   std::shared_ptr<const tensorflow::NodeProperties> props;
   TF_RETURN_IF_ERROR(tensorflow::NodeProperties::CreateFromNodeDef(
       std::move(ndef), flr->GetFunctionLibraryDefinition(), &props));
   tensorflow::OpKernel* k = nullptr;
   TF_RETURN_IF_ERROR(flr->CreateKernel(props, &k));
   result->reset(k);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-StatusOr<OpKernelRunner> OpKernelRunner::Create(
+absl::StatusOr<OpKernelRunner> OpKernelRunner::Create(
     absl::string_view op_name, absl::string_view node_name,
     absl::string_view device_name, int num_args,
-    const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+    const std::function<absl::Status(tensorflow::AttrValueMap*)>& attr_builder,
     const tensorflow::DeviceMgr& device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime) {
   tensorflow::Device* device = nullptr;
-  Status s = device_manager.LookupDevice(device_name, &device);
+  absl::Status s = device_manager.LookupDevice(device_name, &device);
 
   // Fall back to host device if it fails to find the specified device.
   if (!s.ok()) {
@@ -106,9 +116,9 @@ StatusOr<OpKernelRunner> OpKernelRunner::Create(
                 process_function_library_runtime, device);
 }
 
-StatusOr<OpKernelRunner> OpKernelRunner::Create(
+absl::StatusOr<OpKernelRunner> OpKernelRunner::Create(
     absl::string_view op_name, absl::string_view node_name, int num_args,
-    const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,
+    const std::function<absl::Status(tensorflow::AttrValueMap*)>& attr_builder,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime,
     tensorflow::Device* device) {
@@ -116,8 +126,8 @@ StatusOr<OpKernelRunner> OpKernelRunner::Create(
   TF_RETURN_IF_ERROR(tensorflow::OpRegistry::Global()->LookUpOpDef(
       std::string(op_name), &op_def));
   TF_RETURN_IF_ERROR(CheckOpDefCompatibility(*op_def));
-  VLOG(1) << "KernelFallbackExecuteCompat creating op from OpDef: "
-          << op_def->DebugString();
+  VLOG(1) << "KernelFallbackExecuteCompat creating op " << op_name
+          << " from OpDef: " << op_def->DebugString();
 
   TF_ASSIGN_OR_RETURN(auto node_def,
                       BuildNodeDef(*op_def, node_name, num_args, attr_builder));
@@ -133,14 +143,22 @@ StatusOr<OpKernelRunner> OpKernelRunner::Create(
   std::unique_ptr<OpKernel> op_kernel;
   TF_RETURN_IF_ERROR(CreateOpKernel(function_library_runtime,
                                     std::move(node_def), &op_kernel));
-  return OpKernelRunner(device, function_library_runtime, std::move(op_kernel));
+
+  if (!op_kernel) {
+    return absl::InternalError(
+        absl::StrCat("Failed to create OpKernel for op: ", op_name));
+  }
+  return OpKernelRunner(op_name, device, function_library_runtime,
+                        std::move(op_kernel));
 }
 
 OpKernelRunner::OpKernelRunner(
-    tensorflow::Device* device,
+    absl::string_view op_name, tensorflow::Device* device,
     tensorflow::FunctionLibraryRuntime* function_library_runtime,
     std::unique_ptr<tensorflow::OpKernel> op_kernel)
-    : op_kernel_(std::move(op_kernel)), info_(std::make_unique<Info>()) {
+    : op_kernel_(std::move(op_kernel)),
+      op_name_(op_name),
+      info_(std::make_unique<Info>()) {
   DCHECK(device);
   DCHECK(function_library_runtime);
 

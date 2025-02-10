@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/python/util/function_parameter_canonicalizer.h"
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/python/lib/core/py_util.h"
@@ -118,7 +120,7 @@ bool FunctionParameterCanonicalizer::Canonicalize(
         index = InternedArgNameLinearSearch(key);
         Py_DECREF(key);
 
-        // Stil not found, then return an error.
+        // Still not found, then return an error.
         if (TF_PREDICT_FALSE(index == interned_arg_names_.size())) {
           PyErr_Format(PyExc_TypeError,
                        "Got an unexpected keyword argument '%s'",

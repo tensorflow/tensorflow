@@ -15,12 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_QUANTIZE_PREPROCESS_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_QUANTIZE_PREPROCESS_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -45,7 +47,8 @@ absl::Status PreprocessAndFreezeGraph(
     const absl::flat_hash_set<std::string>& noinline_functions,
     mlir::ModuleOp module_op, mlir::MLIRContext* context,
     std::optional<Session*> session, bool run_tf_to_stablehlo,
-    bool deserialize_xla_call_module);
+    bool deserialize_xla_call_module,
+    llvm::ArrayRef<llvm::ArrayRef<int64_t>> input_arg_shapes = {});
 
 // Overload of `PreprocessAndFreezeGraph` that uses the default MLIR dump file
 // prefix.
@@ -56,10 +59,26 @@ inline absl::Status PreprocessAndFreezeGraph(mlir::ModuleOp module_op,
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true, /*noinline_functions=*/{}, module_op, context,
       session, /*run_tf_to_stablehlo=*/false,
-      /*deserialize_xla_call_module=*/false);
+      /*deserialize_xla_call_module=*/false, /*input_arg_shapes=*/{});
 }
 
-void AddTFToStablehloPasses(mlir::PassManager& pm);
+// Overload of `PreprocessAndFreezeGraph` that uses the default MLIR dump file
+// prefix.
+inline absl::Status PreprocessAndFreezeGraph(mlir::ModuleOp module_op,
+                                             mlir::MLIRContext* context) {
+  return PreprocessAndFreezeGraph(
+      /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
+      /*is_inliner_run=*/true, /*noinline_functions=*/{}, module_op, context,
+      nullptr, /*run_tf_to_stablehlo=*/false,
+      /*deserialize_xla_call_module=*/false, /*input_arg_shapes=*/{});
+}
+
+// TF->StableHLO has limited support for dynamic shapes.
+// Some models can only be converted with explicitly provided input argument
+// shapes.
+void AddTFToStablehloPasses(
+    mlir::PassManager& pm,
+    llvm::ArrayRef<llvm::ArrayRef<int64_t>> input_arg_shapes = {});
 
 }  // namespace quantization
 }  // namespace tensorflow

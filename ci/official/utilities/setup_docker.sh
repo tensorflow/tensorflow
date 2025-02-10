@@ -14,11 +14,12 @@
 # limitations under the License.
 # ==============================================================================
 if [[ "$TFCI_DOCKER_PULL_ENABLE" == 1 ]]; then
-  # Simple retry logic for docker-pull errors. Sleeps for 15s if a pull fails.
+  # Simple retry logic for docker-pull errors. Sleeps if a pull fails.
   # Pulling an already-pulled container image will finish instantly, so
   # repeating the command costs nothing.
   docker pull "$TFCI_DOCKER_IMAGE" || sleep 15
-  docker pull "$TFCI_DOCKER_IMAGE" || sleep 15
+  docker pull "$TFCI_DOCKER_IMAGE" || sleep 30
+  docker pull "$TFCI_DOCKER_IMAGE" || sleep 60
   docker pull "$TFCI_DOCKER_IMAGE"
 fi 
 
@@ -36,10 +37,32 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
   # Pass all existing TFCI_ variables into the Docker container
   env_file=$(mktemp)
   env | grep ^TFCI_ > "$env_file"
-  docker run $TFCI_DOCKER_ARGS --name tf -w "$TFCI_GIT_DIR" -itd --rm \
-      -v "$TFCI_GIT_DIR:$TFCI_GIT_DIR" \
+
+  if [[ $(uname -s) == MSYS_NT* ]]; then
+    is_windows=true
+  else
+    is_windows=false
+  fi
+
+  WORKING_DIR="$TFCI_GIT_DIR"
+  if [[ "$is_windows" == true ]]; then
+    env_file=$(cygpath -m $env_file)
+    WORKING_DIR=$(replace_drive_letter_with_prefix "$TFCI_GIT_DIR" "$TFCI_OUTPUT_WIN_DOCKER_DIR")
+    echo "GCE_METADATA_HOST=$IP_ADDR" >> $env_file
+  fi
+
+  docker run $TFCI_DOCKER_ARGS --name tf -w "$WORKING_DIR" -itd --rm \
+      -v "$TFCI_GIT_DIR:$WORKING_DIR" \
       --env-file "$env_file" \
       "$TFCI_DOCKER_IMAGE" \
     bash
+
+  if [[ "$is_windows" == true ]]; then
+    # Allow requests from the container.
+    # Additional setup is contained in ci/official/envs/rbe.
+    CONTAINER_IP_ADDR=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' tf)
+    netsh advfirewall firewall add rule name="Allow Metadata Proxy" dir=in action=allow protocol=TCP localport=80 remoteip="$CONTAINER_IP_ADDR"
+  fi
+
 fi
 tfrun() { docker exec tf "$@"; }

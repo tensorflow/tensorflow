@@ -32,10 +32,11 @@
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt_proxy/common/grpc_credentials.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
+#include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/server/grpc_service_impl.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/ifrt_backend.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -74,7 +75,7 @@ absl::StatusOr<std::unique_ptr<GrpcServer>> GrpcServer::Create(
 absl::StatusOr<std::unique_ptr<GrpcServer>>
 GrpcServer::CreateFromIfrtClientFactory(
     absl::string_view address,
-    absl::AnyInvocable<absl::StatusOr<std::unique_ptr<xla::ifrt::Client>>()>
+    absl::AnyInvocable<absl::StatusOr<std::shared_ptr<xla::ifrt::Client>>()>
         backend_ifrt_client_factory) {
   if (backend_ifrt_client_factory == nullptr) {
     return absl::InvalidArgumentError(

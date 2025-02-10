@@ -373,7 +373,7 @@ TEST_F(RollOpTest, Error_InputMustBeVectorOrHigher) {
   AddInputFromArray<float>(TensorShape({}), {7});
   AddInputFromArray<int32>(TensorShape({}), {1});
   AddInputFromArray<int32>(TensorShape({}), {0});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(s.ToString(), "input must be 1-D or higher"))
       << s;
 }
@@ -385,7 +385,7 @@ TEST_F(RollOpTest, Error_AxisMustBeScalarOrVector) {
   AddInputFromArray<float>(TensorShape({2, 2}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({}), {1});
   AddInputFromArray<int32>(TensorShape({1, 2}), {0, 1});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(
       absl::StrContains(s.ToString(), "axis must be a scalar or a 1-D vector"))
       << s;
@@ -398,7 +398,7 @@ TEST_F(RollOpTest, Error_ShiftMustBeScalarOrVector) {
   AddInputFromArray<float>(TensorShape({2, 2}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({1, 2}), {0, 1});
   AddInputFromArray<int32>(TensorShape({}), {1});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(
       absl::StrContains(s.ToString(), "shift must be a scalar or a 1-D vector"))
       << s;
@@ -411,7 +411,7 @@ TEST_F(RollOpTest, Error_ShiftAndAxisMustBeSameSize) {
   AddInputFromArray<float>(TensorShape({2, 2}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({1}), {1});
   AddInputFromArray<int32>(TensorShape({2}), {0, 1});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(
       absl::StrContains(s.ToString(), "shift and axis must have the same size"))
       << s;
@@ -424,7 +424,7 @@ TEST_F(RollOpTest, Error_AxisOutOfRange) {
   AddInputFromArray<float>(TensorShape({4}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({}), {1});
   AddInputFromArray<int32>(TensorShape({}), {1});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(s.ToString(), "is out of range")) << s;
 }
 

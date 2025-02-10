@@ -47,6 +47,7 @@ NodeDef MakeParallelMap(const string& name, MutableGraphView* graph) {
   auto* num_parallel_calls = graph_utils::AddScalarConstNode(
       static_cast<int64_t>(data::model::kAutotune), graph);
   parallel_map.add_input(num_parallel_calls->name());
+  parallel_map.mutable_attr()->erase("force_synchronous");
   AddNodeAttr("deterministic", "true", &parallel_map);
 
   return parallel_map;
@@ -54,10 +55,9 @@ NodeDef MakeParallelMap(const string& name, MutableGraphView* graph) {
 
 }  // namespace
 
-Status MapParallelization::OptimizeAndCollectStats(Cluster* cluster,
-                                                   const GrapplerItem& item,
-                                                   GraphDef* output,
-                                                   OptimizationStats* stats) {
+absl::Status MapParallelization::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   if (!autotune_) {
     VLOG(1) << "The optimization map_parallelization is not applied if "
@@ -86,8 +86,11 @@ Status MapParallelization::OptimizeAndCollectStats(Cluster* cluster,
 
     auto* function =
         function_library.Find(map_node->attr().at("f").func().name());
-    if (function_utils::IsFunctionStateful(function_library, *function, true))
+    if (function_utils::IsFunctionStateful(function_library, *function, true) ||
+        (map_node->attr().contains("force_synchronous") &&
+         map_node->attr().at("force_synchronous").b())) {
       continue;
+    }
 
     auto* parallel_map =
         graph.AddNode(MakeParallelMap(map_node->name(), &graph));

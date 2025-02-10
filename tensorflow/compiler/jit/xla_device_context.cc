@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor_reference.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -135,7 +136,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   XlaLayoutPreference layout_preference =
       shape_determination_fns_.layout_preference_fn(
           device_tensor->shape(), device_tensor->dtype(), std::nullopt);
-  Status status = [&]() -> Status {
+  absl::Status status = [&]() -> absl::Status {
     TF_ASSIGN_OR_RETURN(xla::Shape shape,
                         shape_determination_fns_.shape_representation_fn(
                             device_tensor->shape(), device_tensor->dtype(),
@@ -171,8 +172,8 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
         host_to_device_stream_.get(), literal, xla_tensor->shaped_buffer()));
 
     if (UseMultipleStreams()) {
-      auto event = std::make_shared<se::Event>(stream_->parent());
-      TF_RET_CHECK(event->Init()) << "Event failed to initialize!";
+      TF_ASSIGN_OR_RETURN(std::shared_ptr<se::Event> event,
+                          stream_->parent()->CreateEvent());
       TF_RETURN_IF_ERROR(host_to_device_stream_->RecordEvent(event.get()));
       xla_tensor->ResetDefinitionEvent(std::move(event),
                                        host_to_device_stream_.get());
@@ -261,8 +262,8 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   transfer_manager_->TransferLiteralFromDevice(
       device_to_host_stream.get(), xla_tensor->shaped_buffer(), literal,
       [this, ref, xla_tensor, done, device_to_host_stream,
-       device_allows_sync_on_completion](xla::Status status) {
-        Status done_status = status;
+       device_allows_sync_on_completion](absl::Status status) {
+        absl::Status done_status = status;
         VLOG(2) << "Transfer from device as literal: "
                 << xla_tensor->shaped_buffer().ToString();
         // For devices don't allow sync on completion, the device execution is
@@ -299,9 +300,9 @@ se::Stream* XlaDeviceContext::GetDeviceToDeviceStream() {
   return device_to_device_stream(stream);
 }
 
-Status XlaDeviceContext::ThenExecute(Device* device,
-                                     stream_executor::Stream* stream,
-                                     std::function<void()> func) {
+absl::Status XlaDeviceContext::ThenExecute(Device* device,
+                                           stream_executor::Stream* stream,
+                                           std::function<void()> func) {
   VLOG(2) << "XlaDeviceContext::ThenExecute";
   return stream->DoHostCallback(std::move(func));
 }

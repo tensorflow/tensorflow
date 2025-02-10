@@ -1,0 +1,40 @@
+op {
+  graph_op_name: "ComputeDedupDataSizeV2"
+  visibility: HIDDEN
+  out_arg {
+    name: "num_elements"
+    description: <<END
+The size of the deduplicated data from infeed.
+END
+  }
+  attr {
+    name: "config"
+    description: <<END
+Serialized TPUEmbeddingConfiguration proto.
+END
+  }
+  attr {
+    name: "embedding_partitions"
+    description: <<END
+Serialized EmbeddingPartitionsProto proto.
+END
+  }
+  attr {
+    name: "hbm_buffers_config"
+    description: <<END
+Serialized HbmBuffersConfig proto.
+END
+  }
+  attr {
+    name: "tpu_topology"
+    description: <<END
+Serialized TpuTopologyArgsProto proto.
+END
+  }
+  summary: "An op computes the size of the deduplication data from embedding core and returns the updated config."
+  description: <<END
+This op is to compute size of the deduplication data so to provide this
+information to the op that computes the tuple mask of deduplication data can
+have static output shape.
+END
+}

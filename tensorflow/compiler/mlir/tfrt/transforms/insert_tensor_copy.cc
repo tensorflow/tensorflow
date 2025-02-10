@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cassert>
+#include <memory>
+
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -26,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
@@ -69,7 +73,7 @@ class InsertFallbackTensorCopy
 
     // Process function arguments first.
     for (auto arg : func_op.getArguments()) {
-      if (!arg.getType().isa<tfrt::fallback::TFTensorType>()) continue;
+      if (!mlir::isa<tfrt::fallback::TFTensorType>(arg.getType())) continue;
       InsertFallbackTensorCopyForValue(arg, func_op->getLoc(), builder,
                                        stream_analysis);
     }
@@ -91,7 +95,7 @@ class InsertFallbackTensorCopy
 
     // Process each result value.
     for (auto result : op->getResults()) {
-      if (!result.getType().isa<tfrt::fallback::TFTensorType>()) continue;
+      if (!mlir::isa<tfrt::fallback::TFTensorType>(result.getType())) continue;
       InsertFallbackTensorCopyForValue(result, op->getLoc(), builder,
                                        stream_analysis);
     }
@@ -147,7 +151,7 @@ class InsertFallbackTensorCopy
     // For each stream, we will create one new value that replaces the uses in
     // that stream.
 
-    assert(value.getType().isa<tfrt::fallback::TFTensorType>());
+    assert(mlir::isa<tfrt::fallback::TFTensorType>(value.getType()));
 
     // The number of results is the number candidate streams.
     llvm::SmallVector<mlir::Type, 4> result_types(copies.size(),

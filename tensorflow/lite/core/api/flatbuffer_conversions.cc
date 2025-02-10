@@ -20,14 +20,16 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
-#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
+// TODO(sosagarcia): Rework all function implementations to wrap around the
+// compiler flatbuffer_conversions.
+// LINT.IfChange
 namespace tflite {
 
 namespace {
@@ -921,6 +923,17 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_PAD: {
       return ParseStablehloPad(op, error_reporter, allocator, builtin_data);
     }
+    case BuiltinOperator_STABLEHLO_COMPOSITE: {
+      return ParseStablehloComposite(op, error_reporter, allocator,
+                                     builtin_data);
+    }
+    case BuiltinOperator_STABLEHLO_SHIFT_LEFT: {
+      return ParseStablehloShiftLeft(op, error_reporter, allocator,
+                                     builtin_data);
+    }
+    case BuiltinOperator_STABLEHLO_CASE: {
+      return ParseStablehloCase(op, error_reporter, allocator, builtin_data);
+    }
     // TODO: skip param parsing for now since ops below don't have kernels
     case BuiltinOperator_STABLEHLO_SLICE:
     case BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM:
@@ -959,6 +972,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_SORT:
     case BuiltinOperator_STABLEHLO_WHILE:
     case BuiltinOperator_STABLEHLO_TRANSPOSE:
+    case BuiltinOperator_STABLEHLO_CBRT:
 
     // Below are the ops with no builtin_data structure.
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
@@ -1016,6 +1030,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
   switch (tensor_type) {
     case TensorType_FLOAT16:
       *type = kTfLiteFloat16;
+      return kTfLiteOk;
+    case TensorType_BFLOAT16:
+      *type = kTfLiteBFloat16;
       return kTfLiteOk;
     case TensorType_FLOAT32:
       *type = kTfLiteFloat32;
@@ -2378,6 +2395,78 @@ TfLiteStatus ParseStablehloPad(const Operator* op,
   return kTfLiteError;
 }
 
+TfLiteStatus ParseStablehloComposite(const Operator* op,
+                                     ErrorReporter* error_reporter,
+                                     BuiltinDataAllocator* allocator,
+                                     void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteStablehloCompositeParams>();
+  const StableHLOCompositeOptions* schema_params =
+      op->builtin_options_2_as_StableHLOCompositeOptions();
+  if (schema_params) {
+    params->name = schema_params->name()->c_str();
+    params->version = schema_params->version();
+    params->subgraph_index = schema_params->decomposition_subgraph_index();
+    params->attributes = schema_params->composite_attributes()->data();
+    params->attributes_size = schema_params->composite_attributes()->size();
+    *builtin_data = params.release();
+    return kTfLiteOk;
+  }
+  TF_LITE_REPORT_ERROR(
+      error_reporter,
+      "Could not get 'stablehlo.composite' operation parameters.");
+  return kTfLiteError;
+}
+
+TfLiteStatus ParseStablehloShiftLeft(const Operator* op,
+                                     ErrorReporter* error_reporter,
+                                     BuiltinDataAllocator* allocator,
+                                     void** builtin_data) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseStablehloCase(const Operator* op,
+                                ErrorReporter* error_reporter,
+                                BuiltinDataAllocator* allocator,
+                                void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteStablehloCaseParams>();
+
+  const StablehloCaseOptions* schema_params =
+      op->builtin_options_2_as_StablehloCaseOptions();
+  if (schema_params) {
+    auto LoadAttr =
+        [&error_reporter](
+            int32_t* params_array, const size_t params_array_size_bytes,
+            const flatbuffers::Vector<int32_t>* const flatbuffer_vector,
+            const char* const attr_name) -> TfLiteStatus {
+      TfLiteStatus status = FlatBufferIntVectorToArray(
+          params_array_size_bytes, flatbuffer_vector, params_array,
+          error_reporter, "stablehlo.case");
+      if (status != kTfLiteOk) {
+        TF_LITE_REPORT_ERROR(error_reporter, "Check the '%s' attribute.",
+                             attr_name);
+      }
+      return status;
+    };
+
+    TF_LITE_ENSURE_STATUS(LoadAttr(params->branch_subgraph_indices,
+                                   sizeof(params->branch_subgraph_indices),
+                                   schema_params->branch_subgraph_indices(),
+                                   "branch subgraph indices"));
+    params->num_branches = schema_params->branch_subgraph_indices()->size();
+    *builtin_data = params.release();
+    return kTfLiteOk;
+  }
+  TF_LITE_REPORT_ERROR(error_reporter,
+                       "Could not get 'stablehlo.case' operation parameters.");
+  return kTfLiteError;
+}
+
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
@@ -2900,3 +2989,4 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
 }
 
 }  // namespace tflite
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/core/api/flatbuffer_conversions.cc)

@@ -21,12 +21,14 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
-#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -42,8 +44,10 @@
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -72,7 +76,7 @@ namespace {
 
 IfrtProxyVersion Version() {
   IfrtProxyVersion version;
-  version.set_protocol_version(kClientMinVersion);
+  version.set_protocol_version(kClientMaxVersion);
   return version;
 }
 
@@ -134,9 +138,9 @@ TEST_F(LoadedExecutableTest, Metadata) {
   MockClient client;
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/2, /*addressable_device_logical_device_ids=*/{},
-      /*addressable_devices=*/{}, /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<absl::Status>(absl::OkStatus()),
+      /*num_devices=*/2, /*addressable_devices=*/{},
+      /*fingerprint=*/"fingerprint",
+      /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   EXPECT_THAT(
@@ -151,13 +155,17 @@ TEST_F(LoadedExecutableTest, Metadata) {
                             tile_assignment_dimensions: [ 0, 1 ])pb"))));
   EXPECT_THAT(executable.GetOutputShardings(),
               Optional(ElementsAre(EquivToProto(R"pb(type: REPLICATED)pb"))));
-  EXPECT_THAT(executable.GetParameterLayouts(),
-              IsOkAndHolds(ElementsAre(
-                  xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1),
-                  xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2))));
-  EXPECT_THAT(executable.GetOutputLayouts(),
-              IsOkAndHolds(ElementsAre(
-                  xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2))));
+  ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
+                       executable.GetParameterLayouts());
+  ASSERT_EQ(parameter_layouts.size(), 2);
+  EXPECT_EQ(parameter_layouts[0]->xla_layout(),
+            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1));
+  EXPECT_EQ(parameter_layouts[1]->xla_layout(),
+            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
+  ASSERT_OK_AND_ASSIGN(auto output_layouts, executable.GetOutputLayouts());
+  ASSERT_EQ(output_layouts.size(), 1);
+  EXPECT_EQ(output_layouts[0]->xla_layout(),
+            xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
   EXPECT_THAT(executable.GetOutputMemoryKinds(),
               IsOkAndHolds(ElementsAre(ElementsAre("foo"))));
 }
@@ -167,45 +175,50 @@ TEST_F(LoadedExecutableTest, Metadata) {
 #if defined(PLATFORM_GOOGLE)
 TEST_F(LoadedExecutableTest, Execute) {
   MockDevice device;
-  ON_CALL(device, global_device_id())
-      .WillByDefault(Return(xla::PjRtGlobalDeviceId(1)));
+  ON_CALL(device, Id()).WillByDefault(Return(DeviceId(1)));
 
   MockClient client;
-  ON_CALL(client, LookupDevice(1)).WillByDefault(Return(&device));
+  ON_CALL(client, LookupDevice(DeviceId(1))).WillByDefault(Return(&device));
 
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/2, /*addressable_device_logical_device_ids=*/{},
-      /*addressable_devices=*/{}, /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<absl::Status>(absl::OkStatus()),
+      /*num_devices=*/2, /*addressable_devices=*/{},
+      /*fingerprint=*/"fingerprint",
+      /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
-  IfrtResponse response;
+  xla::ifrt::LoadedExecutable::ExecuteOptions exec_options;
+  exec_options.fill_status = true;
+
+  IfrtResponse execute_response;
+  IfrtResponse check_future_response;
+
   ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
                                             loaded_executable_execute_response {
                                               status_handle: 2000
                                               outputs {
-                                                dtype: DTYPE_F32
-                                                shape { dimensions: [ 4, 4 ] }
+                                                dtype { kind: KIND_F32 }
+                                                shape { dims: [ 4, 4 ] }
                                                 array_handle: 3000
                                               }
                                               outputs {
-                                                dtype: DTYPE_F16
-                                                shape { dimensions: [ 8 ] }
+                                                dtype { kind: KIND_F16 }
+                                                shape { dims: [ 8 ] }
                                                 array_handle: 3001
                                               }
                                             }
                                           )pb",
-                                          &response));
+                                          &execute_response));
   {
-    auto* outputs = response.mutable_loaded_executable_execute_response()
-                        ->mutable_outputs();
+    auto* outputs =
+        execute_response.mutable_loaded_executable_execute_response()
+            ->mutable_outputs();
     TF_ASSERT_OK_AND_ASSIGN(
         *(*outputs)[0].mutable_sharding(),
-        ToShardingProto(*SingleDeviceSharding::Create(&device, MemoryKind())));
+        SingleDeviceSharding::Create(&device, MemoryKind())->ToProto());
     TF_ASSERT_OK_AND_ASSIGN(
         *(*outputs)[1].mutable_sharding(),
-        ToShardingProto(*SingleDeviceSharding::Create(&device, MemoryKind())));
+        SingleDeviceSharding::Create(&device, MemoryKind())->ToProto());
   }
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(loaded_executable_execute_request {
@@ -213,7 +226,7 @@ TEST_F(LoadedExecutableTest, Execute) {
                                     args_handles: [ 1000, 1001 ]
                                     device_ids: [ 1 ]
                                   })pb")))))
-      .WillOnce(MockClientSessionReturnResponse(response));
+      .WillOnce(MockClientSessionReturnResponse(execute_response));
 
   ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
                                             response_metadata {
@@ -223,27 +236,25 @@ TEST_F(LoadedExecutableTest, Execute) {
                                               }
                                             }
                                           )pb",
-                                          &response));
+                                          &check_future_response));
   EXPECT_CALL(*session_,
               Enqueue(Pointee(Partially(EquivToProto(R"pb(check_future_request {
                                                             future_handle: 2000
                                                           })pb")))))
-      .WillOnce(MockClientSessionReturnResponse(response));
+      .WillOnce(MockClientSessionReturnResponse(check_future_response));
 
-  DeviceList devices({&device});
+  tsl::RCReference<DeviceList> devices = BasicDeviceList::Create({&device});
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> args;
   for (const uint64_t handle : {1000, 1001}) {
     args.push_back(tsl::MakeRef<Array>(
         &client, rpc_helper_, DType(DType::kF32), Shape({2, 2}),
-        OpaqueSharding::Create(devices, MemoryKind()),
-        ArrayHandle{.handle = handle}));
+        OpaqueSharding::Create(devices, MemoryKind()), ArrayHandle{handle}));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto result, executable.Execute(
-                       absl::MakeSpan(args),
-                       xla::ifrt::LoadedExecutable::ExecuteOptions(), devices));
+      auto result,
+      executable.Execute(absl::MakeSpan(args), exec_options, devices));
 
   EXPECT_THAT(result.status.Await(),
               StatusIs(absl::StatusCode::kUnknown, "injected error"));
@@ -259,6 +270,41 @@ TEST_F(LoadedExecutableTest, Execute) {
   EXPECT_EQ(output1->dtype(), DType(DType::kF16));
   EXPECT_EQ(output1->shape(), Shape({8}));
   EXPECT_EQ(llvm::cast<Array>(output1.get())->handle().handle, 3001);
+
+  // Execute again. This time, the client already knows the output spec and so
+  // will supply client-generated handles.
+  execute_response.mutable_loaded_executable_execute_response()
+      ->clear_outputs();
+  execute_response.mutable_loaded_executable_execute_response()
+      ->set_status_handle(0);
+  TestQueue<IfrtRequest> requests_queue(/*pop_timeout=*/absl::Minutes(1));
+
+  EXPECT_CALL(
+      *session_,
+      Enqueue(IfrtRequestOfType(IfrtRequest::kLoadedExecutableExecuteRequest)))
+      .WillOnce(MockClientCaptureAndReturn(&requests_queue, execute_response));
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kCheckFutureRequest)))
+      .WillOnce(
+          MockClientCaptureAndReturn(&requests_queue, check_future_response));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      result, executable.Execute(absl::MakeSpan(args), exec_options, devices));
+
+  auto execute_req = requests_queue.Pop().loaded_executable_execute_request();
+  auto check_future_req = requests_queue.Pop().check_future_request();
+
+  EXPECT_THAT(result.status.Await(),
+              StatusIs(absl::StatusCode::kUnknown, "injected error"));
+  EXPECT_EQ(execute_req.result_status_handle(),
+            check_future_req.future_handle());
+
+  ASSERT_THAT(result.outputs, SizeIs(2));
+  ASSERT_THAT(execute_req.result_array_handle(), SizeIs(2));
+  EXPECT_EQ(llvm::cast<Array>(result.outputs[0].get())->handle().handle,
+            execute_req.result_array_handle()[0]);
+  EXPECT_EQ(llvm::cast<Array>(result.outputs[1].get())->handle().handle,
+            execute_req.result_array_handle()[1]);
 }
 #endif
 
@@ -268,9 +314,9 @@ TEST_F(LoadedExecutableTest, Delete) {
   MockClient client;
   LoadedExecutable executable(
       &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
-      /*num_devices=*/2, /*addressable_device_logical_device_ids=*/{},
-      /*addressable_devices=*/{}, /*fingerprint=*/"fingerprint",
-      /*ready_future=*/Future<absl::Status>(absl::OkStatus()),
+      /*num_devices=*/2, /*addressable_devices=*/{},
+      /*fingerprint=*/"fingerprint",
+      /*ready_future=*/Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
   {
@@ -303,7 +349,7 @@ TEST_F(LoadedExecutableTest, Delete) {
                                                     })pb")))))
         .WillOnce(MockClientSessionReturnResponse(response));
 
-    Future<absl::Status> result = executable.Delete();
+    Future<> result = executable.Delete();
     EXPECT_THAT(result.Await(),
                 StatusIs(absl::StatusCode::kUnknown, StrEq("injected error")));
   }

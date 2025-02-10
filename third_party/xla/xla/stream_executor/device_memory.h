@@ -30,12 +30,10 @@ limitations under the License.
 #include <cstdint>
 #include <tuple>
 
-#include "tsl/platform/logging.h"
+#include "absl/base/attributes.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace stream_executor {
-
-class DeviceMemoryAllocator;
-class StreamExecutor;
 
 // void*-analogous device memory allocation. For the typed variation, see
 // DeviceMemory<T>.
@@ -53,7 +51,13 @@ class DeviceMemoryBase {
   // region. An opaque pointer may be provided -- see header for details on the
   // opacity of that pointer.
   explicit DeviceMemoryBase(void *opaque = nullptr, uint64_t size = 0)
-      : opaque_(opaque), size_(size) {}
+      : opaque_(opaque), size_(size) {
+    // TODO(b/336267585): This constructor dangerously encourages
+    //                 DeviceMemoryBase(mem) which would imply
+    //                 DeviceMemoryBase(mem, 0)
+    //                 We should delete & resolve any dependencies.
+    //  explicit DeviceMemoryBase(void *opaque) = delete;
+  }
 
   // Returns whether the backing memory is the null pointer.
   // A `== nullptr` convenience method is also provided.
@@ -79,8 +83,7 @@ class DeviceMemoryBase {
 
   // Warning: note that the pointer returned is not necessarily directly to
   // device virtual address space, but is platform-dependent.
-  void *opaque() { return opaque_; }
-  const void *opaque() const { return opaque_; }
+  void *opaque() const { return opaque_; }
 
   // Returns the payload of this memory region.
   uint64_t payload() const { return payload_; }
@@ -96,8 +99,8 @@ class DeviceMemoryBase {
 
   // Creates a memory region (slice) inside another allocated memory region.
   // Offset and size are in bytes.
-  DeviceMemoryBase GetByteSlice(uint64_t offset_bytes,
-                                uint64_t size_bytes) const {
+  ABSL_ATTRIBUTE_ALWAYS_INLINE DeviceMemoryBase
+  GetByteSlice(uint64_t offset_bytes, uint64_t size_bytes) const {
     DCHECK(offset_bytes + size_bytes <= size_)
         << "requested slice allocation (offset + size) is greater "
         << "than parent allocation size: (" << offset_bytes << " + "
@@ -105,16 +108,6 @@ class DeviceMemoryBase {
 
     return DeviceMemoryBase(
         reinterpret_cast<std::byte *>(opaque_) + offset_bytes, size_bytes);
-  }
-
- protected:
-  friend class StreamExecutor;
-
-  // Resets the internal values of the opaque pointer and number of bytes in the
-  // memory region, just as in the constructor.
-  void Reset(void *opaque, uint64_t bytes) {
-    opaque_ = opaque;
-    size_ = bytes;
   }
 
  private:
@@ -135,7 +128,7 @@ class DeviceMemoryBase {
 // that represents one or more integers in Device memory.
 //
 // Thread-compatible.
-template <typename ElemT>
+template <typename T>
 class DeviceMemory final : public DeviceMemoryBase {
  public:
   // Default constructor instantiates a null-pointed, zero-sized memory region.
@@ -150,68 +143,36 @@ class DeviceMemory final : public DeviceMemoryBase {
     SetPayload(other.payload());
   }
 
-  // Returns the number of elements of type ElemT that constitute this
+  // Returns the number of elements of type T that constitute this
   // allocation.
-  uint64_t ElementCount() const { return size() / sizeof(ElemT); }
+  uint64_t ElementCount() const { return size() / sizeof(T); }
 
-  // Returns whether this is a single-element allocation.
-  bool IsScalar() const { return ElementCount() == 1; }
+  // Returns pointer to the allocated data
+  T *base() const { return reinterpret_cast<T *>(opaque()); }
 
   // Creates a typed area of DeviceMemory with a given opaque pointer and the
   // quantity of bytes in the allocation. This function is broken out to
   // distinguish bytes from an element count.
-  static DeviceMemory<ElemT> MakeFromByteSize(void *opaque, uint64_t bytes) {
-    return DeviceMemory<ElemT>(opaque, bytes);
+  static DeviceMemory<T> MakeFromByteSize(void *opaque, uint64_t bytes) {
+    return DeviceMemory<T>(opaque, bytes);
   }
 
   // Creates a memory region (slice) inside another allocated memory region.
-  // Offset and size are specified in terms of ElemT elements.
-  DeviceMemory<ElemT> GetSlice(uint64_t element_offset,
-                               uint64_t element_count) {
-    return DeviceMemory<ElemT>(GetByteSlice(sizeof(ElemT) * element_offset,
-                                            sizeof(ElemT) * element_count));
+  // Offset and size are specified in terms of T elements.
+  DeviceMemory<T> GetSlice(uint64_t element_offset, uint64_t element_count) {
+    return DeviceMemory<T>(
+        GetByteSlice(sizeof(T) * element_offset, sizeof(T) * element_count));
   }
-
-  // Resets the DeviceMemory data, in MakeFromByteSize fashion.
-  // This simply clobbers the prior values.
-  void ResetFromByteSize(void *opaque, uint64_t bytes) {
-    // TODO(leary) when NVCC is eliminated we can add this check (and the
-    // logging include it requires).
-    // CHECK_EQ(0, bytes % sizeof(ElemT));
-    DeviceMemoryBase::Reset(opaque, bytes);
-  }
-
-  // ------------------------------------------------------------
 
  protected:
-  // This constructor is solely used from derived classes; it is made protected
-  // because it accepts a byte-size instead of an element count, which could
-  // potentially be misused given the ElementCount() nature of this interface.
+  // This is made protected because it accepts a byte-size instead of an element
+  // count, which could potentially be misused given the ElementCount() nature
+  // of this interface.
   //
   // In order to specify the desire to use byte size instead of element count
   // explicitly, use MakeFromByteSize.
   DeviceMemory(void *opaque, uint64_t size) : DeviceMemoryBase(opaque, size) {}
 };
-
-// Host-side representation of packed-and-aligned vector datatypes on the device
-// side. Since these can appear in device kernel signatures, we support
-// launching them with these datatypes in launch signatures.
-
-struct Float2 {
-  float x, y;
-};
-
-struct Float4 {
-  Float2 xz, yw;
-};
-
-struct Double2 {
-  double x, y;
-};
-
-static_assert(sizeof(Float2) == 2 * sizeof(float), "Float2 must be packed");
-static_assert(sizeof(Float4) == 4 * sizeof(float), "Float4 must be packed");
-static_assert(sizeof(Double2) == 2 * sizeof(double), "Double2 must be packed");
 
 }  // namespace stream_executor
 

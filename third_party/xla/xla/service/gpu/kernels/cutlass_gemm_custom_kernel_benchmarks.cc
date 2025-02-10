@@ -19,16 +19,17 @@ limitations under the License.
 
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla::gpu::kernel::gemm_universal {
 
@@ -51,12 +52,15 @@ static void BM_RowMajorGemm(benchmark::State& state) {
   int32_t n = 16384;
   int32_t k = 4096;
 
-  auto custom_kernel =
-      GetCutlassGemmKernel("cutlass_gemm", PrimitiveType::BF16, m, n, k,
-                           /*indices=*/{0, 1, 2}, /*slices=*/{}, device);
-
   TF_ASSERT_OK_AND_ASSIGN(
-      auto gemm, se::Kernel::Create(executor, custom_kernel->kernel_spec()));
+      auto custom_kernels,
+      GetCutlassGemmKernels("cutlass_gemm", PrimitiveType::BF16,
+                            PrimitiveType::BF16, PrimitiveType::BF16, m, n, k,
+                            /*indices=*/{0, 1, 2}, /*slices=*/{}, device));
+  const auto& custom_kernel = custom_kernels[0];
+
+  TF_ASSERT_OK_AND_ASSIGN(auto gemm,
+                          executor->LoadKernel(custom_kernel.kernel_spec()));
 
   // Prepare arguments: a=1.1, b=1.2, c=0.0
   se::DeviceMemory<float> a = executor->AllocateArray<float>(m * k, 0);
@@ -69,11 +73,11 @@ static void BM_RowMajorGemm(benchmark::State& state) {
 
   se::KernelArgsDeviceMemoryArray args(
       std::vector<se::DeviceMemoryBase>({a, b, c}),
-      custom_kernel->shared_memory_bytes());
+      custom_kernel.shared_memory_bytes());
 
   for (auto s : state) {
-    TF_CHECK_OK(executor->Launch(stream.get(), custom_kernel->thread_dims(),
-                                 custom_kernel->block_dims(), *gemm, args));
+    TF_CHECK_OK(gemm->Launch(custom_kernel.thread_dims(),
+                             custom_kernel.block_dims(), stream.get(), args));
     TF_CHECK_OK(stream->BlockHostUntilDone());
   }
 }

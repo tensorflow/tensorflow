@@ -3168,8 +3168,16 @@ func.func @testSqueezeOutOfBounds(%arg0: tensor<?x?x10xf32>) -> tensor<?x10xf32>
 
 // -----
 
+func.func @testNullaryEinsum(%arg0: tensor<2x3xf32>){
+  // expected-error @+1 {{op must have 1 or 2 operands}}
+  "tf.Einsum"() {equation = "->"} : () -> (tensor<f32>)
+  func.return
+}
+
+// -----
+
 func.func @testTernaryEinsum(%arg0: tensor<2x3xf32>){
-  // expected-error @+1 {{supports at most two operands}}
+  // expected-error @+1 {{op must have 1 or 2 operands}}
   %0 = "tf.Einsum"(%arg0, %arg0, %arg0) {equation = "ab,cd,ef->"} : (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) -> (tensor<*xf32>)
   func.return
 }
@@ -4242,6 +4250,15 @@ func.func @testTile(%arg0: tensor<2x3x?xf32>) {
   %cst = arith.constant dense <[2, 3, 4]> : tensor<3xi32>
   %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3x?xf32>, tensor<3xi32>) -> tensor<4x9x?xf32>
   func.return
+}
+
+// -----
+
+func.func @testTileFold(%arg0: tensor<2x3x1xf32>, %arg1: tensor<2x3x20xf32>) -> tensor<2x3x20xf32> {
+  %cst = arith.constant dense <[1, 1, 20]> : tensor<3xi32>
+  %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3x1xf32>, tensor<3xi32>) -> tensor<2x3x20xf32>
+  %1 = "tf.AddV2"(%0, %arg1) {device = ""} : (tensor<2x3x20xf32>, tensor<2x3x20xf32>) -> tensor<2x3x20xf32>
+  func.return %1 : tensor<2x3x20xf32>
 }
 
 // -----

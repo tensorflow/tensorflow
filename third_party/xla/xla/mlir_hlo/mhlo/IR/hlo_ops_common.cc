@@ -25,13 +25,14 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/Support/LLVM.h"
 
 namespace mlir {
 namespace hlo {
 // Verifies the source target pairs attached to collective permute.
 LogicalResult verifyCollectivePermuteSourceTargetPairs(
     Operation *op, DenseIntElementsAttr attr) {
-  auto type = attr.getType().cast<RankedTensorType>();
+  auto type = mlir::cast<RankedTensorType>(attr.getType());
   if (type.getRank() != 2)
     return op->emitError() << "expect source_target_pairs attribute to be of "
                               "rank 2, but got rank "
@@ -73,8 +74,8 @@ LogicalResult verifyReduceScatter(Operation *op, TypeRange operandTypes,
   }
 
   for (auto it : llvm::zip(operandTypes, resultTypes)) {
-    auto operandType = std::get<0>(it).cast<ShapedType>();
-    auto resultType = std::get<1>(it).cast<ShapedType>();
+    auto operandType = mlir::cast<ShapedType>(std::get<0>(it));
+    auto resultType = mlir::cast<ShapedType>(std::get<1>(it));
     if (!operandType.hasRank() || !resultType.hasRank()) continue;
     if (operandType.getRank() != resultType.getRank())
       return op->emitOpError() << "operand and result should have same rank";

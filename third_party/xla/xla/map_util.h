@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -54,7 +54,7 @@ typename Collection::value_type::second_type& FindOrDie(
 // Like FindOrDie but returns an error instead of dying if `key` is not in
 // `container`.
 template <class Collection>
-StatusOr<
+absl::StatusOr<
     std::reference_wrapper<const typename Collection::value_type::second_type>>
 MaybeFind(const Collection& collection,
           const typename Collection::value_type::first_type& key) {

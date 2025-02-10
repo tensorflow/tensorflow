@@ -20,17 +20,24 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/stream_executor/device_memory.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace xla::ffi {
 
@@ -41,7 +48,7 @@ namespace xla::ffi {
 struct CallFrameBuilder::Buffer {
   se::DeviceMemoryBase memory;
   PrimitiveType type;
-  std::vector<int64_t> dims;
+  absl::InlinedVector<int64_t, 4> dims;
 };
 
 CallFrameBuilder::AttributesMap CallFrameBuilder::AttributesBuilder::Build() {
@@ -58,39 +65,70 @@ CallFrameBuilder::AttributesBuilder::AttributesBuilder() = default;
 CallFrameBuilder::AttributesBuilder::~AttributesBuilder() = default;
 
 void CallFrameBuilder::AttributesBuilder::Insert(std::string name,
-                                                 FlatAttribute attr) {
-  attrs_.try_emplace(std::move(name), FromFlatAttribute(std::move(attr)));
+                                                 Attribute attr) {
+  attrs_.try_emplace(std::move(name), std::move(attr));
 }
 
 void CallFrameBuilder::AttributesBuilder::Insert(std::string name,
-                                                 FlatAttributesMap attrs) {
-  AttributesBuilder builder;
-  for (auto& [name, attr] : attrs) builder.Insert(name, std::move(attr));
-
-  auto attrs_map = std::make_unique<AttributesMap>(builder.Build());
-  attrs_.try_emplace(std::move(name), Dictionary{std::move(attrs_map)});
+                                                 AttributesMap attrs) {
+  attrs_.try_emplace(std::move(name),
+                     Dictionary{std::make_shared<AttributesMap>(attrs)});
 }
 
-void CallFrameBuilder::AttributesBuilder::Append(FlatAttributesMap attrs) {
+void CallFrameBuilder::AttributesBuilder::Append(AttributesMap attrs) {
   for (auto& [name, attr] : attrs) Insert(name, std::move(attr));
 }
 
-CallFrameBuilder::CallFrameBuilder() = default;
+CallFrameBuilder::CallFrameBuilder(size_t num_args, size_t num_rets) {
+  args_.reserve(num_args);
+  rets_.reserve(num_rets);
+}
+
 CallFrameBuilder::~CallFrameBuilder() = default;
 
 void CallFrameBuilder::AddBufferArg(se::DeviceMemoryBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
+  DCHECK(args_.capacity() > args_.size())
+      << "CallFrame builder `num_args` argument was too small";
   args_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
 }
 
+void CallFrameBuilder::AddTokenArg() {
+  DCHECK(args_.capacity() > args_.size())
+      << "CallFrame builder `num_args` argument was too small";
+  args_.push_back(Buffer{se::DeviceMemoryBase(), PrimitiveType::TOKEN, {}});
+}
+
+void CallFrameBuilder::AddBufferRet(se::DeviceMemoryBase memory,
+                                    PrimitiveType type,
+                                    absl::Span<const int64_t> dims) {
+  DCHECK(rets_.capacity() > rets_.size())
+      << "CallFrame builder `num_rets` argument was too small";
+  rets_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
+}
+
+void CallFrameBuilder::AddTokenRet() {
+  DCHECK(rets_.capacity() > rets_.size())
+      << "CallFrame builder `num_rets` argument was too small";
+  rets_.push_back(Buffer{se::DeviceMemoryBase(), PrimitiveType::TOKEN, {}});
+}
+
 void CallFrameBuilder::AddAttributes(AttributesMap attrs) {
+  if (ABSL_PREDICT_TRUE(attrs_.empty())) {
+    attrs_ = std::move(attrs);
+    return;
+  }
+
   for (auto& [name, attr] : attrs) {
     attrs_.try_emplace(std::move(name), std::move(attr));
   }
 }
 
-CallFrame CallFrameBuilder::Build() { return CallFrame(args_, attrs_); }
+CallFrame CallFrameBuilder::Build() {
+  return CallFrame(CallFrame::CreateArgs(args_), CallFrame::CreateRets(rets_),
+                   CallFrame::CreateAttrs(attrs_));
+}
 
 CallFrameBuilder::CallFrameBuilder(CallFrameBuilder&&) = default;
 CallFrameBuilder& CallFrameBuilder::operator=(CallFrameBuilder&&) = default;
@@ -116,7 +154,7 @@ CallFrameBuilder& CallFrameBuilder::operator=(CallFrameBuilder&&) = default;
 //----------------------------------------------------------------------------//
 
 struct CallFrame::Buffer {
-  std::vector<int64_t> dims;  // XLA_FFI_Buffer::dims
+  absl::InlinedVector<int64_t, 4> dims;  // XLA_FFI_Buffer::dims
 
   XLA_FFI_Buffer buffer = {XLA_FFI_Buffer_STRUCT_SIZE, nullptr};
 };
@@ -125,10 +163,22 @@ struct CallFrame::Dictionary {
   std::unique_ptr<Attributes> attrs;
 };
 
+struct CallFrame::Array {
+  CallFrameBuilder::Array value;  // XLA_FFI_Array::data
+
+  XLA_FFI_Array array = {};
+};
+
+struct CallFrame::Scalar {
+  CallFrameBuilder::Scalar value;  // XLA_FFI_Scalar::value
+
+  XLA_FFI_Scalar scalar = {};
+};
+
 struct CallFrame::String {
   std::string value;  // XLA_FFI_ByteSpan::ptr
 
-  XLA_FFI_ByteSpan span = {XLA_FFI_ByteSpan_STRUCT_SIZE, nullptr};
+  XLA_FFI_ByteSpan span = {};
 };
 
 struct CallFrame::NamedAttribute {
@@ -137,12 +187,6 @@ struct CallFrame::NamedAttribute {
 };
 
 struct CallFrame::Arguments {
-  explicit Arguments(size_t size) {
-    arguments.reserve(size);
-    types.reserve(size);
-    args.reserve(size);
-  }
-
   std::vector<Buffer> arguments;
 
   std::vector<XLA_FFI_ArgType> types;  // XLA_FFI_Args::types
@@ -151,14 +195,16 @@ struct CallFrame::Arguments {
   XLA_FFI_Args ffi_args = {XLA_FFI_Args_STRUCT_SIZE, nullptr};
 };
 
-struct CallFrame::Attributes {
-  explicit Attributes(size_t size) {
-    attributes.reserve(size);
-    names.reserve(size);
-    types.reserve(size);
-    attrs.reserve(size);
-  }
+struct CallFrame::Results {
+  std::vector<Buffer> results;
 
+  std::vector<XLA_FFI_RetType> types;  // XLA_FFI_Rets::types
+  std::vector<void*> rets;             // XLA_FFI_Rets::rets
+
+  XLA_FFI_Rets ffi_rets = {XLA_FFI_Rets_STRUCT_SIZE, nullptr};
+};
+
+struct CallFrame::Attributes {
   std::vector<NamedAttribute> attributes;
 
   std::vector<XLA_FFI_ByteSpan*> names;  // XLA_FFI_Attributes::names
@@ -172,83 +218,188 @@ struct CallFrame::Attributes {
 // CallFrame
 //===----------------------------------------------------------------------===//
 
-CallFrame::CallFrame(absl::Span<const CallFrameBuilder::Buffer> args,
-                     const CallFrameBuilder::AttributesMap& attrs)
-    : arguments_(InitArgs(args)), attributes_(InitAttrs(attrs)) {}
+CallFrame::CallFrame(CallFrame&&) = default;
+CallFrame& CallFrame::operator=(CallFrame&&) = default;
+CallFrame::~CallFrame() = default;
 
-XLA_FFI_CallFrame CallFrame::Build(XLA_FFI_Api* api,
-                                   XLA_FFI_ExecutionContext* ctx) {
+CallFrame::CallFrame(std::unique_ptr<Arguments> arguments,
+                     std::unique_ptr<Results> results,
+                     std::shared_ptr<Attributes> attributes)
+    : arguments_(std::move(arguments)),
+      results_(std::move(results)),
+      attributes_(std::move(attributes)) {}
+
+XLA_FFI_CallFrame CallFrame::Build(const XLA_FFI_Api* api,
+                                   XLA_FFI_ExecutionContext* ctx,
+                                   XLA_FFI_ExecutionStage stage) {
   XLA_FFI_CallFrame call_frame = {XLA_FFI_CallFrame_STRUCT_SIZE, nullptr};
   call_frame.api = api;
   call_frame.ctx = ctx;
+  call_frame.stage = stage;
   call_frame.args = arguments_->ffi_args;
+  call_frame.rets = results_->ffi_rets;
   call_frame.attrs = attributes_->ffi_attrs;
   return call_frame;
 }
 
-CallFrame::~CallFrame() = default;
+// We rely on casting to and from underlying integral type to convert from
+// PrimitiveType to XLA FFI DataType, and for safety convert all unknown types
+// to invalid type, otherwise we can accidentally cause UB.
+static XLA_FFI_DataType ToDataType(PrimitiveType primitive_type) {
+  switch (primitive_type) {
+    case PrimitiveType::PRIMITIVE_TYPE_INVALID:
+    case PrimitiveType::PRED:
+    case PrimitiveType::S8:
+    case PrimitiveType::S16:
+    case PrimitiveType::S32:
+    case PrimitiveType::S64:
+    case PrimitiveType::U8:
+    case PrimitiveType::U16:
+    case PrimitiveType::U32:
+    case PrimitiveType::U64:
+    case PrimitiveType::F16:
+    case PrimitiveType::F32:
+    case PrimitiveType::F64:
+    case PrimitiveType::BF16:
+    case PrimitiveType::C64:
+    case PrimitiveType::C128:
+    case PrimitiveType::TOKEN:
+    case PrimitiveType::F4E2M1FN:
+    case PrimitiveType::F8E5M2:
+    case PrimitiveType::F8E4M3:
+    case PrimitiveType::F8E4M3FN:
+    case PrimitiveType::F8E4M3B11FNUZ:
+    case PrimitiveType::F8E5M2FNUZ:
+    case PrimitiveType::F8E4M3FNUZ:
+    case PrimitiveType::F8E3M4:
+    case PrimitiveType::F8E8M0FNU:
+      return static_cast<XLA_FFI_DataType>(primitive_type);
+    default:
+      DCHECK(false) << "Unsupported primitive type "
+                    << PrimitiveType_Name(primitive_type);
+      return XLA_FFI_DataType_INVALID;
+  }
+}
+
+CallFrame::Buffer CallFrame::ConvertBuffer(
+    const CallFrameBuilder::Buffer& buffer) {
+  Buffer result;
+  result.dims = buffer.dims;
+  result.buffer.data = const_cast<void*>(buffer.memory.opaque());
+  result.buffer.dtype = ToDataType(buffer.type);
+  result.buffer.rank = result.dims.size();
+  return result;
+}
 
 //===----------------------------------------------------------------------===//
 // Call frame arguments
 //===----------------------------------------------------------------------===//
 
-/*static*/ std::unique_ptr<CallFrame::Arguments> CallFrame::InitArgs(
+std::unique_ptr<CallFrame::Arguments> CallFrame::CreateArgs(
     absl::Span<const CallFrameBuilder::Buffer> bargs) {
-  auto res = std::make_unique<Arguments>(bargs.size());
+  size_t num_args = bargs.size();
 
-  // We rely on casting to and from underlying integral type to convert from
-  // PrimitiveType to XLA FFI DataType, and for safety convert all unknown types
-  // to invalid type, otherwise we can accidentally cause UB.
-  auto to_data_type = [](PrimitiveType primitive_type) {
-    switch (primitive_type) {
-      case PrimitiveType::PRIMITIVE_TYPE_INVALID:
-      case PrimitiveType::S8:
-      case PrimitiveType::S16:
-      case PrimitiveType::S32:
-      case PrimitiveType::S64:
-      case PrimitiveType::U8:
-      case PrimitiveType::U16:
-      case PrimitiveType::U32:
-      case PrimitiveType::U64:
-      case PrimitiveType::F16:
-      case PrimitiveType::F32:
-      case PrimitiveType::F64:
-      case PrimitiveType::BF16:
-        return static_cast<XLA_FFI_DataType>(primitive_type);
-      default:
-        DCHECK(false) << "Unsupported primitive type" << primitive_type;
-        return XLA_FFI_DataType_INVALID;
-    }
-  };
+  auto args = std::make_unique<Arguments>();
+  args->types.resize(num_args, XLA_FFI_ArgType_BUFFER);
+  args->args.resize(num_args, nullptr);  // fixed up below
 
   // Convert call frame builder arguments to call frame arguments.
+  args->arguments.reserve(num_args);
   for (const CallFrameBuilder::Buffer& barg : bargs) {
-    Buffer buffer;
-    buffer.dims = barg.dims;
-    buffer.buffer.data = const_cast<void*>(barg.memory.opaque());
-    buffer.buffer.dtype = to_data_type(barg.type);
-    buffer.buffer.rank = buffer.dims.size();
-    res->arguments.push_back(std::move(buffer));
+    args->arguments.push_back(ConvertBuffer(barg));
   }
 
-  // Fix up pointers in XLA FFI structs.
-  for (CallFrame::Buffer& arg : res->arguments) {
-    arg.buffer.dims = arg.dims.data();
-  }
+  // Fix up XLA FFI structs with pointers to valid arguments storage.
+  return FixUpArgs(std::move(args));
+}
 
-  // Initialize vectors required for building XLA_FFI_Args.
-  for (CallFrame::Buffer& arg : res->arguments) {
-    res->types.push_back(XLA_FFI_ArgType_BUFFER);
-    res->args.push_back(&arg.buffer);
+std::unique_ptr<CallFrame::Arguments> CallFrame::CopyArgs(
+    const Arguments& args) {
+  auto upd_args = std::make_unique<Arguments>();
+
+  upd_args->arguments = args.arguments;
+  upd_args->types = args.types;
+  upd_args->args.resize(args.args.size(), nullptr);  // fixed up below
+
+  // Fix up XLA FFI structs with pointers to valid arguments storage.
+  return FixUpArgs(std::move(upd_args));
+}
+
+std::unique_ptr<CallFrame::Arguments> CallFrame::FixUpArgs(
+    std::unique_ptr<Arguments> args) {
+  size_t num_args = args->arguments.size();
+  DCHECK_EQ(num_args, args->types.size());
+  DCHECK_EQ(num_args, args->args.size());
+
+  // Fix up pointers in XLA FFI structs and initialize vectors required for
+  // building XLA_FFI_Args.
+  for (size_t i = 0; i < num_args; ++i) {
+    args->arguments[i].buffer.dims = args->arguments[i].dims.data();
+    args->args[i] = &args->arguments[i].buffer;
   }
 
   // Finally initialize the XLA FFI struct. At this point all storage is
   // allocated and it's safe to grab a pointer to it.
-  res->ffi_args.num_args = res->arguments.size();
-  res->ffi_args.types = res->types.data();
-  res->ffi_args.args = res->args.data();
+  args->ffi_args.size = num_args;
+  args->ffi_args.types = args->types.data();
+  args->ffi_args.args = args->args.data();
 
-  return res;
+  return args;
+}
+
+//===----------------------------------------------------------------------===//
+// Call frame results
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<CallFrame::Results> CallFrame::CreateRets(
+    absl::Span<const CallFrameBuilder::Buffer> brets) {
+  auto rets = std::make_unique<Results>();
+
+  size_t num_rets = brets.size();
+  rets->types.resize(num_rets, XLA_FFI_RetType_BUFFER);
+  rets->rets.resize(num_rets, nullptr);  // fixed up below
+
+  // Convert call frame builder result to call frame results.
+  rets->results.reserve(num_rets);
+  for (const CallFrameBuilder::Buffer& bret : brets) {
+    rets->results.push_back(ConvertBuffer(bret));
+  }
+
+  // Fix up XLA FFI structs with pointers to valid results storage.
+  return FixUpRets(std::move(rets));
+}
+
+std::unique_ptr<CallFrame::Results> CallFrame::CopyRets(const Results& rets) {
+  auto upd_rets = std::make_unique<Results>();
+
+  upd_rets->results = rets.results;
+  upd_rets->types = rets.types;
+  upd_rets->rets.resize(rets.rets.size(), nullptr);  // fixed up below
+
+  // Fix up XLA FFI structs with pointers to valid results storage.
+  return FixUpRets(std::move(upd_rets));
+}
+
+std::unique_ptr<CallFrame::Results> CallFrame::FixUpRets(
+    std::unique_ptr<Results> rets) {
+  size_t num_rets = rets->results.size();
+  DCHECK_EQ(num_rets, rets->types.size());
+  DCHECK_EQ(num_rets, rets->rets.size());
+
+  // Fix up pointers in XLA FFI structs and initialize vectors required for
+  // building XLA_FFI_Args.
+  for (size_t i = 0; i < num_rets; ++i) {
+    rets->results[i].buffer.dims = rets->results[i].dims.data();
+    rets->rets[i] = &rets->results[i].buffer;
+  }
+
+  // Finally initialize the XLA FFI struct. At this point all storage is
+  // allocated and it's safe to grab a pointer to it.
+  rets->ffi_rets.size = num_rets;
+  rets->ffi_rets.types = rets->types.data();
+  rets->ffi_rets.rets = rets->rets.data();
+
+  return rets;
 }
 
 //===----------------------------------------------------------------------===//
@@ -258,9 +409,12 @@ CallFrame::~CallFrame() = default;
 // An std::visit overload set for converting CallFrameBuilder::Attribute to
 // CallFrame::Attribute.
 struct CallFrame::ConvertAttribute {
-  template <typename T>
-  CallFrame::Attribute operator()(const T& value) {
-    return value;
+  CallFrame::Attribute operator()(const CallFrameBuilder::Array& array) {
+    return CallFrame::Array{array};
+  }
+
+  CallFrame::Attribute operator()(const CallFrameBuilder::Scalar& scalar) {
+    return CallFrame::Scalar{scalar};
   }
 
   CallFrame::Attribute operator()(const std::string& str) {
@@ -268,29 +422,49 @@ struct CallFrame::ConvertAttribute {
   }
 
   CallFrame::Attribute operator()(const CallFrameBuilder::Dictionary& dict) {
-    return CallFrame::Dictionary{InitAttrs(*dict.attrs)};
+    return CallFrame::Dictionary{CreateAttrs(*dict.attrs)};
   }
 };
 
 // An std::visit overload set to fix up CallFrame::Attribute storage and
 // initialize XLA FFI structs with valid pointers into storage objects.
-struct CallFrame::FixupAttribute {
-  template <typename T>
-  void operator()(T& value) {}
+struct CallFrame::FixUpAttribute {
+  void operator()(CallFrame::Array& array) {
+    auto visitor = [&](auto& value) {
+      using T = typename std::remove_reference_t<decltype(value)>::value_type;
+      array.array.dtype = internal::NativeTypeToCApiDataType<T>();
+      array.array.size = value.size();
+      array.array.data = value.data();
+    };
+    std::visit(visitor, array.value);
+  }
+
+  void operator()(CallFrame::Scalar& scalar) {
+    auto visitor = [&](auto& value) {
+      using T = std::remove_reference_t<decltype(value)>;
+      scalar.scalar.dtype = internal::NativeTypeToCApiDataType<T>();
+      scalar.scalar.value = &value;
+    };
+    std::visit(visitor, scalar.value);
+  }
 
   void operator()(CallFrame::String& str) {
     str.span.ptr = str.value.data();
     str.span.len = str.value.size();
   }
+
+  void operator()(CallFrame::Dictionary&) {}
 };
 
 // An std::visit overload set to get CallFrame::Attribute XLA FFI type.
 struct CallFrame::AttributeType {
-  XLA_FFI_AttrType operator()(int32_t&) { return XLA_FFI_AttrType_I32; }
+  XLA_FFI_AttrType operator()(CallFrame::Array&) {
+    return XLA_FFI_AttrType_ARRAY;
+  }
 
-  XLA_FFI_AttrType operator()(int64_t&) { return XLA_FFI_AttrType_I64; }
-
-  XLA_FFI_AttrType operator()(float&) { return XLA_FFI_AttrType_F32; }
+  XLA_FFI_AttrType operator()(CallFrame::Scalar&) {
+    return XLA_FFI_AttrType_SCALAR;
+  }
 
   XLA_FFI_AttrType operator()(CallFrame::String&) {
     return XLA_FFI_AttrType_STRING;
@@ -308,6 +482,10 @@ struct CallFrame::AttributeStorage {
     return &value;
   }
 
+  void* operator()(CallFrame::Array& array) { return &array.array; }
+
+  void* operator()(CallFrame::Scalar& scalar) { return &scalar.scalar; }
+
   void* operator()(CallFrame::String& str) { return &str.span; }
 
   void* operator()(CallFrame::Dictionary& dict) {
@@ -315,43 +493,94 @@ struct CallFrame::AttributeStorage {
   }
 };
 
-/*static*/ std::unique_ptr<CallFrame::Attributes> CallFrame::InitAttrs(
+std::unique_ptr<CallFrame::Attributes> CallFrame::CreateAttrs(
     const CallFrameBuilder::AttributesMap& battrs) {
-  auto res = std::make_unique<Attributes>(battrs.size());
+  auto attrs = std::make_unique<Attributes>();
 
   // Convert call frame builder attributes to a collection of named attributes.
+  attrs->attributes.reserve(battrs.size());
   for (auto& [name, battr] : battrs) {
     NamedAttribute attr = {String{name}, std::visit(ConvertAttribute(), battr)};
-    res->attributes.push_back(std::move(attr));
+    attrs->attributes.push_back(std::move(attr));
   }
 
   // Sort attributes by name to enable binary search at run time.
-  absl::c_sort(res->attributes,
+  absl::c_sort(attrs->attributes,
                [](const NamedAttribute& a, const NamedAttribute& b) {
                  return a.name.value < b.name.value;
                });
 
+  return FixUpAttrs(std::move(attrs));
+}
+
+std::unique_ptr<CallFrame::Attributes> CallFrame::FixUpAttrs(
+    std::unique_ptr<CallFrame::Attributes> attrs) {
+  size_t num_attrs = attrs->attributes.size();
+  DCHECK(attrs->names.empty() && attrs->types.empty() && attrs->attrs.empty());
+
+  attrs->names.reserve(num_attrs);
+  attrs->types.reserve(num_attrs);
+  attrs->attrs.reserve(num_attrs);
+
   // Fix up XLA FFI structs to point to correct storage.
-  for (NamedAttribute& attr : res->attributes) {
-    std::invoke(FixupAttribute{}, attr.name);
-    std::visit(FixupAttribute{}, attr.value);
+  for (NamedAttribute& attr : attrs->attributes) {
+    std::invoke(FixUpAttribute{}, attr.name);
+    std::visit(FixUpAttribute{}, attr.value);
   }
 
   // Initialize vectors required for building XLA_FFI_Attributes.
-  for (NamedAttribute& attr : res->attributes) {
-    res->names.push_back(&attr.name.span);
-    res->types.push_back(std::visit(AttributeType(), attr.value));
-    res->attrs.push_back(std::visit(AttributeStorage(), attr.value));
+  for (NamedAttribute& attr : attrs->attributes) {
+    attrs->names.push_back(&attr.name.span);
+    attrs->types.push_back(std::visit(AttributeType(), attr.value));
+    attrs->attrs.push_back(std::visit(AttributeStorage(), attr.value));
   }
 
   // Finally initialize XLA FFI struct. At this point all storage is allocated
   // and it's safe to grab a pointer to it.
-  res->ffi_attrs.num_attrs = res->attributes.size();
-  res->ffi_attrs.names = res->names.data();
-  res->ffi_attrs.types = res->types.data();
-  res->ffi_attrs.attrs = res->attrs.data();
+  attrs->ffi_attrs.size = attrs->attributes.size();
+  attrs->ffi_attrs.names = attrs->names.data();
+  attrs->ffi_attrs.types = attrs->types.data();
+  attrs->ffi_attrs.attrs = attrs->attrs.data();
 
-  return res;
+  return attrs;
+}
+
+//===----------------------------------------------------------------------===//
+// Call frame update
+//===----------------------------------------------------------------------===//
+
+absl::Status CallFrame::UpdateWithBuffers(
+    absl::Span<const se::DeviceMemoryBase> args,
+    absl::Span<const se::DeviceMemoryBase> rets) {
+  if (ABSL_PREDICT_FALSE(args.size() != arguments_->args.size())) {
+    return InvalidArgument("Invalid number of updated arguments: %d vs %d",
+                           args.size(), arguments_->args.size());
+  }
+
+  if (ABSL_PREDICT_FALSE(rets.size() != results_->rets.size())) {
+    return InvalidArgument("Invalid number of updated results: %d vs %d",
+                           rets.size(), results_->rets.size());
+  }
+
+  size_t num_args = args.size();
+  for (size_t i = 0; i < num_args; ++i) {
+    arguments_->arguments[i].buffer.data = const_cast<void*>(args[i].opaque());
+  }
+
+  size_t num_rets = rets.size();
+  for (size_t i = 0; i < num_rets; ++i) {
+    results_->results[i].buffer.data = const_cast<void*>(rets[i].opaque());
+  }
+
+  return absl::OkStatus();
+}
+
+absl::StatusOr<CallFrame> CallFrame::CopyWithBuffers(
+    absl::Span<const se::DeviceMemoryBase> args,
+    absl::Span<const se::DeviceMemoryBase> rets) {
+  CallFrame clone(CopyArgs(*arguments_), CopyRets(*results_), attributes_);
+  TF_RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
+  return clone;
 }
 
 }  // namespace xla::ffi

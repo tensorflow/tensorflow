@@ -253,56 +253,6 @@ def XlaClusterFormationPass : Pass<"tf-xla-cluster-formation", "ModuleOp"> {
   let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 }
 
-def XlaOutlineEntryFunctionsPass : Pass<"tf-xla-outline-entry-functions", "ModuleOp"> {
-  let summary = "Outline the body of an entry function into a call to the "
-    "original function body";
-  let description = [{
-    This pass adds support for top-level function with
-    `_xla_compile_device_type` attribute in MLIR generic pipeline.
-    It renames such a function, and creates a new function taking the original
-    name with a `tf.StatefulPartitionedCall` to the original function. It
-    allows the MLIR generic pipeline to handle such functions the same way it
-    handles other partitioned calls with the attribute.
-
-    For example, the following code
-
-    ```mlir
-    func.func @main(%arg0: tensor<i32>) -> tensor<i32> attributes {_xla_compile_device_type = "CPU", allow_soft_placement = true, tf.entry_function = {}} {
-      %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", _xla_compile_device_type = "CPU", f = @stateful_pcall_func} : (tensor<i32>) -> (tensor<i32>)
-      %1 = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
-      %2 = "tf.Add"(%0, %1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
-      func.return %2 : tensor<i32>
-    }
-
-    func.func @stateful_pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
-      func.return %arg0 : tensor<i32>
-    }
-    ```
-
-    will be replaced as
-
-    ```mlir
-    func.func private @main_outlined(%arg0: tensor<i32>) -> tensor<i32> attributes {_xla_compile_device_type = "CPU", allow_soft_placement = true} {
-      %0 = "tf.StatefulPartitionedCall"(%arg0) {_xla_compile_device_type = "CPU", config = "", config_proto = "", executor_type = "", f = @stateful_pcall_func} : (tensor<i32>) -> tensor<i32>
-      %cst = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
-      %1 = "tf.Add"(%0, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-      return %1 : tensor<i32>
-    }
-
-    func.func @main(%arg0: tensor<i32>) -> tensor<i32> attributes {_xla_compile_device_type = "CPU", tf.entry_function = {}} {
-      %0 = "tf.StatefulPartitionedCall"(%arg0) {_xla_compile_device_type = "CPU", allow_soft_placement = true, config = "", config_proto = "", executor_type = "", f = @main_outlined} : (tensor<i32>) -> tensor<i32>
-      return %0 : tensor<i32>
-    }
-
-    func.func @stateful_pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
-      func.return %arg0 : tensor<i32>
-    }
-    ```
-  }];
-  let constructor = "tensorflow::tf2xla::internal::CreateXlaOutlineEntryFunctionsPass()";
-  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
-}
-
 def MarkOpsForOutsideCompilationPass : Pass<"tf-mark-ops-for-outside-compilation", "ModuleOp"> {
   let summary = "Marks ops in device cluster for outside compilation if they are unsupported on device.";
 
@@ -439,4 +389,78 @@ def XlaBroadcastPass : Pass<"tf-xla-broadcast", "mlir::func::FuncOp"> {
 
   let constructor = "tensorflow::tf2xla::internal::CreateXlaBroadcastPass()";
   let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
+}
+
+def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "ModuleOp"> {
+  let summary = "Identifies and handles inputs/outputs of TPU computation that is "
+           "sharded across logical cores.";
+  let constructor = "tensorflow::tf2xla::internal::CreateTPUShardingIdentificationPass()";
+  let description = [{
+    Bubbles up sharding configuration from `cluster_func` regions into
+    the attributes of `cluster_func`. This is done by parsing the
+    `XlaSharding` / `TPUPartitionedOutput` / `TPUPartitionedInput` ops inside
+    `cluster_func`.
+
+    For example, given the following `cluster_func` wrapping `func`:
+
+    ```mlir
+      func @test(%arg0: tensor<*xi32>) {
+        "tf_device.cluster_func"(%arg0) {
+            func = @func,
+            step_marker_location = ""} : (tensor<*xi32>) -> tensor<*xi32>
+        return
+      }
+
+      func @func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+        %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "\01\02\03",
+                                      sharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+        %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
+        return %1 : tensor<*xi32>
+      }
+    ```
+
+    Now, cluster_func receives the following `*_sharding_configuration`
+    attributes, and `func` receives the mhlo.sharding attribute:
+
+    ```mlir
+      func @test(%arg0: tensor<*xi32>) {
+        %0 = "tf_device.cluster_func"(%arg0) {
+            func = @func,
+            input_sharding_configuration = ["\01\02\03"],
+            output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"],
+            step_marker_location = ""} : (tensor<*xi32>) -> tensor<*xi32>
+        return
+      }
+      func @func(%arg0: tensor<*xi32> {mhlo.sharding = "\01\02\03"}) ->
+                (tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}) {
+        %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "\01\02\03", sharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+        %1 = "tf.A"(%0) : (tensor<*xi32>) -> tensor<*xi32>
+        return %1 : tensor<*xi32>
+      }
+    ```
+  }];
+}
+
+def TPUValidateSessionInputsPass : Pass<"tf-tpu-validate-session-inputs", "mlir::ModuleOp"> {
+  let summary = "Validates inputs to the TPU TF/XLA bridge in session api";
+
+  let description = [{
+    This pass checks that the IR has valid input to TPU TF/XLA bridge in session api.
+    It checks the relations of multiple ops. Properties of single ops are
+    checked by the 'verify' method of ops.
+  }];
+
+  let constructor = "tensorflow::tf2xla::internal::CreateTPUValidateSessionInputsPass()";
+}
+
+def TPUValidateInputsPass : Pass<"tf-tpu-validate-inputs", "mlir::ModuleOp"> {
+  let summary = "Validates inputs to the TPU TF/XLA bridge";
+
+  let description = [{
+    This pass checks that the IR has valid input to TPU TF/XLA bridge.
+    It checks the relations of multiple ops. Properties of single ops are
+    checked by the 'verify' method of ops.
+  }];
+
+  let constructor = "tensorflow::tf2xla::internal::CreateTPUValidateInputsPass()";
 }

@@ -15,12 +15,24 @@ limitations under the License.
 
 #include "xla/service/spmd/canonicalize_all_gather_for_cse.h"
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -81,7 +93,7 @@ absl::StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     HloInstruction* new_ag =
         comp->AddInstruction(HloInstruction::CreateAllGather(
             new_ag_shape, {real_data}, /*all_gather_dimension=*/new_ag_dim,
-            ag->replica_groups(), ag->constrain_layout(), new_channel_id,
+            ag->device_list(), ag->constrain_layout(), new_channel_id,
             ag->use_global_device_ids()));
     ag->SetupDerivedInstruction(new_ag);
     HloInstruction* new_formatting = comp->AddInstruction(

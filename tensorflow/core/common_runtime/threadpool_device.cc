@@ -41,7 +41,6 @@ info. It does not have any negative impact on performance. */
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/port.h"
@@ -119,7 +118,7 @@ Allocator* ThreadPoolDevice::GetScopedAllocator(AllocatorAttributes attr,
   return allocator_;
 }
 
-Status ThreadPoolDevice::MakeTensorFromProto(
+absl::Status ThreadPoolDevice::MakeTensorFromProto(
     const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
     Tensor* tensor) {
   if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
@@ -185,7 +184,7 @@ void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   op_kernel->Compute(context);
 
   if (context->status().ok() && node_file_writer_) {
-    Status s = node_file_writer_->RecordNodeExecution(op_kernel, context);
+    absl::Status s = node_file_writer_->RecordNodeExecution(op_kernel, context);
     if (!s.ok()) {
       LOG(ERROR) << s;
       context->SetStatus(s);

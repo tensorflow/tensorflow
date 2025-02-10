@@ -308,4 +308,5 @@ glob_lit_tests(
         for file in test_files
     },
     test_file_exts = ["py"],
+    use_lit_test_suite = False,  # Each test gets a large binary, and is too big when consolidated.
 )

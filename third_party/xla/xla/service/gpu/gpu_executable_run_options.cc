@@ -15,23 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
 
-#include <cstdint>
 #include <map>
 #include <optional>
 #include <utility>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/nccl_clique_key.h"
-#include "xla/service/service_executable_run_options.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 GpuExecutableRunOptions& GpuExecutableRunOptions::set_gpu_global_device_ids(
     std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids) {
@@ -44,16 +36,24 @@ GpuExecutableRunOptions::gpu_global_device_ids() const {
   return gpu_global_device_ids_;
 }
 
-GpuExecutableRunOptions& GpuExecutableRunOptions::set_nccl_clique_id_callback(
-    NcclCliqueIdCallback nccl_clique_id_callback) {
-  nccl_clique_id_callback_ = std::move(nccl_clique_id_callback);
+GpuExecutableRunOptions& GpuExecutableRunOptions::set_clique_id_callback(
+    CliqueIdCallback clique_id_callback) {
+  clique_id_callback_ = std::move(clique_id_callback);
   return *this;
 }
 
-const NcclCliqueIdCallback& GpuExecutableRunOptions::nccl_clique_id_callback()
-    const {
-  return nccl_clique_id_callback_;
+const CliqueIdCallback& GpuExecutableRunOptions::clique_id_callback() const {
+  return clique_id_callback_;
 }
 
-}  // namespace gpu
-}  // namespace xla
+GpuExecutableRunOptions& GpuExecutableRunOptions::set_collectives(
+    GpuCollectives* collectives) {
+  collectives_ = collectives;
+  return *this;
+}
+
+GpuCollectives* GpuExecutableRunOptions::collectives() const {
+  return collectives_;
+}
+
+}  // namespace xla::gpu

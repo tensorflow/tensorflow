@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "xla/service/gpu/reduction_utils.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::testing::ElementsAre;
 
 using ReductionUtilsTest = HloTestBase;
 
@@ -184,6 +187,14 @@ TEST_F(ReductionUtilsTest,
   const HloInstruction* fusion2 = root->operand(1);
   EXPECT_FALSE(AreReductionsMultiOutputFusionCompatible(
       fusion1->fused_expression_root(), fusion2->fused_expression_root()));
+}
+
+TEST(ReductionDimensionsTest, GetOutputShape) {
+  ReductionDimensions row_reduction{/*is_row_reduction=*/true, {1, 2, 3}};
+  ReductionDimensions col_reduction{/*is_row_reduction=*/false, {1, 2, 3}};
+
+  EXPECT_THAT(row_reduction.GetOutputShape(), ElementsAre(2));
+  EXPECT_THAT(col_reduction.GetOutputShape(), ElementsAre(1, 3));
 }
 
 }  // namespace

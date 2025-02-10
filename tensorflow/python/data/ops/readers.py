@@ -34,6 +34,9 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
+# The default TFRecordDataset buffer size is set to -1. The actual default is
+# set in the kernel when this value is detected.
+_DEFAULT_TF_RECORD_BUFFER_SIZE_BYTES = -1
 
 
 def _normalise_fspath(path):
@@ -306,7 +309,7 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
     self._buffer_size = convert.optional_param_to_tensor(
         "buffer_size",
         buffer_size,
-        argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
+        argument_default=_DEFAULT_TF_RECORD_BUFFER_SIZE_BYTES)
     self._name = name
 
     variant_tensor = gen_dataset_ops.tf_record_dataset(

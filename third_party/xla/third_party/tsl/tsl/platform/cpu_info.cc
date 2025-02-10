@@ -16,9 +16,9 @@ limitations under the License.
 #include "tsl/platform/cpu_info.h"
 
 #include "absl/base/call_once.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/types.h"
 #if defined(PLATFORM_IS_X86)
 #include <mutex>  // NOLINT
 #endif

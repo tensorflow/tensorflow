@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tools/hlo_bisect/hlo_bisect_utils.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/util/command_line_flags.h"
 
 const char* const kUsage = R"(
 Given an HloModule that manifests an XLA bug, either crashes the compiler or
@@ -50,7 +50,7 @@ struct BisectOptions {
   std::string input = "";
   std::string script = "";
   std::string dump_path = "/tmp/hlo_bisect";
-  std::string output_format = "pb";
+  std::string output_format = "hlo";
   bool all_computations = false;
   std::string test_platform = "CUDA";
   std::string reference_platform = "Interpreter";

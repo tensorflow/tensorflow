@@ -28,12 +28,13 @@ limitations under the License.
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace xla {
 namespace gpu {
@@ -48,17 +49,18 @@ void WriteOutput(const DeviceHloInstructionProfiles& literal,
   std::string file_name;
   std::string output_directory;
   if (tsl::io::GetTestUndeclaredOutputsDir(&output_directory)) {
-    std::string filename = tsl::io::JoinPath(
+    file_name = tsl::io::JoinPath(
         output_directory,
         absl::StrFormat("profiles-%d-%s", tsl::Env::Default()->NowMicros(),
                         name));
-    file_name = absl::StrCat(filename, ".textproto");
+    absl::StrAppend(&file_name, ".textproto");
   } else {
     file_name = tsl::io::GetTempFilename(absl::StrCat(name, ".textproto"));
   }
   VLOG(0) << "Writing output to " << file_name;
-  TF_CHECK_OK(tsl::WriteStringToFile(tsl::Env::Default(), file_name,
-                                     literal.DebugString()));
+  TF_CHECK_OK(
+      tsl::WriteStringToFile(tsl::Env::Default(), file_name,
+                             tsl::LegacyUnredactedDebugString(literal)));
 }
 
 int RunProfiler(int argc, char** argv) {
@@ -121,11 +123,11 @@ int RunProfiler(int argc, char** argv) {
     }
   }
 
-  VLOG(1) << "\n" << instr_profiles;
+  VLOG(1) << "\n" << instr_profiles.DebugString();
 
-  auto profile_name = HloOpProfiles::GetProfileName(&dev_info);
   DeviceHloInstructionProfiles device_profiles;
-  device_profiles.mutable_entries()->insert({profile_name, instr_profiles});
+  device_profiles.mutable_entries()->insert(
+      {HloOpProfiles::GetProfileName(dev_info), instr_profiles});
   if (!output_file.empty()) {
     WriteOutput(device_profiles, output_file);
   }

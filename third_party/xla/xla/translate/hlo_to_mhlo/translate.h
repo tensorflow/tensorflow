@@ -16,36 +16,7 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_HLO_TO_MHLO_TRANSLATE_H_
 #define XLA_TRANSLATE_HLO_TO_MHLO_TRANSLATE_H_
 
-namespace llvm {
-class StringRef;
-}  // namespace llvm
-
-namespace mlir {
-class MLIRContext;
-class ModuleOp;
-template <typename OpTy>
-class OwningOpRef;
-}  // namespace mlir
-
-namespace xla {
-
-// Converts a HloModuleProto stored in the file with the given `input_filename`
-// into a MLIR module. Creates MLIR entities into the given MLIR `context`.
-// If import_all_computation is set to true, imports all computations
-// irrespective if transitively called from entry computation.
-mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations = false);
-
-// Converts a HloModule stored in text form for a file with the given
-// `input_filename` into a MLIR module. Creates MLIR entities into the given
-// MLIR `context`.
-// If import_all_computation is set to true, imports all computations
-// irrespective if transitively called from entry computation.
-mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations = false);
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/translate/hlo_to_mhlo/translate.h"
 
 #endif  // XLA_TRANSLATE_HLO_TO_MHLO_TRANSLATE_H_

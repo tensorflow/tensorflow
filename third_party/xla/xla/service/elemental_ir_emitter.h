@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_ELEMENTAL_IR_EMITTER_H_
 #define XLA_SERVICE_ELEMENTAL_IR_EMITTER_H_
 
+#include <tuple>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
@@ -29,17 +33,26 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/ir_builder_mixin.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
 class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
  public:
+  struct Options {
+    // Instead of relying on builtin `fpext` and `fpcast` emit a bitcast and
+    // truncate to convert f32 to bf16 (and emit extend to convert bf16 to f32).
+    bool xla_cpu_use_truncate_f32_to_bf16_conversion = false;
+  };
+
   using HloToElementGeneratorMap =
       absl::flat_hash_map<const HloInstruction*, llvm_ir::ElementGenerator>;
 
-  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilder<>* b)
-      : b_(b), module_(module) {}
+  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilderBase* b,
+                     const Options& options)
+      : b_(b), module_(module), options_(options) {}
+
+  ElementalIrEmitter(llvm::Module* module, llvm::IRBuilderBase* b)
+      : ElementalIrEmitter(module, b, Options()) {}
 
   virtual ~ElementalIrEmitter() = default;
 
@@ -49,10 +62,10 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator);
 
-  llvm::IRBuilder<>* b() { return b_; }
+  llvm::IRBuilderBase* b() { return b_; }
 
   // builder() is for IrBuilderMixin.
-  llvm::IRBuilder<>* builder() { return b_; }
+  llvm::IRBuilderBase* builder() { return b_; }
 
   llvm::Module* module() { return module_; }
 
@@ -155,6 +168,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   virtual absl::StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
                                                llvm::Value* value);
+
+  virtual absl::StatusOr<llvm::Value*> EmitCosm1(PrimitiveType prim_type,
+                                                 llvm::Value* value);
 
   virtual absl::StatusOr<llvm::Value*> EmitTan(PrimitiveType prim_type,
                                                llvm::Value* value);
@@ -271,7 +287,7 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
 
   virtual absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name, bool is_reducer) = 0;
+      absl::string_view name, bool is_reducer);
 
   absl::StatusOr<llvm::Value*> EmitElementalMap(
       const HloMapInstruction* map_instr,
@@ -303,12 +319,42 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   absl::StatusOr<llvm::Value*> EvaluatePolynomial(
       llvm::Type* type, llvm::Value* x, absl::Span<const double> coefficients);
 
-  virtual bool fast_min_max() = 0;
+  virtual bool fast_min_max();
 
-  llvm::IRBuilder<>* const b_;
+  llvm::IRBuilderBase* const b_;
 
   llvm::Module* module_;
+
+  Options options_;
+
+  friend class ElementalIrEmitterForTests;
 };
+
+// Allow to instantiate IR emitter in tests.
+class ElementalIrEmitterForTests : public ElementalIrEmitter {
+ public:
+  ElementalIrEmitterForTests(llvm::Module* module, llvm::IRBuilderBase* builder)
+      : ElementalIrEmitter(module, builder) {}
+
+  absl::Status TestElementalDot(const HloInstruction* hlo,
+                                const llvm_ir::IrArray::Index& index) {
+    return EmitElementalDot(hlo, generator_map_, index).status();
+  }
+
+ private:
+  absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name, bool is_reducer) override {
+    return absl::UnimplementedError("");
+  }
+  bool fast_min_max() override { return false; }
+
+  HloToElementGeneratorMap generator_map_;
+};
+
+absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
+    PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
+    int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilderBase* b);
 
 }  // namespace xla
 

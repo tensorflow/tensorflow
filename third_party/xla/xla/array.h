@@ -20,18 +20,22 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <random>
 #include <string>
 #include <type_traits>
 
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/status.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -267,11 +271,19 @@ class Array {
 
   // Fills the array with random uniform variables in the [min_value, max_value]
   // range. Defined for integral types.
-  template <typename = typename std::enable_if<std::is_integral<T>::value>>
+  template <typename = typename std::enable_if<is_specialized_integral_v<T>>>
   void FillRandomUniform(const T& min_value, const T& max_value,
                          int seed = 12345) {
+    using RngInputType =
+        std::conditional_t<std::is_integral_v<T>, T,
+                           std::conditional_t<std::numeric_limits<T>::is_signed,
+                                              int64_t, uint64_t>>;
+    static_assert(std::numeric_limits<T>::digits <=
+                  std::numeric_limits<RngInputType>::digits);
     std::mt19937 g(seed);
-    std::uniform_int_distribution<T> distribution(min_value, max_value);
+    std::uniform_int_distribution<RngInputType> distribution(
+        static_cast<RngInputType>(min_value),
+        static_cast<RngInputType>(max_value));
     for (int64_t i = 0; i < num_elements(); ++i) {
       values_[i] = static_cast<T>(distribution(g));
     }
@@ -314,32 +326,32 @@ class Array {
 
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array. If a callback returns a non-OK status, returns that else returns
-  // OkStatus().
-  Status EachStatus(
-      absl::FunctionRef<Status(absl::Span<const int64_t>, T*)> f) {
+  // absl::OkStatus().
+  absl::Status EachStatus(
+      absl::FunctionRef<absl::Status(absl::Span<const int64_t>, T*)> f) {
     OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
-      Status s = f(index.span(), &values_[i]);
+      absl::Status s = f(index.span(), &values_[i]);
       if (!s.ok()) {
         return s;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Invokes a callback with the (indices, value) for each cell in the array.
   // If a callback returns a non-OK status, returns that else returns
-  // OkStatus().
-  Status EachStatus(
-      absl::FunctionRef<Status(absl::Span<const int64_t>, T)> f) const {
+  // absl::OkStatus().
+  absl::Status EachStatus(
+      absl::FunctionRef<absl::Status(absl::Span<const int64_t>, T)> f) const {
     OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
-      Status s = f(index.span(), values_[i]);
+      absl::Status s = f(index.span(), values_[i]);
       if (!s.ok()) {
         return s;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns the value at the cell specified by the indexes. The number of
@@ -431,18 +443,32 @@ class Array {
   bool operator!=(const Array<T>& other) const { return !(*this == other); }
 
   // Performs the equivalent of a slice operation on this array.
+  // When `out_of_bounds_value` is specified, the out of bounds accesses are ok
+  // and the slice is initialized to the given value.
   Array<T> Slice(absl::Span<const int64_t> starts,
-                 absl::Span<const int64_t> limits) const {
+                 absl::Span<const int64_t> limits,
+                 std::optional<T> out_of_bounds_value = std::nullopt) const {
     CHECK_EQ(starts.size(), num_dimensions());
     CHECK_EQ(limits.size(), num_dimensions());
 
     OwnedBuffer<int64_t> sizes(starts.size());
     for (int64_t i = 0; i < starts.size(); ++i) {
       CHECK_GE(starts[i], 0);
-      CHECK_LE(limits[i], dim(i));
+      if (!out_of_bounds_value.has_value()) {
+        CHECK_LE(limits[i], dim(i));
+      }
       sizes[i] = limits[i] - starts[i];
     }
     Array<T> result(sizes.span());
+    if (result.num_elements() == 0) {
+      return result;
+    }
+    // Initializes the slice to the given value if out of bounds access are ok.
+    if (out_of_bounds_value.has_value()) {
+      for (int64_t i = 0; i < result.num_elements(); ++i) {
+        result.values_[i] = out_of_bounds_value.value();
+      }
+    }
 
     OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
     int64_t slice_i = 0;
@@ -589,12 +615,12 @@ class Array {
       std::fill(data.get(), data.get() + size, init);
     }
 
-    OwnedBuffer(OwnedBuffer&& other)
+    OwnedBuffer(OwnedBuffer&& other) noexcept
         : data(std::move(other.data)), size(other.size) {
       other.size = 0;
     }
 
-    OwnedBuffer& operator=(OwnedBuffer&& other) {
+    OwnedBuffer& operator=(OwnedBuffer&& other) noexcept {
       data = std::move(other.data);
       size = other.size;
       other.size = 0;

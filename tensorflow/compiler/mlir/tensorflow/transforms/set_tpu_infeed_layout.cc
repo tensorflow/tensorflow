@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/set_tpu_infeed_layout.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <vector>
 
@@ -25,13 +26,14 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/layout.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 
 namespace mlir {
 
@@ -64,27 +66,27 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
     llvm::SmallVector<mlir::Attribute> v;
     v.reserve(types.size());
     for (const mlir::Type &t : types) {
-      if (t.isa<mhlo::TokenType>()) continue;
+      if (mlir::isa<mhlo::TokenType>(t)) continue;
       auto layout = GetTPUInfeedLayout({t}, rewriter);
       if (failed(layout)) return failure();
       v.push_back(layout.value());
     }
     ArrayRef<Attribute> shape(v);
     return rewriter.getArrayAttr(shape);
-  } else if (types[0].isa<TupleType>()) {
-    auto tuple_type = types[0].dyn_cast<TupleType>();
+  } else if (mlir::isa<TupleType>(types[0])) {
+    auto tuple_type = mlir::dyn_cast<TupleType>(types[0]);
     const auto &types = tuple_type.getTypes();
     llvm::SmallVector<mlir::Attribute> v;
     v.reserve(types.size());
     for (const mlir::Type &t : types) {
-      if (t.isa<mhlo::TokenType>()) continue;
+      if (mlir::isa<mhlo::TokenType>(t)) continue;
       auto layout = GetTPUInfeedLayout({t}, rewriter);
       if (failed(layout)) return failure();
       v.push_back(layout.value());
     }
     ArrayRef<Attribute> shape(v);
     return rewriter.getArrayAttr(shape);
-  } else if (auto t = types[0].dyn_cast<RankedTensorType>()) {
+  } else if (auto t = mlir::dyn_cast<RankedTensorType>(types[0])) {
     if (!t.hasStaticShape()) return failure();
     auto layout = GetTPUInfeedLayoutFromAPI(t);
     std::vector<int64_t> minor_to_major;
@@ -123,13 +125,13 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
   }
 }
 
-bool SetTPUInfeedLayout(mlir::OwningOpRef<mlir::ModuleOp> &mlir_module) {
+bool SetTPUInfeedLayout(mlir::ModuleOp mlir_module) {
   auto res = mlir_module->walk([&](mlir::TF::InfeedDequeueTupleOp op) {
     mlir::OpBuilder builder(op.getContext());
     std::vector<mlir::Type> result_types;
 
     for (mlir::Type t : op.getResultTypes()) {
-      auto ty = t.cast<mlir::TensorType>();
+      auto ty = mlir::cast<mlir::TensorType>(t);
       if (!ty.hasStaticShape()) return mlir::WalkResult::interrupt();
       result_types.push_back(t);
     }

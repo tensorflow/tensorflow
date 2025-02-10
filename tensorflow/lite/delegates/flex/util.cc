@@ -14,25 +14,40 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/util.h"
 
+#include <cstdint>
+#include <cstring>
+#include <limits>
 #include <string>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace flex {
 
 static constexpr char kResourceVariablePrefix[] = "tflite_resource_variable";
 
-TfLiteStatus ConvertStatus(TfLiteContext* context,
-                           const tensorflow::Status& status) {
+TfLiteStatus ConvertStatus(TfLiteContext* context, const absl::Status& status) {
   if (!status.ok()) {
-    TF_LITE_KERNEL_LOG(context, "%s", tsl::NullTerminatedMessage(status));
+    TF_LITE_KERNEL_LOG(context, "%s", absl::StatusMessageAsCStr(status));
     return kTfLiteError;
   }
   return kTfLiteOk;
@@ -74,6 +89,8 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
       return TF_FLOAT;
     case kTfLiteFloat16:
       return TF_HALF;
+    case kTfLiteBFloat16:
+      return TF_BFLOAT16;
     case kTfLiteFloat64:
       return TF_DOUBLE;
     case kTfLiteInt16:
@@ -116,6 +133,8 @@ TfLiteType GetTensorFlowLiteType(TF_DataType type) {
       return kTfLiteFloat32;
     case TF_HALF:
       return kTfLiteFloat16;
+    case TF_BFLOAT16:
+      return kTfLiteBFloat16;
     case TF_DOUBLE:
       return kTfLiteFloat64;
     case TF_INT16:
@@ -186,6 +205,8 @@ const char* TfLiteTypeToTfTypeName(TfLiteType type) {
       return "string";
     case kTfLiteFloat16:
       return "float16";
+    case kTfLiteBFloat16:
+      return "bfloat16";
     case kTfLiteFloat64:
       return "float64";
     case kTfLiteResource:
@@ -226,8 +247,8 @@ absl::StatusOr<tensorflow::Tensor> CreateTfTensorFromTfLiteTensor(
     const TfLiteTensor* tflite_tensor) {
   if (IsResourceOrVariant(tflite_tensor)) {
     // Returns error if the input tflite tensor has variant or resource type.
-    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
-                              "Input tensor has resource or variant type.");
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        "Input tensor has resource or variant type.");
   }
 
   tensorflow::TensorShape shape;
@@ -248,13 +269,13 @@ absl::StatusOr<tensorflow::Tensor> CreateTfTensorFromTfLiteTensor(
     }
   } else {
     if (tf_tensor.tensor_data().size() != tflite_tensor->bytes) {
-      return tensorflow::Status(
+      return absl::Status(
           absl::StatusCode::kInternal,
           "TfLiteTensor's size doesn't match the TF tensor's size.");
     }
     if (!tflite_tensor->data.raw) {
-      return tensorflow::Status(absl::StatusCode::kInternal,
-                                "TfLiteTensor's data field is null.");
+      return absl::Status(absl::StatusCode::kInternal,
+                          "TfLiteTensor's data field is null.");
     }
     std::memcpy(tf_tensor.data(), tflite_tensor->data.raw,
                 tflite_tensor->bytes);

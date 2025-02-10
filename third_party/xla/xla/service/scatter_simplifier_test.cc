@@ -15,11 +15,20 @@ limitations under the License.
 
 #include "xla/service/scatter_simplifier.h"
 
+#include <cstdint>
 #include <optional>
 
-#include "xla/service/hlo_pass_fix.h"
-#include "xla/service/hlo_pass_pipeline.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/pass/hlo_pass_fix.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -152,7 +161,7 @@ TEST_F(ScatterSimplifierTest, MovesIndexVectorDim) {
     })";
 
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
-           CHECK: %[[TRANSPOSED_INDICES:.*]] = s32[1,2]{0,1}
+           CHECK: %[[TRANSPOSED_INDICES:.*]] = s32[1,2]{1,0}
       CHECK-SAME:     transpose(%indices), dimensions={1,0}
            CHECK: scatter(%operand, %[[TRANSPOSED_INDICES]], %update),
       CHECK-SAME:     index_vector_dim=1
@@ -183,9 +192,9 @@ TEST_F(ScatterSimplifierTest, TransformsUpdatesAndOperandUsingScatterDims) {
     })";
 
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
-           CHECK: %[[T_OPERAND:.*]] = f32[5,3,4]{0,2,1} transpose(%operand),
+           CHECK: %[[T_OPERAND:.*]] = f32[5,3,4]{2,1,0} transpose(%operand),
       CHECK-SAME:     dimensions={2,0,1}
-           CHECK: %[[T_UPDATES:.*]] = f32[2,3,1,1]{1,3,2,0} transpose(%update),
+           CHECK: %[[T_UPDATES:.*]] = f32[2,3,1,1]{3,2,1,0} transpose(%update),
       CHECK-SAME:     dimensions={0,3,1,2}
            CHECK: %[[SCATTER:.*]] = {{.*}} scatter(
       CHECK-SAME:     %[[T_OPERAND]], %indices, %[[T_UPDATES]])
@@ -218,7 +227,7 @@ TEST_F(ScatterSimplifierTest, MakesScatterDimensionsLeadingInUpdates) {
     })";
 
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
-           CHECK: %[[TRANSPOSED_UPDATES:.*]] = f32[1,2]{0,1}
+           CHECK: %[[TRANSPOSED_UPDATES:.*]] = f32[1,2]{1,0}
       CHECK-SAME:     transpose(%update), dimensions={1,0}
            CHECK: scatter(
       CHECK-SAME:     %[[TRANSPOSED_UPDATES]]
@@ -250,6 +259,294 @@ TEST_F(ScatterSimplifierTest, ZeroDimScatterIndices) {
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
       CHECK: scatter(
     )");
+}
+
+TEST_F(ScatterSimplifierTest,
+       IsSimplifiedScatterReturnsFalseForUnsortedWindowDims) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      %p0 = f32[] parameter(0)
+      ROOT result = f32[] parameter(1)
+    }
+
+    ENTRY kernel_entry {
+      operand = f32[3,2] parameter(0)
+      indices = s32[1,1] parameter(1)
+      update = f32[1,2,2] parameter(2)
+      ROOT scatter = f32[3,2] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={2,1},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })";
+  auto module = ParseAndReturnUnverifiedModule(kModuleStr).value();
+  auto scatter = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(ScatterSimplifier::IsSimplifiedScatter(
+      Cast<HloScatterInstruction>(scatter)));
+}
+
+TEST_F(ScatterSimplifierTest, ScatterIntoScalar) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[] parameter(0)
+      indices = s32[0]{0} parameter(1)
+      updates = s32[] parameter(2)
+      ROOT scatter = s32[] scatter(operand, indices, updates),
+          update_window_dims={},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={},
+          index_vector_dim=0,
+          to_apply=scatter_computation
+    }
+  )";
+  auto module = ParseAndReturnUnverifiedModule(kModuleStr).value();
+  RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
+    CHECK: ENTRY
+    CHECK: %[[OPERAND:.*]] = s32[] parameter(0)
+    CHECK: %[[UPDATES:.*]] = s32[] parameter(2)
+    CHECK: ROOT %{{.*}} = s32[] add(%[[OPERAND]], %[[UPDATES]])
+  )");
+}
+
+TEST_F(ScatterSimplifierTest, VariadicScatterIntoScalar) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      p0 = f32[] parameter(0)
+      p1 = bf16[] parameter(1)
+      p2 = f32[] parameter(2)
+      p3 = bf16[] parameter(3)
+      ROOT tuple = tuple(p2, p3)
+    }
+
+    ENTRY kernel_entry {
+      operand0 = f32[] parameter(0)
+      operand1 = bf16[] parameter(1)
+      indices = s32[0]{0} parameter(2)
+      updates0 = f32[] parameter(3)
+      updates1 = bf16[] parameter(4)
+      ROOT scatter = (f32[], bf16[]) scatter(operand0, operand1, indices, updates0, updates1),
+          update_window_dims={},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={},
+          index_vector_dim=0,
+          to_apply=scatter_computation
+    })";
+
+  RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
+    CHECK: ENTRY
+    CHECK: %[[UPDATES0:.*]] = f32[] parameter(3)
+    CHECK: %[[UPDATES1:.*]] = bf16[] parameter(4)
+    CHECK: ROOT %{{.*}} = (f32[], bf16[]) tuple(%[[UPDATES0]], %[[UPDATES1]])
+  )");
+}
+
+class SimpleScatterExampleTest : public HloTestBase {};
+
+TEST_F(SimpleScatterExampleTest, 1x1d) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[4] parameter(0)
+      indices = s32[1,1] parameter(1)
+      update = s32[1,2] parameter(2)
+      ROOT scatter = s32[4] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto scatter = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
+      Cast<HloScatterInstruction>(scatter)));
+  Literal operand = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{2}});
+  Literal updates = LiteralUtil::CreateR2<int32_t>({{2, 3}});
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR1<int32_t>({1, 2, 5, 7}), result));
+}
+
+TEST_F(SimpleScatterExampleTest, 2x2d) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[2,2] parameter(0)
+      indices = s32[2,2] parameter(1)
+      update = s32[2,2,2] parameter(2)
+      ROOT scatter = s32[2,2] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1,2},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0,1},
+          index_vector_dim=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto scatter = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
+      Cast<HloScatterInstruction>(scatter)));
+  Literal operand = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {0, 0}});
+  Literal updates = LiteralUtil::CreateR3<int32_t>(
+      {{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}});
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32_t>(
+          {{1 + 10 + 50, 2 + 20 + 60}, {3 + 30 + 70, 4 + 40 + 80}}),
+      result));
+}
+
+TEST_F(SimpleScatterExampleTest, 2x2d_n_less_than_N) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[2,2] parameter(0)
+      indices = s32[2,1] parameter(1)
+      update = s32[2,2,2] parameter(2)
+      ROOT scatter = s32[2,2] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1,2},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto scatter = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
+      Cast<HloScatterInstruction>(scatter)));
+  Literal operand = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0}, {0}});
+  Literal updates = LiteralUtil::CreateR3<int32_t>(
+      {{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}});
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32_t>(
+          {{1 + 10 + 50, 2 + 20 + 60}, {3 + 30 + 70, 4 + 40 + 80}}),
+      result));
+}
+
+TEST_F(SimpleScatterExampleTest, 2x2d_nofit) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[2,2] parameter(0)
+      indices = s32[2,1] parameter(1)
+      update = s32[2,2,2] parameter(2)
+      ROOT scatter = s32[2,2] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1,2},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto scatter = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
+      Cast<HloScatterInstruction>(scatter)));
+  Literal operand = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}});
+
+  // Note: the 2nd update slice won't fit.
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0}, {2}});
+
+  Literal updates = LiteralUtil::CreateR3<int32_t>(
+      {{{10, 20}, {30, 40}}, {{50, 60}, {70, 80}}});
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32_t>({{1 + 10, 2 + 20}, {3 + 30, 4 + 40}}),
+      result));
+}
+
+TEST_F(SimpleScatterExampleTest, 3x1d) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY kernel_entry {
+      operand = s32[4] parameter(0)
+      indices = s32[3,1] parameter(1)
+      update = s32[3,2] parameter(2)
+      ROOT scatter = s32[4] scatter(operand, indices, update),
+          to_apply=scatter_computation,
+          update_window_dims={1},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  auto scatter = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(ScatterSimplifier::IsSimplifiedScatter(
+      Cast<HloScatterInstruction>(scatter)));
+  Literal operand = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0}, {1}, {2}});
+  Literal updates =
+      LiteralUtil::CreateR2<int32_t>({{1, 2}, {10, 20}, {200, 300}});
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      evaluator.Evaluate(*module, {&operand, &scatter_indices, &updates}));
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(
+                                 {1 + 1, 2 + 2 + 10, 3 + 20 + 200, 4 + 300}),
+                             result));
 }
 
 }  // namespace

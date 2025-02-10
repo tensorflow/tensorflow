@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 
+#include <utility>
+
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -61,7 +63,7 @@ TEST_F(HloOpProfilesTest, GetProfile) {
   auto device_info_sm_90 = TestGpuDeviceInfo::RTXA6000DeviceInfo(
       stream_executor::CudaComputeCapability(9, 0));
 
-  const auto& op_profile = hlo_op_profiles->GetProfile(&device_info_sm_90);
+  const auto& op_profile = hlo_op_profiles->GetProfile(device_info_sm_90);
   ASSERT_TRUE(op_profile.contains(
       std::make_pair(HloOpcode::kDivide, PrimitiveType::F32)));
   EXPECT_EQ(
@@ -76,7 +78,7 @@ TEST_F(HloOpProfilesTest, GetProfileDefault) {
       stream_executor::CudaComputeCapability(8, 5));
 
   // hlo_op_profiles only has sm_80 and sm_90, should return the default sm_80.
-  const auto& op_profile = hlo_op_profiles->GetProfile(&device_info_sm_85);
+  const auto& op_profile = hlo_op_profiles->GetProfile(device_info_sm_85);
   ASSERT_TRUE(op_profile.contains(
       std::make_pair(HloOpcode::kMultiply, PrimitiveType::F32)));
   EXPECT_EQ(

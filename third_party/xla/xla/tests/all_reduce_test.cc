@@ -13,17 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/literal.h"
-#include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
+#include <cstdint>
+#include <utility>
+
+#include "xla/hlo/testlib/test.h"
+#include "xla/literal_util.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
 
 namespace xla {
 namespace {
 
-class TrivialAllReduceTest : public HloTestBase {};
+using TrivialAllReduceTest = HloPjRtTestBase;
 
 // Currently the CPU and GPU backends only support AllReduce with one
 // replica.  But we can at least check this.

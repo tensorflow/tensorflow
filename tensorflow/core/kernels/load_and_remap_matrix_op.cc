@@ -34,7 +34,7 @@ namespace tensorflow {
 namespace {
 // Returning a Status instead of using OP_REQUIRES directly since that doesn't
 // seem to work outside the main OpKernel functions.
-Status RemapVectorToMap(
+absl::Status RemapVectorToMap(
     const TTypes<const int64_t>::Vec& remapping, std::vector<bool>* id_present,
     std::unordered_map<int64_t, int64_t>* old_id_to_new_id) {
   id_present->clear();

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "LookupTableImport"
   input_arg {
     name: "table_handle"

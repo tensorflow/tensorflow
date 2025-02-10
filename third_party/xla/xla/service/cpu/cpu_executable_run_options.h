@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_EXECUTABLE_RUN_OPTIONS_H_
 #define XLA_SERVICE_CPU_CPU_EXECUTABLE_RUN_OPTIONS_H_
 
-#include "xla/service/cpu/collectives_interface.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 
 namespace xla::cpu {
 
@@ -25,16 +25,16 @@ namespace xla::cpu {
 // dependencies to ExecutableRunOptions.
 class CpuExecutableRunOptions {
  public:
-  CpuExecutableRunOptions& set_collectives(CollectivesInterface* collectives) {
+  CpuExecutableRunOptions& set_collectives(CpuCollectives* collectives) {
     collectives_ = collectives;
     return *this;
   }
-  CollectivesInterface* collectives() const { return collectives_; }
+  CpuCollectives* collectives() const { return collectives_; }
 
  private:
   // For cross-process collectives, use this collective implementation to
   // communicate.
-  CollectivesInterface* collectives_;
+  CpuCollectives* collectives_;
 };
 
 }  // namespace xla::cpu

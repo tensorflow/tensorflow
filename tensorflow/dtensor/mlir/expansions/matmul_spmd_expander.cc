@@ -15,23 +15,33 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/matmul_spmd_expander.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallSet.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
-#include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
-#include "tensorflow/dtensor/mlir/spmd_expander.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
-#include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -54,7 +64,6 @@ void GetTransposeSettings(mlir::Operation* op, bool* left_transposed,
 }  // namespace
 
 StatusOr<mlir::Operation*> MatMulSPMDExpander::ExpandOp(mlir::Operation* op) {
-  absl::flat_hash_set<std::string> reduced_dims;
   bool left_transposed;
   bool right_transposed;
   TF_ASSIGN_OR_RETURN(const Layout left_layout,
@@ -183,7 +192,7 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
 // * The resulting layout of the matmul tensor, so we can insert an AllConcat/
 //   split to make the output have the desired layout.
 // * The left and right value for use as input to the matmul.
-Status MatMulSPMDExpander::MaybeRelayoutInputs(
+absl::Status MatMulSPMDExpander::MaybeRelayoutInputs(
     mlir::Operation* op, const Layout& left_layout, bool left_transposed,
     const Layout& right_layout, bool right_transposed,
     const Layout& output_layout, std::string& reduced_dim,

@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 
 namespace mlir {
@@ -43,47 +44,55 @@ Type convertInteger(IntegerType intType) {
 }
 
 Type convertShapedType(ShapedType shapedType) {
-  if (auto intType = shapedType.getElementType().dyn_cast<IntegerType>())
+  if (auto intType = mlir::dyn_cast<IntegerType>(shapedType.getElementType()))
     return shapedType.clone(convertInteger(intType));
   return shapedType;
 }
 
-std::optional<Value> materializeCastFromIllegal(OpBuilder& builder, Type type,
+Value materializeCastFromIllegal(OpBuilder& builder, Type type,
                                                 ValueRange inputs,
                                                 Location loc) {
   Type fromType = getElementTypeOrSelf(inputs[0].getType());
   Type toType = getElementTypeOrSelf(type);
   if ((!fromType.isSignedInteger() && !fromType.isUnsignedInteger()) ||
       !toType.isSignlessInteger())
-    return std::nullopt;
+    return Value();
   // Use unrealized conversion casts to do signful->signless conversions.
   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
       ->getResult(0);
 }
 
-std::optional<Value> materializeCastToIllegal(OpBuilder& builder, Type type,
+Value materializeCastToIllegal(OpBuilder& builder, Type type,
                                               ValueRange inputs, Location loc) {
   Type fromType = getElementTypeOrSelf(inputs[0].getType());
   Type toType = getElementTypeOrSelf(type);
   if (!fromType.isSignlessInteger() ||
       (!toType.isSignedInteger() && !toType.isUnsignedInteger()))
-    return std::nullopt;
+    return Value();
   // Use unrealized conversion casts to do signless->signful conversions.
   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
       ->getResult(0);
 }
 
-std::optional<Value> scalarToTensor(OpBuilder& builder, Type /*type*/,
+Value scalarToTensor(OpBuilder& builder, Type type,
                                     ValueRange inputs, Location loc) {
   assert(inputs.size() == 1);
-  if (inputs.front().getType().isa<ShapedType>()) {
-    return std::nullopt;
+  if (mlir::isa<ShapedType>(inputs.front().getType())) {
+    return Value();
   }
-  return builder
-      .create<tensor::FromElementsOp>(
-          loc, RankedTensorType::get({}, inputs.front().getType()),
-          inputs.front())
-      .getResult();
+  Value result =
+      builder
+          .create<tensor::FromElementsOp>(
+              loc, RankedTensorType::get({}, inputs.front().getType()),
+              inputs.front())
+          .getResult();
+  // Convert to a signed integer if necessary.
+  Type elementType = mlir::getElementTypeOrSelf(type);
+  if (elementType.isInteger() && !elementType.isSignlessInteger()) {
+    result = builder.create<UnrealizedConversionCastOp>(loc, type, result)
+                 ->getResult(0);
+  }
+  return result;
 }
 
 }  // namespace
@@ -101,6 +110,8 @@ RemoveSignTypeConverter::RemoveSignTypeConverter() {
 
 LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
   addArgumentMaterialization(scalarToTensor);
+  addSourceMaterialization(scalarToTensor);
+  addTargetMaterialization(scalarToTensor);
 }
 
 }  // namespace mhlo
@@ -160,7 +171,7 @@ bool HloToStablehloTypeConverter::isSourceDialect(Dialect& dialect) {
 
 Attribute HloToStablehloTypeConverter::convertSourceDialectEncoding(
     Attribute attr) {
-  if (auto hloAttr = attr.dyn_cast_or_null<mhlo::TypeExtensionsAttr>()) {
+  if (auto hloAttr = mlir::dyn_cast_or_null<mhlo::TypeExtensionsAttr>(attr)) {
     return stablehlo::TypeExtensionsAttr::get(hloAttr.getContext(),
                                               hloAttr.getBounds());
   }
@@ -185,7 +196,7 @@ bool StablehloToHloTypeConverter::isSourceDialect(Dialect& dialect) {
 Attribute StablehloToHloTypeConverter::convertSourceDialectEncoding(
     Attribute attr) {
   if (auto stablehloAttr =
-          attr.dyn_cast_or_null<stablehlo::TypeExtensionsAttr>()) {
+          mlir::dyn_cast_or_null<stablehlo::TypeExtensionsAttr>(attr)) {
     return mhlo::TypeExtensionsAttr::get(stablehloAttr.getContext(),
                                          stablehloAttr.getBounds());
   }

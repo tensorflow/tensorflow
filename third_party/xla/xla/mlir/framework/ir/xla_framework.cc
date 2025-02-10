@@ -17,9 +17,9 @@ limitations under the License.
 #include "xla/mlir/framework/ir/xla_framework.h"
 
 #include "llvm/ADT/TypeSwitch.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/DialectImplementation.h"
 
 // Generated dialect definitions.
 #include "xla/mlir/framework/ir/xla_framework_dialect.cc.inc"

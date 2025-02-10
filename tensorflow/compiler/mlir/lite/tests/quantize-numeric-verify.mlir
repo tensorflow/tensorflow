@@ -18,7 +18,7 @@ func.func @QuantizeConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03
 // DEBUG: %[[act:.*]] = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x224x224x3xf32>
 // DEBUG: %[[f_conv:.*]] = "tfl.conv_2d"(%[[act]], %[[wt]], %[[bias]])
 // DEBUG: %[[q_conv:.*]] = "tfl.conv_2d"
-// DEBUG: "tfl.NumericVerify"(%[[q_conv]], %[[f_conv]]) {log_if_failed = true, tolerance = 5.000000e+00 : f32}
+// DEBUG: "tfl.NumericVerify"(%[[q_conv]], %[[f_conv]]) <{log_if_failed = true, tolerance = 5.000000e+00 : f32}>
 // DEBUG: return %[[q_conv]] : tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
 }
 
@@ -56,8 +56,8 @@ func.func @QuantizeSplit(%arg: tensor<4x!quant.uniform<u8:f32, 1.0>>, %cst: tens
 
 // DEBUG: %[[f_split:.*]]:2 = "tfl.split"
 // DEBUG: %[[q_split:.*]]:2 = "tfl.split"
-// DEBUG: "tfl.NumericVerify"(%[[q_split]]#1, %[[f_split]]#1) {log_if_failed = true, tolerance = 5.000000e+00 : f32}
-// DEBUG: "tfl.NumericVerify"(%[[q_split]]#0, %[[f_split]]#0) {log_if_failed = true, tolerance = 5.000000e+00 : f32}
+// DEBUG: "tfl.NumericVerify"(%[[q_split]]#1, %[[f_split]]#1) <{log_if_failed = true, tolerance = 5.000000e+00 : f32}>
+// DEBUG: "tfl.NumericVerify"(%[[q_split]]#0, %[[f_split]]#0) <{log_if_failed = true, tolerance = 5.000000e+00 : f32}>
 }
 
 // DEBUG-LABEL: NotQuantizePow

@@ -22,15 +22,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -50,7 +52,7 @@ class QuantizationTestBase : public Test {
         arith::ArithDialect, mlir::stablehlo::StablehloDialect,
         func::FuncDialect, TF::TensorFlowDialect, TFL::TensorFlowLiteDialect,
         tf_saved_model::TensorFlowSavedModelDialect,
-        tf_executor::TensorFlowExecutorDialect, quant::QuantizationDialect,
+        tf_executor::TensorFlowExecutorDialect, quant::QuantDialect,
         quantfork::QuantizationForkDialect>();
   }
 
@@ -60,13 +62,20 @@ class QuantizationTestBase : public Test {
     return parseSourceString<ModuleOp>(module_op_str, ctx_.get());
   }
 
-  // Returns the first operation with the given type in the function.
-  template <typename OpType>
-  OpType FindOperationOfType(func::FuncOp function) {
-    for (auto op : function.getBody().getOps<OpType>()) {
-      return op;
-    }
-    return nullptr;
+  // Convenience function that returns the first operation of type `OpT` from
+  // the `@main` function in `module_op`. Useful when testing with a text
+  // representation of a `ModuleOp` containing a single function `@main`.
+  // Returns `failure` iff there is no `@main` or no such operation is found in
+  // `@main`.
+  template <typename OpT>
+  FailureOr<OpT> FindFirstOpFromMainFunc(ModuleOp module_op) {
+    func::FuncOp main_func_op = FindMainFuncOp(module_op);
+    if (main_func_op == nullptr) return failure();
+
+    auto ops = main_func_op.getOps<OpT>();
+    if (ops.empty()) return failure();
+
+    return *ops.begin();
   }
 
   std::unique_ptr<MLIRContext> ctx_;

@@ -84,9 +84,9 @@ void UpdateTPUDeviceAssignment(mlir::func::FuncOp function,
       function.removeArgAttr(i, builder->getStringAttr(kFuncDeviceAttr));
   });
 }
-Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
-                                  mlir::TF::_TPUCompileMlirOp compile,
-                                  tpu::TPUCompileMetadataProto& proto) {
+absl::Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
+                                        mlir::TF::_TPUCompileMlirOp compile,
+                                        tpu::TPUCompileMetadataProto& proto) {
   const int64_t num_devices = mesh_config.num_devices();
   int core_id_local_offset = 0;
   int num_replicas = mesh_config.num_devices();
@@ -165,7 +165,7 @@ Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
       mesh_name = "";
     }
     const std::vector<int>& tpu_core_ids = Mesh::tpu_core_ids()[mesh_name];
-    VLOG(1) << "tpu_core_ids: " << str_util::Join(tpu_core_ids, ", ");
+    VLOG(1) << "tpu_core_ids: " << absl::StrJoin(tpu_core_ids, ", ");
 
     xla::DeviceAssignmentProto device_assignment;
     device_assignment.set_replica_count(1);
@@ -182,8 +182,8 @@ Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
   return absl::OkStatus();
 }
 
-Status UpdateMetadataProtoDtensorSpmd(const Mesh& mesh_config,
-                                      tpu::TPUCompileMetadataProto& proto) {
+absl::Status UpdateMetadataProtoDtensorSpmd(
+    const Mesh& mesh_config, tpu::TPUCompileMetadataProto& proto) {
   int core_id_local_offset = 0;
   int num_replicas = mesh_config.num_devices();
 
@@ -223,7 +223,7 @@ Status UpdateMetadataProtoDtensorSpmd(const Mesh& mesh_config,
       mesh_name = "";
     }
     const std::vector<int>& tpu_core_ids = Mesh::tpu_core_ids()[mesh_name];
-    VLOG(1) << "tpu_core_ids: " << str_util::Join(tpu_core_ids, ", ");
+    VLOG(1) << "tpu_core_ids: " << absl::StrJoin(tpu_core_ids, ", ");
 
     xla::DeviceAssignmentProto device_assignment;
     device_assignment.set_replica_count(num_replicas);
@@ -277,7 +277,7 @@ mlir::LogicalResult UpdateTPUCompileMetadata(const Mesh& mesh_config,
       return mlir::WalkResult::interrupt();
     }
 
-    Status status =
+    absl::Status status =
         mesh_config.use_xla_spmd()
             ? UpdateMetadataProtoXlaSpmd(mesh_config, compile, metadata_proto)
             : UpdateMetadataProtoDtensorSpmd(mesh_config, metadata_proto);

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from typing import Any
+from typing import Any, Optional
 
 class PyFunctionLibrary:
 
@@ -24,7 +24,7 @@ class PyFunctionLibrary:
       src_saved_model_path: str,
       tags: set[str],
       serialized_signature_def_map: dict[str, bytes],
-  ) -> None: ...
+  ) -> Optional[bool]: ...
   # LINT.ThenChange()
 
   # LINT.IfChange(run_calibration)
@@ -33,11 +33,10 @@ class PyFunctionLibrary:
       saved_model_path: str,
       signature_keys: list[str],
       tags: set[str],
-      calibration_options_serialized: bytes,
       force_graph_mode_calibration: bool,
       # Value type: RepresentativeDatasetFile.
       representative_dataset_file_map_serialized: dict[str, bytes],
-  ) -> None: ...
+  ) -> Optional[bool]: ...
   # LINT.ThenChange()
 
   # LINT.IfChange(get_calibration_min_max_value)
@@ -45,5 +44,5 @@ class PyFunctionLibrary:
       self,
       calibration_statistics_serialized: bytes,
       calibration_options_serialized: bytes,
-  ) -> tuple[float, float]: ...
+  ) -> Optional[tuple[float, float]]: ...
   # LINT.ThenChange()

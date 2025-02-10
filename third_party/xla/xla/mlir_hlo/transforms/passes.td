@@ -81,15 +81,6 @@ def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   ];
 }
 
-def PropagateStaticShapesToKernelPass : Pass<"propagate-static-shapes", "ModuleOp"> {
-  let summary = "Pass to rewrite statically shaped kernel arguments to a pointer.";
-  let constructor = "createPropagateStaticShapesToKernelPass()";
-  let options = [
-      Option<"ptr_type_opt", "convert_pointer_args", "std::string",
-             /*default=*/"", "Pointer type to convert pointer arguments to">,
-  ];
-}
-
 def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
   let summary = "Pass to lower common dialects resulting from HLO to LLVM.";
   let constructor = "hlo::createGenericHostToLLVMPass()";
@@ -118,11 +109,6 @@ def UnbufferizePass : Pass<"unbufferize", "mlir::func::FuncOp"> {
     transformation.
   }];
   let constructor = "hlo::createUnbufferizePass()";
-}
-
-def UnrollLoopsPass : Pass<"unroll-loops"> {
-  let summary = "Unrolls scf.for loops with small static iteration counts.";
-  let constructor = "hlo::createUnrollLoopsPass()";
 }
 
 def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {

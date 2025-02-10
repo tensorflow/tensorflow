@@ -14,10 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
 
+#include <cstdint>
+#include <string>
 #include <utility>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/kernel.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/register_span.h"
@@ -170,6 +174,17 @@ void Execute(ExecutionContext& ctx) {
 namespace execute_internal {
 
 void UnwindOnError(ExecutionContext& context, int64_t pc) {
+  std::string function_name;
+  if (!context.function_stack_.empty()) {
+    function_name = context.function_stack_.back().function_object().name();
+  }
+  context.LogError(context.status());
+  context.LogError(absl::InternalError(absl::StrCat(
+      "UnwindOnError: start from function ", function_name,
+      " with stack size: ", context.function_stack_.size(), " at pc: ", pc,
+      " for context ", absl::Hex(reinterpret_cast<std::uintptr_t>(&context)),
+      " at state ", context.state_)));
+
   while (!context.function_stack_.empty()) {
     DCHECK(context.state_ == ExecutionContext::State::kError);
 
@@ -189,6 +204,11 @@ void UnwindOnError(ExecutionContext& context, int64_t pc) {
         reg.HandleError(context_value);
         if (context.state_ != ExecutionContext::State::kError) {
           DCHECK(context.state_ == ExecutionContext::State::kSuspended);
+
+          context.LogError(absl::InternalError(absl::StrCat(
+              "UnwindOnError: entering state", context.state_, " for context ",
+              absl::Hex(reinterpret_cast<std::uintptr_t>(&context)))));
+
           // Rewind current pc so that the execution context come back to where
           // is is suspended.
           --pc;
@@ -196,6 +216,12 @@ void UnwindOnError(ExecutionContext& context, int64_t pc) {
         }
       }
     }
+
+    context.LogError(absl::InternalError(
+        absl::StrCat("UnwindOnError: unwinding function from ", pc, " to ",
+                     current_function->pc_, " for context ",
+                     absl::Hex(reinterpret_cast<std::uintptr_t>(&context)),
+                     " at state ", context.state_)));
 
     for (; context.state_ == ExecutionContext::State::kError &&
            pc <= current_function->pc_;
@@ -208,6 +234,10 @@ void UnwindOnError(ExecutionContext& context, int64_t pc) {
         reg.HandleError(context_value);
         if (context.state_ != ExecutionContext::State::kError) {
           DCHECK(context.state_ == ExecutionContext::State::kSuspended);
+          context.LogError(absl::InternalError(absl::StrCat(
+              "UnwindOnError: entering state", context.state_, " for context ",
+              absl::Hex(reinterpret_cast<std::uintptr_t>(&context)))));
+
           // Rewind current pc so that the execution context come back to where
           // is is suspended.
           --pc;
@@ -220,6 +250,9 @@ void UnwindOnError(ExecutionContext& context, int64_t pc) {
       DCHECK(context.suspend_handler_)
           << "suspend_handler_ must be populated when the state is set to "
              "kSuspended.";
+      context.LogError(absl::InternalError(absl::StrCat(
+          "UnwindOnError: suspended state ", context.state_, " for context ",
+          absl::Hex(reinterpret_cast<std::uintptr_t>(&context)))));
       std::move(context.suspend_handler_)([&context, pc]() {
         auto* work_queue = context.work_queue();
         DCHECK(work_queue);
@@ -237,6 +270,12 @@ void UnwindOnError(ExecutionContext& context, int64_t pc) {
     context.function_stack_.pop_back();
   }
 
+  context.LogError(absl::InternalError(absl::StrCat(
+      "UnwindOnError: done for function ", function_name,
+      " for context: ", absl::Hex(reinterpret_cast<std::uintptr_t>(&context)),
+      " at state ", context.state_)));
+
+  // Context may no longer be valid after exit_handler_ is called.
   if (context.exit_handler_) {
     std::move(context.exit_handler_)();
   }

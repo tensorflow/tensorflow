@@ -14,8 +14,13 @@
 # ============================================================================
 
 name: Clang Format
+permissions:
+  contents: read
 on:
   pull_request:
+  push:
+    branches:
+      - main
 
 jobs:
   clang-format:
@@ -23,8 +28,9 @@ jobs:
     defaults:
       run:
         shell: bash
-    timeout-minutes: 1
+    timeout-minutes: 6
     if: |
+      github.event.sender.type == 'User' ||
       contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
     steps:
       - name: "Checking out repository"

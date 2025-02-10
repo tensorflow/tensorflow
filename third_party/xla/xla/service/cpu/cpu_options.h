@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_OPTIONS_H_
 #define XLA_SERVICE_CPU_CPU_OPTIONS_H_
 
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <tuple>
 
 #include "xla/service/hlo_module_config.h"
 
@@ -29,11 +32,10 @@ namespace options {
 bool OptimizeForSizeRequested(const HloModuleConfig& config);
 bool VectorizedReduceDisabled(const HloModuleConfig& config);
 bool SlpVectorizerDisabled(const HloModuleConfig& config);
+bool DisableLoopUnrolling(const HloModuleConfig& config);
 bool ForceEnableExperimentalLlvmIrGemm(const HloModuleConfig& config);
 std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config);
 std::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
-    const HloModuleConfig& config);
-std::optional<std::string> ExperimentalOverriddenPipeline(
     const HloModuleConfig& config);
 
 }  // namespace options

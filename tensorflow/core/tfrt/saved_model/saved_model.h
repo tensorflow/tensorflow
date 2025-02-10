@@ -110,7 +110,14 @@ class SavedModel {
     // True if and only if SavedModel is being loaded to generate AOT results.
     bool aot_generation = false;
 
+    // Make a best-effort guess at the model type and emit a metric. E.g.
+    // detecting JAX models by looking for the `XlaCallModule` op in the
+    // MetaGraphDef.
+    bool emit_model_type_metric = true;
+
     GraphExecutionOptions graph_execution_options;
+
+    bool disable_output_filter = false;
   };
 
   // Per-request options.
@@ -133,6 +140,9 @@ class SavedModel {
     DCHECK(options_.graph_execution_options.runtime);
     return *options_.graph_execution_options.runtime;
   }
+
+  bool disable_output_filter() const { return options_.disable_output_filter; }
+
   tfrt::HostContext* GetHostContext() const;
 
   GraphExecutor& graph_executor() const { return *graph_executor_; }
@@ -154,10 +164,10 @@ class SavedModel {
   // Runs the signature specified by `name`. Both `inputs` and `outputs`
   // are all host tensors. The `outputs` must be non-null. If the returned
   // status is non-OK, the `outputs` are invalid.
-  virtual tensorflow::Status Run(const RunOptions& run_options,
-                                 absl::string_view name,
-                                 absl::Span<const tensorflow::Tensor> inputs,
-                                 std::vector<tensorflow::Tensor>* outputs) = 0;
+  virtual absl::Status Run(const RunOptions& run_options,
+                           absl::string_view name,
+                           absl::Span<const tensorflow::Tensor> inputs,
+                           std::vector<tensorflow::Tensor>* outputs) = 0;
 
   // Runs the signatures specified by `names`. Both `inputs` and `outputs` are
   // all host tensors. The `outputs` must be non-null. If the returned status is
@@ -169,14 +179,14 @@ class SavedModel {
   //
   // NOTE: The input/output tensors can only be dense tensors (as opposed to
   // sparse tensors or composite tensors).
-  virtual tensorflow::Status RunMultipleSignatures(
+  virtual absl::Status RunMultipleSignatures(
       const RunOptions& run_options, absl::Span<const std::string> names,
       absl::Span<const std::vector<tensorflow::Tensor>> multi_inputs,
       std::vector<std::vector<tensorflow::Tensor>>* multi_outputs) = 0;
 
   // Runs the graphs specified by the tensor names terminal tensors (eg. feed
   // tensors, fetch tesnors) in the graph.
-  virtual tensorflow::Status RunByTensorNames(
+  virtual absl::Status RunByTensorNames(
       const RunOptions& run_options,
       absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
       absl::Span<const std::string> output_tensor_names,
@@ -196,6 +206,11 @@ class SavedModel {
 using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
 using ::tensorflow::StatusOr;
 
+enum class InferredModelType {
+  kUncategorized = 0,
+  kJax,
+};
+
 class SavedModelImpl final : public SavedModel {
  public:
   struct JoinedSignature;
@@ -207,14 +222,14 @@ class SavedModelImpl final : public SavedModel {
   //
   // If `options.maybe_load_from_mla` is true, tries opening `saved_model_dir`
   // as an MLA. If it's not an MLA, uses it as a normal SavedModel directory.
-  static tensorflow::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
+  static absl::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
       Options options, absl::string_view saved_model_dir,
       const std::unordered_set<std::string>& tags);
 
   // Loads all SignatureDefs in `meta_graph_def`. Refer to
   // http://g3doc/learning/serving/g3doc/saved_model/overview.md
   // for explanations on SavedModel.
-  static tensorflow::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
+  static absl::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
       Options options, tensorflow::MetaGraphDef meta_graph_def,
       absl::string_view saved_model_dir);
 
@@ -226,7 +241,8 @@ class SavedModelImpl final : public SavedModel {
       absl::flat_hash_map<std::string, internal::Signature> signatures,
       std::unique_ptr<OpKernelRunnerTable> runner_table,
       std::unique_ptr<tfd::FallbackResourceArray> resource_array,
-      std::unique_ptr<GraphExecutor> graph_executor);
+      std::unique_ptr<GraphExecutor> graph_executor,
+      InferredModelType inferred_model_type);
 
   ~SavedModelImpl() override = default;
 
@@ -240,16 +256,16 @@ class SavedModelImpl final : public SavedModel {
   std::optional<FunctionMetadata> GetFunctionMetadata(
       absl::string_view func_name) const override;
 
-  tensorflow::Status Run(const RunOptions& run_options, absl::string_view name,
-                         absl::Span<const tensorflow::Tensor> inputs,
-                         std::vector<tensorflow::Tensor>* outputs) override;
+  absl::Status Run(const RunOptions& run_options, absl::string_view name,
+                   absl::Span<const tensorflow::Tensor> inputs,
+                   std::vector<tensorflow::Tensor>* outputs) override;
 
-  tensorflow::Status RunMultipleSignatures(
+  absl::Status RunMultipleSignatures(
       const RunOptions& run_options, absl::Span<const std::string> names,
       absl::Span<const std::vector<tensorflow::Tensor>> multi_inputs,
       std::vector<std::vector<tensorflow::Tensor>>* multi_outputs) override;
 
-  tensorflow::Status RunByTensorNames(
+  absl::Status RunByTensorNames(
       const RunOptions& run_options,
       absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
       absl::Span<const std::string> output_tensor_names,
@@ -283,24 +299,24 @@ class SavedModelImpl final : public SavedModel {
 
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
   // `output_nodes`.
-  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSubgraph(
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSubgraph(
       mlir::MLIRContext* context, absl::string_view name,
       const tensorflow::GraphImportConfig::InputArrays& input_nodes,
       const std::vector<std::string>& output_nodes,
       const std::vector<std::string>& target_nodes);
 
   // Given the joined signature, loads the subgraph and returns loading result.
-  tensorflow::StatusOr<
-      std::reference_wrapper<const SavedModelImpl::LoadingResult>>
+  absl::StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
   LoadJoinedSignature(const JoinedSignature& joined_signature)
       TF_EXCLUSIVE_LOCKS_REQUIRED(loading_result_cache_mu_);
 
   // Returns the loading result given the signature names.
-  tensorflow::StatusOr<
-      std::reference_wrapper<const SavedModelImpl::LoadingResult>>
+  absl::StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
   GetOrCreateLoadingResult(const RunOptions& run_options,
                            absl::Span<const std::string> names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
+
+  void IncrementInferredModelTypePerRequestCount();
 
   SymbolUids symbol_uids_;
   // `meta_graph_def_` only contains metadata of the model. The graph_def field
@@ -326,6 +342,8 @@ class SavedModelImpl final : public SavedModel {
   absl::flat_hash_map<std::string /*joined_name*/,
                       std::unique_ptr<LoadingResult>>
       loading_result_cache_ TF_GUARDED_BY(loading_result_cache_mu_);
+
+  InferredModelType inferred_model_type_ = InferredModelType::kUncategorized;
 };
 
 class SavedModelMiraImpl;

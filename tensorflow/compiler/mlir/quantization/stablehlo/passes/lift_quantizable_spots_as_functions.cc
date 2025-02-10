@@ -16,10 +16,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/strings/str_replace.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -67,7 +65,7 @@ Attribute DefaultOrNullAttr(OpBuilder& builder, const Attribute& attr) {
 // Checks whether the value of a constant equals the given float, regardless
 // of the tensor dimension.
 bool FloatValueEquals(const Attribute& attr, const double value) {
-  const auto fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
+  const auto fp_attr = mlir::dyn_cast_or_null<DenseFPElementsAttr>(attr);
   if (!fp_attr) return false;
 
   if (fp_attr.isSplat()) {
@@ -76,6 +74,12 @@ bool FloatValueEquals(const Attribute& attr, const double value) {
   return llvm::all_of(fp_attr.getValues<APFloat>(), [value](const APFloat& f) {
     return f.isExactlyValue(value);
   });
+}
+
+inline void TrimTrailingWhitespaces(std::string& str) {
+  while (!str.empty() && str.back() == ' ') {
+    str.pop_back();
+  }
 }
 
 // Lifts quantizable units as separate functions, thereby identifying the
@@ -148,16 +152,22 @@ class FunctionNameMatcher {
   std::unique_ptr<RE2> match_regex_;  // NOLINT
 };
 
-// Converts `Method` to text proto representation. All newline characters are
-// removed.
+// Converts `Method` to a single-line textproto representation. Returns
+// `failure()` when converting to textproto failed.
 FailureOr<std::string> QuantizationMethodToTextProto(const Method& method) {
+  TextFormat::Printer printer;
+  printer.SetSingleLineMode(true);
+
   std::string method_txtpb;
-  if (!TextFormat::PrintToString(method, &method_txtpb)) {
+  if (!printer.PrintToString(method, &method_txtpb)) {
+    LLVM_DEBUG(llvm::dbgs() << "Failed to convert Method to textproto\n.");
     return failure();
   }
 
-  // Remove newlines.
-  absl::StrReplaceAll({{"\n", ""}}, &method_txtpb);
+  // Single line mode might have an extra space at the end, due to the internal
+  // details of `Printer`.
+  TrimTrailingWhitespaces(method_txtpb);
+
   return method_txtpb;
 }
 
@@ -166,45 +176,25 @@ FailureOr<std::string> QuantizationMethodToTextProto(const Method& method) {
 // TODO: b/307620778 - Support more advanced selective quantization methods.
 LogicalResult ApplyQuantizationSpec(const QuantizationSpec& spec,
                                     ModuleOp module_op) {
-  func::FuncOp main_func = FindMainFuncOp(module_op);
-  if (!main_func) return failure();
-
   const Method& quantization_method = spec.method();
-  if (!quantization_method.has_no_quantization()) {
-    module_op->emitError() << "Unsupported quantization method: "
-                           << quantization_method.DebugString() << "\n";
-    return failure();
-  }
 
   FailureOr<std::string> quantization_method_txtpb =
       QuantizationMethodToTextProto(quantization_method);
   if (failed(quantization_method_txtpb)) return failure();
 
   const FunctionNameMatcher matcher(spec.matcher().function_name());
-  for (auto xla_call_module_op : main_func.getOps<TF::XlaCallModuleOp>()) {
-    if (!matcher.Match(xla_call_module_op)) continue;
+  // Iterate over all XlaCallModuleOp in all FuncOps.
+  for (auto func : module_op.getOps<func::FuncOp>()) {
+    for (auto xla_call_module_op : func.getOps<TF::XlaCallModuleOp>()) {
+      if (!matcher.Match(xla_call_module_op)) continue;
 
-    // Set the text representation of `Method` to matched `TF::XlaCallModuleOp`.
-    xla_call_module_op->setAttr(
-        kQuantizationMethodAttr,
-        StringAttr::get(module_op.getContext(),
-                        std::move(*quantization_method_txtpb)));
-
-    // Disable quantization when matched.
-    const std::string lifted_func_name =
-        xla_call_module_op->getAttrOfType<FlatSymbolRefAttr>("_entry_function")
-            .getValue()
-            .str();
-    auto lifted_func = module_op.lookupSymbol<func::FuncOp>(lifted_func_name);
-
-    // Remove relevant attributes that enable quantization. This essentially
-    // disables quantization for the matched `xla_call_module_op`.
-    xla_call_module_op->removeAttr("_original_entry_function");
-    xla_call_module_op->removeAttr("_tfl_quant_trait");
-    lifted_func->removeAttr("tf_quant.composite_function");
-
-    LLVM_DEBUG(llvm::dbgs() << "Disabled quantization for quantizable unit: "
-                            << lifted_func_name << "\n");
+      // Set the text representation of `Method` to matched
+      // `TF::XlaCallModuleOp`.
+      xla_call_module_op->setAttr(
+          kQuantizationMethodAttr,
+          StringAttr::get(module_op.getContext(),
+                          std::move(*quantization_method_txtpb)));
+    }
   }
   return success();
 }
@@ -217,8 +207,10 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
   simple_patterns::populateWithGenerated(patterns);
   fusion_patterns::populateWithGenerated(patterns);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
-  for (auto func : module_op.getOps<func::FuncOp>()) {
-    if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
+
+  // Iterate over the sorted list of functions to keep order deterministic.
+  for (func::FuncOp func : GetSortedFunctions(module_op)) {
+    if (failed(applyPatternsGreedily(func, frozen_patterns))) {
       func.emitError()
           << "quant-stablehlo-lift-quantizable-spots-as-functions failed.";
       signalPassFailure();

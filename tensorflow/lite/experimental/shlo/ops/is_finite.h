@@ -23,13 +23,11 @@ namespace shlo_ref {
 
 struct IsFiniteOp {
   struct Attributes {};
-  Tensor operand;
-  Tensor result;
 };
 
 IsFiniteOp Create(const IsFiniteOp::Attributes& attributes);
-absl::Status Prepare(IsFiniteOp& op, Tensor operand, Tensor result);
-absl::Status Evaluate(IsFiniteOp& op);
+absl::Status Prepare(IsFiniteOp& op, const Tensor& operand, Tensor& result);
+absl::Status Evaluate(IsFiniteOp& op, const Tensor& operand, Tensor& result);
 
 }  // namespace shlo_ref
 

@@ -18,9 +18,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
@@ -86,7 +88,7 @@ uint64 GetLatencyMicroseconds(const uint64 start_microseconds) {
 // Ensure that constant tensors loaded from the saved model have valid shape.
 // Also ensure that constant nodes have a value assigned to them.
 // TODO(b/154763635): this is temporary and will be replaced with a better audit
-static Status ValidateNode(const NodeDef& node) {
+static absl::Status ValidateNode(const NodeDef& node) {
   const auto node_iterator = node.attr().find("value");
   if (node_iterator != node.attr().end()) {
     AttrValue node_value = node_iterator->second;
@@ -107,7 +109,7 @@ static Status ValidateNode(const NodeDef& node) {
   return absl::OkStatus();
 }
 
-static Status ValidateFunctionNotRecursive(const FunctionDef& function) {
+static absl::Status ValidateFunctionNotRecursive(const FunctionDef& function) {
   const auto& function_name = function.signature().name();
   for (const auto& node : function.node_def()) {
     if (node.op() == function_name) {
@@ -120,7 +122,7 @@ static Status ValidateFunctionNotRecursive(const FunctionDef& function) {
   return absl::OkStatus();
 }
 
-static Status ValidateSavedTensors(const GraphDef& graph_def) {
+static absl::Status ValidateSavedTensors(const GraphDef& graph_def) {
   for (const auto& node : graph_def.node()) {
     TF_RETURN_IF_ERROR(ValidateNode(node));
   }
@@ -146,7 +148,7 @@ Tensor CreateStringTensor(const string& value) {
   return tensor;
 }
 
-void AddAssetsTensorsToInputs(const StringPiece export_dir,
+void AddAssetsTensorsToInputs(const absl::string_view export_dir,
                               const std::vector<AssetFileDef>& asset_file_defs,
                               std::vector<std::pair<string, Tensor>>* inputs) {
   if (asset_file_defs.empty()) {
@@ -176,12 +178,12 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
 // right after ReleaseCallable returns.
 //
 // However, the resource manager state remains.
-Status RunOnce(const RunOptions& run_options,
-               const std::vector<std::pair<string, Tensor>>& inputs,
-               const std::vector<string>& output_tensor_names,
-               const std::vector<string>& target_node_names,
-               std::vector<Tensor>* outputs, RunMetadata* run_metadata,
-               Session* session) {
+absl::Status RunOnce(const RunOptions& run_options,
+                     const std::vector<std::pair<string, Tensor>>& inputs,
+                     const std::vector<string>& output_tensor_names,
+                     const std::vector<string>& target_node_names,
+                     std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+                     Session* session) {
   CallableOptions callable_options;
   std::vector<Tensor> feed_tensors;
   *callable_options.mutable_run_options() = run_options;
@@ -200,8 +202,8 @@ Status RunOnce(const RunOptions& run_options,
 
   Session::CallableHandle callable_handle;
   TF_RETURN_IF_ERROR(session->MakeCallable(callable_options, &callable_handle));
-  const Status run_status = session->RunCallable(callable_handle, feed_tensors,
-                                                 outputs, run_metadata);
+  const absl::Status run_status = session->RunCallable(
+      callable_handle, feed_tensors, outputs, run_metadata);
   // Be sure to call ReleaseCallable() regardless of the outcome of
   // RunCallable().
   session->ReleaseCallable(callable_handle).IgnoreError();
@@ -210,10 +212,10 @@ Status RunOnce(const RunOptions& run_options,
 
 // RunInitOp will return OK if the initialization op was run successfully.
 // An empty init_op_name indicates that there are no init ops to run.
-Status RunInitOp(const RunOptions& run_options, const string& export_dir,
-                 const MetaGraphDef& meta_graph_def,
-                 const std::vector<AssetFileDef>& asset_file_defs,
-                 Session* session, const string& init_op_name) {
+absl::Status RunInitOp(const RunOptions& run_options, const string& export_dir,
+                       const MetaGraphDef& meta_graph_def,
+                       const std::vector<AssetFileDef>& asset_file_defs,
+                       Session* session, const string& init_op_name) {
   if (!init_op_name.empty()) {
     LOG(INFO) << "Running initialization op on SavedModel bundle at path: "
               << export_dir;
@@ -226,11 +228,11 @@ Status RunInitOp(const RunOptions& run_options, const string& export_dir,
   return absl::OkStatus();
 }
 
-Status RunRestore(const RunOptions& run_options, const string& export_dir,
-                  const StringPiece restore_op_name,
-                  const StringPiece variable_filename_const_op_name,
-                  const std::vector<AssetFileDef>& asset_file_defs,
-                  Session* session) {
+absl::Status RunRestore(const RunOptions& run_options, const string& export_dir,
+                        const absl::string_view restore_op_name,
+                        const absl::string_view variable_filename_const_op_name,
+                        const std::vector<AssetFileDef>& asset_file_defs,
+                        Session* session) {
   LOG(INFO) << "Restoring SavedModel bundle.";
   // Find path to variables to be restored in export directory.
   const string variables_directory =
@@ -270,9 +272,9 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
 
 SavedModelBundleInterface::~SavedModelBundleInterface() = default;
 
-Status LoadMetagraphIntoSession(const SessionOptions& session_options,
-                                const MetaGraphDef& meta_graph,
-                                std::unique_ptr<Session>* session) {
+absl::Status LoadMetagraphIntoSession(const SessionOptions& session_options,
+                                      const MetaGraphDef& meta_graph,
+                                      std::unique_ptr<Session>* session) {
   Session* session_p = nullptr;
   TF_RETURN_IF_ERROR(NewSession(session_options, &session_p));
   session->reset(session_p);
@@ -280,11 +282,21 @@ Status LoadMetagraphIntoSession(const SessionOptions& session_options,
   return (*session)->Create(meta_graph.graph_def());
 }
 
-Status LoadSavedModelInternal(const SessionOptions& session_options,
-                              const RunOptions& run_options,
-                              const string& export_dir,
-                              const std::unordered_set<string>& tags,
-                              SavedModelBundle* const bundle) {
+absl::Status LoadGraphDefIntoSession(const SessionOptions& session_options,
+                                     GraphDef graph_def,
+                                     std::unique_ptr<Session>* session) {
+  Session* session_p = nullptr;
+  TF_RETURN_IF_ERROR(NewSession(session_options, &session_p));
+  session->reset(session_p);
+  TF_RETURN_IF_ERROR(ValidateSavedTensors(graph_def));
+  return (*session)->Create(std::move(graph_def));
+}
+
+absl::Status LoadSavedModelInternal(const SessionOptions& session_options,
+                                    const RunOptions& run_options,
+                                    const string& export_dir,
+                                    const std::unordered_set<string>& tags,
+                                    SavedModelBundle* const bundle) {
   TF_RETURN_IF_ERROR(ReadMetaGraphDefFromSavedModel(export_dir, tags,
                                                     &bundle->meta_graph_def));
   TF_RETURN_IF_ERROR(
@@ -296,10 +308,152 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
   return absl::OkStatus();
 }
 
-Status LoadSavedModel(const SessionOptions& session_options,
-                      const RunOptions& run_options, const string& export_dir,
-                      const std::unordered_set<string>& tags,
-                      SavedModelBundle* const bundle) {
+namespace {
+// Session wrapper that prevents calls to Session::Create(), Session::Extend(),
+// and the deprecated partial-run methods.
+//
+// Limiting the available methods on a returned Session gives us the option
+// to replace the Session with a cut-down implementation, without breaking any
+// users.
+class LiteSessionWrapper : public Session {
+ public:
+  explicit LiteSessionWrapper(std::unique_ptr<Session> wrapped)
+      : wrapped_(std::move(wrapped)) {}
+
+  absl::Status Create(const GraphDef& graph) override {
+    return absl::UnimplementedError("Session::Create()");
+  }
+  absl::Status Create(GraphDef&& graph) override {
+    return absl::UnimplementedError("Session::Create()");
+  }
+
+  absl::Status Extend(const GraphDef& graph) override {
+    return absl::UnimplementedError("Session::Extend()");
+  }
+  absl::Status Extend(GraphDef&& graph) override {
+    return absl::UnimplementedError("Session::Extend()");
+  }
+
+  absl::Status Run(const std::vector<std::pair<string, Tensor>>& inputs,
+                   const std::vector<string>& output_tensor_names,
+                   const std::vector<string>& target_node_names,
+                   std::vector<Tensor>* outputs) override {
+    return wrapped_->Run(inputs, output_tensor_names, target_node_names,
+                         outputs);
+  }
+
+  absl::Status Create(const RunOptions& run_options,
+                      const GraphDef& graph) override {
+    return absl::UnimplementedError("Session::Create()");
+  }
+  absl::Status Extend(const RunOptions& run_options,
+                      const GraphDef& graph) override {
+    return absl::UnimplementedError("Session::Extend()");
+  }
+  absl::Status Create(const RunOptions& run_options,
+                      GraphDef&& graph) override {
+    return absl::UnimplementedError("Session::Create()");
+  }
+  absl::Status Extend(const RunOptions& run_options,
+                      GraphDef&& graph) override {
+    return absl::UnimplementedError("Session::Extend()");
+  }
+  absl::Status Close(const RunOptions& run_options) override {
+    return wrapped_->Close(run_options);
+  }
+
+  absl::Status Run(const RunOptions& run_options,
+                   const std::vector<std::pair<string, Tensor>>& inputs,
+                   const std::vector<string>& output_tensor_names,
+                   const std::vector<string>& target_node_names,
+                   std::vector<Tensor>* outputs,
+                   RunMetadata* run_metadata) override {
+    return wrapped_->Run(run_options, inputs, output_tensor_names,
+                         target_node_names, outputs, run_metadata);
+  }
+
+  absl::Status PRunSetup(const std::vector<string>& input_names,
+                         const std::vector<string>& output_names,
+                         const std::vector<string>& target_nodes,
+                         string* handle) override {
+    return absl::UnimplementedError("Session::PRunSetup()");
+  }
+
+  absl::Status PRun(const string& handle,
+                    const std::vector<std::pair<string, Tensor>>& inputs,
+                    const std::vector<string>& output_names,
+                    std::vector<Tensor>* outputs) override {
+    return absl::UnimplementedError("Session::PRun()");
+  }
+
+  absl::Status ListDevices(std::vector<DeviceAttributes>* response) override {
+    return wrapped_->ListDevices(response);
+  }
+
+  absl::Status Close() override { return wrapped_->Close(); }
+
+  absl::Status LocalDeviceManager(const DeviceMgr** device_mgr) override {
+    return wrapped_->LocalDeviceManager(device_mgr);
+  }
+
+  absl::Status MakeCallable(const CallableOptions& callable_options,
+                            CallableHandle* out_handle) override {
+    return wrapped_->MakeCallable(callable_options, out_handle);
+  }
+
+  absl::Status RunCallable(CallableHandle handle,
+                           const std::vector<Tensor>& feed_tensors,
+                           std::vector<Tensor>* fetch_tensors,
+                           RunMetadata* run_metadata) override {
+    return wrapped_->RunCallable(handle, feed_tensors, fetch_tensors,
+                                 run_metadata);
+  }
+
+  absl::Status RunCallable(
+      CallableHandle handle, const std::vector<Tensor>& feed_tensors,
+      std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options) override {
+    return wrapped_->RunCallable(handle, feed_tensors, fetch_tensors,
+                                 run_metadata, threadpool_options);
+  }
+
+  absl::Status ReleaseCallable(CallableHandle handle) override {
+    return wrapped_->ReleaseCallable(handle);
+  }
+
+  absl::Status Finalize() override { return wrapped_->Finalize(); }
+
+ private:
+  const std::unique_ptr<Session> wrapped_;
+};
+}  // namespace
+
+absl::Status LoadSavedModelInternal(const SessionOptions& session_options,
+                                    const RunOptions& run_options,
+                                    const string& export_dir,
+                                    const std::unordered_set<string>& tags,
+                                    SavedModelBundleLite* const bundle) {
+  MetaGraphDef meta_graph_def;
+  TF_RETURN_IF_ERROR(
+      ReadMetaGraphDefFromSavedModel(export_dir, tags, &meta_graph_def));
+  std::unique_ptr<Session> session;
+  TF_RETURN_IF_ERROR(LoadGraphDefIntoSession(
+      session_options, std::move(*meta_graph_def.mutable_graph_def()),
+      &session));
+  TF_RETURN_IF_ERROR(
+      RestoreSession(run_options, meta_graph_def, export_dir, &session));
+  *bundle = SavedModelBundleLite(
+      std::make_unique<LiteSessionWrapper>(std::move(session)),
+      std::move(*meta_graph_def.mutable_signature_def()));
+  return absl::OkStatus();
+}
+
+template <typename BundleType>
+absl::Status LoadSavedModelGeneric(const SessionOptions& session_options,
+                                   const RunOptions& run_options,
+                                   const string& export_dir,
+                                   const std::unordered_set<string>& tags,
+                                   BundleType* const bundle) {
   metrics::SavedModelReadApi(kCCLoadLabel).IncrementBy(1);
   auto fingerprint_proto =
       saved_model::fingerprinting::ReadSavedModelFingerprint(export_dir);
@@ -311,8 +465,8 @@ Status LoadSavedModel(const SessionOptions& session_options,
 
   // TODO(robson): Add tests for the counters.
   const uint64 start_microseconds = Env::Default()->NowMicros();
-  const Status status = LoadSavedModelInternal(session_options, run_options,
-                                               export_dir, tags, bundle);
+  const absl::Status status = LoadSavedModelInternal(
+      session_options, run_options, export_dir, tags, bundle);
   auto log_and_count = [&](const string& status_str) {
     LOG(INFO) << "SavedModel load for tags { " << absl::StrJoin(tags, " ")
               << " }; Status: " << status_str << ": " << status << ". Took "
@@ -330,120 +484,19 @@ Status LoadSavedModel(const SessionOptions& session_options,
   return status;
 }
 
-namespace {
-// Session wrapper that prevents calls to Session::Create(), Session::Extend(),
-// and the deprecated partial-run methods.
-//
-// Limiting the available methods on a returned Session gives us the option
-// to replace the Session with a cut-down implementation, without breaking any
-// users.
-class LiteSessionWrapper : public Session {
- public:
-  explicit LiteSessionWrapper(std::unique_ptr<Session> wrapped)
-      : wrapped_(std::move(wrapped)) {}
+absl::Status LoadSavedModel(const SessionOptions& session_options,
+                            const RunOptions& run_options,
+                            const string& export_dir,
+                            const std::unordered_set<string>& tags,
+                            SavedModelBundle* const bundle) {
+  return LoadSavedModelGeneric<SavedModelBundle>(session_options, run_options,
+                                                 export_dir, tags, bundle);
+}
 
-  Status Create(const GraphDef& graph) override {
-    return absl::UnimplementedError("Session::Create()");
-  }
-  Status Create(GraphDef&& graph) override {
-    return absl::UnimplementedError("Session::Create()");
-  }
-
-  Status Extend(const GraphDef& graph) override {
-    return absl::UnimplementedError("Session::Extend()");
-  }
-  Status Extend(GraphDef&& graph) override {
-    return absl::UnimplementedError("Session::Extend()");
-  }
-
-  Status Run(const std::vector<std::pair<string, Tensor>>& inputs,
-             const std::vector<string>& output_tensor_names,
-             const std::vector<string>& target_node_names,
-             std::vector<Tensor>* outputs) override {
-    return wrapped_->Run(inputs, output_tensor_names, target_node_names,
-                         outputs);
-  }
-
-  Status Create(const RunOptions& run_options, const GraphDef& graph) override {
-    return absl::UnimplementedError("Session::Create()");
-  }
-  Status Extend(const RunOptions& run_options, const GraphDef& graph) override {
-    return absl::UnimplementedError("Session::Extend()");
-  }
-  Status Create(const RunOptions& run_options, GraphDef&& graph) override {
-    return absl::UnimplementedError("Session::Create()");
-  }
-  Status Extend(const RunOptions& run_options, GraphDef&& graph) override {
-    return absl::UnimplementedError("Session::Extend()");
-  }
-  Status Close(const RunOptions& run_options) override {
-    return wrapped_->Close(run_options);
-  }
-
-  Status Run(const RunOptions& run_options,
-             const std::vector<std::pair<string, Tensor>>& inputs,
-             const std::vector<string>& output_tensor_names,
-             const std::vector<string>& target_node_names,
-             std::vector<Tensor>* outputs, RunMetadata* run_metadata) override {
-    return wrapped_->Run(run_options, inputs, output_tensor_names,
-                         target_node_names, outputs, run_metadata);
-  }
-
-  Status PRunSetup(const std::vector<string>& input_names,
-                   const std::vector<string>& output_names,
-                   const std::vector<string>& target_nodes,
-                   string* handle) override {
-    return absl::UnimplementedError("Session::PRunSetup()");
-  }
-
-  Status PRun(const string& handle,
-              const std::vector<std::pair<string, Tensor>>& inputs,
-              const std::vector<string>& output_names,
-              std::vector<Tensor>* outputs) override {
-    return absl::UnimplementedError("Session::PRun()");
-  }
-
-  Status ListDevices(std::vector<DeviceAttributes>* response) override {
-    return wrapped_->ListDevices(response);
-  }
-
-  Status Close() override { return wrapped_->Close(); }
-
-  Status MakeCallable(const CallableOptions& callable_options,
-                      CallableHandle* out_handle) override {
-    return wrapped_->MakeCallable(callable_options, out_handle);
-  }
-
-  Status RunCallable(CallableHandle handle,
-                     const std::vector<Tensor>& feed_tensors,
-                     std::vector<Tensor>* fetch_tensors,
-                     RunMetadata* run_metadata) override {
-    return wrapped_->RunCallable(handle, feed_tensors, fetch_tensors,
-                                 run_metadata);
-  }
-
-  Status RunCallable(
-      CallableHandle handle, const std::vector<Tensor>& feed_tensors,
-      std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
-      const thread::ThreadPoolOptions& threadpool_options) override {
-    return wrapped_->RunCallable(handle, feed_tensors, fetch_tensors,
-                                 run_metadata, threadpool_options);
-  }
-
-  Status ReleaseCallable(CallableHandle handle) override {
-    return wrapped_->ReleaseCallable(handle);
-  }
-
-  Status Finalize() override { return wrapped_->Finalize(); }
-
- private:
-  const std::unique_ptr<Session> wrapped_;
-};
-}  // namespace
-
-Status RestoreSession(const RunOptions& run_options,
-                      const MetaGraphDef& meta_graph, const string& export_dir,
-                      std::unique_ptr<Session>* session) {
+absl::Status RestoreSession(const RunOptions& run_options,
+                            const MetaGraphDef& meta_graph,
+                            const string& export_dir,
+                            std::unique_ptr<Session>* session) {
   const uint64 read_start_microseconds = Env::Default()->NowMicros();
   std::vector<AssetFileDef> asset_file_defs;
   TF_RETURN_IF_ERROR(internal::GetAssetFileDefs(meta_graph, &asset_file_defs));
@@ -472,11 +525,11 @@ Status RestoreSession(const RunOptions& run_options,
   return absl::OkStatus();
 }
 
-Status LoadSavedModel(const SessionOptions& session_options,
-                      const RunOptions& run_options, const string& export_dir,
-                      const std::unordered_set<string>& tags,
-                      SavedModelBundleLite* const bundle) {
-  SavedModelBundle legacy_bundle;
+absl::Status LoadSavedModel(const SessionOptions& session_options,
+                            const RunOptions& run_options,
+                            const string& export_dir,
+                            const std::unordered_set<string>& tags,
+                            SavedModelBundleLite* const bundle) {
   SessionOptions rewritten_options(session_options);
   // We disallow calls to Session::Extend() on the returned session, so we can
   // reduce memory consumption by not storing the original GraphDef.
@@ -489,11 +542,8 @@ Status LoadSavedModel(const SessionOptions& session_options,
       ->set_disable_output_partition_graphs(true);
   // TODO(mrry): Consider specializing the session creation to reduce peak
   // RAM consumption by using `Session::Create(GraphDef&&)`.
-  TF_RETURN_IF_ERROR(LoadSavedModel(rewritten_options, run_options, export_dir,
-                                    tags, &legacy_bundle));
-  *bundle = SavedModelBundleLite(
-      std::make_unique<LiteSessionWrapper>(std::move(legacy_bundle.session)),
-      std::move(*legacy_bundle.meta_graph_def.mutable_signature_def()));
+  TF_RETURN_IF_ERROR(LoadSavedModelGeneric(rewritten_options, run_options,
+                                           export_dir, tags, bundle));
   return absl::OkStatus();
 }
 

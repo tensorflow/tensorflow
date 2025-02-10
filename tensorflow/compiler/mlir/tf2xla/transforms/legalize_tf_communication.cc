@@ -17,6 +17,7 @@ limitations under the License.
 // ops (TF/XLA) to the HLO dialect.
 
 #include <atomic>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -42,11 +43,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/client/sharding_builder.h"
+#include "xla/hlo/builder/sharding_builder.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/primitive_util.h"
 #include "xla/side_effect_util.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/xla_data.pb.h"
 
 namespace mlir {
 
@@ -458,7 +460,7 @@ SmallVector<Value> GetValueWithToken(
     return new_result;
   };
 
-  auto tuple_type = value.getType().dyn_cast<TupleType>();
+  auto tuple_type = mlir::dyn_cast<TupleType>(value.getType());
   // `value` is not a tuple, create a new tuple.
   if (!tuple_type) return {create_tuple({value, token})};
 
@@ -499,7 +501,7 @@ SmallVector<Type> GetTypeWithToken(OpBuilder& builder, ArrayRef<Type> types,
   }
 
   auto type = types[0];
-  if (auto tuple_type = type.dyn_cast<TupleType>()) {
+  if (auto tuple_type = mlir::dyn_cast<TupleType>(type)) {
     auto result_types = llvm::to_vector(tuple_type.getTypes());
     result_types.push_back(token_type);
     return {builder.getTupleType(result_types)};
@@ -536,7 +538,7 @@ void ReplaceWithTupleResult(OpBuilder& builder, ValueRange values,
 
   auto value = values[0];
   auto replacement = replacements[0];
-  auto tuple_type = value.getType().dyn_cast<TupleType>();
+  auto tuple_type = mlir::dyn_cast<TupleType>(value.getType());
   if (!tuple_type) {
     if (!value.use_empty()) {
       auto new_element = builder.create<GetTupleElementOp>(replacement.getLoc(),

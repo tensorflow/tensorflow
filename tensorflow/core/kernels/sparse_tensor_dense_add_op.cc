@@ -33,8 +33,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 namespace {
 
 template <typename Index>
-Status ValidateInputs(const Tensor *a_indices, const Tensor *a_values,
-                      const Tensor *a_shape, const Tensor *b) {
+absl::Status ValidateInputs(const Tensor *a_indices, const Tensor *a_values,
+                            const Tensor *a_shape, const Tensor *b) {
   if (!TensorShapeUtils::IsMatrix(a_indices->shape())) {
     return errors::InvalidArgument(
         "Input a_indices should be a matrix but received shape: ",

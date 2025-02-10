@@ -18,10 +18,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_KERNEL_UTILS_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_KERNEL_UTILS_H_
 
+#include <cassert>
+#include <cstring>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
@@ -58,7 +61,7 @@ using OwnedAbstractTensorInterface = AutoReleasePtr<AbstractTensorInterface>;
 
 // Check if a TensorHandle physically resides on GPU.
 inline bool IsGpuTensorHandle(const tensorflow::TensorHandle& handle) {
-  tensorflow::Status dummy_status;
+  absl::Status dummy_status;
   // BackingDeviceName is where the tensor is physically located, not where the
   // op that produces the tensor is.
   // Note that dummy_status is never set in TensorHandle::BackingDeviceName.
@@ -134,9 +137,9 @@ class EagerContextResource {
 
   llvm::Error AddDevices(std::vector<std::unique_ptr<Device>> devices) {
     if (!ctx_) return ctx_.takeError();
-    Status s = dynamic_cast<tensorflow::DynamicDeviceMgr*>(
-                   ctx_.get()->local_device_mgr())
-                   ->AddDevices(std::move(devices));
+    absl::Status s = dynamic_cast<tensorflow::DynamicDeviceMgr*>(
+                         ctx_.get()->local_device_mgr())
+                         ->AddDevices(std::move(devices));
     if (!s.ok()) return tfrt::MakeStringError(s.message());
     ctx_.get()->InitPrioritizedDeviceTypeList();
     ctx_.get()->pflr()->InitializeDeviceAndFlr();

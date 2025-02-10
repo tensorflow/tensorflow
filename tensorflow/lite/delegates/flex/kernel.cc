@@ -66,6 +66,7 @@ namespace tflite {
 namespace flex {
 
 constexpr char kReadVariableOp[] = "ReadVariableOp";
+constexpr char kInterOpParallelismAttrName[] = "use_inter_op_parallelism";
 
 struct OpNode;
 
@@ -155,14 +156,14 @@ class OpOutputs {
 
   int TfLiteIndex(int i) const { return outputs_[i]; }
 
-  tensorflow::gtl::InlinedVector<tensorflow::Tensor, 2>* GetTensors() {
+  absl::InlinedVector<tensorflow::Tensor, 2UL>* GetTensors() {
     return &vector_;
   }
 
  private:
   std::vector<int> outputs_;
   std::vector<bool> subgraph_outputs_;
-  tensorflow::gtl::InlinedVector<tensorflow::Tensor, 2> vector_;
+  absl::InlinedVector<tensorflow::Tensor, 2UL> vector_;
 };
 
 // This struct holds information such as tensor lifecycle and BufferMap which
@@ -211,8 +212,8 @@ class OpNode {
     return op_kernel_runner_;
   }
 
-  tensorflow::Status InitializeNodeDef(const void* custom_initial_data,
-                                       int custom_initial_data_size) {
+  absl::Status InitializeNodeDef(const void* custom_initial_data,
+                                 int custom_initial_data_size) {
     if (!custom_initial_data) {
       return tensorflow::errors::Internal(
           "Cannot convert empty data into a valid NodeDef");
@@ -245,28 +246,33 @@ class OpNode {
     // It should be ok to remove this when/if the tensorflow::Executor::Run
     // function is changed not to call the RunAsync function and wait on its
     // completion. See b/304799442 for more context.
-    (*nodedef_.mutable_attr())["use_inter_op_parallelism"].set_b(false);
+    const auto& op_def = op_reg_data_->op_def;
+    for (const auto& attr : op_def.attr()) {
+      if (attr.name() == kInterOpParallelismAttrName) {
+        (*nodedef_.mutable_attr())[kInterOpParallelismAttrName].set_b(false);
+        break;
+      }
+    }
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
-  tensorflow::Status BuildOpKernelRunner(
-      tensorflow::EagerContext* eager_context) {
+  absl::Status BuildOpKernelRunner(tensorflow::EagerContext* eager_context) {
     // Create tensorflow::OpKernel on host CPU.
     TF_ASSIGN_OR_RETURN(op_kernel_runner_,
                         tensorflow::tfrt_stub::OpKernelRunner::Create(
                             name_, inputs_.Size(), /*attr_builder=*/
                             [this](tensorflow::AttrValueMap* attr_value_map) {
                               *attr_value_map = nodedef_.attr();
-                              return ::tensorflow::OkStatus();
+                              return absl::OkStatus();
                             },
                             *eager_context->pflr(),
                             eager_context->local_device_mgr()->HostCPU()));
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
-  tensorflow::Status BuildOpKernelInputs(
+  absl::Status BuildOpKernelInputs(
       const BufferMap* buffer_map,
       tensorflow::tfrt_stub::OpKernelRunState* run_state) {
     run_state->input_tf_tensors.resize(inputs_.Size());
@@ -298,7 +304,7 @@ class OpNode {
       run_state->input_tf_tensor_values[i].tensor =
           &run_state->input_tf_tensors[i];
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns whether an output tensor should be preserved in the buffer map by
@@ -352,9 +358,9 @@ class OpNode {
 
   // TODO(b/204479285): Release tensors from BufferMap if it has no future
   // uses.
-  tensorflow::Status MaybePersistTensorflowOutputs(TfLiteContext* context,
-                                                   OpDataInfo* shared_info,
-                                                   int node_index) {
+  absl::Status MaybePersistTensorflowOutputs(TfLiteContext* context,
+                                             OpDataInfo* shared_info,
+                                             int node_index) {
     auto* tensors = outputs_.GetTensors();
 
     for (int i = 0; i < outputs_.Size(); ++i) {
@@ -366,8 +372,8 @@ class OpNode {
                                            node_index)) {
           if (CopyToTfLiteTensor(context, shared_info, tensor, &tf_tensor,
                                  tflite_index) != kTfLiteOk) {
-            return tensorflow::Status(absl::StatusCode::kInternal,
-                                      "failed to copy data from TF tensor");
+            return absl::Status(absl::StatusCode::kInternal,
+                                "failed to copy data from TF tensor");
           }
         } else {
           shared_info->buffer_map->SetFromTensorFlow(outputs_.TfLiteIndex(i),
@@ -375,7 +381,7 @@ class OpNode {
         }
       }
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -412,7 +418,7 @@ struct OpData {
   OpDataInfo shared_info;
 };
 
-tensorflow::Status DelegateKernel::ExecuteOpKernelRunner(
+absl::Status DelegateKernel::ExecuteOpKernelRunner(
     tensorflow::tfrt_stub::OpKernelRunState* run_state, TfLiteContext* context,
     OpNode* node_data) {
   const auto& op_kernel_runner = node_data->op_kernel_runner();
@@ -477,7 +483,7 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   op_data_->nodes.reserve(params->nodes_to_replace->size);
 
   CHECK(params->nodes_to_replace);
-  tensorflow::Status status;
+  absl::Status status;
 
   // Now we explicitly disable reusing TFLite tensor buffers for certain TF ops,
   // since those ops might produce results which keep reference of the input
@@ -664,7 +670,7 @@ TfLiteStatus DelegateKernel::ValidateOutputTensorShapeConsistency(
     }
     c.set_input_tensors(input_tensors_vector);
 
-    tensorflow::Status status = c.construction_status();
+    absl::Status status = c.construction_status();
     if (!status.ok()) {
       TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
                  "Shape construction failed for op '%s'", op_name);

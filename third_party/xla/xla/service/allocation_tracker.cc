@@ -15,19 +15,26 @@ limitations under the License.
 
 #include "xla/service/allocation_tracker.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "xla/map_util.h"
-#include "xla/service/transfer_manager.h"
+#include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -94,7 +101,7 @@ absl::StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
   return result;
 }
 
-Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
+absl::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   absl::MutexLock lock(&mutex_);
   VLOG(2) << "Unregister("
           << "handle: " << data.handle() << ")";
@@ -123,7 +130,7 @@ Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
   for (auto& shaped_buffer : it->second) {
     shaped_buffer.reset();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<GlobalDataHandle>>
@@ -218,8 +225,8 @@ void AllocationTracker::AddAllocationOrIncrementRefCount(
   }
 }
 
-Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
-                                            int device_ordinal) {
+absl::Status AllocationTracker::DecrementRefCount(
+    se::DeviceMemoryBase device_memory, int device_ordinal) {
   AllocationMap& allocation_map = opaque_to_allocation_map_[device_ordinal];
   auto it = allocation_map.find(device_memory.opaque());
   TF_RET_CHECK(it != allocation_map.end());
@@ -231,7 +238,7 @@ Status AllocationTracker::DecrementRefCount(se::DeviceMemoryBase device_memory,
   } else {
     allocation.ref_count--;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

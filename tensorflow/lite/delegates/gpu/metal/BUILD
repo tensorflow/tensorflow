@@ -1,16 +1,17 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow:tensorflow.bzl", "workspace_root")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
+load("//tensorflow/lite:build_def.bzl", "CXX17_BAZEL_ONLY_COPTS")
 load(
     "//tensorflow/lite:special_rules.bzl",
     "tflite_ios_lab_runner",
     "tflite_ios_per_kernel_test",
     "tflite_portable_test_suite",
 )
-load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "tf_gpu_tests_tags",
-)
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//tensorflow:tensorflow.bzl", "workspace_root")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -20,8 +21,7 @@ package(
 
 DEFAULT_COPTS = [
     "-Wno-shorten-64-to-32",
-    "-std=c++17",
-]
+] + CXX17_BAZEL_ONLY_COPTS
 
 objc_library(
     name = "buffer",
@@ -297,6 +297,7 @@ objc_library(
 
 ios_unit_test(
     name = "ComponentsTests",
+    families = ["iphone"],
     minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + ["notap"],

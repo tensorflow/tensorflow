@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/global_pooling_to_reduce_op.h"
 
+#include <any>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
@@ -56,7 +56,7 @@ class GlobalPoolingToReduceOp : public NodeTransformation {
     auto inputs = graph->FindInputs(node->id);
     auto outputs = graph->FindOutputs(node->id);
     const auto& pool_attr =
-        absl::any_cast<const Pooling2DAttributes&>(node->operation.attributes);
+        std::any_cast<const Pooling2DAttributes&>(node->operation.attributes);
     if (!IsGlobalAveragePooling(pool_attr, inputs[0]->tensor.shape,
                                 outputs[0]->tensor.shape)) {
       return {TransformStatus::SKIPPED, ""};
@@ -75,7 +75,7 @@ class GlobalPoolingToReduceOp : public NodeTransformation {
 }  // namespace
 
 std::unique_ptr<NodeTransformation> NewGlobalPoolingToReduceOp() {
-  return absl::make_unique<GlobalPoolingToReduceOp>();
+  return std::make_unique<GlobalPoolingToReduceOp>();
 }
 
 }  // namespace gpu

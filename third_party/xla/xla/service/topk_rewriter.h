@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -41,7 +41,7 @@ class TopkRewriter : public HloModulePass {
   absl::string_view name() const override { return "topk-rewriter"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -50,7 +50,7 @@ class TopkRewriter : public HloModulePass {
   std::optional<int64_t> SortIsInTopK(HloInstruction* inst);
 
   // Transform to CustomCall.
-  StatusOr<bool> TransformToCustomCall(
+  absl::StatusOr<bool> TransformToCustomCall(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
@@ -62,7 +62,8 @@ class TopkRewriter : public HloModulePass {
 
   // Matches the input to the sort+iota+slice pattern and converts to custom
   // call if profitable. Returns the custom call if one was created.
-  StatusOr<HloInstruction*> TransformPatternToCustomCall(HloInstruction* inst);
+  absl::StatusOr<HloInstruction*> TransformPatternToCustomCall(
+      HloInstruction* inst);
 };
 
 class TopkDecomposer : public HloModulePass {
@@ -73,7 +74,7 @@ class TopkDecomposer : public HloModulePass {
       : should_decompose_(should_decompose) {}
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

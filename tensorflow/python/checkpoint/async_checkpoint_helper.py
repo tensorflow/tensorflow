@@ -442,7 +442,7 @@ class AsyncCheckpointHelper:
   def save_counter(self):
     """An integer variable numbering the checkpoint events.
 
-    This is maintained by the underlying tf.train.Checkpoing object employed by
+    This is maintained by the underlying tf.train.Checkpoint object employed by
     AsyncCheckpoint class. The number starts at 0 and gets incremented for each
     checkpoint event.
 
@@ -488,7 +488,7 @@ class AsyncCheckpointHelper:
       self._copy_to_cpu()
 
     # Surface the error from the async thread, if any.
-    # This step should come after the sem acquision step in the above, so that
+    # This step should come after the sem acquisition step in the above, so that
     # it makes sure it waits until the previous async save finishes storing the
     # error.
     self._check_async_thread_error()
@@ -546,7 +546,7 @@ class AsyncCheckpointHelper:
       self._copy_to_cpu()
 
     # Surface the error from the async thread, if any.
-    # This step should come after the sem acquision step in the above, so that
+    # This step should come after the sem acquisition step in the above, so that
     # it makes sure it waits until the previous async save finishes storing the
     # error.
     self._check_async_thread_error()

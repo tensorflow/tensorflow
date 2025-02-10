@@ -1,0 +1,63 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+add {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %sum = f32[] add(%p0, %p1)
+}
+scatter {
+  %operand = f32[10,5]  parameter(0)
+  %update = f32[8,1,2] parameter(1)
+  %indices = s32[8,1] constant({{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}})
+
+  ROOT %scatter = f32[10,5] scatter(
+      f32[10,5] %operand,
+      s32[8,1] %indices,
+      f32[8,1,2] %update
+    ),
+    update_window_dims={1,2},
+    inserted_window_dims={},
+    scatter_dims_to_operand_dims={0},
+    index_vector_dim=1,
+    unique_indices=true,
+    to_apply=add
+}
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(th_x) -> (th_x floordiv 2)
+
+// CHECK-LABEL: func.func @main(
+// CHECK-SAME:    %[[OPERAND:[a-zA-Z0-9]*]]: tensor<10x5xf32>
+// CHECK-SAME:    %[[UPDATES:[a-zA-Z0-9]*]]: tensor<8x1x2xf32>
+// CHECK-SAME:    %[[OUT:[a-zA-Z0-9]*]]: tensor<10x5xf32>
+
+// CHECK-DAG:       %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:       %[[C9:.*]] = arith.constant 9 : index
+
+// CHECK:      %[[TH_X:.*]] = gpu.thread_id  x
+
+// CHECK:      %[[SLICE_ID:.*]] = xla.apply_indexing #[[$MAP]](%[[TH_X]]
+
+// CHECK:      %[[IND0_I32:.*]] = xla.pure_call @scatter_indices
+// CHECK-SAME:  (%[[OPERAND]], %[[UPDATES]], %[[SLICE_ID]], %[[C0]])
+
+
+// CHECK:      %[[IND0:.*]] = arith.index_cast %[[IND0_I32]]
+// CHECK:      %[[IN_BOUNDS:.*]] = arith.cmpi ule
+// CHECK:      scf.if %[[IN_BOUNDS]] -> (tensor<10x5xf32>) {
+
+// CHECK:      xla.loop
+// CHECK:      -> (%[[RA:.*]], %[[RB:.*]], %[[RC:.*]]) in
+
+// CHECK:      %[[UPD_ELEM:.*]] = xla.pure_call @scatter_update(
+// CHECK-SAME:  %[[OPERAND]], %[[UPDATES]],
+// CHECK-SAME:  %[[RA]], %[[RB]], %[[RC]])
+
+// CHECK:       %[[IND0_RB:.*]] = arith.addi %[[RB]], %[[IND0]]
+// CHECK:       %[[CURRENT:.*]] = xla.pure_call @scatter_operand(
+// CHECK-SAME:    %[[OPERAND]], %[[UPDATES]], %[[IND0_RB]],
+// CHECK-SAME:    %[[RC]])
+// CHECK:        %[[COMBINED:.*]] = arith.addf %[[CURRENT]], %[[UPD_ELEM]]
+// CHECK:        %[[UPDATED:.*]] = tensor.insert %[[COMBINED]]
+// CHECK-SAME:     into %{{[a-z0-9]+}}[%{{.*}}, %[[RC]]] : tensor<10x5xf32>
+// CHECK:        xla.yield %[[UPDATED]] : tensor<10x5xf32>

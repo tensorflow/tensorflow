@@ -22,6 +22,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
+
 namespace xla {
 
 HloModuleGroup::HloModuleGroup(std::unique_ptr<HloModule> module)
@@ -72,7 +81,7 @@ HloModuleGroupProto HloModuleGroup::ToProto() const {
   return proto;
 }
 
-/* static */ StatusOr<HloModuleGroup> HloModuleGroup::CreateFromProto(
+/* static */ absl::StatusOr<HloModuleGroup> HloModuleGroup::CreateFromProto(
     const HloModuleGroupProto& proto,
     absl::Span<const HloModuleConfig> module_configs) {
   TF_RET_CHECK(!proto.name().empty()) << "Module group name cannot be empty";

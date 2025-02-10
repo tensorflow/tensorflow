@@ -34,6 +34,8 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/monitoring/sampler.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
@@ -56,8 +58,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/stream.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
-#include "tsl/concurrency/ref_count.h"
-#include "tsl/lib/monitoring/sampler.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
@@ -96,7 +96,7 @@ struct SymbolUids {
 // Note: `resource_context` is per-graph-executor and
 // `client_graph_resource_context` is per-loaded-client-graph. See the comment
 // above `GraphExecutor::resource_context_` about the todo to merge these two.
-StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
+absl::StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
@@ -114,7 +114,7 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
 //
 // TODO(chky): Refactor this function to take `LoadedClientGraph` instead of
 // having a long list of parameters.
-tensorflow::Status GraphExecutionRunOnFunction(
+absl::Status GraphExecutionRunOnFunction(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
     absl::string_view signature_name, const SymbolUids& symbol_uids,
@@ -133,7 +133,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
     CostRecorder* cost_recorder = nullptr);
 
 // Runs a MLRT function for executing tensorflow graphs.
-tensorflow::Status RunMlrtFunction(
+absl::Status RunMlrtFunction(
     mlrt::bc::Function function,
     const mlrt::LoadedExecutable& loaded_executable,
     const tsl::RCReference<tfrt::RequestContext>& request_context,
@@ -168,8 +168,8 @@ class GraphExecutor {
     CostRecorder* MaybeGetCostRecorder(absl::Time now, bool* do_recompilation);
     // Updates the op cost values in this `LoadedClientGraph` with records from
     // `cost_recorder`.
-    Status UpdateCost(const CostRecorder& cost_recorder,
-                      const Runtime& runtime);
+    absl::Status UpdateCost(const CostRecorder& cost_recorder,
+                            const Runtime& runtime);
     // Updates `cost_analysis_data_` to make it accurate for the next execution.
     // Assumes a cost update occurred this cycle.
     void UpdateCostAnalysisData(absl::Time now, bool do_recompilation);
@@ -239,7 +239,8 @@ class GraphExecutor {
 
   // A subgraph constructed by specifying input/output tensors.
   struct ClientGraph {
-    // A unique name by joining all the input/output/target names.
+    // The human-readable name for the graph, e.g. the signature_name in the
+    // saved model.
     std::string name;
     // The feed nodes for the corresponding inputs, but they might not be in the
     // original order and if there are more than one original inputs mapped to
@@ -252,21 +253,23 @@ class GraphExecutor {
   };
 
   // Creates a `GraphExecutor` given the args.
-  static StatusOr<std::unique_ptr<GraphExecutor>> Create(
+  static absl::StatusOr<std::unique_ptr<GraphExecutor>> Create(
       Options options, std::unique_ptr<FallbackState> fallback_state,
       std::unique_ptr<tfrt::ResourceContext> resource_context,
       tensorflow::GraphDef graph_def,
-      std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
+      std::unique_ptr<mlrt::KernelRegistry> kernel_registry,
+      tensorflow::tfrt_stub::RuntimeConfig* runtime_config = nullptr);
 
   // Ctor. Public for `Create()`. Do not use directly.
   GraphExecutor(Options options, std::unique_ptr<FallbackState> fallback_state,
                 std::unique_ptr<tfrt::ResourceContext> resource_context,
                 std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
                     graph_execution_state,
-                std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
+                std::unique_ptr<mlrt::KernelRegistry> kernel_registry,
+                tensorflow::tfrt_stub::RuntimeConfig* runtime_config = nullptr);
 
   // Runs on the graph according to given input/output.
-  tensorflow::Status Run(
+  absl::Status Run(
       const RunOptions& run_options,
       absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
       absl::Span<const std::string> output_tensor_names,
@@ -278,7 +281,7 @@ class GraphExecutor {
   // responsibility to ensure `graph_name` corresponds to logically different
   // graphs, since this name is used to lookup compiled graphs in the cache. The
   // graph is run synchronously with the TFRT interpreter.
-  tensorflow::Status RunWithSyncInterpreter(
+  absl::Status RunWithSyncInterpreter(
       const std::string& graph_name, absl::Span<mlrt::Value> input_values,
       absl::Span<const std::string> input_names,
       absl::Span<const tensorflow::DataType> input_dtypes,
@@ -287,7 +290,7 @@ class GraphExecutor {
       absl::Span<mlrt::Value> outputs);
 
   // Extends the current graph by `graph`.
-  tensorflow::Status Extend(const GraphDef& graph);
+  absl::Status Extend(const GraphDef& graph);
 
   tensorflow::tfrt_stub::TfrtGraphExecutionState& graph_execution_state()
       const {
@@ -307,7 +310,7 @@ class GraphExecutor {
   FallbackState& fallback_state() { return *fallback_state_; }
 
   // Compiles graph for `graph_name` and runs any initializers.
-  tensorflow::Status CompileGraph(
+  absl::Status CompileGraph(
       const std::string& graph_name,
       absl::Span<const std::string> input_tensor_names,
       absl::Span<const tensorflow::DataType> input_tensor_dtypes,
@@ -320,29 +323,30 @@ class GraphExecutor {
 
  private:
   // A set of methods to load a client graph.
-  StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>> LoadClientGraph(
+  absl::StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
+  LoadClientGraph(
       const GraphExecutor::ClientGraph& client_graph,
       tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
       absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs);
-  StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
+  absl::StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
   ImportAndCompileClientGraph(
       const GraphExecutor::ClientGraph& client_graph,
       absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs);
-  tensorflow::StatusOr<
+  absl::StatusOr<
       std::pair<FunctionLibraryDefinition, mlir::OwningOpRef<mlir::ModuleOp>>>
   ImportClientGraphToMlirModule(const GraphExecutor::ClientGraph& client_graph,
                                 mlir::MLIRContext* context) const;
-  StatusOr<tfrt::BefBuffer> CompileMlirModuleToBef(mlir::ModuleOp module) const;
+  absl::StatusOr<tfrt::BefBuffer> CompileMlirModuleToBef(
+      mlir::ModuleOp module) const;
 
-  tensorflow::Status InitBef(
-      LoadedClientGraph* loaded_client_graph,
-      tensorflow::tfrt_stub::WorkQueueInterface* work_queue);
+  absl::Status InitBef(LoadedClientGraph* loaded_client_graph,
+                       tensorflow::tfrt_stub::WorkQueueInterface* work_queue);
 
-  tensorflow::Status InitBytecode(LoadedClientGraph* loaded_graph);
+  absl::Status InitBytecode(LoadedClientGraph* loaded_graph);
 
   // Returns a `LoadedClientGraph` given input/output tensor info. If there is
   // no existing one yet, creates one first.
-  StatusOr<std::reference_wrapper<GraphExecutor::LoadedClientGraph>>
+  absl::StatusOr<std::reference_wrapper<GraphExecutor::LoadedClientGraph>>
   GetOrCreateLoadedClientGraph(
       const RunOptions& run_options,
       absl::Span<const std::string> input_tensor_names,

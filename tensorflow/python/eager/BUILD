@@ -1,7 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load("//tensorflow:tensorflow.bzl", "check_deps")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_rpc_deps",
@@ -78,9 +78,9 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
         "@pybind11",
     ],
 )
@@ -207,6 +207,7 @@ py_strict_library(
     srcs = ["context.py"],
     srcs_version = "PY3",
     visibility = [
+        "//smartass/brain/ops:__subpackages__",
         "//tensorflow:internal",
         "//third_party/py/jax_tpu_embedding:__subpackages__",
     ],
@@ -428,7 +429,7 @@ py_strict_library(
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
-        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler_plugin",
         "//tensorflow/python/util:deprecation",
     ],
 )
@@ -727,7 +728,7 @@ py_strict_library(
     name = "function",
     srcs = ["function.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
         "//tensorflow/python/eager/polymorphic_function:concrete_function",
@@ -1056,7 +1057,13 @@ py_strict_library(
     name = "def_function",
     srcs = ["def_function.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    # copybara:uncomment_begin(google-only)
+    # visibility = ["//tensorflow:internal"],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
     deps = [
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/eager/polymorphic_function:eager_function_run",

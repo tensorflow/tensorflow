@@ -312,7 +312,7 @@ class GraphErrorInjectionPass : public tensorflow::GraphOptimizationPass {
   static bool enabled_;
   GraphErrorInjectionPass() {}
 
-  tensorflow::Status Run(
+  absl::Status Run(
       const tensorflow::GraphOptimizationPassOptions& options) override {
     if (!enabled_) {
       return absl::OkStatus();
@@ -431,14 +431,14 @@ class FunctionErrorInjectionPass : public tensorflow::FunctionOptimizationPass {
  public:
   FunctionErrorInjectionPass(string error_node, string error_device)
       : error_node_(error_node), error_device_(error_device) {}
-  tensorflow::Status Run(const std::string& function_name,
-                         const tensorflow::DeviceSet& device_set,
-                         const tensorflow::ConfigProto& config_proto,
-                         const FunctionOptions& function_options,
-                         std::unique_ptr<tensorflow::Graph>* graph,
-                         tensorflow::FunctionLibraryDefinition* flib_def,
-                         std::vector<std::string>* control_ret_node_names,
-                         bool* control_rets_updated) override {
+  absl::Status Run(const std::string& function_name,
+                   const tensorflow::DeviceSet& device_set,
+                   const tensorflow::ConfigProto& config_proto,
+                   const FunctionOptions& function_options,
+                   std::unique_ptr<tensorflow::Graph>* graph,
+                   tensorflow::FunctionLibraryDefinition* flib_def,
+                   std::vector<std::string>* control_ret_node_names,
+                   bool* control_rets_updated) override {
     // Inject failure to function instantiation if finding a node that contains
     // the given node name (error_node_) and requested device (error_device_).
     for (const auto node : graph->get()->nodes()) {

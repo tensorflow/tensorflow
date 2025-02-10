@@ -28,13 +28,15 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace mlir::quant::stablehlo {
 namespace {
@@ -57,10 +59,10 @@ TEST(CreateExportedModelTest, CreateExportedModelBasicFieldsSet) {
   ASSERT_TRUE(
       TextFormat::ParseFromString(R"pb(node { name: "foo" })pb", &graph_def));
 
-  const ExportedModel exported_model =
-      CreateExportedModel(std::move(graph_def), "init_node_name",
-                          "checkpoint_dir", /*saver_def=*/std::nullopt,
-                          /*function_aliases=*/{}, /*asset_file_defs=*/{});
+  const ExportedModel exported_model = CreateExportedModelFromGraphDef(
+      std::move(graph_def), "init_node_name", "checkpoint_dir",
+      /*saver_def=*/std::nullopt,
+      /*function_aliases=*/{}, /*asset_file_defs=*/{});
   ASSERT_THAT(exported_model.graph_def().node(), SizeIs(1));
   EXPECT_THAT(exported_model.graph_def().node()[0].name(), StrEq("foo"));
 
@@ -72,7 +74,7 @@ TEST(CreateExportedModelTest, CreateExportedModelBasicFieldsSet) {
 }
 
 TEST(CreateExportedModelTest, CreateExportedModelWithAddedFunctionAliases) {
-  const ExportedModel exported_model = CreateExportedModel(
+  const ExportedModel exported_model = CreateExportedModelFromGraphDef(
       GraphDef(), /*init_node_name=*/"", /*checkpoint_dir=*/"",
       /*saver_def=*/std::nullopt,
       /*function_aliases=*/{{"func1", "alias1"}, {"func2", "alias2"}},
@@ -93,7 +95,7 @@ TEST(CreateExportedModelTest, CreateExportedModelWithAddedAssetFileDefs) {
   ASSERT_TRUE(
       TextFormat::ParseFromString(R"pb(filename: "fname2")pb", &asset2));
 
-  const ExportedModel exported_model = CreateExportedModel(
+  const ExportedModel exported_model = CreateExportedModelFromGraphDef(
       GraphDef(), /*init_node_name=*/"", /*checkpoint_dir=*/"",
       /*saver_def=*/std::nullopt, /*function_aliases=*/{},
       /*asset_file_defs=*/{asset1, asset2});
@@ -107,7 +109,7 @@ TEST(CreateExportedModelTest, CreateExportedModelWithAddedSaverDef) {
   ASSERT_TRUE(TextFormat::ParseFromString(
       R"pb(filename_tensor_name: "my_file")pb", &saver_def));
 
-  const ExportedModel exported_model = CreateExportedModel(
+  const ExportedModel exported_model = CreateExportedModelFromGraphDef(
       GraphDef(), /*init_node_name=*/"", /*checkpoint_dir=*/"", saver_def,
       /*function_aliases=*/{}, /*asset_file_defs=*/{});
   EXPECT_THAT(exported_model.saver_def().filename_tensor_name(), "my_file");

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tsl/framework/device_type.h"
 
 namespace tensorflow {
 namespace {
@@ -98,7 +98,7 @@ absl::StatusOr<std::optional<std::set<int>>> GetAllowedGpus(
   return gpu_ids;
 }
 
-Status GetCompilationDeviceTypeAndPjRtClient(
+absl::Status GetCompilationDeviceTypeAndPjRtClient(
     const XlaPlatformInfo& platform_info, FunctionLibraryRuntime* flr,
     DeviceType* compilation_device_type, xla::PjRtClient** pjrt_client) {
   DeviceType device_type = platform_info.device_type();
@@ -204,10 +204,11 @@ absl::StatusOr<DeviceType> GetCompilationDeviceType(
   return compilation_device_type;
 }
 
-Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
-                              const XlaPlatformInfo& platform_info,
-                              DeviceType compilation_device_type,
-                              XlaDeviceCompiler** xla_device_compiler) {
+absl::Status BuildXlaDeviceCompiler(DeviceBase* device,
+                                    FunctionLibraryRuntime* flr,
+                                    const XlaPlatformInfo& platform_info,
+                                    DeviceType compilation_device_type,
+                                    XlaDeviceCompiler** xla_device_compiler) {
   if (platform_info.platform_id() == nullptr &&
       platform_info.device_type() == DEVICE_GPU) {
     // We do not need to (and cannot) build a real device compiler for GPU
@@ -267,7 +268,7 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
     //
     // So bail out of _XlaCompile in this case, and let the executor handle
     // the situation for us.
-    const Status& status = compiler_for_platform.status();
+    const absl::Status& status = compiler_for_platform.status();
     if (status.code() == error::NOT_FOUND) {
       return errors::Unimplemented("Could not find compiler for platform ",
                                    platform.value()->Name(), ": ",
@@ -295,7 +296,7 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
   return absl::OkStatus();
 }
 
-Status GetOrCreatePjRtDeviceCompilerAndProfiler(
+absl::Status GetOrCreatePjRtDeviceCompilerAndProfiler(
     const XlaPlatformInfo& platform_info, ResourceMgr* rm,
     FunctionLibraryRuntime* flr, PjRtDeviceCompiler** pjrt_device_compiler,
     DeviceCompilationProfiler** profiler) {
@@ -307,7 +308,7 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
   bool deleted_old_device_compiler = false;
 
   // Lookup the DeviceCompiler, create one if not found.
-  Status s = rm->Lookup<PjRtDeviceCompiler>(
+  absl::Status s = rm->Lookup<PjRtDeviceCompiler>(
       rm->default_container(), compiler_name, pjrt_device_compiler);
   if (s.ok() && device_type == DEVICE_TPU) {
     auto* existing_pjrt_client = (*pjrt_device_compiler)->client();
@@ -352,7 +353,7 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
   return absl::OkStatus();
 }
 
-Status GetOrCreatePjRtDeviceCompilerAndProfiler(
+absl::Status GetOrCreatePjRtDeviceCompilerAndProfiler(
     const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
     FunctionLibraryRuntime* flr,
     DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>**
@@ -377,7 +378,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
     auto device = static_cast<Device*>(device_base);
     platform_id = device->tensorflow_accelerator_device_info()
                       ->stream->parent()
-                      ->platform()
+                      ->GetPlatform()
                       ->id();
   } else if (XlaDevice::GetMetadataFromDevice(device_base, &xla_device_metadata)
                  .ok()) {

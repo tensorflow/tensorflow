@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "xla/printer.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -47,6 +47,7 @@ class Tile {
     return Tile(tile_proto.dimensions());
   }
   TileProto ToProto() const;
+  void SetProto(TileProto& tile_proto) const;
 
   bool operator==(const Tile& other) const {
     return dimensions() == other.dimensions();
@@ -109,6 +110,7 @@ class SplitConfig {
                        split_config_proto.split_indices());
   }
   SplitConfigProto ToProto() const;
+  void SetProto(SplitConfigProto& split_config_proto) const;
 
   bool operator==(const SplitConfig& other) const {
     return dimension() == other.dimension() &&
@@ -160,6 +162,9 @@ class Layout {
   // Constructs a dense layout with the given minor-to-major order.
   explicit Layout(absl::Span<const int64_t> minor_to_major);
 
+  explicit Layout(absl::Span<const int64_t> minor_to_major,
+                  absl::Span<const Tile> tiles, int64_t element_size_in_bits);
+
   // Constructs a dense tiled layout with the given minor-to-major order, dim
   // level types, and tiles.
   explicit Layout(absl::Span<const int64_t> minor_to_major,
@@ -183,6 +188,8 @@ class Layout {
 
   // Returns a LayoutProto representation of the Layout.
   LayoutProto ToProto() const;
+  // Sets a LayoutProto to the representation of the Layout.
+  void SetProto(LayoutProto& proto) const;
 
   // Prints a human-readable string that represents this layout.
   void Print(Printer* printer) const;
@@ -396,6 +403,7 @@ class Layout {
 
   static constexpr int64_t kDefaultMemorySpace = 0;
   static constexpr int64_t kGenericFastMemorySpace = 1;
+  static constexpr int64_t kHostMemorySpace = 5;
   int64_t memory_space() const { return memory_space_; }
   Layout& set_memory_space(int64_t value) {
     memory_space_ = value;
@@ -473,7 +481,7 @@ class Layout {
 
   // The number of bits used to store an individual array element.
   // When the value is 0, default to ShapeUtil::ByteSizeOfPrimitiveType.
-  uint16_t element_size_in_bits_ = 0;
+  int64_t element_size_in_bits_ = 0;
 
   // A map from physical dimension numbers to logical dimension numbers.
   // The first element is the most minor physical dimension (fastest varying

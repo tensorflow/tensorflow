@@ -20,16 +20,17 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -68,11 +69,10 @@ XLA_TEST_F(MultithreadedCompilation, EightModuleCompilation) {
   }
 
   absl::Mutex mu;
-  std::vector<std::unique_ptr<Executable>> executables;
+  std::vector<std::unique_ptr<OpaqueExecutable>> executables;
   auto do_compilation = [&](int iteration) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Executable> executable,
-        test_runner_.CreateExecutable(std::move(modules[iteration]), true));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> executable,
+                        CreateExecutable(std::move(modules[iteration]), true));
     absl::MutexLock lock(&mu);
     executables.push_back(std::move(executable));
     VLOG(2) << "Adding executable obtained from thread: " << iteration;
@@ -90,8 +90,10 @@ XLA_TEST_F(MultithreadedCompilation, EightModuleCompilation) {
   ::tsl::protobuf::util::MessageDifferencer differencer;
   bool first_time = true;
   HloProto first_hlo_proto;
-  for (const auto &exec : executables) {
-    const HloProto *curr_hlo_proto = exec->hlo_proto();
+  for (const std::unique_ptr<OpaqueExecutable>& exec : executables) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        const HloProto* const curr_hlo_proto,
+        test_runner_as_hlo_runner().HloProtoFromWrapped(exec.get()));
     if (first_time) {
       first_hlo_proto = *curr_hlo_proto;
       first_time = false;

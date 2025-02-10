@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_LLVM_IR_BUFFER_ASSIGNMENT_UTIL_H_
 #define XLA_SERVICE_LLVM_IR_BUFFER_ASSIGNMENT_UTIL_H_
 
+#include <string>
+
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla {
@@ -28,12 +33,6 @@ std::string SanitizeConstantName(absl::string_view name);
 
 std::string ConstantHloToGlobalName(const HloInstruction& instr);
 std::string ConstantNameToGlobalName(absl::string_view name);
-
-// In XLA:GPU we map constant buffer allocations to globals in the generated
-// LLVM IR.  This function gives us the name of the global variable a constant
-// buffer is mapped to.  Not used on XLA:CPU.
-std::string ConstantBufferAllocationToGlobalName(
-    const BufferAllocation& allocation);
 
 // Returns the Literal corresponding to `allocation`, which must be a constant
 // allocation.

@@ -16,9 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_GRAPH_MGR_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_GRAPH_MGR_H_
 
+#include <cstdint>
+#include <functional>
+#include <map>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -32,10 +37,12 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/debug.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 class CoordinationServiceAgent;
@@ -78,20 +85,20 @@ class GraphMgr {
 
   // Registers a graph. Fills in "handle". The registered graph retains a
   // reference to cluster_flr to do cross process function calls.
-  Status Register(const string& handle, const GraphDef& gdef,
-                  const GraphOptions& graph_options,
-                  const DebugOptions& debug_options,
-                  const ConfigProto& config_proto, int64_t collective_graph_key,
-                  WorkerSession* session,
-                  DistributedFunctionLibraryRuntime* cluster_flr,
-                  string* graph_handle);
+  absl::Status Register(const string& handle, const GraphDef& gdef,
+                        const GraphOptions& graph_options,
+                        const DebugOptions& debug_options,
+                        const ConfigProto& config_proto,
+                        int64_t collective_graph_key, WorkerSession* session,
+                        DistributedFunctionLibraryRuntime* cluster_flr,
+                        string* graph_handle);
 
   // Executes one step of a registered graph "handle".
   //
   // If "out" is not nullptr, "out" specifies all keys the execution
   // should receive upon finish.
   typedef std::map<string, Tensor> NamedTensors;
-  typedef std::function<void(const Status&)> StatusCallback;
+  typedef std::function<void(const absl::Status&)> StatusCallback;
   void ExecuteAsync(const string& handle, const int64_t step_id,
                     const ExecutorOpts& opts, const NamedTensors& in,
                     WorkerSession* session, StepStatsCollector* collector,
@@ -100,16 +107,16 @@ class GraphMgr {
                     tsl::CoordinationServiceAgent* coordination_service_agent,
                     StatusCallback done);
 
-  Status SendInputs(const int64_t step_id, const NamedTensors& in);
-  Status RecvOutputs(const int64_t step_id, NamedTensors* out);
+  absl::Status SendInputs(const int64_t step_id, const NamedTensors& in);
+  absl::Status RecvOutputs(const int64_t step_id, NamedTensors* out);
   void RecvOutputsAsync(const int64_t step_id, NamedTensors* out,
                         StatusCallback done);
 
   // Deregisters a graph.
-  Status Deregister(const string& handle);
+  absl::Status Deregister(const string& handle);
 
   // Deregister all graphs.
-  Status DeregisterAll();
+  absl::Status DeregisterAll();
 
  private:
   typedef GraphMgr ME;
@@ -187,15 +194,16 @@ class GraphMgr {
   void BuildCostModel(Item* item, StepStatsCollector* collector,
                       CostGraphDef* cost_graph);
 
-  Status InitItem(const string& handle, const GraphDef& gdef,
-                  const GraphOptions& graph_options,
-                  const DebugOptions& debug_options,
-                  const ConfigProto& config_proto, int64_t collective_graph_key,
-                  WorkerSession* session,
-                  DistributedFunctionLibraryRuntime* cluster_flr, Item* item);
+  absl::Status InitItem(const string& handle, const GraphDef& gdef,
+                        const GraphOptions& graph_options,
+                        const DebugOptions& debug_options,
+                        const ConfigProto& config_proto,
+                        int64_t collective_graph_key, WorkerSession* session,
+                        DistributedFunctionLibraryRuntime* cluster_flr,
+                        Item* item);
 
-  Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,
-                                         Graph* graph, Device* device);
+  absl::Status DecorateAndPublishGraphForDebug(
+      const DebugOptions& debug_options, Graph* graph, Device* device);
 
   GraphMgr(const GraphMgr&) = delete;
   void operator=(const GraphMgr&) = delete;

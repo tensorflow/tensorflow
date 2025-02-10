@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Tan"
   input_arg {
     name: "x"

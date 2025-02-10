@@ -292,11 +292,14 @@ cc_test(
     size = "small",
     srcs = ["c_api_signature_runner_test.cc"],
     copts = tflite_copts(),
-    data = ["//tensorflow/lite:testdata/multi_signatures.bin"],
+    data = [
+        "//tensorflow/lite:testdata/multi_signatures.bin",
+        "//tensorflow/lite:testdata/no_signatures.bin",
+    ],
     deps = [
         ":c_api",
         "//tensorflow/lite/core/c:c_api",
-        "//tensorflow/lite/core/c:c_api_experimental",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -356,7 +359,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/c:registration_external",
+        "//tensorflow/lite/core/c:operator",
     ],
 )
 
@@ -393,13 +396,14 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/c:registration_external_without_alwayslink",
+        "//tensorflow/lite/core/c:operator_without_alwayslink",
     ],
 )
 
 # For use with library targets that can't use relative paths.
 # LINT.IfChange(exported_headers)
 exports_files([
+    "builtin_op_data.h",
     "c_api.h",
     "c_api_experimental.h",
     "c_api_opaque.h",
@@ -410,6 +414,7 @@ exports_files([
 filegroup(
     name = "tensorflowlite_c_api_hdrs_filegroup",
     srcs = [
+        "builtin_op_data.h",
         "c_api.h",
         "c_api_types.h",
         "common.h",

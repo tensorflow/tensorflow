@@ -15,21 +15,30 @@ limitations under the License.
 
 #include "xla/service/gpu/nvptx_compiler.h"
 
+#include <cstdint>
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/backend.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/gpu_compiler.h"
-#include "xla/statusor.h"
+#include "xla/service/buffer_value.h"
+#include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/gpu_hlo_schedule.h"
+#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
+#include "xla/service/logical_buffer.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -57,16 +66,28 @@ class NVPTXCompilerTest : public HloTestBase {
  public:
   absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
       HloModule* module) {
-    Backend& test_backend = backend();
-    NVPTXCompiler compiler;
-    return compiler.AssignBuffers(module,
-                                  test_backend.default_stream_executor());
+    constexpr uint64_t pointer_size = 4;
+    const se::DeviceDescription& gpu_device_info =
+        backend().default_stream_executor()->GetDeviceDescription();
+    TF_RETURN_IF_ERROR(
+        ScheduleGpuModule(module, pointer_size, gpu_device_info).status());
+
+    auto buffer_size_bytes_function =
+        [](const BufferValue& buffer_value) -> int64_t {
+      return GetSizeOfShape(buffer_value.shape(), pointer_size);
+    };
+
+    return BufferAssigner::Run(
+        module, std::make_unique<SequentialHloOrdering>(module->schedule()),
+        buffer_size_bytes_function,
+        /*color_alignment=*/
+        [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; });
   }
 };
 
 class NVPTXCompilerTestTriton : public NVPTXCompilerTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
@@ -131,7 +152,7 @@ ENTRY entry {
 
 TEST_F(NVPTXCompilerTestTriton,
        DotDimensionAreSortedBeforePaddingForCublasEnablingTritonFusion) {
-  MatchOptimizedHlo(R"(
+  const absl::string_view hlo_string = R"(
 ENTRY e {
  p0 = f16[11,22,33,44] parameter(0)
  p1 = s8[11,22,33,44] parameter(1)
@@ -139,13 +160,25 @@ ENTRY e {
  ROOT d = f16[11,22,44,44] dot(p0, p1c),
   lhs_batch_dims={0,1}, lhs_contracting_dims={2},
   rhs_batch_dims={0,1}, rhs_contracting_dims={2}
-})",
-                    R"(
+})";
+
+  se::CudaComputeCapability cc = backend()
+                                     .default_stream_executor()
+                                     ->GetDeviceDescription()
+                                     .cuda_compute_capability();
+
+  if (cc.IsAtLeastAmpere()) {
+    MatchOptimizedHlo(hlo_string, R"(
 ; CHECK: ENTRY
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: parameter
 ; CHECK-NEXT: __triton_gemm
-  )");
+    )");
+  } else {
+    MatchOptimizedHlo(hlo_string, R"(
+; CHECK-NOT: triton
+    )");
+  }
 }
 
 TEST_F(NVPTXCompilerTest, RemovesUnnecessaryCopyInPostSchedulingPipelines) {

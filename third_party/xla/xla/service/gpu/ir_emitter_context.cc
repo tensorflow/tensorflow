@@ -16,14 +16,23 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 
 #include <algorithm>
-#include <iterator>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/IR/Constant.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/Support/Alignment.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 
 namespace xla {
@@ -34,7 +43,7 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
                                      absl::string_view symbol_name,
                                      int allocation_idx,
                                      DenseDataIntermediate content,
-                                     llvm::IRBuilder<>* b) {
+                                     llvm::IRBuilderBase* b) {
   // LLVM and PTXAS don't deal well with large constants, so we only emit very
   // small constants directly in LLVM IR.  Larger constants are emitted with
   // zero initializers in LLVM IR and are later overwritten when the PTX/CUBIN
@@ -61,7 +70,7 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
     std::vector<uint8_t> padded(kMinConstAllocationInBytes, 0);
     absl::c_copy(content.span(), padded.begin());
     return llvm::ConstantDataArray::get<uint8_t>(
-        llvm_module_->getContext(),
+        llvm_module_constants()->getContext(),
         needs_padding ? llvm::ArrayRef<uint8_t>(padded)
                       : llvm::ArrayRef<uint8_t>(content.span().data(),
                                                 content.span().size()));
@@ -69,7 +78,7 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
 
   // Explicitly set global addrspace for SPIR backend.
   int addrspace =
-      llvm::Triple(llvm_module_->getTargetTriple()).isSPIR() ? 1 : 0;
+      llvm::Triple(llvm_module_constants()->getTargetTriple()).isSPIR() ? 1 : 0;
   // These globals will be looked up by name by GpuExecutable so we need to
   // give them an external linkage.  Not all of their uses are visible in
   // the LLVM IR so we can't give then a linkage that merely preserves their
@@ -86,7 +95,7 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
       /*AddressSpace=*/addrspace,
       /*isExternallyInitialized=*/false);
   global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
-  llvm_module_->insertGlobalVariable(global_for_const);
+  llvm_module_constants()->insertGlobalVariable(global_for_const);
 
   info.symbol_name.assign(symbol_name);
   info.allocation_index = allocation_idx;

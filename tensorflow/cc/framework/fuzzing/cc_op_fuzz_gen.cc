@@ -15,13 +15,10 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/fuzzing/cc_op_fuzz_gen.h"
 
-#include <algorithm>
 #include <iostream>
-#include <memory>
 #include <set>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -47,7 +44,8 @@ namespace {
 
 string DefaultValue(OpDef_AttrDef attr) {
   static const auto* attr_default_value_map =
-      new absl::flat_hash_map<StringPiece, StringPiece, StringPieceHasher>{
+      new absl::flat_hash_map<absl::string_view, absl::string_view,
+                              StringPieceHasher>{
           {"int", "0"},
           {"string", "\"\""},
           {"list(int)", "{ 0, 1 }"},

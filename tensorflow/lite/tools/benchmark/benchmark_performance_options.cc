@@ -60,7 +60,11 @@ std::string MultiRunStatsRecorder::PerfOptionName(
   }
 #endif
 
-  if (params.Get<bool>("use_gpu")) {
+  bool gpu_enabled = params.Get<bool>("use_gpu");
+#if defined(SUPPORTS_GPU_CL_DELEGATE)
+  gpu_enabled = gpu_enabled || params.Get<bool>("use_gpuv3");
+#endif
+  if (gpu_enabled) {
 #if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
     if (params.Get<bool>("gpu_precision_loss_allowed")) {
       return "gpu-fp16";
@@ -92,11 +96,14 @@ std::string MultiRunStatsRecorder::PerfOptionName(
 
   // Handle cases run on CPU w/ the xnnpack delegate
   if (params.Get<bool>("use_xnnpack")) {
+    sstm << " (xnnpack";
     if (params.Get<bool>("xnnpack_force_fp16")) {
-      sstm << " (xnnpack-fp16)";
-    } else {
-      sstm << " (xnnpack)";
+      sstm << "-fp16";
     }
+    if (params.Get<bool>("xnnpack_slinky")) {
+      sstm << "-slinky";
+    }
+    sstm << ")";
   }
 
   return sstm.str();
@@ -149,7 +156,7 @@ BenchmarkParams BenchmarkPerformanceOptions::DefaultParams() {
                   BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("random_shuffle_benchmark_runs",
                   BenchmarkParam::Create<bool>(true));
-  params.AddParam("gpu_invoke_loop_times", BenchmarkParam::Create<int32_t>(-1));
+  params.AddParam("gpu_invoke_loop_times", BenchmarkParam::Create<int32_t>(1));
   return params;
 }
 
@@ -250,7 +257,7 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<int32_t>("num_threads", 1);
   single_option_run_params_->Set<bool>("use_gpu", false);
 #ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
-  single_option_run_params_->Set<int32_t>("gpu_invoke_loop_times", -1);
+  single_option_run_params_->Set<int32_t>("gpu_invoke_loop_times", 1);
   single_option_run_params_->Set<bool>("require_full_delegation", false);
 #endif
 #if defined(__ANDROID__)
@@ -270,6 +277,7 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
 #endif
   single_option_run_params_->Set<bool>("use_xnnpack", false);
   single_option_run_params_->Set<bool>("xnnpack_force_fp16", false);
+  single_option_run_params_->Set<bool>("xnnpack_slinky", false);
 }
 
 void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
@@ -297,6 +305,8 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
       xnnpack_params.AddParam("use_xnnpack",
                               BenchmarkParam::Create<bool>(true));
       xnnpack_params.AddParam("xnnpack_force_fp16",
+                              BenchmarkParam::Create<bool>(false));
+      xnnpack_params.AddParam("xnnpack_slinky",
                               BenchmarkParam::Create<bool>(false));
       xnnpack_params.AddParam("num_threads",
                               BenchmarkParam::Create<int32_t>(count));

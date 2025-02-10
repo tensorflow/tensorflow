@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import os
+
 from absl.testing import absltest
 
 from xla.build_tools import test_utils
@@ -23,21 +25,30 @@ DiscoverablePathsAndVersions = configure.DiscoverablePathsAndVersions
 Backend = configure.Backend
 HostCompiler = configure.HostCompiler
 CudaCompiler = configure.CudaCompiler
+RocmCompiler = configure.RocmCompiler
 OS = configure.OS
 
 _PYTHON_BIN_PATH = "/usr/bin/python3"
-_CLANG_PATH = "/usr/lib/llvm-17/bin/clang"
+_CLANG_PATH = "/usr/lib/llvm-18/bin/clang"
 _GCC_PATH = "/usr/bin/gcc"
 _COMPILER_OPTIONS = ("-Wno-sign-compare",)
 
 # CUDA specific paths and versions
 _CUDA_SPECIFIC_PATHS_AND_VERSIONS = {
-    "cublas_version": "12.3",
-    "cuda_toolkit_path": "/usr/local/cuda-12.2",
+    "cuda_version": '"12.1.1"',
     "cuda_compute_capabilities": ["7.5"],
-    "cudnn_version": "8",
+    "cudnn_version": '"8.6"',
     "ld_library_path": "/usr/local/nvidia/lib:/usr/local/nvidia/lib64",
-    "nccl_version": "2",
+}
+_CUDA_COMPUTE_CAPABILITIES_AND_LD_LIBRARY_PATH = {
+    "cuda_compute_capabilities": [
+        "sm_50",
+        "sm_60",
+        "sm_70",
+        "sm_80",
+        "compute_90",
+    ],
+    "ld_library_path": "/usr/local/nvidia/lib:/usr/local/nvidia/lib64",
 }
 
 
@@ -55,16 +66,29 @@ class ConfigureTest(absltest.TestCase):
       cls.clang_bazelrc_lines = [line.strip() for line in f.readlines()]
 
     with (testdata / "gcc.bazelrc").open() as f:
-      cls.gcc_bazelrc_lines = [line.strip() for line in f.readlines()]
+      resolved_gcc_path = os.path.realpath(_GCC_PATH)
+      cls.gcc_bazelrc_lines = [
+          line.strip().replace(_GCC_PATH, resolved_gcc_path)
+          for line in f.readlines()
+      ]
 
     with (testdata / "cuda_clang.bazelrc").open() as f:
       cls.cuda_clang_bazelrc_lines = [line.strip() for line in f.readlines()]
+
+    with (testdata / "default_cuda_clang.bazelrc").open() as f:
+      cls.default_cuda_clang_bazelrc_lines = [
+          line.strip() for line in f.readlines()
+      ]
 
     with (testdata / "nvcc_clang.bazelrc").open() as f:
       cls.nvcc_clang_bazelrc_lines = [line.strip() for line in f.readlines()]
 
     with (testdata / "nvcc_gcc.bazelrc").open() as f:
-      cls.nvcc_gcc_bazelrc_lines = [line.strip() for line in f.readlines()]
+      resolved_gcc_path = os.path.realpath(_GCC_PATH)
+      cls.nvcc_gcc_bazelrc_lines = [
+          line.strip().replace(_GCC_PATH, resolved_gcc_path)
+          for line in f.readlines()
+      ]
 
   def test_clang_bazelrc(self):
     config = XLAConfigOptions(
@@ -75,14 +99,14 @@ class ConfigureTest(absltest.TestCase):
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.NVCC,
         using_nccl=False,
-        using_tensorrt=False,
+        rocm_compiler=RocmCompiler.HIPCC,
     )
 
     bazelrc_lines = config.to_bazelrc_lines(
         DiscoverablePathsAndVersions(
             clang_path=_CLANG_PATH,
             ld_library_path="",
-            clang_major_version=17,
+            clang_major_version=18,
         )
     )
 
@@ -97,7 +121,7 @@ class ConfigureTest(absltest.TestCase):
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.NVCC,
         using_nccl=False,
-        using_tensorrt=False,
+        rocm_compiler=RocmCompiler.HIPCC,
     )
 
     bazelrc_lines = config.to_bazelrc_lines(
@@ -118,18 +142,40 @@ class ConfigureTest(absltest.TestCase):
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.CLANG,
         using_nccl=False,
-        using_tensorrt=False,
+        rocm_compiler=RocmCompiler.HIPCC,
+    )
+
+    bazelrc_lines = config.to_bazelrc_lines(
+        DiscoverablePathsAndVersions(
+            clang_path=_CLANG_PATH,
+            clang_major_version=18,
+            **_CUDA_SPECIFIC_PATHS_AND_VERSIONS,
+        )
+    )
+
+    self.assertEqual(bazelrc_lines, self.cuda_clang_bazelrc_lines)
+
+  def test_default_cuda_clang_bazelrc(self):
+    config = XLAConfigOptions(
+        backend=Backend.CUDA,
+        os=OS.LINUX,
+        python_bin_path=_PYTHON_BIN_PATH,
+        host_compiler=HostCompiler.CLANG,
+        compiler_options=list(_COMPILER_OPTIONS),
+        cuda_compiler=CudaCompiler.CLANG,
+        using_nccl=False,
+        rocm_compiler=RocmCompiler.HIPCC,
     )
 
     bazelrc_lines = config.to_bazelrc_lines(
         DiscoverablePathsAndVersions(
             clang_path=_CLANG_PATH,
             clang_major_version=17,
-            **_CUDA_SPECIFIC_PATHS_AND_VERSIONS,
+            **_CUDA_COMPUTE_CAPABILITIES_AND_LD_LIBRARY_PATH,
         )
     )
 
-    self.assertEqual(bazelrc_lines, self.cuda_clang_bazelrc_lines)
+    self.assertEqual(bazelrc_lines, self.default_cuda_clang_bazelrc_lines)
 
   def test_nvcc_clang_bazelrc(self):
     config = XLAConfigOptions(
@@ -140,13 +186,13 @@ class ConfigureTest(absltest.TestCase):
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.NVCC,
         using_nccl=False,
-        using_tensorrt=False,
+        rocm_compiler=RocmCompiler.HIPCC,
     )
 
     bazelrc_lines = config.to_bazelrc_lines(
         DiscoverablePathsAndVersions(
             clang_path=_CLANG_PATH,
-            clang_major_version=17,
+            clang_major_version=18,
             **_CUDA_SPECIFIC_PATHS_AND_VERSIONS,
         )
     )
@@ -162,7 +208,7 @@ class ConfigureTest(absltest.TestCase):
         compiler_options=list(_COMPILER_OPTIONS),
         cuda_compiler=CudaCompiler.NVCC,
         using_nccl=False,
-        using_tensorrt=False,
+        rocm_compiler=RocmCompiler.HIPCC,
     )
 
     bazelrc_lines = config.to_bazelrc_lines(

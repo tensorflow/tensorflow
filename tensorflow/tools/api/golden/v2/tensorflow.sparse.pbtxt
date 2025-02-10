@@ -81,6 +81,10 @@ tf_module {
     argspec: "args=[\'sp_input\', \'to_retain\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "sampled_addmm"
+    argspec: "args=[\'indices\', \'values\', \'dense_shape\', \'mat1\', \'mat2\', \'beta\', \'alpha\', \'output_type\'], varargs=None, keywords=None, defaults=[\'1.0\', \'1.0\', \"<dtype: \'float32\'>\"], "
+  }
+  member_method {
     name: "segment_mean"
     argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'num_segments\', \'name\', \'sparse_gradient\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }

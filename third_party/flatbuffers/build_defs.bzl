@@ -1,6 +1,7 @@
 """BUILD rules for generating flatbuffer files."""
 
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@rules_java//java:defs.bzl", "java_library")
 
 flatc_path = "@flatbuffers//:flatc"
 zip_files = "//tensorflow/lite/tools:zip_files"
@@ -194,7 +195,7 @@ def flatbuffer_cc_library(
         reflection binaries for the schemas.
     '''
     output_headers = [
-        (out_prefix + "%s_generated.h") % (s.replace(".fbs", "").split("/")[-1])
+        (out_prefix + "%s_generated.h") % (s.replace(".fbs", "").split("/")[-1].split(":")[-1])
         for s in srcs
     ]
     reflection_name = "%s_reflection" % name if gen_reflections else ""
@@ -414,6 +415,7 @@ def flatbuffer_py_library(
         name,
         srcs,
         deps = [],
+        visibility = None,
         include_paths = []):
     """A py_library with the generated reader/writers for the given schema.
 
@@ -464,6 +466,7 @@ def flatbuffer_py_library(
         deps = deps + [
             "@flatbuffers//:runtime_py",
         ],
+        visibility = visibility,
     )
 
 def flatbuffer_java_library(
@@ -502,8 +505,7 @@ def flatbuffer_java_library(
         name = "%s.srcjar" % name,
         srcs = [out_srcjar],
     )
-
-    native.java_library(
+    java_library(
         name = name,
         srcs = [out_srcjar],
         javacopts = ["-source 7 -target 7"],

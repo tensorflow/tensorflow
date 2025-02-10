@@ -779,11 +779,3 @@ Below is the list of currently supported operators:
 * `CONV_2D`
 * `DEPTHWISE_CONV_2D`
 * `RESIZE_BILINEAR`
-
-### Other limitations
-
-* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
-  outputs are not supported.
-* Resizing model inputs (via `Interpreter::ResizeInputTensor`) is supported, but
-  cause a complete reinitialization of the delegate instance, which has
-  considerable overhead.

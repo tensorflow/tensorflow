@@ -29,8 +29,12 @@ limitations under the License.
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -42,9 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tsl/framework/allocator.h"
-#include "tsl/framework/device_id_utils.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -89,10 +90,11 @@ class PjRtExecutionUtilTest : public OpsTestBase {
     SetDevice(device_type, std::move(device));
 
     // Create PjRtClient for XLA_CPU.
+    xla::CpuClientOptions options;
+    options.asynchronous = true;
+    options.cpu_device_count = 1;
     TF_CHECK_OK(SetPjRtClientInTFGlobalResourceManager(
-        device_type,
-        xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
-            .value()));
+        device_type, xla::GetXlaPjrtCpuClient(options).value()));
 
     // device_context_ should be a PjRtDeviceContext.
     TF_CHECK_OK(device_->TryGetDeviceContext(&device_context_));
@@ -191,8 +193,9 @@ class PjRtExecutionUtilTest : public OpsTestBase {
       const std::vector<VariableInfo>& variables,
       const XlaCompiler::CompilationResult* result,
       xla::PjRtLoadedExecutable* executable) {
-    TF_ASSIGN_OR_RETURN(auto pjrt_device, pjrt_client_->LookupAddressableDevice(
-                                              device_->parsed_name().id));
+    TF_ASSIGN_OR_RETURN(auto pjrt_device,
+                        pjrt_client_->LookupAddressableDevice(
+                            xla::PjRtLocalDeviceId(device_->parsed_name().id)));
 
     std::vector<xla::PjRtBuffer*> executable_args;
     executable_args.reserve(result->input_mapping.size());
@@ -672,12 +675,11 @@ TEST_F(PjRtExecutionUtilTest, RunPjRtExecutableWithoutCtx) {
                                           ->tensorflow_accelerator_device_info()
                                           ->use_pjrt_tensor_buffer;
   const DeviceType& device_type = GetDeviceType(context_.get());
-  TF_ASSERT_OK_AND_ASSIGN(const int pjrt_device_id,
-                          tsl::GetDeviceIdFromDeviceParsedName(
-                              context_->device()->parsed_name(), device_type));
-  TF_ASSERT_OK_AND_ASSIGN(
-      xla::PjRtDevice * pjrt_device,
-      pjrt_client_->LookupAddressableDevice(pjrt_device_id));
+  const int pjrt_device_id =
+      tsl::GetDeviceIdFromDeviceParsedName(context_->device()->parsed_name());
+  TF_ASSERT_OK_AND_ASSIGN(xla::PjRtDevice * pjrt_device,
+                          pjrt_client_->LookupAddressableDevice(
+                              xla::PjRtLocalDeviceId(pjrt_device_id)));
 
   absl::flat_hash_map<int, const Tensor*> variable_snapshots;
   for (int i = 0; i < variables.size(); i++) {

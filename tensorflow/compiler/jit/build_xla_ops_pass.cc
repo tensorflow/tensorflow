@@ -225,7 +225,7 @@ Output IncomingEdgeAsOutput(const Edge* e) {
   return Output(e->src(), e->src_output());
 }
 
-Status GetXlaClusterInfo(Node* n, XlaClusterInfo* result) {
+absl::Status GetXlaClusterInfo(Node* n, XlaClusterInfo* result) {
   int num_constant_inputs, num_resource_inputs;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(n->attrs(), kXlaNumConstantArgsAttr, &num_constant_inputs));
@@ -263,7 +263,7 @@ Status GetXlaClusterInfo(Node* n, XlaClusterInfo* result) {
   return absl::OkStatus();
 }
 
-Status CopyIncomingControlEdges(Graph* g, Node* from, Node* to) {
+absl::Status CopyIncomingControlEdges(Graph* g, Node* from, Node* to) {
   for (const Edge* e : from->in_edges()) {
     if (e->IsControlEdge()) {
       g->AddControlEdge(e->src(), to);
@@ -283,8 +283,9 @@ void RemoveAllIncomingControlEdges(Graph* g, Node* n) {
 }
 
 // Returns true (into `result`) if a node placed on `device` must be compiled.
-Status DeviceRequiresCompilation(const jit::DeviceInfoCache& device_info_cache,
-                                 jit::DeviceId device, bool* result) {
+absl::Status DeviceRequiresCompilation(
+    const jit::DeviceInfoCache& device_info_cache, jit::DeviceId device,
+    bool* result) {
   const XlaOpRegistry::DeviceRegistration* registration =
       device_info_cache.GetCompilationDevice(device);
   *result = registration->autoclustering_policy ==
@@ -293,7 +294,7 @@ Status DeviceRequiresCompilation(const jit::DeviceInfoCache& device_info_cache,
 }
 
 // Replaces `n` with a `PartitionedCall` op that calls the same function.
-StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
+absl::StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
     const GraphOptimizationPassOptions& options,
     const FunctionLibraryDefinition& flib_def, Node* n, Graph* g,
     const NameAttrList& func, const Scope& root) {
@@ -343,7 +344,7 @@ StatusOr<Node*> ReplaceFunctionCallWithPartitionedCall(
   return call.operation.node();
 }
 
-StatusOr<jit::DeviceId> InferDeviceForCluster(
+absl::StatusOr<jit::DeviceId> InferDeviceForCluster(
     jit::DeviceInfoCache* device_info_cache, Node* n,
     const string& function_name, const FunctionLibraryDefinition& flib_def) {
   const FunctionDef* func_def = flib_def.Find(function_name);
@@ -401,7 +402,8 @@ std::vector<Output> GetXlaRunArgs(const Scope& s,
   return xla_run_args;
 }
 
-StatusOr<MemoryTypeVector> GetOutputMemoryTypes(const Scope& root, Node* n) {
+absl::StatusOr<MemoryTypeVector> GetOutputMemoryTypes(const Scope& root,
+                                                      Node* n) {
   MemoryTypeVector input_mtypes, output_mtypes;
   DeviceType device_type("");
   TF_RETURN_IF_ERROR(
@@ -422,8 +424,8 @@ StatusOr<MemoryTypeVector> GetOutputMemoryTypes(const Scope& root, Node* n) {
 // To prevent this, we add control dependencies to make the int32 input edges
 // into the PartitionedCall dead.  With this change the D2H copy only happens if
 // the PartitionedCall is actually executed.
-Status PredicateInt32Inputs(const Scope& root, Node* n,
-                            Operation predicate_as_control) {
+absl::Status PredicateInt32Inputs(const Scope& root, Node* n,
+                                  Operation predicate_as_control) {
   std::vector<Output> int32_inputs;
   std::vector<int> int32_inputs_input_idxs;
   for (const Edge* e : n->in_edges()) {
@@ -463,7 +465,7 @@ Status PredicateInt32Inputs(const Scope& root, Node* n,
   return absl::OkStatus();
 }
 
-Status ReplaceNodeWithXlaCompileAndXlaRun(
+absl::Status ReplaceNodeWithXlaCompileAndXlaRun(
     jit::DeviceInfoCache* device_info_cache,
     const GraphOptimizationPassOptions& options,
     const FunctionLibraryDefinition& flib_def, bool lazy_compilation_enabled,
@@ -485,7 +487,7 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
 
   string device_name_str = string(device_info_cache->GetNameFor(device));
 
-  Status status;
+  absl::Status status;
   Scope root = NewInternalScope(g, &status, /*refiner=*/nullptr)
                    .NewSubScope(n->name())
                    .WithDevice(n->requested_device())
@@ -568,7 +570,7 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
 }
 }  // namespace
 
-Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
+absl::Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
 
   // Copy out the nodes we want to rewrite to avoid modifying the graph while we

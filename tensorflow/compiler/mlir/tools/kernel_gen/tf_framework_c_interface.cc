@@ -45,8 +45,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_jit_cache.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -56,7 +56,6 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tsl/framework/allocator.h"
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 #include <optional>
@@ -132,7 +131,7 @@ extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
   }
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
   ctx->CtxFailureWithWarning(
-      tensorflow::Status{ConvertAttrToEnumValue(symbol.value()), msg});
+      absl::Status{ConvertAttrToEnumValue(symbol.value()), msg});
 }
 
 static void ReportError(void* op_kernel_ctx, ErrorCode error_code,

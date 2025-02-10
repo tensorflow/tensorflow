@@ -1,0 +1,64 @@
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+.task-group ul {
+  padding: 0;
+}
+
+li.item {
+  list-style: none;
+}
+
+li.item > div:first-child > code {
+  background: 0;
+  border-bottom: 1px solid #ebebeb;
+  display: block;
+  font: 400 24px/32px Roboto,sans-serif;
+  letter-spacing: -.01em;
+  margin: 40px 0 20px;
+  padding: 0 0 3px;
+}
+
+.swift {
+  padding: 6px 12px;
+  margin: 12px 0;
+  border-left: 5px solid rgba(205,233,244,1);
+  overflow-y: hidden;
+}
+
+.aside-title-swift {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding-bottom: 0;
+  margin: 0;
+  color: #4b8afb;
+}
+
+.objc {
+  padding: 6px 12px;
+  margin: 12px 0;
+  border-left: 5px solid rgba(0, 155, 51, 0.2);
+  overflow-y: hidden;
+}
+
+.aside-title-objc {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding-bottom: 0;
+  margin: 0;
+  color: #009b33;
+}

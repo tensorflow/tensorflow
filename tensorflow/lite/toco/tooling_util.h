@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -24,6 +26,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -327,7 +331,7 @@ void UseArraysExtraInfo(Model* model, bool quantize_output);
 // doesn't have enough range to represent the sum of elements, an error is
 // returned.
 template <typename T, typename U>
-tensorflow::Status NumElements(const std::vector<T>& shape, U* num_elements) {
+absl::Status NumElements(const std::vector<T>& shape, U* num_elements) {
   static_assert(
       std::numeric_limits<T>::max() <= std::numeric_limits<uint64_t>::max(),
       "vector type exceed capabilities of NumElements");
@@ -349,7 +353,7 @@ tensorflow::Status NumElements(const std::vector<T>& shape, U* num_elements) {
     }
     *num_elements *= dim;
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // A model file may have shuffled FC weights.

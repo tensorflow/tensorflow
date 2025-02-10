@@ -48,7 +48,7 @@ TEST(CreateCycleDetectionGraph, ConnectivityThroughEnterExitRegion) {
 
   FixupSourceAndSinkEdges(root.graph());
 
-  GraphCycles cycles;
+  xla::GraphCycles cycles;
   TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles).status());
   EXPECT_FALSE(cycles.CanContractEdge(a.node()->id(), b.node()->id()));
 }
@@ -67,7 +67,7 @@ TEST(CreateCycleDetectionGraph, ConnectivityThroughMultipleEnterExitRegions) {
 
   FixupSourceAndSinkEdges(root.graph());
 
-  GraphCycles cycles;
+  xla::GraphCycles cycles;
   TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles).status());
   EXPECT_FALSE(cycles.CanContractEdge(a.node()->id(), b.node()->id()));
 }
@@ -89,7 +89,7 @@ TEST(CreateCycleDetectionGraph, ReachingEnterExit) {
 
   FixupSourceAndSinkEdges(root.graph());
 
-  GraphCycles cycles;
+  xla::GraphCycles cycles;
   TF_ASSERT_OK_AND_ASSIGN(bool ok,
                           CreateCycleDetectionGraph(root.graph(), &cycles));
   EXPECT_FALSE(ok);
@@ -255,7 +255,7 @@ TEST(NodesRelatedToRefVariables, Basic) {
   EXPECT_EQ(names, expected);
 }
 
-Status MakeLoop(Scope s, Output init_value, absl::string_view loop_name) {
+absl::Status MakeLoop(Scope s, Output init_value, absl::string_view loop_name) {
   s = s.NewSubScope(std::string(loop_name));
   ops::internal::Enter enter(s.WithOpName("init_value"), init_value, loop_name);
   ops::Merge merge(s.WithOpName("merge"), {init_value, init_value});

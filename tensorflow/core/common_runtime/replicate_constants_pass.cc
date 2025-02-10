@@ -24,6 +24,9 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/config/flags.h"
@@ -36,9 +39,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -70,8 +70,8 @@ bool HasCpuDevice(const Node* node) {
 // Convert the CPU device name to the corresponding CPU device name. If
 // multiple local CPU devices are enabled, the CPU device name will also
 // contain the device id.
-Status DeviceNameToCpuDeviceNameWithDeviceId(const string& device_name,
-                                             string* host_device_name) {
+absl::Status DeviceNameToCpuDeviceNameWithDeviceId(const string& device_name,
+                                                   string* host_device_name) {
   DeviceNameUtils::ParsedName device;
   if (!DeviceNameUtils::ParseFullName(device_name, &device)) {
     return absl::InternalError(
@@ -94,7 +94,7 @@ Status DeviceNameToCpuDeviceNameWithDeviceId(const string& device_name,
 }
 
 // Get the CPU device on the same host as dst.
-Status GetDestinationCpuDevice(const Node* dst, std::string* device) {
+absl::Status GetDestinationCpuDevice(const Node* dst, std::string* device) {
   if (!dst->has_assigned_device_name())
     return absl::AbortedError(
         absl::StrCat("Node name: ", dst->name(), " has no assigned device."));
@@ -104,7 +104,7 @@ Status GetDestinationCpuDevice(const Node* dst, std::string* device) {
 
 // Collect the successor edges of the constant. Group them by the device of the
 // successor.
-Status GetSuccessorEdges(
+absl::Status GetSuccessorEdges(
     Node* node,
     absl::btree_map<std::string, std::vector<const Edge*>>& device_to_edges) {
   for (const auto& edge : node->out_edges()) {
@@ -140,7 +140,7 @@ void ReplicateToEachDevice(
 
 }  // namespace
 
-Status ReplicateConstantsPass::Run(
+absl::Status ReplicateConstantsPass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "replicate_constants_pass will replicate constants with "
              "number-of-elements <= "

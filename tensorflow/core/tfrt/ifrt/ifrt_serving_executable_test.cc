@@ -23,44 +23,38 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-
-// Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
-#define EIGEN_USE_THREADS
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/framework/serving_device_selector.h"
+#include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
-#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
-#include "tsl/concurrency/ref_count.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable_test_util.h"
 #include "tsl/platform/tstring.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
+using tensorflow::ifrt_serving::test_utils::GetMlirModulePath;
+using ::tensorflow::test::AsTensor;
+using ::tensorflow::test::TensorEq;
+using ::testing::ElementsAre;
+using ::testing::Return;
+using ::tsl::testing::StatusIs;
+
 struct VariableInputTestParam {
   std::vector<tensorflow::Tensor> in_tensors;
   std::vector<bool>
@@ -70,92 +64,49 @@ struct VariableInputTestParam {
 };
 using VariableInputTest = ::testing::TestWithParam<VariableInputTestParam>;
 
-using ::tensorflow::test::AsTensor;
-using ::tensorflow::test::TensorEq;
-using ::testing::ElementsAre;
+class IfrtServingExecutableTest : public ::testing::Test {
+ protected:
+  explicit IfrtServingExecutableTest() {
+    helper_ = std::make_unique<test_utils::IfrtServingExecutableTestHelper>(
+        &selector_);
+  }
 
-Eigen::ThreadPoolDevice GetThreadPoolDevice() {
-  constexpr int kMaxParallelism = 16;
-  static tsl::thread::ThreadPool* thread_pool = []() {
-    return new tsl::thread::ThreadPool(tsl::Env::Default(),
-                                       tsl::ThreadOptions(), "IfrtSharding",
-                                       kMaxParallelism);
-  }();
-  return Eigen::ThreadPoolDevice(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
-}
+  tsl::test_util::MockServingDeviceSelector selector_;
+  std::unique_ptr<test_utils::IfrtServingExecutableTestHelper> helper_;
+};
 
-TEST(IfrtServingExecutableTest, Basic) {
-  // Create test input module
-  constexpr absl::string_view kDataDirectory =
-      "tensorflow/core/tfrt/ifrt/testdata";
-  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/executable.mlir"));
-
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
-
-  ASSERT_TRUE(mlir_module);
-
-  // Create contexts required for the compiler execution.
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
-                          xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
-
-  IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+TEST_F(IfrtServingExecutableTest, Basic) {
+  int64_t program_id = 123456;
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
+      .Times(1)
+      .WillOnce(Return(tsl::DeviceReservation(0, /*selector=*/nullptr)));
+  auto executable =
+      helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
 
   auto x = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
   auto y = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
   std::vector<tensorflow::Tensor> inputs{x, y};
 
+  // Iterate over all cores first for warmup execution.
+  for (int i = 0; i < helper_->num_cores(); i++) {
+    TF_ASSERT_OK(executable->Execute(absl::MakeSpan(inputs), {}).status());
+  }
   TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          executable.Execute(absl::MakeSpan(inputs), {}));
-
+                          executable->Execute(absl::MakeSpan(inputs), {}));
   const auto expected_out =
       AsTensor<int32_t>({14}, tensorflow::TensorShape({1, 1}));
 
   EXPECT_THAT(result, ElementsAre(TensorEq(expected_out)));
 }
 
-TEST(IfrtServingExecutableTest, MultipleShapes) {
-  // Create test input module
-  constexpr absl::string_view kDataDirectory =
-      "tensorflow/core/tfrt/ifrt/testdata";
-  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/executable.mlir"));
-
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
-
-  ASSERT_TRUE(mlir_module);
-
-  // Create contexts required for the compiler execution.
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
-                          xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
-
-  IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
-
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+TEST_F(IfrtServingExecutableTest, MultipleShapes) {
+  int64_t program_id = 123456;
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
+      .Times(6)
+      .WillRepeatedly(
+          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  auto executable =
+      helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
 
   auto x1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
   auto y1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
@@ -171,49 +122,70 @@ TEST(IfrtServingExecutableTest, MultipleShapes) {
   std::vector<tensorflow::Tensor> inputs2{x2, y2};
 
   std::vector<tensorflow::Tensor> outputs1, outputs2;
+  // Iterate over all cores first for warmup execution.
+  for (int i = 0; i < helper_->num_cores(); i++) {
+    TF_ASSERT_OK(executable->Execute(absl::MakeSpan(inputs1), {}).status());
+  }
   for (int i = 0; i < 3; i++) {
     TF_ASSERT_OK_AND_ASSIGN(outputs1,
-                            executable.Execute(absl::MakeSpan(inputs1), {}));
+                            executable->Execute(absl::MakeSpan(inputs1), {}));
     TF_ASSERT_OK_AND_ASSIGN(outputs2,
-                            executable.Execute(absl::MakeSpan(inputs2), {}));
+                            executable->Execute(absl::MakeSpan(inputs2), {}));
   }
 
-  ASSERT_EQ(executable.num_executables(), 2);
+  ASSERT_EQ(executable->num_executables(), 2);
 
   EXPECT_THAT(outputs1, ElementsAre(TensorEq(expected_out1)));
 
   EXPECT_THAT(outputs2, ElementsAre(TensorEq(expected_out2)));
 }
 
-TEST(IfrtServingExecutableTest, Spmd) {
-  // Create test input module
-  constexpr absl::string_view kDataDirectory =
-      "tensorflow/core/tfrt/ifrt/testdata";
-  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/spmd_executable.mlir"));
+TEST_F(IfrtServingExecutableTest, ReturnFailOnUncompiledShapeAfterFrozen) {
+  int64_t program_id = 123456;
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
+      .Times(3)
+      .WillRepeatedly(
+          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  auto executable =
+      helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
 
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
+  auto x1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  auto y1 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
+  const auto expected_out1 =
+      AsTensor<int32_t>({14}, tensorflow::TensorShape({1, 1}));
+  std::vector<tensorflow::Tensor> inputs1{x1, y1};
+  std::vector<tensorflow::Tensor> outputs1;
+  for (int i = 0; i < helper_->num_cores(); i++) {
+    TF_ASSERT_OK(executable->Execute(absl::MakeSpan(inputs1), {}).status());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(outputs1,
+                          executable->Execute(absl::MakeSpan(inputs1), {}));
 
-  mlir::MLIRContext context(registry);
+  // Freeze the model
+  executable->Freeze();
 
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
+  // After the freeze(), already compiled shape works ok, but uncompiled shape
+  // shall return failure.
+  outputs1.clear();
+  TF_ASSERT_OK_AND_ASSIGN(outputs1,
+                          executable->Execute(absl::MakeSpan(inputs1), {}));
+  EXPECT_THAT(outputs1, ElementsAre(TensorEq(expected_out1)));
 
-  ASSERT_TRUE(mlir_module);
+  auto x2 = AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({1, 4}));
+  auto y2 = AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({4, 1}));
+  std::vector<tensorflow::Tensor> inputs2{x2, y2};
 
-  // Create contexts required for the compiler execution.
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
-                          xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
+  std::vector<tensorflow::Tensor> outputs2;
+  auto status = executable->Execute(absl::MakeSpan(inputs2), {});
 
-  IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kFailedPrecondition));
+}
 
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+TEST_F(IfrtServingExecutableTest, Spmd) {
+  int64_t program_id = 111111;
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id))).Times(0);
+  auto executable = helper_->MakeExecutable(
+      program_id, GetMlirModulePath("spmd_executable.mlir"));
 
   auto x = AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
                              tensorflow::TensorShape({4, 2}));
@@ -228,40 +200,16 @@ TEST(IfrtServingExecutableTest, Spmd) {
 
   std::vector<tensorflow::Tensor> inputs{x, y, z};
   TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          executable.Execute(absl::MakeSpan(inputs), {}));
+                          executable->Execute(absl::MakeSpan(inputs), {}));
 
   EXPECT_THAT(result, ElementsAre(TensorEq(expected_out)));
 }
 
-TEST(IfrtServingExecutableTest, SpmdTwoReturns) {
-  // Create test input module
-  constexpr absl::string_view kDataDirectory =
-      "tensorflow/core/tfrt/ifrt/testdata";
-  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/spmd_executable_two_returns.mlir"));
-
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
-
-  ASSERT_TRUE(mlir_module);
-
-  // Create contexts required for the compiler execution.
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
-                          xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
-
-  IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
-
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+TEST_F(IfrtServingExecutableTest, SpmdTwoReturns) {
+  int64_t program_id = 111111;
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id))).Times(0);
+  auto executable = helper_->MakeExecutable(
+      program_id, GetMlirModulePath("spmd_executable_two_returns.mlir"));
 
   auto x = AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
                              tensorflow::TensorShape({4, 2}));
@@ -279,100 +227,65 @@ TEST(IfrtServingExecutableTest, SpmdTwoReturns) {
   std::vector<tensorflow::Tensor> inputs{x, y, z};
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          executable.Execute(absl::MakeSpan(inputs), {}));
+                          executable->Execute(absl::MakeSpan(inputs), {}));
 
   EXPECT_THAT(result,
               ElementsAre(TensorEq(expected_out0), TensorEq(expected_out1)));
 }
 
-TEST(IfrtServingExecutableTest, NoReturn) {
-  // Create test input module
-  constexpr absl::string_view kDataDirectory =
-      "tensorflow/core/tfrt/ifrt/testdata";
-  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/executable_no_return.mlir"));
-
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
-
-  ASSERT_TRUE(mlir_module);
-
-  // Create contexts required for the compiler execution.
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
-                          xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
-
-  IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
-
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+TEST_F(IfrtServingExecutableTest, NoReturn) {
+  int64_t program_id = 111111;
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
+      .Times(1)
+      .WillRepeatedly(
+          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  auto executable = helper_->MakeExecutable(
+      program_id, GetMlirModulePath("executable_no_return.mlir"));
 
   auto x = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
   auto y = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
   std::vector<tensorflow::Tensor> inputs{x, y};
+  // Iterate over all cores first for warmup execution.
+  for (int i = 0; i < helper_->num_cores(); i++) {
+    TF_ASSERT_OK(executable->Execute(absl::MakeSpan(inputs), {}).status());
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          executable.Execute(absl::MakeSpan(inputs), {}));
+                          executable->Execute(absl::MakeSpan(inputs), {}));
 
   ASSERT_EQ(result.size(), 0);
 }
 
 TEST_P(VariableInputTest, InterleaveVariable) {
-  // Create test input module
-  constexpr absl::string_view kDataDirectory =
-      "tensorflow/core/tfrt/ifrt/testdata";
-  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/executable_long_inputs.mlir"));
-
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::RegisterAllTensorFlowDialects(registry);
-
-  mlir::MLIRContext context(registry);
-
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
-
-  ASSERT_TRUE(mlir_module);
-
-  // Create contexts required for the compiler execution.
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
-                          xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
-
-  IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
-  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client, &thread_pool_device,
-                                   &ifrt_loaded_variable_registry,
-                                   tensorflow::IdentityShapeRepresentationFn());
+  tsl::test_util::MockServingDeviceSelector device_selector;
+  test_utils::IfrtServingExecutableTestHelper helper(&device_selector);
+  int64_t program_id = 111111;
+  EXPECT_CALL(device_selector, ReserveDevice(absl::StrCat(program_id)))
+      .Times(1)
+      .WillRepeatedly(
+          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  auto executable = helper.MakeExecutable(
+      program_id, GetMlirModulePath("executable_long_inputs.mlir"));
+  IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry =
+      helper.ifrt_restore_tensor_registry();
 
   std::vector<tensorflow::Tensor> inputs;
   std::vector<int> loaded_variable_indices;
   for (int i = 0; i < GetParam().in_tensors.size(); i++) {
     if (GetParam().is_variable[i]) {
+      auto input_tensor_promise =
+          xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
+      auto input_tensor_future =
+          xla::ifrt::Future<tensorflow::Tensor>(input_tensor_promise);
+      IfrtRestoreTensorRegistry::RestoredTensorInfo restore_tensor_info = {
+          .dtype_and_shape{.dtype = GetParam().in_tensors[i].dtype(),
+                           .shape = GetParam().in_tensors[i].shape()},
+          .tensor_future = input_tensor_future};
       std::string variable_name = absl::StrCat("variable_", i);
-      ASSERT_OK(ifrt_loaded_variable_registry.TryRegisterLoadedVariable(
-          variable_name,
-          [&]() -> absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> {
-            TF_ASSIGN_OR_RETURN(
-                tsl::RCReference<xla::ifrt::Array> array,
-                MakeArrayFromTensor(*client, GetParam().in_tensors[i],
-                                    /*device_ids=*/{0},
-                                    xla::HloSharding::Replicate(),
-                                    thread_pool_device));
-
-            return array;
-          }));
+      ASSERT_OK(ifrt_restore_tensor_registry->TryRegister(variable_name,
+                                                          restore_tensor_info));
       loaded_variable_indices.push_back(i);
-
+      input_tensor_promise.Set(GetParam().in_tensors[i]);
       // Use string tensor containing the key (name) in place of variable
       // tensor.
       tensorflow::Tensor key_tensor(tensorflow::DT_STRING, {});
@@ -384,10 +297,18 @@ TEST_P(VariableInputTest, InterleaveVariable) {
   }
 
   ASSERT_EQ(inputs.size(), GetParam().is_variable.size());
+  // Iterate over all cores first for warmup execution.
+  for (int i = 0; i < helper.num_cores(); i++) {
+    TF_ASSERT_OK(executable
+                     ->Execute(absl::MakeSpan(inputs),
+                               absl::MakeSpan(loaded_variable_indices))
+                     .status());
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto result, executable.Execute(absl::MakeSpan(inputs),
-                                      absl::MakeSpan(loaded_variable_indices)));
+      auto result,
+      executable->Execute(absl::MakeSpan(inputs),
+                          absl::MakeSpan(loaded_variable_indices)));
 
   EXPECT_THAT(result,
               ElementsAre(TensorEq(GetParam().expected_out_tensors[0]),

@@ -1,4 +1,4 @@
-/* Copyright 2021 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,16 +15,19 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/rocm_tracer.h"
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/status/status.h"
 #include "rocm/rocm_config.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
+#include "xla/tsl/profiler/utils/time_utils.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mem.h"
-#include "tsl/profiler/backends/cpu/annotation_stack.h"
-#include "tsl/profiler/utils/time_utils.h"
 
 namespace xla {
 namespace profiler {
@@ -52,8 +55,8 @@ namespace {
 // GetCachedTID() caches the thread ID in thread-local storage (which is a
 // userspace construct) to avoid unnecessary system calls. Without this caching,
 // it can take roughly 98ns, while it takes roughly 1ns with this caching.
-int32_t GetCachedTID() {
-  static thread_local int32_t current_thread_id =
+int64_t GetCachedTID() {
+  static thread_local int64_t current_thread_id =
       tsl::Env::Default()->GetCurrentThreadId();
   return current_thread_id;
 }
@@ -74,6 +77,8 @@ const char* GetActivityDomainName(uint32_t domain) {
       return "EXT API";
     case ACTIVITY_DOMAIN_ROCTX:
       return "ROCTX";
+    case ACTIVITY_DOMAIN_HSA_EVT:
+      return "HSA envents";
     default:
       DCHECK(false);
       return "";
@@ -123,6 +128,7 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
       case HIP_API_ID_hipExtModuleLaunchKernel:
       case HIP_API_ID_hipHccModuleLaunchKernel:
       case HIP_API_ID_hipLaunchKernel:
+      case HIP_API_ID_hipExtLaunchKernel:
         break;
       case HIP_API_ID_hipMemcpyDtoH:
         oss << ", sizeBytes=" << data->args.hipMemcpyDtoH.sizeBytes;
@@ -169,8 +175,14 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
         break;
       case HIP_API_ID_hipStreamSynchronize:
         break;
+      case HIP_API_ID_hipStreamWaitEvent:  // ignore all aux HIP API Events
+      case HIP_API_ID_hipHostFree:
+      case HIP_API_ID_hipHostMalloc:
+      case HIP_API_ID_hipSetDevice:
+        break;
       default:
-        DCHECK(false);
+        VLOG(3) << "Warning: HIP API is not handled: HIP_API_ID_"
+                << hip_api_name(cbid);
         break;
     }
   } else {
@@ -207,6 +219,8 @@ void DumpActivityRecord(const roctracer_record_t* record,
 
 const char* GetRocmTracerEventTypeName(const RocmTracerEventType& type) {
   switch (type) {
+    case RocmTracerEventType::Kernel:
+      return "Kernel";
     case RocmTracerEventType::MemcpyH2D:
       return "MemcpyH2D";
     case RocmTracerEventType::MemcpyD2H:
@@ -217,16 +231,16 @@ const char* GetRocmTracerEventTypeName(const RocmTracerEventType& type) {
       return "MemcpyP2P";
     case RocmTracerEventType::MemcpyOther:
       return "MemcpyOther";
-    case RocmTracerEventType::Kernel:
-      return "Kernel";
     case RocmTracerEventType::MemoryAlloc:
       return "MemoryAlloc";
-    case RocmTracerEventType::Generic:
-      return "Generic";
-    case RocmTracerEventType::Synchronization:
-      return "Synchronization";
+    case RocmTracerEventType::MemoryFree:
+      return "MemoryFree";
     case RocmTracerEventType::Memset:
       return "Memset";
+    case RocmTracerEventType::Synchronization:
+      return "Synchronization";
+    case RocmTracerEventType::Generic:
+      return "Generic";
     default:
       DCHECK(false);
       return "";
@@ -259,57 +273,15 @@ const char* GetRocmTracerEventDomainName(const RocmTracerEventDomain& domain) {
     case RocmTracerEventDomain::HIP_API:
       return "HIP_API";
       break;
-    case RocmTracerEventDomain::HCC_OPS:
-      return "HCC_OPS";
+    case RocmTracerEventDomain::HIP_OPS:
+      return "HIP_OPS";
       break;
     default:
+      VLOG(3) << "RocmTracerEventDomain::InvalidDomain";
       DCHECK(false);
       return "";
   }
   return "";
-}
-
-void DumpRocmTracerEvent(const RocmTracerEvent& event,
-                         uint64_t start_walltime_ns, uint64_t start_gputime_ns,
-                         const std::string& message) {
-  std::ostringstream oss;
-  oss << "correlation_id=" << event.correlation_id;
-  oss << ",type=" << GetRocmTracerEventTypeName(event.type);
-  oss << ",source=" << GetRocmTracerEventSourceName(event.source);
-  oss << ",domain=" << GetRocmTracerEventDomainName(event.domain);
-  oss << ",name=" << event.name;
-  oss << ",annotation=" << event.annotation;
-  oss << ",start_time_us="
-      << (start_walltime_ns + (start_gputime_ns - event.start_time_ns)) / 1000;
-  oss << ",duration=" << (event.end_time_ns - event.start_time_ns) / 1000;
-  oss << ",device_id=" << event.device_id;
-  oss << ",thread_id=" << event.thread_id;
-  oss << ",stream_id=" << event.stream_id;
-
-  switch (event.type) {
-    case RocmTracerEventType::Kernel:
-      break;
-    case RocmTracerEventType::MemcpyD2H:
-    case RocmTracerEventType::MemcpyH2D:
-    case RocmTracerEventType::MemcpyD2D:
-    case RocmTracerEventType::MemcpyP2P:
-      oss << ",num_bytes=" << event.memcpy_info.num_bytes;
-      oss << ",destination=" << event.memcpy_info.destination;
-      oss << ",async=" << event.memcpy_info.async;
-      break;
-    case RocmTracerEventType::MemoryAlloc:
-      oss << ",num_bytes=" << event.memalloc_info.num_bytes;
-      break;
-    case RocmTracerEventType::Synchronization:
-      break;
-    case RocmTracerEventType::Generic:
-      break;
-    default:
-      DCHECK(false);
-      break;
-  }
-  oss << message;
-  VLOG(3) << oss.str();
 }
 
 absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
@@ -321,7 +293,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
     hipSetDevice) for each thread.
     */
 
-  thread_local uint32_t default_device = 0;
+  thread_local uint32_t default_device = hipGetStreamDeviceId(nullptr);
 
   // DumpApiCallbackData(domain, cbid, cbdata);
 
@@ -338,7 +310,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
     }
 
     if (cbid == HIP_API_ID_hipSetDevice) {
-      default_device = data->args.hipSetDevice.deviceId;
+      default_device = hipGetStreamDeviceId(nullptr);
     }
   } else if (data->phase == ACTIVITY_API_PHASE_EXIT) {
     uint64_t enter_time = 0, exit_time = 0;
@@ -376,6 +348,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
       case HIP_API_ID_hipExtModuleLaunchKernel:  // *
       case HIP_API_ID_hipHccModuleLaunchKernel:  // *
       case HIP_API_ID_hipLaunchKernel:           // *
+      case HIP_API_ID_hipExtLaunchKernel:
 
         this->AddKernelEventUponApiExit(cbid, data, enter_time, exit_time);
 
@@ -543,6 +516,23 @@ void RocmApiCallbackImpl::AddKernelEventUponApiExit(uint32_t cbid,
       event.kernel_info.func_ptr = (void*)func_addr;
       event.device_id = hipGetStreamDeviceId(stream);
     } break;
+    case HIP_API_ID_hipExtLaunchKernel: {
+      const void* func_addr = data->args.hipExtLaunchKernel.function_address;
+      hipStream_t stream = data->args.hipExtLaunchKernel.stream;
+      if (func_addr != nullptr)
+        event.name = hipKernelNameRefByPtr(func_addr, stream);
+
+      event.kernel_info.dynamic_shared_memory_usage =
+          data->args.hipExtLaunchKernel.sharedMemBytes;
+      event.kernel_info.block_x = data->args.hipExtLaunchKernel.dimBlocks.x;
+      event.kernel_info.block_y = data->args.hipExtLaunchKernel.dimBlocks.y;
+      event.kernel_info.block_z = data->args.hipExtLaunchKernel.dimBlocks.z;
+      event.kernel_info.grid_x = data->args.hipExtLaunchKernel.numBlocks.x;
+      event.kernel_info.grid_y = data->args.hipExtLaunchKernel.numBlocks.y;
+      event.kernel_info.grid_z = data->args.hipExtLaunchKernel.numBlocks.z;
+      event.kernel_info.func_ptr = const_cast<void*>(func_addr);
+      event.device_id = hipGetStreamDeviceId(stream);
+    } break;
   }
   bool is_auxiliary =
       options_.api_tracking_set.find(cbid) == options_.api_tracking_set.end();
@@ -556,7 +546,7 @@ void RocmApiCallbackImpl::AddNormalMemcpyEventUponApiExit(
     missing:
       device_id(partially, have only for async), context_id,
     memcpy_info.kind(CUPTI puts CUPTI_ACTIVITY_MEMCPY_KIND_UNKNOWN),
-      memcpy_info.destenation(partially, only for async)( CUPTI puts device_id),
+      memcpy_info.destination(partially, only for async)( CUPTI puts device_id),
 
     extra:
       domain, name,
@@ -907,6 +897,7 @@ absl::Status RocmActivityCallbackImpl::operator()(const char* begin,
           case HIP_API_ID_hipExtModuleLaunchKernel:
           case HIP_API_ID_hipHccModuleLaunchKernel:
           case HIP_API_ID_hipLaunchKernel:
+          case HIP_API_ID_hipExtLaunchKernel:
             DumpActivityRecord(record, std::to_string(__LINE__));
             AddHipKernelActivityEvent(record);
             break;
@@ -1254,7 +1245,7 @@ void RocmActivityCallbackImpl::AddHccKernelActivityEvent(
    activity record contains device/stream ID
  */
   RocmTracerEvent event;
-  event.domain = RocmTracerEventDomain::HCC_OPS;
+  event.domain = RocmTracerEventDomain::HIP_OPS;
   event.type = RocmTracerEventType::Kernel;
   event.source = RocmTracerEventSource::Activity;
   event.correlation_id = record->correlation_id;
@@ -1281,7 +1272,7 @@ void RocmActivityCallbackImpl::AddNormalHipOpsMemcpyActivityEvent(
   */
 
   RocmTracerEvent event;
-  event.domain = RocmTracerEventDomain::HCC_OPS;
+  event.domain = RocmTracerEventDomain::HIP_OPS;
   event.source = RocmTracerEventSource::Activity;
   event.name =  // name is stored for debug
       se::wrap::roctracer_op_string(record->domain, record->op, record->kind);
@@ -1315,7 +1306,7 @@ void RocmActivityCallbackImpl::AddHipOpsMemsetActivityEvent(
   */
 
   RocmTracerEvent event;
-  event.domain = RocmTracerEventDomain::HCC_OPS;
+  event.domain = RocmTracerEventDomain::HIP_OPS;
   event.source = RocmTracerEventSource::Activity;
   event.name =  // name is stored for debug
       se::wrap::roctracer_op_string(record->domain, record->op, record->kind);
@@ -1330,26 +1321,6 @@ void RocmActivityCallbackImpl::AddHipOpsMemsetActivityEvent(
   event.type = RocmTracerEventType::Memset;
 
   collector_->AddEvent(std::move(event), false);
-}
-
-void AnnotationMap::Add(uint32_t correlation_id,
-                        const std::string& annotation) {
-  if (annotation.empty()) return;
-  VLOG(3) << "Add annotation: "
-          << " correlation_id=" << correlation_id
-          << ", annotation: " << annotation;
-  absl::MutexLock lock(&map_.mutex);
-  if (map_.annotations.size() < max_size_) {
-    absl::string_view annotation_str =
-        *map_.annotations.insert(annotation).first;
-    map_.correlation_map.emplace(correlation_id, annotation_str);
-  }
-}
-
-absl::string_view AnnotationMap::LookUp(uint32_t correlation_id) {
-  absl::MutexLock lock(&map_.mutex);
-  auto it = map_.correlation_map.find(correlation_id);
-  return it != map_.correlation_map.end() ? it->second : absl::string_view();
 }
 
 /* static */ RocmTracer* RocmTracer::GetRocmTracerSingleton() {
@@ -1518,7 +1489,8 @@ absl::Status RocmTracer::EnableActivityTracing() {
       properties.buffer_size = 0x1000;
       properties.buffer_callback_fun = ActivityCallback;
       properties.buffer_callback_arg = this;
-      VLOG(3) << "Creating roctracer activity buffer";
+      VLOG(3) << "Creating roctracer activity buffer: buff-size="
+              << properties.buffer_size;
       RETURN_IF_ROCTRACER_ERROR(
           se::wrap::roctracer_open_pool_expl(&properties, nullptr));
     }
@@ -1589,8 +1561,8 @@ absl::Status RocmTracer::DisableActivityTracing() {
   size_t threshold = 1;
   for (int i = 0; i < 6; i++, duration_ms *= 2, threshold *= 2) {
     if (GetPendingActivityRecordsCount() < threshold) break;
-    VLOG(3) << "Wait for pending activity records :"
-            << " Pending count = " << GetPendingActivityRecordsCount()
+    VLOG(3) << "Wait for pending activity records :" << " Pending count = "
+            << GetPendingActivityRecordsCount()
             << ", Threshold = " << threshold;
     VLOG(3) << "Wait for pending activity records : sleep for " << duration_ms
             << " ms";

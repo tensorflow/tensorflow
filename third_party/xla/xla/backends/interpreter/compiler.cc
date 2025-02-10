@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/interpreter/executable.h"
 #include "xla/backends/interpreter/platform_id.h"
@@ -28,26 +30,23 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/expanders/cholesky_expander.h"
+#include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
+#include "xla/hlo/transforms/expanders/eigh_expander.h"
+#include "xla/hlo/transforms/expanders/qr_expander.h"
 #include "xla/literal.h"
 #include "xla/service/batchnorm_expander.h"
-#include "xla/service/cholesky_expander.h"
-#include "xla/service/comparison_expander.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/dynamic_dimension_inference.h"
-#include "xla/service/dynamic_index_splitter.h"
-#include "xla/service/eigh_expander.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/layout_assignment.h"
-#include "xla/service/qr_expander.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/triangular_solve_expander.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -89,7 +88,7 @@ absl::StatusOr<Literal> HandleEvaluatorCustomCall(
 
 }  // namespace
 
-Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
+absl::Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("Interpreter");
 
   // The TopkDecomposer generates a compare op with type=TOTALORDER and must

@@ -72,13 +72,13 @@ class MarkForCompilationPassTestHelper {
   // Runs the MarkForCompilation pass on `graph` after assigning all nodes in
   // `graph` to the CPU device.  To make testing easier, ignores device
   // registration and  _XlaCompile attributes.
-  static Status MarkForCompilation(std::unique_ptr<Graph>* graph,
-                                   FunctionLibraryDefinition* flib_def,
-                                   Options options = Options());
+  static absl::Status MarkForCompilation(std::unique_ptr<Graph>* graph,
+                                         FunctionLibraryDefinition* flib_def,
+                                         Options options = Options());
 
   // Like `MarkForCompilation` but creates `flib_def` from the op registry.
-  static Status MarkForCompilation(std::unique_ptr<Graph>* graph,
-                                   Options options = Options());
+  static absl::Status MarkForCompilation(std::unique_ptr<Graph>* graph,
+                                         Options options = Options());
 };
 }  // namespace tensorflow
 

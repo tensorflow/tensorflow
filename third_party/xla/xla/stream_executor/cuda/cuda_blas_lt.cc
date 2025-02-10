@@ -38,18 +38,19 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/library_types.h"
 #include "xla/primitive_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_timer.h"
-#include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
@@ -255,7 +256,8 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
         cu_preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
         max_workspace_size));
 
-    gpu::ScopedActivateExecutorContext sac{blas_lt_ref_.parent_};
+    std::unique_ptr<ActivateContext> activation =
+        blas_lt_ref_.parent_->Activate();
 
     int found_algorithm_count = 0;
     SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoGetHeuristic(
@@ -274,6 +276,24 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
   }
   return std::move(algorithms);
 }
+
+namespace {
+
+bool IsFastAccumEnabled(const xla::PrecisionConfig::Algorithm algorithm,
+                        xla::PrimitiveType lhs_type,
+                        xla::PrimitiveType rhs_type,
+                        int64_t compute_precision) {
+  if (algorithm == xla::PrecisionConfig::ALG_UNSET) {
+    return (xla::primitive_util::IsF8Type(lhs_type) ||
+            xla::primitive_util::IsF8Type(rhs_type)) &&
+           compute_precision == 0;
+  }
+
+  return algorithm ==
+         xla::PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM;
+}
+
+}  // namespace
 
 auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
                            gpu::BlasLt::Epilogue epilogue) const
@@ -300,11 +320,11 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
 
   if (xla::primitive_util::IsF8Type(lhs_layout.dtype) &&
       lhs_layout.order == gpu::MatrixLayout::Order::kColumnMajor) {
-    return xla::Internal("The F8 LHS must be column-major");
+    return xla::Internal("The F8 LHS must be row-major");
   }
   if (xla::primitive_util::IsF8Type(rhs_layout.dtype) &&
       rhs_layout.order == gpu::MatrixLayout::Order::kRowMajor) {
-    return xla::Internal("The F8 RHS must be row-major");
+    return xla::Internal("The F8 RHS must be column-major");
   }
 
   TF_ASSIGN_OR_RETURN(auto output_dtype,
@@ -312,17 +332,18 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
 
   auto compute_type = cfg.compute_type;
   if (!compute_type) {  // obtain compute_type unless provided by the user
-    TF_ASSIGN_OR_RETURN(compute_type, gpu::GetBlasComputationType(
-                                          lhs_layout.dtype, output_layout.dtype,
-                                          cfg.compute_precision));
+    TF_ASSIGN_OR_RETURN(compute_type,
+                        gpu::GetBlasComputationType(
+                            cfg.precision_algorithm, lhs_layout.dtype,
+                            output_layout.dtype, cfg.compute_precision));
   }
 
   // FP8 matmuls have a fast accumulation mode that is less precise than the
   // default accumulation mode. Use the fast accumulation mode if the compute
   // precision is DEFAULT.
-  bool enable_fast_accum = (xla::primitive_util::IsF8Type(lhs_layout.dtype) ||
-                            xla::primitive_util::IsF8Type(rhs_layout.dtype)) &&
-                           cfg.compute_precision == 0;
+  bool enable_fast_accum =
+      IsFastAccumEnabled(cfg.precision_algorithm, lhs_layout.dtype,
+                         rhs_layout.dtype, cfg.compute_precision);
   TF_ASSIGN_OR_RETURN(
       auto op_desc,
       MatmulDesc::Create(*compute_type,
@@ -381,20 +402,31 @@ absl::Status BlasLt::MatmulPlan::ValidateInputs(
 absl::Status BlasLt::MatmulPlan::DoMatmul(
     Stream* stream, const void* alpha, DeviceMemoryBase a, DeviceMemoryBase b,
     const void* beta, DeviceMemoryBase c, DeviceMemoryBase d,
-    const MatmulAlgorithm& algorithm, ScratchAllocator& scratch_allocator,
-    DeviceMemoryBase bias, DeviceMemoryBase aux, DeviceMemoryBase a_scale,
-    DeviceMemoryBase b_scale, DeviceMemoryBase c_scale,
-    DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
-    blas::ProfileResult* profile_result) const {
-  TF_ASSIGN_OR_RETURN(std::optional<gpu::GpuTimer> timer,
-                      gpu::GpuTimer::CreateIfNeeded(stream, profile_result));
+    const MatmulAlgorithm& algorithm, DeviceMemoryBase bias,
+    DeviceMemoryBase aux, DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+    DeviceMemoryBase c_scale, DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
+    std::optional<DeviceMemoryBase> workspace,
+    std::optional<ScratchAllocator*> scratch_allocator,
+    blas::ProfileResult* profile_result = nullptr) const {
+  std::unique_ptr<EventBasedTimer> timer;
+  if (profile_result != nullptr) {
+    TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
+                                   profile_result->warmup_run_executed()));
+  }
 
-  void* workspace = nullptr;
-  if (algorithm.workspace_size > 0) {
+  void* workspace_addr;
+  uint64_t workspace_size = 0;
+  if (workspace.has_value()) {
+    workspace_addr = workspace.value().opaque();
+    workspace_size = workspace.value().size();
+    TF_RET_CHECK(workspace_size >= algorithm.workspace_size);
+  } else if (algorithm.workspace_size > 0) {
+    TF_RET_CHECK(scratch_allocator.has_value());
     TF_ASSIGN_OR_RETURN(
         DeviceMemory<uint8_t> alloc,
-        scratch_allocator.AllocateBytes(algorithm.workspace_size));
-    workspace = gpu::GpuMemoryMutable(&alloc);
+        scratch_allocator.value()->AllocateBytes(algorithm.workspace_size));
+    workspace_addr = gpu::GpuMemoryMutable(&alloc);
+    workspace_size = algorithm.workspace_size;
   }
 
   auto palgo = std::any_cast<cublasLtMatmulAlgo_t>(&algorithm.opaque_algo);
@@ -471,14 +503,15 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
 #endif
     }
 
-    gpu::ScopedActivateExecutorContext sac{blas_lt_ref_.parent_};
+    std::unique_ptr<ActivateContext> activation =
+        blas_lt_ref_.parent_->Activate();
 
     if (palgo != nullptr) {
       SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(
           blas_lt_ref_.blas_lt_.get(), op_desc_.get(), alpha, a.opaque(),
           a_desc_.get(), b.opaque(), b_desc_.get(), beta, c.opaque(),
-          c_desc_.get(), d.opaque(), d_desc_.get(), palgo, workspace,
-          algorithm.workspace_size, gpu::AsGpuStreamValue(stream)));
+          c_desc_.get(), d.opaque(), d_desc_.get(), palgo, workspace_addr,
+          workspace_size, gpu::AsGpuStreamValue(stream)));
     } else {
       return absl::InternalError("cublaslt: Invalid algorithm type");
     }
@@ -542,7 +575,8 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
     DeviceMemoryBase d, DeviceMemoryBase bias, DeviceMemoryBase aux,
     DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
     DeviceMemoryBase c_scale, DeviceMemoryBase d_scale, DeviceMemoryBase d_amax,
-    const MatmulAlgorithm& algorithm, ScratchAllocator& scratch_allocator,
+    const MatmulAlgorithm& algorithm, std::optional<DeviceMemoryBase> workspace,
+    std::optional<ScratchAllocator*> scratch_allocator,
     blas::ProfileResult* profile_result) const {
   if (must_swap_operands_) {
     std::swap(a, b);
@@ -552,12 +586,12 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
                            d_desc_.type()};
 
 #define TYPED_MATMUL(SCALENTYPE, ATYPE, BTYPE, CTYPE, DTYPE)                \
-  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE, DTYPE)) {       \
+  if (operand_types == std::tuple{ATYPE, BTYPE, CTYPE, DTYPE}) {            \
     return gpu::BlasLt::MatmulPlan::DoMatmul<                               \
         SCALENTYPE, CudaToNativeT<ATYPE>::type, CudaToNativeT<BTYPE>::type, \
         CudaToNativeT<CTYPE>::type, CudaToNativeT<DTYPE>::type>(            \
         stream, alpha_, a, b, beta_, c, d, bias, aux, a_scale, b_scale,     \
-        c_scale, d_scale, d_amax, algorithm, scratch_allocator,             \
+        c_scale, d_scale, d_amax, algorithm, workspace, scratch_allocator,  \
         profile_result);                                                    \
   }
 

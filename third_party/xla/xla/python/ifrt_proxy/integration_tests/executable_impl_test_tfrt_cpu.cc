@@ -24,15 +24,6 @@ int main(int argc, char** argv) {
   const std::string disabled[] = {
       // Executable::IsDeleted always returns false with TFRT CPU backend.
       "LoadedExecutableImplTest.IsDeleted",
-
-      // Enable this when Serialization support for IFRT IR is available.
-      "IfrtIrExecutableImplTest.CallXla",
-      "IfrtIrExecutableImplTest.Reshard",
-      "IfrtIrExecutableImplTest.ZeroInput",
-      "IfrtIrExecutableImplTest.ZeroOutput",
-      "IfrtIrExecutableImplTest.BufferDonation",
-      "IfrtIrExecutableImplTest.LoadedExecBinding",
-      "ProgramLoadedExecutableImplTest.MultipleAtomProgramsNeedDummyInputs",
   };
 
   const std::string filter = absl::StrCat("-", absl::StrJoin(disabled, ":"));

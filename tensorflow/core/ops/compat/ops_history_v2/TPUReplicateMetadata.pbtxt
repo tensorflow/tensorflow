@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TPUReplicateMetadata"
   attr {
     name: "num_replicas"

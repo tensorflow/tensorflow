@@ -39,7 +39,6 @@ py_strict_library(
 # py_proto_library(
 #     name = "api_objects_proto_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":api_objects_proto"],
 # )

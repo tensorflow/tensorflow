@@ -13,23 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
-#include "tsl/platform/errors.h"
+#include "absl/types/span.h"
+#include "xla/service/custom_call_status.h"
 #if TENSORFLOW_USE_ROCM
 #include "rocm/include/hip/hip_runtime.h"
 #else
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 #endif
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 #include "xla/pjrt/exceptions.h"
+#include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/transpose.h"
 #include "xla/primitive_util.h"
 #include "xla/python/callback.h"
 #include "xla/python/nb_numpy.h"
-
+#include "xla/service/custom_call_target_registry.h"
+#include "xla/service/platform_util.h"
 #if TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
 #define gpuStreamHandle hipStream_t
@@ -97,9 +109,13 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
     array.attr("flags").attr("writeable") = nb::bool_(false);
     PyTuple_SET_ITEM(host_input_arrays.ptr(), i, array.inc_ref().ptr());
   }
-  std::optional<nb::tuple> maybe_result_tuple =
-      callback->Call(host_input_arrays, status);
-  if (!maybe_result_tuple) {
+  EnterHostCallback();
+  absl::StatusOr<nb::tuple> maybe_result_tuple =
+      callback->Call(host_input_arrays);
+  LeaveHostCallback();
+  if (!maybe_result_tuple.ok()) {
+    absl::string_view msg = maybe_result_tuple.status().message();
+    XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
     return;
   }
   nb::tuple result_tuple = maybe_result_tuple.value();
@@ -129,7 +145,7 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
       options.dims = dims;
       options.permutation = result.reversed_layout;
       options.input_layout = xla::TransposePlan::Striding{strides};
-      xla::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
+      absl::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
           callback->transpose_cache().GetOrCreate(options);
       if (!plan.ok()) {
         throw xla::XlaRuntimeError(plan.status().ToString());
@@ -148,5 +164,13 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
     delete[] static_cast<char*>(temp_buffers[i]);
   }
 }
+
+// TODO(danfm): When compiled as part of a jaxlib plugin, this will register
+// the custom call target in the plugin's registry. This won't affect
+// registration via the Python API, but we should remove this once we have
+// fully migrated to the plugin interface.
+XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
+    "xla_python_gpu_callback", &XlaPythonGpuCallback,
+    absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
 
 }  // namespace xla

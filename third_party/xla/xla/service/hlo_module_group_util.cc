@@ -25,10 +25,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -235,10 +235,9 @@ std::string HloModuleGroupUtil::CycleToString(
   return absl::StrJoin(names, " --> ");
 }
 
-Status HloModuleGroupUtil::VisitTopologicalOrder(VisitStates* visit_state,
-                                                 VisitFunction visit_function,
-                                                 HloInstruction* root,
-                                                 bool send_recv_as_one_group) {
+absl::Status HloModuleGroupUtil::VisitTopologicalOrder(
+    VisitStates* visit_state, VisitFunction visit_function,
+    HloInstruction* root, bool send_recv_as_one_group) {
   // Stack of HLO instructions visited in DFS order.
   std::stack<HloInstruction*> stack;
   stack.push(root);
@@ -329,15 +328,15 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(VisitStates* visit_state,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloModuleGroupUtil::VerifyComputations(
+absl::Status HloModuleGroupUtil::VerifyComputations(
     absl::Span<HloComputation* const> computations) {
   auto visit_function =
       [&](HloInstruction* instruction,
           const std::vector<HloInstruction*>& instruction_group) {
-        return OkStatus();
+        return absl::OkStatus();
       };
   int64_t instructions_count = 0;
   VisitStates visit_states;
@@ -359,10 +358,10 @@ Status HloModuleGroupUtil::VerifyComputations(
     TF_RET_CHECK(state.second == VisitState::kVisited);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<HloReachabilityMap>>
+absl::StatusOr<std::unique_ptr<HloReachabilityMap>>
 HloModuleGroupUtil::ComputeReachability(
     absl::Span<HloComputation* const> computations) {
   std::vector<HloInstruction*> post_order;
@@ -371,7 +370,7 @@ HloModuleGroupUtil::ComputeReachability(
           const std::vector<HloInstruction*>& instruction_group) {
         post_order.insert(post_order.end(), instruction_group.begin(),
                           instruction_group.end());
-        return OkStatus();
+        return absl::OkStatus();
       };
   HloModuleGroupUtil::VisitStates visit_states;
   for (HloInstruction* root : RootInstructions(computations)) {

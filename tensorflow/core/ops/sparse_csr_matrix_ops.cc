@@ -1,4 +1,4 @@
-/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <tuple>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -26,8 +30,8 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeAndType;
 using shape_inference::ShapeHandle;
 
-Status GetVariantInput(InferenceContext* c, int index,
-                       ShapeAndType* shape_and_type) {
+absl::Status GetVariantInput(InferenceContext* c, int index,
+                             ShapeAndType* shape_and_type) {
   ShapeHandle variant;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(index), 0, &variant));
   auto* shapes_and_types = c->input_handle_shapes_and_types(index);
@@ -41,9 +45,9 @@ Status GetVariantInput(InferenceContext* c, int index,
 
 // Validates that a shape represents a (rank-2) square matrix or a (rank-3)
 // batch of square matrices.
-Status ValidateSquareMatrixShape(InferenceContext* c,
-                                 const ShapeHandle& matrix_shape,
-                                 DimensionHandle* matrix_dimension) {
+absl::Status ValidateSquareMatrixShape(InferenceContext* c,
+                                       const ShapeHandle& matrix_shape,
+                                       DimensionHandle* matrix_dimension) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(matrix_shape, 2, &out));
   TF_RETURN_IF_ERROR(c->WithRankAtMost(matrix_shape, 3, &out));
@@ -295,7 +299,7 @@ REGISTER_OP("SparseMatrixMatMul")
       return absl::OkStatus();
     });
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
 REGISTER_OP("_MklNativeSparseMatrixMatMul")
     .Input("a: variant")
@@ -373,7 +377,7 @@ REGISTER_OP("_MklNativeSparseMatrixMatMul")
       c->set_output(0, out);
       return OkStatus();
     });
-#endif
+#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
 REGISTER_OP("SparseMatrixMul")
     .Input("a: variant")

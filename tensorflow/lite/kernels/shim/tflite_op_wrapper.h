@@ -123,7 +123,7 @@ static constexpr auto convertTuplesToOps(std::tuple<Ts...>) -> std::tuple<
 
 // Convert a tuple of types into a variant of types.
 template <typename... Ts>
-static constexpr absl::variant<Ts...> convertTupleToVariant(std::tuple<Ts...>);
+static constexpr std::variant<Ts...> convertTupleToVariant(std::tuple<Ts...>);
 
 // The variant Op type created with TMP. A tuple of tuples containing the
 // attribute combinations is first created. Then each inner tuple is converted

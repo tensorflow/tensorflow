@@ -15,7 +15,21 @@ limitations under the License.
 
 #include "xla/service/hlo_runner_interface.h"
 
-#include "xla/service/hlo_parser.h"
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -61,22 +75,15 @@ HloRunnerInterface::ReadModuleFromBinaryProtoFile(
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<HloModule>>
-HloRunnerInterface::ReadModuleFromTextProtoFile(
-    const std::string& filename, const DebugOptions& debug_options) {
-  HloProto proto;
-  TF_RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), filename, &proto));
-  return HloProtoToModule(proto, debug_options);
-}
-
-/*static*/ absl::StatusOr<std::unique_ptr<HloModule>>
-HloRunnerInterface::ReadModuleFromHloTextFile(
-    const std::string& filename, const DebugOptions& debug_options) {
+HloRunnerInterface::ReadModuleFromHloTextFile(const std::string& filename,
+                                              const DebugOptions& debug_options,
+                                              const HloParserOptions& options) {
   std::string hlo_string;
   TF_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), filename, &hlo_string));
   HloModuleConfig config;
   config.set_debug_options(debug_options);
-  return ParseAndReturnUnverifiedModule(hlo_string, config);
+  return ParseAndReturnUnverifiedModule(hlo_string, config, options);
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<HloModule>>
@@ -121,7 +128,7 @@ absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithBufferAssignment(
 }
 
 absl::StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
-    Executable* executable, absl::Span<const Literal> arguments,
+    OpaqueExecutable* executable, absl::Span<const Literal> arguments,
     ExecutionProfile* profile) {
   // Construct a vector of plain pointers for the arguments.
   auto argument_pointers = MakePointerVector<const Literal>(arguments);

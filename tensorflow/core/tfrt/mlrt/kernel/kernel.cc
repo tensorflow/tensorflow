@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -25,7 +26,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/function.h"
@@ -360,6 +364,11 @@ struct MapFnOp : mlrt::KernelFrame {
   using KernelFrame::KernelFrame;
 
   static constexpr char kName[] = "tf_mlrt.map_fn";
+
+  // The order of arguments is [max_iterations, tensor_lists_or_flows,
+  // other_args(invariant)].
+  // The size of tensor_lists_or_flows is num_tensor_list_or_flow_in attribute.
+
   // Tensor list or flow in inputs starts after max_iteration
   static constexpr int kTensorListFlowInStartIndex = 1;
 
@@ -432,6 +441,18 @@ void MapFnOp::Invoke() {
   std::vector<mlrt::Promise> initializer_promises;
   initializer_promises.reserve(num_tensor_list_or_flow_in());
 
+  // Each iteration invoke a map_fn_body that has an input signature of
+  // (in_tensor_list_future, out_tensor_list_promise, loop_counter,
+  // tensor_list_index, other_args). The in_tensor_list_future is the output
+  // of the previous iteration and input of the current iteration. The
+  // out_tensor_list_promise is the output of the current iteration and input
+  // of the next iteration. The loop_counter is the loop index. The
+  // tensor_list_index is the index of the tensor list. The other_args are the
+  // invariant arguments.
+  //
+  // Here last_iter_futures is the in_tensor_list_future for the very first
+  // iteration and the initializer_promises are used to set
+  // last_iter_futures to bootstrap the first iteration.
   std::vector<mlrt::Future> last_iter_futures;
   last_iter_futures.reserve(num_tensor_list_or_flow_in());
   for (int i = 0; i < num_tensor_list_or_flow_in(); ++i) {
@@ -472,6 +493,8 @@ void MapFnOp::Invoke() {
           std::move(promise).Finish(execution_context.status());
         });
 
+    // First populate the in_tensor_list_future and out_tensor_list_promise
+    // arguments.
     auto arg_iter = body_args.begin();
     for (int j = 0; j < last_iter_futures.size(); ++j) {
       *arg_iter = std::move(last_iter_futures[j]);
@@ -493,12 +516,15 @@ void MapFnOp::Invoke() {
         tensorflow::tfrt_stub::FallbackTensor(std::move(loop_counter_tensor));
     ++arg_iter;
 
+    // The current tensor list index is the next argument.
     tensorflow::Tensor element_index_tensor(DT_INT32, {});
     element_index_tensor.scalar<int32_t>()() = i;
     *arg_iter =
         tensorflow::tfrt_stub::FallbackTensor(std::move(element_index_tensor));
     ++arg_iter;
 
+    // The rest of the arguments are the invariant arguments and are already
+    // populated outside the loop.
     thread_execution_context.Call(function, body_arg_last_uses,
                                   absl::MakeSpan(body_args),
                                   absl::Span<mlrt::Value>());
@@ -626,6 +652,42 @@ void CancelOp::Invoke() {
   }
 }
 
+struct ConstOp : mlrt::KernelFrame {
+  using KernelFrame::KernelFrame;
+
+  static constexpr char kName[] = "tf_mlrt.constop";
+
+  absl::string_view tensor_proto() const {
+    return attributes().GetAs<mlrt::bc::String>(0).Get();
+  }
+
+  Context& context() { return execution_context().GetUserContext<Context>(); }
+
+  void Invoke();
+};
+
+void ConstOp::Invoke() {
+  tensorflow::TensorProto proto;
+  // TODO(b/330806453): Remove the std::string conversion once ParseFromString()
+  // in OSS accepets absl::string_view.
+  // NOLINTNEXTLINE: readability-redundant-string-conversions
+  if (!proto.ParseFromString(std::string(tensor_proto()))) {
+    execution_context().Fail(
+        absl::InternalError("Failed to parse const tensor proto"));
+    return;
+  }
+
+  tensorflow::Tensor tensor;
+  if (!tensor.FromProto(proto)) {
+    execution_context().Fail(
+        absl::InternalError("Failed to create tensor from tensor proto"));
+    return;
+  }
+
+  results()[0].Emplace<tensorflow::tfrt_stub::FallbackTensor>(
+      std::move(tensor));
+}
+
 struct CreateOp : mlrt::KernelFrame {
   using KernelFrame::KernelFrame;
 
@@ -665,7 +727,7 @@ void CreateOp::Invoke() {
                     node_def.input().size(),
                     [&](tensorflow::AttrValueMap* attr_value_map) {
                       *attr_value_map = node_def.attr();
-                      return OkStatus();
+                      return absl::OkStatus();
                     },
                     fallback_request_state.device_manager(),
                     fallback_request_state.process_function_library_runtime())
@@ -692,7 +754,14 @@ void ExecuteOpInternal(Frame& frame) {
 
   auto* kernel_runner =
       fallback_request_state.runner_table()->GetUnsafe(op_key);
-  DCHECK(kernel_runner);
+  if (kernel_runner->op_kernel() == nullptr) {
+    // TODO: b/381849919 - Remove this log once the bug is fixed and replace
+    // with DCHECK. For now, let this error fall through to the
+    // ExecuteKernelRunner below for debugging purposes.
+    LOG(ERROR) << "ExecuteOp: OpKernel not found: op_Key= " << op_key
+               << " , node_def= " << frame.node_def_text() << " , model= "
+               << fallback_request_state.session_metadata().name();
+  }
 
   ExecuteKernelRunner<IsAsync>(frame, context, fallback_request_state,
                                *kernel_runner);
@@ -985,6 +1054,7 @@ void RegisterTfMlrtKernels(mlrt::KernelRegistry& registry) {
   // TODO(chky,rohitju): These kernels should be unified with the corresponding
   // tfrt_fallback_sync kernels, e.g. tfrt_fallback_sync.executeop.
   registry.Register<CancelOp>();
+  registry.Register<ConstOp>();
   registry.Register<CreateOp>();
   registry.Register<CreateOp>("tfrt_fallback_sync.createop");
   registry.Register<ExecuteOp>();

@@ -41,13 +41,18 @@ class ReduceScatterDecomposerTest : public HloTestBase {
       absl::string_view hlo_module, PassAction action,
       CollectiveOpGroupMode mode = CollectiveOpGroupMode::kCrossReplica,
       int64_t shard_size = 0, int64_t shard_dimension = 0,
-      int64_t replica_count = 2) {
+      int64_t replica_count = 2,
+      std::function<bool(const HloInstruction *)> should_decompose =
+          [](const HloInstruction *) { return true; }) {
     const int64_t partition_count = 2;
     TF_ASSERT_OK_AND_ASSIGN(
         auto module, ParseAndReturnVerifiedModule(hlo_module, replica_count,
                                                   partition_count));
-    TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                            ReduceScatterDecomposer().Run(module.get()));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ReduceScatterDecomposer(/*update_layout=*/nullptr,
+                                /*should_decompose=*/should_decompose)
+            .Run(module.get()));
     if (action == PassAction::kNoChange) {
       ASSERT_FALSE(changed);
       return;
@@ -220,6 +225,27 @@ ENTRY main {
 }
 )";
   RunPass(hlo_string, PassAction::kNoChange);
+}
+
+TEST_F(ReduceScatterDecomposerTest, NoChangeWithShouldDecompose) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[4, 8] parameter(0)
+  ROOT rs = f32[4, 4] reduce-scatter(p0), replica_groups={{0,1}, {2,3}}, channel_id=1, dimensions={1}, to_apply=sum, use_global_device_ids=true
+}
+)";
+  RunPass(hlo_string, PassAction::kNoChange,
+          CollectiveOpGroupMode::kCrossReplica,
+          /*shard_size=*/0, /*shard_dimension=*/0,
+          /*replica_count=*/2, [](const HloInstruction *) { return false; });
 }
 
 }  // namespace

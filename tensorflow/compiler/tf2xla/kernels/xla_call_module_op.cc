@@ -23,9 +23,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -38,8 +42,12 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
@@ -47,20 +55,24 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/hlo/translate/stablehlo.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -75,13 +87,9 @@ absl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
   mlir::SymbolTable &symbol_table =
       symbol_table_collection.getSymbolTable(module);
 
-  mlir::OwningOpRef<mlir::ModuleOp> imported =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
-  context->loadDialect<mlir::func::FuncDialect>();
-  context->loadDialect<mlir::mhlo::MhloDialect>();
-  TF_RETURN_IF_ERROR(
-      xla::ConvertHloToMlirHlo(*imported, &computation.proto(),
-                               /*import_all_computations=*/true));
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> imported,
+      xla::ConvertHloToStablehlo(*context, &computation.proto()));
   if (VLOG_IS_ON(5)) {
     DumpMlirOpToFile("xla_call_module.imported_tf_func", *imported);
   }
@@ -205,7 +213,7 @@ class XlaCallModuleOp : public XlaOpKernel {
     VLOG(3) << "Initializing XlaCallModuleOp on " << compilation_platform_;
     {
       auto loader = XlaCallModuleLoader::Create(
-          &context_, version, std::move(module_str), std::move(disabled_checks),
+          &context_, version, module_str, std::move(disabled_checks),
           std::move(platforms),
           /*num_invocation_args=*/ctx->num_inputs(),
           main_has_token_input_output);
@@ -242,7 +250,7 @@ class XlaCallModuleOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, loader_->SetPlatformIndex(compilation_platform_));
     OP_REQUIRES_OK(ctx, loader_->RefineDynamicShapes(input_shapes));
     OP_REQUIRES_OK(ctx, loader_->ValidateStaticShapes());
-    OP_REQUIRES_OK(ctx, loader_->LowerModuleToMhlo());
+    OP_REQUIRES_OK(ctx, loader_->PrepareStablehloForLowering());
     if (!function_list_.empty()) {
       OP_REQUIRES_OK(ctx, LowerTfFunctionCalls(ctx));
     }
@@ -258,9 +266,15 @@ class XlaCallModuleOp : public XlaOpKernel {
       token_input = xla::AfterAll(b, token_inputs);
     }
 
+    // Set input and output types after removing platform args, but before
+    // lowering the XLA computation since that will mutate the module in place
+    // to use MHLO types.
+    auto input_types = loader_->InputTypes();
+    auto output_types = loader_->OutputTypes();
+
     std::vector<xla::XlaOp> inputs;
     int next_actual_input = 0;
-    for (mlir::Type inputType : loader_->InputTypes()) {
+    for (mlir::Type inputType : input_types) {
       if (IsTokenType(inputType)) {
         if (token_input.IsUninitialized()) {
           // Generate a dummy token if the XlaCallModule doesn't take one.
@@ -308,7 +322,7 @@ class XlaCallModuleOp : public XlaOpKernel {
     // Collect the token outputs and set the non-token outputs
     std::vector<xla::XlaOp> token_outputs;
     int next_actual_output = 0;
-    for (auto it : llvm::enumerate(loader_->OutputTypes())) {
+    for (auto it : llvm::enumerate(output_types)) {
       int i = it.index();
       mlir::Type output_type = it.value();
       auto shape = b->GetShape(computation_outputs[i]);
@@ -316,13 +330,15 @@ class XlaCallModuleOp : public XlaOpKernel {
       if (IsTokenType(output_type)) {
         OP_REQUIRES(ctx, shape->IsToken(),
                     absl::FailedPreconditionError(absl::StrCat(
-                        "Token output at index ", i, " is not token type: ",
+                        "Token output at index ", i, " (",
+                        mlir::debugString(output_type), ") is not token type: ",
                         xla::ShapeUtil::HumanString(*shape))));
         token_outputs.push_back(computation_outputs[i]);
       } else {
         OP_REQUIRES(ctx, !shape->IsToken(),
                     absl::FailedPreconditionError(absl::StrCat(
-                        "Non-token output at index ", i, " is a token type: ",
+                        "Non-token output at index ", i, " (",
+                        mlir::debugString(output_type), ") is not token type: ",
                         xla::ShapeUtil::HumanString(*shape))));
         ctx->SetOutput(next_actual_output++, computation_outputs[i]);
       }
@@ -343,9 +359,9 @@ class XlaCallModuleOp : public XlaOpKernel {
   }
 
  private:
-  // Lowers `mhlo.CustomCall` ops representing TF function calls into nested XLA
-  // computation. The called TF functions are lowered into MHLO and inserted as
-  // function calls in the main module.
+  // Lowers `stablehlo.CustomCall` ops representing TF function calls into
+  // nested XLA computation. The called TF functions are lowered into StableHLO
+  // and inserted as function calls in the main module.
   //
   // This is implemented here instead of in xla_call_module_loader.cc in order
   // to prevent cyclic dependency with TF MLIR passes.
@@ -355,7 +371,8 @@ class XlaCallModuleOp : public XlaOpKernel {
 
     llvm::SmallDenseSet<mlir::func::FuncOp> updated_funcs;
 
-    auto lower = [&](mlir::mhlo::CustomCallOp custom_call) -> absl::Status {
+    auto lower =
+        [&](mlir::stablehlo::CustomCallOp custom_call) -> absl::Status {
       if (custom_call.getCallTargetName() != "tf.call_tf_function") {
         return absl::OkStatus();
       }
@@ -397,13 +414,11 @@ class XlaCallModuleOp : public XlaOpKernel {
       }
 
       // Lower the called TF function into an HLO module.
-
       std::vector<XlaCompiler::Argument> arguments;
       {
         mlir::TypeRange input_types(custom_call->getOperandTypes());
         if (custom_call_has_token_input_output) {
-          if (input_types.empty() ||
-              !input_types.front().isa<mlir::mhlo::TokenType>()) {
+          if (input_types.empty() || !IsTokenType(input_types.front())) {
             return absl::InvalidArgumentError(absl::StrCat(
                 "stablehlo.custom_call with has_token_input_output = true is "
                 "expected to take !stablehlo.token as the first argument, but "
@@ -421,8 +436,7 @@ class XlaCallModuleOp : public XlaOpKernel {
 
         mlir::TypeRange result_types(custom_call->getResultTypes());
         if (custom_call_has_token_input_output) {
-          if (result_types.empty() ||
-              !result_types.front().isa<mlir::mhlo::TokenType>()) {
+          if (result_types.empty() || !IsTokenType(result_types.front())) {
             return absl::InvalidArgumentError(absl::StrCat(
                 "stablehlo.custom_call with has_token_input_output = true is "
                 "expected to return !stablehlo.token as the first result, but "
@@ -432,9 +446,11 @@ class XlaCallModuleOp : public XlaOpKernel {
         }
       }
 
+      // There are times when TPU prefers tuple arguments, i.e. when there are
+      // 2k+ input arguments, but for the most part we want to avoid tuples.
       XlaCompiler::CompileOptions options;
-      options.use_tuple_arg = true;
-      options.always_return_tuple = true;
+      options.use_tuple_arg = false;
+      options.always_return_tuple = false;
       options.is_entry_computation = false;
       // Propagate tokens from XlaCallModule to inner computation.
       options.add_token_input_output = !op_token_input_nodes_.empty();
@@ -443,8 +459,9 @@ class XlaCallModuleOp : public XlaOpKernel {
       TF_RETURN_IF_ERROR(
           ctx->compiler()->CompileFunction(options, f, arguments, &result));
 
-      // Import the lowered HLO module into StableHLO functions in `module`. The
-      // main function accepts tupled arguments and returns tupled results.
+      // Import the lowered HLO module into StableHLO functions in `module`.
+      // The main function accepts variadic arguments and returns variadic
+      // results.
       TF_ASSIGN_OR_RETURN(mlir::func::FuncOp main_func,
                           ImportXlaComputation(symbol_table_collection, module,
                                                *result.computation));
@@ -453,9 +470,8 @@ class XlaCallModuleOp : public XlaOpKernel {
       mlir::OpBuilder builder(custom_call);
       auto loc = custom_call.getLoc();
 
-      // Pack all arguments into a tuple (`options.use_tuple_arg` is true). If
-      // `has_tuple_input_output` is true, the first argument is a token type.
-      mlir::Value arg_tuple;
+      // If `has_tuple_input_output` is true, the first argument is a token type
+      llvm::SmallVector<mlir::Value> input_args;
       {
         llvm::SmallVector<mlir::Value> args(custom_call->getOperands());
         if (custom_call_has_token_input_output) {
@@ -466,21 +482,18 @@ class XlaCallModuleOp : public XlaOpKernel {
         } else if (options.add_token_input_output) {
           // Add a dummy token if the inner computation takes a token but the
           // custom call doesn't have a token argument.
-          args.push_back(builder.create<mlir::mhlo::CreateTokenOp>(loc));
+          args.push_back(builder.create<mlir::stablehlo::CreateTokenOp>(loc));
         }
 
-        llvm::SmallVector<mlir::Value> elements;
-        elements.reserve(result.input_mapping.size());
+        input_args.reserve(result.input_mapping.size());
         for (int index : result.input_mapping) {
-          elements.push_back(args[index]);
+          input_args.push_back(args[index]);
         }
-        arg_tuple =
-            builder.create<mlir::mhlo::TupleOp>(loc, elements).getResult();
       }
 
       // Call the lowered function.
-      auto call = builder.create<mlir::func::CallOp>(
-          loc, main_func, mlir::ValueRange(arg_tuple));
+      auto call =
+          builder.create<mlir::func::CallOp>(loc, main_func, input_args);
 
       // Unpack the result tuple (`options.always_return_tuple` is true). If
       // `has_tuple_input_output` is true, the first result is a token type.
@@ -498,7 +511,7 @@ class XlaCallModuleOp : public XlaOpKernel {
             mlir::Value token = results.back();
             if (!token.use_empty()) {
               token.replaceAllUsesWith(
-                  builder.create<mlir::mhlo::CreateTokenOp>(loc));
+                  builder.create<mlir::stablehlo::CreateTokenOp>(loc));
             }
             results.pop_back();
           }
@@ -506,10 +519,7 @@ class XlaCallModuleOp : public XlaOpKernel {
 
         for (const auto &it : llvm::enumerate(results)) {
           if (!it.value().use_empty()) {
-            auto get_tuple_element =
-                builder.create<mlir::mhlo::GetTupleElementOp>(
-                    loc, call.getResults().front(), it.index());
-            it.value().replaceAllUsesWith(get_tuple_element.getResult());
+            it.value().replaceAllUsesWith(call.getResult(it.index()));
           }
         }
       }
@@ -521,13 +531,14 @@ class XlaCallModuleOp : public XlaOpKernel {
     };
 
     absl::Status status;
-    mlir::WalkResult result = module->walk([&](mlir::mhlo::CustomCallOp op) {
-      status.Update(lower(op));
-      if (!status.ok()) {
-        return mlir::WalkResult::interrupt();
-      }
-      return mlir::WalkResult::advance();
-    });
+    mlir::WalkResult result =
+        module->walk([&](mlir::stablehlo::CustomCallOp op) {
+          status.Update(lower(op));
+          if (!status.ok()) {
+            return mlir::WalkResult::interrupt();
+          }
+          return mlir::WalkResult::advance();
+        });
     if (result.wasInterrupted()) {
       return status;
     }

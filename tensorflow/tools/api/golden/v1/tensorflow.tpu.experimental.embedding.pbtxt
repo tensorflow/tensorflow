@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CustomOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "FTRL"
     mtype: "<type \'type\'>"
   }
@@ -30,6 +34,10 @@ tf_module {
   }
   member {
     name: "SGD"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseCoreEmbeddingConfig"
     mtype: "<type \'type\'>"
   }
   member {

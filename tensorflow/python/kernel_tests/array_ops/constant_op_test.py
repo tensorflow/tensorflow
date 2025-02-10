@@ -512,7 +512,7 @@ class ZerosLikeTest(test.TestCase):
       # causes a TypeError in constant_op.constant below. Here we catch the
       # special case of tf.string and set the numpy dtype appropriately.
       if dtype == dtypes_lib.string:
-        numpy_dtype = np.string_
+        numpy_dtype = np.bytes_
       else:
         numpy_dtype = dtype.as_numpy_dtype
       if fully_defined_shape:

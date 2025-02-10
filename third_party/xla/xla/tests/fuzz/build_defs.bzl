@@ -42,7 +42,7 @@ def hlo_test(name, hlo, **kwargs):
         real_hardware_only = True,
         deps = [
             "//xla/tests/fuzz:hlo_test_lib",
-            "@local_tsl//tsl/platform:test_main",
+            "@com_google_googletest//:gtest_main",
         ],
         **kwargs
     )

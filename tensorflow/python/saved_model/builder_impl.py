@@ -396,7 +396,8 @@ class _SavedModelBuilder(object):
     # subsequent attempts to save variables will fail.
     self._has_saved_variables = True
 
-  def save(self, as_text=False, experimental_image_format=False):
+  def save(self, as_text=False, experimental_image_format=False,
+           experimental_image_writer_options=None):
     """Writes a `SavedModel` protocol buffer to disk.
 
     The function writes the SavedModel protocol buffer to the export directory
@@ -414,11 +415,15 @@ class _SavedModelBuilder(object):
       https://www.tensorflow.org/api_docs/python/tf/saved_model/SaveOptions for
         more details. This allows `SavedModelBuilder` to save models larger than
         2 GiB.
-    
+      experimental_image_writer_options: Optional options for the experimental
+        image writer. See
+        https://github.com/google/riegeli/blob/master/doc/record_writer_options.md
+          for available options.
+
     Raises:
        RuntimeError: When trying to use `proto_splitter` but `proto_splitter` is
-         not imported. This check is here because `proto_splitter` is not 
-         available in OSS at the moment. 
+         not imported. This check is here because `proto_splitter` is not
+         available in OSS at the moment.
 
     Returns:
       The path to which the SavedModel protocol buffer was written.
@@ -448,7 +453,9 @@ class _SavedModelBuilder(object):
           )
         # Overwrites path to record whether the saved_model is split, i.e.,
         # whether the suffix is `.pb` or `.cpb`.
-        path = proto_splitter.SavedModelSplitter(self._saved_model).write(path)
+        path = proto_splitter.SavedModelSplitter(self._saved_model).write(
+            path, experimental_image_writer_options
+        )
       else:
         path = file_io.join(
             compat.as_bytes(self._export_dir),

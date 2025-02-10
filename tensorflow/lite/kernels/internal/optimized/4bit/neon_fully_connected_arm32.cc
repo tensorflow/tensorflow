@@ -38,7 +38,7 @@ namespace optimized_4bit {
 #define END "8"
 
 #define KERNEL_4x1                       \
-  "mov r8, 0xf\n"                        \
+  "mov r8, #0xf\n"                       \
   "vdup.8 d28, r8\n"                     \
   "mov r0, %[element_ptr]\n"             \
   "mov r6, %[lhs_val]\n"                 \

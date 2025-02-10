@@ -15,17 +15,37 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -48,7 +68,7 @@ class MockMlirOptimizationPass : public MlirOptimizationPass {
                const Graph& graph,
                const FunctionLibraryDefinition& function_library),
               (const, override));
-  MOCK_METHOD(Status, Run,
+  MOCK_METHOD(absl::Status, Run,
               (const std::string& function_name,
                const ConfigProto& config_proto, mlir::ModuleOp module,
                const Graph& graph,
@@ -64,7 +84,7 @@ class MockMlirV1CompatOptimizationPass : public MlirV1CompatOptimizationPass {
                const Graph& graph,
                const FunctionLibraryDefinition& function_library),
               (const, override));
-  MOCK_METHOD(Status, Run,
+  MOCK_METHOD(absl::Status, Run,
               (const GraphOptimizationPassOptions& options,
                mlir::ModuleOp module),
               (override));
@@ -72,7 +92,8 @@ class MockMlirV1CompatOptimizationPass : public MlirV1CompatOptimizationPass {
 
 class ModifyMlirModulePass : public MlirOptimizationPass {
  public:
-  explicit ModifyMlirModulePass(Status run_status) : run_status_(run_status) {}
+  explicit ModifyMlirModulePass(absl::Status run_status)
+      : run_status_(run_status) {}
   MOCK_METHOD(llvm::StringRef, name, (), (const, override));
   MOCK_METHOD(MlirOptimizationPassState, GetPassState,
               (const DeviceSet* device_set, const ConfigProto& config_proto,
@@ -82,9 +103,10 @@ class ModifyMlirModulePass : public MlirOptimizationPass {
 
   // Just modify MLIR module so that we can check whether original TF graph
   // has changed or not.
-  Status Run(const std::string& function_name, const ConfigProto& config_proto,
-             mlir::ModuleOp module, const Graph& graph,
-             const FunctionLibraryDefinition& function_library) override {
+  absl::Status Run(const std::string& function_name,
+                   const ConfigProto& config_proto, mlir::ModuleOp module,
+                   const Graph& graph,
+                   const FunctionLibraryDefinition& function_library) override {
     mlir::Builder b(module.getContext());
     auto producer = b.getNamedAttr("producer", b.getI32IntegerAttr(0));
     auto min_consumer = b.getNamedAttr("min_consumer", b.getI32IntegerAttr(0));
@@ -98,7 +120,7 @@ class ModifyMlirModulePass : public MlirOptimizationPass {
     return run_status_;
   }
 
-  Status run_status_;
+  absl::Status run_status_;
 };
 
 FunctionDef XTimesTwo() {
@@ -122,7 +144,7 @@ FunctionDef XTimesTwo() {
 
 class MlirGraphOptimizationPassTest : public Test {
  public:
-  void Init(Status pass_run_result,
+  void Init(absl::Status pass_run_result,
             const std::vector<MlirOptimizationPassState>& pass_states) {
     graph_ = std::make_unique<Graph>(OpRegistry::Global());
 
@@ -144,7 +166,7 @@ class MlirGraphOptimizationPassTest : public Test {
   }
 
   void AddModuleModificationPass(MlirOptimizationPassState pass_state,
-                                 Status run_status) {
+                                 absl::Status run_status) {
     // Add FallbackEnabled pass that modifies the graph.
     auto optimization_pass =
         std::make_unique<NiceMock<ModifyMlirModulePass>>(run_status);
@@ -213,7 +235,7 @@ class MlirGraphOptimizationPassTest : public Test {
 };
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoFallback) {
-  Init(Status(absl::StatusCode::kAborted, "aborted"),
+  Init(absl::Status(absl::StatusCode::kAborted, "aborted"),
        {MlirOptimizationPassState::Enabled});
 
   GraphDef original_graph_def;
@@ -223,13 +245,13 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoFallback) {
       function_optimization_pass_.Run(
           "test_func", device_set_, config_proto_, function_options_, &graph_,
           flib_.get(), &control_ret_node_names_, &control_rets_updated_),
-      Status(absl::StatusCode::kAborted, "aborted"));
+      absl::Status(absl::StatusCode::kAborted, "aborted"));
   verifyGraph(original_graph_def);
   verifyCounters();
 }
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
-  Init(Status(absl::StatusCode::kAborted, "aborted"),
+  Init(absl::Status(absl::StatusCode::kAborted, "aborted"),
        {MlirOptimizationPassState::Disabled,
         MlirOptimizationPassState::FallbackEnabled});
 
@@ -243,8 +265,9 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
 
   GraphDef original_graph_def;
   graph_->ToGraphDef(&original_graph_def);
-  AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
-                            Status(absl::StatusCode::kAborted, "aborted"));
+  AddModuleModificationPass(
+      MlirOptimizationPassState::FallbackEnabled,
+      absl::Status(absl::StatusCode::kAborted, "aborted"));
 
   EXPECT_EQ(
       function_optimization_pass_.Run(
@@ -311,7 +334,7 @@ TEST(MlirV1CompatOptimizationPassRegistry, RegisterMultiplePassesFails) {
 
 class MlirGraphOptimizationV1PassTest : public Test {
  public:
-  void Init(Status pass_run_result,
+  void Init(absl::Status pass_run_result,
             const std::vector<MlirOptimizationPassState>& pass_states) {
     graph_ = std::make_unique<Graph>(OpRegistry::Global());
     MlirV1CompatOptimizationPassRegistry::Global().ClearPass();
@@ -363,6 +386,7 @@ class MlirGraphOptimizationV1PassTest : public Test {
               pass_result_expected_[MlirOptimizationPassState::FallbackEnabled]
                                    [false]);
     EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kOk), 0);
+    EXPECT_EQ(mlir_v1_compat_graph_conversion_count_.Read(kOk), 1);
   }
 
   void TearDown() override {
@@ -395,6 +419,11 @@ class MlirGraphOptimizationV1PassTest : public Test {
           monitoring::testing::CellReader<int64_t>(
               /* metric name */
               "/tensorflow/core/mlir_function_pass_graph_conversion_count");
+  monitoring::testing::CellReader<int64_t>
+      mlir_v1_compat_graph_conversion_count_ =
+          monitoring::testing::CellReader<int64_t>(
+              /* metric name */
+              "/tensorflow/core/mlir_v1_compat_graph_conversion_count");
 };
 
 TEST_F(MlirGraphOptimizationV1PassTest, OptimizationPassDoesNotFailFallback) {

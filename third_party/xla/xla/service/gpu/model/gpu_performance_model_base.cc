@@ -19,24 +19,28 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -44,31 +48,16 @@ namespace gpu {
 namespace {
 
 // Returns whether a fusion uses the parameter at the given index elementwise
-// from its root.
+// from its root. Also works if 'fusion' is a multi-output fusion.
 bool FusionUsesParameterElementwiseFromRoot(
     const HloInstruction* fusion, int parameter_index,
     const GpuHloCostAnalysis* cost_analysis) {
+  // This checks whether there is a path from fused_expression_root() to the
+  // parameter that only goes through elementwise, Tuple and GetTupleElement
+  // ops.
   return cost_analysis->CommonElementwiseUtilization(
              fusion->fused_parameter(parameter_index),
              fusion->fused_expression_root()) == 1.f;
-}
-
-int GetCoalescingWasteFactor(PrimitiveType element_type) {
-  int64_t element_size_bytes =
-      element_type == PrimitiveType::TUPLE ||
-              element_type == PrimitiveType::TOKEN
-          ? 4 /* Dummy value. TODO(jreiffers): Model this case. */
-          : ShapeUtil::ByteSizeOfPrimitiveType(element_type);
-  // Cache line is 128B that is split into 4 sectors of 32B. Default transaction
-  // size from DRAM -> L2 = 64 Bytes = 2 sectors, since V100, but it can be also
-  // configured.
-  // https://developer.download.nvidia.com/video/gputechconf/gtc/2020/presentations/s21819-optimizing-applications-for-nvidia-ampere-gpu-architecture.pdf
-  // (page 10).
-  constexpr int kDRAMToL2TransactionSizeBytes = 64;
-  // Assume we use one element from the cache line and waste the remaining
-  // bandwidth. For example, if we're reading f32s, we use 1/16nd of the cache
-  // line.
-  return kDRAMToL2TransactionSizeBytes / element_size_bytes;
 }
 
 // Limit the bandwidth for low occupancy cases. Each SM can issue at most
@@ -76,7 +65,8 @@ int GetCoalescingWasteFactor(PrimitiveType element_type) {
 // (1830 MHz) to saturate the memory bandwidth (3.35 TB/s).
 float AdjustBandwidth(const se::DeviceDescription& gpu_device_info,
                       float bandwidth, int64_t num_blocks) {
-  float per_block_bandwidth = gpu_device_info.clock_rate_ghz() * 1.0e9f * 32;
+  float per_block_bandwidth = gpu_device_info.clock_rate_ghz() * 1.0e9f *
+                              gpu_device_info.memory_transactions_per_clock();
   float max_bandwidth = num_blocks * per_block_bandwidth;
 
   return std::min(bandwidth, max_bandwidth);
@@ -86,9 +76,7 @@ float AdjustBandwidth(const se::DeviceDescription& gpu_device_info,
 
 std::optional<EstimateRunTimeData> GpuPerformanceModelCache::Get(
     const HloInstruction& instruction) {
-  absl::MutexLock lock(&mutex_);
-
-  auto it = instruction_runtime_data_.find(HloInstructionAdaptor(instruction));
+  auto it = instruction_runtime_data_.find(&instruction);
   if (it != instruction_runtime_data_.end()) {
     return it->second;
   }
@@ -99,9 +87,9 @@ std::optional<absl::Duration> GpuPerformanceModelCache::Get(
     const HloInstruction& producer, const HloInstruction& consumer) {
   absl::MutexLock lock(&mutex_);
 
-  auto it = fusion_runtime_data_.find(HloInstructionAdaptor(producer));
+  auto it = fusion_runtime_data_.find(&producer);
   if (it != fusion_runtime_data_.end()) {
-    auto jt = it->second.find(HloInstructionAdaptor(consumer));
+    auto jt = it->second.find(&consumer);
     if (jt != it->second.end()) {
       return jt->second;
     }
@@ -109,65 +97,90 @@ std::optional<absl::Duration> GpuPerformanceModelCache::Get(
   return std::nullopt;
 }
 
+const absl::flat_hash_map<const HloInstruction*, absl::Duration>&
+GpuPerformanceModelCache::GetAllConsumers(const HloInstruction& producer) {
+  return fusion_runtime_data_[&producer];
+}
+
+bool GpuPerformanceModelCache::ContainsConsumers(
+    const HloInstruction& producer) {
+  return fusion_runtime_data_.contains(&producer);
+}
+
 void GpuPerformanceModelCache::Set(const HloInstruction& instruction,
                                    const EstimateRunTimeData& runtime_data) {
-  absl::MutexLock lock(&mutex_);
-
-  instruction_runtime_data_[HloInstructionAdaptor(instruction)] = runtime_data;
+  instruction_runtime_data_[&instruction] = runtime_data;
 }
 
 void GpuPerformanceModelCache::Set(const HloInstruction& producer,
                                    const HloInstruction& consumer,
                                    absl::Duration runtime) {
   absl::MutexLock lock(&mutex_);
-  fusion_runtime_data_[HloInstructionAdaptor(producer)]
-                      [HloInstructionAdaptor(consumer)] = runtime;
+  fusion_runtime_data_[&producer][&consumer] = runtime;
 }
 
 void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
-  absl::MutexLock lock(&mutex_);
-  HloInstructionAdaptor adaptor(instruction);
-
   // Remove runtime data for the instruction.
-  instruction_runtime_data_.erase(adaptor);
+  instruction_runtime_data_.erase(&instruction);
 
   // Remove cache for all producer-consumer pairs where the instruction is
   // producer.
-  fusion_runtime_data_.erase(adaptor);
+  fusion_runtime_data_.erase(&instruction);
 
   // Iterate through operands to find all producer-consumer pairs where
   // instruction is consumer and remove them from cache.
   for (auto* operand : instruction.operands()) {
-    auto it = fusion_runtime_data_.find(HloInstructionAdaptor(*operand));
+    if (operand->opcode() == HloOpcode::kGetTupleElement) {
+      operand = operand->mutable_operand(0);
+    }
+    auto it = fusion_runtime_data_.find(operand);
     if (it != fusion_runtime_data_.end()) {
-      it->second.erase(adaptor);
+      it->second.erase(&instruction);
     }
   }
 }
 
 /*static*/
 LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
-    int64_t estimated_num_threads, const HloFusionAnalysis& fusion_analysis,
-    const se::DeviceDescription& device_info) {
+    const HloFusionAnalysis& fusion_analysis) {
   auto emitter =
       GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis});
-  if (emitter.ok()) {
-    if (const auto* kernel_emitter =
-            dynamic_cast<const KernelFusionInterface*>(emitter->get())) {
-      return kernel_emitter->launch_dimensions();
+  if (const auto* kernel_emitter =
+          dynamic_cast<const KernelFusionInterface*>(emitter.get())) {
+    return kernel_emitter->launch_dimensions();
+  }
+
+  // TritonFusion does not implement KernelFusionInterface, because it provides
+  // launch dimensions only for SoftMax fusions.
+  if (const auto* triton_emitter =
+          dynamic_cast<const TritonFusion*>(emitter.get())) {
+    if (auto launch_config = triton_emitter->launch_config()) {
+      return launch_config->launch_dimensions;
     }
   }
-  int64_t block_size = 128;  // Result for default LaunchDimensionsConfig.
-  int64_t num_blocks = CeilOfRatio(estimated_num_threads, block_size);
-  return LaunchDimensions(num_blocks, block_size);
+
+  // This estimate should never be reached in fusion code. Fusions that don't
+  // implement KernelFusionInterface, don't generate GPU kernels, so there is
+  // nothing to fuse. Keep this estimate as a simple fallback.
+  //
+  // We assume that the kernel launches 1 thread per output element and 128
+  // threads per block. In multi-output fusions, only look at one root.
+  VLOG(5) << "Using fallback launch dimensions estimate for "
+          << fusion_analysis.fusion().ToString();
+  int64_t num_threads_per_block = 128;
+  int64_t estimated_num_threads =
+      ShapeUtil::ElementsInRecursive(fusion_analysis.fusion_root(0).shape());
+  int64_t num_blocks =
+      CeilOfRatio(estimated_num_threads, num_threads_per_block);
+  return LaunchDimensions(num_blocks, num_threads_per_block);
 }
 
 /*static*/
 int64_t GpuPerformanceModelBase::GetOperandBytesAccessed(
     const GpuHloCostAnalysis* cost_analysis, const HloInstruction* instr,
     const HloInstruction* operand) {
-  // When called for a consumer-producer fusion, the operand can be from a
-  // different instruction. GpuHloCostAnalysis can't fail gravefully in this
+  // When called for a producer-consumer fusion, the operand can be from a
+  // different instruction. GpuHloCostAnalysis can't fail gracefully in this
   // case, so we need an explicit check.
   if (!instr->IsUserOf(operand)) {
     return 0;
@@ -181,8 +194,20 @@ int64_t GpuPerformanceModelBase::GetOperandBytesAccessed(
 float GpuPerformanceModelBase::GetOperandUtilization(
     const GpuHloCostAnalysis* cost_analysis, const HloInstruction* instr,
     const HloInstruction* operand) {
-  // When called for a consumer-producer fusion, the operand can be from a
-  // different instruction. GpuHloCostAnalysis can't fail gravefully in this
+  if (operand->IsMultiOutputFusion()) {
+    // If 'operand' is a multi-output fusion, we need to check which of its
+    // outputs are used by 'instr'.
+    float res = 0.f;
+    for (int64_t i = 0; i < instr->operand_count(); ++i) {
+      if (instr->operand(i)->opcode() == HloOpcode::kGetTupleElement &&
+          instr->operand(i)->operand(0) == operand) {
+        res += cost_analysis->operand_utilization(*instr, i);
+      }
+    }
+    return res;
+  }
+  // When called for a producer-consumer fusion, the operand can be from a
+  // different instruction. GpuHloCostAnalysis can't fail gracefully in this
   // case, so we need an explicit check.
   if (!instr->IsUserOf(operand)) {
     return 0.f;
@@ -208,14 +233,27 @@ float GpuPerformanceModelBase::GetCommonUtilization(
                                               cost_analysis))) {
     if (consumer->opcode() == HloOpcode::kFusion) {
       int64_t consumer_idx_of_common_operand = consumer->operand_index(operand);
-      int64_t consumer_idx_of_producer = consumer->operand_index(producer);
-      return cost_analysis->CommonElementwiseUtilization(
-          consumer->fused_parameter(consumer_idx_of_common_operand),
-          consumer->fused_parameter(consumer_idx_of_producer));
-    } else {
-      if (consumer->IsElementwise()) {
-        return 1.f;
+      float res = 0.f;
+      std::vector<int64_t> consumer_indices_of_producer;
+      if (producer->IsMultiOutputFusion()) {
+        for (int64_t i = 0; i < consumer->operand_count(); ++i) {
+          if (consumer->operand(i)->opcode() == HloOpcode::kGetTupleElement &&
+              consumer->operand(i)->operand(0) == producer) {
+            consumer_indices_of_producer.push_back(i);
+          }
+        }
+      } else {
+        consumer_indices_of_producer.push_back(
+            consumer->operand_index(producer));
       }
+      for (int64_t consumer_idx_of_producer : consumer_indices_of_producer) {
+        res += cost_analysis->CommonElementwiseUtilization(
+            consumer->fused_parameter(consumer_idx_of_common_operand),
+            consumer->fused_parameter(consumer_idx_of_producer));
+      }
+      return res;
+    } else if (consumer->IsElementwise()) {
+      return 1.f;
     }
   }
   return 0.f;
@@ -250,31 +288,14 @@ int64_t GpuPerformanceModelBase::GetSharedOperandBytesAccessed(
 }
 
 /*static*/
-absl::Duration GpuPerformanceModelBase::ReadTime(
-    const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
-    int64_t n_bytes_net, int64_t n_bytes_total) {
-  float bandwidth = gpu_device_info.memory_bandwidth();
-  if (n_bytes_net < gpu_device_info.l2_cache_size()) {
-    bandwidth *= kL2CacheSpeedup;
-    if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count()) {
-      bandwidth *= kL1CacheSpeedup;
-    }
-  }
-
-  bandwidth = AdjustBandwidth(gpu_device_info, bandwidth, num_blocks);
-  return absl::Seconds(n_bytes_total / bandwidth);
-}
-
-/*static*/
 absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
     const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
     int64_t n_bytes_net, int64_t n_bytes_total, PrimitiveType element_type,
-    bool coalesced) {
-  int waste_factor = coalesced ? 1 : GetCoalescingWasteFactor(element_type);
-
+    double hbm_bandwidth_utilization_rate) {
   // The first read of the input buffer always happens from DRAM. If reads are
   // no coaleced, bandwidth is reduced by the waste factor.
-  float dram_bandwidth = gpu_device_info.memory_bandwidth() / waste_factor;
+  float dram_bandwidth =
+      gpu_device_info.memory_bandwidth() * hbm_bandwidth_utilization_rate;
 
   // Two things can happed on re-reading the buffer:
   //   - If the buffer fits into cache, the L1/L2 cache speedup is applied.
@@ -283,11 +304,12 @@ absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
   float rest_bandwidth = gpu_device_info.memory_bandwidth();
   if (n_bytes_net < gpu_device_info.l2_cache_size()) {
     rest_bandwidth *= kL2CacheSpeedup;
-    if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count()) {
+    if (n_bytes_net <
+        gpu_device_info.l1_cache_size_per_SM() * gpu_device_info.core_count()) {
       rest_bandwidth *= kL1CacheSpeedup;
     }
   } else {
-    rest_bandwidth /= waste_factor;
+    rest_bandwidth *= hbm_bandwidth_utilization_rate;
   }
 
   dram_bandwidth = AdjustBandwidth(gpu_device_info, dram_bandwidth, num_blocks);
@@ -304,47 +326,6 @@ absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
          absl::Seconds(n_bytes_read_cache / rest_bandwidth);
 }
 
-/*static*/ absl::Duration GpuPerformanceModelBase::ProducerInputAccessTime(
-    const GpuHloCostAnalysis* cost_analysis,
-    const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
-    const HloInstruction* producer, const HloFusionAnalysis& fusion_analysis,
-    const GpuPerformanceModelOptions& config,
-    const HloInstruction* fused_consumer) {
-  absl::Duration ret = absl::ZeroDuration();
-  float producer_output_utilization =
-      fused_consumer
-          ? GetOperandUtilization(cost_analysis, fused_consumer, producer)
-          : 1.f;
-
-  for (int i = 0; i < producer->operand_count(); ++i) {
-    // Information about data read taking into account utilization.
-    // If `operand_utilization` is 0, `operand_bytes_accessed` should be also 0.
-    int64_t operand_bytes_accessed =
-        cost_analysis->operand_bytes_accessed(*producer, i);
-    float operand_utilization =
-        cost_analysis->operand_utilization(*producer, i);
-
-    // An estimate how much data would need to fit into L1/L2 cache to speed up
-    // the operand access.
-    // If `operand_utilization` < 1, only a part of the full operand size should
-    // be read. Otherwise, `operand_bytes_accessed / operand_utilization` is the
-    // size of the operand without reuse.
-    int64_t n_bytes_net = std::llround(operand_bytes_accessed /
-                                       std::max(operand_utilization, 1.0f));
-
-    // Look if common operand of producer and consumer will be accessed more
-    // efficiently on merge.
-    float common_utilization = GetCommonUtilization(
-        cost_analysis, producer, /*producer_idx_of_operand=*/i, fused_consumer);
-
-    CHECK_LE(common_utilization, producer_output_utilization);
-    float n_bytes_total = operand_bytes_accessed *
-                          (producer_output_utilization - common_utilization);
-    ret += ReadTime(gpu_device_info, num_blocks, n_bytes_net, n_bytes_total);
-  }
-  return ret;
-}
-
 /*static*/
 absl::Duration GpuPerformanceModelBase::WriteTime(
     const se::DeviceDescription& gpu_device_info, int64_t bytes_written) {
@@ -355,12 +336,16 @@ absl::Duration GpuPerformanceModelBase::WriteTime(
 /*static*/
 absl::Duration GpuPerformanceModelBase::ComputeTime(
     const se::DeviceDescription& gpu_device_info, int64_t flops,
-    int64_t num_threads) {
-  int64_t fpu_count =
-      gpu_device_info.core_count() * gpu_device_info.fpus_per_core();
-  int64_t n_threads_active = std::min(num_threads, fpu_count);
+    int64_t num_blocks, int64_t num_threads_per_block) {
+  int64_t n_active_fpus_per_core =
+      std::min<int64_t>(num_threads_per_block, gpu_device_info.fpus_per_core());
+
+  int64_t n_active_core =
+      std::min<int64_t>(num_blocks, gpu_device_info.core_count());
+  int64_t fpu_count = n_active_core * n_active_fpus_per_core;
+
   int64_t flop_per_ns_per_fpu = gpu_device_info.clock_rate_ghz() * /*fma:*/ 2;
-  int64_t flop_per_ns_effective = flop_per_ns_per_fpu * n_threads_active;
+  int64_t flop_per_ns_effective = flop_per_ns_per_fpu * fpu_count;
   return absl::Nanoseconds(1.0f * flops / flop_per_ns_effective);
 }
 
@@ -383,21 +368,20 @@ void GpuPerformanceModelBase::VLogOperandRead(const HloInstruction* operand,
           << ", n_bytes_net: " << n_bytes_net << ", coalesced: " << coalesced;
 }
 
-/*static*/
-void GpuPerformanceModelBase::VLogResult(
-    int64_t flops, int64_t bytes_read, int64_t bytes_written,
-    int64_t num_threads, absl::Duration compute_time, absl::Duration read_time,
-    absl::Duration write_time, absl::Duration exec_time) {
-  if (VLOG_IS_ON(8)) {
-    LOG(INFO) << "FLOPs: " << flops;
-    LOG(INFO) << "Bytes read: " << bytes_read;
-    LOG(INFO) << "Bytes written: " << bytes_written;
-    LOG(INFO) << "Num threads: " << num_threads;
-    LOG(INFO) << "Compute time: " << compute_time;
-    LOG(INFO) << "Input read time: " << read_time;
-    LOG(INFO) << "Output write time: " << write_time;
-    LOG(INFO) << "Exec time: " << exec_time;
-  }
+double GetCoalescingUtilizationRate(
+    PrimitiveType element_type, const se::DeviceDescription& gpu_device_info,
+    bool coalesced) {
+  int64_t element_size_bytes =
+      element_type == PrimitiveType::TUPLE ||
+              element_type == PrimitiveType::TOKEN
+          ? 4 /* Dummy value. TODO(jreiffers): Model this case. */
+          : ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+  // Assume we use one element from the cache line and waste the remaining
+  // bandwidth. For example, if we're reading f32s, we use 1/16nd of the cache
+  // line.
+  return coalesced ? 1.0
+                   : 1.0 * element_size_bytes /
+                         gpu_device_info.dram_to_l2_transaction_size_bytes();
 }
 
 }  // namespace gpu

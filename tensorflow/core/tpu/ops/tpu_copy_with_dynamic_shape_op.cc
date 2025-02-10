@@ -15,6 +15,8 @@ limitations under the License.
 
 // Op that copy dynamic shape tensor to device.
 
+#include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -28,13 +30,13 @@ REGISTER_OP("TPUCopyWithDynamicShape")
     .Attr("N: int >= 0")
     .Attr("T: list(type)")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       int n;
       TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
       for (int i = 0; i < c->num_inputs() - n; ++i) {
         c->set_output(i, c->input(i));
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TPUAnnotateTensorsWithDynamicShape")
@@ -42,11 +44,11 @@ REGISTER_OP("TPUAnnotateTensorsWithDynamicShape")
     .Output("tpu_tensors: T")
     .Attr("T: list(type)")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       for (int i = 0; i < c->num_inputs(); ++i) {
         c->set_output(i, c->input(i));
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

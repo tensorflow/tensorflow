@@ -19,8 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "xla/service/hlo_pass_pipeline.h"
-#include "tsl/util/command_line_flags.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/tsl/util/command_line_flags.h"
 
 namespace xla {
 

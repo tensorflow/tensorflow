@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_MODULE_CONFIG_H_
 #define XLA_SERVICE_HLO_MODULE_CONFIG_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,11 +25,17 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/sharding_config.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -85,8 +92,8 @@ class HloModuleConfig {
   explicit HloModuleConfig(ComputationLayout entry_computation_layout);
 
   // Convert an HloModuleConfig to or from a proto.
-  StatusOr<HloModuleConfigProto> ToProto() const;
-  static StatusOr<std::unique_ptr<HloModuleConfig>> CreateFromProto(
+  HloModuleConfigProto ToProto() const;
+  static absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateFromProto(
       const HloModuleConfigProto& proto);
 
   // Assigns the repeated ShardableValueUpdatePairProto field to the given
@@ -169,7 +176,7 @@ class HloModuleConfig {
     return param_requires_broadcast_via_collectives_;
   }
   void set_param_requires_broadcast_via_collectives(
-      const std::vector<bool> require_broadcast) {
+      std::vector<bool> require_broadcast) {
     param_requires_broadcast_via_collectives_ = std::move(require_broadcast);
   }
 
@@ -195,18 +202,30 @@ class HloModuleConfig {
   }
 
   void set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t> mesh_shape) {
-    auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+    auto_spmd_partitioning_mesh_shape_ = std::move(mesh_shape);
   }
-  std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+  const std::vector<int64_t>& auto_spmd_partitioning_mesh_shape() const {
     return auto_spmd_partitioning_mesh_shape_;
   }
 
   void set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t> mesh_ids) {
-    auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+    auto_spmd_partitioning_mesh_ids_ = std::move(mesh_ids);
   }
-  std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+  const std::vector<int64_t>& auto_spmd_partitioning_mesh_ids() const {
     return auto_spmd_partitioning_mesh_ids_;
   }
+
+  void set_exec_time_optimization_effort(float exec_time_optimization_effort) {
+    exec_time_optimization_effort_ = exec_time_optimization_effort;
+  }
+  float exec_time_optimization_effort() const {
+    return exec_time_optimization_effort_;
+  }
+
+  void set_memory_fitting_effort(float memory_fitting_effort) {
+    memory_fitting_effort_ = memory_fitting_effort;
+  }
+  float memory_fitting_effort() const { return memory_fitting_effort_; }
 
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
   // size.
@@ -226,6 +245,7 @@ class HloModuleConfig {
   std::string compilation_cache_key() const;
 
   const DebugOptions& debug_options() const { return debug_options_; }
+  DebugOptions& mutable_debug_options() { return debug_options_; }
   void set_debug_options(const DebugOptions& debug_options) {
     debug_options_ = debug_options;
   }
@@ -250,6 +270,22 @@ class HloModuleConfig {
   }
   void set_static_device_assignment(const DeviceAssignment& device_assignment) {
     static_device_assignment_ = device_assignment;
+  }
+
+  // Checks if this config has a simulated device assignment.
+  bool has_pre_simulation_device_assignment() const {
+    return pre_simulation_device_assignment_.has_value();
+  }
+
+  // Getter and setter of the compile-time known device assignment.
+  const DeviceAssignment& pre_simulation_device_assignment() const {
+    CHECK(pre_simulation_device_assignment_.has_value());
+    return *pre_simulation_device_assignment_;
+  }
+
+  void set_pre_simulation_device_assignment(
+      const DeviceAssignment& device_assignment) {
+    pre_simulation_device_assignment_ = device_assignment;
   }
 
   bool allow_separate_sharding_programs() const {
@@ -295,8 +331,11 @@ class HloModuleConfig {
   const std::vector<std::vector<bool>>& fusion_config() const {
     return fusion_config_;
   }
-  std::vector<std::vector<bool>>* mutable_fusion_config() {
-    return &fusion_config_;
+  void set_fusion_config(std::vector<std::vector<bool>> fusion_config) {
+    fusion_config_ = std::move(fusion_config);
+  }
+  std::vector<std::vector<bool>>& mutable_fusion_config() {
+    return fusion_config_;
   }
 
   const absl::flat_hash_map<std::string, std::vector<int64_t>>& dot_config()
@@ -317,9 +356,16 @@ class HloModuleConfig {
   const std::vector<std::vector<bool>>& phase_ordering_config() const {
     return phase_ordering_config_;
   }
-  std::vector<std::vector<bool>>* mutable_phase_ordering_config() {
-    return &phase_ordering_config_;
+  void set_phase_ordering_config(
+      std::vector<std::vector<bool>> phase_ordering_config) {
+    phase_ordering_config_ = std::move(phase_ordering_config);
   }
+  std::vector<std::vector<bool>>& mutable_phase_ordering_config() {
+    return phase_ordering_config_;
+  }
+
+  const ShardingConfig& sharding_config() const { return sharding_config_; }
+  ShardingConfig* mutable_sharding_config() { return &sharding_config_; }
 
   int phase_index() const { return phase_index_; }
   void set_phase_index(const int phase_index) { phase_index_ = phase_index; }
@@ -368,11 +414,18 @@ class HloModuleConfig {
   }
 
   absl::string_view fdo_profile() const { return fdo_profile_; }
-  std::string* mutable_fdo_profile() { return &fdo_profile_; }
+  void set_fdo_profile(absl::string_view fdo_profile) {
+    fdo_profile_ = fdo_profile;
+  }
 
   int64_t device_memory_size() const { return device_memory_size_; }
   void set_device_memory_size(int64_t device_memory_size) {
     device_memory_size_ = device_memory_size;
+  }
+
+  bool use_shardy_partitioner() const { return use_shardy_partitioner_; }
+  void set_use_shardy_partitioner(bool use_shardy_partitioner) {
+    use_shardy_partitioner_ = use_shardy_partitioner;
   }
 
  private:
@@ -408,6 +461,24 @@ class HloModuleConfig {
 
   std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
 
+  // The amount of effort to spend on optimizing for minimizing program
+  // execution time, as a value in [-1.0, +1.0]. The baseline is 0.0, which
+  // strongly prioritizes execution time at the cost of longer compile times,
+  // suitable for production workloads. A value of -0.5 would be appropriate for
+  // research use cases that prefer faster compilations to iterate more quickly.
+  // Positive values, on the other hand, might enable costly optimizations that
+  // are off by default.
+  float exec_time_optimization_effort_ = 0.0f;
+
+  // The amount of effort to spend on making the program fit in memory (where
+  // "fit in memory" here has a backend-dependent meaning), as a value in [-1.0,
+  // +1.0]. The baseline is 0.0, which expends significant effort on attempting
+  // to make the program fit. A value of -1.0 would be appropriate for use cases
+  // that wish to spend minimal effort here and fail as quickly as possible
+  // instead. Positive values, on the other hand, might enable costly algorithms
+  // to reduce memory usage that are off by default.
+  float memory_fitting_effort_ = 0.0f;
+
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
   // size.
   bool deduplicate_hlo_ = false;
@@ -422,6 +493,9 @@ class HloModuleConfig {
 
   // Compile-time known device assignment.
   std::optional<DeviceAssignment> static_device_assignment_;
+
+  // Compile-time known device assignment.
+  std::optional<DeviceAssignment> pre_simulation_device_assignment_;
 
   bool allow_separate_sharding_programs_ = false;
 
@@ -501,6 +575,13 @@ class HloModuleConfig {
   std::string fdo_profile_;
 
   int64_t device_memory_size_ = 0;
+
+  bool use_shardy_partitioner_ = false;
+
+  // Sharding configuration, where sharding_config_.nodes[v] controls the
+  // sharding of operation v.
+  ShardingConfig sharding_config_;
+
   // LINT.ThenChange(//tensorflow/compiler/xla/xla.proto)
 };
 

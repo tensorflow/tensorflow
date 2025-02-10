@@ -43,7 +43,7 @@ class IndexDomain {
   IndexDomain(const IndexDomain&) = default;
   IndexDomain(IndexDomain&&) = default;
   IndexDomain& operator=(const IndexDomain&) = default;
-  IndexDomain& operator=(IndexDomain&&) = default;
+  IndexDomain& operator=(IndexDomain&&) noexcept = default;
 
   const Index& origin() const { return origin_; }
   const Shape& shape() const { return shape_; }
@@ -54,6 +54,10 @@ class IndexDomain {
   bool operator!=(const IndexDomain& other) const {
     return origin_ != other.origin_ || shape_ != other.shape_;
   }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const IndexDomain& index_domain);
+
   IndexDomain operator+(const Index& offset) const {
     return IndexDomain(origin_ + offset, shape_);
   }
@@ -68,7 +72,14 @@ class IndexDomain {
     origin_ -= offset;
     return *this;
   }
+
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const IndexDomain& index_domain) {
+    sink.Append(index_domain.DebugString());
+  }
 
  private:
   Index origin_;
@@ -76,6 +87,11 @@ class IndexDomain {
 };
 
 std::ostream& operator<<(std::ostream& os, const IndexDomain& index_domain);
+
+template <typename H>
+H AbslHashValue(H h, const IndexDomain& index_domain) {
+  return H::combine(std::move(h), index_domain.origin_, index_domain.shape_);
+}
 
 }  // namespace ifrt
 }  // namespace xla

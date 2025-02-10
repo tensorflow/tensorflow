@@ -15,19 +15,25 @@ limitations under the License.
 
 #include "xla/client/lib/testing.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/client/xla_builder.h"
+#include "xla/client/client.h"
 #include "xla/execution_options_util.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
-#include "xla/tests/test_utils.h"
-#include "xla/types.h"
-#include "xla/util.h"
-#include "tsl/platform/protobuf.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace {

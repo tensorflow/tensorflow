@@ -28,8 +28,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
-#include "xla/python/ifrt/types.pb.h"
-#include "xla/statusor.h"
+#include "xla/python/ifrt/shape.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -52,7 +51,7 @@ class Shape {
   Shape& operator=(Shape&&) = default;
 
   // Constructs `Shape` from `ShapeProto`.
-  static StatusOr<Shape> FromProto(const ShapeProto& proto);
+  static absl::StatusOr<Shape> FromProto(const ShapeProto& proto);
 
   // Returns a `ShapeProto` representation.
   ShapeProto ToProto() const;
@@ -62,14 +61,28 @@ class Shape {
   bool operator==(const Shape& other) const { return dims_ == other.dims_; }
   bool operator!=(const Shape& other) const { return dims_ != other.dims_; }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const Shape& shape);
+
   // Total number of elements in this shape.
   int64_t num_elements() const;
 
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Shape& shape) {
+    sink.Append(shape.DebugString());
+  }
 
  private:
   Dimensions dims_;
 };
+
+template <typename H>
+H AbslHashValue(H h, const Shape& shape) {
+  return H::combine(std::move(h), shape.dims_);
+}
 
 // A tag for `Shape` to indicate bounded dynamism. Should be used together with
 // `Shape` to represent a bounded dynamic shape where the number of dimensions
@@ -104,8 +117,13 @@ class BoundedDynamicShapeTag {
     return !(*this == other);
   }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const BoundedDynamicShapeTag& value) {
+    return H::combine(std::move(h), value.dynamic_dims_);
+  }
+
   // Constructs `BoundedDynamicShapeTag` from `BoundedDynamicShapeTagProto`.
-  static StatusOr<BoundedDynamicShapeTag> FromProto(
+  static absl::StatusOr<BoundedDynamicShapeTag> FromProto(
       const BoundedDynamicShapeTagProto& proto);
 
   // Returns a `BoundedDynamicShapeTagProto` representation.
@@ -130,7 +148,7 @@ class DynamicShape {
   // When `tag` is a `BoundedDynamicShapeTag`: for any dimension that is dynamic
   // as indicated by `tag`, the corresponding dimension in `shape` represents
   // the upper bound of the dimension size.
-  static StatusOr<DynamicShape> Create(Shape shape, DynamicShapeTag tag);
+  static absl::StatusOr<DynamicShape> Create(Shape shape, DynamicShapeTag tag);
 
   DynamicShape(const DynamicShape&) = default;
   DynamicShape(DynamicShape&&) = default;
@@ -145,13 +163,19 @@ class DynamicShape {
   bool operator!=(const DynamicShape& other) const { return !(*this == other); }
 
   // Gets the shape after padding. Only works for bounded dynamic shape for now.
-  StatusOr<Shape> GetPaddedShape() const;
+  absl::StatusOr<Shape> GetPaddedShape() const;
 
   // Returns whether a certain dimension in the shape is dynamic.
   bool IsDynamicDim(int dimension) const;
 
+  template <typename H>
+  friend H AbslHashValue(H h, const DynamicShape& value) {
+    return H::combine(std::move(h), value.shape_,
+                      std::get<BoundedDynamicShapeTag>(value.tag_));
+  }
+
   // Constructs `DynamicShape` from `DynamicShapeProto`.
-  static StatusOr<DynamicShape> FromProto(const DynamicShapeProto& proto);
+  static absl::StatusOr<DynamicShape> FromProto(const DynamicShapeProto& proto);
 
   // Returns a `DynamicShapeProto` representation.
   DynamicShapeProto ToProto() const;

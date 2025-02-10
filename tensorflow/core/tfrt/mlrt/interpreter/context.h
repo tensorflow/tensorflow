@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <list>
 #include <memory>
@@ -259,8 +261,10 @@ class ExecutionContext {
   ExecutionContext(
       const LoadedExecutable* loaded_executable,
       std::vector<std::unique_ptr<context_internal::UserContextBase>>
-          user_contexts)
+          user_contexts,
+      const std::vector<std::function<void(absl::Status)>>& user_error_loggers)
       : user_contexts_(std::move(user_contexts)),
+        user_error_loggers_(user_error_loggers),
         loaded_executable_(loaded_executable) {}
 
   void set_exit_handler(absl::AnyInvocable<void() &&> exit_handler) {
@@ -456,6 +460,21 @@ class ExecutionContext {
     return user_contexts;
   }
 
+  void AddUserErrorLogger(std::function<void(absl::Status)> error_logger) {
+    user_error_loggers_.push_back(error_logger);
+  }
+
+  const std::vector<std::function<void(absl::Status)>>& user_error_loggers()
+      const {
+    return user_error_loggers_;
+  }
+
+  void LogError(absl::Status status) {
+    for (auto& error_logger : user_error_loggers_) {
+      error_logger(status);
+    }
+  }
+
   enum class State {
     // The function is pushed to the stack, and ready for execution.
     kReady = 0,
@@ -493,6 +512,8 @@ class ExecutionContext {
 
   std::vector<std::unique_ptr<context_internal::UserContextBase>>
       user_contexts_;
+
+  std::vector<std::function<void(absl::Status)>> user_error_loggers_;
 
   const LoadedExecutable* loaded_executable_ = nullptr;
 

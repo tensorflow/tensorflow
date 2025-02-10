@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/mlrt/kernel/batch_kernel.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <memory>
@@ -25,7 +26,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/runtime_fallback/runtime/fallback_batch_kernel.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
@@ -33,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel_runner_utils.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
+#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
 #include "tfrt/concurrency/chain.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
@@ -146,7 +151,7 @@ void BatchFunctionOp::Invoke() {
     auto ptr_value = absl::bit_cast<int64_t>(f);
     (*attr_value_map)["opaque_function_handle"].set_i(ptr_value);
 
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   tfrt::Location loc;
@@ -191,14 +196,14 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
 
   // This can only be called in Compute() and ComputeAsync() because thread
   // local is used to pass the context.
-  static StatusOr<std::unique_ptr<BatchTask>> CreateBatchTask(
+  static absl::StatusOr<std::unique_ptr<BatchTask>> CreateBatchTask(
       OpKernelContext*) {
     return {std::make_unique<MlrtBatchTask>(GetBatchFunctionMlrtContext())};
   }
 
   // This can only be called in Compute() and ComputeAsync() because thread
   // local is used to pass the context.
-  static StatusOr<tfrt::ResourceContext*> GetClientGraphResourceContext(
+  static absl::StatusOr<tfrt::ResourceContext*> GetClientGraphResourceContext(
       OpKernelContext*) {
     const auto& context =
         GetBatchFunctionMlrtContext()->GetUserContext<Context>();
@@ -215,29 +220,35 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
     return batch_function.name();
   }
 
-  static Status Create(OpKernelContext* c, int32_t num_batch_threads,
-                       int32_t max_batch_size, int32_t batch_timeout_micros,
-                       int32_t max_enqueued_batches,
-                       const std::vector<int32_t>& allowed_batch_sizes,
-                       mlrt::bc::Function function,
-                       bool enable_large_batch_splitting, bool disable_padding,
-                       std::unique_ptr<MlrtBatchResource>* resource) {
+  static absl::Status Create(OpKernelContext* c,
+                             const serving::BatchResourceOptions& options,
+                             mlrt::bc::Function function,
+                             bool enable_large_batch_splitting,
+                             bool disable_padding,
+                             std::unique_ptr<MlrtBatchResource>* resource) {
     BatcherT::Options batcher_options;
-    batcher_options.num_batch_threads = num_batch_threads;
+    batcher_options.num_batch_threads = options.num_batch_threads;
     std::shared_ptr<BatcherT> batcher;
     TF_RETURN_IF_ERROR(BatcherT::Create(batcher_options, &batcher));
 
     resource->reset(new MlrtBatchResource(
         function, std::move(batcher),
-        GetBatcherQueueOptions(num_batch_threads, max_batch_size,
-                               batch_timeout_micros, max_enqueued_batches,
-                               allowed_batch_sizes,
-                               enable_large_batch_splitting, disable_padding),
-        allowed_batch_sizes));
-    return OkStatus();
+        GetBatcherQueueOptions(
+            options.num_batch_threads, options.max_batch_size,
+            options.batch_timeout_micros, options.max_enqueued_batches,
+            options.allowed_batch_sizes, enable_large_batch_splitting,
+            disable_padding,
+            /* batch_padding_policy= */ options.batch_padding_policy,
+            options.low_priority_max_batch_size,
+            options.low_priority_batch_timeout_micros,
+            options.low_priority_max_enqueued_batches,
+            options.low_priority_allowed_batch_sizes,
+            options.mixed_priority_batching_policy),
+        options.allowed_batch_sizes));
+    return absl::OkStatus();
   }
 
-  static Status Create(
+  static absl::Status Create(
       OpKernelContext* c,
       AdaptiveBatcherT::Options adaptive_shared_batch_scheduler_options,
       int32_t max_batch_size, int32_t batch_timeout_micros,
@@ -256,7 +267,7 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
                                        true /* enable large batch split */,
                                        allowed_batch_sizes, disable_padding),
         allowed_batch_sizes));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string DebugString() const final { return "MlrtBatchResource"; }
@@ -285,7 +296,7 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
   void ProcessFuncBatchImpl(
       const BatchTask& last_task, absl::Span<const Tensor> inputs,
       std::vector<Tensor>* combined_outputs,
-      std::function<void(const Status&)> done) const override;
+      std::function<void(const absl::Status&)> done) const override;
 
   mlrt::bc::Function batch_function_;
 };
@@ -293,7 +304,7 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
 void MlrtBatchResource::ProcessFuncBatchImpl(
     const BatchTask& last_task, absl::Span<const Tensor> inputs,
     std::vector<Tensor>* combined_outputs,
-    std::function<void(const Status&)> done) const {
+    std::function<void(const absl::Status&)> done) const {
   std::vector<mlrt::Value> arguments;
   arguments.reserve(inputs.size());
   for (const auto& input : inputs) {
@@ -336,19 +347,21 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   fallback_request_state.set_runtime_config(
       caller_fallback_request_state.runtime_config());
 
-  tensorflow::profiler::TraceMeProducer activity(
+  tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in WorkQueue.
       [step_id] {
-        return tensorflow::profiler::TraceMeEncode(
-            "RunMlrtFunction", {{"id", step_id}, {"_r", 1}});
+        return tsl::profiler::TraceMeEncode("RunMlrtFunction",
+                                            {{"id", step_id}, {"_r", 1}});
       },
-      tensorflow::profiler::ContextType::kTfrtExecutor, step_id,
-      tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::ContextType::kTfrtExecutor, step_id,
+      tsl::profiler::TraceMeLevel::kInfo);
+  auto trace_me_context_id = activity.GetContextId();
 
   // Copy the ExecutionContext and its user contexts for async execution.
   auto user_contexts = caller_context.CopyUserContexts();
   mlrt::ExecutionContext execution_context(&caller_context.loaded_executable(),
-                                           std::move(user_contexts));
+                                           std::move(user_contexts),
+                                           caller_context.user_error_loggers());
   execution_context.GetUserContext<tf_mlrt::Context>()
       .set_fallback_request_state(&fallback_request_state);
 
@@ -364,8 +377,12 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   execution_context.CallByMove(batch_function_, absl::MakeSpan(arguments),
                                absl::MakeSpan(results));
 
-  work_queue->AddTask(
-      [&execution_context]() { mlrt::Execute(execution_context); });
+  work_queue->AddTask([&execution_context, &trace_me_context_id]() {
+    tsl::profiler::TraceMeConsumer activity(
+        [&] { return "RunMlrtFunction::Execute"; },
+        tsl::profiler::ContextType::kTfrtExecutor, trace_me_context_id);
+    mlrt::Execute(execution_context);
+  });
 
   work_queue->Await(chain.CopyRCRef());
 

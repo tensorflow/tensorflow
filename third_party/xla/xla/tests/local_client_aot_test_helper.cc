@@ -22,8 +22,8 @@ limitations under the License.
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/client/client_library.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/types.h"
@@ -65,6 +65,8 @@ int main(int argc, char** argv) {
   std::string target_cpu = argv[1];
   if (target_cpu == "k8") {
     triple_string = "x86_64-none-linux-gnu";
+  } else if (target_cpu == "darwin_arm64") {
+    triple_string = "arm64-apple-darwin";
   } else if (target_cpu == "darwin") {
     triple_string = "x86_64-apple-macosx";
   } else if ((target_cpu == "arm") || (target_cpu == "aarch64")) {

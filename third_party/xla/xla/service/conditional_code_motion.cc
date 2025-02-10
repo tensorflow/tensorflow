@@ -29,6 +29,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -36,18 +38,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/service/hlo_cse.h"
-#include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -498,8 +498,8 @@ absl::flat_hash_set<int64_t> FindSpecialConverts(HloInstruction* old_root,
 // z = tuple(y.0, y.1, ...y.n)
 // Doing so ensures that we can accommodate the possible shape-change of the
 // conditional when the instructions are hoisted.
-Status RestructureConditionalInstruction(HloComputation* computation,
-                                         HloInstruction* conditional) {
+absl::Status RestructureConditionalInstruction(HloComputation* computation,
+                                               HloInstruction* conditional) {
   HloInstruction* old_root = computation->root_instruction();
   std::vector<HloInstruction*> new_operands;
   int cur_index = 0;
@@ -530,7 +530,7 @@ Status RestructureConditionalInstruction(HloComputation* computation,
     }
   }
   VLOG(2) << "computation after root restructure:\n" << computation->ToString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> ConvertSpecialMove(HloInstruction* conditional,
@@ -785,6 +785,12 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
   if (to_move_in.empty()) {
     return false;
   }
+
+  if (!conditional->shape().IsTuple() && conditional->user_count() > 1) {
+    // This function cannot handle this case.
+    return false;
+  }
+
   // Mapping boundaries to be moved to their new representations.
   absl::flat_hash_map<Boundary, Boundary> hoisted_boundaries;
   int64_t to_move_in_size = to_move_in.size();
@@ -937,7 +943,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
 class MoveOperandIntoBranch {
  public:
   MoveOperandIntoBranch() = default;
-  Status operator()(HloInstruction* inst, HloInstruction*& user) {
+  absl::Status operator()(HloInstruction* inst, HloInstruction*& user) {
     VLOG(1) << "operand to move into branch: " << inst->ToString();
     VLOG(2) << "MoveIntoBranches user =" << user->ToString() << "\n";
     CHECK(inst->user_count() == 1 || inst->opcode() == HloOpcode::kBroadcast);
@@ -953,7 +959,7 @@ class MoveOperandIntoBranch {
     if (inst->user_count() == 0) {
       TF_RETURN_IF_ERROR(inst->parent()->RemoveInstruction(inst));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -1005,6 +1011,7 @@ class MoveOperandIntoBranch {
       CHECK_NE(new_tuple, nullptr);
       VLOG(5) << "Cloned new tuple:" << new_tuple->parent()->ToString() << "\n";
       std::vector<std::vector<HloInstruction*>> gte_users;
+      gte_users.reserve(branch_param->shape().tuple_shapes_size());
       for (int64_t j = 0; j < branch_param->shape().tuple_shapes_size(); ++j) {
         gte_users.push_back(std::vector<HloInstruction*>());
       }
@@ -1061,7 +1068,7 @@ class MoveOperandIntoBranch {
   // Replace input with its operands inside user. Use matching_tuple_indices to
   // remember which operands of input is matched to which entries in the new
   // user.
-  Status ReplaceInputInUser(
+  absl::Status ReplaceInputInUser(
       HloInstruction* input, HloInstruction*& user,
       absl::InlinedVector<HloInstruction*, 4>& new_operands,
       std::vector<std::vector<int64_t>>& matching_tuple_indices) {
@@ -1135,9 +1142,9 @@ class MoveOperandIntoBranch {
       }
       VLOG(2) << "User: " << user->ToString() << "\n";
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
-  Status MoveInputIntoBranch(
+  absl::Status MoveInputIntoBranch(
       HloInstruction* input, HloInstruction*& user,
       absl::InlinedVector<HloInstruction*, 4>& new_operands,
       std::vector<std::vector<int64_t>>& matching_tuple_indices) {
@@ -1212,7 +1219,7 @@ class MoveOperandIntoBranch {
         UpdateTupleUsers(inserted);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
   void UpdateTupleUsers(HloInstruction* param_user) {
     for (auto new_user : param_user->users()) {

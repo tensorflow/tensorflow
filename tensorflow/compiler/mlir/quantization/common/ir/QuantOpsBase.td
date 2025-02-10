@@ -24,10 +24,9 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 
-def Quant_Dialect : Dialect {
+def TF_Quant_Dialect : Dialect {
   let name = "quantization";
   let cppNamespace = "::mlir::quant::ir";
-  let usePropertiesForAttributes = 0;
 }
 
 #endif // QUANTIZATION_BASE

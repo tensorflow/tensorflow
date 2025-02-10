@@ -21,7 +21,7 @@ populate_source_vars("${TFLITE_SOURCE_DIR}/examples/label_image"
   FILTER "_test\\.cc$"
 )
 list(APPEND TFLITE_LABEL_IMAGE_SRCS
-  ${TSL_SOURCE_DIR}/tsl/util/stats_calculator.cc
+  ${XLA_SOURCE_DIR}/xla/tsl/util/stats_calculator.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
@@ -61,6 +61,11 @@ if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
           ${TFLITE_SOURCE_DIR}/tools/delegates/external_delegate_provider.cc)
 endif()
 
+include_directories(label_image
+  PUBLIC
+  ${CMAKE_BINARY_DIR}
+)
+
 add_executable(label_image
   ${TFLITE_LABEL_IMAGE_SRCS}
 )
@@ -78,4 +83,6 @@ target_compile_options(label_image
 )
 target_link_libraries(label_image
   tensorflow-lite
+  profiling_info_proto
+  libprotobuf
 )

@@ -37,13 +37,11 @@ py_strict_library(
 py_strict_library(
     name = "trackable_init",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "base",
     srcs = ["base.py"],
-    srcs_version = "PY3",
     deps = [
         ":constants",
         "//tensorflow/python/eager:context",
@@ -72,13 +70,11 @@ tf_py_strict_test(
 py_strict_library(
     name = "constants",
     srcs = ["constants.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_library(
     name = "converter",
     srcs = ["converter.py"],
-    srcs_version = "PY3",
     deps = [
         ":base",
         ":data_structures",
@@ -92,7 +88,6 @@ py_strict_library(
 py_strict_library(
     name = "trackable_utils",
     srcs = ["trackable_utils.py"],
-    srcs_version = "PY3",
 )
 
 tf_py_strict_test(
@@ -107,7 +102,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "base_delegate",
     srcs = ["base_delegate.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/util:tf_export",
     ],
@@ -134,7 +128,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "asset",
     srcs = ["asset.py"],
-    srcs_version = "PY3",
     deps = [
         ":base",
         "//tensorflow/python/eager:context",
@@ -152,7 +145,6 @@ py_strict_library(
 py_strict_library(
     name = "autotrackable",
     srcs = ["autotrackable.py"],
-    srcs_version = "PY3",
     deps = [
         ":base",
         ":data_structures",
@@ -181,7 +173,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "resource",
     srcs = ["resource.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":base",
@@ -210,14 +201,12 @@ tf_py_strict_test(
 py_strict_library(
     name = "layer_utils",
     srcs = ["layer_utils.py"],
-    srcs_version = "PY3",
     deps = ["//tensorflow/python/util:object_identity"],
 )
 
 py_strict_library(
     name = "data_structures",
     srcs = ["data_structures.py"],
-    srcs_version = "PY3",
     deps = [
         ":base",
         ":layer_utils",
@@ -261,7 +250,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "python_state",
     srcs = ["python_state.py"],
-    srcs_version = "PY3",
     deps = [
         ":base",
         "//tensorflow/python/framework:constant_op",

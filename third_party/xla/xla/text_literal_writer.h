@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef XLA_TEXT_LITERAL_WRITER_H_
 #define XLA_TEXT_LITERAL_WRITER_H_
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/literal.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -36,7 +37,8 @@ namespace xla {
 // This should be readable by xla::TextLiteralReader.
 class TextLiteralWriter {
  public:
-  static Status WriteToPath(const Literal& literal, absl::string_view path);
+  static absl::Status WriteToPath(const Literal& literal,
+                                  absl::string_view path);
 
  private:
   TextLiteralWriter(const TextLiteralWriter&) = delete;

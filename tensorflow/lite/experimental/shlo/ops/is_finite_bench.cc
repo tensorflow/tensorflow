@@ -31,16 +31,15 @@ void BM_IsFinite(benchmark::State& state, DimensionSize num_elements,
                  const Tensor& operand) {
   IsFiniteOp op = Create(IsFiniteOp::Attributes{});
 
-  ABSL_CHECK_OK(
-      Prepare(op, operand,
-              Tensor{.type = TensorType{.shape = Shape{{num_elements}},
-                                        .element_type = DataType::kI1}}));
+  Tensor result = Tensor{.type = TensorType{.shape = Shape{{num_elements}},
+                                            .element_type = DataType::kI1}};
+  ABSL_CHECK_OK(Prepare(op, operand, result));
 
-  std::vector<std::byte> result_values(op.result.SizeInBytes());
-  op.result.data = result_values.data();
+  std::vector<std::byte> result_values(result.SizeInBytes());
+  result.data = result_values.data();
 
   for (auto _ : state) {
-    ABSL_CHECK_OK(Evaluate(op));
+    ABSL_CHECK_OK(Evaluate(op, operand, result));
   }
 }
 
@@ -78,7 +77,7 @@ BENCHMARK(BM_IsFinite<DataType::kF32>)
 
 // IsFinite will be the same regardless of quantization parameters, so only
 // benchmark one combination.
-BENCHMARK(BM_IsFiniteQuantized<DataType::kSI32, DataType::kF32>)
+BENCHMARK(BM_IsFiniteQuantized<DataType::kSI16, DataType::kF32>)
     ->RangeMultiplier(2)
     ->Range(KiB(8), KiB(64));
 

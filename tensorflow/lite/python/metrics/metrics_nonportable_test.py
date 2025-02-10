@@ -23,11 +23,11 @@ from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.compiler.mlir.lite.metrics import converter_error_data_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.lite.python import lite
 from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.convert import register_custom_opdefs
-from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.lite.python.metrics import metrics
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -154,7 +154,6 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
         mock.call.increase_counter_converter_success(),
         mock.call.export_metrics(),
         mock.call.set_converter_param('input_format', '1'),
-        mock.call.set_converter_param('enable_mlir_converter', 'True'),
         mock.call.set_converter_param('allow_custom_ops', 'False'),
         mock.call.set_converter_param('api_version', '1'),
     ], any_order=True)  # pyformat: disable
@@ -275,24 +274,6 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
         mock.call.increase_counter_converter_success(),
         mock.call.set_converter_latency(2000),
         mock.call.export_metrics(),
-        mock.call.set_converter_param('enable_mlir_converter', 'True'),
-    ], any_order=True)  # pyformat: disable
-
-  def test_conversion_from_saved_model_v2(self):
-    saved_model_dir = self._createV1SavedModel(shape=[1, 16, 16, 3])
-
-    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
-    converter.experimental_new_converter = False
-    mock_metrics = mock.create_autospec(
-        metrics.TFLiteConverterMetrics, instance=True)
-    converter._tflite_metrics = mock_metrics
-    converter.convert()
-    mock_metrics.assert_has_calls([
-        mock.call.increase_counter_converter_attempt(),
-        mock.call.increase_counter_converter_success(),
-        mock.call.export_metrics(),
-        mock.call.set_converter_param('enable_mlir_converter', 'False'),
-        mock.call.set_converter_param('api_version', '2'),
     ], any_order=True)  # pyformat: disable
 
   def disable_converter_counter_metrics(self, tflite_metrics):
@@ -492,10 +473,11 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
     exported_error = metrics._gauge_conversion_errors.get_cell(
         'CONVERT_TF_TO_TFLITE_MODEL', 'CONVERT_SAVED_MODEL', 'tf.CustomAdd',
         'ERROR_NEEDS_CUSTOM_OPS').value()
-    self.assertEqual(
+    self.assertIn(
+        "'tf.CustomAdd' op is neither a custom op nor a flex op\n",
         exported_error,
-        "\'tf.CustomAdd\' op is neither a custom op nor a flex op\n"
-        'Error code: ERROR_NEEDS_CUSTOM_OPS')
+    )
+    self.assertIn('Error code: ERROR_NEEDS_CUSTOM_OPS', exported_error)
 
   def test_unsupported_control_flow_v1(self):
     filename = resource_loader.get_path_to_datafile(

@@ -113,7 +113,7 @@ REGISTER_OP("AssignSub")
 
 namespace {
 
-Status ScatterUpdateShape(InferenceContext* c) {
+absl::Status ScatterUpdateShape(InferenceContext* c) {
   ShapeHandle var_shape = c->input(0);
   ShapeHandle indices_shape = c->input(1);
 
@@ -131,7 +131,7 @@ Status ScatterUpdateShape(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status ScatterNdUpdateShape(InferenceContext* c) {
+absl::Status ScatterNdUpdateShape(InferenceContext* c) {
   ShapeHandle input_shape = c->input(0);
   if (c->input_handle_shapes_and_types(0) != nullptr) {
     const auto& shape_and_type = *(c->input_handle_shapes_and_types(0));
@@ -227,6 +227,7 @@ REGISTER_OP("ScatterNdUpdate")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ResourceScatterNdUpdate")
@@ -236,6 +237,7 @@ REGISTER_OP("ResourceScatterNdUpdate")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ResourceScatterNdAdd")
@@ -245,6 +247,7 @@ REGISTER_OP("ResourceScatterNdAdd")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ResourceScatterNdSub")
@@ -254,6 +257,7 @@ REGISTER_OP("ResourceScatterNdSub")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ResourceScatterNdMin")
@@ -263,6 +267,7 @@ REGISTER_OP("ResourceScatterNdMin")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ResourceScatterNdMax")
@@ -272,6 +277,7 @@ REGISTER_OP("ResourceScatterNdMax")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ScatterNdAdd")
@@ -282,6 +288,7 @@ REGISTER_OP("ScatterNdAdd")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ScatterNdSub")
@@ -292,6 +299,7 @@ REGISTER_OP("ScatterNdSub")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ScatterNdMax")
@@ -302,6 +310,7 @@ REGISTER_OP("ScatterNdMax")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("ScatterNdMin")
@@ -312,6 +321,7 @@ REGISTER_OP("ScatterNdMin")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdUpdateShape);
 
 REGISTER_OP("CountUpTo")

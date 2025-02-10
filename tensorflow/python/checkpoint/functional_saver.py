@@ -284,7 +284,7 @@ class MultiDeviceSaver:
 
           if (checkpoint_key, slice_spec) in self._keys_to_restore_fn:
             raise ValueError(
-                "Recieved multiple tensors with the same checkpoint key and "
+                "Received multiple tensors with the same checkpoint key and "
                 "slice spec. This is invalid because one will overwrite the "
                 "other in the checkpoint. This indicates a bug in the "
                 "Checkpoint key-generation.")
@@ -437,7 +437,8 @@ class MultiDeviceSaver:
     callback_duration = math.ceil(callback_end_time - callback_start_time)
     metrics.AddShardingCallbackDuration(
         callback_duration=max(1, callback_duration))  # in microseconds
-    logging.info("Sharding callback duration: %s", callback_duration)
+    logging.info("Sharding callback duration: %s microseconds",
+                 callback_duration)
 
     return shards_by_task
 

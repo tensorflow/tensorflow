@@ -20,13 +20,14 @@ package(
             "@llvm-project//llvm:not",
             "@llvm-project//mlir:libmlir_c_runner_utils.so",
             "@llvm-project//mlir:libmlir_runner_utils.so",
-            "@llvm-project//mlir:mlir-cpu-runner",
+            "@llvm-project//mlir:mlir-runner",
         ],
         # copybara:uncomment driver = "@llvm-project//mlir:run_lit",
         tags = [
             "nomsan",  # The execution engine doesn't work with msan, see b/248097619.
         ],
         deps = ["@pypi_lit//:pkg"],
+        deps = ["@pypi_lit//:pkg"],  # copybara:comment
     )
     for src in glob(["**/*.mlir"])
 ]

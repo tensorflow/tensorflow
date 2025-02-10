@@ -48,7 +48,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.17.0'
+_VERSION = '2.19.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -78,20 +78,15 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 23.5.26',
+    'flatbuffers >= 24.3.25',
     'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
-    'h5py >= 3.10.0',
     'libclang >= 13.0.0',
-    'ml_dtypes ~= 0.3.1',
-    # TODO(b/304751256): Adjust the numpy pin to a single version, when ready
-    'numpy >= 1.23.5, < 2.0.0 ; python_version <= "3.11"',
-    'numpy >= 1.26.0, < 2.0.0 ; python_version >= "3.12"',
     'opt_einsum >= 2.3.2',
     'packaging',
     # pylint:disable=line-too-long
     (
-        'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5'
+        'protobuf>=3.20.3,<6.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5'
     ),
     'requests >= 2.21.0, < 3',
     'setuptools',
@@ -114,9 +109,13 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.17.0.a',
-    'keras-nightly ~= 3.1.0.dev',
+    'tb-nightly ~= 2.19.0.a',
+    'keras-nightly >= 3.6.0.dev',
+    'numpy >= 1.26.0, < 2.2.0',
+    'h5py >= 3.11.0',
+    'ml_dtypes >= 0.5.1, < 1.0.0',
 ]
+
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
 FAKE_REQUIRED_PACKAGES = [
@@ -125,9 +124,6 @@ FAKE_REQUIRED_PACKAGES = [
     # different architectures having different requirements.
     # The entries here should be a simple duplicate of those in the collaborator
     # build section.
-    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
-    _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
-    'platform_machine=="aarch64")',
     standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
     _VERSION + ';platform_system=="Windows"',
 ]
@@ -139,25 +135,12 @@ if collaborator_build:
   # If this is a collaborator build, then build an "installer" wheel and
   # add the collaborator packages as the only dependencies.
   REQUIRED_PACKAGES = [
-      # Install the TensorFlow package built by AWS if the user is running
-      # Linux on an Aarch64 machine.
-      standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws')
-      + '=='
-      + _VERSION
-      + ';platform_system=="Linux" and (platform_machine=="arm64" or '
-      'platform_machine=="aarch64")',
       # Install the TensorFlow package built by Intel if the user is on a
       # Windows machine.
       standard_or_nightly('tensorflow-intel', 'tf-nightly-intel')
       + '=='
       + _VERSION
       + ';platform_system=="Windows"',
-      # Install the TensorFlow package built by Apple if the user is running
-      # macOS on an Apple Silicon machine.
-      standard_or_nightly('tensorflow-macos', 'tf-nightly-macos')
-      + '=='
-      + _VERSION
-      + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
 # Set up extra packages, which are optional sets of other Python package deps.
@@ -166,25 +149,24 @@ if collaborator_build:
 EXTRA_PACKAGES = {}
 EXTRA_PACKAGES['and-cuda'] = [
     # TODO(nluehr): set nvidia-* versions based on build components.
-    'nvidia-cublas-cu12 == 12.3.4.1',
-    'nvidia-cuda-cupti-cu12 == 12.3.101',
-    'nvidia-cuda-nvcc-cu12 == 12.3.107',
-    'nvidia-cuda-nvrtc-cu12 == 12.3.107',
-    'nvidia-cuda-runtime-cu12 == 12.3.101',
-    'nvidia-cudnn-cu12 == 8.9.7.29',
-    'nvidia-cufft-cu12 == 11.0.12.1',
-    'nvidia-curand-cu12 == 10.3.4.107',
-    'nvidia-cusolver-cu12 == 11.5.4.101',
-    'nvidia-cusparse-cu12 == 12.2.0.103',
-    'nvidia-nccl-cu12 == 2.19.3',
-    'nvidia-nvjitlink-cu12 == 12.3.101',
+    'nvidia-cublas-cu12 == 12.5.3.2',
+    'nvidia-cuda-cupti-cu12 == 12.5.82',
+    'nvidia-cuda-nvcc-cu12 == 12.5.82',
+    'nvidia-cuda-nvrtc-cu12 == 12.5.82',
+    'nvidia-cuda-runtime-cu12 == 12.5.82',
+    'nvidia-cudnn-cu12 == 9.3.0.75',
+    'nvidia-cufft-cu12 == 11.2.3.61',
+    'nvidia-curand-cu12 == 10.3.6.82',
+    'nvidia-cusolver-cu12 == 11.6.3.83',
+    'nvidia-cusparse-cu12 == 12.5.1.3',
+    'nvidia-nccl-cu12 == 2.23.4',
+    'nvidia-nvjitlink-cu12 == 12.5.82',
 ]
 
 DOCLINES = __doc__.split('\n')
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
-    'toco_from_protos = tensorflow.lite.toco.python.toco_from_protos:main',
     'tflite_convert = tensorflow.lite.python.tflite_convert:main',
     'toco = tensorflow.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
@@ -265,7 +247,7 @@ class InstallHeaders(Command):
         '/tensorflow/include/external/com_google_absl': '',
         '/tensorflow/include/external/ducc': '/ducc',
         '/tensorflow/include/external/eigen_archive': '',
-        '/tensorflow/include/external/ml_dtypes': '/ml_dtypes',
+        '/tensorflow/include/external/ml_dtypes_py': '',
         '/tensorflow/include/tensorflow/compiler/xla': (
             '/tensorflow/include/xla'
         ),
@@ -328,7 +310,7 @@ if '_tpu' in project_name:
   # timing of these tests, the UTC date from eight hours ago is expected to be a
   # valid version.
   _libtpu_version = standard_or_nightly(
-      '2.16.0rc0',
+      _VERSION.replace('-', ''),
       '0.1.dev'
       + (
           datetime.datetime.now(tz=datetime.timezone.utc)
@@ -376,7 +358,7 @@ headers = (
     + list(find_files('*.inc', 'tensorflow/include/external/com_google_absl'))
     + list(find_files('*.h', 'tensorflow/include/external/ducc/google'))
     + list(find_files('*', 'tensorflow/include/external/eigen_archive'))
-    + list(find_files('*.h', 'tensorflow/include/external/ml_dtypes'))
+    + list(find_files('*.h', 'tensorflow/include/external/ml_dtypes_py'))
 )
 
 # Quite a lot of setup() options are different if this is a collaborator package

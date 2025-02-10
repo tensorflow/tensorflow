@@ -30,9 +30,7 @@ py_strict_library(
 py_strict_library(
     name = "exceptions",
     srcs = ["exceptions.py"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:control_flow_assert",
@@ -59,9 +57,7 @@ py_strict_library(
 py_strict_library(
     name = "logical",
     srcs = ["logical.py"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:cond",
@@ -94,9 +90,7 @@ py_strict_library(
 py_strict_library(
     name = "conditional_expressions",
     srcs = ["conditional_expressions.py"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":control_flow",
         "//tensorflow/python/autograph/utils:tensors",
@@ -139,9 +133,7 @@ py_strict_library(
 py_strict_library(
     name = "slices",
     srcs = ["slices.py"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_util",
@@ -155,8 +147,6 @@ py_strict_library(
 py_strict_test(
     name = "data_structures_test",
     srcs = ["data_structures_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":data_structures",
         #internal proto upb dep
@@ -173,8 +163,6 @@ py_strict_test(
 py_strict_test(
     name = "conditional_expressions_test",
     srcs = ["conditional_expressions_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":conditional_expressions",
         #internal proto upb dep
@@ -188,8 +176,6 @@ py_strict_test(
 py_strict_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_gpu",  # b/127001953
     ],
@@ -219,8 +205,6 @@ py_strict_test(
 py_strict_test(
     name = "exceptions_test",
     srcs = ["exceptions_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":exceptions",
         #internal proto upb dep
@@ -234,8 +218,6 @@ py_strict_test(
 py_strict_test(
     name = "logical_test",
     srcs = ["logical_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":logical",
         #internal proto upb dep
@@ -248,8 +230,6 @@ py_strict_test(
 py_strict_test(
     name = "py_builtins_test",
     srcs = ["py_builtins_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":data_structures",
         ":py_builtins",
@@ -272,8 +252,6 @@ py_strict_test(
 py_strict_test(
     name = "slices_test",
     srcs = ["slices_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":slices",
         #internal proto upb dep
@@ -286,8 +264,6 @@ py_strict_test(
 py_strict_test(
     name = "variables_test",
     srcs = ["variables_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":variables",
         #internal proto upb dep

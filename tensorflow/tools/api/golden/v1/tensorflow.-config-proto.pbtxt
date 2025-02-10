@@ -54,6 +54,13 @@ tf_proto {
       type_name: ".tensorflow.GPUOptions"
     }
     field {
+      name: "pluggable_device_options"
+      number: 18
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.GPUOptions"
+    }
+    field {
       name: "allow_soft_placement"
       number: 7
       label: LABEL_OPTIONAL
@@ -238,6 +245,12 @@ tf_proto {
       field {
         name: "enable_multi_host"
         number: 27
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "tfrt_use_ifrt"
+        number: 32
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }

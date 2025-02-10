@@ -23,16 +23,14 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -42,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -61,21 +60,11 @@ bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op);
 // quantization parameters are annotated by the QuantizeOp/DequantizeOp pairs.
 // Each matched pattern are rewritten by its quantized alternatives.
 //
-// The concrete pattern, extends from this base pattern, can specify whether it
-// allows dynamic range quantized operands and results for the operations in the
-// current context. These "DynamicRangeQuantized" operands and results don't
-// have quantization parameters propagated to, so will be in float in the
-// quantized results. The concrete pattern should define the following two
-// functions:
-//
-//   bool AllowDynamicRangeQuantizedOperand(Operation&) const
-//   bool AllowDynamicRangeQuantizedResult(Operation&) const
-//
-// Full integer quantization disallows "DynamicRangeQuantized" operands or
-// results. Dynamic range quantization allows "DynamicRangeQuantized" operands
-// and results.
+// Quantization method is determined by the `_quantization_method` attributes
+// attached to each quantizable units.
 //
 // Template constraints are imposed as follows:
+//
 // * `QuantizeOpT` should have only one operand.
 // * `DequantizeOpT` should have only one result.
 template <typename ConcreteT, typename QuantizeOpT, typename DequantizeOpT,
@@ -83,17 +72,11 @@ template <typename ConcreteT, typename QuantizeOpT, typename DequantizeOpT,
           typename = std::enable_if_t<
               QuantizeOpT::template hasTrait<OpTrait::OneOperand>() &&
               DequantizeOpT::template hasTrait<OpTrait::OneResult>()>>
-class StableHloQuantizationPattern : public RewritePattern {
+class StableHloQuantizationPattern : public OpRewritePattern<RootOpT> {
  public:
-  using BaseType =
-      StableHloQuantizationPattern<ConcreteT, QuantizeOpT, DequantizeOpT,
-                                   VerifierT, RootOpT>;
-
-  explicit StableHloQuantizationPattern(MLIRContext* context,
-                                        const QuantPassSpec& quant_params)
-      // Set the score to a large number so it is always preferred.
-      : RewritePattern(RootOpT::getOperationName(), /*benefit=*/300, context),
-        quant_params_(quant_params) {}
+  explicit StableHloQuantizationPattern(MLIRContext* context)
+      // Set the benefit to a large number so that it is always preferred.
+      : OpRewritePattern<RootOpT>(context, /*benefit=*/300) {}
 
  private:
   // Collects all candidate ops for quantization, which are the
@@ -132,25 +115,18 @@ class StableHloQuantizationPattern : public RewritePattern {
     return SmallVector<Operation*>{operand_op};
   }
 
-  LogicalResult matchAndRewrite(Operation* op,
+  LogicalResult matchAndRewrite(RootOpT op,
                                 PatternRewriter& rewriter) const override {
     // Collect all the candidate ops for quantization.
-    FailureOr<SmallVector<Operation*>> candidate_ops =
-        CollectCandidateOps(cast<RootOpT>(op));
+    FailureOr<SmallVector<Operation*>> candidate_ops = CollectCandidateOps(op);
     // Safeguard check to ensure that there is at least one quantizable op.
     if (failed(candidate_ops) || candidate_ops->empty()) return failure();
-
-    const absl::flat_hash_set<std::string>& ops_blocklist =
-        quant_params_.quant_spec.ops_blocklist;
-    const absl::flat_hash_set<std::string>& nodes_blocklist =
-        quant_params_.quant_spec.nodes_blocklist;
-    const CustomMap& custom_map = quant_params_.quant_spec.custom_map;
 
     // Rewrite the floating-point ops to the quantized version, by fusing
     // preceding dequantize ops and succeding quantize ops.
     for (Operation* candidate_op : *candidate_ops) {
       // If it is requantize op, we shouldn't rewrite this op.
-      if (llvm::isa<QuantizeOpT, DequantizeOpT>(candidate_op)) {
+      if (isa<QuantizeOpT, DequantizeOpT>(candidate_op)) {
         return failure();
       }
 
@@ -159,40 +135,23 @@ class StableHloQuantizationPattern : public RewritePattern {
         return failure();
       }
 
-      if (!IsOpQuantizableStableHlo(candidate_op) &&
-          !static_cast<const ConcreteT*>(this)->IsQuantizableCustomOp(
-              *candidate_op, custom_map)) {
+      if (!IsOpQuantizableStableHlo(candidate_op)) {
         return failure();
       }
 
-      if (GetStableHloQuantScaleSpec(candidate_op)
+      if (GetStableHloQuantConstraints(candidate_op)
               ->has_same_scale_requirement &&
           !IsConnectedWithQuantizedCompsiteFunction(candidate_op)) {
         return failure();
       }
 
       // Ops with regions will be quantized in a separate pattern.
-      if (llvm::isa<mlir::stablehlo::ReduceWindowOp>(candidate_op)) {
+      if (isa<mlir::stablehlo::ReduceWindowOp>(candidate_op)) {
         return failure();
       }
 
-      // Blocklist op is checked in advance for non-dynamic range quantization
-      // case.
-      if (!quant_params_.quant_spec.weight_quantization &&
-          (ops_blocklist.contains(
-              candidate_op->getName().getStringRef().str()))) {
-        return failure();
-      }
-
-      if (!nodes_blocklist.empty()) {
-        if (auto name_loc = candidate_op->getLoc().dyn_cast<NameLoc>()) {
-          std::string sloc = name_loc.getName().str();
-          if (!sloc.empty() &&
-              (nodes_blocklist.find(sloc) != nodes_blocklist.end())) {
-            return failure();
-          }
-        }
-      }
+      const bool weight_only_quantizable =
+          IsWeightOnlyQuantizableOp(*candidate_op);
 
       // Collect all the quantized inputs and "clone" the matched op by these
       // inputs.
@@ -200,18 +159,21 @@ class StableHloQuantizationPattern : public RewritePattern {
       inputs.reserve(candidate_op->getNumOperands());
       for (auto operand : candidate_op->getOperands()) {
         Type operand_type = operand.getType();
-        if (operand_type.isa<NoneType>()) {
+        if (mlir::isa<NoneType>(operand_type)) {
           inputs.push_back(operand);
           continue;
         }
 
-        auto ele_type = operand.getType().cast<TensorType>().getElementType();
+        auto ele_type =
+            mlir::cast<TensorType>(operand.getType()).getElementType();
         if (auto dq_op =
                 dyn_cast_or_null<DequantizeOpT>(operand.getDefiningOp())) {
           inputs.push_back(dq_op.getOperand());
         } else if (!ele_type.isF32()) {
           // If the operand is an integer tensor, then it doesn't require the
           // DequantizeOp in the pattern.
+          inputs.push_back(operand);
+        } else if (weight_only_quantizable) {
           inputs.push_back(operand);
         } else {
           return failure();
@@ -229,17 +191,16 @@ class StableHloQuantizationPattern : public RewritePattern {
         Type result_type = result.getType();
         // Add this to the test coverage once we create test ops with none type
         // results.
-        if (result_type.isa<NoneType>()) {
+        if (mlir::isa<NoneType>(result_type)) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result_type);
           continue;
         }
         Type result_ele_type =
-            result.getType().cast<TensorType>().getElementType();
+            mlir::cast<TensorType>(result.getType()).getElementType();
         // If the user is the QuantizeOp, it must be the only user.
-        if (result.hasOneUse() &&
-            llvm::isa<QuantizeOpT>(*result.user_begin())) {
-          auto user = llvm::cast<QuantizeOpT>(*result.user_begin());
+        if (result.hasOneUse() && isa<QuantizeOpT>(*result.user_begin())) {
+          auto user = cast<QuantizeOpT>(*result.user_begin());
           outputs_replaced.insert(
               {user.getResult(), enumerated_result.index()});
           output_types.push_back(user.getType());
@@ -248,9 +209,7 @@ class StableHloQuantizationPattern : public RewritePattern {
           // D op in the pattern.
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
-        } else if (static_cast<const ConcreteT*>(this)
-                       ->AllowDynamicRangeQuantizedResult(*candidate_op,
-                                                          custom_map)) {
+        } else if (weight_only_quantizable) {
           outputs_replaced.insert({result, enumerated_result.index()});
           output_types.push_back(result.getType());
         } else {
@@ -282,23 +241,17 @@ class StableHloQuantizationPattern : public RewritePattern {
     }
     return success();
   }
-
-  QuantPassSpec quant_params_;
 };
 
-// Gemm Style Op: glossary/gemm.
-void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
-                                    RewritePatternSet& patterns,
-                                    bool enable_per_channel_quantized_weight);
+// Populates common patterns that are usually compute heavy or memory bound.
+void PopulateCommonQuantizationPatterns(
+    MLIRContext& ctx, RewritePatternSet& patterns,
+    bool enable_per_channel_quantized_weight);
 
-// Populates pattern for quantization of ops with regions such as
-// stablehlo.reduce_window op.
-void PopulateQuantizeOpWithRegionPattern(MLIRContext& ctx,
-                                         RewritePatternSet& patterns);
-
-// Populates conversion patterns for unary data movement ops.
-void PopulateQuantizeSingularOpPatterns(MLIRContext& ctx,
-                                        RewritePatternSet& patterns);
+// Populates conversion patterns for all quantizable ops, including
+// ops that are not compute-heavy and data movement ops.
+void PopulateAllQuantizablePatterns(MLIRContext& ctx,
+                                    RewritePatternSet& patterns);
 
 }  // namespace mlir::quant::stablehlo
 

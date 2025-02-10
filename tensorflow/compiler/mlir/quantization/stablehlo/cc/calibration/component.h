@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -54,8 +55,7 @@ class CalibrationComponent : public Component {
   // `tags`, `signature_def_map`, and `signature_keys` are required to properly
   // save and load the module_op to and from SavedModel.
   // `representative_dataset_file_map` contains information about the
-  // calibration dataset, and `calibration_options` configures the calibration
-  // behavior.
+  // calibration dataset.
   CalibrationComponent(
       absl::Nonnull<MLIRContext*> ctx,
       absl::Nonnull<const tensorflow::quantization::PyFunctionLibrary*>
@@ -65,8 +65,7 @@ class CalibrationComponent : public Component {
       std::unordered_set<std::string> tags,
       absl::flat_hash_map<std::string, tensorflow::SignatureDef>
           signature_def_map,
-      std::vector<std::string> signature_keys,
-      const tensorflow::quantization::CalibrationOptions& calibration_options);
+      std::vector<std::string> signature_keys);
 
   // Runs calibration on `module_op` and returns a calibrated ModuleOp with
   // calibrated statistics embedded.
@@ -78,9 +77,11 @@ class CalibrationComponent : public Component {
   // Exports `module_op` to SavedModel at `dst_saved_model_path`. This is used
   // to export the pre-calibrated `module_op` to SavedModel so that the
   // calibration process can use it to load and run the graph with the
-  // representative dataset.
-  absl::StatusOr<tensorflow::quantization::ExportedModel> ExportToSavedModel(
-      ModuleOp module_op, absl::string_view dst_saved_model_path);
+  // representative dataset. Returns a failure status if the export fails.
+  absl::Status ExportToSavedModel(ModuleOp module_op,
+                                  absl::string_view calibration_data_dir,
+                                  bool force_regenerate_calibration_data,
+                                  absl::string_view dst_saved_model_path);
 
   // Imports the SavedModel at `calibrated_saved_model_path` to `ModuleOp` after
   // running calibration.
@@ -109,10 +110,12 @@ class CalibrationComponent : public Component {
 
   // Signature keys to identify the functions to load & quantize.
   const std::vector<std::string> signature_keys_;
-
-  // Configures the calibration behavior.
-  const tensorflow::quantization::CalibrationOptions calibration_options_;
 };
+
+// Runs passes to prepare the calibration model.
+absl::Status RunCalibrationPasses(mlir::ModuleOp module_op, MLIRContext& ctx,
+                                  absl::string_view calibration_data_dir,
+                                  bool force_regenerate_calibration_data);
 
 }  // namespace mlir::quant::stablehlo
 

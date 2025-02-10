@@ -72,7 +72,7 @@ Operation* GetAncestorBelow(Operation* descendant, Operation* ancestor) {
 // `is_cpu_read` is set to `true` iff `read` is on a resource with device type
 // CPU.
 LogicalResult IsCpuRead(FuncOp func, ReadVariableOp read, bool& is_cpu_read) {
-  if (auto arg = read->getOperand(0).dyn_cast<BlockArgument>()) {
+  if (auto arg = mlir::dyn_cast<BlockArgument>(read->getOperand(0))) {
     if (arg.getOwner() != &(func.front())) {
       is_cpu_read = false;
       return success();

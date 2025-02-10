@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+
+<html devsite="">
+<head>
+<title>tflite::ErrorReporter Class Reference</title>
+<meta name="page_type" value="reference"/>
+<meta content="reference" name="page_type"/></head>
+<body><div id="top"><!-- do not remove this div --></div><h1>tflite::<wbr/>ErrorReporter</h1><b>This is an abstract class.</b><br/><br/><code>#include &lt;error_reporter.h&gt;</code><p>A functor that reports error to supporting system. </p><h2>Summary</h2><p>Invoked similar to printf.</p><p>Usage: <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> foo; foo.Report("test %d", 5); or va_list args; foo.Report("test %d", args); // where args is va_list</p><p>Subclass <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> to provide another reporting destination. For example, if you have a GUI program, you might redirect to a buffer that drives a GUI error log box. </p><h3>Inheritance</h3>Direct Known Subclasses:<a href="/lite/api_docs/cc/struct/tflite/stderr-reporter">tflite::StderrReporter</a><table class="constructors responsive">
+<tr>
+<th colspan="2">
+<h3>Constructors and Destructors</h3>
+</th>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1_error_reporter_1a8e2bbef79e5b6a2f7cc51bd41d39630c">~ErrorReporter</a>()</code>
+<br/>
+</td>
+</tr>
+</table><table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Public functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_error_reporter_1aea1c136767f97dd1313af0827b08da0a">Report</a>(const char *format, va_list args)=0</code>
+</td>
+<td>
+<div>
+<code>virtual int</code>
+</div>
+<div>Converts <code>args</code> to character equivalents according to <code>format</code> string, constructs the error string and report it. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_error_reporter_1aafbe9b684566270d57b94130fc2f676c">Report</a>(const char *format, ...)</code>
+</td>
+<td>
+<div>
+<code>int</code>
+</div>
+<div>Converts arguments to character equivalents according to <code>format</code> string, constructs the error string and report it. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_error_reporter_1af5e7bdb86b4c4aebcf9eeafb69a226d1">ReportError</a>(void *, const char *format, ...)</code>
+</td>
+<td>
+<div>
+<code>int</code>
+</div>
+<div>Equivalent to <code>Report</code> above. </div>
+</td>
+</tr>
+</table><h2>Public functions</h2><div id="classtflite_1_1_error_reporter_1aea1c136767f97dd1313af0827b08da0a">
+<h3>Report</h3>
+<pre class="prettyprint">virtual int Report(
+  const char *format,
+  va_list args
+)=0</pre>
+<div>
+<p>Converts <code>args</code> to character equivalents according to <code>format</code> string, constructs the error string and report it. </p>
+<p>Returns number of characters written or zero on success, and negative number on error. </p>
+</div>
+</div><div id="classtflite_1_1_error_reporter_1aafbe9b684566270d57b94130fc2f676c">
+<h3>Report</h3>
+<pre class="prettyprint">int Report(
+  const char *format,
+  ...
+)</pre>
+<div>
+<p>Converts arguments to character equivalents according to <code>format</code> string, constructs the error string and report it. </p>
+<p>Returns number of characters written or zero on success, and negative number on error. </p>
+</div>
+</div><div id="classtflite_1_1_error_reporter_1af5e7bdb86b4c4aebcf9eeafb69a226d1">
+<h3>ReportError</h3>
+<pre class="prettyprint">int ReportError(
+  void *,
+  const char *format,
+  ...
+)</pre>
+<div>
+<p>Equivalent to <code>Report</code> above. </p>
+<p>The additional <code>void*</code> parameter is unused. This method is for compatibility with macros that takes <code>TfLiteContext</code>, like TF_LITE_ENSURE and related macros. </p>
+</div>
+</div><div id="classtflite_1_1_error_reporter_1a8e2bbef79e5b6a2f7cc51bd41d39630c">
+<h3>~ErrorReporter</h3>
+<pre class="prettyprint">virtual  ~ErrorReporter()=default</pre>
+<div></div>
+</div></body>
+</html>

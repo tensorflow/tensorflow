@@ -1,6 +1,6 @@
 load("//xla:xla.bzl", "xla_cc_test")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl:tsl.default.bzl", "filegroup")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,6 +22,17 @@ package(
 #
 # `ffi.h` defines builtin decoding for canonical XLA types, but users can add their own decodings
 # with template specializations.
+
+# A user of the FFI interface will only need the three headers included in the `all_headers`
+# filegroup: `api.h`, `c_api.h`, and `ffi.h`.
+filegroup(
+    name = "all_headers",
+    srcs = [
+        "api.h",
+        "c_api.h",
+        "ffi.h",
+    ],
+)
 
 filegroup(
     name = "api_headers",
@@ -60,26 +71,35 @@ cc_library(
     ],
 )
 
-#===-------------------------------------------------------------------------------------------===//
-# Internal tests for XLA FFI API
-#===-------------------------------------------------------------------------------------------===//
-
 xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
     deps = [
+        ":c_api",
         ":ffi",
+        "//xla:executable_run_options",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/ffi:call_frame",
+        "//xla/ffi:execution_context",
+        "//xla/ffi:execution_state",
         "//xla/ffi:ffi_api",
+        "//xla/ffi:type_id_registry",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_tsl//tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
     ],
 )

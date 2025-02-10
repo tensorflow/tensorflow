@@ -20,8 +20,10 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "xla/pjrt/pjrt_device_description.h"
+#include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
@@ -57,14 +59,14 @@ using ::testing::EquivToProto;
 using ::testing::proto::Partially;
 #endif
 
-IfrtProxyVersion Version() {
-  IfrtProxyVersion version;
-  version.set_protocol_version(kClientMinVersion);
-  return version;
-}
-
-class ClientTest : public ::testing::Test {
+class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
  protected:
+  IfrtProxyVersion Version() {
+    IfrtProxyVersion version;
+    version.set_protocol_version(GetParam());
+    return version;
+  }
+
   void SetUp() override {
     session_ = std::make_shared<MockClientSession>();
     rpc_helper_ = std::make_shared<RpcHelper>(Version(), session_);
@@ -73,48 +75,151 @@ class ClientTest : public ::testing::Test {
     rpc_helper_->set_host_buffer_store(host_buffer_store_);
 
     InitResponse response;
-    ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-        R"pb(
-          platform_name: "ifrt-service"
-          platform_version: "n/a"
-          platform_id: 42
-          process_index: 1
-          runtime_type: "ifrt-service"
-          devices {
-            id: 0
-            local_hardware_id: 1234
-            device_kind: "mock"
-            default_memory_id: 0
-            memory_ids: [ 0 ]
-            attributes {
-              key: "name"
-              value { string_value: "device0" }
+    if (Version().protocol_version() <= 3) {
+      ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+          R"pb(
+            platform_name: "ifrt-service"
+            platform_version: "n/a"
+            platform_id: 42
+            process_index: 1
+            runtime_type: "ifrt-service"
+            all_devices {
+              id: 0
+              local_hardware_id: 1234
+              device_kind: "mock"
+              default_memory_id: 0
+              memory_ids: [ 0 ]
+              deprecated_attributes {
+                key: "name"
+                value { string_value: "device0" }
+              }
             }
-          }
-          devices {
-            id: 1
-            local_hardware_id: 1234
-            device_kind: "mock"
-            default_memory_id: 1
-            memory_ids: [ 1 ]
-            attributes {
-              key: "name"
-              value { string_value: "device1" }
+            all_devices {
+              id: 1
+              local_hardware_id: 1234
+              device_kind: "mock"
+              default_memory_id: 1
+              memory_ids: [ 1 ]
+              deprecated_attributes {
+                key: "name"
+                value { string_value: "device1" }
+              }
             }
-          }
-          addressable_device_ids: 1
-          memories {
-            id: 0
-            memory_space_kind: "mock"
-            device_ids: [ 0 ]
-          }
-          memories {
-            id: 1
-            memory_space_kind: "mock"
-            device_ids: [ 1 ]
-          }
-        )pb",
-        &response));
+            addressable_device_ids: 1
+            memories {
+              id: 0
+              memory_space_kind: "mock"
+              kind_id: 0
+              device_ids: [ 0 ]
+            }
+            memories {
+              id: 1
+              memory_space_kind: "mock"
+              kind_id: 1
+              device_ids: [ 1 ]
+            }
+          )pb",
+          &response));
+    } else if (Version().protocol_version() < 7) {
+      ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+          R"pb(
+            platform_name: "ifrt-service"
+            platform_version: "n/a"
+            platform_id: 42
+            process_index: 1
+            runtime_type: "ifrt-service"
+            all_devices {
+              id: 0
+              local_hardware_id: 1234
+              device_kind: "mock"
+              default_memory_id: 0
+              memory_ids: [ 0 ]
+              attributes {
+                attributes {
+                  key: "name"
+                  value { string_value: "device0" }
+                }
+              }
+            }
+            all_devices {
+              id: 1
+              local_hardware_id: 1234
+              device_kind: "mock"
+              default_memory_id: 1
+              memory_ids: [ 1 ]
+              attributes {
+                attributes {
+                  key: "name"
+                  value { string_value: "device1" }
+                }
+              }
+            }
+            addressable_device_ids: 1
+            memories {
+              id: 0
+              memory_space_kind: "mock"
+              kind_id: 0
+              device_ids: [ 0 ]
+            }
+            memories {
+              id: 1
+              memory_space_kind: "mock"
+              kind_id: 1
+              device_ids: [ 1 ]
+            }
+          )pb",
+          &response));
+    } else {
+      ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+          R"pb(
+            platform_name: "ifrt-service"
+            platform_version: "n/a"
+            platform_id: 42
+            process_index: 1
+            runtime_type: "ifrt-service"
+            all_devices {
+              id: 0
+              local_hardware_id: 1234
+              device_kind: "mock"
+              default_memory_id: 0
+              memory_ids: [ 0 ]
+              attributes {
+                attributes {
+                  key: "name"
+                  value { string_value: "device0" }
+                }
+              }
+            }
+            all_devices {
+              id: 1
+              local_hardware_id: 1234
+              device_kind: "mock"
+              default_memory_id: 1
+              memory_ids: [ 1 ]
+              attributes {
+                attributes {
+                  key: "name"
+                  value { string_value: "device1" }
+                }
+              }
+            }
+            primary_device_ids: [ 0, 1 ]
+            addressable_device_ids: 1
+            memories {
+              id: 0
+              memory_space_kind: "mock"
+              kind_id: 0
+              device_ids: [ 0 ]
+            }
+            memories {
+              id: 1
+              memory_space_kind: "mock"
+              kind_id: 1
+              device_ids: [ 1 ]
+            }
+          )pb",
+          &response));
+    }
     TF_ASSERT_OK_AND_ASSIGN(client_, Client::Create(rpc_helper_, response));
   }
 
@@ -124,7 +229,7 @@ class ClientTest : public ::testing::Test {
   std::unique_ptr<Client> client_;
 };
 
-TEST_F(ClientTest, Init) {
+TEST_P(ClientTest, Init) {
   EXPECT_EQ(client_->platform_name(), "ifrt-service");
   EXPECT_EQ(client_->platform_version(), "n/a");
   EXPECT_EQ(client_->platform_id(), 42);
@@ -134,48 +239,45 @@ TEST_F(ClientTest, Init) {
   ASSERT_EQ(client_->device_count(), 2);
   ASSERT_EQ(client_->addressable_device_count(), 1);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto* const device0, client_->LookupDevice(0));
-  EXPECT_EQ(device0->id(), 0);
-  EXPECT_EQ(device0->local_hardware_id(), 1234);
-  EXPECT_EQ(device0->device_kind(), "mock");
-  EXPECT_THAT(device0->Attributes(),
-              ElementsAre(Pair(
-                  "name", xla::PjRtDeviceAttribute(std::string("device0")))));
+  TF_ASSERT_OK_AND_ASSIGN(auto* const device0,
+                          client_->LookupDevice(DeviceId(0)));
+  EXPECT_EQ(device0->Id(), DeviceId(0));
+  EXPECT_EQ(device0->Kind(), "mock");
+  EXPECT_THAT(device0->Attributes().map(),
+              ElementsAre(Pair("name", AttributeMap::StringValue("device0"))));
 
-  ASSERT_THAT(device0->memory_spaces(), SizeIs(1));
-  auto* const memory0 = device0->memory_spaces()[0];
-  EXPECT_EQ(memory0->id(), 0);
-  EXPECT_EQ(memory0->memory_space_kind(), "mock");
-  EXPECT_THAT(memory0->devices(), UnorderedElementsAre(device0));
-  EXPECT_THAT(device0->default_memory_space(), IsOkAndHolds(memory0));
+  ASSERT_THAT(device0->Memories(), SizeIs(1));
+  auto* const memory0 = device0->Memories()[0];
+  EXPECT_EQ(memory0->Id(), 0);
+  EXPECT_EQ(memory0->Kind().memory_kind(), "mock");
+  EXPECT_THAT(memory0->Devices(), UnorderedElementsAre(device0));
+  EXPECT_THAT(device0->DefaultMemory(), IsOkAndHolds(memory0));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto* const device1, client_->LookupDevice(1));
-  EXPECT_EQ(device1->id(), 1);
-  EXPECT_EQ(device1->local_hardware_id(), 1234);
-  EXPECT_EQ(device1->device_kind(), "mock");
-  EXPECT_THAT(device1->Attributes(),
-              ElementsAre(Pair(
-                  "name", xla::PjRtDeviceAttribute(std::string("device1")))));
+  TF_ASSERT_OK_AND_ASSIGN(auto* const device1,
+                          client_->LookupDevice(DeviceId(1)));
+  EXPECT_EQ(device1->Id(), 1);
+  EXPECT_EQ(device1->Kind(), "mock");
+  EXPECT_THAT(device1->Attributes().map(),
+              ElementsAre(Pair("name", AttributeMap::StringValue("device1"))));
 
-  ASSERT_THAT(device1->memory_spaces(), SizeIs(1));
-  auto* const memory1 = device1->memory_spaces()[0];
-  EXPECT_EQ(memory1->id(), 1);
-  EXPECT_EQ(memory1->memory_space_kind(), "mock");
-  EXPECT_THAT(memory1->devices(), UnorderedElementsAre(device1));
-  EXPECT_THAT(device1->default_memory_space(), IsOkAndHolds(memory1));
+  ASSERT_THAT(device1->Memories(), SizeIs(1));
+  auto* const memory1 = device1->Memories()[0];
+  EXPECT_EQ(memory1->Id(), 1);
+  EXPECT_EQ(memory1->Kind().memory_kind(), "mock");
+  EXPECT_THAT(memory1->Devices(), UnorderedElementsAre(device1));
+  EXPECT_THAT(device1->DefaultMemory(), IsOkAndHolds(memory1));
 
   EXPECT_THAT(client_->addressable_devices(), ElementsAre(device1));
 }
 
 // TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
 #if defined(PLATFORM_GOOGLE)
-TEST_F(ClientTest, GetDefaultDeviceAssignmentSuccess) {
+TEST_P(ClientTest, GetDefaultDeviceAssignmentSuccess) {
   IfrtResponse response;
   xla::DeviceAssignment assignment(1, 3);
-  ASSERT_THAT(assignment.Serialize(
-                  response.mutable_get_default_device_assignment_response()
-                      ->mutable_device_assignment()),
-              IsOk());
+  assignment.Serialize(
+      response.mutable_get_default_device_assignment_response()
+          ->mutable_device_assignment());
 
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(
@@ -195,7 +297,7 @@ TEST_F(ClientTest, GetDefaultDeviceAssignmentSuccess) {
 
 // TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
 #if defined(PLATFORM_GOOGLE)
-TEST_F(ClientTest, GetDefaultDeviceAssignmentFailure) {
+TEST_P(ClientTest, GetDefaultDeviceAssignmentFailure) {
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(
                                get_default_device_assignment_request {
@@ -209,6 +311,13 @@ TEST_F(ClientTest, GetDefaultDeviceAssignmentFailure) {
   EXPECT_THAT(client_->GetDefaultDeviceAssignment(1, 3), Not(IsOk()));
 }
 #endif
+
+INSTANTIATE_TEST_SUITE_P(
+    ClientTestWithAllVersions, ClientTest,
+    testing::Range(kClientMinVersion, kClientMaxVersion + 1),
+    [](const testing::TestParamInfo<ClientTest::ParamType>& info) {
+      return absl::StrCat(info.param);
+    });
 
 }  // namespace
 }  // namespace proxy

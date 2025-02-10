@@ -43,7 +43,7 @@ def TestPostCalibrationComponentPass : Pass<"stablehlo-test-post-calibration-com
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect", "mlir::TF::TensorFlowDialect",
     "mlir::func::FuncDialect", "mlir::mhlo::MhloDialect",
-    "mlir::quant::QuantizationDialect", "mlir::chlo::ChloDialect",
+    "mlir::quant::QuantDialect", "mlir::chlo::ChloDialect",
     "mlir::vhlo::VhloDialect", "mlir::shape::ShapeDialect",
     "mlir::quantfork::QuantizationForkDialect",
   ];
@@ -56,9 +56,10 @@ def TestTFToStablehloPass : Pass<"stablehlo-test-tf-to-stablehlo", "mlir::Module
   }];
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect", "mlir::TF::TensorFlowDialect",
-    "mlir::chlo::ChloDialect", "mlir::quant::QuantizationDialect",
+    "mlir::chlo::ChloDialect", "mlir::quant::QuantDialect",
     "mlir::mhlo::MhloDialect", "mlir::shape::ShapeDialect",
-    "mlir::sparse_tensor::SparseTensorDialect", "mlir::vhlo::VhloDialect",
+    "mlir::sparse_tensor::SparseTensorDialect", "mlir::ub::UBDialect",
+    "mlir::vhlo::VhloDialect",
   ];
 }
 
@@ -69,6 +70,22 @@ def TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass :
     This test-only pass is the same as `LiftQuantizableSpotsAsFunctionsPass` but
     has predefined `QuantizationSpecs` to make FileCheck testing easier.
   }];
+  let options = [
+    Option<"quantization_specs_", "quantization-specs",
+      "mlir::quant::stablehlo::testing::TestQuantizationSpecs",
+      /*default=*/"mlir::quant::stablehlo::testing::TestQuantizationSpecs::kEmpty",
+      "Sets one of the predefined `QuantizationSpecs` for testing.",
+      [{llvm::cl::values(
+        clEnumValN(mlir::quant::stablehlo::testing::TestQuantizationSpecs::kEmpty,
+          "empty", "Uses empty (default) QuantizationSpecs."),
+        clEnumValN(mlir::quant::stablehlo::testing::TestQuantizationSpecs::kDisableAllDotGeneral,
+          "disable-all-dot-general", "Disables all dot_general ops by matching lifted function names"),
+        clEnumValN(mlir::quant::stablehlo::testing::TestQuantizationSpecs::kStaticRangePtqToAll,
+          "static-range-ptq-to-all", "Applies `StaticRangePtq` to all quantizable units."),
+        clEnumValN(mlir::quant::stablehlo::testing::TestQuantizationSpecs::kStaticRangePtqToComputeHeavy,
+          "static-range-ptq-to-compute-heavy", "Applies `StaticRangePtq` to only compute heavy units.")
+      )}]>
+  ];
   let dependentDialects = [
       "mlir::func::FuncDialect",
       "mlir::stablehlo::StablehloDialect",

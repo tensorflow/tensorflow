@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef XLA_PJRT_EVENT_POOL_H_
 #define XLA_PJRT_EVENT_POOL_H_
 
+#include <cstdint>
 #include <memory>
 #include <stack>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 
@@ -86,9 +90,12 @@ class EventPool {
  private:
   const bool allow_reuse_;
 
-  absl::Mutex mu_;
-  std::stack<std::unique_ptr<se::Event>> free_events_ ABSL_GUARDED_BY(mu_);
-  uint64_t next_sequence_number_ ABSL_GUARDED_BY(mu_);
+  absl::Mutex mu_free_events_;
+  std::stack<std::unique_ptr<se::Event>> free_events_
+      ABSL_GUARDED_BY(mu_free_events_);
+
+  absl::Mutex mu_sequence_number_;
+  uint64_t next_sequence_number_ ABSL_GUARDED_BY(mu_sequence_number_);
 };
 
 }  // namespace xla

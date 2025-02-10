@@ -12,42 +12,40 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <iterator>
+#include <cstddef>
 #include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
-::tensorflow::Status ResolveReshapeAttributes::Run(Model* model,
-                                                   std::size_t op_index,
-                                                   bool* modified) {
+absl::Status ResolveReshapeAttributes::Run(Model* model, std::size_t op_index,
+                                           bool* modified) {
   *modified = false;
   const auto reshape_it = model->operators.begin() + op_index;
   auto* reshape_op = reshape_it->get();
   if (reshape_op->type != OperatorType::kReshape) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   auto* op = static_cast<TensorFlowReshapeOperator*>(reshape_op);
 
-  if (!op->shape.empty()) return ::tensorflow::OkStatus();
+  if (!op->shape.empty()) return absl::OkStatus();
 
   if (IsConstantParameterArray(*model, reshape_op->inputs[1])) {
     const auto& constant_input_array = model->GetArray(reshape_op->inputs[1]);
     op->shape = constant_input_array.GetBuffer<ArrayDataType::kInt32>().data;
   }
 
-  if (op->shape.empty()) return ::tensorflow::OkStatus();
+  if (op->shape.empty()) return absl::OkStatus();
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

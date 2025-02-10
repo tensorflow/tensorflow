@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
@@ -53,18 +54,23 @@ using ::tensorflow::testing::StatusIs;
 using ::testing::MatchesRegex;
 
 constexpr const char kProtocol[] = "grpc";
+constexpr const char kAltTransferProtocol[] = "alt";
 
-class WorkerClientTest : public ::testing::Test {
+class WorkerClientTest : public ::testing::TestWithParam<std::string> {
  protected:
-  void SetUp() override {
-    test_cluster_ = std::make_unique<TestCluster>(/*num_workers=*/1);
+  void SetUp() override { InitializeTestCluster(); }
+
+  void InitializeTestCluster(
+      std::optional<std::string> data_transfer_protocol = std::nullopt) {
+    test_cluster_ = std::make_unique<TestCluster>(/*num_workers=*/1,
+                                                  data_transfer_protocol);
     TF_ASSERT_OK(test_cluster_->Initialize());
     dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
         test_cluster_->DispatcherAddress(), kProtocol);
   }
 
   // Creates a dataset and returns the dataset ID.
-  StatusOr<std::string> RegisterDataset(const int64_t range) {
+  absl::StatusOr<std::string> RegisterDataset(const int64_t range) {
     const auto dataset_def = RangeSquareDataset(range);
     std::string dataset_id;
     TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
@@ -74,7 +80,7 @@ class WorkerClientTest : public ::testing::Test {
   }
 
   // Creates a iteration and returns the iteration client ID.
-  StatusOr<int64_t> CreateIteration(const std::string& dataset_id) {
+  absl::StatusOr<int64_t> CreateIteration(const std::string& dataset_id) {
     ProcessingModeDef processing_mode;
     processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
     int64_t job_id = 0;
@@ -89,7 +95,7 @@ class WorkerClientTest : public ::testing::Test {
   }
 
   // Gets the task for iteration `iteration_client_id`.
-  StatusOr<int64_t> GetTaskToRead(const int64_t iteration_client_id) {
+  absl::StatusOr<int64_t> GetTaskToRead(const int64_t iteration_client_id) {
     ClientHeartbeatRequest request;
     ClientHeartbeatResponse response;
     request.set_iteration_client_id(iteration_client_id);
@@ -101,17 +107,18 @@ class WorkerClientTest : public ::testing::Test {
     return response.task_info(0).task_id();
   }
 
-  StatusOr<std::unique_ptr<DataServiceWorkerClient>> GetWorkerClient(
+  absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>> GetWorkerClient(
       const std::string& data_transfer_protocol) {
     DataTransferServerInfo info;
     info.set_address(GetWorkerAddress());
     info.set_protocol(data_transfer_protocol);
     return CreateDataServiceWorkerClient(kProtocol, info,
+                                         /*accelerator_device_info=*/nullptr,
                                          /*allocator=*/nullptr);
   }
 
-  StatusOr<GetElementResult> GetElement(DataServiceWorkerClient& client,
-                                        const int64_t task_id) {
+  absl::StatusOr<GetElementResult> GetElement(DataServiceWorkerClient& client,
+                                              const int64_t task_id) {
     GetElementRequest request;
     GetElementResult result;
     request.set_task_id(task_id);
@@ -129,6 +136,76 @@ class WorkerClientTest : public ::testing::Test {
 
   std::unique_ptr<TestCluster> test_cluster_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_client_;
+};
+
+class AltDataTransferServer : public DataTransferServer {
+ public:
+  explicit AltDataTransferServer(DataTransferServer::GetElementT get_element)
+      : get_element_(get_element) {}
+
+  absl::Status GetElement(const GetElementRequest& req,
+                          GetElementResult& result) {
+    return get_element_(&req, &result);
+  }
+
+  absl::Status Start(const experimental::WorkerConfig& config) override {
+    return absl::OkStatus();
+  }
+
+  int Port() const override { return -1; }
+
+ private:
+  DataTransferServer::GetElementT get_element_;
+};
+
+class AltDataTransferClient : public DataTransferClient {
+ public:
+  explicit AltDataTransferClient(std::shared_ptr<AltDataTransferServer> server)
+      : server_(server) {}
+
+  absl::Status GetElement(const GetElementRequest& req,
+                          GetElementResult& result) override {
+    return server_->GetElement(req, result);
+  }
+
+  void TryCancel() override {}
+
+ private:
+  std::shared_ptr<AltDataTransferServer> server_;
+};
+
+class AltDataTransferRegistrar {
+ public:
+  AltDataTransferRegistrar() {
+    DataTransferServer::Register(
+        kAltTransferProtocol,
+        [this](DataTransferServer::GetElementT get_element,
+               std::shared_ptr<DataTransferServer>* server) {
+          server_ = std::make_shared<AltDataTransferServer>(get_element);
+          *server = server_;
+          return absl::OkStatus();
+        });
+    DataTransferClient::Register(
+        kAltTransferProtocol,
+        [this](DataTransferClient::Config config,
+               std::unique_ptr<DataTransferClient>* client) {
+          *client = std::make_unique<AltDataTransferClient>(server_);
+          return absl::OkStatus();
+        });
+  }
+
+ private:
+  std::shared_ptr<AltDataTransferServer> server_ = nullptr;
+};
+
+static AltDataTransferRegistrar alt_data_transfer_registrar;
+
+class DataTransferProtocolWorkerClientTest : public WorkerClientTest {
+ protected:
+  void SetUp() override {
+    std::string data_transfer_protocol = GetParam();
+    InitializeTestCluster(data_transfer_protocol);
+  }
 };
 
 TEST_F(WorkerClientTest, LocalRead) {
@@ -176,7 +253,12 @@ TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
                        MatchesRegex("Local worker.*is no longer available.*")));
 }
 
-TEST_F(WorkerClientTest, GrpcRead) {
+TEST_P(DataTransferProtocolWorkerClientTest, NetworkRead) {
+  std::string data_transfer_protocol = GetParam();
+
+  // Consider the worker to be remote so that local protocol isn't forced on.
+  LocalWorkers::Remove(GetWorkerAddress());
+
   const int64_t range = 5;
   TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id, RegisterDataset(range));
   TF_ASSERT_OK_AND_ASSIGN(const int64_t iteration_client_id,
@@ -184,21 +266,22 @@ TEST_F(WorkerClientTest, GrpcRead) {
   TF_ASSERT_OK_AND_ASSIGN(const int64_t task_id,
                           GetTaskToRead(iteration_client_id));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DataServiceWorkerClient> client,
-                          GetWorkerClient(kGrpcTransferProtocol));
+                          GetWorkerClient(data_transfer_protocol));
   for (int64_t i = 0; i < range; ++i) {
     TF_ASSERT_OK_AND_ASSIGN(GetElementResult result,
                             GetElement(*client, task_id));
     test::ExpectEqual(result.components[0], Tensor(int64_t{i * i}));
     EXPECT_FALSE(result.end_of_sequence);
   }
-
-  // Remove the local worker from `LocalWorkers`. Since the client reads from a
-  // local server, this should cause the request to fail.
-  LocalWorkers::Remove(GetWorkerAddress());
-  EXPECT_THAT(GetElement(*client, task_id),
-              StatusIs(error::CANCELLED,
-                       MatchesRegex("Local worker.*is no longer available.*")));
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    NetworkProtocols, DataTransferProtocolWorkerClientTest,
+    ::testing::Values(kGrpcTransferProtocol, kAltTransferProtocol),
+    [](const ::testing::TestParamInfo<
+        DataTransferProtocolWorkerClientTest::ParamType>& info) {
+      return info.param;
+    });
 
 TEST_F(WorkerClientTest, LocalServerShutsDown) {
   TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,

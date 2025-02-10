@@ -100,6 +100,7 @@ py_library(
         "//tensorflow/python/training:training_lib",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:tf_export",
     ],
 )

@@ -30,12 +30,14 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -62,18 +64,21 @@ class GenericTransferManagerTest : public ::testing::Test {
         se::PlatformManager::PlatformWithId(se::host::kHostPlatformId));
     TF_ASSERT_OK_AND_ASSIGN(stream_executor_, platform->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, stream_executor_->CreateStream());
+    allocator_ =
+        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor_);
   }
 
   ScopedShapedBuffer AllocateBuffer(const Shape& shape) {
-    auto buffer = transfer_manager_.AllocateScopedShapedBuffer(
-        shape, stream_executor_->GetAllocator(),
-        /*device_ordinal=*/0);
+    auto buffer =
+        transfer_manager_.AllocateScopedShapedBuffer(shape, allocator_.get(),
+                                                     /*device_ordinal=*/0);
     return std::move(buffer.value());
   }
 
   PackingTransferManager transfer_manager_;
   se::StreamExecutor* stream_executor_;
   std::unique_ptr<se::Stream> stream_;
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 };
 
 TEST_F(GenericTransferManagerTest, TransferLiteralToDevice) {
@@ -174,6 +179,14 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDeviceInt4) {
         literal,
         LiteralUtil::CreateR2<s4>({{s4{1}, s4{-2}}, {s4{-3}, s4{4}}})));
   }
+}
+
+TEST_F(GenericTransferManagerTest, ChooseCompactLayoutForShape) {
+  auto shape = ShapeUtil::MakeShape(S4, {2, 2});
+  TF_ASSERT_OK_AND_ASSIGN(auto compact_shape,
+                          transfer_manager_.ChooseCompactLayoutForShape(shape));
+  EXPECT_TRUE(Shape::Equal().IgnoreLayout()(compact_shape, shape));
+  EXPECT_EQ(compact_shape.layout().element_size_in_bits(), 4);
 }
 
 }  // namespace

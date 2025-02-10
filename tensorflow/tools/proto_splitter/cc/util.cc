@@ -24,12 +24,16 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "riegeli/base/maker.h"  // from @riegeli
+#include "riegeli/base/types.h"  // from @riegeli
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
 #include "tensorflow/core/platform/env.h"
@@ -736,18 +740,15 @@ std::string HumanReadableDuration(int64_t microseconds) {
 
 absl::StatusOr<riegeli::RecordReader<riegeli::FdReader<>>> GetRiegeliReader(
     absl::string_view cpb_file) {
-  riegeli::RecordReader<riegeli::FdReader<>> reader =
-      riegeli::RecordReader<riegeli::FdReader<>>(
-          riegeli::FdReader(cpb_file));
-  if (!reader.status().ok()) {
-    reader.Close();
+  riegeli::RecordReader reader(riegeli::Maker<riegeli::FdReader>(cpb_file));
+  if (!reader.ok()) {
     return reader.status();
   }
   return reader;
 }
 
 absl::StatusOr<::tensorflow::proto_splitter::ChunkMetadata> GetChunkMetadata(
-    riegeli::RecordReader<riegeli::FdReader<>>& reader) {
+    riegeli::RecordReaderBase& reader) {
   ::tensorflow::proto_splitter::ChunkMetadata chunk_metadata;
   bool read_metadata_success = reader.Seek(reader.Size().value()) &&
                                reader.SeekBack() &&
@@ -757,7 +758,7 @@ absl::StatusOr<::tensorflow::proto_splitter::ChunkMetadata> GetChunkMetadata(
 }
 
 absl::StatusOr<std::string> ReadChunk(
-    riegeli::RecordReader<riegeli::FdReader<>>& reader,
+    riegeli::RecordReaderBase& reader,
     const ::tensorflow::proto_splitter::ChunkInfo& chunk_info) {
   riegeli::Position pos = chunk_info.offset();
   std::string chunk(chunk_info.size(), '\0');

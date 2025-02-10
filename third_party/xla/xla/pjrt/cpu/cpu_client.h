@@ -25,233 +25,61 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "xla/client/xla_computation.h"
+#include "unsupported/Eigen/CXX11/Tensor"
+#include "mlir/IR/BuiltinOps.h"
+#include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
-#include "xla/pjrt/cpu/cpu_topology.h"
+#include "xla/pjrt/cpu/cpu_device.h"
 #include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
-#include "xla/pjrt/semaphore.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/transpose.h"
-#include "xla/runtime/cpu_event.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/cpu/collectives_interface.h"
+#include "xla/service/cpu/cpu_event.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
-class TfrtCpuDevice;  // forward declare
-
-class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
- public:
-  TfrtCpuDeviceDescription(int id, int process_index, int local_hardware_id);
-
-  int id() const override { return id_; }
-
-  int process_index() const override { return process_index_; }
-
-  int local_hardware_id() const { return local_hardware_id_; }
-
-  absl::string_view device_kind() const override;
-
-  absl::string_view DebugString() const override;
-
-  absl::string_view ToString() const override;
-
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
- private:
-  int id_;
-  int process_index_;
-  int local_hardware_id_;
-  std::string debug_string_;
-  std::string to_string_;
-  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
-};
-
-class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
- public:
-  static TfrtCpuTopologyDescription Create(
-      PjRtPlatformId platform_id, absl::string_view platform_name,
-      absl::string_view platform_version,
-      absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices);
-
-  // `cpu_device_ids` is the list of logical device ids for the CPU devices and
-  // will be used to initialize the CPU topology.
-  TfrtCpuTopologyDescription(
-      const PjRtPlatformId platform_id, const absl::string_view platform_name,
-      const absl::string_view platform_version,
-      const std::vector<CpuTopology::CpuDevice> cpu_devices)
-      : platform_id_(platform_id),
-        platform_name_(platform_name),
-        platform_version_(platform_version),
-        cpu_topology_(std::move(cpu_devices)) {}
-
-  bool operator==(const TfrtCpuTopologyDescription& other) const {
-    return this->platform_id() == other.platform_id() &&
-           this->platform_name() == other.platform_name() &&
-           this->platform_version() == other.platform_version() &&
-           this->cpu_topology().devices() == other.cpu_topology().devices();
-  }
-
-  PjRtPlatformId platform_id() const override { return platform_id_; }
-
-  absl::string_view platform_name() const override { return platform_name_; }
-
-  absl::string_view platform_version() const override {
-    return platform_version_;
-  }
-
-  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
-      const override {
-    std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
-    devices.reserve(cpu_topology_.number_of_devices());
-    for (const CpuTopology::CpuDevice& device : cpu_topology_.devices()) {
-      devices.push_back(std::make_unique<TfrtCpuDeviceDescription>(
-          device.id, device.process_index, device.local_hardware_id));
-    }
-    return devices;
-  }
-
-  const CpuTopology& cpu_topology() const { return cpu_topology_; }
-  const CpuTopology* cpu_topology_ptr() const { return &cpu_topology_; }
-
-  // No subslice is supported.
-  bool is_subslice_topology() const override { return false; }
-
-  // TODO(b/319478189): We support multi-host CPU computations and should
-  // correctly report process count.
-  absl::StatusOr<int> ProcessCount() const override { return 1; }
-
-  absl::StatusOr<int> CoreCountOfDefaultType() const override {
-    return cpu_topology_.number_of_devices();
-  }
-
-  absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override {
-    return cpu_topology_.number_of_devices();
-  }
-
-  absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override {
-    return cpu_topology_.number_of_devices();
-  }
-
-  absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {
-    return 1;
-  }
-
-  absl::StatusOr<std::string> Serialize() const override;
-
-  // Returns vendor specific attributes about the topology.
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
- private:
-  const PjRtPlatformId platform_id_;
-  const std::string platform_name_;
-  const std::string platform_version_;
-  const CpuTopology cpu_topology_;
-  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
-};
-
-class TfrtCpuDevice final : public PjRtDevice {
- public:
-  explicit TfrtCpuDevice(int id, int process_index, int local_hardware_id,
-                         int max_inflight_computations = 32);
-
-  const TfrtCpuDeviceDescription& description() const override {
-    return description_;
-  }
-
-  void SetClient(PjRtClient* client) {
-    CHECK(client_ == nullptr);
-    client_ = client;
-  }
-
-  PjRtClient* client() const override { return client_; }
-
-  bool IsAddressable() const override {
-    return process_index() == client()->process_index();
-  }
-
-  int local_hardware_id() const override {
-    return local_hardware_id_typed().value();
-  }
-
-  PjRtLocalDeviceId local_device_id() const override {
-    return PjRtLocalDeviceId(local_hardware_id_typed().value());
-  }
-
-  PjRtLocalHardwareId local_hardware_id_typed() const override {
-    return PjRtLocalHardwareId(description_.local_hardware_id());
-  }
-
-  Status TransferToInfeed(const LiteralSlice& literal) override;
-
-  Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
-
-  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
-
-  absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
-
-  // Returns a semaphore for admission control on inflight computations.
-  Semaphore& max_inflight_computations_semaphore() {
-    return max_inflight_computations_semaphore_;
-  }
-
-  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
-      absl::string_view description) const override {
-    return nullptr;
-  }
-
- private:
-  PjRtClient* client_ = nullptr;
-  TfrtCpuDeviceDescription description_;
-
-  // TODO(zhangqiaorjc): Optimize semaphore related overhead.
-  // Semaphore used to limit how many programs can be enqueued by the host
-  // ahead of the device.
-  Semaphore max_inflight_computations_semaphore_;
-};
-
 class TfrtCpuClient final : public PjRtClient {
  public:
-  TfrtCpuClient(int process_index,
-                std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-                std::shared_ptr<cpu::CollectivesInterface> collectives,
-                size_t num_threads);
+  TfrtCpuClient(
+      int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
+      std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
+      bool asynchronous,
+      std::function<void(HloModuleConfig&)> customize_hlo_module_config);
   ~TfrtCpuClient() override;
 
   int process_index() const override { return process_index_; }
@@ -268,12 +96,9 @@ class TfrtCpuClient final : public PjRtClient {
     return addressable_devices_;
   }
 
-  absl::StatusOr<PjRtDevice*> LookupDevice(int device_id) const override;
   absl::StatusOr<PjRtDevice*> LookupDevice(
       PjRtGlobalDeviceId global_device_id) const override;
 
-  absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      int local_hardware_id) const override;
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const override;
 
@@ -285,9 +110,7 @@ class TfrtCpuClient final : public PjRtClient {
 
   absl::string_view platform_name() const override { return CpuName(); }
 
-  absl::string_view platform_version() const override { return "<unknown>"; }
-
-  PjRtRuntimeType runtime_type() const override { return kTfrt; }
+  absl::string_view platform_version() const override { return CpuName(); }
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -310,11 +133,16 @@ class TfrtCpuClient final : public PjRtClient {
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(absl::string_view serialized,
+                           std::optional<CompileOptions> options,
+                           const LoadOptions& load_options) override;
+
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
-      Status error, const Shape& shape, PjRtDevice* device) override;
+      absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtDevice* device) override;
+      const Shape& shape, PjRtMemorySpace* device) override;
 
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
@@ -322,20 +150,29 @@ class TfrtCpuClient final : public PjRtClient {
 
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtMemorySpace* memory_space) override {
-    return Unimplemented(
-        "CreateBuffersForAsyncHostToDevice with memory_space not implemented.");
-  }
+                                    PjRtMemorySpace* memory_space) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(
+      absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+      PjRtMemorySpace* memory_space) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(
+      absl::Span<const PjRtClient::ShapeSpec> shape_specs,
+      std::optional<absl::Span<const std::optional<Layout>>> device_layouts,
+      PjRtDevice* device) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtDevice* device) override;
+      PjRtMemorySpace* memory_space, const Layout* device_layout) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device) override;
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
@@ -353,21 +190,11 @@ class TfrtCpuClient final : public PjRtClient {
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
-      void* device_ptr, const Shape& shape, PjRtDevice* device,
+      void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
 
-  absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
-    return Unimplemented("CreateChannelHandle not implemented.");
-  }
-  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return Unimplemented("CreateDeviceToHostChannelHandle not implemented.");
-  }
-  absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    return Unimplemented("CreateHostToDeviceChannelHandle not implemented.");
-  }
-
-  Status Defragment() override {
+  absl::Status Defragment() override {
     return Unimplemented("Defragment not implemented.");
   }
 
@@ -383,15 +210,22 @@ class TfrtCpuClient final : public PjRtClient {
     return eigen_intraop_device_.get();
   }
 
-  tsl::AsyncValueRef<runtime::CpuEvent> GetLastCollectiveLaunchEvent() {
+  tsl::AsyncValueRef<CpuEvent> GetLastCollectiveLaunchEvent() {
     absl::MutexLock lock(&mu_);
     return last_collective_launch_event_.CopyRef();
   }
 
-  void SetLastCollectiveLaunchEvent(
-      tsl::AsyncValueRef<runtime::CpuEvent> event) {
+  void SetLastCollectiveLaunchEvent(tsl::AsyncValueRef<CpuEvent> event) {
     absl::MutexLock lock(&mu_);
     last_collective_launch_event_ = std::move(event);
+  }
+
+  tsl::AsyncValueRef<CpuEvent> GetLastEnqueueEvent() {
+    return last_enqueue_event_.CopyRef();
+  }
+
+  void SetLastEnqueueEvent(tsl::AsyncValueRef<CpuEvent> event) {
+    last_enqueue_event_ = std::move(event);
   }
 
   absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
@@ -402,24 +236,35 @@ class TfrtCpuClient final : public PjRtClient {
  private:
   friend class TfrtCpuExecutable;
 
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
+      const XlaComputation& computation,
+      const std::vector<const Shape*>& argument_layout_pointers,
+      LayoutCanonicalizationCallback layout_canonicalization_callback,
+      CompileOptions options);
+
   int process_index_;
   // Includes all devices, including non-addressable devices.
   std::vector<std::unique_ptr<TfrtCpuDevice>> owned_devices_;
   // Pointers to `owned_devices_`.
   std::vector<PjRtDevice*> devices_;
   // Maps Device::id() to the corresponding Device. Includes all devices.
-  absl::flat_hash_map<int, TfrtCpuDevice*> id_to_device_;
+  absl::flat_hash_map<PjRtGlobalDeviceId, TfrtCpuDevice*> id_to_device_;
   // Addressable devices indexed by core_id.
   std::vector<PjRtDevice*> addressable_devices_;
   std::unique_ptr<ComputationPlacer> computation_placer_;
 
-  // Thread pool for running PjRtClient tasks.
-  std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
-  std::unique_ptr<AsyncWorkRunner> async_work_runner_;
+  // Addressable memory spaces.
+  std::vector<std::unique_ptr<PjRtMemorySpace>> owned_memory_spaces_;
+  // Pointers to `owned_memory_spaces_`.
+  std::vector<PjRtMemorySpace*> memory_spaces_;
 
   // TODO(zhangqiaorjc): Use tsl::compat::EigenHostContextThreadPool.
   std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
+
+  // Thread pool for running PjRtClient tasks.
+  std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
+  std::unique_ptr<AsyncWorkRunner> async_work_runner_;
 
   // Launching collectives are prone to deadlock when we use fixed-sized
   // threadpools since ExecuteHelper will block until all replicas reach the
@@ -432,7 +277,7 @@ class TfrtCpuClient final : public PjRtClient {
   // TODO(zhangqiaorjc): Explore alternatives that allow multiple concurrent
   // collectives.
   mutable absl::Mutex mu_;
-  tsl::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event_
+  tsl::AsyncValueRef<CpuEvent> last_collective_launch_event_
       ABSL_GUARDED_BY(mu_);
 
   // A cache for transpose plans. We use transposes to convert
@@ -441,9 +286,23 @@ class TfrtCpuClient final : public PjRtClient {
   absl::Mutex transpose_mu_;
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
 
-  std::shared_ptr<cpu::CollectivesInterface> collectives_;
+  std::shared_ptr<cpu::CpuCollectives> collectives_;
 
-  xla::TfrtCpuTopologyDescription topology_;
+  xla::CpuTopologyDescription topology_;
+
+  // Used to control whether asynchronous computation dispatch is available for
+  // this client. Only applies to non-parallel computations.
+  bool asynchronous_;
+
+  // A callback to customize the HloModuleConfig for each compiled module.
+  std::function<void(HloModuleConfig&)> customize_hlo_module_config_;
+
+  // Used to prevent too much parallelism: we will not enqueue next non-parallel
+  // computation until last one is done within each user thread.
+  // TODO(yueshengys): Consider moving the enqueuing/ordering logic to JAX via
+  // token threading.
+  inline static thread_local tsl::AsyncValueRef<CpuEvent> last_enqueue_event_ =
+      tsl::MakeAvailableAsyncValueRef<CpuEvent>();
 };
 
 class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
@@ -451,28 +310,36 @@ class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
   TfrtCpuBuffer(
       Shape on_device_shape,
       std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
-      TfrtCpuClient* client, TfrtCpuDevice* device);
+      TfrtCpuClient* client, TfrtCpuDevice* device,
+      PjRtMemorySpace* memory_space);
 
   TfrtCpuBuffer(const TfrtCpuBuffer&) = delete;
   TfrtCpuBuffer(TfrtCpuBuffer&&) = delete;
   TfrtCpuBuffer& operator=(const TfrtCpuBuffer&) = delete;
   TfrtCpuBuffer& operator=(TfrtCpuBuffer&&) = delete;
 
-  PjRtMemorySpace* memory_space() const override { return nullptr; }
+  PjRtMemorySpace* memory_space() const override { return memory_space_; }
   TfrtCpuDevice* device() const override { return device_; }
   TfrtCpuClient* client() const override { return client_; }
 
-  using PjRtBuffer::ToLiteralSync;
-  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
+                             int64_t transfer_size) override;
 
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
-      PjRtDevice* dst_device) override;
+  using PjRtBuffer::ToLiteralSync;
+  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
+  PjRtFuture<> LazyToLiteral(
+      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      override;
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
+      PjRtMemorySpace* dst_memory_space) override;
 
  private:
   absl::string_view buffer_name() const override { return "TfrtCpuBuffer"; }
 
   TfrtCpuClient* client_;
   TfrtCpuDevice* const device_;
+  PjRtMemorySpace* const memory_space_;
 };
 
 class TfrtCpuExecutable final : public PjRtLoadedExecutable {
@@ -536,6 +403,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
           "cpu_executable_ has no hlo_proto.");
     }
     memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+    memory_stats.PopulateBufferStatsFromAllocations(
+        cpu_executable_->GetAllocations());
     return memory_stats;
   }
 
@@ -543,22 +412,19 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
-      override;
+      std::optional<std::vector<PjRtFuture<>>>& returned_futures) override;
 
   using PjRtLoadedExecutable::ExecuteSharded;
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<Status>>& returned_future,
-      bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
 
   using PjRtLoadedExecutable::ExecutePortable;
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<Status>>& returned_future,
-      bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
 
   void Delete() override;
 
@@ -568,12 +434,14 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
 
   bool IsReturnedFutureSupported() const override { return true; }
 
-  absl::StatusOr<std::optional<std::string>> Fingerprint() const;
-
   std::shared_ptr<Executable> cpu_executable() const { return cpu_executable_; }
 
+  absl::StatusOr<std::optional<std::string>> Fingerprint() const {
+    return fingerprint_;
+  }
+
   absl::StatusOr<std::string> FingerprintExecutable() const override {
-    return Unimplemented("Fingerprinting executable is not supported.");
+    return fingerprint_;
   }
 
   absl::StatusOr<CompileOptions> GetCompileOptions() const override {
@@ -583,18 +451,18 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
  private:
   friend class TfrtCpuClient;
 
-  Status SetUpDonation(bool tuple_inputs);
+  absl::Status SetUpDonation(bool tuple_inputs);
 
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.
-  Status CheckBufferCompatibilities(
+  absl::Status CheckBufferCompatibilities(
       absl::Span<std::pair<bool, TrackedTfrtCpuDeviceBuffer*> const>
           input_buffers) const;
 
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
-      tsl::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event,
+      tsl::AsyncValueRef<CpuEvent> last_collective_launch_event,
       bool fill_future, TfrtCpuDevice* device = nullptr);
 
   TfrtCpuClient* client_;
@@ -639,41 +507,21 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   // Cached result of comparing HloCostAnalysis FLOP estimate for execute
   // critical path.
   bool cheap_computation_;
+
+  std::string fingerprint_;
 };
 
-struct CpuClientOptions {
-  // Does nothing at the moment. Ignored.
-  bool asynchronous = true;
-
-  // Number of CPU devices. If not provided, the value of
-  // --xla_force_host_platform_device_count is used.
-  std::optional<int> cpu_device_count = std::nullopt;
-
-  int max_inflight_computations_per_device = 32;
-
-  // Number of distributed nodes. node_id, kv_get, and kv_put are ignored if
-  // this is set to 1.
-  int num_nodes = 1;
-
-  // My node ID.
-  int node_id = 0;
-
-  // KV store for sharing topology information.
-  std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
-
-  // Distributed collectives implementation. Optional. If not provided, an
-  // in-process collectives implementation will be used.
-  std::shared_ptr<cpu::CollectivesInterface> collectives;
-};
-absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
-    const CpuClientOptions& options);
+absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
+    "Use public XLA:CPU GetXlaPjrtCpuClient instead")
+    GetTfrtCpuClient(CpuClientOptions options);
 
 // Deprecated. Use the overload that takes 'options' instead.
-inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
-    bool asynchronous) {
+inline absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
+    "Use public XLA:CPU GetXlaPjrtCpuClient instead")
+    GetTfrtCpuClient(bool asynchronous) {
   CpuClientOptions options;
   options.asynchronous = asynchronous;
-  return GetTfrtCpuClient(options);
+  return GetTfrtCpuClient(std::move(options));
 }
 
 // Deprecated. Use the overload that takes 'options' instead.
@@ -685,7 +533,7 @@ inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
   options.cpu_device_count = cpu_device_count;
   options.max_inflight_computations_per_device =
       max_inflight_computations_per_device;
-  return GetTfrtCpuClient(options);
+  return GetTfrtCpuClient(std::move(options));
 }
 
 }  // namespace xla

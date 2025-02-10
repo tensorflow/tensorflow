@@ -17,8 +17,8 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "xla/tsl/platform/subprocess.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/subprocess.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -40,8 +40,13 @@ class HloExpandTest : public ::testing::Test {
 
     stdout_output_ = stderr_output_ = "";
     int status = proc.Communicate(nullptr, &stdout_output_, &stderr_output_);
+#if defined(_WIN32) || defined(_WIN64)
+    exited_normally_ = (status == 0);
+    exit_status_ = status;
+#else
     exited_normally_ = WIFEXITED(status);
     exit_status_ = exited_normally_ ? WEXITSTATUS(status) : -1;
+#endif  // defined(_WIN32) || defined(_WIN64)
   }
 
   std::string stdout_output_;

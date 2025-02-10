@@ -23,10 +23,12 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -39,9 +41,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
-                                             const HloInstruction* operand,
-                                             const ShapeIndex& user_index) {
+std::optional<bool> FusionCanShareBufferHint(
+    const HloInstruction* user, const HloInstruction* operand,
+    const ShapeIndex& user_index,
+    const se::DeviceDescription& device_description) {
   const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(user);
   if (fusion == nullptr) {
     return std::nullopt;
@@ -65,10 +68,10 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
     }
     // The buffers needed for 'user_subshape' and 'operand_shape' need to have
     // the same size, otherwise they cannot be shared. We already checked that
-    // the number of elements are the same, so now we check the number of bytes
+    // the number of elements are the same, so now we check the number of bits
     // needed for the element types.
-    if (ShapeUtil::ByteSizeOfPrimitiveType(operand_shape.element_type()) !=
-        ShapeUtil::ByteSizeOfPrimitiveType(user_subshape.element_type())) {
+    if (primitive_util::BitWidth(operand_shape.element_type()) !=
+        primitive_util::BitWidth(user_subshape.element_type())) {
       return false;
     }
   }
@@ -76,14 +79,11 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   // Allow multiple output users, if they end in reductions.
   // This only works for the reduction emitter, as it calculates the reduction
   // first, i.e. before processing other outputs (that may overwrite the input).
-  stream_executor::GpuDeviceInfoProto device_info;
-  stream_executor::DeviceDescription device_description(device_info);
-  auto analysis = HloFusionAnalysis::Create(fusion, &device_description);
+  auto analysis = HloFusionAnalysis::Create(*user, device_description);
   bool is_reduction_emitter = analysis.GetEmitterFusionKind() ==
                               HloFusionAnalysis::EmitterFusionKind::kReduction;
   const HloInstruction* reduction_hero =
-      is_reduction_emitter ? reduction_hero = analysis.FindHeroReduction()
-                           : nullptr;
+      is_reduction_emitter ? analysis.FindHeroReduction() : nullptr;
 
   // We need to make sure that the fusion parameter is accessed in the same
   // iteration order as the fusion output. Also, there should not be any other
@@ -182,15 +182,35 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
       }
     }
   }
-  // Special case: multi-output fusions with Scatter or DynamicUpdateSlice. For
-  // Scatter, we currently do not support multi-output fusions anyway, but still
-  // handle it here. To be on the safe side, check for !IsElementwise() instead
-  // of checking whether it is Scatter or DynamicUpdateSlice.
-  if (user->IsMultiOutputFusion() && !non_bitcast_root->IsElementwise()) {
-    // Check if any other fusion output was reached. If yes, we cannot share,
-    // because the order in which the output is written might be different.
-    for (HloInstruction* operand : user->fused_expression_root()->operands()) {
-      if (operand != output && visited.find(operand) != visited.end()) {
+  if (user->IsMultiOutputFusion()) {
+    // Check if any other fusion output was reached. If yes, we need to check
+    // whether that fusion output has the same iteration order. If not, we
+    // cannot share.
+    bool other_root_was_reached = false;
+    bool reached_root_has_transpose_hero = false;
+    for (auto [root, hero] :
+         llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes())) {
+      if (visited.find(&root.instruction()) != visited.end()) {
+        if (&root.instruction() != output) {
+          other_root_was_reached = true;
+        }
+        if (hero.opcode() == HloOpcode::kTranspose ||
+            hero.opcode() == HloOpcode::kCopy) {
+          reached_root_has_transpose_hero = true;
+        }
+      }
+    }
+    if (other_root_was_reached) {
+      // If a root was reached that has a transpose hero, that root will use the
+      // iteration order of the transpose operand. The other root will have a
+      // different iteration order, so we cannot share the buffer.
+      // Special case: multi-output fusions with Scatter or DynamicUpdateSlice.
+      // For Scatter, we currently do not support multi-output fusions anyway,
+      // but still handle it here. To be on the safe side, check for
+      // !IsElementwise() instead of checking whether it is Scatter or
+      // DynamicUpdateSlice.
+      if (!non_bitcast_root->IsElementwise() ||
+          reached_root_has_transpose_hero) {
         return false;
       }
     }
@@ -198,9 +218,10 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   return found_path_to_output;
 }
 
-std::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                       const HloInstruction* operand,
-                                       const ShapeIndex& user_index) {
+std::optional<bool> CanShareBufferHint(
+    const HloInstruction* user, const HloInstruction* operand,
+    const ShapeIndex& user_index,
+    const se::DeviceDescription& device_description) {
   switch (user->opcode()) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kCollectiveBroadcast:
@@ -222,7 +243,8 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
       }
       return false;
     case HloOpcode::kFusion:
-      return FusionCanShareBufferHint(user, operand, user_index);
+      return FusionCanShareBufferHint(user, operand, user_index,
+                                      device_description);
     default:
       return std::nullopt;
   }

@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/cord.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/cc/test_util.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
@@ -43,23 +43,6 @@ namespace tools::proto_splitter {
 namespace {
 
 using ::tensorflow::proto_splitter::ChunkedMessage;
-
-// Ensures that all Messages are less than the max size. std::string chunks are
-// not limited by the max size, so they are ignored in this check.
-#define EXPECT_CHUNK_SIZES(chunks, max_size)                                \
-  do {                                                                      \
-    for (auto chunk : *chunks) {                                            \
-      if (std::holds_alternative<std::shared_ptr<tsl::protobuf::Message>>(  \
-              chunk)) {                                                     \
-        EXPECT_LE(std::get<std::shared_ptr<tsl::protobuf::Message>>(chunk)  \
-                      ->ByteSizeLong(),                                     \
-                  max_size);                                                \
-      } else if (std::holds_alternative<tsl::protobuf::Message*>(chunk)) {  \
-        EXPECT_LE(std::get<tsl::protobuf::Message*>(chunk)->ByteSizeLong(), \
-                  max_size);                                                \
-      }                                                                     \
-    }                                                                       \
-  } while (0)
 
 TEST(GraphDefSplitterTest, TestLargeConstant) {
   GraphDef proto;

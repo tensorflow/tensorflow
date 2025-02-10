@@ -16,8 +16,19 @@ limitations under the License.
 #ifndef XLA_PJRT_STREAM_EXECUTOR_EXECUTABLE_H_
 #define XLA_PJRT_STREAM_EXECUTOR_EXECUTABLE_H_
 
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/compiler.h"
 
@@ -28,7 +39,9 @@ class StreamExecutorExecutable : public PjRtExecutable {
       const CompileOptions& compile_options,
       std::vector<std::unique_ptr<xla::AotCompilationResult>> executables,
       int num_replicas, int num_partitions, absl::string_view name,
-      absl::string_view fingerprint)
+      absl::string_view fingerprint,
+      std::optional<std::vector<std::vector<absl::string_view>>>
+          output_memory_kinds)
       : compile_options_(compile_options),
         aot_executables_(std::move(executables)),
         num_replicas_(num_replicas),
@@ -36,7 +49,7 @@ class StreamExecutorExecutable : public PjRtExecutable {
         name_(name),
         fingerprint_(fingerprint) {}
 
-  StatusOr<std::string> SerializeExecutable() const override;
+  absl::StatusOr<std::string> SerializeExecutable() const override;
 
   absl::string_view name() const override { return name_; }
   int num_replicas() const override { return num_replicas_; }
@@ -51,10 +64,13 @@ class StreamExecutorExecutable : public PjRtExecutable {
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
+    if (output_memory_kinds_.has_value()) {
+      return *output_memory_kinds_;
+    }
     return absl::UnimplementedError("GetOutputMemoryKinds is not supported.");
   }
-  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
-      const override {
+  absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
+  GetCostAnalysis() const override {
     return absl::UnimplementedError("GetCostAnalysis is not supported.");
   }
 
@@ -65,7 +81,7 @@ class StreamExecutorExecutable : public PjRtExecutable {
     return aot_executables_;
   }
 
-  StatusOr<std::string> FingerprintExecutable() const override {
+  absl::StatusOr<std::string> FingerprintExecutable() const override {
     return fingerprint_;
   }
 
@@ -76,6 +92,8 @@ class StreamExecutorExecutable : public PjRtExecutable {
   int num_partitions_;
   std::string name_;
   std::string fingerprint_;
+  std::optional<std::vector<std::vector<absl::string_view>>>
+      output_memory_kinds_;
 };
 }  // namespace xla
 

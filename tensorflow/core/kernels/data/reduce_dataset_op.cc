@@ -41,11 +41,11 @@ ReduceDatasetOp::ReduceDatasetOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
 }
 
-Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
-  profiler::TraceMe traceme(
+absl::Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
+  tsl::profiler::TraceMe traceme(
       [&] {
-        return profiler::TraceMeEncode("ReduceDatasetOp::DoCompute",
-                                       {{"id", ctx->step_id()}});
+        return tsl::profiler::TraceMeEncode("ReduceDatasetOp::DoCompute",
+                                            {{"id", ctx->step_id()}});
       },
       profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,

@@ -21,11 +21,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/tuple_points_to_analysis.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
@@ -57,32 +57,32 @@ std::string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
   return repr;
 }
 
-/* static */ StatusOr<std::unique_ptr<HloModuleGroupMetadata>>
+/* static */ absl::StatusOr<std::unique_ptr<HloModuleGroupMetadata>>
 HloModuleGroupMetadata::Build(absl::Span<HloModule* const> modules) {
   auto metadata = std::make_unique<HloModuleGroupMetadata>(modules);
   TF_RETURN_IF_ERROR(metadata->Build());
   return std::move(metadata);
 }
 
-Status HloModuleGroupMetadata::Build() {
+absl::Status HloModuleGroupMetadata::Build() {
   TF_RETURN_IF_ERROR(RecordInstructions());
   TF_RETURN_IF_ERROR(VerifyChannelInstructions());
 
   // Record all companion while instructions.
-  const auto visitor = [this](HloInstruction* hlo) -> Status {
+  const auto visitor = [this](HloInstruction* hlo) -> absl::Status {
     // We only need to process if the instruction is within the computation
     // of a companion instruction, like in the condition or body computation
     // of a While.
     const TrackedInstruction* tracked = GetTrackedInstruction(hlo->parent());
     if (tracked == nullptr) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    if (IsChannelInstruction(hlo) || hlo->IsCrossModuleAllReduce()) {
+    if (IsChannelInstruction(hlo) || IsNonSpmdCrossModuleAllReduce(hlo)) {
       std::vector<HloComputation*> peers;
       if (IsChannelInstruction(hlo)) {
         peers.push_back(PeerComputation(hlo));
-      } else if (hlo->IsCrossModuleAllReduce()) {
+      } else if (IsNonSpmdCrossModuleAllReduce(hlo)) {
         for (HloInstruction* instr : GetAllReduceGroup(*hlo->channel_id())) {
           if (instr == hlo) {
             continue;
@@ -119,7 +119,7 @@ Status HloModuleGroupMetadata::Build() {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   // Visit the computations in postorder so that the companion information grows
@@ -156,10 +156,10 @@ Status HloModuleGroupMetadata::Build() {
     alias_analyses_[module] = std::move(alias_analysis);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloModuleGroupMetadata::VerifyCompanionSets() const {
+absl::Status HloModuleGroupMetadata::VerifyCompanionSets() const {
   for (const auto& companions : companion_sets_) {
     // A companion set must be composed at most of an instruction per
     // device/module.
@@ -193,7 +193,7 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HloModuleGroupMetadata::IsChannelInstruction(
@@ -217,10 +217,16 @@ bool HloModuleGroupMetadata::IsCompanionInstruction(HloInstruction* hlo) const {
   return companion_set_index_.contains(hlo);
 }
 
+bool HloModuleGroupMetadata::IsNonSpmdCrossModuleAllReduce(
+    HloInstruction* hlo) const {
+  return hlo->IsCrossModuleAllReduce() &&
+         !hlo->GetModule()->config().use_spmd_partitioning();
+}
+
 bool HloModuleGroupMetadata::InstructionCommunicates(
     HloInstruction* hlo) const {
   return IsChannelInstruction(hlo) || IsCompanionInstruction(hlo) ||
-         hlo->IsCrossModuleAllReduce();
+         IsNonSpmdCrossModuleAllReduce(hlo);
 }
 
 const HloModuleGroupMetadata::Channel& HloModuleGroupMetadata::GetChannel(
@@ -314,8 +320,8 @@ int64_t HloModuleGroupMetadata::GetDeviceModulesCount() const {
   return modules_.size();
 }
 
-Status HloModuleGroupMetadata::RecordInstructions() {
-  const auto visitor = [this](HloInstruction* hlo) -> Status {
+absl::Status HloModuleGroupMetadata::RecordInstructions() {
+  const auto visitor = [this](HloInstruction* hlo) -> absl::Status {
     if (hlo->opcode() == HloOpcode::kWhile) {
       tracked_instructions_[hlo->while_condition()] =
           TrackedInstruction(hlo, ComputationKind::kWhileCondition);
@@ -332,18 +338,18 @@ Status HloModuleGroupMetadata::RecordInstructions() {
     }
 
     // Group cross module all-reduce instructions by the channel id.
-    if (hlo->IsCrossModuleAllReduce()) {
+    if (IsNonSpmdCrossModuleAllReduce(hlo)) {
       TF_RET_CHECK(channel_id_map_.find(*hlo->channel_id()) ==
                    channel_id_map_.end())
           << "channel_id " << *hlo->channel_id()
           << " is already used by a send/recv instruction";
       all_reduce_map_[*hlo->channel_id()].push_back(hlo);
       max_channel_id_ = std::max(max_channel_id_, *hlo->channel_id());
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     if (!IsChannelInstruction(hlo)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     TF_RET_CHECK(all_reduce_map_.find(*hlo->channel_id()) ==
@@ -384,7 +390,7 @@ Status HloModuleGroupMetadata::RecordInstructions() {
           << " is used by multiple recv-done instructions";
       channel.recv_done = hlo;
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   for (HloModule* module : modules_) {
@@ -395,18 +401,18 @@ Status HloModuleGroupMetadata::RecordInstructions() {
   }
   VLOG(2) << "Created " << channels_.size() << " channels";
   VLOG(2) << "Created " << all_reduce_map_.size() << " all-reduce groups";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
-                                            HloInstruction* instruction2) {
+absl::Status HloModuleGroupMetadata::AddCompanion(
+    HloInstruction* instruction1, HloInstruction* instruction2) {
   TF_RET_CHECK(instruction1->opcode() == HloOpcode::kWhile ||
                instruction1->opcode() == HloOpcode::kConditional ||
                instruction1->opcode() == HloOpcode::kCall);
   VLOG(2) << "adding as companions:" << instruction1->ToString() << " and "
           << instruction2->ToString();
   if (instruction1 == instruction2) {
-    return OkStatus();
+    return absl::OkStatus();
   } else if (!ContainsKey(companion_set_index_, instruction1) &&
              !ContainsKey(companion_set_index_, instruction2)) {
     companion_sets_.push_back(std::make_unique<std::vector<HloInstruction*>>());
@@ -440,10 +446,10 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
     // instead.
     companion_sets_[index_to_remove].reset(nullptr);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloModuleGroupMetadata::VerifyChannelInstructions() {
+absl::Status HloModuleGroupMetadata::VerifyChannelInstructions() {
   for (const Channel& channel : channels_) {
     if (channel.send == nullptr) {
       return FailedPrecondition("missing send for id : %d", channel.id);
@@ -521,16 +527,16 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
           "Nest companion paths do not match for channel %d", channel.id);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
+absl::Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
     HloInstruction* instruction) const {
   HloComputation* computation = instruction->parent();
   const HloModule* module = computation->parent();
   if (module->entry_computation() == computation ||
       tracked_instructions_.contains(computation)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return FailedPrecondition("channel is used in disallowed computation");
 }

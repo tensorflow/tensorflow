@@ -18,15 +18,25 @@ limitations under the License.
 #ifndef XLA_SERVICE_CALL_GRAPH_H_
 #define XLA_SERVICE_CALL_GRAPH_H_
 
+#include <cstdint>
 #include <memory>
 #include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -131,7 +141,7 @@ class CallGraphNode {
   CallGraphNode(const CallGraphNode&) = delete;
   CallGraphNode& operator=(const CallGraphNode&) = delete;
   CallGraphNode(CallGraphNode&&) = default;
-  CallGraphNode& operator=(CallGraphNode&&) = default;
+  CallGraphNode& operator=(CallGraphNode&&) noexcept = default;
 
  private:
   // Only CallGraph can modify CallGraphNode.
@@ -188,7 +198,7 @@ class CallGraphNode {
 // computation in the module.
 class CallGraph {
  public:
-  using VisitorFunction = absl::FunctionRef<Status(const CallGraphNode&)>;
+  using VisitorFunction = absl::FunctionRef<absl::Status(const CallGraphNode&)>;
 
   // Builds and returns a call graph for the given HLO module. If a non-empty
   // execution_threads is provided, only computations that are in
@@ -208,8 +218,8 @@ class CallGraph {
   // in post order (callees before callers). If visit_unreachable_nodes is true
   // then all nodes in the call graph are visited. Otherwise only those nodes
   // reachable from the entry computation are visited.
-  Status VisitNodes(VisitorFunction visitor_func,
-                    bool visit_unreachable_nodes = true) const;
+  absl::Status VisitNodes(VisitorFunction visitor_func,
+                          bool visit_unreachable_nodes = true) const;
 
   // Returns true if 'a' dominates 'b' in the call graph. Computation 'a'
   // dominates computation 'b' iff all callgraph paths in the caller-to-callee
@@ -360,7 +370,7 @@ class CallGraph {
   // post order (callee before caller) calling visitor_func on each node. Adds
   // nodes to 'visited' as each node is visited. Skips nodes already in
   // 'visited'.
-  Status VisitNodesInternal(
+  absl::Status VisitNodesInternal(
       VisitorFunction visitor_func, const CallGraphNode& node,
       absl::flat_hash_set<const CallGraphNode*>* visited) const;
 

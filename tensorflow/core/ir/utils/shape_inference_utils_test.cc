@@ -14,15 +14,29 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
+#include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
 
 using tensorflow::shape_inference::DimensionHandle;
@@ -82,7 +96,7 @@ class ShapeInferenceTest : public ::testing::Test {
 
       EXPECT_EQ(op.getNumResults() - 1, info.size());
       for (int i = 0; i < op.getNumResults() - 1; ++i) {
-        ShapedType shape = op.getResultTypes()[i].cast<ShapedType>();
+        ShapedType shape = mlir::cast<ShapedType>(op.getResultTypes()[i]);
         EXPECT_EQ(shape.hasRank(), info[i].hasRank());
         if (shape.hasRank()) EXPECT_EQ(shape.getShape(), info[i].getDims());
         if (check_type)
@@ -114,7 +128,7 @@ TEST_F(ShapeInferenceTest, TestShapeAndTypeInference) {
   // `value` attr contains the tensor information and it's a DenseElementAttr.
   auto op_result_as_shape_fn = [](InferenceContext &ic,
                                   OpResult op_result) -> ShapeHandle {
-    auto rt = op_result.getType().dyn_cast<RankedTensorType>();
+    auto rt = mlir::dyn_cast<RankedTensorType>(op_result.getType());
     if (!rt || rt.getRank() != 1 || !rt.hasStaticShape()) return {};
 
     std::vector<DimensionHandle> dims(rt.getDimSize(0), ic.UnknownDim());
@@ -136,7 +150,8 @@ TEST_F(ShapeInferenceTest, TestShapeAndTypeInference) {
     // `InferReturnTypeComponentsForTFOp`uses this callback to get the type
     // information.
     auto result_element_type_fn = [&](int idx) -> Type {
-      return op.getResult(idx).getType().cast<ShapedType>().getElementType();
+      return mlir::cast<ShapedType>(op.getResult(idx).getType())
+          .getElementType();
     };
 
     // We use TFG operation so that we don't need to provide
@@ -178,7 +193,8 @@ TEST_F(ShapeInferenceTest, TestShapeAndTypeInference) {
   all_results.clear();
   for (Operation &op : block.without_terminator()) {
     auto result_element_type_fn = [&](int idx) -> Type {
-      return op.getResult(idx).getType().cast<ShapedType>().getElementType();
+      return mlir::cast<ShapedType>(op.getResult(idx).getType())
+          .getElementType();
     };
 
     SmallVector<ShapedTypeComponents> results;
@@ -220,7 +236,7 @@ TEST_F(ShapeInferenceTest, TestInferenceFailure) {
   // "value" attribute.
   auto get_empty_attr_values_fn =
       [](Operation *, llvm::StringRef, const tensorflow::OpRegistrationData *,
-         bool, tensorflow::AttrValueMap *) { return ::tensorflow::OkStatus(); };
+         bool, tensorflow::AttrValueMap *) { return absl::OkStatus(); };
 
   for (Operation &op : block.without_terminator()) {
     SmallVector<ShapedTypeComponents> results;

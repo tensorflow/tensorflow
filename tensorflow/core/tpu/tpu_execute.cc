@@ -27,7 +27,9 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -46,9 +48,7 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
@@ -60,6 +60,9 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_op_executable.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"
@@ -69,9 +72,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -104,16 +104,16 @@ int64_t ShapeSizeCompactRaw(const xla::Shape& shape) {
 
 // Given a tuple, fix all non-leaf nodes (tuples) such that the tuple tables
 // point to the correct leaf nodes.
-xla::Status FixTupleTableAsync(se::Stream* stream,
-                               const xla::Shape& tuple_shape,
-                               xla::ExecutionInput* mem,
-                               xla::TransferManager* transfer_manager) {
+absl::Status FixTupleTableAsync(se::Stream* stream,
+                                const xla::Shape& tuple_shape,
+                                xla::ExecutionInput* mem,
+                                xla::TransferManager* transfer_manager) {
   return xla::ShapeUtil::ForEachSubshapeWithStatus(
       tuple_shape,
       [&](const xla::Shape& element_shape,
-          const xla::ShapeIndex& index) -> Status {
+          const xla::ShapeIndex& index) -> absl::Status {
         if (!element_shape.IsTuple()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         std::vector<se::DeviceMemoryBase> elements;
         xla::ShapeIndex element_index = index;
@@ -159,14 +159,14 @@ bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
 //
 // Metadata contains the sizes of shape without padding, eventually
 // representing the size of valid data.
-xla::Status UpdateDynamicInputs(
+absl::Status UpdateDynamicInputs(
     se::Stream* stream, se::DeviceMemoryAllocator* allocator,
     std::vector<xla::ExecutionInput>* runtime_inputs,
     const std::vector<xla::Shape>& compile_time_shapes) {
   TF_RET_CHECK(runtime_inputs->size() == compile_time_shapes.size());
   TF_ASSIGN_OR_RETURN(
       auto transfer_manager,
-      xla::TransferManager::GetForPlatform(stream->parent()->platform()));
+      xla::TransferManager::GetForPlatform(stream->parent()->GetPlatform()));
   for (int64_t i = 0; i < compile_time_shapes.size(); i++) {
     // TODO(yunxing): Iterating over thousands of elements can be slow. One way
     // to optimize for fast path without dynamic shapes is add a field in
@@ -181,9 +181,9 @@ xla::Status UpdateDynamicInputs(
     TF_RETURN_IF_ERROR(xla::ShapeUtil::ForEachSubshapeWithStatus(
         compile_time_shapes_on_device,
         [&](const xla::Shape& compile_time_shape,
-            const xla::ShapeIndex& index) -> Status {
+            const xla::ShapeIndex& index) -> absl::Status {
           if (compile_time_shape.IsTuple() || compile_time_shape.is_static()) {
-            return OkStatus();
+            return absl::OkStatus();
           }
 
           const xla::Shape& runtime_shape =
@@ -251,7 +251,7 @@ xla::Status UpdateDynamicInputs(
           *mutable_input_mem =
               xla::MaybeOwningDeviceMemory(std::move(new_input));
           element_modified = true;
-          return OkStatus();
+          return absl::OkStatus();
         }));
     if (element_modified) {
       // The input location has been modified, need to fix tuple table to
@@ -261,13 +261,13 @@ xla::Status UpdateDynamicInputs(
                                             &runtime_input, transfer_manager));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void TPUCancelExecution(int device_ordinal) {
   if (tpu_cancellation_closes_chips) {
     LOG(INFO) << "TPUCancelExecution CloseTPUHost on device " << device_ordinal;
-    Status status = TpuNodeContext::CloseTpuHost();
+    absl::Status status = TpuNodeContext::CloseTpuHost();
     LOG(INFO) << "TPUCancelExecution CloseTPUHost done: " << status
               << " on device " << device_ordinal;
   } else {
@@ -405,7 +405,7 @@ OcParamsPtr CreateOcParams(const std::string& rendezvous_key_base,
 
 }  // namespace
 
-xla::StatusOr<xla::ExecutionOutput> TPUExecute(
+absl::StatusOr<xla::ExecutionOutput> TPUExecute(
     const TPUExecutableInfoProto& executable,
     const TPUHostTransferInfoProto& host_transfers,
     const xla::HloProto& hlo_metadata,
@@ -416,7 +416,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     stream_executor::Stream* stream,
     stream_executor::Stream* host_to_device_stream,
     const XLA_TpuProgram* tpu_program) {
-  profiler::TraceMe traceme("TPUExecute", 2);
+  tsl::profiler::TraceMe traceme("TPUExecute", 2);
   TF_RET_CHECK(tpu::TpuPlatformInterface::GetRegisteredPlatform() != nullptr);
   TF_RET_CHECK(tpu_program != nullptr);
   const int device_ordinal = node_context->device_ordinal();
@@ -527,10 +527,9 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
         "RPC cancelled, not running TPU program on device ", device_ordinal));
   }
 
-  xla::StatusOr<xla::ExecutionOutput> output =
+  absl::StatusOr<xla::ExecutionOutput> output =
       tpu_executable->ExecuteAsyncOnStream(&service_run_options,
-                                           std::move(arguments),
-                                           /*hlo_execution_profile=*/nullptr);
+                                           std::move(arguments));
 
   // If !output.ok(), it means we failed to enqueue the program the TPU. This is
   // possibly caused by a failed cancellation callback closing the chips.

@@ -39,8 +39,8 @@
 #include "xla/python/pjrt_ifrt/xla_host_callback.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/concurrency/ref_count.h"
-#include "tsl/platform/errors.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -154,15 +154,15 @@ absl::Status RemoteLoadedHostCallback::Execute(void** result_ptrs,
         buffers.reserve(args.size());
         for (int i = 0; i < args.size(); ++i) {
           const int64_t size = xla::ShapeUtil::ByteSizeOf(args[i].shape);
-          buffers.push_back(RemoteLoadedHostCallbackQueue::Buffer{
-              .data = ptrs[i], .size = size});
+          buffers.push_back(
+              RemoteLoadedHostCallbackQueue::Buffer{ptrs[i], size});
         }
       };
   to_buffer(host_callback().operands, operand_ptrs, request.operands);
   to_buffer(host_callback().results, result_ptrs, request.results);
 
-  request.status = Future<absl::Status>::CreatePromise();
-  Future<absl::Status> status(request.status);
+  request.status = Future<>::CreatePromise();
+  Future<> status(request.status);
 
   // Enqueue the execution request. `IfrtBackend` retrieves this by calling
   // `PopExecutionRequest` and fulfills the `results` promise.

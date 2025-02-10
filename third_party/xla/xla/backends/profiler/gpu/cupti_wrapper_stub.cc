@@ -55,6 +55,14 @@ CUptiResult CuptiWrapperStub::ActivityRegisterCallbacks(
   return CUPTI_SUCCESS;
 }
 
+CUptiResult CuptiWrapperStub::ActivityUsePerThreadBuffer() {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::SetActivityFlushPeriod(uint32_t period_ms) {
+  return CUPTI_SUCCESS;
+}
+
 CUptiResult CuptiWrapperStub::GetDeviceId(CUcontext context,
                                           uint32_t* deviceId) {
   return cuptiGetDeviceId(context, deviceId);
@@ -103,6 +111,19 @@ CUptiResult CuptiWrapperStub::GetStreamIdEx(CUcontext context, CUstream stream,
                                             uint8_t per_thread_stream,
                                             uint32_t* stream_id) {
   return cuptiGetStreamIdEx(context, stream, per_thread_stream, stream_id);
+}
+
+CUptiResult CuptiWrapperStub::GetGraphId(CUgraph graph, uint32_t* graph_id) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::GetGraphExecId(CUgraphExec graph_exec,
+                                             uint32_t* graph_id) {
+  return CUPTI_SUCCESS;
+}
+
+CUptiResult CuptiWrapperStub::SetThreadIdType(CUpti_ActivityThreadIdType type) {
+  return CUPTI_SUCCESS;
 }
 
 }  // namespace profiler

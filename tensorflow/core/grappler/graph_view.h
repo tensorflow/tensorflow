@@ -320,7 +320,7 @@ class GraphViewInternal {
  protected:
   explicit GraphViewInternal(GraphDefT* graph) : graph_(graph) {}
 
-  Status AddUniqueNode(NodeDefT* node) {
+  absl::Status AddUniqueNode(NodeDefT* node) {
     auto inserted = nodes_.emplace(node->name(), node);
     return inserted.second
                ? absl::OkStatus()
@@ -330,7 +330,7 @@ class GraphViewInternal {
 
   // TODO(ezhulenev): Remove this function.
   void AddUniqueNodeOrDie(NodeDefT* node) {
-    Status st = AddUniqueNode(node);
+    absl::Status st = AddUniqueNode(node);
     CHECK(st.ok()) << st.message();
   }
 
@@ -346,8 +346,9 @@ class GraphViewInternal {
         fanouts_[output].emplace(node, -1);
       } else {
         max_input_port = i;
-        max_regular_output_port_[output.node] =
-            std::max(max_regular_output_port_[output.node], output.port_id);
+        int& max_regular_output_port = max_regular_output_port_[output.node];
+        max_regular_output_port =
+            std::max(max_regular_output_port, output.port_id);
         fanouts_[output].emplace(node, i);
       }
     }

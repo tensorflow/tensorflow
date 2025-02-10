@@ -80,7 +80,9 @@ typedef enum TfLiteExternalContextType {
   kTfLiteGemmLowpContext = 1,    /// include gemm_support.h to use.
   kTfLiteEdgeTpuContext = 2,     /// Placeholder for Edge TPU support.
   kTfLiteCpuBackendContext = 3,  /// include cpu_backend_context.h to use.
-  kTfLiteMaxExternalContexts = 4
+  kTfLiteLiteRtBufferContext =
+      4,  /// include external_litert_buffer_context.h to use.
+  kTfLiteMaxExternalContexts = 5
 } TfLiteExternalContextType;
 
 // Forward declare so dependent structs and methods can reference these types
@@ -100,7 +102,9 @@ typedef struct TfLiteExternalContext {
   TfLiteStatus (*Refresh)(struct TfLiteContext* context);
 } TfLiteExternalContext;
 
+// LINT.IfChange(optional_tensor)
 #define kTfLiteOptionalTensor (-1)
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/flatbuffer_export.cc:optional_tensor)
 
 /// Fixed size list of integers. Used for dimensions and inputs/outputs tensor
 /// indices
@@ -281,6 +285,17 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                      \
   } while (0)
 
+// `std::unreachable` not available until CC23.
+#ifdef __GNUC__  // GCC, Clang, ICC
+
+#define TFL_UNREACHABLE() (__builtin_unreachable())
+
+#elif defined(_MSC_VER)  // MSVC
+
+#define TFL_UNREACHABLE() (__assume(false))
+
+#endif
+
 /// Single-precision complex data type compatible with the C99 definition.
 typedef struct TfLiteComplex64 {
   float re, im;  /// real and imaginary parts, respectively.
@@ -296,11 +311,18 @@ typedef struct TfLiteFloat16 {
   uint16_t data;
 } TfLiteFloat16;
 
+/// bfloat16 data type compatible with the Google Brain definition.
+/// https://cloud.google.com/tpu/docs/bfloat16.
+/// This provides 1 bit of sign, 8 bits of exponent, and 7 bits of mantissa.
+typedef struct TfLiteBFloat16 {
+  uint16_t data;
+} TfLiteBFloat16;
+
 /// Return the name of a given type, for error reporting purposes.
 const char* TfLiteTypeGetName(TfLiteType type);
 
 /// SupportedQuantizationTypes.
-typedef enum TfLiteQuantizationType {
+typedef enum TfLiteQuantizationType : int {
   /// No quantization.
   kTfLiteNoQuantization = 0,
   /// Affine quantization (with support for per-channel quantization).
@@ -343,6 +365,7 @@ typedef union TfLitePtrUnion {
   uint64_t* u64;
   float* f;
   TfLiteFloat16* f16;
+  TfLiteBFloat16* bf16;
   double* f64;
   char* raw;
   const char* raw_const;
@@ -373,6 +396,9 @@ typedef union TfLitePtrUnion {
 ///  * `kTfLiteVariantObject`: Allocation is an arbitrary type-erased C++
 ///  object.
 ///        Allocation and deallocation are done through `new` and `delete`.
+///  * `kTfLiteNonCpu`: Tensor buffer is in non-CPU memory, such as AHWB, GPU
+///        memory. This tensor is not accessed by the CPU.
+///        This is only used by LiteRt API.
 typedef enum TfLiteAllocationType {
   kTfLiteMemNone = 0,
   kTfLiteMmapRo,
@@ -382,6 +408,7 @@ typedef enum TfLiteAllocationType {
   kTfLitePersistentRo,
   kTfLiteCustom,
   kTfLiteVariantObject,
+  kTfLiteNonCpu,
 } TfLiteAllocationType;
 
 /// Memory allocation strategies.
@@ -422,12 +449,6 @@ enum {
   kTfLiteNullBufferHandle = -1,
 };
 
-/// Storage format of each dimension in a sparse tensor.
-typedef enum TfLiteDimensionType {
-  kTfLiteDimDense = 0,
-  kTfLiteDimSparseCSR,
-} TfLiteDimensionType;
-
 /// Metadata to encode each dimension in a sparse tensor.
 typedef struct TfLiteDimensionMetadata {
   TfLiteDimensionType format;
@@ -464,6 +485,8 @@ typedef enum TfLiteCustomAllocationFlags {
   /// Use with caution.
   kTfLiteCustomAllocationFlagsSkipAlignCheck = 1,
 } TfLiteCustomAllocationFlags;
+
+enum { kTfLiteNoBufferIdentifier = SIZE_MAX };
 
 /// A tensor in the interpreter system which is a wrapper around a buffer of
 /// data including a dimensionality (or NULL if not currently defined).
@@ -1007,11 +1030,17 @@ typedef struct TfLiteContext {
                                          int subgraph_index);
 } TfLiteContext;
 
-/// `TfLiteRegistrationExternal` is an external version of `TfLiteRegistration`
+/// `TfLiteOperator` is an external version of `TfLiteRegistration`
 /// for C API which doesn't use internal types (such as `TfLiteContext`) but
 /// only uses stable API types (such as `TfLiteOpaqueContext`). The purpose of
 /// each field is the exactly the same as with `TfLiteRegistration`.
-typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
+typedef struct TfLiteOperator TfLiteOperator;
+
+#ifndef DOXYGEN_SKIP
+// For backwards compatibility.
+// Deprecated. Use TfLiteOperator instead.
+typedef TfLiteOperator TfLiteRegistrationExternal;
+#endif
 
 /// The valid values of the `inplace_operator` field in `TfLiteRegistration`.
 /// This allow an op to signal to the runtime that the same data pointer
@@ -1078,7 +1107,7 @@ static const int kTfLiteMaxSharableOpInputs = 3;
 /// It is a struct containing "methods" (C function pointers) that will be
 /// invoked by the TF Lite runtime to evaluate instances of the operation.
 ///
-/// See also `TfLiteRegistrationExternal` which is a more ABI-stable equivalent.
+/// See also `TfLiteOperator` which is a more ABI-stable equivalent.
 typedef struct TfLiteRegistration {
   /// Initializes the op from serialized data.
   /// Called only *once* for the lifetime of the op, so any one-time allocations
@@ -1149,12 +1178,12 @@ typedef struct TfLiteRegistration {
   /// properly.
   int version;
 
-  /// The external version of `TfLiteRegistration`. Since we can't use internal
-  /// types (such as `TfLiteContext`) for C API to maintain ABI stability.
-  /// C API user will provide `TfLiteRegistrationExternal` to implement custom
-  /// ops. We keep it inside of `TfLiteRegistration` and use it to route
-  /// callbacks properly.
-  TfLiteRegistrationExternal* registration_external;
+  /// The external (i.e. ABI-stable) version of `TfLiteRegistration`.
+  /// Since we can't use internal types (such as `TfLiteContext`) for C API to
+  /// maintain ABI stability.  C API user will provide `TfLiteOperator` to
+  /// implement custom ops.  We keep it inside of `TfLiteRegistration` and use
+  /// it to route callbacks properly.
+  TfLiteOperator* registration_external;
 
   /// Retrieves asynchronous kernel.
   ///
@@ -1194,7 +1223,7 @@ typedef struct TfLiteRegistration_V3 {
   int32_t builtin_code;
   const char* custom_name;
   int version;
-  TfLiteRegistrationExternal* registration_external;
+  TfLiteOperator* registration_external;
   struct TfLiteAsyncKernel* (*async_kernel)(TfLiteContext* context,
                                             TfLiteNode* node);
 } TfLiteRegistration_V3;
@@ -1220,7 +1249,7 @@ typedef struct TfLiteRegistration_V2 {
   int32_t builtin_code;
   const char* custom_name;
   int version;
-  TfLiteRegistrationExternal* registration_external;
+  TfLiteOperator* registration_external;
 } TfLiteRegistration_V2;
 
 /// \private

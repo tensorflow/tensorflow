@@ -107,15 +107,17 @@ constexpr char kFill[] = "fill";
 constexpr int kMissingIndex = -1;
 
 struct RemapperContext {
-  explicit RemapperContext(GrapplerItem* item, Status* status,
+  explicit RemapperContext(GrapplerItem* item, absl::Status* status,
                            RewriterConfig::CpuLayout cpu_layout_conversion,
-                           bool xla_auto_clustering_on)
+                           bool xla_auto_clustering_on,
+                           bool xla_cpu_jit_disable_fusion)
       : nodes_to_preserve(item->NodesToPreserve()),
         graph_view(&item->graph, status),
         graph_properties(*item),
         inferred_graph_properties(false),
         cpu_layout_conversion(cpu_layout_conversion),
-        xla_auto_clustering_on(xla_auto_clustering_on) {}
+        xla_auto_clustering_on(xla_auto_clustering_on),
+        xla_cpu_jit_disable_fusion(xla_cpu_jit_disable_fusion) {}
 
   std::unordered_set<string> nodes_to_preserve;
   utils::MutableGraphView graph_view;
@@ -123,6 +125,7 @@ struct RemapperContext {
   bool inferred_graph_properties;
   RewriterConfig::CpuLayout cpu_layout_conversion;
   bool xla_auto_clustering_on;
+  bool xla_cpu_jit_disable_fusion;
 };
 
 // FusedBatchNorm that can be replaced with a cheaper set of primitives.
@@ -446,6 +449,9 @@ bool IsCpuCompatibleDepthwiseConv2dNative(const NodeDef* dw_conv2d) {
 // Checks if we can rewrite a pattern to the `_Fused{Conv2D,MatMul}` on CPU.
 template <typename Pattern>
 bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
+  // Disable fusions on CPU when XLA JIT compilation enabled.
+  if (ctx.xla_cpu_jit_disable_fusion) return false;
+
   const NodeDef& node = ctx.graph_view.graph()->node(matched.contraction);
   if (IsConv2D(node)) {
     return IsCpuCompatibleConv2D(ctx, &node);
@@ -622,7 +628,7 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched,
 }
 
 // Returns the generic op name for an _Mkl activation op
-std::string GetActivationName(std::string s) {
+std::string GetActivationName(const std::string& s) {
   if (s == kMklFusedMish) {
     return "Mish";
   } else {
@@ -997,6 +1003,11 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
   const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
   const auto* conv2d_node_view = regular_fanin_0.node_view();
   const auto* conv2d_node_def = conv2d_node_view->node();
+
+  // Disable fusions on CPU when XLA JIT compilation enabled.
+  if (NodeIsOnCpu(conv2d_node_def) && ctx.xla_cpu_jit_disable_fusion) {
+    return false;
+  }
 
   if (!IsConv2D(*conv2d_node_def) || !NodeIsOnCpu(conv2d_node_def) ||
       !HaveSameDataType(node_def, conv2d_node_def) ||
@@ -1508,7 +1519,43 @@ bool IsMatchedMatMulBiasAddAndGeluExact(
       }  // Mul: "output"
     };
 
-  // Pattern 2:
+  // Pattern 2: Erfc
+  //             Const: 1/sqrt(2)       Const: 1/2
+  //                            \                \
+  //  * --> BiasAdd --> Neg --> Mul --> Erfc --> Mul --> Mul
+  //        /       \____________________________________/
+  //  MatMul
+  static utils::OpTypePattern* gelu_exact_pattern2 = new utils::OpTypePattern
+    {"Mul", "output", NodeStatus::kReplace,
+      {
+        {"Mul", "one_half_x_erfc", NodeStatus::kRemove,
+          {
+            {"Const", "one_half", NodeStatus::kRemain},
+            {"Erfc", "erfc", NodeStatus::kRemove,
+              {
+                {"Mul", "neg_bias_add_x_sqrt_one_half", NodeStatus::kRemove,
+                  {
+                    {"Const", "sqrt_one_half", NodeStatus::kRemain},
+                    {"Neg", "neg", NodeStatus::kRemove,
+                      {{"BiasAdd", "bias_add", NodeStatus::kRemove}}
+                    },  // Neg: "neg"
+                  }
+                }  // Mul: "neg_bias_add_x_sqrt_one_half"
+              }  // Erfc: "erfc"
+            }
+          }  // Mul: "one_half_x_erfc"
+        },
+        {"BiasAdd", "bias_add", NodeStatus::kRemove,
+          {
+            {"MatMul", "matmul", NodeStatus::kRemove},
+            {"*", "bias", NodeStatus::kRemain}
+          }
+        }  // BiasAdd: "bias_add"
+      }
+    };  // Mul: "output"
+
+
+  // Pattern 3:
   //  Cast|Const: 1/sqrt(2)    Cast|Const: 1
   //                  \               \
   //  * --> BiasAdd --> Mul --> Erf --> Add|AddV2 --> Mul
@@ -1516,7 +1563,7 @@ bool IsMatchedMatMulBiasAddAndGeluExact(
   // MatMul           ----------------------------> Mul
   //                                                /
   //                                  Cast|Const: 1/2
-  static utils::OpTypePattern* gelu_exact_pattern2 = new utils::OpTypePattern
+  static utils::OpTypePattern* gelu_exact_pattern3 = new utils::OpTypePattern
     {"Mul", "output", NodeStatus::kReplace,
       {
         {"Add|AddV2", "erf_plus_one", NodeStatus::kRemove,
@@ -1556,17 +1603,18 @@ bool IsMatchedMatMulBiasAddAndGeluExact(
   std::set<int> dummy_remove_node_indices;
   if (!matched_nodes_map) matched_nodes_map = &dummy_matched_nodes_map;
   if (!remove_node_indices) remove_node_indices = &dummy_remove_node_indices;
-  if (graph_matcher.GetMatchedNodes(*gelu_exact_pattern, ctx.nodes_to_preserve,
-                                    node_view, matched_nodes_map,
-                                    remove_node_indices)) {
-    return true;
+  auto patterns = {gelu_exact_pattern, gelu_exact_pattern2,
+                   gelu_exact_pattern3};
+  for (auto& pattern : patterns) {
+    matched_nodes_map->clear();
+    remove_node_indices->clear();
+    if (graph_matcher.GetMatchedNodes(*pattern, ctx.nodes_to_preserve,
+                                      node_view, matched_nodes_map,
+                                      remove_node_indices)) {
+      return true;
+    }
   }
-  // Pattern 1 not matched, check for pattern 2
-  matched_nodes_map->clear();
-  remove_node_indices->clear();
-  return graph_matcher.GetMatchedNodes(*gelu_exact_pattern2,
-                                       ctx.nodes_to_preserve, node_view,
-                                       matched_nodes_map, remove_node_indices);
+  return false;
 }
 
 // Gelu in python api generates a number of nodes in the graph. Depending on the
@@ -1695,6 +1743,12 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     // Check if the MatMul to be fused is device compatible.
     NodeDef* matmul_node =
         ctx->graph_view.GetNode(matched_nodes_map->at("matmul"))->node();
+
+    // Disable fusions on CPU when XLA JIT compilation enabled.
+    if (NodeIsOnCpu(matmul_node) && ctx->xla_cpu_jit_disable_fusion) {
+      return false;
+    }
+
     DataType matmul_dtype = GetDataTypeFromAttr(*matmul_node, "T");
 
     bool cpu_ok = IsMKLEnabled() && IsCpuCompatibleMatMul(*ctx, matmul_node);
@@ -1725,12 +1779,21 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     }
 
     // Check if the matched constants have desired values.
-    std::map<string, float> values_map = {
-        {"sqrt_one_half", 0.707106}, {"one", 1.0}, {"one_half", 0.5}};
+    std::map<string, float> values_map = {{"sqrt_one_half", 0.707106},
+                                          {"one_half", 0.5}};
+    // GeluExact Pattern 2 (Erfc) does not have constant "one".
+    if (matched_nodes_map->find("one") != matched_nodes_map->end()) {
+      values_map["one"] = 1.0;
+    }
     if (!VerifyConstants(ctx, matched_nodes_map, &values_map)) return false;
   } else if (found_gelu_approximate) {
     NodeDef* matmul_node =
         ctx->graph_view.GetNode(matched_nodes_map->at("matmul"))->node();
+
+    // Disable fusions on CPU when XLA JIT compilation enabled.
+    if (NodeIsOnCpu(matmul_node) && ctx->xla_cpu_jit_disable_fusion) {
+      return false;
+    }
 
     // matmul_node is already the _FusedMatMul and we don't need to check its
     // data type again.
@@ -2173,7 +2236,7 @@ bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
   // Additional check for LayerNorm
   if (found_op_type_match) {
     if (!ctx->inferred_graph_properties) {
-      Status s = ctx->graph_properties.InferStatically(
+      absl::Status s = ctx->graph_properties.InferStatically(
           /*assume_valid_feeds=*/true,
           /*aggressive_shape_inference=*/false,
           /*include_input_tensor_values=*/true,
@@ -2298,6 +2361,10 @@ bool FindFusedBatchNorm(const RemapperContext& ctx, int node_index,
                         FusedBatchNorm* matched) {
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   const auto* node_def = node_view->node();
+
+  // Disable fusions on CPU when XLA JIT compilation enabled.
+  if (ctx.xla_cpu_jit_disable_fusion && NodeIsOnCpu(node_def)) return false;
+
   if (!IsFusedBatchNorm(*node_def)) return false;
   if (GetDataTypeFromAttr(*node_def, "T") != DT_FLOAT) return false;
 
@@ -2380,6 +2447,8 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
       // should be processed when it's on GPU and oneDNN CPU is enabled.
       if (t_dtype != DT_FLOAT && t_dtype != DT_HALF) return false;
     } else {
+      // Disable fusions on CPU when XLA JIT compilation enabled.
+      if (ctx.xla_cpu_jit_disable_fusion) return false;
       if (IsMKLEnabled() && !IsDataTypeSupportedByOneDNNOnThisCPU(t_dtype))
         return false;
     }
@@ -2880,7 +2949,7 @@ bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
   // addend is 4D tensor with second dim_size = 1.
   if (!found_op_type_match) return false;
   if (!ctx->inferred_graph_properties) {
-    Status s = ctx->graph_properties.InferStatically(
+    absl::Status s = ctx->graph_properties.InferStatically(
         /*assume_valid_feeds=*/true,
         /*aggressive_shape_inference=*/false,
         /*include_input_tensor_values=*/false,
@@ -2972,7 +3041,7 @@ bool FindInstanceNorm(RemapperContext* ctx, int node_index,
 
   // Additional checks for InstanceNorm
   if (!ctx->inferred_graph_properties) {
-    Status s = ctx->graph_properties.InferStatically(
+    absl::Status s = ctx->graph_properties.InferStatically(
         /*assume_valid_feeds=*/true,
         /*aggressive_shape_inference=*/false,
         /*include_input_tensor_values=*/false,
@@ -3233,10 +3302,10 @@ void SetFusedOpAttributes(NodeDef* fused,
   SetAttrValue(epsilon, &(*attr)["epsilon"]);  // required only for BatchNorm
 }
 
-Status AddFusedContractionNode(RemapperContext* ctx,
-                               const ContractionWithBiasAdd& matched,
-                               std::vector<bool>* invalidated_nodes,
-                               std::vector<bool>* nodes_to_delete) {
+absl::Status AddFusedContractionNode(RemapperContext* ctx,
+                                     const ContractionWithBiasAdd& matched,
+                                     std::vector<bool>* invalidated_nodes,
+                                     std::vector<bool>* nodes_to_delete) {
   DCHECK(IsDeviceCompatible(*ctx, matched)) << "Unsupported fusion pattern";
 
   const GraphDef* graph = ctx->graph_view.graph();
@@ -3270,7 +3339,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
 
   SetFusedOpAttributes(&fused_op, {"BiasAdd"});
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_op), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3281,10 +3350,10 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
-Status AddFusedContractionNode(RemapperContext* ctx,
-                               const ContractionWithActivation& matched,
-                               std::vector<bool>* invalidated_nodes,
-                               std::vector<bool>* nodes_to_delete) {
+absl::Status AddFusedContractionNode(RemapperContext* ctx,
+                                     const ContractionWithActivation& matched,
+                                     std::vector<bool>* invalidated_nodes,
+                                     std::vector<bool>* nodes_to_delete) {
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& contraction = graph->node(matched.contraction);
   const NodeDef& activation = graph->node(matched.activation);
@@ -3323,7 +3392,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   fused_op.set_name(activation.name());
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_op), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3334,7 +3403,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
-Status AddFusedContractionNode(
+absl::Status AddFusedContractionNode(
     RemapperContext* ctx, const ContractionWithBiasAddAndActivation& matched,
     std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
   DCHECK(IsDeviceCompatible(*ctx, matched)) << "Unsupported fusion pattern";
@@ -3376,7 +3445,7 @@ Status AddFusedContractionNode(
   SetFusedOpAttributes(&fused_op, {"BiasAdd", activation.op()});
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_op), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3388,10 +3457,10 @@ Status AddFusedContractionNode(
   return absl::OkStatus();
 }
 
-Status AddFusedConvNode(RemapperContext* ctx,
-                        const ContractionWithSqueezeAndBiasAdd& matched,
-                        std::vector<bool>* invalidated_nodes,
-                        std::vector<bool>* nodes_to_delete) {
+absl::Status AddFusedConvNode(RemapperContext* ctx,
+                              const ContractionWithSqueezeAndBiasAdd& matched,
+                              std::vector<bool>* invalidated_nodes,
+                              std::vector<bool>* nodes_to_delete) {
   DCHECK(IsDeviceCompatible(*ctx, matched)) << "Unsupported fusion pattern";
 
   const GraphDef* graph = ctx->graph_view.graph();
@@ -3429,7 +3498,7 @@ Status AddFusedConvNode(RemapperContext* ctx,
   remapped_squeeze.set_input(0, contraction.name());
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_conv), &status);
   TF_RETURN_IF_ERROR(status);
   mutation->AddNode(std::move(remapped_squeeze), &status);
@@ -3443,10 +3512,10 @@ Status AddFusedConvNode(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
-Status AddFusedConv2DNode(RemapperContext* ctx,
-                          const ContractionWithBatchNorm& matched,
-                          std::vector<bool>* invalidated_nodes,
-                          std::vector<bool>* nodes_to_delete) {
+absl::Status AddFusedConv2DNode(RemapperContext* ctx,
+                                const ContractionWithBatchNorm& matched,
+                                std::vector<bool>* invalidated_nodes,
+                                std::vector<bool>* nodes_to_delete) {
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& contraction = graph->node(matched.contraction);
   DCHECK(IsConv2D(contraction)) << "Only Conv2D supported for now";
@@ -3471,7 +3540,7 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
                        /*num_args=*/4, /*epsilon=*/matched.epsilon);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_conv2d), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3482,10 +3551,9 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
-Status AddFusedConv2DNode(RemapperContext* ctx,
-                          const ContractionWithBatchNormAndActivation& matched,
-                          std::vector<bool>* invalidated_nodes,
-                          std::vector<bool>* nodes_to_delete) {
+absl::Status AddFusedConv2DNode(
+    RemapperContext* ctx, const ContractionWithBatchNormAndActivation& matched,
+    std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& contraction = graph->node(matched.contraction);
 
@@ -3515,7 +3583,7 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
                        /*num_args=*/4, /*epsilon=*/matched.epsilon);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_conv2d), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3527,10 +3595,9 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
-Status AddFusedContractionNode(RemapperContext* ctx,
-                               const ContractionWithBiasAddAndAdd& matched,
-                               std::vector<bool>* invalidated_nodes,
-                               std::vector<bool>* nodes_to_delete) {
+absl::Status AddFusedContractionNode(
+    RemapperContext* ctx, const ContractionWithBiasAddAndAdd& matched,
+    std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& contraction = graph->node(matched.contraction);
   const NodeDef& bias_add = graph->node(matched.bias_add);
@@ -3569,7 +3636,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   SetFusedOpAttributes(&contraction_node, {"BiasAdd", "Add"}, 2);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(contraction_node), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3581,9 +3648,10 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
-Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
-                          std::vector<bool>* invalidated_nodes,
-                          std::vector<bool>* nodes_to_delete) {
+absl::Status AddFusedConv3DNode(RemapperContext* ctx,
+                                const PadWithConv3D& matched,
+                                std::vector<bool>* invalidated_nodes,
+                                std::vector<bool>* nodes_to_delete) {
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& contraction = graph->node(matched.contraction_idx);
   const NodeDef& pad_node_def = graph->node(matched.pad_idx);
@@ -3623,7 +3691,7 @@ Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
   }
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_node), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3633,7 +3701,7 @@ Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
   return absl::OkStatus();
 }
 
-Status AddFusedContractionNode(
+absl::Status AddFusedContractionNode(
     RemapperContext* ctx, const ContractionWithBiasAndAddActivation& matched,
     std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
   const GraphDef* graph = ctx->graph_view.graph();
@@ -3667,7 +3735,7 @@ Status AddFusedContractionNode(
   SetFusedOpAttributes(&fused_conv, {"BiasAdd", "Add", activation.op()}, 2);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_conv), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3680,7 +3748,7 @@ Status AddFusedContractionNode(
   return absl::OkStatus();
 }
 
-Status FuseContractionWithBiasAddAndHardSwish(
+absl::Status FuseContractionWithBiasAddAndHardSwish(
     RemapperContext* ctx, std::map<string, int>* matched_nodes_map,
     std::set<int>* remove_node_indices, std::vector<bool>* invalidated_nodes,
     std::vector<bool>* nodes_to_delete) {
@@ -3709,7 +3777,7 @@ Status FuseContractionWithBiasAddAndHardSwish(
   SetFusedOpAttributes(&fused_node, {"BiasAdd", "_FusedHardSwish"});
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_node), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3721,11 +3789,11 @@ Status FuseContractionWithBiasAddAndHardSwish(
   return absl::OkStatus();
 }
 
-Status FuseConv2DSwish(RemapperContext* ctx,
-                       const std::map<string, int>& matched_nodes_map,
-                       const std::set<int>& remove_node_indices,
-                       std::vector<bool>* invalidated_nodes,
-                       std::vector<bool>* nodes_to_delete) {
+absl::Status FuseConv2DSwish(RemapperContext* ctx,
+                             const std::map<string, int>& matched_nodes_map,
+                             const std::set<int>& remove_node_indices,
+                             std::vector<bool>* invalidated_nodes,
+                             std::vector<bool>* nodes_to_delete) {
   const NodeDef* mul =
       ctx->graph_view.GetNode(matched_nodes_map.at("mulToswish"))->node();
   const NodeDef* conv2d =
@@ -3760,7 +3828,7 @@ Status FuseConv2DSwish(RemapperContext* ctx,
   CopyConv2DAttributes(*conv2d, &fused_op);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_op), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3774,7 +3842,7 @@ Status FuseConv2DSwish(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
-Status AddFusedMatMulBiasAddAndGelu(
+absl::Status AddFusedMatMulBiasAddAndGelu(
     RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
     const std::set<int>& remove_node_indices,
     std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete,
@@ -3805,7 +3873,7 @@ Status AddFusedMatMulBiasAddAndGelu(
     SetFusedOpAttributes(&fused_node, {"BiasAdd", "GeluExact"});
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_node), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3817,13 +3885,13 @@ Status AddFusedMatMulBiasAddAndGelu(
   return absl::OkStatus();
 }
 
-Status AddMklLayerNorm(RemapperContext* ctx,
-                       const std::map<string, int>& matched_nodes_map,
-                       const std::set<int>& remove_node_indices,
-                       const std::vector<string>& input_node_names,
-                       std::vector<bool>* invalidated_nodes,
-                       std::vector<bool>* nodes_to_delete,
-                       const float epsilon) {
+absl::Status AddMklLayerNorm(RemapperContext* ctx,
+                             const std::map<string, int>& matched_nodes_map,
+                             const std::set<int>& remove_node_indices,
+                             const std::vector<string>& input_node_names,
+                             std::vector<bool>* invalidated_nodes,
+                             std::vector<bool>* nodes_to_delete,
+                             const float epsilon) {
   auto* output_node =
       ctx->graph_view.GetNode(matched_nodes_map.at("output"))->node();
 
@@ -3838,7 +3906,7 @@ Status AddMklLayerNorm(RemapperContext* ctx,
   SetAttrValue(epsilon, &(*attr)["epsilon"]);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_node), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3850,7 +3918,7 @@ Status AddMklLayerNorm(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
-Status ReplaceMulMaximumWithLeakyRelu(
+absl::Status ReplaceMulMaximumWithLeakyRelu(
     RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
     const std::set<int>& remove_node_indices,
     std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete,
@@ -3859,6 +3927,8 @@ Status ReplaceMulMaximumWithLeakyRelu(
       ctx->graph_view.GetNode(matched_nodes_map.at("max_to_leakyrelu"))->node();
   const NodeDef* input =
       ctx->graph_view.GetNode(matched_nodes_map.at("input"))->node();
+  const auto* alpha_node_view =
+      ctx->graph_view.GetNode(matched_nodes_map.at("alpha"));
 
   NodeDef fused_op;
   fused_op.set_name(maximum->name());
@@ -3866,13 +3936,25 @@ Status ReplaceMulMaximumWithLeakyRelu(
   fused_op.set_device(maximum->device());
   fused_op.add_input(input->name());
 
+  // Addressing the corner case where the Const (which becomes an attr of
+  // LeakyRelu) has input control dependencies. In that case, we transfer the
+  // control dependencies to the fused op (LeakyRelu).
+  if (alpha_node_view->NumControllingFanins() > 0) {
+    const auto& control_fanins = alpha_node_view->GetControllingFanins();
+    for (int i = 0; i < alpha_node_view->NumControllingFanins(); i++) {
+      const auto* control_node_view = control_fanins[i].node_view();
+      *fused_op.add_input() =
+          AsControlDependency(control_node_view->node()->name());
+    }
+  }
+
   auto* attr = fused_op.mutable_attr();
   (*attr)["T"] = maximum->attr().at("T");
 
   SetAttrValue(alpha, &(*attr)["alpha"]);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_op), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3886,7 +3968,7 @@ Status ReplaceMulMaximumWithLeakyRelu(
   return absl::OkStatus();
 }
 
-Status ReplaceSigmoidMulWithSwish(
+absl::Status ReplaceSigmoidMulWithSwish(
     RemapperContext* ctx, const std::map<string, int>& matched_nodes_map,
     const std::set<int>& remove_node_indices,
     std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
@@ -3905,7 +3987,7 @@ Status ReplaceSigmoidMulWithSwish(
   (*attr)["T"] = mul->attr().at("T");
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_op), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -3918,10 +4000,10 @@ Status ReplaceSigmoidMulWithSwish(
   return absl::OkStatus();
 }
 
-Status AddFusedBatchNormExNode(RemapperContext* ctx,
-                               const FusedBatchNormEx& matched,
-                               std::vector<bool>* invalidated_nodes,
-                               std::vector<bool>* nodes_to_delete) {
+absl::Status AddFusedBatchNormExNode(RemapperContext* ctx,
+                                     const FusedBatchNormEx& matched,
+                                     std::vector<bool>* invalidated_nodes,
+                                     std::vector<bool>* nodes_to_delete) {
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& fused_batch_norm = graph->node(matched.fused_batch_norm);
   const NodeDef& activation = graph->node(matched.activation);
@@ -3972,7 +4054,7 @@ Status AddFusedBatchNormExNode(RemapperContext* ctx,
   (*identity_op.mutable_attr())["T"] = attrs->at("T");
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_op), &status);
   TF_RETURN_IF_ERROR(status);
   mutation->AddNode(std::move(identity_op), &status);
@@ -3988,10 +4070,10 @@ Status AddFusedBatchNormExNode(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
-Status AddFusedBatchNormGradExNode(RemapperContext* ctx,
-                                   const FusedBatchNormGradEx& matched,
-                                   std::vector<bool>* invalidated_nodes,
-                                   std::vector<bool>* nodes_to_delete) {
+absl::Status AddFusedBatchNormGradExNode(RemapperContext* ctx,
+                                         const FusedBatchNormGradEx& matched,
+                                         std::vector<bool>* invalidated_nodes,
+                                         std::vector<bool>* nodes_to_delete) {
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& fused_batch_norm_grad =
       graph->node(matched.fused_batch_norm_grad);
@@ -4042,7 +4124,7 @@ Status AddFusedBatchNormGradExNode(RemapperContext* ctx,
   (*identity_op.mutable_attr())["T"] = attrs->at("T");
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_op), &status);
   TF_RETURN_IF_ERROR(status);
   if (matched.side_input_grad != kMissingIndex) {
@@ -4061,7 +4143,8 @@ Status AddFusedBatchNormGradExNode(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
-Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
+absl::Status AddBatchNormNodes(RemapperContext* ctx,
+                               const FusedBatchNorm& matched) {
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& fused_node = graph->node(matched.fused_batch_norm);
   VLOG(2) << "Optimizing fused batch norm node "
@@ -4074,7 +4157,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
   string variance = fused_node.input(4);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
 
   string x_format = fused_node.attr().at(kDataFormat).s();
   if (x_format == "NCHW" || x_format == "NCDHW") {
@@ -4256,10 +4339,10 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
   return mutation->Apply();
 }
 
-Status AddTensorToHashBucketNode(RemapperContext* ctx,
-                                 const TensorToHashBucket& matched,
-                                 std::vector<bool>* invalidated_nodes,
-                                 std::vector<bool>* nodes_to_delete) {
+absl::Status AddTensorToHashBucketNode(RemapperContext* ctx,
+                                       const TensorToHashBucket& matched,
+                                       std::vector<bool>* invalidated_nodes,
+                                       std::vector<bool>* nodes_to_delete) {
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& pre_as_string = graph->node(matched.pre_as_string);
   const NodeDef& as_string = graph->node(matched.as_string);
@@ -4283,7 +4366,7 @@ Status AddTensorToHashBucketNode(RemapperContext* ctx,
   (*attr)["num_buckets"] = src_attr1.at("num_buckets");
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_op), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -4294,12 +4377,12 @@ Status AddTensorToHashBucketNode(RemapperContext* ctx,
   return absl::OkStatus();
 }
 
-Status AddFusedBatchMatMul(RemapperContext* ctx,
-                           const std::map<string, int>& matched_nodes_map,
-                           const std::set<int>& remove_node_indices,
-                           const std::vector<string>& input_node_names,
-                           std::vector<bool>* invalidated_nodes,
-                           std::vector<bool>* nodes_to_delete) {
+absl::Status AddFusedBatchMatMul(RemapperContext* ctx,
+                                 const std::map<string, int>& matched_nodes_map,
+                                 const std::set<int>& remove_node_indices,
+                                 const std::vector<string>& input_node_names,
+                                 std::vector<bool>* invalidated_nodes,
+                                 std::vector<bool>* nodes_to_delete) {
   auto* output_node =
       ctx->graph_view.GetNode(matched_nodes_map.at("output"))->node();
   auto* batch_matmul_node =
@@ -4315,7 +4398,7 @@ Status AddFusedBatchMatMul(RemapperContext* ctx,
   SetFusedOpAttributes(&fused_node, {"Mul", "Add"}, /*num_args=*/2);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_node), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -4341,12 +4424,12 @@ std::vector<U> GetTensorValues(const Tensor& tensor) {
   return result_vector;
 }
 
-Status AddMklFusedInstanceNorm(RemapperContext* ctx,
-                               std::map<string, int>* matched_nodes_map,
-                               std::set<int>* remove_node_indices,
-                               std::vector<bool>* invalidated_nodes,
-                               std::vector<bool>* nodes_to_delete,
-                               bool fuse_activation) {
+absl::Status AddMklFusedInstanceNorm(RemapperContext* ctx,
+                                     std::map<string, int>* matched_nodes_map,
+                                     std::set<int>* remove_node_indices,
+                                     std::vector<bool>* invalidated_nodes,
+                                     std::vector<bool>* nodes_to_delete,
+                                     bool fuse_activation) {
   auto* output_node =
       ctx->graph_view.GetNode(matched_nodes_map->at("output"))->node();
   auto* input_node =
@@ -4436,7 +4519,7 @@ Status AddMklFusedInstanceNorm(RemapperContext* ctx,
   }
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_node), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -4590,7 +4673,7 @@ bool FindSoftplusAndTanhAndMul(RemapperContext* ctx, int node_index,
   return found_op_type_match;
 }
 
-Status ReplaceSoftplusTanhAndMulWithMish(
+absl::Status ReplaceSoftplusTanhAndMulWithMish(
     RemapperContext* ctx, const std::map<string, int>* matched_nodes_map,
     const std::set<int>* remove_node_indices,
     std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
@@ -4610,7 +4693,7 @@ Status ReplaceSoftplusTanhAndMulWithMish(
   (*fused_node_attr)["T"] = old_mul_node->attr().at("T");
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
-  Status status;
+  absl::Status status;
   mutation->AddNode(std::move(fused_node), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
@@ -4779,15 +4862,29 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
          is_matmul_gelu_exact_fusion_candidate() ||
          is_act_biasadd_matmul_candidate();
 }
+
+inline bool IsXlaCpuGlobalJitOn() {
+  std::vector<string> tf_xla_flags;
+  const std::string tf_xla_cpu_global_jit = "--tf_xla_cpu_global_jit";
+  TF_CHECK_OK(ReadStringsFromEnvVar("TF_XLA_FLAGS", "", &tf_xla_flags));
+  return std::find(tf_xla_flags.begin(), tf_xla_flags.end(),
+                   tf_xla_cpu_global_jit) != tf_xla_flags.end();
+}
 }  // namespace
 
-Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
-                          GraphDef* optimized_graph) {
+absl::Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
+                                GraphDef* optimized_graph) {
   GrapplerItem mutable_item = item;
-  Status status;
+  absl::Status status;
+  bool xla_cpu_jit_disable_fusion =
+      xla_auto_clustering_on_ && IsXlaCpuGlobalJitOn();
+#ifdef DNNL_AARCH64_USE_ACL
+  xla_cpu_jit_disable_fusion = false;
+#endif  // DNNL_AARCH64_USE_ACL
   RemapperContext ctx(&mutable_item, &status, cpu_layout_conversion_,
-                      xla_auto_clustering_on_);
+                      xla_auto_clustering_on_, xla_cpu_jit_disable_fusion);
   TF_RETURN_IF_ERROR(status);
+
   // Processing graph in reverse-topological sorted order allows to remap
   // longer chains of dependent ops in one pass.
   TF_RETURN_IF_ERROR(
@@ -4838,7 +4935,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       AddInputShapesAttr(ctx, i);
     }
 
-    if (IsMKLEnabled()) {
+    if (IsMKLEnabled() && !ctx.xla_cpu_jit_disable_fusion) {
       const auto* node_view = ctx.graph_view.GetNode(i);
       const auto* node_def = node_view->node();
       const string& type_attr = "T";
@@ -5035,6 +5132,9 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
+    // Fusions are disabled on XLA CPU in IsCpuCompatible(...) invoked by the
+    // following fusions.
+    //
     // Remap {Conv2D,DepthwiseConv2D,MatMul}+BiasAdd into the
     // _Fused{Conv2D,DepthwiseConv2dNative,MatMul}
     ContractionWithBiasAdd contract_with_bias;
@@ -5105,6 +5205,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
+    // This fusion is enabled on GPU only.
     FusedBatchNormGradEx fused_batch_norm_grad_ex;
     if (allow_non_differentiable_rewrites &&
         FindFusedBatchNormGradEx(ctx, i, &fused_batch_norm_grad_ex)) {

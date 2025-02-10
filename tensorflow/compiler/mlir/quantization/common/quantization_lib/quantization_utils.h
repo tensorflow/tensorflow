@@ -26,10 +26,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <type_traits>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseMap.h"
@@ -38,7 +38,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -48,14 +48,15 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -80,17 +81,18 @@ inline constexpr char kQuantTraitAttrName[] = "_tfl_quant_trait";
 enum QuantizationTrait { FullyQuantizable = 0, NotQuantizable = 1 };
 inline constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
                                                          "not_quantizable"};
+inline constexpr char kOutputQuantized[] = "_output_quantized";
 
 inline constexpr double kNearZeroTolerance = 1.0e-6;
 
 using QuantParams = QuantizedType;
 using QuantSpec = QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
-using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
+using QuantParamsForResults = llvm::SmallVector<QuantizedType, 4>;
 using AccumulatorScaleFunc =
-    std::function<QuantParams(const std::vector<QuantParams>&, int, bool)>;
+    std::function<QuantizedType(const std::vector<QuantizedType>&, int, bool)>;
 using BiasParamsMap =
-    std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>;
+    absl::flat_hash_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>;
 // UniformQuantizedType GetFixedOutputRange(bool sign, int bit_width)
 using GetFixedOutputRangeFunc = std::function<UniformQuantizedType(bool, int)>;
 // bool RequiredSameOperandsAndResultsScale(bool sign, int $bit_width)
@@ -134,11 +136,14 @@ using OpQuantSpecGetter =
 // Quantization scale spec of an op. The information defined in the MLIR
 // interfaces FixedOutputRangeInterface and SameOperandsAndResultsScale should
 // be checked first if present.
+// TODO: b/323478683: Consider deprecating this.
 struct OpQuantScaleSpec {
   // Whether this op has a fixed range requirement (e.g. sigmoid)
   bool has_fixed_output_range = false;
-  // Whether this op should have same result and operand scales (e.g. concat)
+  // Whether this op should have same operand and result scales (e.g. concat)
   bool has_same_scale_requirement = false;
+  // Whether this op should have same operand and result type (e.g. gather)
+  bool has_same_operand_and_result_type_requirement = false;
   // Returns the fixed output range, when has_fixed_output_range is set.
   GetFixedOutputRangeFunc fixed_output_range_func;
   // Returns whether same operands and results scales are required.
@@ -191,6 +196,7 @@ quant::QuantizedType DownCastScale(quant::QuantizedType type, double min,
                                    double max, Location loc);
 
 bool IsOpQuantizable(Operation* op);
+bool QuantizableOpSupportsFloatOutputType(Operation* op);
 
 // Specialized version of location to string for flatbuffer exported locations.
 inline std::string GetTensorNameFromLoc(Location loc) {
@@ -490,6 +496,7 @@ class QuantizationPattern : public RewritePattern {
         continue;
       }
 
+      bool is_operand_or_result_modified = false;
       // Collect all the quantized inputs and "clone" the matched op by these
       // inputs.
       SmallVector<Value, 4> inputs;
@@ -514,6 +521,7 @@ class QuantizationPattern : public RewritePattern {
             // Dynamic range quantization is applied by having QuantizeOp as an
             // input. Only int8 weight is supported for now.
             inputs.push_back(dq_op.getOperand());
+            is_operand_or_result_modified = true;
           } else {
             // Otherwise, it's the case where the operand is activations or the
             // quantizing_op is non-supported/weight-only.
@@ -522,6 +530,7 @@ class QuantizationPattern : public RewritePattern {
         } else {
           if (auto dq_op =
                   dyn_cast_or_null<DequantizeOpT>(operand.getDefiningOp())) {
+            is_operand_or_result_modified = true;
             inputs.push_back(dq_op.getOperand());
           } else if (!ele_type.isF32()) {
             // If the operand is an integer tensor, then it doesn't require the
@@ -533,66 +542,90 @@ class QuantizationPattern : public RewritePattern {
         }
       }
 
-      // Collect all the quantized outputs and replace them by the results of
-      // the new quantized op.
-      llvm::SmallDenseMap<Value, int> outputs_replaced;
-      SmallVector<Type, 4> output_types;
-      output_types.reserve(quantizing_op->getNumResults());
-      for (const auto& enumerated_result :
-           llvm::enumerate(quantizing_op->getResults())) {
-        Value result = enumerated_result.value();
-        Type result_type = result.getType();
-        // Add this to the test coverage once we create test ops with none type
-        // results.
-        if (result_type.isa<NoneType>()) {
-          outputs_replaced.insert({result, enumerated_result.index()});
-          output_types.push_back(result_type);
-          continue;
-        }
-        Type result_ele_type =
-            result.getType().cast<TensorType>().getElementType();
-        // If the user is the QuantizeOp, it must be the only user.
-        if (result.hasOneUse() &&
-            llvm::isa<QuantizeOpT>(*result.user_begin())) {
-          auto user = llvm::cast<QuantizeOpT>(*result.user_begin());
-          outputs_replaced.insert(
-              {user.getResult(), enumerated_result.index()});
-          output_types.push_back(user.getType());
-        } else if (!result_ele_type.isF32()) {
-          // If the result is an integer tensor, then it doesn't require the
-          // D op in the pattern.
-          outputs_replaced.insert({result, enumerated_result.index()});
-          output_types.push_back(result.getType());
-        } else if (static_cast<const ConcreteT*>(this)
-                       ->AllowDynamicRangeQuantizedResult(quantizing_op,
-                                                          custom_map)) {
-          outputs_replaced.insert({result, enumerated_result.index()});
-          output_types.push_back(result.getType());
-        } else {
-          return failure();
-        }
-      }
-
-      rewriter.setInsertionPointAfter(quantizing_op);
-      OperationState new_state(quantizing_op->getLoc(),
-                               quantizing_op->getName().getStringRef(), inputs,
-                               output_types, quantizing_op->getAttrs());
-      for (int i = 0; i < quantizing_op->getNumRegions(); ++i) {
-        new_state.addRegion();
-      }
-      Operation* quantized_op = rewriter.create(new_state);
-      if (quantizing_op->getNumRegions() != 0) {
+      Operation* quantized_op;
+      if (QuantizableOpSupportsFloatOutputType(quantizing_op)) {
+        rewriter.setInsertionPointAfter(quantizing_op);
+        OperationState new_state(
+            quantizing_op->getLoc(), quantizing_op->getName().getStringRef(),
+            inputs, quantizing_op->getResultTypes(), quantizing_op->getAttrs());
         for (const auto& indexed_regions :
              llvm::enumerate(quantizing_op->getRegions())) {
-          Region& target_region =
-              quantized_op->getRegion(indexed_regions.index());
+          Region* target_region = new_state.addRegion();
           IRMapping mapping;
-          indexed_regions.value().cloneInto(&target_region, mapping);
+          indexed_regions.value().cloneInto(target_region, mapping);
         }
-      }
-      for (auto output : outputs_replaced) {
-        output.getFirst().replaceAllUsesWith(
-            quantized_op->getResult(output.getSecond()));
+        quantized_op = rewriter.create(new_state);
+        rewriter.replaceOp(quantizing_op, quantized_op);
+      } else {
+        // Collect all the quantized outputs and replace them by the results of
+        // the new quantized op.
+        llvm::SmallDenseMap<Value, int> outputs_replaced;
+        SmallVector<Type, 4> output_types;
+        output_types.reserve(quantizing_op->getNumResults());
+        for (const auto& enumerated_result :
+             llvm::enumerate(quantizing_op->getResults())) {
+          Value result = enumerated_result.value();
+          Type result_type = result.getType();
+          // Add this to the test coverage once we create test ops with none
+          // type results.
+          if (result_type.isa<NoneType>()) {
+            outputs_replaced.insert({result, enumerated_result.index()});
+            output_types.push_back(result_type);
+            continue;
+          }
+          Type result_ele_type =
+              result.getType().cast<TensorType>().getElementType();
+          // If the user is the QuantizeOp, it must be the only user.
+          if (result.hasOneUse() &&
+              llvm::isa<QuantizeOpT>(*result.user_begin())) {
+            auto user = llvm::cast<QuantizeOpT>(*result.user_begin());
+            outputs_replaced.insert(
+                {user.getResult(), enumerated_result.index()});
+            output_types.push_back(user.getType());
+            is_operand_or_result_modified = true;
+          } else if (!result_ele_type.isF32()) {
+            // If the result is an integer tensor, then it doesn't require the
+            // D op in the pattern.
+            outputs_replaced.insert({result, enumerated_result.index()});
+            output_types.push_back(result.getType());
+          } else if (static_cast<const ConcreteT*>(this)
+                         ->AllowDynamicRangeQuantizedResult(quantizing_op,
+                                                            custom_map)) {
+            outputs_replaced.insert({result, enumerated_result.index()});
+            output_types.push_back(result.getType());
+          } else {
+            return failure();
+          }
+        }
+
+        // For float16 quantization if none of the operand or result is
+        // modified, replacing the op. See b/335025403.
+        if (inference_type == tensorflow::DT_HALF &&
+            !is_operand_or_result_modified) {
+          return failure();
+        }
+
+        rewriter.setInsertionPointAfter(quantizing_op);
+        OperationState new_state(
+            quantizing_op->getLoc(), quantizing_op->getName().getStringRef(),
+            inputs, output_types, quantizing_op->getAttrs());
+        for (int i = 0; i < quantizing_op->getNumRegions(); ++i) {
+          new_state.addRegion();
+        }
+        quantized_op = rewriter.create(new_state);
+        if (quantizing_op->getNumRegions() != 0) {
+          for (const auto& indexed_regions :
+               llvm::enumerate(quantizing_op->getRegions())) {
+            Region& target_region =
+                quantized_op->getRegion(indexed_regions.index());
+            IRMapping mapping;
+            indexed_regions.value().cloneInto(&target_region, mapping);
+          }
+        }
+        for (auto output : outputs_replaced) {
+          output.getFirst().replaceAllUsesWith(
+              quantized_op->getResult(output.getSecond()));
+        }
       }
 
       // To verify the numericals, the original floating-point ops are

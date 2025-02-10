@@ -17,20 +17,22 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "grpcpp/server_builder.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/util.h"
-#include "tsl/distributed_runtime/coordination/coordination_service.h"
-#include "tsl/distributed_runtime/rpc/async_service_interface.h"
-#include "tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/threadpool.h"
-#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace {
-constexpr int kBarrierTimedOut = -1000;
 
 std::unique_ptr<tsl::CoordinationServiceInterface> EnableCoordinationService(
     const xla::CoordinationServiceImpl::Options& options) {
@@ -40,6 +42,7 @@ std::unique_ptr<tsl::CoordinationServiceInterface> EnableCoordinationService(
   config.set_service_leader(absl::StrCat("/job:", job_name, "/task:0"));
   config.set_cluster_register_timeout_in_ms(
       absl::ToInt64Milliseconds(options.cluster_register_timeout));
+  config.set_cluster_register_with_barrier(true);
   config.set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
       options.heartbeat_interval * options.max_missing_heartbeats));
   config.set_shutdown_barrier_timeout_in_ms(
@@ -116,7 +119,7 @@ DistributedRuntimeService::~DistributedRuntimeService() { Shutdown(); }
 void DistributedRuntimeService::Shutdown() {
   if (server_) {
     LOG(INFO) << "Jax service shutting down";
-    server_->Shutdown();
+    server_->Shutdown(absl::ToChronoTime(absl::Now() + absl::Seconds(5)));
     server_->Wait();
   }
 

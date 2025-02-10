@@ -119,6 +119,9 @@ uint64_t index_shuffle(const uint64_t index, const std::array<uint32_t, 3>& key,
 
 uint64_t index_shuffle(const uint64_t index, const std::array<uint32_t, 3>& key,
                        const uint64_t max_index, const int32_t rounds) {
+  if (max_index == 0) {
+    return 0;
+  }
   // Block size must be large enough to represent max_index and even (since
   // word size is half of it). We force at least 16 bits as minimum block size
   // since we observed pattern in the permutations below.

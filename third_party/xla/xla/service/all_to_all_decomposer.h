@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_TO_ALL_DECOMPOSER_H_
 #define XLA_SERVICE_ALL_TO_ALL_DECOMPOSER_H_
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/op_expander_pass.h"
+#include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
 namespace xla {
 
@@ -37,6 +39,8 @@ class AllToAllDecomposer : public OpExpanderPass {
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
   absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
+  absl::StatusOr<HloInstruction*> ExpandRaggedAllToAll(
+      HloInstruction* instruction);
   bool decompose_to_tuple_;
   int64_t min_array_rank_;
 };

@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
@@ -37,10 +39,10 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -49,7 +51,8 @@ namespace xla {
 
 using absl::StrCat;
 
-static StatusOr<std::pair<HloComputation*, CallInliner::InlinedInstructionMap>>
+static absl::StatusOr<
+    std::pair<HloComputation*, CallInliner::InlinedInstructionMap>>
 WidenWhileCondition(HloComputation* narrow_condition, const Shape& wide_shape) {
   const Shape& narrow_shape =
       narrow_condition->parameter_instruction(0)->shape();
@@ -86,7 +89,8 @@ WidenWhileCondition(HloComputation* narrow_condition, const Shape& wide_shape) {
   return {{wide_while_cond, std::move(inlined_instructions_map)}};
 }
 
-static StatusOr<std::pair<HloComputation*, CallInliner::InlinedInstructionMap>>
+static absl::StatusOr<
+    std::pair<HloComputation*, CallInliner::InlinedInstructionMap>>
 WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
   const Shape& narrow_shape = narrow_body->parameter_instruction(0)->shape();
 
@@ -125,7 +129,7 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
   return {{wide_while_body, std::move(inlined_instructions_map)}};
 }
 
-/*static*/ StatusOr<WhileUtil::MakeInstructionsLiveInResult>
+/*static*/ absl::StatusOr<WhileUtil::MakeInstructionsLiveInResult>
 WhileUtil::MakeInstructionsLiveIn(
     HloInstruction* while_instr,
     absl::Span<HloInstruction* const> instructions) {
@@ -161,6 +165,8 @@ WhileUtil::MakeInstructionsLiveIn(
   // instead of relying on HloComputation::ReplaceInstruction.
   HloInstruction* replacement_instr = TupleUtil::ExtractPrefix(
       new_while, while_instr->shape().tuple_shapes_size());
+  TF_RETURN_IF_ERROR(new_while->CopyAllControlDepsFrom(while_instr));
+  TF_RETURN_IF_ERROR(while_instr->DropAllControlDeps());
   TF_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(replacement_instr));
   TF_RETURN_IF_ERROR(containing_computation->RemoveInstruction(while_instr));
 
@@ -188,7 +194,7 @@ WhileUtil::MakeInstructionsLiveIn(
   return std::move(result);
 }
 
-static StatusOr<std::unique_ptr<HloComputation>>
+static absl::StatusOr<std::unique_ptr<HloComputation>>
 MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
                                     int32_t trip_count) {
   Shape scalar_pred = ShapeUtil::MakeShape(PRED, {});
@@ -212,9 +218,10 @@ MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
   return std::move(cond_computation);
 }
 
-static StatusOr<std::unique_ptr<HloComputation>> MakeCountedLoopBodyComputation(
+static absl::StatusOr<std::unique_ptr<HloComputation>>
+MakeCountedLoopBodyComputation(
     const Shape& loop_state_shape,
-    absl::FunctionRef<StatusOr<WhileUtil::LoopStateTy>(
+    absl::FunctionRef<absl::StatusOr<WhileUtil::LoopStateTy>(
         HloInstruction*, const WhileUtil::LoopStateTy&)>
         loop_body_generator) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> body_computation,
@@ -277,11 +284,11 @@ static Shape MakeLoopStateShapeWithLayout(
   return ShapeUtil::MakeTupleShape(loop_state_shape_components);
 }
 
-/*static*/ StatusOr<WhileUtil::OwningLoopStateTy> WhileUtil::MakeCountedLoop(
-    HloModule* module, int32_t trip_count,
-    const WhileUtil::LoopStateTy& init_values,
-    WhileUtil::LoopBodyGeneratorTy loop_body_generator,
-    const OpMetadata& metadata) {
+/*static*/ absl::StatusOr<WhileUtil::OwningLoopStateTy>
+WhileUtil::MakeCountedLoop(HloModule* module, int32_t trip_count,
+                           const WhileUtil::LoopStateTy& init_values,
+                           WhileUtil::LoopBodyGeneratorTy loop_body_generator,
+                           const OpMetadata& metadata) {
   CHECK_GE(trip_count, 0);
 
   // Both MakeCountedLoopConditionComputation and MakeCountedLoopBodyComputation
@@ -319,7 +326,7 @@ static Shape MakeLoopStateShapeWithLayout(
   return WhileUtil::OwningLoopStateTy{std::move(owned), while_results};
 }
 
-/*static*/ StatusOr<WhileUtil::LoopStateTy> WhileUtil::MakeCountedLoop(
+/*static*/ absl::StatusOr<WhileUtil::LoopStateTy> WhileUtil::MakeCountedLoop(
     HloComputation* computation, int32_t trip_count,
     const WhileUtil::LoopStateTy& init_values,
     WhileUtil::LoopBodyGeneratorTy loop_body_generator,
@@ -361,6 +368,132 @@ WhileUtil::GetGTEsMapForWhileConditional(
     }
   }
   return result;
+}
+
+/*static*/
+absl::Status WhileUtil::IncrementWhileLoopTripCount(
+    const HloInstruction& while_instruction, int32_t increment) {
+  CHECK_EQ(while_instruction.opcode(), HloOpcode::kWhile);
+  const HloComputation* while_body = while_instruction.while_body();
+  HloComputation* while_conditional = while_instruction.while_condition();
+
+  HloInstruction* compare = while_conditional->root_instruction();
+  if (compare->opcode() != HloOpcode::kCompare) {
+    return absl::InvalidArgumentError("While condition root is not a compare");
+  }
+  HloInstruction* induction_var;
+  const HloInstruction* trip_count;
+  if ((compare->comparison_direction() == ComparisonDirection::kGt) ||
+      (compare->comparison_direction() == ComparisonDirection::kGe)) {
+    induction_var = compare->mutable_operand(1);
+    trip_count = compare->mutable_operand(0);
+  } else if ((compare->comparison_direction() == ComparisonDirection::kLt) ||
+             (compare->comparison_direction() == ComparisonDirection::kLe)) {
+    induction_var = compare->mutable_operand(0);
+    trip_count = compare->mutable_operand(1);
+  } else {
+    return absl::InvalidArgumentError("Unhandled comparison direction");
+  }
+
+  // Verify that the induction variable flows through directly inside the loop
+  // condition.
+  if (induction_var->user_count() > 1) {
+    return absl::InvalidArgumentError(
+        "Loop induction variable has multiple users");
+  }
+  if (induction_var->opcode() != HloOpcode::kGetTupleElement &&
+      induction_var->operand(0) !=
+          while_conditional->parameter_instruction(0)) {
+    return absl::InvalidArgumentError(
+        "Loop induction variable does not pass through unmodified through the "
+        "condition body");
+  }
+
+  // Verify that the induction variable is being incremented exactly by 1 inside
+  // loop body.
+  bool found_induction_var = false;
+  for (const HloInstruction* gte :
+       while_body->parameter_instruction(0)->users()) {
+    if (gte->tuple_index() == induction_var->tuple_index()) {
+      if (gte->user_count() != 1) {
+        return absl::InvalidArgumentError(
+            "Loop induction variable has multiple users");
+      }
+      const HloInstruction* add = gte->users()[0];
+      if (!Match(add,
+                 match::AddAnyOrder(match::GetTupleElement().WithTupleIndex(
+                                        induction_var->tuple_index()),
+                                    match::ConstantScalar(1)))) {
+        return absl::InvalidArgumentError(
+            "Loop induction variable is not being incremented exactly by one "
+            "(1)");
+      }
+      found_induction_var = true;
+      break;
+    }
+  }
+  if (!found_induction_var) {
+    return absl::InvalidArgumentError(
+        "Could not match induction variable between loop body and condition");
+  }
+
+  // Verify that the trip count is:
+  // a) A compile time constant.
+  // b) A run-time constant.
+  // c) A pure operation with operands that are either a) or b)
+  if (trip_count->opcode() != HloOpcode::kConstant) {
+    auto is_trip_count = [while_conditional](const HloInstruction* trip_count) {
+      return trip_count->opcode() == HloOpcode::kGetTupleElement &&
+             trip_count->operand(0) ==
+                 while_conditional->parameter_instruction(0);
+    };
+    const HloInstruction* runtime_trip_count = nullptr;
+    if (is_trip_count(trip_count)) {
+      runtime_trip_count = trip_count;
+    } else {
+      if (trip_count->HasSideEffect()) {
+        return absl::InvalidArgumentError(
+            "Trip count passes through sideeffecting op");
+      }
+      for (HloInstruction* operand : trip_count->operands()) {
+        if (operand->opcode() == HloOpcode::kConstant) {
+          continue;
+        } else if (is_trip_count(operand)) {
+          // Check if we already found something that looks like the runtime
+          // trip count.
+          if (runtime_trip_count != nullptr) {
+            return absl::InvalidArgumentError(
+                "Could not identify trip count variable");
+          }
+          runtime_trip_count = operand;
+        } else {
+          return absl::InvalidArgumentError(
+              "Trip count consists of non-constant variable");
+        }
+      }
+    }
+    // Verify that the runtime trip count stays constant through the while
+    // body.
+    auto invariant_gtes = GetInvariantGTEsForWhileBody(*while_body);
+    if (!absl::c_any_of(invariant_gtes,
+                        [runtime_trip_count](HloInstruction* invariant_gte) {
+                          return invariant_gte->tuple_index() ==
+                                 runtime_trip_count->tuple_index();
+                        })) {
+      return absl::InvalidArgumentError(
+          "Trip count is not constant throughout the while loop");
+    }
+  }
+
+  // Decrementing the induction var is equivalent to incrementing the
+  // trip count.
+  HloInstruction* trip_count_increment =
+      while_conditional->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<int32_t>(-increment)));
+  HloInstruction* decremented_induction_var = while_conditional->AddInstruction(
+      HloInstruction::CreateBinary(induction_var->shape(), HloOpcode::kAdd,
+                                   induction_var, trip_count_increment));
+  return induction_var->ReplaceAllUsesWith(decremented_induction_var);
 }
 
 }  // namespace xla

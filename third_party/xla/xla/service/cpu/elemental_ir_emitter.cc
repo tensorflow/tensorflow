@@ -1,4 +1,4 @@
-/* Copyright 2017 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,123 +15,43 @@ limitations under the License.
 
 #include "xla/service/cpu/elemental_ir_emitter.h"
 
-#include <string>
+#include <vector>
 
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/Module.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/llvm_ir/math_ops.h"
-#include "xla/types.h"
-#include "xla/util.h"
-#include "xla/xla_data.pb.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/IR/Value.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/service/cpu/elemental_math_emitter.h"
 
-using xla::llvm_ir::IrArray;
-
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs,
-    absl::string_view /*name*/) {
-  std::string function_name;
-  bool cast_result_to_fp16 = false;
-  switch (prim_type) {
-    case F16:
-      cast_result_to_fp16 = true;
-      lhs = FPCast(lhs, b()->getFloatTy());
-      rhs = FPCast(rhs, b()->getFloatTy());
-      [[fallthrough]];
-    case F32:
-      function_name = "atan2f";
-      break;
-    case F64:
-      function_name = "atan2";
-      break;
-    default:
-      return Unimplemented("atan2");
-  }
-  // Create a function declaration.
-  llvm::Function* function = llvm::dyn_cast<llvm::Function>(
-      module()
-          ->getOrInsertFunction(function_name, lhs->getType(), lhs->getType(),
-                                rhs->getType())
-          .getCallee());
-  function->setCallingConv(llvm::CallingConv::C);
-  function->setDoesNotThrow();
-  function->setDoesNotAccessMemory();
-  // Create an instruction to call the function.
-  llvm::Value* result = Call(function, {lhs, rhs});
-  if (cast_result_to_fp16) {
-    result = FPCast(result, b()->getHalfTy());
-  }
-  return result;
+    absl::string_view) {
+  return xla::cpu::EmitAtan2(module(), *b(), prim_type, lhs, rhs);
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
     PrimitiveType prim_type, llvm::Value* value) {
-  bool cast_result_to_fp16 = false;
-  std::string function_name;
-  switch (prim_type) {
-    case F16:
-      cast_result_to_fp16 = true;
-      value = FPCast(value, b()->getFloatTy());
-      [[fallthrough]];
-    case F32:
-      function_name = "tanhf";
-      break;
-    case F64:
-      function_name = "tanh";
-      break;
-    default:
-      return Unimplemented("tanh");
-  }
-  // Create a function declaration.
-  llvm::Function* function = llvm::dyn_cast<llvm::Function>(
-      module()
-          ->getOrInsertFunction(function_name, value->getType(),
-                                value->getType())
-          .getCallee());
-  function->setCallingConv(llvm::CallingConv::C);
-  function->setDoesNotThrow();
-  function->setDoesNotAccessMemory();
-  // Create an instruction to call the function.
-  llvm::Value* result = Call(function, value);
-  if (cast_result_to_fp16) {
-    result = FPCast(result, b()->getHalfTy());
-  }
-  return result;
+  return xla::cpu::EmitTanh(module(), *b(), prim_type, value);
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErf(
     PrimitiveType prim_type, llvm::Value* value) {
-  if (prim_type == F64) {
-    std::string function_name = "erf";
-    // Create a function declaration.
-    llvm::Function* function = llvm::dyn_cast<llvm::Function>(
-        module()
-            ->getOrInsertFunction(function_name, value->getType(),
-                                  value->getType())
-            .getCallee());
-    function->setCallingConv(llvm::CallingConv::C);
-    function->setDoesNotThrow();
-    function->setDoesNotAccessMemory();
-    // Create an instruction to call the function.
-    llvm::Value* result = Call(function, value);
-    return result;
-  }
-  // Upcast F16 to F32 if necessary.
-  llvm::Type* type = prim_type == F16 ? b()->getFloatTy() : value->getType();
-  if (type == b()->getFloatTy()) {
-    llvm::Value* x = FPCast(value, type);
-    auto* result = llvm_ir::EmitErfF32(b(), x);
-    return FPCast(result, value->getType());
-  }
-  return Unimplemented("erf");
+  return xla::cpu::EmitErf(module(), *b(), prim_type, value);
 }
 
-}  // namespace cpu
-}  // namespace xla
+absl::StatusOr<std::vector<llvm::Value*>>
+CpuElementalIrEmitter::EmitThreadLocalCall(
+    const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+    absl::string_view name, bool is_reducer) {
+  if (thread_local_call_fn_ == nullptr) {
+    return absl::InternalError("Thread local call function is not set.");
+  }
+
+  return thread_local_call_fn_(callee, parameters, name, is_reducer);
+}
+
+}  // namespace xla::cpu

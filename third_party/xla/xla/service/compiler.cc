@@ -30,8 +30,8 @@ namespace xla {
 /* static */ absl::Mutex Compiler::platform_compiler_mutex_(absl::kConstInit);
 
 Compiler::TargetConfig::TargetConfig(se::StreamExecutor* s)
-    : device_description(s->GetDeviceDescription().ToGpuProto()),
-      platform_name(s->platform()->Name()),
+    : device_description(s->GetDeviceDescription()),
+      platform_name(s->GetPlatform()->Name()),
       device_description_str(s->GetDeviceDescription().name()) {
   se::dnn::DnnSupport* dnn = s->AsDnn();
   if (dnn != nullptr) {

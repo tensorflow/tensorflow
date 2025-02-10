@@ -29,7 +29,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-class GpuExecutor;
 class MIOpenRnnDescriptor;
 class MIOpenRnnSequenceTensorDescriptor;
 class MIOpenRnnStateTensorDescriptor;
@@ -41,7 +40,7 @@ struct PoolingWorkspaceDescriptor {
   dnn::PoolingDescriptor op;
   int dtype;
   uint64_t timestamp;
-  ScopedDeviceMemory<uint8> workspace;
+  ScopedDeviceMemory<uint8_t> workspace;
   size_t workspace_size;
   bool IsSame(const dnn::BatchDescriptor& input_dimensions,
               const dnn::BatchDescriptor& output_dimensions,
@@ -61,7 +60,7 @@ struct PoolingWorkspaceCache {
   void insert(const void* p, const dnn::BatchDescriptor& input_dimensions,
               const dnn::BatchDescriptor& output_dimensions,
               const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-              ScopedDeviceMemory<uint8>& workspace, size_t wsp_size,
+              ScopedDeviceMemory<uint8_t>& workspace, size_t wsp_size,
               hipStream_t hip_stream);
 
  private:
@@ -72,7 +71,7 @@ struct PoolingWorkspaceCache {
 // functions, see dnn.h.
 class MIOpenSupport : public dnn::DnnSupport {
  public:
-  explicit MIOpenSupport(GpuExecutor* parent);
+  explicit MIOpenSupport(StreamExecutor* parent);
 
   absl::Status Init() override;
   absl::StatusOr<stream_executor::dnn::VersionInfo> GetVersion() override;
@@ -173,7 +172,7 @@ class MIOpenSupport : public dnn::DnnSupport {
                      DeviceMemory<Eigen::half>* input_h_backprop_data,
                      DeviceMemory<Eigen::half>* input_c_backprop_data,
                      DeviceMemory<Eigen::half>* params_backprop_data,
-                     DeviceMemory<uint8>* reserve_space_data,
+                     DeviceMemory<uint8_t>* reserve_space_data,
                      ScratchAllocator* workspace_allocator,
                      dnn::ProfileResult* output_profile_result) override;
 
@@ -199,7 +198,7 @@ class MIOpenSupport : public dnn::DnnSupport {
                      DeviceMemory<float>* input_h_backprop_data,
                      DeviceMemory<float>* input_c_backprop_data,
                      DeviceMemory<float>* params_backprop_data,
-                     DeviceMemory<uint8>* reserve_space_data,
+                     DeviceMemory<uint8_t>* reserve_space_data,
                      ScratchAllocator* workspace_allocator,
                      dnn::ProfileResult* output_profile_result) override;
 
@@ -225,7 +224,7 @@ class MIOpenSupport : public dnn::DnnSupport {
                      DeviceMemory<double>* input_h_backprop_data,
                      DeviceMemory<double>* input_c_backprop_data,
                      DeviceMemory<double>* params_backprop_data,
-                     DeviceMemory<uint8>* reserve_space_data,
+                     DeviceMemory<uint8_t>* reserve_space_data,
                      ScratchAllocator* workspace_allocator,
                      dnn::ProfileResult* output_profile_result) override;
 
@@ -251,8 +250,22 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor) override;
 
+  absl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+  FusedConvolveRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType bias_type, dnn::DataType output_type, double conv_scale,
+      double side_input_scale, double leakyrelu_alpha,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      dnn::ActivationMode activation_mode) override;
+
   bool GetMIOpenConvolveAlgorithms(
-      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
       const dnn::FilterDescriptor& filter_descriptor,
       DeviceMemoryBase filter_data,
@@ -260,7 +273,31 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       ScratchAllocator* scratch_allocator,
-      std::vector<dnn::ProfileResult>* out_algorithms) override;
+      std::vector<dnn::ProfileResult>* out_algorithms);
+
+  absl::Status GetMIOpenConvolveAlgorithmsImmediateMode(
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      ScratchAllocator* scratch_allocator,
+      std::vector<dnn::ProfileResult>* out_algorithms);
+
+  absl::Status GetMIOpenConvolveAlgorithmsFindMode(
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      ScratchAllocator* scratch_allocator,
+      std::vector<dnn::ProfileResult>* out_algorithms);
 
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
@@ -319,7 +356,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       dnn::ActivationMode activation_mode, DeviceMemory<float>* x_backprop,
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
       DeviceMemory<float>* side_input_backprop,
-      DeviceMemory<uint8>* reserve_space_data,
+      DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationBackward(
@@ -333,7 +370,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<Eigen::half>* x_backprop,
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
       DeviceMemory<Eigen::half>* side_input_backprop,
-      DeviceMemory<uint8>* reserve_space_data,
+      DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationBackward(
@@ -360,7 +397,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
+      dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
       dnn::ProfileResult* output_profile_result) override;
 
   absl::Status DoFusedConvolve(
@@ -388,6 +425,21 @@ class MIOpenSupport : public dnn::DnnSupport {
       const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans) override;
+
+  absl::Status GetFusedConvolveRunners(
+      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+      dnn::DataType input_type, dnn::DataType bias_type,
+      dnn::DataType output_type, double conv_scale, double side_input_scale,
+      double leakyrelu_alpha, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      bool use_fallback, dnn::ActivationMode activation_mode,
+      const NumericOptions& numeric_options,
+      std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans)
+      override;
 
   absl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
@@ -437,7 +489,7 @@ class MIOpenSupport : public dnn::DnnSupport {
                          dnn::DataType output_type, float scale,
                          DeviceMemoryBase* output_data) override;
 
-  GpuExecutor* GetParentExecutor() { return parent_; }
+  StreamExecutor* GetParentExecutor() { return parent_; }
 
   absl::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
                          const dnn::RnnStateTensorDescriptor& probs_desc,
@@ -448,11 +500,11 @@ class MIOpenSupport : public dnn::DnnSupport {
                          DeviceMemoryBase costs_data,
                          const dnn::RnnStateTensorDescriptor& grads_desc,
                          DeviceMemoryBase grads_data,
-                         DeviceMemory<uint8> scratch_memory,
+                         DeviceMemory<uint8_t> scratch_memory,
                          int ctc_loss_algo_id) override;
 
  private:
-  GpuExecutor* parent_;  // Parent executor object. Not owned.
+  StreamExecutor* parent_;  // Parent executor object. Not owned.
 
   // Flag to indicate whether Get*Algorithm routines should only return
   // the best algorithm (as opposed to a list of all applicable ones)
@@ -469,7 +521,7 @@ class MIOpenSupport : public dnn::DnnSupport {
   bool m_pooling_cache_enabled = false;
 
   template <class T, class U>
-  bool DoBatchNormalizationForwardImpl(
+  absl::Status DoBatchNormalizationForwardImpl(
       Stream* stream, dnn::DataType input_data_type,
       dnn::DataType scale_data_type, const DeviceMemory<T>& x,
       const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
@@ -484,7 +536,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       bool is_training);
 
   template <class T, class U>
-  bool DoBatchNormalizationBackwardImpl(
+  absl::Status DoBatchNormalizationBackwardImpl(
       Stream* stream, int miopen_input_type, int miopen_scale_type,
       const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
       const DeviceMemory<U>& scale, const DeviceMemory<U>& mean,
@@ -533,7 +585,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<T>* input_h_backprop_data,
       DeviceMemory<T>* input_c_backprop_data,
       DeviceMemory<T>* params_backprop_data,
-      DeviceMemory<uint8>* reserve_space_data,
+      DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result);
 
@@ -547,7 +599,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::AlgorithmConfig& algorithm_config,
       ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
-      DeviceMemory<uint8>* scratch_memory) override;
+      DeviceMemory<uint8_t>* scratch_memory) override;
 
   absl::Status DoCtcLossImpl(
       Stream* stream, const MIOpenRnnStateTensorDescriptor& probs_desc,
@@ -556,7 +608,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
       const MIOpenRnnStateTensorDescriptor& grads_desc,
       DeviceMemoryBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
-      DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id);
+      DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id);
 
   absl::Status DoPrepareForCtcLoss(
       Stream* stream, dnn::DataType element_type,
@@ -566,30 +618,8 @@ class MIOpenSupport : public dnn::DnnSupport {
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data,
       const NumericOptions& numeric_options,
-      ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
-      int* ctc_loss_algo_id) override;
-
-  bool GetMIOpenConvolveAlgorithmsImmediateMode(
-      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
       ScratchAllocator* scratch_allocator,
-      std::vector<dnn::ProfileResult>* out_algorithms);
-
-  bool GetMIOpenConvolveAlgorithmsFindMode(
-      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      ScratchAllocator* scratch_allocator,
-      std::vector<dnn::ProfileResult>* out_algorithms);
+      DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) override;
 
   MIOpenSupport(const MIOpenSupport&) = delete;
   void operator=(const MIOpenSupport&) = delete;

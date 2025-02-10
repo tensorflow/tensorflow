@@ -1,0 +1,11 @@
+// This proto defines messages for TF2XLA MLIR bridge configuration.
+
+syntax = "proto2";
+
+package tensorflow.tf2xla.v1;
+
+message MlirBridgeConfig {
+  // Whether to enable tf2xla mlir bridge in compiling SavedModel. By default,
+  // it is enabled.
+  optional bool enable_tf2xla_mlir_bridge = 1 [default = true];
+}

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -35,21 +36,22 @@ class TpuEmbeddingShapeUtil {
   // configuration is supplied in config. On success, shape is populated with
   // the shape of the embedding table that will be loaded or retrieved using
   // Ops such as {Load,Retrieve}TpuEmbedding*Parameters.
-  static Status ComputeOneTableShape(int64_t vocabulary_size,
-                                     int table_dimension, int shard_id,
-                                     int num_shards, TensorShapeProto* shape);
+  static absl::Status ComputeOneTableShape(int64_t vocabulary_size,
+                                           int table_dimension, int shard_id,
+                                           int num_shards,
+                                           TensorShapeProto* shape);
 
   // Compute the shapes of the embedding tables stored on the
   // TpuEmbeddingEngine. The TpuEmbedding configuration is supplied in
   // config. On success, shapes is populated with the shape of each embedding
   // table that will be loaded or retrieved using Ops such as
   // {Load,Retrieve}AllTpuEmbeddingParameters.
-  static Status ComputeTableShapes(absl::Span<const int64_t> vocabulary_sizes,
-                                   absl::Span<const int> table_dimensions,
-                                   int shard_id, int num_shards,
-                                   std::vector<TensorShapeProto>* shapes);
+  static absl::Status ComputeTableShapes(
+      absl::Span<const int64_t> vocabulary_sizes,
+      absl::Span<const int> table_dimensions, int shard_id, int num_shards,
+      std::vector<TensorShapeProto>* shapes);
 
-  static Status ComputeTableShapes(
+  static absl::Status ComputeTableShapes(
       const tensorflow::tpu::TPUEmbeddingConfiguration& config, int shard_id,
       int num_shards, std::vector<TensorShapeProto>* shapes);
 

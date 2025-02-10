@@ -14,28 +14,31 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "mhlo/transforms/passes.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -69,7 +72,9 @@ void AddUnfuseMhloOpsPasses(mlir::PassManager& pm) {
 
 // Converts TF SavedModel to StableHLO module. The input TF SavedModel can have
 // StableHLO module serialized into a XlaCallModuleOp. (ex: JAX/PyTorch models)
-void AddTFToStablehloPasses(mlir::PassManager& pm) {
+void AddTFToStablehloPasses(
+    mlir::PassManager& pm,
+    llvm::ArrayRef<llvm::ArrayRef<int64_t>> input_arg_shapes) {
   pm.addPass(mlir::odml::CreateRenameEntrypointToMainPass());
   // TODO: b/230572023 - Consider improving shape inference for While op instead
   // of dropping the attribute. This need not be correct for models not trained
@@ -97,9 +102,8 @@ void AddTFToStablehloPasses(mlir::PassManager& pm) {
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCanonicalizerPass());
   // Propagates shapes on the TensorFlow graph.
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass(input_arg_shapes));
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
@@ -111,7 +115,7 @@ void AddTFToStablehloPasses(mlir::PassManager& pm) {
 
   // Generic MLIR optimization passes.
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass(input_arg_shapes));
 
   // Legalizes TF UniformQuantized types into MHLO. Part of the official
   // TF/XLA bridge component.
@@ -120,8 +124,10 @@ void AddTFToStablehloPasses(mlir::PassManager& pm) {
   pm.addPass(mlir::createCanonicalizerPass());
 
   // TF -> StableHLO legalization.
+  // Skip StatefulPartitionedCall to preserve aliased functions.
   mlir::odml::AddLegalizeTFToStablehloPasses(pm, /*skip_quantization_ops=*/true,
-                                             /*skip_resize=*/false);
+                                             /*skip_resize=*/false,
+                                             /*skip_partitioned_calls=*/true);
   // StableHLO -> MHLO legalization for MHLO optimization.
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // Rewrites legacy StableHLO ops.
@@ -136,7 +142,8 @@ absl::Status PreprocessAndFreezeGraph(
     const absl::flat_hash_set<std::string>& noinline_functions,
     mlir::ModuleOp module_op, mlir::MLIRContext* context,
     std::optional<Session*> session, const bool run_tf_to_stablehlo,
-    const bool deserialize_xla_call_module) {
+    const bool deserialize_xla_call_module,
+    llvm::ArrayRef<llvm::ArrayRef<int64_t>> input_arg_shapes) {
   mlir::PassManager pm_before_freezing_variables(context);
   mlir::StatusScopedDiagnosticHandler statusHandler(module_op.getContext(),
                                                     /*propagate=*/true);
@@ -168,7 +175,7 @@ absl::Status PreprocessAndFreezeGraph(
   if (run_tf_to_stablehlo) {
     // AddLegalizeTFToStablehloPasses expects frozen TF variables when
     // legalizing to stablehlo.constant.
-    AddTFToStablehloPasses(pm_after_freezing_variables);
+    AddTFToStablehloPasses(pm_after_freezing_variables, input_arg_shapes);
   }
 
   if (deserialize_xla_call_module) {
@@ -187,8 +194,29 @@ absl::Status PreprocessAndFreezeGraph(
     return pre_variable_freezing_status;
   }
 
-  if (session.has_value() && failed(mlir::tf_saved_model::FreezeVariables(
-                                 module_op, session.value()))) {
+  if (!session.has_value() || !*session) {
+    mlir::PassManager pm_freezing_variables(context);
+    // This pass does resource analysis of saved model global tensors and marks
+    // those deemed read-only as immutable.
+    pm_freezing_variables.addPass(
+        mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+
+    pm_freezing_variables.addPass(
+        mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
+            /*allow_mutable_tensors=*/true));
+
+    pm_freezing_variables.addPass(
+        mlir::TFL::CreateUnfreezeMutableGlobalTensorsPass());
+
+    if (const auto variable_freezing_status = RunPassesOnModuleOp(
+            /*mlir_dump_file_name=*/absl::StrCat(
+                mlir_dump_file_prefix, "_preprocess_variable_freezing"),
+            pm_freezing_variables, module_op);
+        !variable_freezing_status.ok()) {
+      return variable_freezing_status;
+    }
+  } else if (failed(
+                 mlir::tf_saved_model::FreezeVariables(module_op, *session))) {
     return statusHandler.ConsumeStatus();
   }
 

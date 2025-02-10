@@ -34,19 +34,26 @@ bool IsByteSwappable(DataType dtype);
 //     buffer with this one will also end up byte-swapped.
 // Returns: OkStatus() on success, -1 otherwise
 // TODO(frreiss): Should this be a member of the Tensor class?
-Status ByteSwapTensor(Tensor *t);
+absl::Status ByteSwapTensor(Tensor* t);
+
+// Byte-swap a tensor proto's backing buffer in place.
+//
+// Args:
+//  t: TensorProto to be modified IN PLACE.
+// Returns: OkStatus() on success, -1 otherwise
+absl::Status ByteSwapTensorProto(TensorProto* tp);
 
 // Swap tensor_content field of Const Op Tensors in the named functions
 // in NodeDef
-Status ByteSwapTensorContentInNode(NodeDef& node);
+absl::Status ByteSwapTensorContentInNode(NodeDef& node);
 
 // Swap tensor_content field of Const Op Tensors in the named functions
 // in MetaGraphDef
-Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef* meta_graph_def);
+absl::Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef* meta_graph_def);
 
 // Swap tensor_content field of Const Op Tensors in the named functions
 // in GraphDef
-Status ByteSwapTensorContentInGraphDef(GraphDef* graph_def);
+absl::Status ByteSwapTensorContentInGraphDef(GraphDef* graph_def);
 
 }  // namespace tensorflow
 

@@ -17,12 +17,14 @@
 #ifndef XLA_PYTHON_IFRT_PROXY_CLIENT_GRPC_CLIENT_SESSION_H_
 #define XLA_PYTHON_IFRT_PROXY_CLIENT_GRPC_CLIENT_SESSION_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -32,6 +34,7 @@
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
+#include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/platform/unbounded_work_queue.h"
@@ -61,12 +64,14 @@ class GrpcClientSession : public ClientSession {
       GrpcIfrtSessionMetadata metadata,
       StreamTerminatedCallback stream_terminated_cb);
 
-  Future<Response> Enqueue(std::unique_ptr<IfrtRequest> request) override;
+  Future<std::shared_ptr<IfrtResponse>> Enqueue(
+      std::unique_ptr<IfrtRequest> request) override;
 
   // `ResponseCallback` represents a function that can be invoked when
   // `ClientSession` receives an `IfrtResponse`. May be invoked by the "primary"
   // thread and with various mutex locks held.
-  using ResponseCallback = std::function<void(Response)>;
+  using ResponseCallback =
+      std::function<void(absl::StatusOr<std::shared_ptr<IfrtResponse>>)>;
 
   absl::Status Enqueue(std::unique_ptr<IfrtRequest> req,
                        ResponseCallback callback);
@@ -112,6 +117,9 @@ class GrpcClientSession : public ClientSession {
   // A mutex that ensures serialization between various `Enqueue()` calls, since
   // only one thread is allowed to write to the gRPC stream at a time.
   absl::Mutex writer_mu_;
+
+  using OpId = uint64_t;
+  OpId writer_next_op_id_ ABSL_GUARDED_BY(writer_mu_) = 1;
 
   // Ensures logic inside `Finish()` is internally called only once.
   absl::once_flag finish_once_;

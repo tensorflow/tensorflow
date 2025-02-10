@@ -13,25 +13,42 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/llvm_ir/alias_analysis.h"
-
-#include <memory>
-#include <utility>
-
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
-#include "xla/service/custom_call_status.h"
-#include "xla/service/custom_call_target_registry.h"
-#include "xla/tests/filecheck.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 namespace {
-class AliasAnalysisTest : public CpuCodegenTest {};
 
-void FakeCustomCallTarget(float* out, float** in, XlaCustomCallStatus*) {}
+class AliasAnalysisTest : public CpuCodegenTest {
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    // We do not generate IR for while loops with thunks runtime, so we
+    // explicitly disable it for this test.
+    debug_options.set_xla_cpu_use_thunk_runtime(false);
+    return debug_options;
+  }
+};
 
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(FakeCustomCallTarget);
+static absl::Status FakeCustomCallTarget(ffi::AnyBuffer,
+                                         ffi::Result<ffi::AnyBuffer>) {
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kFakeCustomCallTarget, FakeCustomCallTarget,
+                       ffi::Ffi::Bind()
+                           .Arg<ffi::AnyBuffer>()  // in
+                           .Ret<ffi::AnyBuffer>()  // out
+);
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__xla_test$$FakeCustomCallTarget", "Host",
+                         kFakeCustomCallTarget);
 
 TEST_F(AliasAnalysisTest, EmbeddedComputationParamsMayAliasTemps) {
   const char* hlo_string = R"(
@@ -46,7 +63,7 @@ body {
 condition {
   const.100 = f32[] constant(100)
   condition.state = f32[] parameter(0)
-  addend = f32[] custom-call(condition.state), custom_call_target="FakeCustomCallTarget", api_version=API_VERSION_STATUS_RETURNING
+  addend = f32[] custom-call(condition.state), custom_call_target="__xla_test$$FakeCustomCallTarget", api_version=API_VERSION_TYPED_FFI
   add = f32[] add(addend, condition.state)
   ROOT greater-than = pred[] compare(const.100, add), direction=GT
 }
@@ -80,5 +97,4 @@ ENTRY while3 {
 }
 
 }  // namespace
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu

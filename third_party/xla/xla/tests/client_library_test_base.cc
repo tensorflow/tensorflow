@@ -19,17 +19,19 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
 #include "xla/execution_options_util.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
-#include "xla/test_helpers.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -95,6 +97,12 @@ ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
 
   execution_options_.mutable_debug_options()
       ->set_xla_hlo_evaluator_use_fast_path(true);
+}
+
+std::string ClientLibraryTestBase::SuiteName() const {
+  return ::testing::UnitTest::GetInstance()
+      ->current_test_info()
+      ->test_suite_name();
 }
 
 std::string ClientLibraryTestBase::TestName() const {
@@ -181,7 +189,8 @@ void ClientLibraryTestBase::ComputeAndCompareLiteral(
                                                   error, shape_with_layout));
 }
 
-Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
+absl::Status
+ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
     const xla::XlaComputation& computation, const Literal& expected,
     absl::Span<GlobalData* const> arguments,
     const std::function<void(const Literal& actual,
@@ -204,10 +213,10 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
                   absl::StrCat("Test with output layout: ",
                                ShapeUtil::HumanStringWithLayout(layout)));
   } while (std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
+absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
     const xla::XlaComputation& computation, const Literal& /*expected*/,
     absl::Span<GlobalData* const> arguments,
     const std::function<void(const Literal& actual,
@@ -218,8 +227,8 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
   // This is a recursive function. It's an std::function instead of a lambda
   // because it needs to capture itself. The index is the index of the argument
   // to try all layouts for.
-  std::function<Status(int64_t)> choose;
-  choose = [&, this](int64_t index) -> Status {
+  std::function<absl::Status(int64_t)> choose;
+  choose = [&, this](int64_t index) -> absl::Status {
     if (index < arguments.size()) {
       // Try out all layouts for the operand.
       TF_ASSIGN_OR_RETURN(auto literal,
@@ -232,7 +241,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         TF_RETURN_IF_ERROR(choose(index + 1));
         arguments_with_layout.pop_back();
         layout_strings.pop_back();
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::vector<int64_t> minor_to_major(literal.shape().rank());
@@ -250,7 +259,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         layout_strings.pop_back();
       } while (
           std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Every argument has an assigned layout.
@@ -264,7 +273,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
       absl::StrAppend(&error_message, str, " ");
     }
     verify_output(actual, error_message);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   return choose(0);
@@ -283,7 +292,7 @@ absl::StatusOr<Literal> ClientLibraryTestBase::ComputeAndTransfer(
     for (const auto& argument : arguments_) {
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<GlobalData> owned_argument,
-          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument)));
+          client_->TransferToServer(MaybeConvertLiteralToTestType(argument)));
       owning_arguments.push_back(std::move(owned_argument));
       arguments.push_back(owning_arguments.back().get());
     }
@@ -293,7 +302,7 @@ absl::StatusOr<Literal> ClientLibraryTestBase::ComputeAndTransfer(
   return ExecuteAndTransfer(computation, arguments, shape_with_layout);
 }
 
-Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
+absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     XlaBuilder* builder, const Literal& expected,
     absl::Span<GlobalData* const> arguments_passed_in,
     const Shape* shape_with_layout) {
@@ -307,7 +316,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     for (const auto& argument : arguments_) {
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<GlobalData> owned_argument,
-          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument)));
+          client_->TransferToServer(MaybeConvertLiteralToTestType(argument)));
       owning_arguments.push_back(std::move(owned_argument));
       arguments.push_back(owning_arguments.back().get());
     }
@@ -318,20 +327,20 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
       ShapeUtil::ElementIsComplex(expected.shape())) {
     LOG(WARNING) << "performing exact comparison of floating point numbers";
   }
-  // We allow using a float expected literal for a bfloat16 output. In this
-  // case, we need to convert the expected literal to bfloat16.
+  // We allow using a float expected literal for non float outputs. In this
+  // case, we need to convert the expected literal to test_type_.
   const Literal* expected_ptr = &expected;
   Literal converted_expected;
   Shape layout_shape;
-  if (use_bfloat16_) {
-    converted_expected = LiteralUtil::ConvertF32ToBF16(expected);
+  if (test_type_ != F32) {
+    converted_expected = MaybeConvertLiteralToTestType(expected);
     expected_ptr = &converted_expected;
     if (shape_with_layout != nullptr) {
       layout_shape = *shape_with_layout;
       ShapeUtil::ForEachMutableSubshape(
           &layout_shape, [&](Shape* subshape, const ShapeIndex& /*index*/) {
             if (subshape->element_type() == F32) {
-              subshape->set_element_type(BF16);
+              subshape->set_element_type(test_type_);
             }
           });
       shape_with_layout = &layout_shape;
@@ -352,10 +361,10 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected_ptr, actual));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
+absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     XlaBuilder* builder, const Literal& expected,
     absl::Span<GlobalData* const> arguments_passed_in, ErrorSpec error,
     const Shape* shape_with_layout) {
@@ -369,27 +378,27 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     for (const auto& argument : arguments_) {
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<GlobalData> owned_argument,
-          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument)));
+          client_->TransferToServer(MaybeConvertLiteralToTestType(argument)));
       owning_arguments.push_back(std::move(owned_argument));
       arguments.push_back(owning_arguments.back().get());
     }
   }
 
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
-  // We allow using a float expected literal for a bfloat16 output. In this
-  // case, we need to convert the expected literal to bfloat16.
+  // We allow using a float expected literal for a non float outputs. In this
+  // case, we need to convert the expected literal to type_test_.
   const Literal* expected_ptr = &expected;
   Literal converted_expected;
   Shape layout_shape;
-  if (use_bfloat16_) {
-    converted_expected = LiteralUtil::ConvertF32ToBF16(expected);
+  if (test_type_ != F32) {
+    converted_expected = MaybeConvertLiteralToTestType(expected);
     expected_ptr = &converted_expected;
     if (shape_with_layout != nullptr) {
       layout_shape = *shape_with_layout;
       ShapeUtil::ForEachMutableSubshape(
           &layout_shape, [&](Shape* subshape, const ShapeIndex& /*index*/) {
             if (subshape->element_type() == F32) {
-              subshape->set_element_type(BF16);
+              subshape->set_element_type(test_type_);
             }
           });
       shape_with_layout = &layout_shape;
@@ -411,7 +420,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
   EXPECT_TRUE(LiteralTestUtil::Near(*expected_ptr, actual, error));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1U8(
@@ -527,13 +536,11 @@ ClientLibraryTestBase::ComputeValueAndReference(
   return std::make_pair(std::move(reference), std::move(result));
 }
 
-XlaComputation ClientLibraryTestBase::CreateScalarRelu() {
+XlaComputation ClientLibraryTestBase::CreateScalarReluF32() {
   XlaBuilder builder("relu");
-  auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
+  auto shape = ShapeUtil::MakeShape(F32, {});
   auto z_value = Parameter(&builder, 0, shape, "z_value");
-  auto zero = use_bfloat16_
-                  ? ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(0.0f))
-                  : ConstantR0<float>(&builder, 0.0f);
+  auto zero = ConstantR0<float>(&builder, 0.0f);
   Max(z_value, zero);
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
@@ -542,26 +549,10 @@ XlaComputation ClientLibraryTestBase::CreateScalarRelu() {
 
 XlaComputation ClientLibraryTestBase::CreateScalarMax() {
   XlaBuilder builder("max");
-  auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
+  auto shape = ShapeUtil::MakeShape(test_type_, {});
   auto x = Parameter(&builder, 0, shape, "x");
   auto y = Parameter(&builder, 1, shape, "y");
   Max(x, y);
-  auto computation_status = builder.Build();
-  TF_CHECK_OK(computation_status.status());
-  return std::move(computation_status).value();
-}
-
-XlaComputation ClientLibraryTestBase::CreateScalarReluSensitivity() {
-  XlaBuilder builder("relu_sensitivity");
-  auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
-  auto activation = Parameter(&builder, 0, shape, "activation");
-  auto backprop = Parameter(&builder, 1, shape, "backprop");
-  auto zero = use_bfloat16_
-                  ? ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(0.0f))
-                  : ConstantR0<float>(&builder, 0.0f);
-  auto activation_gtz = Gt(activation, zero);
-  Select(activation_gtz, /*on_true=*/backprop, /*on_false=*/zero);
-
   auto computation_status = builder.Build();
   TF_CHECK_OK(computation_status.status());
   return std::move(computation_status).value();
@@ -597,14 +588,12 @@ XlaOp ClientLibraryTestBase::AddParam(const Literal& argument,
                                       XlaBuilder* builder) {
   arguments_.push_back(argument.Clone());
   return Parameter(builder, /*parameter_number=*/arguments_.size() - 1,
-                   MaybeConvertShapeToBfloat16(argument.shape()), "");
+                   MaybeConvertShapeToTestType(argument.shape()), "");
 }
 
 XlaOp ClientLibraryTestBase::CreateConstantFromLiteral(const Literal& literal,
                                                        XlaBuilder* builder) {
-  return ConstantLiteral(builder, use_bfloat16_
-                                      ? LiteralUtil::ConvertF32ToBF16(literal)
-                                      : LiteralSlice(literal));
+  return ConstantLiteral(builder, MaybeConvertLiteralToTestType(literal));
 }
 
 absl::StatusOr<std::unique_ptr<GlobalData>>
@@ -615,26 +604,34 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
                                            nullptr, builder, data_handle);
 }
 
-Shape ClientLibraryTestBase::MaybeConvertShapeToBfloat16(const Shape& shape) {
-  if (!use_bfloat16_) {
+Shape ClientLibraryTestBase::MaybeConvertShapeToTestType(const Shape& shape) {
+  if (test_type_ == F32) {
     return shape;
   }
   Shape new_shape = shape;
-  ShapeUtil::ForEachMutableSubshape(&new_shape,
-                                    [](Shape* subshape, const ShapeIndex&) {
-                                      if (subshape->element_type() == F32) {
-                                        subshape->set_element_type(BF16);
-                                      }
-                                    });
+  ShapeUtil::ForEachMutableSubshape(
+      &new_shape, [test_type = test_type_](Shape* subshape, const ShapeIndex&) {
+        if (subshape->element_type() == F32) {
+          subshape->set_element_type(test_type);
+        }
+      });
   return new_shape;
 }
 
-Literal ClientLibraryTestBase::MaybeConvertLiteralToBfloat16(
+Literal ClientLibraryTestBase::MaybeConvertLiteralToTestType(
     const Literal& literal) {
-  if (use_bfloat16_) {
-    return LiteralUtil::ConvertF32ToBF16(literal);
+  switch (test_type_) {
+    case BF16:
+      return LiteralUtil::ConvertF32ToBF16(literal);
+    case F32:
+      return literal.Clone();
+    case F8E5M2:
+      return LiteralUtil::ConvertF32ToF8E5M2(literal);
+    case F8E4M3FN:
+      return LiteralUtil::ConvertF32ToF8E4M3FN(literal);
+    default:
+      LOG(FATAL) << "Unsupported test type: " << test_type_;
   }
-  return literal.Clone();
 }
 
 absl::StatusOr<std::unique_ptr<GlobalData>>
@@ -642,7 +639,7 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
     int64_t parameter_number, const Literal& literal, const std::string& name,
     const DeviceHandle* device_handle, XlaBuilder* builder,
     XlaOp* data_handle) {
-  Literal param_literal = MaybeConvertLiteralToBfloat16(literal);
+  Literal param_literal = MaybeConvertLiteralToTestType(literal);
   TF_ASSIGN_OR_RETURN(auto data,
                       client_->TransferToServer(param_literal, device_handle));
   *data_handle =

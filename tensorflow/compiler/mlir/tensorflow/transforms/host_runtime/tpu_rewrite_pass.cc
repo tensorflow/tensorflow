@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
-#include "absl/strings/match.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -43,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -75,7 +75,6 @@ namespace mlir {
 namespace TFTPU {
 
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
-constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
 constexpr char kUseXlaSpmdAttr[] = "use_spmd_for_xla_partitioning";
@@ -139,7 +138,7 @@ LogicalResult EncapsulateFuncAndSerialize(const std::string& module_name,
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
       func::FuncOp referenced_func = entry_module_table.lookup<func::FuncOp>(
-          use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
+          mlir::cast<FlatSymbolRefAttr>(use.getSymbolRef()).getValue());
 
       // Skip Symbols that do not map to a function.
       if (!referenced_func) continue;
@@ -380,18 +379,9 @@ LogicalResult AddToParallelExecuteOp(
     // If computation is replicated, use aliased device. Otherwise there is only
     // one execution device per core and the device is assigned to the execute
     // op.
-    std::string device;
-    if (replicated) {
-      device = tensorflow::GetDeviceAliasForLogicalCore(core);
-    } else {
-      auto device_attr = cluster_func->getAttrOfType<StringAttr>(kDeviceAttr);
-      if (device_attr && !device_attr.str().empty() &&
-          absl::StrContains(device_attr.str(), "TPU:")) {
-        device = cluster_func->getAttrOfType<StringAttr>(kDeviceAttr).str();
-      } else {
-        device = tpu_devices.front()[core].device;
-      }
-    }
+    std::string device = replicated
+                             ? tensorflow::GetDeviceAliasForLogicalCore(core)
+                             : tpu_devices.front()[core].device;
     auto block_launch_op = tensorflow::WrapOpInLaunch(
         builder, block.getParent()->getLoc(), execute, device);
 

@@ -13,9 +13,9 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_py",
         "//tensorflow/lite/python:convert",
         "//tensorflow/lite/python:lite",
-        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
         "//tensorflow/python/util:tf_export",
     ],
 )

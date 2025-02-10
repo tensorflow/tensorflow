@@ -59,24 +59,24 @@ enum class CudnnNormKind {
 };
 
 enum class CudnnfMHAKind {
-  kBmmBmm,
-  kScaleBiasMaskSoftmax,
-  kScaleBiasMaskSoftmaxDropout,
-  kScaleMaskSoftmax,
-  kScaleMaskSoftmaxDropout,
   kSoftmaxDropout,
   kSoftmax,
   kScaleBiasSoftmax,
   kScaleBiasSoftmaxDropout,
-  kBackwardBmmBmm,
-  kBackwardScaleBiasMaskSoftmax,
-  kBackwardScaleBiasMaskSoftmaxDropout,
-  kBackwardScaleMaskSoftmax,
-  kBackwardScaleMaskSoftmaxDropout,
   kBackwardSoftmaxDropout,
   kBackwardSoftmax,
   kBackwardScaleBiasSoftmax,
   kBackwardScaleBiasSoftmaxDropout,
+  kSoftmaxF8,
+  kBackwardSoftmaxF8,
+};
+
+enum class CudnnfMHAMaskKind {
+  kNoMask,
+  kPadding,
+  kCausal,
+  kPaddingCausal,
+  kAlibi,
 };
 
 absl::StatusOr<CudnnConvKind> GetCudnnConvKind(
@@ -173,42 +173,31 @@ bool IsCustomCallToDnnNorm(const HloInstruction& hlo);
 
 // The fused_mha_rewriter phase where each of the MHA signatures are pattern
 // matched and rewritten into a custom-call with specific custom-call target.
-// The custom-call target specifies the MHA signature. For example,  BMM1 - Bias
-// - Scale - Mask - Softmax - BMM2 pattern can have the target as
-// cudnn$fmhaBiasScaleMaskSoftmax.
-// The fMHA signatures currently supported by cudnn are:
-// 1.BMM1 - BMM2
-// 2. BMM1 - Scale - Bias - Mask - Softmax - BMM2
-// 3. BMM1 - Scale - Bias - Mask - Softmax - Dropout - BMM2
-// 4. BMM1 - Scale - Mask - Softmax - BMM2
-// 5. BMM1 - Scale - Mask - Softmax - Dropout - BMM2
-// 6. BMM1 - Softmax - Dropout - BMM2
-// 7. BMM1 - Softmax - BMM2
-// 8. BMM1 - scale - Bias - Softmax - BMM2
+// The custom-call target specifies the MHA signature. For example,  BMM1 -Scale
+// - Bias - Softmax - BMM2 pattern can have the target as
+// cudnn$fmhaScaleBiasSoftmax. The fMHA signatures currently supported by cudnn
+// are:
+// 1. BMM1 - Softmax - BMM2
+// 2. BMM1 - Softmax - Dropout - BMM2
+// 3. BMM1 - scale - Bias - Softmax - BMM2
+// 4. BMM1 - scale - Bias - Softmax - Dropout - BMM2
 // Forward calls
-extern const absl::string_view kCudnnfMHABmmBmmCallTarget;
+extern const absl::string_view kCudnnfMHASoftmaxF8CallTarget;
 extern const absl::string_view kCudnnfMHASoftmaxCallTarget;
-extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxCallTarget;
-extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget;
-extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxCallTarget;
-extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget;
 extern const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget;
 extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget;
 extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxCallTarget;
 // Backward calls
-extern const absl::string_view kCudnnfMHABmmBmmBackwardCallTarget;
+extern const absl::string_view kCudnnfMHASoftmaxBackwardF8CallTarget;
 extern const absl::string_view kCudnnfMHASoftmaxBackwardCallTarget;
-extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxBackwardCallTarget;
-extern const absl::string_view
-    kCudnnfMHAScaleBiasMaskSoftmaxDropoutBackwardCallTarget;
-extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxBackwardCallTarget;
-extern const absl::string_view
-    kCudnnfMHAScaleMaskSoftmaxDropoutBackwardCallTarget;
 extern const absl::string_view kCudnnfMHASoftmaxDropoutBackwardCallTarget;
 extern const absl::string_view
     kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget;
 extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget;
 
+bool IsFwdCustomCallTofMHAF8(const HloInstruction& hlo);
+bool IsBwdCustomCallTofMHAF8(const HloInstruction& hlo);
+bool IsCustomCallTofMHAF8(const HloInstruction& hlo);
 bool IsFwdCustomCallTofMHA(const HloInstruction& hlo);
 bool IsBwdCustomCallTofMHA(const HloInstruction& hlo);
 bool IsCustomCallTofMHA(const HloInstruction& hlo);
@@ -220,6 +209,11 @@ std::string CudnnfMHAKindToString(CudnnfMHAKind kind);
 absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
 
 bool MHACallHasDropout(absl::string_view fmha_call_name);
+
+// A call to cuDNN for a block scaled dot.
+extern const absl::string_view kCudnnBlockScaledDotCallTarget;
+
+bool IsCustomCallToBlockScaledDot(const HloInstruction& hlo);
 
 // CUB library calls.
 // Reference: https://nvlabs.github.io/cub/

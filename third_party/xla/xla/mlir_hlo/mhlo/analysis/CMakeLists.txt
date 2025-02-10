@@ -7,5 +7,4 @@ add_mlir_library(MhloAnalysis
   LINK_LIBS PUBLIC
   MLIRAnalysis
   MLIRIR
-  LmhloDialect
 )

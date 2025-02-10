@@ -18,11 +18,11 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/despecializer.h"
+#include "xla/hlo/transforms/despecializer.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
@@ -30,11 +30,12 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
+absl::StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
     const HloModule& test_module, HloRunnerInterface* test_runner,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
-    const std::function<Status(const HloModule&, HloRunnerInterface*,
-                               HloModule*)>& module_modifier_hook) {
+    const std::function<absl::Status(const HloModule&, HloRunnerInterface*,
+                                     HloModule*)>& module_modifier_hook,
+    bool skip_despecialization) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   // The combination of fast math and optimizations leads to unsound code
   // transformations (see third_party/tensorflow/compiler/xla/xla.proto for
@@ -47,11 +48,11 @@ StatusOr<std::unique_ptr<HloModule>> PrepareReferenceModule(
     config_modifier_hook(&reference_config);
   }
   std::unique_ptr<HloModule> reference_module =
-      test_module.Clone(reference_config, "reference");
+      test_module.Clone("reference", reference_config);
   if (module_modifier_hook) {
     TF_RETURN_IF_ERROR(
         module_modifier_hook(test_module, test_runner, reference_module.get()));
-  } else {
+  } else if (!skip_despecialization) {
     TF_RETURN_IF_ERROR(Despecializer().Run(reference_module.get()).status());
   }
   return std::move(reference_module);

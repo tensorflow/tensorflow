@@ -24,6 +24,7 @@ limitations under the License.
 #endif  // _WIN32
 
 #include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 using ::testing::ElementsAre;
@@ -149,7 +149,7 @@ std::vector<string> AllTensorKeys(BundleReader* reader) {
 
 // Writes out the metadata file of a bundle again, with the endianness marker
 // bit flipped.
-Status FlipEndiannessBit(const string& prefix) {
+absl::Status FlipEndiannessBit(const string& prefix) {
   Env* env = Env::Default();
   const string metadata_tmp_path = Prefix("some_tmp_path");
   std::unique_ptr<WritableFile> metadata_file;
@@ -329,7 +329,7 @@ TEST(TensorBundleTest, SwapBytes) {
   // functions. As a workaround, we make some dummy calls here.
   // TODO(frreiss): Remove this workaround when the compiler bug is fixed.
   ByteSwap(Constant_2x3<int>(42));
-  EXPECT_NE(OkStatus(), FlipEndiannessBit(Prefix("not_a_valid_prefix")));
+  EXPECT_NE(absl::OkStatus(), FlipEndiannessBit(Prefix("not_a_valid_prefix")));
 
   // Test patterns, manually swapped so that we aren't relying on the
   // correctness of our own byte-swapping macros when testing those macros.
@@ -518,7 +518,7 @@ void TestNonStandardShapes() {
 }
 
 // Writes a bundle to disk with a bad "version"; checks for "expected_error".
-void VersionTest(const VersionDef& version, StringPiece expected_error) {
+void VersionTest(const VersionDef& version, absl::string_view expected_error) {
   const string path = Prefix("version_test");
   {
     // Prepare an empty bundle with the given version information.
@@ -885,8 +885,8 @@ TEST(TensorBundleTest, DirectoryStructure) {
 
   // Ensures we have the expected files.
   auto CheckDirFiles = [env](const string& bundle_prefix,
-                             gtl::ArraySlice<string> expected_files) {
-    StringPiece dir = io::Dirname(bundle_prefix);
+                             absl::Span<const string> expected_files) {
+    absl::string_view dir = io::Dirname(bundle_prefix);
     for (const string& expected_file : expected_files) {
       TF_EXPECT_OK(env->FileExists(io::JoinPath(dir, expected_file)));
     }
@@ -998,7 +998,7 @@ TEST(TensorBundleTest, Checksum) {
   auto ExpectLookupFails = [](const string& prefix, const string& key,
                               const string& expected_msg, Tensor& val) {
     BundleReader reader(Env::Default(), Prefix(prefix));
-    Status status = reader.Lookup(key, &val);
+    absl::Status status = reader.Lookup(key, &val);
     EXPECT_TRUE(errors::IsDataLoss(status));
     EXPECT_TRUE(absl::StrContains(status.ToString(), expected_msg));
   };
@@ -1052,8 +1052,8 @@ TEST(TensorBundleTest, TruncatedTensorContents) {
   string data;
   TF_ASSERT_OK(ReadFileToString(env, datafile, &data));
   ASSERT_TRUE(!data.empty());
-  TF_ASSERT_OK(WriteStringToFile(env, datafile,
-                                 StringPiece(data.data(), data.size() - 1)));
+  TF_ASSERT_OK(WriteStringToFile(
+      env, datafile, absl::string_view(data.data(), data.size() - 1)));
 
   BundleReader reader(env, Prefix("end"));
   TF_ASSERT_OK(reader.status());

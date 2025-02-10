@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 
+#include "llvm/Support/CommandLine.h"
+
 using llvm::cl::opt;
 
 // TODO(jpienaar): Revise the command line option parsing here.
@@ -199,7 +201,7 @@ opt<bool> legalize_custom_tensor_list_ops(
 // NOLINTNEXTLINE
 opt<bool> serialize_stablehlo_ops(
     "serialize-stablehlo-ops",
-    llvm::cl::desc("Wether serialize stablehlo ops or not"),
+    llvm::cl::desc("Whether serialize stablehlo ops or not"),
     llvm::cl::init(true));
 
 // NOLINTNEXTLINE
@@ -209,3 +211,16 @@ opt<bool> reduce_type_precision(
                    "within the reduced precision range. This could have side "
                    "effects triggered by downstream packing algorithms."),
     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> enable_composite_direct_lowering(
+    "enable-composite-direct-lowering",
+    llvm::cl::desc("Whether to enable the attempt to directly lower composites "
+                   "into tflite ops or not."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<std::string> model_origin_framework(
+    "model-origin-framework",
+    llvm::cl::desc("The source model type: PYTORCH, JAX, TENSORFLOW, etc."),
+    llvm::cl::init("UNSET"));

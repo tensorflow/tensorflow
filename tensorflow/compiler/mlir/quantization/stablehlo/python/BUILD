@@ -1,3 +1,4 @@
+load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load(
     "//tensorflow:tensorflow.default.bzl",
@@ -30,6 +31,7 @@ package(
 pytype_strict_library(
     name = "quantization",
     srcs = ["quantization.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":pywrap_quantization",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_py",
@@ -45,6 +47,7 @@ pytype_strict_library(
 #     testonly = 1,
 #     srcs = ["integration_test/quantize_model_test_base.py"],
 #     tags = ["no_pip"],
+#     visibility = ["//visibility:private"],
 #     deps = [
 #         "//third_party/py/mlir:ir",
 #         "//third_party/py/mlir:stablehlo_dialect",
@@ -60,8 +63,11 @@ pytype_strict_library(
 #         "//tensorflow/python/ops:array_ops",
 #         "//tensorflow/python/ops:math_ops",
 #         "//tensorflow/python/ops:nn_ops",
+#         "//tensorflow/python/ops:variables",
 #         "//tensorflow/python/platform:client_testlib",
+#         "//tensorflow/python/platform:tf_logging",
 #         "//tensorflow/python/saved_model:load",
+#         "//tensorflow/python/saved_model:loader",
 #         "//tensorflow/python/saved_model:save",
 #         "//tensorflow/python/types:core",
 #         "@absl_py//absl/testing:parameterized",
@@ -133,6 +139,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:config",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:weight_only_ptq",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -145,13 +152,19 @@ tf_python_pybind_extension(
     name = "pywrap_quantization",
     srcs = ["pywrap_quantization.cc"],
     pytype_srcs = ["pywrap_quantization.pyi"],
+    starlark_only = True,
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     # Each dependency MUST be either header-only or exclusive.
     deps = [
-        ":pywrap_quantization_lib_header_only",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:type_casters",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:import_status_module",
         "@pybind11_abseil//pybind11_abseil:status_casters",
-    ],
+    ] + if_pywrap(
+        if_false = [":pywrap_quantization_lib_header_only"],
+        if_true = [":pywrap_quantization_lib_impl"],
+    ),
 )

@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -44,21 +43,24 @@ class HloOpProfiles {
   // Returns singleton with profiler data.
   static const HloOpProfiles& Singleton();
 
-  // Returns profile name for the gived device.
+  // Returns profile name for the given device.
   // For CUDA, the format is "sm_XX".
-  static std::string GetProfileName(const se::DeviceDescription* device_info);
+  // Returns "<unknown>" for unknown devices.
+  static std::string GetProfileName(const se::DeviceDescription& device_info);
 
   // Loads profiles from the given text proto data.
   static std::unique_ptr<HloOpProfiles> Load(
-      std::string_view profiles_text_proto,
-      std::string_view default_profile_name);
+      absl::string_view profiles_text_proto,
+      absl::string_view default_profile_name);
 
   const HloOpProfile& GetProfile(
-      const se::DeviceDescription* device_info) const;
+      const se::DeviceDescription& device_info) const;
+
+  const HloOpProfile& GetDefaultProfile() const { return default_profile_; }
 
  private:
   HloOpProfiles(ProfilesNestedMap profiles,
-                std::string_view default_profile_name)
+                absl::string_view default_profile_name)
       : profiles_(std::move(profiles)),
         default_profile_(profiles_.at(default_profile_name)) {}
 

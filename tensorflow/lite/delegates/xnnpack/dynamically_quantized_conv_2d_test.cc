@@ -26,36 +26,6 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(DynamicallyQuantizedConv2D, 1x1) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto batch_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
-  auto channel_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
-
-  DynamicallyQuantizedConv2DTester()
-      .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
-      .InputChannels(channel_rng())
-      .OutputChannels(channel_rng())
-      .KernelHeight(1)
-      .KernelWidth(1)
-      .ValidPadding()
-      .Test(xnnpack_delegate.get());
-}
-
 TEST(DynamicallyQuantizedConv2D, 3x3) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();

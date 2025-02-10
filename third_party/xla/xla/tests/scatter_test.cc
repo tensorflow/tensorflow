@@ -19,10 +19,10 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/array2d.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
@@ -890,10 +890,6 @@ ENTRY main {
 
 // TODO(b/230137437): Enable this on GPU once mhlo allows variadic scatter.
 XLA_TEST_F(ScatterTest, DISABLED_ON_GPU(Multioutput)) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Variadic scatter not supported by MLIR";
-  }
-
   constexpr char hlo_text[] = R"(
 HloModule MultioutputScatter
 

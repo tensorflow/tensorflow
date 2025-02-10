@@ -17,9 +17,11 @@ limitations under the License.
 #define XLA_SERVICE_GPU_REDUCTION_UTILS_H_
 
 #include <cstdint>
+#include <ostream>
 
+#include "absl/container/inlined_vector.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -27,7 +29,7 @@ namespace gpu {
 
 // Need at least 1024 threads/block for reasonable tree reduction
 // performance (assuming all data fits).
-int64_t MinThreadsXRowReduction(const HloModuleConfig& hlo_module_config);
+inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
@@ -45,12 +47,25 @@ struct ReductionDimensions {
   // Indicates whether the reduction is a row reduction or a column reduction.
   bool is_row_reduction;
 
-  // Contains the size of the three contiguous components for
-  // the reduction [depth, height, width] (major-to-minor ordering).
+  // We collapse contiguous reduced or kept dimensions into a single dimension
+  // for the reduction. However, for historical reasons, this is not done at the
+  // HLO level. We only support reductions where either all the reduced or all
+  // the kept dimensions are contiguous, so we end up with two types:
   //
-  // For row reduction, we do: [D, H, W] -> [D, H].
-  // For column reduction, we do: [D, H, W] -> [D, W].
+  //   row reductions:    [a, b, c] -> [b]    (a and c are reduced).
+  //   column reductions: [a, b, c] -> [a, c] (b is reduced).
+  //
+  // If the input has less than three dimensions, a (and b if it's a 1d
+  // reduction) are set to 1.
   Vector3 dimensions;
+
+  absl::InlinedVector<int64_t, 2> GetOutputShape() const {
+    if (is_row_reduction) {
+      return {dimensions[kRowKeptDimension]};
+    }
+    return {dimensions[kColMajorKeptDimension],
+            dimensions[kColMinorKeptDimension]};
+  }
 
   bool operator==(const ReductionDimensions& other) const {
     return is_row_reduction == other.is_row_reduction &&
@@ -58,14 +73,20 @@ struct ReductionDimensions {
   }
 };
 
+std::ostream& operator<<(std::ostream& os,
+                         const ReductionDimensions& reduction_dimensions);
+
 // Returns true if using the reduction emitter is estimated to be faster than
 // using the elemental emitter.
 bool IsUnnestedReductionFasterThanElemental(
-    const ReductionDimensions& reduction_dimensions);
+    const ReductionDimensions& reduction_dimensions,
+    const se::DeviceDescription& device_description);
 
 // Returns true if either the dimensions being reduced or the dimensions being
 // kept are contiguous in the input of the reduce instruction.
-bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
+bool IsReductionFromOrToContiguousDimensions(
+    const HloInstruction& reduce,
+    const se::DeviceDescription& device_description);
 
 // Given the input shape and dimensions to reduce for a reduction, returns
 // ReductionDimensions.
@@ -81,17 +102,17 @@ Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions);
 
 // How big the reduction dimension can be to be race free.
 int64_t ReductionDimensionRaceFreeBound(
-    const HloModuleConfig& hlo_module_config,
-    const ReductionDimensions& reduction_dimensions);
+    const ReductionDimensions& reduction_dimensions,
+    const se::DeviceDescription& device_description);
 
 // Returns whether the given reduction can be safely generated without atomics :
 // that is, at most one block will write to every output element.
-bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
-                         const ReductionDimensions& reduction_dimensions);
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
+                         const se::DeviceDescription& device_description);
 
 // Whether the instruction is a reduction hero for the given root.
-bool IsRealReductionHero(const HloInstruction& root,
-                         const HloInstruction& hero);
+bool IsRealReductionHero(const HloInstruction& root, const HloInstruction& hero,
+                         const se::DeviceDescription& device_description);
 
 // Whether `reduction_hero` is compatible with `first_reduce`.
 bool AreReductionsMultiOutputFusionCompatible(

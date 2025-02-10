@@ -22,15 +22,16 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 //===----------------------------------------------------------------------===//
@@ -60,6 +61,13 @@ class DefaultQuantParamsPass
     this->default_min_ = default_min;
     this->default_max_ = default_max;
     this->is_signed_ = is_signed;
+  }
+
+  explicit DefaultQuantParamsPass(
+      const DefaultQuantParamsPassOptions &options) {
+    this->default_min_ = options.default_min_;
+    this->default_max_ = options.default_max_;
+    this->is_signed_ = options.is_signed_;
   }
 
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DefaultQuantParamsPass)
@@ -152,7 +160,7 @@ void DefaultQuantParamsPass::AddToWorkListIfUnquantized(
     Value value, std::vector<Value> *values) {
   // If the result isn't with float type, this result is an integer tensor and
   // doesn't require quantization.
-  auto tensor_type = value.getType().dyn_cast<TensorType>();
+  auto tensor_type = mlir::dyn_cast<TensorType>(value.getType());
   if (!tensor_type) {
     // There are none type values.
     return;
@@ -202,9 +210,9 @@ quant::QuantParams DefaultQuantParamsPass::GetQuantParamsForBias(
   for (int non_bias : non_biases) {
     Operation *non_bias_define = op->getOperand(non_bias).getDefiningOp();
     if (auto dequant = llvm::dyn_cast<TFL::DequantizeOp>(non_bias_define)) {
-      auto non_bias_type = dequant.getInput().getType().cast<TensorType>();
+      auto non_bias_type = mlir::cast<TensorType>(dequant.getInput().getType());
       auto non_bias_ele_type =
-          non_bias_type.getElementType().cast<quant::QuantizedType>();
+          mlir::cast<quant::QuantizedType>(non_bias_type.getElementType());
       non_bias_types.push_back(non_bias_ele_type);
     } else {
       // The non-bias hasn't been quantized, let's skip this bias.
@@ -234,6 +242,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
     double default_min, double default_max, bool is_signed) {
   return std::make_unique<DefaultQuantParamsPass>(default_min, default_max,
                                                   is_signed);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
+    const DefaultQuantParamsPassOptions &options) {
+  return std::make_unique<DefaultQuantParamsPass>(options);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass() {

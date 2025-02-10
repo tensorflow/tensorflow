@@ -20,19 +20,22 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/time/time.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/distributed_runtime/call_options.h"
-#include "tsl/distributed_runtime/coordination/coordination_client.h"
-#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
-#include "tsl/protobuf/coordination_config.pb.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -124,7 +127,7 @@ class TestCoordinationClient : public CoordinationClient {
       StatusCallback done) override {
     done(absl::UnimplementedError("ReportErrorToServiceAsync"));
   }
-  void BarrierAsync(const tsl::BarrierRequest* request,
+  void BarrierAsync(CallOptions* call_opts, const tsl::BarrierRequest* request,
                     tsl::BarrierResponse* response,
                     StatusCallback done) override {
     done(absl::UnimplementedError("BarrierAsync"));
@@ -143,6 +146,11 @@ class TestCoordinationClient : public CoordinationClient {
                           tsl::CancelBarrierResponse* response,
                           StatusCallback done) override {
     done(absl::UnimplementedError("CancelBarrierAsync"));
+  }
+  void GetAliveTasksAsync(const tsl::GetAliveTasksRequest* request,
+                          tsl::GetAliveTasksResponse* response,
+                          StatusCallback done) override {
+    done(absl::UnimplementedError("GetAliveTasksAsync"));
   }
   void RegisterTaskAsync(tsl::CallOptions*,
                          const tsl::RegisterTaskRequest* request,
@@ -167,6 +175,12 @@ class TestCoordinationClient : public CoordinationClient {
                               StatusCallback done) override {
     done(absl::UnimplementedError("ReportErrorToTaskAsync"));
   }
+  void PollForErrorAsync(CallOptions* call_opts,
+                         const PollForErrorRequest* request,
+                         PollForErrorResponse* response,
+                         StatusCallback done) override {
+    done(absl::UnimplementedError("PollForErrorAsync"));
+  }
 };
 
 class CPluginCoordinationServiceAgentTest : public ::testing::Test {
@@ -177,7 +191,7 @@ class CPluginCoordinationServiceAgentTest : public ::testing::Test {
     TF_ASSERT_OK(impl_->Initialize(
         tsl::Env::Default(), /*job_name=*/"test_job",
         /*task_id=*/0, config, std::move(client_),
-        /*error_fn=*/[](Status s) {
+        /*error_fn=*/[](absl::Status s) {
           LOG(ERROR) << "Coordination agent is set to error: " << s;
         }));
   }

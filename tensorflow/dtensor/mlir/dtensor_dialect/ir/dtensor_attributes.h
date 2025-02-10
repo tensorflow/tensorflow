@@ -19,6 +19,8 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_MLIR_DTENSOR_DIALECT_IR_DTENSOR_ATTRIBUTES_H_
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
 

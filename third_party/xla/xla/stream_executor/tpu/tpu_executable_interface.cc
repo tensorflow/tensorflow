@@ -23,38 +23,40 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/layout_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/hlo_execution_profile.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 namespace {
 
 // Write the tuple index buffers (arrays of pointers).
-static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
-                                         se::Stream* stream,
-                                         se::Stream* transfer_stream) {
-  TF_ASSIGN_OR_RETURN(auto transfer_manager, TransferManager::GetForPlatform(
-                                                 stream->parent()->platform()));
+static absl::Status PopulateResultTupleBuffers(const ShapedBuffer& result,
+                                               se::Stream* stream,
+                                               se::Stream* transfer_stream) {
+  TF_ASSIGN_OR_RETURN(
+      auto transfer_manager,
+      TransferManager::GetForPlatform(stream->parent()->GetPlatform()));
   if (transfer_manager->CanShapedBufferBeAccessedNow(stream->parent(),
                                                      result)) {
     TF_RETURN_IF_ERROR(transfer_manager->WriteTupleIndexTablesAsync(
@@ -77,7 +79,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
     std::vector<ExecutionInput>* arguments, se::Stream* stream,
     se::Stream* transfer_stream) {
   auto stream_exec = stream->parent();
-  auto platform = stream_exec->platform();
+  auto platform = stream_exec->GetPlatform();
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
@@ -101,7 +103,8 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
 
   TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
-          std::optional<HloInputOutputAliasConfig::Alias> alias) {
+          std::optional<HloInputOutputAliasConfig::Alias> alias)
+          -> absl::Status {
         if (alias && alias->must_alias()) {
           VLOG(1) << alias->ToString();
           const MaybeOwningDeviceMemory& original_input =
@@ -206,8 +209,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
 
 absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ExecutionInput> arguments,
-    HloExecutionProfile* /*hlo_execution_profile*/) {
+    std::vector<ExecutionInput> arguments) {
   std::vector<se::DeviceMemoryBase> memory_bases;
   memory_bases.reserve(arguments.size());
   for (auto& argument : arguments) {

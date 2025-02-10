@@ -19,14 +19,11 @@ limitations under the License.
 #include <vector>
 
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/framework/allocator.h"
-#include "tsl/framework/device_id.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/device_id.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace stream_executor {
-
-// The type of memory that the allocator will use.
-enum class MemoryType { kDevice = 0, kUnified, kCollective, kHost = 5 };
 
 // Suballocator for StreamExecutor-based device memory.
 class DeviceMemAllocator : public tsl::SubAllocator {
@@ -34,15 +31,12 @@ class DeviceMemAllocator : public tsl::SubAllocator {
   // 'platform_device_id' refers to the ID of the device within
   // the process and must reference a valid ID in the process.
   // Note: stream_exec cannot be null.
-  explicit DeviceMemAllocator(StreamExecutor* stream_exec,
-                              tsl::PlatformDeviceId device_id,
-                              MemoryType memory_type,
-                              const std::vector<Visitor>& alloc_visitors,
-                              const std::vector<Visitor>& free_visitors)
-      : SubAllocator(alloc_visitors, free_visitors),
+  DeviceMemAllocator(StreamExecutor* stream_exec,
+                     tsl::PlatformDeviceId device_id,
+                     const std::vector<Visitor>& alloc_visitors = {})
+      : SubAllocator(alloc_visitors, {}),
         stream_exec_(stream_exec),
-        device_id_(device_id),
-        memory_type_(memory_type) {
+        device_id_(device_id) {
     CHECK(stream_exec_ != nullptr);
   }
 
@@ -55,20 +49,7 @@ class DeviceMemAllocator : public tsl::SubAllocator {
     void* ptr = nullptr;
     *bytes_received = num_bytes;
     if (num_bytes > 0) {
-      if (memory_type_ == MemoryType::kUnified) {
-        ptr = stream_exec_->UnifiedMemoryAllocate(num_bytes);
-      } else if (memory_type_ == MemoryType::kCollective) {
-        auto status_or = stream_exec_->CollectiveMemoryAllocate(num_bytes);
-        CHECK(status_or.ok()) << status_or.status().message();
-        ptr = status_or.value();
-      } else if (memory_type_ == MemoryType::kHost) {
-        // Convert size_t to long unsigned int
-        long unsigned int value = static_cast<long unsigned int>(num_bytes);
-        auto status_or = stream_exec_->HostMemoryAllocate(value);
-        CHECK(status_or.ok()) << status_or.status().message();
-      } else {
-        ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
-      }
+      ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
       VisitAlloc(ptr, device_id_.value(), num_bytes);
     }
     return ptr;
@@ -79,17 +60,8 @@ class DeviceMemAllocator : public tsl::SubAllocator {
 
     if (ptr != nullptr) {
       VisitFree(ptr, device_id_.value(), num_bytes);
-      if (memory_type_ == MemoryType::kUnified) {
-        stream_exec_->UnifiedMemoryDeallocate(ptr);
-      } else if (memory_type_ == MemoryType::kCollective) {
-        auto status = stream_exec_->CollectiveMemoryDeallocate(ptr);
-        CHECK(status.ok()) << status.message();
-      } else if (memory_type_ == MemoryType::kHost) {
-        stream_exec_->HostMemoryDeallocate(ptr, num_bytes);
-      } else {
-        DeviceMemoryBase device_ptr(ptr);
-        stream_exec_->Deallocate(&device_ptr);
-      }
+      DeviceMemoryBase device_ptr(ptr);
+      stream_exec_->Deallocate(&device_ptr);
     }
   }
 
@@ -102,7 +74,6 @@ class DeviceMemAllocator : public tsl::SubAllocator {
  private:
   StreamExecutor* stream_exec_;  // not owned, non-null
   const tsl::PlatformDeviceId device_id_;
-  const MemoryType memory_type_ = MemoryType::kDevice;
 
   DeviceMemAllocator(const DeviceMemAllocator&) = delete;
   void operator=(const DeviceMemAllocator&) = delete;

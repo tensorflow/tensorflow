@@ -23,18 +23,28 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
-#include "ducc/google/fft.h"  // from @ducc
-#include "Eigen/ThreadPool"  // from @eigen_archive
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive  // For ThreadPoolDevice.
+#include "ducc/google/fft.h"
+#include "Eigen/ThreadPool"
+#include "unsupported/Eigen/CXX11/Tensor"  // For ThreadPoolDevice.
 #include "xla/executable_run_options.h"
 
-ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_DuccFft(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_LegacyDuccFft(
     const void *run_options_ptr, void *out, void *operand, int32_t fft_type,
     int32_t double_precision, int32_t fft_rank, const int64_t *input_shape,
     const int64_t *fft_length) {
   const xla::ExecutableRunOptions *run_options =
       static_cast<const xla::ExecutableRunOptions *>(run_options_ptr);
+  const Eigen::ThreadPoolDevice *thread_pool_device =
+      run_options == nullptr ? nullptr : run_options->intra_op_thread_pool();
+  __xla_cpu_runtime_DuccFft(thread_pool_device, out, operand, fft_type,
+                            double_precision, fft_rank, input_shape,
+                            fft_length);
+}
 
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_DuccFft(
+    const void *thread_pool_ptr, void *out, void *operand, int32_t fft_type,
+    int32_t double_precision, int32_t fft_rank, const int64_t *input_shape,
+    const int64_t *fft_length) {
   bool forward = (fft_type == /*FFT*/ 0 || fft_type == /*RFFT*/ 2);
   bool real = (fft_type == /*RFFT*/ 2 || fft_type == /*IRFFT*/ 3);
 
@@ -83,11 +93,10 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_DuccFft(
   }
   double scale = forward ? 1.0 : 1.0 / inv_scale;
 
+  const Eigen::ThreadPoolDevice *thread_pool_device =
+      static_cast<const Eigen::ThreadPoolDevice *>(thread_pool_ptr);
   Eigen::ThreadPoolInterface *thread_pool =
-      run_options == nullptr ? nullptr
-      : run_options->intra_op_thread_pool() == nullptr
-          ? nullptr
-          : run_options->intra_op_thread_pool()->getPool();
+      thread_pool_device == nullptr ? nullptr : thread_pool_device->getPool();
 
   if (!real) {
     if (double_precision) {

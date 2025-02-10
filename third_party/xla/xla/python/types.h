@@ -24,74 +24,79 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "pybind11/numpy.h"  // from @pybind11
-#include "pybind11/pybind11.h"  // from @pybind11
-#include "pybind11/pytypes.h"  // from @pybind11
-#include "pybind11/stl.h"  // from @pybind11
-#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "nanobind/nanobind.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
 // Converts a NumPy dtype to a PrimitiveType.
-absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(
-    const pybind11::dtype& np_type);
-
 absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type);
 
 // Converts a PrimitiveType to a Numpy dtype.
-absl::StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
 absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type);
 
 // Converts an IFRT dtype to a NumPy dtype.
-absl::StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype);
 absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype);
 
-StatusOr<ifrt::DType> DtypeToIfRtDType(pybind11::dtype dtype);
+absl::StatusOr<ifrt::DType> DtypeToIfRtDType(nb_dtype dtype);
+
+// Converts an IFRT dtype to a NumPy dtype. It specially converts `kToken` into
+// bool to avoid exposing the token type to the JAX dtype system, expecting JAX
+// internals to use a bool array to express a token input/output.
+absl::StatusOr<nb_dtype> IfrtDtypeToDtypeWithTokenCanonicalization(
+    ifrt::DType dtype);
 
 // Returns a Python buffer protocol (PEP 3118) format descriptor string for
 // `type`. Return nullptr if there is no suitable choice of format string.
 const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type);
 
 // Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
-absl::StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(
+absl::StatusOr<nanobind::str> TypeDescriptorForPrimitiveType(
     PrimitiveType type);
 
 struct NumpyScalarTypes {
-  pybind11::object np_bool;
-  pybind11::object np_int4;
-  pybind11::object np_int8;
-  pybind11::object np_int16;
-  pybind11::object np_int32;
-  pybind11::object np_int64;
-  pybind11::object np_uint4;
-  pybind11::object np_uint8;
-  pybind11::object np_uint16;
-  pybind11::object np_uint32;
-  pybind11::object np_uint64;
-  pybind11::object np_bfloat16;
-  pybind11::object np_float8_e4m3fn;
-  pybind11::object np_float8_e4m3b11fnuz;
-  pybind11::object np_float8_e4m3fnuz;
-  pybind11::object np_float8_e5m2;
-  pybind11::object np_float8_e5m2fnuz;
-  pybind11::object np_float16;
-  pybind11::object np_float32;
-  pybind11::object np_float64;
-  pybind11::object np_complex64;
-  pybind11::object np_complex128;
-  pybind11::object np_longlong;
-  pybind11::object np_intc;
+  nanobind::object np_bool;
+  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.4.1.
+  std::optional<nanobind::object> np_int2;
+  nanobind::object np_int4;
+  nanobind::object np_int8;
+  nanobind::object np_int16;
+  nanobind::object np_int32;
+  nanobind::object np_int64;
+  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.4.1.
+  std::optional<nanobind::object> np_uint2;
+  nanobind::object np_uint4;
+  nanobind::object np_uint8;
+  nanobind::object np_uint16;
+  nanobind::object np_uint32;
+  nanobind::object np_uint64;
+  nanobind::object np_bfloat16;
+  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.5.0.
+  std::optional<nanobind::object> np_float4_e2m1fn;
+  std::optional<nanobind::object> np_float8_e3m4;
+  std::optional<nanobind::object> np_float8_e4m3;
+  nanobind::object np_float8_e4m3fn;
+  nanobind::object np_float8_e4m3b11fnuz;
+  nanobind::object np_float8_e4m3fnuz;
+  nanobind::object np_float8_e5m2;
+  nanobind::object np_float8_e5m2fnuz;
+  std::optional<nanobind::object> np_float8_e8m0fnu;
+  nanobind::object np_float16;
+  nanobind::object np_float32;
+  nanobind::object np_float64;
+  nanobind::object np_complex64;
+  nanobind::object np_complex128;
+  nanobind::object np_longlong;
+  nanobind::object np_intc;
 };
 const NumpyScalarTypes& GetNumpyScalarTypes();
 
@@ -115,22 +120,6 @@ std::vector<int64_t> StridesForShape(PrimitiveType element_type,
 absl::StatusOr<nanobind::object> LiteralToPython(
     std::shared_ptr<Literal> literal);
 
-// Converts a sequence of C++ ints to a Python tuple of ints.
-// Pybind11 by default converts a std::vector<T> to a Python list;
-// we frequently want a tuple instead e.g. for shapes.
-template <typename T>
-pybind11::tuple SpanToTuple(absl::Span<T const> xs) {
-  pybind11::tuple out(xs.size());
-  for (int i = 0; i < xs.size(); ++i) {
-    out[i] = pybind11::cast(xs[i]);
-  }
-  return out;
-}
-template <>
-pybind11::tuple SpanToTuple(absl::Span<int const> xs);
-template <>
-pybind11::tuple SpanToTuple(absl::Span<int64_t const> xs);
-
 template <typename T>
 nanobind::tuple SpanToNbTuple(absl::Span<T const> xs) {
   nanobind::tuple out =
@@ -144,25 +133,6 @@ nanobind::tuple SpanToNbTuple(absl::Span<T const> xs) {
 // Converts a sequence of Python objects to a Python tuple, stealing the
 // references to the objects.
 nanobind::tuple MutableSpanToNbTuple(absl::Span<nanobind::object> xs);
-
-// Converts a Python iterable/sequence of T to std::vector<T>
-template <typename T>
-std::vector<T> IterableToVector(const pybind11::iterable& iterable) {
-  std::vector<T> output;
-  for (auto item : iterable) {
-    output.push_back(item.cast<T>());
-  }
-  return output;
-}
-template <typename T>
-std::vector<T> SequenceToVector(const pybind11::sequence& sequence) {
-  std::vector<T> output;
-  output.reserve(sequence.size());
-  for (auto item : sequence) {
-    output.push_back(item.cast<T>());
-  }
-  return output;
-}
 
 template <typename T>
 std::vector<T> IterableToVector(const nanobind::iterable& iterable) {
@@ -194,81 +164,6 @@ std::optional<CastToArrayResult> CastToArray(nanobind::handle h);
 
 }  // namespace xla
 
-// This namespace is a documented pybind11 extension point.
-// Caution: Unusually for Google code, this code uses C++ exceptions because
-// they are the only mechanism for reporting cast failures to pybind11. However,
-// the exceptions are local to the binding code.
-namespace pybind11 {
-namespace detail {
-
-// Literals.
-// Literal data can be passed to XLA as a NumPy array; its value can be
-// cast to an xla::BorrowingLiteral or xla::LiteralSlice in a zero-copy way.
-// We don't have any literal -> numpy conversions here, since all the methods
-// that want to return arrays build Python objects directly.
-
-template <>
-struct type_caster<xla::BorrowingLiteral> {
- public:
-  PYBIND11_TYPE_CASTER(xla::BorrowingLiteral, _("xla::BorrowingLiteral"));
-
-  // Pybind appears to keep type_casters alive until the callee has run.
-  absl::InlinedVector<pybind11::array, 1> arrays;
-
-  bool load(handle input, bool) {
-    // TODO(b/79707221): support nested tuples if/when XLA adds support for
-    // nested BorrowingLiterals.
-    if (pybind11::isinstance<pybind11::tuple>(input)) {
-      pybind11::tuple tuple =
-          pybind11::reinterpret_borrow<pybind11::tuple>(input);
-      std::vector<xla::Shape> shapes;
-      std::vector<const char*> buffers;
-      arrays.reserve(tuple.size());
-      shapes.reserve(tuple.size());
-      buffers.reserve(tuple.size());
-      for (pybind11::handle entry : tuple) {
-        auto c = xla::CastToArray(entry.ptr());
-        if (!c) {
-          return false;
-        }
-        arrays.push_back(reinterpret_borrow<object>(c->array.ptr()));
-        buffers.push_back(c->buf_ptr);
-        shapes.push_back(c->shape);
-      }
-      value = xla::BorrowingLiteral(buffers,
-                                    xla::ShapeUtil::MakeTupleShape(shapes));
-    } else {
-      auto c = xla::CastToArray(input.ptr());
-      if (!c) {
-        return false;
-      }
-      arrays.push_back(reinterpret_borrow<object>(c->array.ptr()));
-      value = xla::BorrowingLiteral(c->buf_ptr, c->shape);
-    }
-    return true;
-  }
-};
-
-template <>
-struct type_caster<xla::LiteralSlice> {
- public:
-  PYBIND11_TYPE_CASTER(xla::LiteralSlice, const_name("xla::LiteralSlice"));
-
-  // Pybind appears to keep type_casters alive until the callee has run.
-  type_caster<xla::BorrowingLiteral> literal_caster;
-
-  bool load(handle handle, bool convert) {
-    if (!literal_caster.load(handle, convert)) {
-      return false;
-    }
-    value = static_cast<const xla::BorrowingLiteral&>(literal_caster);
-    return true;
-  }
-};
-
-}  // namespace detail
-}  // namespace pybind11
-
 namespace nanobind {
 namespace detail {
 
@@ -293,7 +188,7 @@ struct type_caster<xla::BorrowingLiteral> {
   // Pybind appears to keep type_casters alive until the callee has run.
   absl::InlinedVector<nanobind::object, 1> arrays;
 
-  bool from_python(handle input, uint8_t, cleanup_list*) {
+  bool from_python(handle input, uint8_t, cleanup_list*) noexcept {
     // TODO(b/79707221): support nested tuples if/when XLA adds support for
     // nested BorrowingLiterals.
     if (nanobind::isinstance<nanobind::tuple>(input)) {
@@ -334,7 +229,8 @@ struct type_caster<xla::LiteralSlice> {
   // Pybind appears to keep type_casters alive until the callee has run.
   type_caster<xla::BorrowingLiteral> literal_caster;
 
-  bool from_python(handle handle, uint8_t flags, cleanup_list* cleanup) {
+  bool from_python(handle handle, uint8_t flags,
+                   cleanup_list* cleanup) noexcept {
     if (!literal_caster.from_python(handle, flags, cleanup)) {
       return false;
     }

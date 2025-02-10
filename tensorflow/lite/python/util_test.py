@@ -274,7 +274,7 @@ def _generate_integer_tflite_model(quantization_type=dtypes.int8,
     # Convert TF Model to an Integer Quantized TFLite Model
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
   else:
-    model.save(saved_model_dir)
+    tf.saved_model.save(model, saved_model_dir)
     converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
   converter.optimizations = {tf.lite.Optimize.DEFAULT}
 

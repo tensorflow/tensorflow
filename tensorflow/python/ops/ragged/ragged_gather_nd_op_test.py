@@ -194,9 +194,19 @@ class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
               ragged_rank=2),
           indices=[[0, 0, 1], [0, 0, 0], [0, 1, 0]],
           expected=[[b'c', b'd'], [b'a', b'b'], [b'e', b'f']]),
+      dict(
+          descr=('Pass through bad_indices_policy for non ragged params+indices'),
+          params=[1, 3, 5, 7],
+          indices=[[3], [999], [1], [0]],
+          expected=[7, 0, 3, 1],
+          bad_indices_policy='IGNORE'),
   ])  # pyformat: disable
-  def testRaggedGatherNd(self, descr, params, indices, expected):
-    result = ragged_gather_ops.gather_nd(params, indices)
+  def testRaggedGatherNd(
+      self, descr, params, indices, expected, bad_indices_policy=''
+  ):
+    result = ragged_gather_ops.gather_nd(
+        params, indices, bad_indices_policy=bad_indices_policy
+    )
     self.assertAllEqual(result, expected)
 
   def testRaggedGatherNdUnknownRankError(self):
@@ -217,23 +227,39 @@ class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
       dict(
           params=['a'],
           indices=0,
-          error=(ValueError, errors.InvalidArgumentError)),
+          error=(ValueError, errors.InvalidArgumentError),
+      ),
       dict(
           params=ragged_factory_ops.constant_value([['a']]),
           indices=0,
-          message='indices.rank must be at least 1.'),
+          message='indices.rank must be at least 1.',
+      ),
       dict(
           params=['a', 'b', 'c'],
           indices=ragged_factory_ops.constant_value([[0]]),
-          message='The innermost dimension of indices may not be ragged'),
+          message='The innermost dimension of indices may not be ragged',
+      ),
+      dict(
+          params=ragged_factory_ops.constant_value([['a', 'b', 'c'], ['d']]),
+          indices=np.zeros([1, 3, 0], dtype=np.int32),
+          bad_indices_policy='IGNORE',
+          message=(
+              'non-default bad_indices_policy not supported for ragged gather'
+          ),
+      ),
   ])
-  def testRaggedGatherNdStaticError(self,
-                                    params,
-                                    indices,
-                                    message=None,
-                                    error=ValueError):
+  def testRaggedGatherNdStaticError(
+      self,
+      params,
+      indices,
+      bad_indices_policy='',
+      message=None,
+      error=ValueError,
+  ):
     with self.assertRaisesRegex(error, message):
-      ragged_gather_ops.gather_nd(params, indices)
+      ragged_gather_ops.gather_nd(
+          params, indices, bad_indices_policy=bad_indices_policy
+      )
 
 
 if __name__ == '__main__':

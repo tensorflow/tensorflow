@@ -46,8 +46,9 @@ struct InferReturnTypesPattern : public RewritePattern {
     SmallVector<Type, 4> types;
     if (failed(definingOpInt.inferReturnTypes(
             op->getContext(), op->getLoc(), definingOp->getOperands(),
-            definingOp->getAttrDictionary(), op->getPropertiesStorage(),
-            definingOp->getRegions(), types))) {
+            definingOpInt->getAttrDictionary(),
+            definingOpInt->getPropertiesStorage(), definingOpInt->getRegions(),
+            types))) {
       return failure();
     }
 
@@ -94,8 +95,7 @@ struct TestInferShapedTypeMethodsPass
     RewritePatternSet patterns(&getContext());
     patterns.add<InferReturnTypesPattern>(&getContext());
     patterns.add<ReifyReturnTypeShapesPattern>(&getContext());
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
   }

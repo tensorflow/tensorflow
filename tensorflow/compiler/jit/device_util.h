@@ -20,11 +20,12 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/numeric/bits.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
@@ -79,7 +80,7 @@ class DeviceSet {
         uint64 only_lowest_bit_set = word & -word;
         // The number of trailing zeros in a non-zero word is the index of the
         // least significant 1.
-        int bit_index = ctz_uint64(word);
+        int bit_index = absl::countr_zero(word);
         if (!func(DeviceId(word_index * kWordSize + bit_index))) {
           return;
         }
@@ -89,20 +90,6 @@ class DeviceSet {
   }
 
  private:
-  static int ctz_uint64(uint64 x) {
-    DCHECK_NE(x, 0);
-#ifdef __GNUC__
-    return __builtin_ctzl(x);
-#else
-    int result = 0u;
-    while ((x & 1u) == 0u) {
-      x >>= 1;
-      ++result;
-    }
-    return result;
-#endif
-  }
-
   absl::InlinedVector<uint64, 1> storage_;
 
   const int kWordSize = 64;
@@ -162,7 +149,8 @@ class DeviceInfoCache {
 }  // namespace jit
 
 // Returns the DeviceType corresponding to 'device'.
-Status DeviceNameToDeviceType(const string& device, DeviceType* device_type);
+absl::Status DeviceNameToDeviceType(const string& device,
+                                    DeviceType* device_type);
 
 // Picks the device for which XLA should compile a cluster that contains
 // operations placed in devices in `devices`.  For instance a cluster that

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RiscConv"
   input_arg {
     name: "input"

@@ -56,7 +56,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       // the inner stride is one.
       // TODO(herhut): Insert asserts in debug mode to check this.
       for (auto argument : function.getArguments()) {
-        if (argument.getType().isa<BaseMemRefType>()) {
+        if (mlir::isa<BaseMemRefType>(argument.getType())) {
           worklist.push_back(argument);
           allocated_by_tf_runtime.insert(argument);
           offset_is_zero.insert(argument);
@@ -95,7 +95,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       llvm::SmallDenseMap<int64_t, Value> constants;
       auto loc = kernel.getLoc();
       for (auto operand : launch.getKernelOperands()) {
-        auto memref = operand.getType().dyn_cast<MemRefType>();
+        auto memref = mlir::dyn_cast<MemRefType>(operand.getType());
         if (!memref) {
           // Scalar argument, advance kernel position by one.
           kernel_p++;

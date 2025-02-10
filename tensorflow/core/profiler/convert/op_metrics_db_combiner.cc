@@ -42,6 +42,9 @@ void CopyOpMetricsMetadata(const OpMetrics& src, OpMetrics* dst) {
   if (dst->long_name().empty()) {
     dst->set_long_name(src.long_name());
   }
+  if (dst->fingerprint() == 0) {
+    dst->set_fingerprint(src.fingerprint());
+  }
   if (dst->category().empty()) {
     dst->set_category(src.category());
   }
@@ -122,11 +125,14 @@ void OpMetricsDbCombiner::Combine(const OpMetricsDb& src,
       dst->total_host_infeed_enq_start_timestamp_ps_diff());
   dst->set_total_time_ps(src.total_time_ps() + dst->total_time_ps());
   dst->set_total_op_time_ps(src.total_op_time_ps() + dst->total_op_time_ps());
+  dst->set_idle_time_ps(src.idle_time_ps() + dst->idle_time_ps());
+  dst->set_busy_time_ps(src.busy_time_ps() + dst->busy_time_ps());
   CombinePrecisionStats(src.precision_stats(), dst->mutable_precision_stats());
 
   for (const auto& src_metrics : src.metrics_db()) {
     auto* dst_metrics = LookupOrInsertNewOpMetrics(src_metrics.hlo_module_id(),
-                                                   src_metrics.name());
+                                                   src_metrics.name(),
+                                                   src_metrics.fingerprint());
     CopyOpMetricsMetadata(src_metrics, dst_metrics);
     CombineOpMetrics(src_metrics, dst_metrics, update_num_cores);
   }

@@ -1,8 +1,8 @@
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "genrule")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -130,7 +130,6 @@ genrule(
 # suffix, mlir_component
 tfcompile_test_dep_configs = [
     ("", "None"),
-    ("_mlir_bridge", "Bridge"),
 ]
 
 [
@@ -356,16 +355,6 @@ test_suite(
     visibility = ["//visibility:public"],
 )
 
-test_suite(
-    name = "all_tfmatmul_mlir_benchmarks",
-    tags = ["manual"],
-    tests = [
-        (":%s_mlir_test" % bench_name)
-        for (bench_name, _, _, _) in tfcompile_bench_tfmatmul
-    ],
-    visibility = ["//visibility:public"],
-)
-
 [[
     genrule(
         name = "gen_" + config_file,
@@ -389,51 +378,6 @@ test_suite(
         ],
     ),
 ] for (bench_name, config_file, template_file, sed_replace) in tfcompile_bench_tfmatmul]
-
-tfcompile_bench_tfmatmul_tile_mkn = [
-    # Intentionally empty to avoid running unnecessary tests.
-    # Add here your desired (M, K, N) parameters, e.g.
-    #    (1, 2, 8),
-    #    (1, 4, 4),
-]
-
-tfcompile_bench_tfmatmul_custom_tiling = [
-    (
-        "bench_graph_tfmatmul_%sx%sx%s_tiled_%sx%sx%s_mlir" % (m, k, n, tm, tk, tn),
-        "bench_graph_tfmatmul_%sx%sx%s_tiled_%sx%sx%s_mlir.config.pbtxt" % (m, k, n, tm, tk, tn),
-        "bench_graph_tfmatmul.template.pbtxt",
-        "-e \"s|<M>|%s|g\" -e \"s|<K>|%s|g\" -e \"s|<N>|%s|g\"" % (m, k, n),
-        "--xla_cpu_enable_custom_matmul_tiling --xla_cpu_matmul_tiling_m_dim=%s --xla_cpu_matmul_tiling_k_dim=%s --xla_cpu_matmul_tiling_n_dim=%s" % (tm, tk, tn),
-    )
-    for (m, k, n) in tfcompile_bench_tfmatmul_mkn
-    for (tm, tk, tn) in tfcompile_bench_tfmatmul_tile_mkn
-]
-
-[[
-    genrule(
-        name = "gen_" + config_file,
-        testonly = 1,
-        srcs = [template_file],
-        outs = [config_file],
-        cmd = ("sed " + sed_replace + " " +
-               "$(location " + template_file + ") " +
-               "> $(OUTS)"),
-        tags = ["manual"],
-    ),
-    tf_library(
-        name = bench_name,
-        testonly = 1,
-        config = config_file,
-        cpp_class = "foo::bar::MatMulComp",
-        graph = "test_graph_tfmatmul.pb",
-        mlir_components = "HloLowering",  # XLA:CPU-Next only.
-        tags = [
-            "manual",
-            "no_mac",  # TODO(b/228273415)
-        ],
-        xla_flags = xla_flags,
-    ),
-] for (bench_name, config_file, template_file, sed_replace, xla_flags) in tfcompile_bench_tfmatmul_custom_tiling]
 
 tf_cc_test(
     name = "tfcompile_test",
@@ -466,46 +410,8 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla:test",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/service:hlo_profile_printer",
-    ],
-)
-
-tf_cc_test(
-    name = "tfcompile_test_mlir_bridge",
-    srcs = ["tfcompile_test.cc"],
-    extra_copts = ["-DENABLE_MLIR_BRIDGE_TEST"],
-    tags = [
-        "manual",
-        "no_mac",  # TODO(b/228273415)
-        "not_run:arm",
-    ],
-    deps = [
-        ":test_graph_tfadd_mlir_bridge",
-        ":test_graph_tfadd_with_ckpt_mlir_bridge",
-        ":test_graph_tfadd_with_ckpt_saver_mlir_bridge",
-        ":test_graph_tfassert_eq_mlir_bridge",
-        ":test_graph_tfcond_mlir_bridge",
-        ":test_graph_tffunction_mlir_bridge",
-        ":test_graph_tfgather_mlir_bridge",
-        ":test_graph_tfmatmul_mlir_bridge",
-        ":test_graph_tfmatmulandadd_mlir_bridge",
-        ":test_graph_tfmatmulandadd_with_profiling_mlir_bridge",
-        ":test_graph_tfsplits_mlir_bridge",
-        ":test_graph_tftop_k_mlir_bridge",
-        ":test_graph_tfvariable_mlir_bridge",
-        ":test_graph_tfvariable_readonly_mlir_bridge",
-        ":test_graph_tfvariable_sequential_updates_mlir_bridge",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:regexp",
-        "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:test",
-        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/testlib:test",
         "@local_xla//xla/service:hlo_profile_printer",
     ],
 )

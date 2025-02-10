@@ -32,16 +32,12 @@ tf_cc_binary(
     }),
     deps = select({
         "//tensorflow:android": [
-            # cc:cc_ops is used to include image ops (for label_image)
-            # Jpg, gif, and png related code won't be included
-            "//tensorflow/cc:cc_ops",
             "//tensorflow/core:portable_tensorflow_lib",
             # cc:android_tensorflow_image_op is for including jpeg/gif/png
             # decoder to enable real-image evaluation on Android
             "//tensorflow/core/kernels/image:android_tensorflow_image_op",
         ],
         "//conditions:default": [
-            "//tensorflow/cc:cc_ops",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -49,15 +45,24 @@ tf_cc_binary(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:tensorflow",
         ],
-    }),
+    }) + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "@local_xla//xla/tsl/util:command_line_flags",
+        "@local_xla//xla/tsl/platform:status",
+        "@local_xla//xla/tsl/platform:types",
+        # cc:cc_ops is used to include image ops (for label_image)
+        # Jpg, gif, and png related code won't be included
+        "//tensorflow/cc:cc_ops",
+    ],
 )
 
 py_strict_binary(
     name = "label_image_py",
     srcs = ["label_image.py"],
     main = "label_image.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",

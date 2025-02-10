@@ -1,0 +1,48 @@
+# Copyright 2024 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+name: Bazel Query
+permissions:
+  contents: read
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+env:
+  # Have `go install` place binaries in $PATH
+  GOBIN: "/usr/local/bin"
+
+jobs:
+  bazel-query:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 6
+    steps:
+      - name: "Checking out repository"
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: "Install bazelisk"
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
+      - name: "Run bazel build --nobuild //xla/... with retries"
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazelisk build --nobuild //xla/...
+      - name: "Run bazel query //xla/..."
+        run: bazelisk query //xla/... > /dev/null
+      - name: "Run bazel query deps(//xla/...)"
+        run: bazelisk query "deps(//xla/...)" > /dev/null
+      - name: "Check that TSL doesn't depend on XLA"
+        run: |
+          bazelisk query "somepath(//xla/tsl/..., //xla/... -//xla/tsl/...)" |& tee /dev/fd/2 | grep -q "INFO: Empty results"

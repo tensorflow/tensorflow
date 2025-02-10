@@ -20,7 +20,9 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -29,12 +31,12 @@ namespace TF {
 std::string GetDeviceAttrAsResourceInstanceStr(Operation* op);
 
 void MarkResourceAsReadAndWrite(
-    Value value,
+    OpOperand& op_operand,
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
         effect);
 
 void MarkResourceAsReadOnly(
-    Value value,
+    OpOperand& op_operand,
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
         effect);
 

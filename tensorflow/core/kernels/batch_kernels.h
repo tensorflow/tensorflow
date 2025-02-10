@@ -17,14 +17,15 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BATCH_KERNELS_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/platform/types.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/types.h"
 
 namespace tensorflow {
 
@@ -77,16 +78,16 @@ class BatchFunctionKernel : public AsyncOpKernel {
   // If large batch split is not enabled, the last one must equal
   // `max_batch_size_`. otherwise the last element must be smaller than or equal
   // to `max_batch_size_`.
-  Status ValidateAllowedBatchSizes() const;
+  absl::Status ValidateAllowedBatchSizes() const;
 
   // Creates the function handle if it isn't initialized yet; and re-use it
   // afterwards.
-  Status GetOrCreateFunctionHandle(OpKernelContext* c,
-                                   FunctionLibraryRuntime::Handle* handle);
+  absl::Status GetOrCreateFunctionHandle(
+      OpKernelContext* c, FunctionLibraryRuntime::Handle* handle);
 
   // Instantiate the user-defined function and emits `handle`.
-  Status InstantiateFunction(OpKernelContext* c,
-                             FunctionLibraryRuntime::Handle* handle) const;
+  absl::Status InstantiateFunction(
+      OpKernelContext* c, FunctionLibraryRuntime::Handle* handle) const;
 
   // Initialize vars by reading from op-kernel-construction.
   // Vars
@@ -109,6 +110,8 @@ class BatchFunctionKernel : public AsyncOpKernel {
   int32 low_priority_batch_timeout_micros_;
   int32 low_priority_max_enqueued_batches_;
   std::vector<int32> low_priority_allowed_batch_sizes_;
+  std::string mixed_priority_policy_;
+  std::string batch_padding_policy_;
   NameAttrList func_;
   absl::optional<FunctionLibraryRuntime::Handle> fhandle_ TF_GUARDED_BY(mu_);
   bool enable_large_batch_splitting_ = false;

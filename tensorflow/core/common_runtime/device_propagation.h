@@ -27,7 +27,7 @@ namespace tensorflow {
 
 namespace device_propagation {
 
-typedef std::function<bool(StringPiece)> DeviceFilter;
+typedef std::function<bool(absl::string_view)> DeviceFilter;
 typedef std::function<bool(const Node&)> NodeFilter;
 }  // namespace device_propagation
 

@@ -51,16 +51,20 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/update_op_cost_in_tfrt_mlir.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/lib/monitoring/sampler.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -94,8 +98,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/lib/monitoring/sampler.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/refcount.h"
 #include "tsl/platform/statusor.h"
@@ -132,9 +134,15 @@ StepId GetNextStepId() {
   return gen.GetNextStepId();
 }
 
+auto* graph_executor_mode = monitoring::Gauge<std::string, 2>::New(
+    "/tfrt/graph_executor/mode",
+    "Record the total number of imported savedmodel using different graph "
+    "executor modes (BEF vs MLRT interpreter)",
+    "model_name", "model_version");
+
 }  // namespace
 
-tensorflow::Status RunMlrtFunction(
+absl::Status RunMlrtFunction(
     mlrt::bc::Function function,
     const mlrt::LoadedExecutable& loaded_executable,
     const tsl::RCReference<tfrt::RequestContext>& request_context,
@@ -161,6 +169,16 @@ tensorflow::Status RunMlrtFunction(
   execution_context.AddUserContext(std::make_unique<tf_mlrt::Context>(
       fallback_request_state, request_context->resource_context(),
       request_context->cancellation_context().get()));
+  execution_context.AddUserErrorLogger(
+      [fallback_request_state](absl::Status status) {
+        if (fallback_request_state) {
+          LOG(ERROR) << "Model "
+                     << fallback_request_state->session_metadata().name()
+                     << " version "
+                     << fallback_request_state->session_metadata().version()
+                     << " has error: " << status;
+        }
+      });
 
   absl::InlinedVector<mlrt::Value, 4> mlrt_inputs;
   mlrt_inputs.reserve(inputs.size());
@@ -201,7 +219,7 @@ tensorflow::Status RunMlrtFunction(
     outputs->push_back(std::move(mlrt_output.Get<FallbackTensor>().tensor()));
   }
 
-  return tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
@@ -284,7 +302,7 @@ absl::StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
   return request_info;
 }
 
-tensorflow::Status GraphExecutionRunOnFunction(
+absl::Status GraphExecutionRunOnFunction(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
     absl::string_view signature_name, const SymbolUids& symbol_uids,
@@ -313,7 +331,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
   // will add TraceMeProducer and TraceMeConsumer to connect async tasks.
   tsl::profiler::TraceMe traceme(
       [request_id, signature_name, &options, symbol_uids] {
-        return tensorflow::profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "TfrtModelRun",
             {{"_r", 1},
              {"id", request_id},
@@ -473,7 +491,8 @@ GraphExecutor::GraphExecutor(
     std::unique_ptr<tfrt::ResourceContext> resource_context,
     std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
         graph_execution_state,
-    std::unique_ptr<mlrt::KernelRegistry> kernel_registry)
+    std::unique_ptr<mlrt::KernelRegistry> kernel_registry,
+    tensorflow::tfrt_stub::RuntimeConfig* runtime_config)
     : options_(std::move(options)),
       fallback_state_(std::move(fallback_state)),
       graph_execution_state_(std::move(graph_execution_state)),
@@ -488,7 +507,8 @@ absl::StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
     Options options, std::unique_ptr<FallbackState> fallback_state,
     std::unique_ptr<tfrt::ResourceContext> resource_context,
     tensorflow::GraphDef graph_def,
-    std::unique_ptr<mlrt::KernelRegistry> kernel_registry) {
+    std::unique_ptr<mlrt::KernelRegistry> kernel_registry,
+    tensorflow::tfrt_stub::RuntimeConfig* runtime_config) {
   if (options.runtime == nullptr) {
     return errors::InvalidArgument("options.runtime must be non-null ");
   }
@@ -496,18 +516,20 @@ absl::StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
     // Overrides cost_analysis_options.
     options.cost_analysis_options.version = Options::CostAnalysisOptions::kOnce;
   }
-
   TfrtGraphExecutionState::Options graph_execution_state_options;
   graph_execution_state_options.run_placer_grappler_on_functions =
       options.run_placer_grappler_on_functions;
 
   options.compile_options.fuse_get_resource_ops_in_hoisting =
       !options.enable_mlrt;
-
-  TF_ASSIGN_OR_RETURN(
-      auto graph_execution_state,
-      TfrtGraphExecutionState::Create(graph_execution_state_options,
-                                      std::move(graph_def), *fallback_state));
+  graph_executor_mode
+      ->GetCell(options.model_metadata.name(),
+                absl::StrCat(options.model_metadata.version()))
+      ->Set(options.enable_mlrt ? "mlrt" : "bef");
+  TF_ASSIGN_OR_RETURN(auto graph_execution_state,
+                      TfrtGraphExecutionState::Create(
+                          graph_execution_state_options, std::move(graph_def),
+                          *fallback_state, runtime_config));
   return std::make_unique<GraphExecutor>(
       std::move(options), std::move(fallback_state),
       std::move(resource_context), std::move(graph_execution_state),
@@ -543,7 +565,7 @@ void CreateSortedNamesAndOriginalIndices(absl::Span<const std::string> names,
 
 }  // namespace
 
-tensorflow::Status GraphExecutor::Run(
+absl::Status GraphExecutor::Run(
     const RunOptions& run_options,
     absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
     absl::Span<const std::string> output_tensor_names,
@@ -655,10 +677,10 @@ tensorflow::Status GraphExecutor::Run(
   absl::Duration elapsed_duration = end - now;
   loaded_client_graph.latency_sampler()->Add(
       absl::ToDoubleMicroseconds(elapsed_duration));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-tensorflow::Status GraphExecutor::Extend(const GraphDef& graph) {
+absl::Status GraphExecutor::Extend(const GraphDef& graph) {
   return graph_execution_state_->Extend(graph);
 }
 
@@ -677,6 +699,7 @@ GraphExecutor::ImportAndCompileClientGraph(
   // compilation.
   auto context = std::make_unique<mlir::MLIRContext>(
       registry, mlir::MLIRContext::Threading::DISABLED);
+  context->loadAllAvailableDialects();
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto flib_def_and_module,
       ImportClientGraphToMlirModule(client_graph, context.get()));
@@ -756,8 +779,9 @@ GraphExecutor::ImportAndCompileClientGraph(
         std::move(bytecode_buffer), std::move(bytecode_executable));
   } else {
     tfrt::BefBuffer bef;
-    TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
-        options_.compile_options, module.get(), &bef, model_context));
+    TF_RETURN_IF_ERROR(
+        tensorflow::ConvertTfMlirToBef(options_.compile_options, module.get(),
+                                       &bef, model_context, &fallback_state()));
     ASSIGN_OR_RETURN_IN_COMPILE(
         auto bef_file, tfrt::CreateBefFileFromBefBuffer(runtime(), bef));
     executable_context = std::make_shared<ExecutableContext>(
@@ -836,15 +860,15 @@ GraphExecutor::ImportClientGraphToMlirModule(
   // Convert the optimized graph to an MLIR module.
   TF_ASSIGN_OR_RETURN(
       auto module,
-      tensorflow::ConvertGraphToMlir(*optimized_graph.graph, /*debug_info=*/{},
-                                     optimized_graph.graph->flib_def(),
-                                     graph_import_config, context));
+      tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+          *optimized_graph.graph, /*debug_info=*/{},
+          optimized_graph.graph->flib_def(), graph_import_config, context));
 
   return std::make_pair(std::move(*optimized_graph.graph->mutable_flib_def()),
                         std::move(module));
 }
 
-tensorflow::Status GraphExecutor::InitBef(
+absl::Status GraphExecutor::InitBef(
     LoadedClientGraph* loaded_client_graph,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue) {
   auto* bef_file = loaded_client_graph->executable_context()->bef_file.get();
@@ -871,11 +895,10 @@ tensorflow::Status GraphExecutor::InitBef(
   TF_RETURN_IF_ERROR(
       RunRuntimeInitializer(exec_ctx, bef_file, kResourceInitFunction));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-tensorflow::Status GraphExecutor::InitBytecode(
-    LoadedClientGraph* loaded_graph) {
+absl::Status GraphExecutor::InitBytecode(LoadedClientGraph* loaded_graph) {
   TF_ASSIGN_OR_RETURN(
       auto request_info,
       CreateRequestInfo(options_, /*run_options=*/{},
@@ -904,7 +927,7 @@ tensorflow::Status GraphExecutor::InitBytecode(
         &loaded_graph->sync_resource_state()));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::reference_wrapper<GraphExecutor::LoadedClientGraph>>
@@ -956,7 +979,7 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
     input_nodes[input_name] = array_info;
   }
   ClientGraph client_graph{
-      joined_name,
+      run_options.name.empty() ? joined_name : run_options.name,
       std::move(input_nodes),
       {output_tensor_names.begin(), output_tensor_names.end()},
       {target_tensor_names.begin(), target_tensor_names.end()}};
@@ -969,20 +992,18 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
   return {*loaded_client_graph_ptr};
 }
 
-tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
+absl::Status GraphExecutor::RunWithSyncInterpreter(
     const std::string& graph_name, absl::Span<mlrt::Value> input_values,
     absl::Span<const std::string> input_names,
     absl::Span<const tensorflow::DataType> input_dtypes,
     absl::Span<const std::string> output_tensor_names,
     absl::Span<const std::string> target_tensor_names,
     absl::Span<mlrt::Value> outputs) {
-  TF_ASSIGN_OR_RETURN(
-      LoadedClientGraph & loaded_client_graph,
-      GetOrCreateLoadedClientGraph(
-          /*run_options=*/{}, input_names, input_dtypes, output_tensor_names,
-          target_tensor_names,
-          /*work_queue=*/nullptr,
-          graph_name.empty() ? output_tensor_names[0] : graph_name));
+  TF_ASSIGN_OR_RETURN(LoadedClientGraph & loaded_client_graph,
+                      GetOrCreateLoadedClientGraph(
+                          /*run_options=*/{}, input_names, input_dtypes,
+                          output_tensor_names, target_tensor_names,
+                          /*work_queue=*/nullptr, graph_name));
 
   // Get a shared_ptr of the executable so that during the current request the
   // executable to use is guaranteed to be alive.
@@ -1037,7 +1058,7 @@ CostRecorder* GraphExecutor::LoadedClientGraph::MaybeGetCostRecorder(
   return nullptr;
 }
 
-Status GraphExecutor::LoadedClientGraph::UpdateCost(
+absl::Status GraphExecutor::LoadedClientGraph::UpdateCost(
     const CostRecorder& cost_recorder, const Runtime& runtime) {
   LOG(INFO) << "TFRT updating op costs of loaded client graph (" << this << ") "
             << name_;
@@ -1086,7 +1107,7 @@ Status GraphExecutor::LoadedClientGraph::UpdateCost(
     // add a test kernel that examines the cost.
     executable_context_ = std::move(new_executable_context);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 GraphExecutor::LoadedClientGraph::LoadedClientGraph(
@@ -1120,7 +1141,7 @@ GraphExecutor::LoadedClientGraph::LoadedClientGraph(
                                    tsl::core::RefCountPtr<Rendezvous>* r) {
               *r = tsl::core::RefCountPtr<Rendezvous>(
                   new IntraProcessRendezvous(device_mgr));
-              return OkStatus();
+              return absl::OkStatus();
             }}),
       latency_sampler_(latency_sampler) {
   const auto& options = graph_executor_->options().cost_analysis_options;
@@ -1163,7 +1184,7 @@ void GraphExecutor::LoadedClientGraph::UpdateCostAnalysisData(
   }
 }
 
-tensorflow::Status GraphExecutor::CompileGraph(
+absl::Status GraphExecutor::CompileGraph(
     const std::string& graph_name,
     absl::Span<const std::string> input_tensor_names,
     absl::Span<const tensorflow::DataType> input_tensor_dtypes,

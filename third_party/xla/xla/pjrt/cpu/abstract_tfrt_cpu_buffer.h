@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -38,15 +40,13 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/transpose.h"
-#include "xla/runtime/cpu_event.h"
+#include "xla/service/cpu/cpu_event.h"
 #include "xla/shape.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/async_value.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 
@@ -57,24 +57,22 @@ namespace xla {
 // robust by using setting the AsyncValue in the destructor.
 class MarkEventReadyOnExit {
  public:
-  explicit MarkEventReadyOnExit(tsl::AsyncValueRef<runtime::CpuEvent> event)
+  explicit MarkEventReadyOnExit(tsl::AsyncValueRef<CpuEvent> event)
       : event_(std::move(event)) {}
 
   MarkEventReadyOnExit(const MarkEventReadyOnExit&) = delete;
   MarkEventReadyOnExit& operator=(const MarkEventReadyOnExit&) = delete;
-  MarkEventReadyOnExit(MarkEventReadyOnExit&&) = default;
-  MarkEventReadyOnExit& operator=(MarkEventReadyOnExit&&) = default;
+  MarkEventReadyOnExit(MarkEventReadyOnExit&&) noexcept = default;
+  MarkEventReadyOnExit& operator=(MarkEventReadyOnExit&&) noexcept = default;
 
   ~MarkEventReadyOnExit() {
     if (event_) event_.SetStateConcrete();
   }
 
-  tsl::AsyncValueRef<runtime::CpuEvent> Release() && {
-    return std::move(event_);
-  }
+  tsl::AsyncValueRef<CpuEvent> Release() && { return std::move(event_); }
 
  private:
-  tsl::AsyncValueRef<runtime::CpuEvent> event_;
+  tsl::AsyncValueRef<CpuEvent> event_;
 };
 
 // Async work runner abstracts away the implementation of the underlying thread
@@ -88,37 +86,6 @@ class AsyncWorkRunner {
   virtual void ScheduleWhenReady(
       absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
       absl::AnyInvocable<void()> work) = 0;
-};
-
-// Represents the unpinned host memory accessible to a PjRtDevice.
-class UnpinnedHostMemorySpace : public PjRtMemorySpace {
- public:
-  static constexpr absl::string_view kMemorySpaceKind = "unpinned_host";
-
-  UnpinnedHostMemorySpace(int id, PjRtClient* client);
-
-  PjRtClient* client() const override { return client_; }
-
-  absl::Span<PjRtDevice* const> devices() const override { return devices_; }
-
-  int id() const override { return id_; }
-
-  absl::string_view memory_space_kind() const override {
-    return kMemorySpaceKind;
-  }
-
-  absl::string_view DebugString() const override { return debug_string_; }
-
-  absl::string_view ToString() const override { return to_string_; }
-
-  void AttachDevice(PjRtDevice* device) { devices_.push_back(device); }
-
- private:
-  int id_;
-  PjRtClient* client_;
-  std::vector<PjRtDevice*> devices_;
-  std::string debug_string_;
-  std::string to_string_;
 };
 
 class AbstractTfrtCpuBuffer : public PjRtBuffer {
@@ -140,9 +107,9 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
 
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
-                                   int64_t transfer_size) override {
-    return PjRtFuture<Status>(Unimplemented("CopyRawToHost not implemented"));
+  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
+                             int64_t transfer_size) override {
+    return PjRtFuture<>(Unimplemented("CopyRawToHost not implemented"));
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
@@ -154,15 +121,14 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
 
   bool IsDeleted() override;
 
-  void CopyToRemoteDevice(
-      PjRtFuture<StatusOr<std::string>> serialized_descriptor,
-      RemoteSendCallback on_done) override {
+  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+                          RemoteSendCallback on_done) override {
     on_done(Unimplemented("CopyToRemoteDevice not implemented."),
             /*sends_were_enqueued=*/false);
   }
 
   void CopyToRemoteDeviceScattered(
-      PjRtFuture<StatusOr<std::vector<std::string>>> serialized_descriptors,
+      PjRtFuture<std::vector<std::string>> serialized_descriptors,
       std::vector<RemoteSendCallback> callbacks,
       const xla::PjRtBuffer::ScatterDetails& scatter_details) override {
     for (const auto& on_done : callbacks) {
@@ -171,7 +137,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
     }
   }
 
-  PjRtFuture<Status> GetReadyFuture() override;
+  PjRtFuture<> GetReadyFuture() override;
 
   bool IsOnCpu() const override { return true; }
 
@@ -181,7 +147,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // nullptr if the buffer is already donated or there is outstanding external
   // references.
   TrackedTfrtCpuDeviceBuffer* AcquireUsage(
-      tsl::AsyncValueRef<runtime::CpuEvent> usage_event);
+      tsl::AsyncValueRef<CpuEvent> usage_event);
 
   // A helper class for managing a pending donation. It should be committed upon
   // success. Otherwise, the donated buffer is returned to the
@@ -197,7 +163,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
     DonationTransaction(const DonationTransaction&) = delete;
     DonationTransaction& operator=(const DonationTransaction&) = delete;
     DonationTransaction(DonationTransaction&&) = default;
-    DonationTransaction& operator=(DonationTransaction&& other) {
+    DonationTransaction& operator=(DonationTransaction&& other) noexcept {
       Abort();
 
       buffer_ = other.buffer_;
@@ -248,8 +214,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   static absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
   AllocateTrackedDeviceBuffer(
       const Shape& on_device_shape,
-      absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>
-          definition_events);
+      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events);
 
   // Allocates new cpu events to `avs` and `definition_events`. If `shape` is a
   // tuple, multiple events will be allocated. Otherwise, `avs` and
@@ -257,8 +222,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   static void AllocateAvsAndEvents(
       const Shape& shape,
       absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
-      absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>*
-          definition_events);
+      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>* definition_events);
 
   // A helper function for PjRtClient::BufferFromHostBuffer. Creates a new cpu
   // device buffer from the host buffer (maybe zero-copy or async).
@@ -276,8 +240,20 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
  protected:
   virtual absl::string_view buffer_name() const = 0;
 
-  PjRtFuture<Status> ToLiteralHelper(MutableLiteralBase* literal,
-                                     AsyncWorkRunner* async_work_runner);
+  PjRtFuture<> ToLiteralHelper(MutableLiteralBase* literal,
+                               AsyncWorkRunner* async_work_runner);
+
+  PjRtFuture<> DoAsyncWorkOnBuffer(
+      absl::string_view method_name,
+      absl::AnyInvocable<
+          absl::Status(const Shape& device_shape,
+                       TrackedTfrtCpuDeviceBuffer* device_buffer) &&>
+          work_on_buffer,
+      bool should_do_work_sync, AsyncWorkRunner* async_work_runner);
+
+  PjRtFuture<> CopyRawToHostHelper(void* dst, int64_t offset,
+                                   int64_t transfer_size,
+                                   AsyncWorkRunner* async_work_runner);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDeviceAcrossClients(
       PjRtDevice* dst_device);
@@ -335,8 +311,8 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // If this buffer has external references when Delete() is called, this event
   // is populated by Delete(). When the last external reference is released,
   // the event is triggered, which is a precondition for the buffer being
-  std::optional<tsl::AsyncValueRef<runtime::CpuEvent>>
-      external_references_dropped_event_ ABSL_GUARDED_BY(mu_);
+  std::optional<tsl::AsyncValueRef<CpuEvent>> external_references_dropped_event_
+      ABSL_GUARDED_BY(mu_);
 
   // `pending_donation_` indicates whether a donation is pending. The destructor
   // of the AbstractTfrtCpuBuffer will wait for a pending donation, as the
@@ -356,19 +332,19 @@ class AbstractAsyncHostToHostMemoryTransferManager
 
   std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) override;
 
-  Status TransferLiteralToBuffer(
+  absl::Status TransferLiteralToBuffer(
       int buffer_index, const LiteralSlice& literal,
       absl::AnyInvocable<void() &&> on_done) override;
 
-  Status TransferRawDataToBuffer(
+  absl::Status TransferRawDataToBuffer(
       int buffer_index, absl::string_view data,
       absl::AnyInvocable<void() &&> on_done) override;
 
-  Status TransferRawDataToSubBuffer(
+  absl::Status TransferRawDataToSubBuffer(
       int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
       bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) override;
 
-  void SetBufferError(int buffer_index, Status error) override;
+  void SetBufferError(int buffer_index, absl::Status error) override;
 
   void AddTransferMetadata(const TransferMetadata& meta) override {
     LOG(WARNING) << "AddTransferMetadata not implemented for "
@@ -387,12 +363,17 @@ class AbstractAsyncHostToHostMemoryTransferManager
 
   // Initialize `device_buffers`, `buffer_sizes`, `buffer_transfers_in_flight`,
   // and `last_transfer_finished` from `buffers`.
-  static Status PopulateAsyncTransferManagerData(
+  static absl::Status PopulateAsyncTransferManagerData(
       absl::Span<const std::unique_ptr<AbstractTfrtCpuBuffer>> buffers,
       absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4>& device_buffers,
       absl::InlinedVector<size_t, 4>& buffer_sizes,
       absl::InlinedVector<int64_t, 4>& buffer_transfers_in_flight,
       absl::InlinedVector<bool, 4>& last_transfer_finished);
+
+  absl::Status FillRawDataToSubBuffer(
+      int buffer_index,
+      absl::AnyInvocable<void(void* data, int64_t size)> fill_fn,
+      bool is_last_transfer, absl::AnyInvocable<void() &&> on_done);
 
   mutable absl::Mutex mu_;
   // The number of transfers that are currently in flight.

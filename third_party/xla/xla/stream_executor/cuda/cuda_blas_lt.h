@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -32,13 +33,11 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 
 namespace stream_executor {
-namespace gpu {
-class GpuExecutor;
-}  // namespace gpu
-
 namespace cuda {
 
 class BlasLt : public gpu::BlasLt {
@@ -112,7 +111,8 @@ class BlasLt : public gpu::BlasLt {
         DeviceMemoryBase a_scale_buffer, DeviceMemoryBase b_scale_buffer,
         DeviceMemoryBase c_scale_buffer, DeviceMemoryBase d_scale_buffer,
         DeviceMemoryBase d_amax_buffer, const MatmulAlgorithm& algorithm,
-        ScratchAllocator& scratch_allocator,
+        std::optional<DeviceMemoryBase> workspace,
+        std::optional<ScratchAllocator*> scratch_allocator,
         blas::ProfileResult* profile_result = nullptr) const override;
 
     absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
@@ -128,11 +128,12 @@ class BlasLt : public gpu::BlasLt {
                           DeviceMemoryBase b, const void* beta,
                           DeviceMemoryBase c, DeviceMemoryBase d,
                           const MatmulAlgorithm& algorithm,
-                          ScratchAllocator& scratch_allocator,
                           DeviceMemoryBase bias, DeviceMemoryBase aux,
                           DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
                           DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
                           DeviceMemoryBase d_amax,
+                          std::optional<DeviceMemoryBase> workspace,
+                          std::optional<ScratchAllocator*> scratch_allocator,
                           blas::ProfileResult* profile_result) const override;
 
    private:
@@ -148,7 +149,7 @@ class BlasLt : public gpu::BlasLt {
     bool must_swap_operands_;
   };  // class MatmulPlan
 
-  explicit BlasLt(gpu::GpuExecutor* parent)
+  explicit BlasLt(StreamExecutor* parent)
       : parent_(parent), blas_lt_(nullptr, cublasLtDestroy) {}
 
   absl::Status Init() override;
@@ -159,7 +160,7 @@ class BlasLt : public gpu::BlasLt {
   ~BlasLt() override = default;
 
  private:
-  gpu::GpuExecutor* parent_;
+  StreamExecutor* parent_;
   mutable absl::Mutex mu_;
   Owned<cublasLtHandle_t> blas_lt_ ABSL_GUARDED_BY(mu_);
 };

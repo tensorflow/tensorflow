@@ -25,7 +25,6 @@ tf_proto_library(
     srcs = [
         "quantization_info.proto",
     ],
-    cc_api_version = 2,
 )
 
 cc_library(
@@ -75,8 +74,8 @@ tf_native_cc_binary(
         "@llvm-project//llvm:TableGen",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TableGen",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:regexp",
+        "@local_xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -112,7 +111,6 @@ cc_library(
         ":device_target",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
-        "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

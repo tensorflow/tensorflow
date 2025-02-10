@@ -22,6 +22,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -30,8 +32,8 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -43,7 +45,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -154,8 +155,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
 
   bool need_to_set_input_nodes_quantization_params = false;
   for (const BlockArgument arg : func.getArguments()) {
-    auto shaped = arg.getType().dyn_cast<ShapedType>();
-    if (shaped && shaped.getElementType().isa<FloatType>() &&
+    auto shaped = mlir::dyn_cast<ShapedType>(arg.getType());
+    if (shaped && mlir::isa<FloatType>(shaped.getElementType()) &&
         !has_quantize_op(arg)) {
       need_to_set_input_nodes_quantization_params = true;
       break;
@@ -180,8 +181,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
   auto add_quantize_op = [&](Location loc, Type input_type, Block* block,
                              Block::iterator insertion_point, Value arg,
                              int i) {
-    if (auto shaped = input_type.dyn_cast<ShapedType>()) {
-      if (shaped.getElementType().isa<FloatType>()) {
+    if (auto shaped = mlir::dyn_cast<ShapedType>(input_type)) {
+      if (mlir::isa<FloatType>(shaped.getElementType())) {
         // If there are existing quantize ops, they are from training and we
         // should respect them.
         if (has_quantize_op(arg)) {
@@ -343,6 +344,25 @@ void PrepareQuantizePass::runOnOperation() {
     quant_specs_.legacy_float_scale = legacy_float_scale_;
     quant_specs_.disable_set_input_nodes_quantization_params =
         disable_set_input_nodes_quantization_params_;
+    for (const auto& ir : input_ranges_) {
+      std::pair<std::string, std::string> input_range = absl::StrSplit(ir, '|');
+      std::optional<double> optional_min;
+      std::optional<double> optional_max;
+
+      if (!input_range.first.empty()) {
+        double min;
+        (void)absl::SimpleAtod(input_range.first, &min);
+        optional_min = min;
+      }
+
+      if (!input_range.second.empty()) {
+        double max;
+        (void)absl::SimpleAtod(input_range.second, &max);
+        optional_max = max;
+      }
+
+      quant_specs_.input_ranges.emplace_back(optional_min, optional_max);
+    }
   }
 
   if (quant_specs_.post_training_quantization) {
@@ -384,7 +404,7 @@ void PrepareQuantizePass::runOnOperation() {
       quant_specs_.qdq_conversion_mode != quant::QDQConversionMode::kQDQNone) {
     patterns_1.add<PropagateTransposedPerAxisQuantDim>(ctx);
   }
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_1));
+  (void)applyPatternsGreedily(func, std::move(patterns_1));
 
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
@@ -407,7 +427,7 @@ void PrepareQuantizePass::runOnOperation() {
         ctx, quant_specs_);
     patterns_2.add<ConvertSvdfStatsToQDQs>(ctx, quant_specs_);
   }
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+  (void)applyPatternsGreedily(func, std::move(patterns_2));
 
   SanityCheckAndAdjustment(func);
 

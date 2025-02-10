@@ -81,8 +81,8 @@ TF_CALL_COMPLEX_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
 
 std::atomic<int64_t> TensorArray::tensor_array_counter{0};
 
-Status TensorArray::CopyShapesFrom(TensorArray* rhs,
-                                   const TensorShape* shape_to_prepend) {
+absl::Status TensorArray::CopyShapesFrom(TensorArray* rhs,
+                                         const TensorShape* shape_to_prepend) {
   mutex_lock l(mu_);
   mutex_lock l_rhs(rhs->mu_);
   TF_RETURN_IF_ERROR(LockedReturnIfClosed());

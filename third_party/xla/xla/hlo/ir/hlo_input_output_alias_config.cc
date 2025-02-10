@@ -22,19 +22,23 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/util.h"
 
 namespace xla {
 
@@ -43,7 +47,7 @@ bool HloInputOutputAliasConfig::OutputHasAlias(
   return alias_.element(output_index).has_value();
 }
 
-Status HloInputOutputAliasConfig::SetUpAlias(
+absl::Status HloInputOutputAliasConfig::SetUpAlias(
     const ShapeIndex& output_index, int64_t param_number,
     const ShapeIndex& param_index,
     HloInputOutputAliasConfig::AliasKind must_alias) {
@@ -64,7 +68,7 @@ Status HloInputOutputAliasConfig::SetUpAlias(
   VLOG(4) << "Set up alias between output index " << output_index.ToString()
           << " and parameter " << param_number << " at index "
           << param_index.ToString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
@@ -91,7 +95,8 @@ HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
   return result;
 }
 
-StatusOr<HloInputOutputAliasConfig> HloInputOutputAliasConfig::CreateFromProto(
+absl::StatusOr<HloInputOutputAliasConfig>
+HloInputOutputAliasConfig::CreateFromProto(
     Shape output_shape, const HloInputOutputAliasProto& proto) {
   HloInputOutputAliasConfig result(std::move(output_shape));
   for (const HloInputOutputAliasProto::AliasEntryProto& entry :
@@ -181,18 +186,18 @@ void HloInputOutputAliasConfig::ForEachAlias(AliasFn fn) const {
       });
 }
 
-Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
+absl::Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
     AliasFnWithStatus fn) const {
   return alias_.ForEachElementWithStatus(
       [&](const ShapeIndex& output_index, std::optional<Alias> aliased) {
         if (aliased) {
           TF_RETURN_IF_ERROR(fn(output_index, *aliased));
         }
-        return OkStatus();
+        return absl::OkStatus();
       });
 }
 
-Status HloInputOutputAliasConfig::Verify(
+absl::Status HloInputOutputAliasConfig::Verify(
     const HloModule& module,
     absl::FunctionRef<int64_t(const Shape&)> size_func) const {
   std::vector<ShapeTree<bool>> param_has_seen;
@@ -202,7 +207,7 @@ Status HloInputOutputAliasConfig::Verify(
     param_has_seen.emplace_back(param->shape());
   }
   return ForEachAliasWithStatus([&](const ShapeIndex& output_index,
-                                    const Alias& alias) -> Status {
+                                    const Alias& alias) -> absl::Status {
     TF_RET_CHECK(0 <= alias.parameter_number);
     TF_RET_CHECK(entry->num_parameters() > alias.parameter_number);
     const Shape& param_shape =
@@ -239,7 +244,7 @@ Status HloInputOutputAliasConfig::Verify(
                      alias.parameter_index) == false);
     *(param_has_seen[alias.parameter_number].mutable_element(
         alias.parameter_index)) = true;
-    return OkStatus();
+    return absl::OkStatus();
   });
 }
 
@@ -249,20 +254,20 @@ std::ostream& operator<<(std::ostream& out,
   return out;
 }
 
-Status HloBufferDonorConfig::AddBufferDonor(int64_t param_number,
-                                            const ShapeIndex& param_index) {
+absl::Status HloBufferDonorConfig::AddBufferDonor(
+    int64_t param_number, const ShapeIndex& param_index) {
   TF_RET_CHECK(param_number >= 0) << param_number;
   VLOG(4) << "Register the parameter " << param_number << " at index "
           << param_index.ToString() << " as a buffer donor.";
   buffer_donor_.emplace(BufferDonor(param_number, param_index));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloBufferDonorConfig::RemoveBufferDonor(int64_t param_number,
-                                               const ShapeIndex& param_index) {
+absl::Status HloBufferDonorConfig::RemoveBufferDonor(
+    int64_t param_number, const ShapeIndex& param_index) {
   TF_RET_CHECK(param_number >= 0) << param_number;
   buffer_donor_.erase(BufferDonor(param_number, param_index));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloBufferDonorProto HloBufferDonorConfig::ToProto() const {
@@ -278,7 +283,7 @@ HloBufferDonorProto HloBufferDonorConfig::ToProto() const {
   return result;
 }
 
-StatusOr<HloBufferDonorConfig> HloBufferDonorConfig::CreateFromProto(
+absl::StatusOr<HloBufferDonorConfig> HloBufferDonorConfig::CreateFromProto(
     const HloBufferDonorProto& proto) {
   HloBufferDonorConfig result;
   for (const HloBufferDonorProto::BufferDonorEntryProto& entry :
@@ -318,7 +323,7 @@ bool HloBufferDonorConfig::ParameterIsBufferDonor(
   return it != buffer_donor_.end();
 }
 
-Status HloBufferDonorConfig::Verify(const HloModule& module) const {
+absl::Status HloBufferDonorConfig::Verify(const HloModule& module) const {
   const HloComputation* entry = module.entry_computation();
   const auto& alias_config = module.input_output_alias_config();
   for (const auto& donor : buffer_donor_) {
@@ -343,7 +348,7 @@ Status HloBufferDonorConfig::Verify(const HloModule& module) const {
 
   // Since buffer_donor_ is a set, we do not need to check if one input has
   // registered as a buffer donor many times.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::ostream& operator<<(std::ostream& out,

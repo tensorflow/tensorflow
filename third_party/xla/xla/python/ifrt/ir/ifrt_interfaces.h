@@ -1,4 +1,3 @@
-#include "xla/python/ifrt/ir/constants.h"
 /* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,10 +16,12 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_IFRT_INTERFACES_H_
 #define XLA_PYTHON_IFRT_IR_IFRT_INTERFACES_H_
 
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/Support/LogicalResult.h"
+#include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 
 namespace mlir {
@@ -80,8 +81,15 @@ class IfrtCallLikeTrait {
 }  // namespace OpTrait
 }  // namespace mlir
 
+// IWYU pragma: begin_exports
+
 // Generated definitions.
+#define GET_ATTR_INTERFACE_CLASSES
+#include "xla/python/ifrt/ir/ifrt_attr_interfaces.h.inc"
+
 #define GET_OP_INTERFACE_CLASSES
-#include "xla/python/ifrt/ir/ifrt_interfaces.h.inc"  // IWYU pragma: export
+#include "xla/python/ifrt/ir/ifrt_op_interfaces.h.inc"
+
+// IWYU pragma: end_exports
 
 #endif  // XLA_PYTHON_IFRT_IR_IFRT_INTERFACES_H_

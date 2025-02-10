@@ -421,3 +421,88 @@ func.func @conv3d_with_bias(%arg0: tensor<1x3x4x3x3xf32>) -> (tensor<1x3x2x3x2xf
 // CHECK-LABEL: private @composite_conv3d_with_bias_and_relu6_fn_1
 // CHECK-LABEL: private @composite_conv3d_with_bias_fn_1
 }
+
+// -----
+
+// Test that the name of composite functions are deterministic. There are 3
+// unsorted functions in this module and each function has 2 quantizable ops.
+module {
+  func.func @float_conv_3(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
+    %cst = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {
+      data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+      padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+    } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+    %1 = "tf.BiasAdd"(%0, %cst) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %2 = "tf.Relu6"(%1) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+
+    %3 = "tf.Conv2D"(%arg0, %arg1) {
+      data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+      padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+    } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+    %4 = "tf.BiasAdd"(%3, %cst) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %5 = "tf.Relu6"(%4) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+    func.return %2, %5 : tensor<*xf32>, tensor<*xf32>
+  }
+
+  func.func @float_conv_1(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
+    %cst = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {
+      data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+      padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+    } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+    %1 = "tf.BiasAdd"(%0, %cst) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %2 = "tf.Relu6"(%1) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+
+    %3 = "tf.Conv2D"(%arg0, %arg1) {
+      data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+      padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+    } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+    %4 = "tf.BiasAdd"(%3, %cst) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %5 = "tf.Relu6"(%4) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+    func.return %2, %5 : tensor<*xf32>, tensor<*xf32>
+  }
+
+  func.func @float_conv_2(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
+    %cst = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+    %0 = "tf.Conv2D"(%arg0, %arg1) {
+      data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+      padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+    } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+    %1 = "tf.BiasAdd"(%0, %cst) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %2 = "tf.Relu6"(%1) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+
+    %3 = "tf.Conv2D"(%arg0, %arg1) {
+      data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+      padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+    } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+    %4 = "tf.BiasAdd"(%3, %cst) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+    %5 = "tf.Relu6"(%4) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+    func.return %2, %5 : tensor<*xf32>, tensor<*xf32>
+  }
+}
+
+// CHECK-LABEL: @float_conv_3
+// CHECK:  "tf.PartitionedCall"
+// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu6_fn_6
+// CHECK:  "tf.PartitionedCall"
+// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu6_fn_5
+
+// CHECK-LABEL: @float_conv_1
+// CHECK:  "tf.PartitionedCall"
+// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu6_fn_2
+// CHECK:  "tf.PartitionedCall"
+// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu6_fn_1
+
+// CHECK-LABEL: @float_conv_2
+// CHECK:  "tf.PartitionedCall"
+// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu6_fn_4
+// CHECK:  "tf.PartitionedCall"
+// CHECK-SAME: f = @composite_conv2d_with_bias_and_relu6_fn_3
+

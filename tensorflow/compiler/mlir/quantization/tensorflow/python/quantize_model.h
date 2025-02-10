@@ -23,7 +23,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 namespace quantization {
@@ -46,28 +48,28 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
     const std::unordered_set<std::string>& tags,
     const QuantizationOptions& quantization_options);
 
-// Apply post-training dynamic range quantization to the model.
-absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
+// Applies post-training dynamic-range quantization to the model.
+absl::StatusOr<ExportedModel> QuantizeDynamicRangePtq(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
     const QuantizationOptions& quantization_options);
 
+// Applies post-training static-range weight-only quantization to the model.
 absl::StatusOr<ExportedModel> QuantizeWeightOnly(
     absl::string_view saved_model_path,
     const QuantizationOptions& quantization_options);
 
-absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
+// Applies post-training static-range quantization to the model.
+absl::StatusOr<ExportedModel> QuantizeStaticRangePtq(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    const QuantizationOptions& quantization_options);
-
-absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
-    absl::string_view saved_model_path,
-    const std::vector<std::string>& signature_keys,
-    const std::unordered_set<std::string>& tags,
-    const QuantizationOptions& quantization_options);
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, SignatureDef>& signature_def_map,
+    const PyFunctionLibrary& py_function_library,
+    const absl::flat_hash_map<std::string, RepresentativeDatasetFile>&
+        representative_dataset_file_map_serialized);
 
 }  // namespace quantization
 }  // namespace tensorflow

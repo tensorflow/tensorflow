@@ -16,13 +16,15 @@ limitations under the License.
 #include "xla/service/memory_space_assignment/best_fit_repacker.h"
 
 #include <cstdint>
+#include <list>
+#include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
-#include "xla/service/memory_space_assignment/repacking.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

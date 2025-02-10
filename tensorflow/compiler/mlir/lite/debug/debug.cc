@@ -25,29 +25,36 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassInstrumentation.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
 #include "re2/re2.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
+#include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
+#include "xla/tsl/lib/io/buffered_file.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tsl/lib/io/buffered_file.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/stringpiece.h"
+
 // IWYU pragma: no_include "util/regexp/re2/re2.h"
 
 namespace tensorflow {
@@ -77,7 +84,7 @@ struct WritableFileRawStream : public llvm::raw_ostream {
   void write_impl(const char* ptr, size_t size) override {
     // Write the file if it is still valid. If the write fails, null out the
     // file to avoid encountering another error.
-    if (file && !file->Append(tsl::StringPiece(ptr, size)).ok()) {
+    if (file && !file->Append(absl::string_view(ptr, size)).ok()) {
       file = nullptr;
     }
   }
@@ -342,6 +349,10 @@ void InitPassManager(mlir::PassManager& pm,
   if (options.enable_timing()) {
     pm.enableTiming();
   }
+
+  pm.addInstrumentation(
+      std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
+          pm.getContext()));
 }
 
 }  // namespace tensorflow

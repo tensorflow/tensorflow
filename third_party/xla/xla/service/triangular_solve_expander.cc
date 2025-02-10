@@ -15,21 +15,32 @@ limitations under the License.
 
 #include "xla/service/triangular_solve_expander.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <memory>
+#include <numeric>
+#include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/math.h"
-#include "xla/client/lib/matrix.h"
-#include "xla/client/lib/slicing.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
-#include "xla/literal.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
+#include "xla/hlo/builder/lib/matrix.h"
+#include "xla/hlo/builder/lib/slicing.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo_creation_utils.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -38,7 +49,7 @@ namespace {
 // Get the diagonal blocks of the coefficient matrix
 XlaOp DiagonalBlocks(XlaOp a, int64_t block_size) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(a));
     int ndims = shape.rank();
     int64_t n = ShapeUtil::GetDimension(shape, -1);
@@ -129,7 +140,7 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
                                       bool transpose_a, bool conjugate_a,
                                       PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape blocks_shape, builder->GetShape(inv_diag_blocks));
     TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
     int64_t block_size = ShapeUtil::GetDimension(blocks_shape, -1);
@@ -238,7 +249,7 @@ XlaOp TriangularSolveExpander::InvertDiagonalBlocks(
     XlaOp diag_blocks, bool lower_triangular,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = diag_blocks.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     // Input is a batch of square lower triangular square matrices. Its shape is
     // (..., size, size). We resize this to (num_blocks, size, size).
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(diag_blocks));
@@ -250,12 +261,10 @@ XlaOp TriangularSolveExpander::InvertDiagonalBlocks(
     // multiplications later on
     diag_blocks = Triangle(diag_blocks, /*lower=*/lower_triangular);
 
-    // Rescale blocks to be unit triangular, but avoid dividing by
-    // zero (which can happen if the last block was padded) otherwise it will
-    // introduce nans which will propagate
+    // Rescale blocks to be unit triangular. We were careful to pad the last
+    // block with the identity matrix, which means we won't introduce NaNs by
+    // doing this (unless the matrix is singular, in which case that's ok).
     auto diags = GetMatrixDiagonal(diag_blocks);
-    auto ones = FullLike(diags, 1);
-    diags = Select(Eq(diags, Zero(builder, shape.element_type())), ones, diags);
     auto scaled_diag_blocks = Div(diag_blocks, diags, {0, 2});
 
     // We can now use the fact that for an upper triangular matrix
@@ -366,7 +375,7 @@ XlaOp TriangularSolveExpander::SolveByInvertingDiagonalBlocks(
     bool conjugate_a, bool unit_diagonal,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int64_t ndims = a_shape.rank();
     int64_t k = ShapeUtil::GetDimension(a_shape, -1);
@@ -410,7 +419,7 @@ XlaOp TriangularSolveExpander::SolveDirectly(
     bool conjugate_a, bool unit_diagonal,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
     int64_t m = ShapeUtil::GetDimension(b_shape, -2);
@@ -467,7 +476,7 @@ XlaOp TriangularSolveExpander::BuildTriangularSolve(
     bool conjugate_a, bool unit_diagonal, int64_t block_size,
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
     if (a_shape.rank() != b_shape.rank()) {
@@ -551,7 +560,7 @@ bool TriangularSolveExpander::InstructionMatchesPattern(
   return instruction->opcode() == HloOpcode::kTriangularSolve;
 }
 
-StatusOr<HloInstruction*> TriangularSolveExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> TriangularSolveExpander::ExpandInstruction(
     HloInstruction* instruction) {
   const TriangularSolveOptions& options =
       instruction->triangular_solve_options();
@@ -591,15 +600,8 @@ StatusOr<HloInstruction*> TriangularSolveExpander::ExpandInstruction(
                          /*block_size=*/block_size_,
                          /*precision=*/PrecisionConfig::HIGHEST);
     TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
-
-    TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                        xla_computation.GetProgramShape());
-    HloModuleConfig config(program_shape);
-    TF_ASSIGN_OR_RETURN(auto new_module, HloModule::CreateFromProto(
-                                             xla_computation.proto(), config));
-    HloCloneContext context(module);
-    computation =
-        module->DeepCloneComputation(new_module->entry_computation(), &context);
+    TF_ASSIGN_OR_RETURN(
+        computation, XlaComputationToHloComputation(xla_computation, module));
   }
 
   return instruction->parent()->AddInstruction(HloInstruction::CreateCall(

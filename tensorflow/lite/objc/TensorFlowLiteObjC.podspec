@@ -47,7 +47,7 @@ Pod::Spec.new do |s|
       tfl_dir + 'c/c_api_types.h',
       tfl_dir + 'c/common.h',
       tfl_dir + 'delegates/xnnpack/xnnpack_delegate.h',
-      tfl_dir + 'core/c/registration_external.h',
+      tfl_dir + 'core/c/operator.h',
     ]
     core.exclude_files = [
       objc_dir + '{apis,sources}/TFL{Metal,CoreML}Delegate.{h,m}',

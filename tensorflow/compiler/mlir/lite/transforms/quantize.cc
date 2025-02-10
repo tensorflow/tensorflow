@@ -25,8 +25,8 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -223,7 +223,12 @@ struct QuantizePass : public impl::QuantizePassBase<QuantizePass> {
   quant::QuantizationSpecs quant_specs;
 };
 
+namespace quantize_patterns {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize.inc"
+}
+namespace quantize_by_converter_patterns {
+#include "tensorflow/compiler/mlir/lite/transforms/generated_quantize_by_converter.inc"
+}
 
 void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
@@ -249,13 +254,20 @@ void QuantizePass::runOnOperation() {
                        quant::CustomOpUpdateOptions::kWeightOnly,
                        quant_specs.custom_map);
   }
+  if (enable_float16_quantization_) {
+    quant_specs.inference_type = tensorflow::DT_HALF;
+  }
 
   const quant::QuantPassSpec quant_params = {
       {quant_specs.verify_numeric, error_tolerance_,
        quant_specs.whole_model_verify, enable_log_if_failed_},
       quant_specs};
 
-  populateWithGenerated(patterns);
+  quantize_patterns::populateWithGenerated(patterns);
+
+  if (quant_specs.qdq_conversion_mode == quant::QDQConversionMode::kQDQNone) {
+    quantize_by_converter_patterns::populateWithGenerated(patterns);
+  }
 
   if (quant_specs.weight_quantization || quant_specs.use_fake_quant_num_bits ||
       quant_specs.qdq_conversion_mode ==
@@ -265,7 +277,7 @@ void QuantizePass::runOnOperation() {
     patterns.add<TFLFullQuantization, TFLFullQuantizationReverse>(ctx,
                                                                   quant_params);
   }
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 
   // Constant quantization is a lossy transformation, so they are applied only
   // after all the other patterns have been aplied.
@@ -274,7 +286,7 @@ void QuantizePass::runOnOperation() {
   if (quant_params.numeric_verify_spec.whole_model_verify) {
     patterns_2.add<quant::RemoveDebugAttrPattern>(ctx);
   }
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+  (void)applyPatternsGreedily(func, std::move(patterns_2));
 }
 }  // namespace
 

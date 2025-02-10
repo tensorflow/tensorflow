@@ -22,7 +22,7 @@ TFCI_ARTIFACT_FINAL_PYPI_ARGS="--config-file=$KOKORO_KEYSTORE_DIR/73361_tensorfl
 TFCI_ARTIFACT_FINAL_PYPI_ENABLE=1
 TFCI_ARTIFACT_LATEST_GCS_URI="gs://tensorflow/nightly/latest/"
 TFCI_ARTIFACT_STAGING_GCS_ENABLE=1
-TFCI_ARTIFACT_STAGING_GCS_URI="gs://tensorflow-ci-artifact-staging/staging/nightly/$(git rev-parse HEAD)/"
+TFCI_ARTIFACT_STAGING_GCS_URI="gs://tensorflow-ci-staging/staging/nightly/$(git rev-parse HEAD)/"
 
 # 2. The internal version numbers get changed
 TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=1

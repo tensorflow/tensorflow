@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "QuantizedMatMulWithBiasAndRelu"
   input_arg {
     name: "a"

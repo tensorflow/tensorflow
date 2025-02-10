@@ -15,44 +15,66 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 
-#include <chrono>  // NOLINT(build/c++11)
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
-#include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
-#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/local_executor_params.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
+#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/node_properties.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_segment.h"
+#include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_partition.h"
-#include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/refcount.h"
+#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 
@@ -60,7 +82,7 @@ GraphMgr::GraphMgr(const WorkerEnv* worker_env, const DeviceMgr* device_mgr)
     : worker_env_(worker_env), device_mgr_(device_mgr), table_(5) {
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.
-  Status status =
+  absl::Status status =
       ReadBoolFromEnvVar("TF_SYNC_ON_FINISH", true, &sync_on_finish_);
   if (!status.ok()) {
     LOG(ERROR) << status.message();
@@ -90,7 +112,7 @@ static string SplitByDevice(const Node* node) {
 }
 
 // Validates "gdef" device specifications.
-static Status ValidateGraphDefForDevices(const GraphDef& gdef) {
+static absl::Status ValidateGraphDefForDevices(const GraphDef& gdef) {
   DeviceNameUtils::ParsedName parsed;
   for (const auto& ndef : gdef.node()) {
     if (!DeviceNameUtils::ParseFullName(ndef.device(), &parsed)) {
@@ -101,7 +123,7 @@ static Status ValidateGraphDefForDevices(const GraphDef& gdef) {
   return absl::OkStatus();
 }
 
-Status GraphMgr::DecorateAndPublishGraphForDebug(
+absl::Status GraphMgr::DecorateAndPublishGraphForDebug(
     const DebugOptions& debug_options, Graph* graph, Device* device) {
   std::unique_ptr<DebugGraphDecoratorInterface> decorator;
   TF_RETURN_IF_ERROR(
@@ -122,37 +144,39 @@ Status GraphMgr::DecorateAndPublishGraphForDebug(
 //
 // "executors" are filled with one executor per device if success and
 // the caller takes the ownership of returned executors.
-Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
-                          const GraphOptions& graph_options,
-                          const DebugOptions& debug_options,
-                          const ConfigProto& config_proto,
-                          int64_t collective_graph_key, WorkerSession* session,
-                          DistributedFunctionLibraryRuntime* cluster_flr,
-                          Item* item) {
+absl::Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
+                                const GraphOptions& graph_options,
+                                const DebugOptions& debug_options,
+                                const ConfigProto& config_proto,
+                                int64_t collective_graph_key,
+                                WorkerSession* session,
+                                DistributedFunctionLibraryRuntime* cluster_flr,
+                                Item* item) {
   item->session = handle;
   item->session_config = config_proto;
   item->collective_graph_key = collective_graph_key;
-  item->lib_def.reset(
-      new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library()));
+  item->lib_def = std::make_unique<FunctionLibraryDefinition>(
+      OpRegistry::Global(), gdef.library());
 
   TF_RETURN_IF_ERROR(ValidateGraphDefForDevices(gdef));
 
   // We don't explicitly Validate the graph def because ConvertGraphDefToGraph
   // does that below.
-  item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
+  item->proc_flr = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_, worker_env_->env, /*config=*/&config_proto,
       gdef.versions().producer(), item->lib_def.get(),
       graph_options.optimizer_options(), worker_env_->compute_pool, cluster_flr,
       /*session_metadata=*/nullptr,
       Rendezvous::Factory{
-          [this, session](const int64_t step_id, const DeviceMgr*,
-                          tsl::core::RefCountPtr<Rendezvous>* r) -> Status {
+          [this, session](
+              const int64_t step_id, const DeviceMgr*,
+              tsl::core::RefCountPtr<Rendezvous>* r) -> absl::Status {
             tsl::core::RefCountPtr<RemoteRendezvous> remote_r =
                 this->worker_env_->rendezvous_mgr->Find(step_id);
             TF_RETURN_IF_ERROR(remote_r->Initialize(session));
             *r = std::move(remote_r);
             return absl::OkStatus();
-          }}));
+          }});
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());
@@ -172,7 +196,7 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
   };
   popts.get_incarnation = [this](const string& name) -> int64 {
     Device* device = nullptr;
-    Status s = device_mgr_->LookupDevice(name, &device);
+    absl::Status s = device_mgr_->LookupDevice(name, &device);
     if (s.ok()) {
       return device->attributes().incarnation();
     } else {
@@ -218,7 +242,7 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
     ExecutionUnit* unit = &(item->units.back());
 
     // Find the device.
-    Status s = device_mgr_->LookupDevice(device_name, &unit->device);
+    absl::Status s = device_mgr_->LookupDevice(device_name, &unit->device);
     if (!s.ok()) {
       // Remove the empty unit from the item as the item destructor wants all
       // units to have valid devices.
@@ -292,16 +316,18 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
   return absl::OkStatus();
 }
 
-Status GraphMgr::Register(const string& handle, const GraphDef& gdef,
-                          const GraphOptions& graph_options,
-                          const DebugOptions& debug_options,
-                          const ConfigProto& config_proto,
-                          int64_t collective_graph_key, WorkerSession* session,
-                          DistributedFunctionLibraryRuntime* cluster_flr,
-                          string* graph_handle) {
+absl::Status GraphMgr::Register(const string& handle, const GraphDef& gdef,
+                                const GraphOptions& graph_options,
+                                const DebugOptions& debug_options,
+                                const ConfigProto& config_proto,
+                                int64_t collective_graph_key,
+                                WorkerSession* session,
+                                DistributedFunctionLibraryRuntime* cluster_flr,
+                                string* graph_handle) {
   Item* item = new Item;
-  Status s = InitItem(handle, gdef, graph_options, debug_options, config_proto,
-                      collective_graph_key, session, cluster_flr, item);
+  absl::Status s =
+      InitItem(handle, gdef, graph_options, debug_options, config_proto,
+               collective_graph_key, session, cluster_flr, item);
   if (!s.ok()) {
     item->Unref();
     return s;
@@ -318,7 +344,7 @@ Status GraphMgr::Register(const string& handle, const GraphDef& gdef,
   return absl::OkStatus();
 }
 
-Status GraphMgr::Deregister(const string& handle) {
+absl::Status GraphMgr::Deregister(const string& handle) {
   Item* item = nullptr;
   // Removes one item from table_.
   {
@@ -335,7 +361,7 @@ Status GraphMgr::Deregister(const string& handle) {
   return absl::OkStatus();
 }
 
-Status GraphMgr::DeregisterAll() {
+absl::Status GraphMgr::DeregisterAll() {
   std::vector<Item*> items;
   // Removes all items from table_.
   {
@@ -351,7 +377,8 @@ Status GraphMgr::DeregisterAll() {
   return absl::OkStatus();
 }
 
-Status GraphMgr::SendInputs(const int64_t step_id, const NamedTensors& in) {
+absl::Status GraphMgr::SendInputs(const int64_t step_id,
+                                  const NamedTensors& in) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id).release();
   std::vector<string> keys;
   std::vector<Tensor> tensors_to_send;
@@ -364,15 +391,16 @@ Status GraphMgr::SendInputs(const int64_t step_id, const NamedTensors& in) {
     input_size += p.second.AllocatedBytes();
   }
   metrics::RecordGraphInputTensors(input_size);
-  Status s =
+  absl::Status s =
       SendTensorsToRendezvous(rendezvous, nullptr, {}, keys, tensors_to_send);
   rendezvous->Unref();
   return s;
 }
 
-Status GraphMgr::RecvOutputs(const int64_t step_id, NamedTensors* out) {
+absl::Status GraphMgr::RecvOutputs(const int64_t step_id, NamedTensors* out) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id).release();
-  Status s = RecvOutputsFromRendezvous(rendezvous, out, Rendezvous::Args());
+  absl::Status s =
+      RecvOutputsFromRendezvous(rendezvous, out, Rendezvous::Args());
   rendezvous->Unref();
   if (!s.ok()) {
     // Failing to fetch the outputs should not be possible, so rewrite the error
@@ -401,7 +429,7 @@ void GraphMgr::RecvOutputsAsync(const int64_t step_id, NamedTensors* out,
   }
   RecvOutputsFromRendezvousAsync(
       rendezvous, nullptr, {}, keys, received_keys,
-      [done, rendezvous, received_keys, out, keys](const Status s) {
+      [done, rendezvous, received_keys, out, keys](const absl::Status s) {
         rendezvous->Unref();
         size_t output_size = 0;
         for (int i = 0, end = keys.size(); i < end; ++i) {
@@ -422,14 +450,14 @@ void GraphMgr::ExecuteAsync(
     tsl::CoordinationServiceAgent* coordination_service_agent,
     StatusCallback done) {
   const uint64 start_time_usecs = Env::Default()->NowMicros();
-  profiler::TraceMeProducer activity(
+  tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish or RunGraphDone.
       [step_id] {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "RunGraph", {{"id", step_id}, {"_r", 1} /*root_event*/});
       },
-      profiler::ContextType::kTfExecutor, step_id,
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::ContextType::kTfExecutor, step_id,
+      tsl::profiler::TraceMeLevel::kInfo);
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -460,7 +488,7 @@ void GraphMgr::ExecuteAsync(
 
   RemoteRendezvous* rendezvous =
       worker_env_->rendezvous_mgr->Find(step_id).release();
-  Status s = rendezvous->Initialize(session);
+  absl::Status s = rendezvous->Initialize(session);
   CollectiveExecutor::Handle* ce_handle =
       item->collective_graph_key != BuildGraphOptions::kNoCollectiveGraphKey
           ? new CollectiveExecutor::Handle(
@@ -495,14 +523,15 @@ void GraphMgr::ExecuteAsync(
       cancellation_manager, session, start_time_usecs,
       coordination_service_agent,
       [item, rendezvous, ce_handle, done, start_time_usecs, input_size,
-       step_id](const Status& s) {
-        profiler::TraceMeConsumer activity(
+       step_id](const absl::Status& s) {
+        tsl::profiler::TraceMeConsumer activity(
             // From TraceMeProducer in GraphMgr::ExecuteAsync.
             [step_id] {
-              return profiler::TraceMeEncode("RunGraphDone", {{"id", step_id}});
+              return tsl::profiler::TraceMeEncode("RunGraphDone",
+                                                  {{"id", step_id}});
             },
-            profiler::ContextType::kTfExecutor, step_id,
-            profiler::TraceMeLevel::kInfo);
+            tsl::profiler::ContextType::kTfExecutor, step_id,
+            tsl::profiler::TraceMeLevel::kInfo);
         done(s);
         metrics::RecordGraphInputTensors(input_size);
         metrics::UpdateGraphExecTime(Env::Default()->NowMicros() -
@@ -529,7 +558,7 @@ void GraphMgr::StartParallelExecutors(
   ExecutorBarrier* barrier =
       new ExecutorBarrier(num_units, rendezvous,
                           [this, item, collector, cost_graph, step_container,
-                           done](const Status& s) {
+                           done](const absl::Status& s) {
                             BuildCostModel(item, collector, cost_graph);
                             done(s);
                             delete step_container;

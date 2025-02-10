@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "pybind11/attr.h"  // from @pybind11
-#include "tsl/python/lib/core/numpy.h" //NOLINT
+#include "xla/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "Python.h"
@@ -381,8 +381,7 @@ py::object TFE_Py_ExecuteCancelable_wrapper(
 
 static py::object TF_ListPhysicalDevices() {
   std::vector<string> devices;
-  tensorflow::Status s =
-      tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
+  absl::Status s = tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
   MaybeRaiseRegisteredFromStatus(s);
   PyObject* result = PyList_New(devices.size());
   int i = 0;
@@ -396,7 +395,7 @@ static py::object TF_ListPhysicalDevices() {
 
 static py::object TF_ListPluggablePhysicalDevices() {
   std::vector<string> devices;
-  tensorflow::Status s =
+  absl::Status s =
       tensorflow::DeviceFactory::ListPluggablePhysicalDevices(&devices);
   MaybeRaiseRegisteredFromStatus(s);
   Safe_PyObjectPtr result(PyList_New(devices.size()));
@@ -412,7 +411,7 @@ static py::object TF_ListPluggablePhysicalDevices() {
 static std::unordered_map<string, string> TF_GetDeviceDetails(int index) {
   tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
   std::unordered_map<string, string> device_details;
-  tensorflow::Status s =
+  absl::Status s =
       tensorflow::DeviceFactory::GetAnyDeviceDetails(index, &device_details);
   tensorflow::Set_TF_Status_from_Status(status.get(), s);
   MaybeRaiseRegisteredFromTFStatus(status.get());
@@ -459,7 +458,11 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
 
   std::string s_stage(stage);
   IrExportStage selected_stage = [&] {
-    if (s_stage == "hlo") {
+    if (s_stage == "stablehlo") {
+      return IrExportStage::STABLEHLO;
+    } else if (s_stage == "stablehlo_serialized") {
+      return IrExportStage::STABLEHLO_SERIALIZED;
+    } else if (s_stage == "hlo") {
       return IrExportStage::HLO;
     } else if (s_stage == "hlo_no_metadata") {
       return IrExportStage::HLO_NO_METADATA;
@@ -537,7 +540,7 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
         TensorHandleFromInterface(abstract_tensor_handle));
   }
 
-  StatusOr<std::string> hlo_str;
+  absl::StatusOr<std::string> hlo_str;
   std::vector<Device*> devices = context->local_device_mgr()->ListDevices();
   Device* selected_device =
       GetDevice(context, device_name, platform_name, devices);
@@ -902,7 +905,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
             tensorflow::FunctionDef function_def;
             return function_def;
           }
-          status->status = ::tensorflow::OkStatus();
+          status->status = absl::OkStatus();
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
           return *ctx_function_def;
         });

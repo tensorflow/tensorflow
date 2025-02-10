@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api.h"
 
@@ -578,15 +579,16 @@ TEST(TestTfLiteOpaqueNode, CustomOpWithSetAndGetTemporaries) {
       "tensorflow/lite/testdata/custom_sinh.bin");
   ASSERT_NE(model, nullptr);
 
-  TfLiteRegistrationExternal* reg =
-      TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "Sinh", 1);
-  TfLiteRegistrationExternalSetPrepare(reg, my_custom_op::Prepare);
-  TfLiteRegistrationExternalSetInit(reg, my_custom_op::Init);
-  TfLiteRegistrationExternalSetFree(reg, my_custom_op::Free);
-  TfLiteRegistrationExternalSetInvoke(reg, my_custom_op::Invoke);
+  TfLiteOperator* reg =
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
+                           /*user_data=*/nullptr);
+  TfLiteOperatorSetPrepare(reg, my_custom_op::Prepare);
+  TfLiteOperatorSetInit(reg, my_custom_op::Init);
+  TfLiteOperatorSetFree(reg, my_custom_op::Free);
+  TfLiteOperatorSetInvoke(reg, my_custom_op::Invoke);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
-  TfLiteInterpreterOptionsAddRegistrationExternal(options, reg);
+  TfLiteInterpreterOptionsAddOperator(options, reg);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
 
@@ -606,7 +608,202 @@ TEST(TestTfLiteOpaqueNode, CustomOpWithSetAndGetTemporaries) {
   EXPECT_EQ(output_value, input_value);
 
   TfLiteInterpreterDelete(interpreter);
-  TfLiteRegistrationExternalDelete(reg);
+  TfLiteOperatorDelete(reg);
+  TfLiteModelDelete(model);
+}
+
+TEST(TestTfLiteOpaqueNode, CustomOpWithLegacyCallbacks) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/custom_sinh.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteOperator* reg =
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
+                           /*user_data=*/nullptr);
+  TfLiteOperatorSetPrepare(reg, [](auto context, auto node) {
+    return my_custom_op::Prepare(context, node);
+  });
+  TfLiteOperatorSetInit(reg, [](auto context, auto buffer, auto length) {
+    return my_custom_op::Init(context, buffer, length);
+  });
+  TfLiteOperatorSetFree(
+      reg, [](auto context, auto data) { my_custom_op::Free(context, data); });
+  TfLiteOperatorSetInvoke(reg, [](auto context, auto node) {
+    return my_custom_op::Invoke(context, node);
+  });
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOperator(options, reg);
+
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  TfLiteInterpreterOptionsDelete(options);
+
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  TfLiteTensor* input_tensor = TfLiteInterpreterGetInputTensor(interpreter, 0);
+  const float input_value = 42.0f;
+  TfLiteTensorCopyFromBuffer(input_tensor, &input_value, sizeof(float));
+
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  const TfLiteTensor* output_tensor =
+      TfLiteInterpreterGetOutputTensor(interpreter, 0);
+  float output_value;
+  TfLiteTensorCopyToBuffer(output_tensor, &output_value, sizeof(float));
+  EXPECT_EQ(output_value, input_value);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteOperatorDelete(reg);
+  TfLiteModelDelete(model);
+}
+
+TEST(TestTfLiteOpaqueNode, CustomOpWithNoUserData) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/custom_sinh.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteOperator* reg =
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
+                           /*user_data=*/nullptr);
+  TfLiteOperatorSetPrepareWithData(
+      reg, [](auto user_data, auto context, auto node) {
+        EXPECT_EQ(nullptr, user_data);
+        return my_custom_op::Prepare(context, node);
+      });
+  TfLiteOperatorSetInitWithData(
+      reg, [](auto user_data, auto context, auto buffer, auto length) {
+        EXPECT_EQ(nullptr, user_data);
+        return my_custom_op::Init(context, buffer, length);
+      });
+  TfLiteOperatorSetFreeWithData(reg,
+                                [](auto user_data, auto context, auto data) {
+                                  EXPECT_EQ(nullptr, user_data);
+                                  my_custom_op::Free(context, data);
+                                });
+  TfLiteOperatorSetInvokeWithData(reg,
+                                  [](auto user_data, auto context, auto node) {
+                                    EXPECT_EQ(nullptr, user_data);
+                                    return my_custom_op::Invoke(context, node);
+                                  });
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOperator(options, reg);
+
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  TfLiteInterpreterOptionsDelete(options);
+
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  TfLiteTensor* input_tensor = TfLiteInterpreterGetInputTensor(interpreter, 0);
+  const float input_value = 42.0f;
+  TfLiteTensorCopyFromBuffer(input_tensor, &input_value, sizeof(float));
+
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  const TfLiteTensor* output_tensor =
+      TfLiteInterpreterGetOutputTensor(interpreter, 0);
+  float output_value;
+  TfLiteTensorCopyToBuffer(output_tensor, &output_value, sizeof(float));
+  EXPECT_EQ(output_value, input_value);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteOperatorDelete(reg);
+  TfLiteModelDelete(model);
+}
+
+TEST(TestTfLiteOpaqueNode, CustomOpWithData) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/custom_sinh.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteOperator* reg =
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh", /*version=*/1,
+                           /*user_data=*/reinterpret_cast<void*>(345));
+  TfLiteOperatorSetPrepareWithData(
+      reg, [](auto user_data, auto context, auto node) {
+        EXPECT_EQ(reinterpret_cast<void*>(345), user_data);
+        return my_custom_op::Prepare(context, node);
+      });
+  TfLiteOperatorSetInitWithData(
+      reg, [](auto user_data, auto context, auto buffer, auto length) {
+        EXPECT_EQ(reinterpret_cast<void*>(345), user_data);
+        return my_custom_op::Init(context, buffer, length);
+      });
+  TfLiteOperatorSetFreeWithData(
+      reg, [](auto user_data, auto context, auto data) {
+        EXPECT_EQ(reinterpret_cast<void*>(345), user_data);
+        my_custom_op::Free(context, data);
+      });
+  TfLiteOperatorSetInvokeWithData(
+      reg, [](auto user_data, auto context, auto node) {
+        EXPECT_EQ(reinterpret_cast<void*>(345), user_data);
+        return my_custom_op::Invoke(context, node);
+      });
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOperator(options, reg);
+
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  TfLiteInterpreterOptionsDelete(options);
+
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  TfLiteTensor* input_tensor = TfLiteInterpreterGetInputTensor(interpreter, 0);
+  const float input_value = 42.0f;
+  TfLiteTensorCopyFromBuffer(input_tensor, &input_value, sizeof(float));
+
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  const TfLiteTensor* output_tensor =
+      TfLiteInterpreterGetOutputTensor(interpreter, 0);
+  float output_value;
+  TfLiteTensorCopyToBuffer(output_tensor, &output_value, sizeof(float));
+  EXPECT_EQ(output_value, input_value);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteOperatorDelete(reg);
+  TfLiteModelDelete(model);
+}
+
+TEST(TestTfLiteOpaqueContext, TestGetMetadata) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/with_metadata.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteOperator* reg =
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "NPU_OP", /*version=*/1,
+                           /*user_data=*/nullptr);
+
+  TfLiteOperatorSetInit(
+      reg,
+      [](auto context, auto buffer, auto length) -> void* { return nullptr; });
+
+  TfLiteOperatorSetPrepare(reg,
+                           [](auto context, auto node) { return kTfLiteOk; });
+
+  TfLiteOperatorSetFree(reg, [](auto context, auto data) -> void {});
+
+  TfLiteOperatorSetInvoke(reg, [](auto context, auto node) {
+    const char* data;
+    size_t bytes;
+    EXPECT_EQ(
+        TfLiteOpaqueContextGetMetadata(context, "NPU_BYTE_CODE", &data, &bytes),
+        kTfLiteOk);
+    EXPECT_NE(bytes, 0);
+    EXPECT_NE(data, nullptr);
+    return kTfLiteOk;
+  });
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOperator(options, reg);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  EXPECT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteOperatorDelete(reg);
   TfLiteModelDelete(model);
 }
 

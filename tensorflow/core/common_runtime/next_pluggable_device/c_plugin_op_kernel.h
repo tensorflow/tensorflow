@@ -17,17 +17,21 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_PLUGIN_OP_KERNEL_H_
 
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/kernels.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -38,19 +42,22 @@ class CPluginOpKernelConstruction : public PluginOpKernelConstruction {
   explicit CPluginOpKernelConstruction(void* ctx)
       : ctx_(reinterpret_cast<TF_OpKernelConstruction*>(ctx)) {}
 
-  Status GetBoolAttr(std::string_view attr_name, bool* value) const override;
-  Status GetInt32Attr(std::string_view attr_name, int* value) const override;
-  Status GetInt32AttrList(std::string_view attr_name,
-                          std::vector<int32_t>* value) const override;
-  Status GetInt64Attr(std::string_view attr_name,
-                      int64_t* value) const override;
-  Status GetStringAttr(std::string_view attr_name,
-                       std::string* value) const override;
-  Status GetFunctionAttr(std::string_view attr_name,
-                         NameAttrList* function) const override;
+  absl::Status GetBoolAttr(std::string_view attr_name,
+                           bool* value) const override;
+  absl::Status GetInt32Attr(std::string_view attr_name,
+                            int* value) const override;
+  absl::Status GetInt32AttrList(std::string_view attr_name,
+                                std::vector<int32_t>* value) const override;
+  absl::Status GetInt64Attr(std::string_view attr_name,
+                            int64_t* value) const override;
+  absl::Status GetStringAttr(std::string_view attr_name,
+                             std::string* value) const override;
+  absl::Status GetFunctionAttr(std::string_view attr_name,
+                               NameAttrList* function) const override;
 
-  void CtxFailure(const Status& status) override;
-  void CtxFailure(const char* file, int line, const Status& status) override;
+  void CtxFailure(const absl::Status& status) override;
+  void CtxFailure(const char* file, int line,
+                  const absl::Status& status) override;
 
   void* GetContext() const override { return ctx_; }
 
@@ -65,29 +72,29 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
 
   std::string_view GetResourceMgrDefaultContainerName() override;
 
-  Status LookupOrCreateResource(std::string_view container_name,
-                                std::string_view plugin_resource_name,
-                                void** result_plugin_resource,
-                                void* (*create_func)(void*),
-                                void* create_func_args,
-                                void (*delete_func)(void*)) override;
+  absl::Status LookupOrCreateResource(std::string_view container_name,
+                                      std::string_view plugin_resource_name,
+                                      void** result_plugin_resource,
+                                      void* (*create_func)(void*),
+                                      void* create_func_args,
+                                      void (*delete_func)(void*)) override;
 
-  PluginCoordinationServiceAgent* GetPluginCoordinationServiceAgent()
-      const override;
+  std::unique_ptr<PluginCoordinationServiceAgent>
+  GetPluginCoordinationServiceAgent() const override;
 
-  Status CreatePluginVariable(int index,
-                              PluginVariable** variable) const override;
+  absl::Status CreatePluginVariable(int index,
+                                    PluginVariable** variable) const override;
 
-  Status AllocateTempForPluginVariable(PluginVariable* variable) override;
+  absl::Status AllocateTempForPluginVariable(PluginVariable* variable) override;
 
   int NumInputs() const override { return TF_NumInputs(ctx_); }
 
-  Status GetInput(int index, Tensor* tensor) const override;
+  absl::Status GetInput(int index, const Tensor** tensor) const override;
 
-  Status GetInput(const char* name, const Tensor** tensor) override;
+  absl::Status GetInput(const char* name, const Tensor** tensor) const override;
 
-  Status GetInputRange(std::string_view name,
-                       std::pair<int, int>* range) const override;
+  absl::Status GetInputRange(std::string_view name,
+                             std::pair<int, int>* range) const override;
 
   DataType GetInputDataType(int index) const override;
 
@@ -110,7 +117,7 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
     return "";
   }
 
-  Status GetConfigProto(const ConfigProto** config_proto) const override;
+  absl::Status GetConfigProto(const ConfigProto** config_proto) const override;
 
   // Note: this function is only meant to clear up `config_proto` created by the
   // above `CPluginOpKernelContext::GetConfigProto()`.
@@ -118,7 +125,7 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
     delete config_proto;
   }
 
-  Status GetFunctionLibraryDefinition(
+  absl::Status GetFunctionLibraryDefinition(
       const FunctionLibraryDefinition** flib_def) const override;
 
   // Note: this function is only meant to clear up `flib_def` created by the
@@ -128,8 +135,8 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
     delete flib_def;
   }
 
-  Status GetResourceHandle(int index,
-                           const ResourceHandle** handle) const override;
+  absl::Status GetResourceHandle(int index,
+                                 const ResourceHandle** handle) const override;
 
   // Note: this function is only meant to clear up `handle` created by the above
   // `CPluginOpKernelContext::GetResourceHandle()`.
@@ -141,13 +148,14 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
     return TF_GetGraphDefVersion(ctx_);
   }
 
-  Status AllocateOutput(int index, const TensorShape& shape,
-                        Tensor** out) override;
+  absl::Status AllocateOutput(int index, const TensorShape& shape,
+                              Tensor** out) override;
 
-  Status SetOutput(int index, const Tensor& tensor) override;
+  absl::Status SetOutput(int index, const Tensor& tensor) override;
 
-  void CtxFailure(const Status& status) override;
-  void CtxFailure(const char* file, int line, const Status& status) override;
+  void CtxFailure(const absl::Status& status) override;
+  void CtxFailure(const char* file, int line,
+                  const absl::Status& status) override;
 
   void* GetContext() const override { return ctx_; }
 
@@ -156,7 +164,11 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
 
   // A cache for tensors obtained from the ctx_. This is needed to extend the
   // lifetime of the c++ tensorflow::Tensor created from `TF_TensorToTensor`.
-  std::vector<Tensor> obtained_tensors_ TF_GUARDED_BY(mu_);
+  // Use std::deque here to make sure elements in the container are pointer
+  // stable.
+  // "insertion and deletion at either end of a deque never invalidates pointers
+  //  or references to the rest of the elements."
+  mutable std::deque<Tensor> obtained_tensors_ TF_GUARDED_BY(mu_);
   TF_OpKernelContext* ctx_;  // not owned.
 };
 

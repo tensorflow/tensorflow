@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "mlir/Dialect/Affine/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/transforms/lift_tflite_flex_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"

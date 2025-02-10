@@ -545,6 +545,10 @@ class InferenceRunnerImpl : public CLInferenceRunner {
 #ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
     // TODO(b/328511338): Remove code enabled by TFLITE_GPU_ENABLE_INVOKE_LOOP
     // when Async API solution is ready to replace it.
+    if (gpu_invoke_loop_times_ <= 0) {
+      return absl::InvalidArgumentError(
+          "gpu_invoke_loop_times must be positive");
+    }
     for (int i = 0; i < gpu_invoke_loop_times_; i++) {
       RETURN_IF_ERROR(RunWithoutExternalBufferCopy());
     }
@@ -582,7 +586,7 @@ class InferenceRunnerImpl : public CLInferenceRunner {
     // but currently it does not, see the bug for details. Once fixed, this
     // code should be in an else clause of the above if statement.
     RETURN_IF_ERROR(context_->AddToQueue(queue_));
-    clFlush(queue_->queue());
+    context_->FlushQueue(queue_);
     return absl::OkStatus();
   }
 

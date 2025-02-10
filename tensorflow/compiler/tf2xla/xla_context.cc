@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/client_library.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -188,7 +188,7 @@ const xla::XlaComputation* XlaContext::LookupOrCreate(
   }
 }
 
-Status XlaContext::RecordCollectiveInfoFromNestedCompilationResult(
+absl::Status XlaContext::RecordCollectiveInfoFromNestedCompilationResult(
     const XlaCompilationResult& result) {
   if (result.collective_info) {
     return RecordCollectiveInfo(result.collective_info->group_key,

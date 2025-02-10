@@ -20,7 +20,10 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/map_util.h"
@@ -120,7 +123,7 @@ static bool OperandsAndResultMustHaveRowMajorLayout(
   return false;
 }
 
-Status CpuLayoutAssignment::AddBackendConstraints(
+absl::Status CpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   ShouldMakeOperandColMajorCache cache;
 
@@ -185,7 +188,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace cpu
 }  // namespace xla

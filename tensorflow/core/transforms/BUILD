@@ -90,7 +90,6 @@ cc_library(
         ":PDLLUtilsIncGen",
         ":utils",
         "//tensorflow/core:framework_types_hdr",
-        "//tensorflow/core/ir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -105,6 +104,7 @@ cc_library(
         "//tensorflow/core/ir:Dialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -145,6 +145,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -161,6 +162,7 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:graph_constructor",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -191,15 +193,14 @@ tf_cc_binary(
     srcs = ["tfg-transforms-opt.cc"],
     deps = [
         ":PassRegistration",
-        "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:ops",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir:tf_op_registry",
         "//tensorflow/core/ir/types:Dialect",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],
 )

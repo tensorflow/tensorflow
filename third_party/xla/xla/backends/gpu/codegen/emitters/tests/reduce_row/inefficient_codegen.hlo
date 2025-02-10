@@ -1,0 +1,47 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize \
+// RUN:   --inline="default-pipeline='cse'" | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=reduce1:0 \
+// RUN:   --bijection_inputs=reduce2:0 --bijection_outputs=reduce1 \
+// RUN:   --bijection_outputs=reduce2
+
+add {
+  p0 = f64[] parameter(0)
+  p1 = f64[] parameter(1)
+  ROOT add = f64[] add(p0, p1)
+}
+
+// This fusion is valid, but we can't efficiently codegen it.
+fusion {
+  %p0 = f64[4] parameter(0)
+  %p1 = f64[4] parameter(1)
+  %c0 = f64[] constant(-inf)
+  %reduce0 = f64[] reduce(p1, c0), dimensions={0}, to_apply=add
+  %bc0 = f64[4] broadcast(reduce0), dimensions={}
+  %compare0 = pred[4] compare(p1, bc0), direction=EQ
+  %c1 = f64[] constant(0)
+  %bc1 = f64[4] broadcast(c1), dimensions={}
+  %select.3.1 = f64[4] select(compare0, p0, bc1)
+  %reduce1 = f64[] reduce(select.3.1, c1), dimensions={0}, to_apply=add
+  %convert0 = f64[4] convert(compare0)
+  %reduce2 = f64[] reduce(convert0, c1), dimensions={0}, to_apply=add
+  ROOT %tuple.1 = (f64[], f64[], f64[]) tuple(%reduce1, reduce0, reduce2)
+}
+
+// We read all of %p1 once from each thread, and then read one element again.
+// CHECK:      func.func @main
+// CHECK-SAME:   , %[[P1:.*]]: tensor<4xf64> {xla.slice_index = 1 : index}
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:  %[[CST0:.*]] = arith.constant 0xFFF0000000000000
+// CHECK-DAG:  %[[TID_X:.*]] = gpu.thread_id x
+
+// CHECK: xla.loop
+// CHECK-SAME:  -> (%[[RA:.*]], %[[RA:.*]], %[[RC:.*]]) in
+// reduce0 in the context of reduce2 and reduce1's prologue:
+// CHECK:      scf.for %[[I:.*]] = %[[C0]]
+// CHECK-NEXT:   tensor.extract %[[P1]][%[[I]]]
+// CHECK-NEXT:   addf
+// CHECK-NEXT:   yield
+
+// reduce0 again, in the context of its status as a fusion hero:
+// CHECK:     tensor.extract %[[P1]][%[[RC]]]
+// CHECK: shuffle_reduce(%{{.*}}) to 2 combiner=@add_add

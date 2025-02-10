@@ -24,18 +24,13 @@ set(LIBS
 
         AllMhloPasses
         DeallocationPasses
-        LmhloDialect
-        LmhloPasses
         MLIRBufferTransforms
         MLIRHLOGPUTransforms
         MhloRegisterDialects
         )
 add_llvm_executable(mlir-hlo-opt mlir-hlo-opt.cc
   DEPENDS
-        MLIRLmhloPassIncGen
         MLIRMhloPassIncGen
-        LMHLOTransformsPassIncGen
-        LMHLOGPUTransformsPassIncGen
 )
 llvm_update_compile_flags(mlir-hlo-opt)
 target_link_libraries(mlir-hlo-opt PRIVATE ${LIBS})

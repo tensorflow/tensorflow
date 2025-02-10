@@ -17,35 +17,46 @@
 // This file implements the entry point to compile a hlo op to a kernel.
 //
 //===----------------------------------------------------------------------===//
+#include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Host.h"
 #include "mlir/Dialect/MemRef/Transforms/AllocationOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
+#include "xla/service/llvm_ir/llvm_command_line_options.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace kernel_gen {
@@ -115,13 +126,13 @@ absl::StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
   return ostream.str().str();
 }
 
-Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
-           llvm::StringRef host_triple,
-           llvm::ArrayRef<std::string> architectures,
-           llvm::ArrayRef<int64_t> tile_sizes,
-           llvm::ArrayRef<int64_t> unroll_factors, bool print_ptx,
-           bool print_llvmir, bool enable_ftz, bool index_64bit,
-           bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
+absl::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
+                 llvm::StringRef host_triple,
+                 llvm::ArrayRef<std::string> architectures,
+                 llvm::ArrayRef<int64_t> tile_sizes,
+                 llvm::ArrayRef<int64_t> unroll_factors, bool print_ptx,
+                 bool print_llvmir, bool enable_ftz, bool index_64bit,
+                 bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
   // Read TF code.
   std::string hlo_code;
   TF_RETURN_IF_ERROR(
@@ -149,7 +160,7 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   // Write .a file.
   TF_RETURN_IF_ERROR(
       WriteStringToFile(Env::Default(), output_file.str(), binary));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -217,6 +228,13 @@ int main(int argc, char** argv) {
 
   mlir::registerPassManagerCLOptions();
   mlir::registerMLIRContextCLOptions();
+
+  // Forward cli options to XLA, as it will reset llvm options internally
+  // during the first invocation.
+  auto& xla_llvm_global_options =
+      xla::llvm_ir::LLVMCommandLineOptionsLock::GetGlobalOptions();
+  xla_llvm_global_options.insert(xla_llvm_global_options.end(), argv + 1,
+                                 argv + argc);
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op kernel generator\n");
 
   auto status = tensorflow::kernel_gen::Run(

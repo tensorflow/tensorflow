@@ -15,9 +15,19 @@ limitations under the License.
 
 #include "xla/service/cpu/ir_function.h"
 
-#include <iterator>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Value.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/shape_partition.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -41,7 +51,7 @@ static std::vector<llvm::Type*> GetComputeFunctionParams(
 IrFunction::IrFunction(const std::string& function_name,
                        llvm::Function::LinkageTypes linkage,
                        const HloModuleConfig& module_config,
-                       llvm::Module* llvm_module, llvm::IRBuilder<>* b,
+                       llvm::Module* llvm_module, llvm::IRBuilderBase* b,
                        int64_t num_dynamic_loop_bounds)
     : b_(b),
       llvm_module_(llvm_module),
@@ -49,6 +59,25 @@ IrFunction::IrFunction(const std::string& function_name,
       num_dynamic_loop_bounds_(num_dynamic_loop_bounds) {
   Initialize(function_name, linkage, module_config);
 }
+
+IrFunction::IrFunction(llvm::IRBuilderBase* b, llvm::Module* llvm_module,
+                       int64_t num_dynamic_loop_bounds,
+                       llvm::Function* function,
+                       llvm::Value* dynamic_loop_bounds_arg,
+                       llvm::BasicBlock* return_block)
+    : b_(b),
+      llvm_module_(llvm_module),
+      caller_insert_point_guard_(*b),
+      num_dynamic_loop_bounds_(num_dynamic_loop_bounds),
+      function_(function),
+      result_arg_(nullptr),
+      exec_run_options_arg_(nullptr),
+      parameters_arg_(nullptr),
+      buffer_table_arg_(nullptr),
+      dynamic_loop_bounds_arg_(dynamic_loop_bounds_arg),
+      profile_counters_arg_(nullptr),
+      status_arg_(nullptr),
+      return_block_(return_block) {};
 
 IrFunction::~IrFunction() {
   // Branch to function return.
@@ -83,9 +112,9 @@ void IrFunction::Initialize(const std::string& function_name,
   //   buffer_table: address of an array with pointers to temporary buffers and
   //     entry computation parameters (but not to constant buffers).
   //
-  // Therefore, the generated function's signature (FunctionType) is statically
-  // determined - parameter unpacking is done in code generated into the
-  // function, rather than by a prologue dictated by the platform ABI.
+  // Therefore, the generated function's signature (FunctionType) is
+  // statically determined - parameter unpacking is done in code generated
+  // into the function, rather than by a prologue dictated by the platform ABI.
   //
   //                      /--------------\
   //   retval ----------> | return value |
@@ -126,8 +155,8 @@ void IrFunction::Initialize(const std::string& function_name,
   //                     \---------------------------------------------/
 
   // Even though the type of params and buffer_table is void** in the host's
-  // view, in LLVM IR this is represented by i8*, similarly to void*. It's up to
-  // the code to use GEPs to unravel the indirection layers.
+  // view, in LLVM IR this is represented by i8*, similarly to void*. It's up
+  // to the code to use GEPs to unravel the indirection layers.
   llvm::FunctionType* function_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(llvm_module_->getContext()),
       /*Params=*/
@@ -197,7 +226,7 @@ llvm::Value* IrFunction::GetDynamicLoopBound(const int64_t offset) {
 
 llvm::Value* EncodeArrayFunctionArguments(
     absl::Span<llvm::Value* const> arguments, absl::string_view name,
-    llvm::IRBuilder<>* b) {
+    llvm::IRBuilderBase* b) {
   llvm::Value* arguments_buffer;
   if (arguments.empty()) {
     arguments_buffer = llvm::Constant::getNullValue(b->getPtrTy());
@@ -220,7 +249,7 @@ llvm::Value* EncodeArrayFunctionArguments(
 // Returns an array of compute function call arguments (including parameter
 // address buffer).
 std::vector<llvm::Value*> GetArrayFunctionCallArguments(
-    absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilder<>* b,
+    absl::Span<llvm::Value* const> parameter_addresses, llvm::IRBuilderBase* b,
     absl::string_view name, llvm::Value* return_value_buffer,
     llvm::Value* exec_run_options_arg, llvm::Value* buffer_table_arg,
     llvm::Value* status_arg, llvm::Value* profile_counters_arg) {
@@ -234,10 +263,11 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
 
 // Emits a call to a runtime fork/join function which dispatches parallel
 // calls to 'parallel_function' (and joins threads before returning).
-Status EmitCallToParallelForkJoin(
+absl::Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
-    absl::Span<const int64_t> dimension_partition_counts, llvm::IRBuilder<>* b,
-    llvm::Function* parallel_function, absl::string_view name) {
+    absl::Span<const int64_t> dimension_partition_counts,
+    llvm::IRBuilderBase* b, llvm::Function* parallel_function,
+    absl::string_view name) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
 
   // Build ParallelForkJoin function type.
@@ -329,7 +359,7 @@ Status EmitCallToParallelForkJoin(
   // Emit call to parallel fork/join.
   b->CreateCall(fork_join_func, fork_join_arguments);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cpu

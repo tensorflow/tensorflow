@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_IR_EMISSION_UTILS_H_
 #define XLA_SERVICE_CPU_IR_EMISSION_UTILS_H_
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
 #include "llvm/IR/Value.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/cpu/target_machine_features.h"
 
 namespace xla {
 namespace cpu {

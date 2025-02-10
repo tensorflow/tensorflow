@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_DATA_ZIP_DATASET_OP_H_
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 namespace data {

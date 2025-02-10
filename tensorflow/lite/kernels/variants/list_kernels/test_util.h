@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <cstring>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/types/span.h"
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/kernels/variants/tensor_array.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {

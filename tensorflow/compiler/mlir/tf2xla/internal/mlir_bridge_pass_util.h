@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_MLIR_BRIDGE_PASS_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_MLIR_BRIDGE_PASS_UTIL_H_
 
+#include <optional>
+
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/framework/function.h"
 
@@ -42,6 +44,11 @@ bool IsSupportedByReplicatedBridge(mlir::ModuleOp module);
 // such graph as an inference graph. Otherwise, it is non inference graph.
 bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module);
 
+// Check if a graph contains TPUPartitionedCall op, including its reachable
+// functions. The function library is used to store the functions that are
+// defined in a TensorFlow program
+bool IsInferenceGraph(const Graph& graph,
+                      const FunctionLibraryDefinition* function_library);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_MLIR_BRIDGE_PASS_UTIL_H_

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "AssignSubVariableOp"
   input_arg {
     name: "resource"

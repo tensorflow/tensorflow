@@ -28,11 +28,14 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/errors.h"
@@ -40,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/platform/error_logging.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -52,11 +54,9 @@ using mlir::OpPassManager;
 using mlir::PassManager;
 using mlir::func::FuncOp;
 
-constexpr char kBridgeComponent[] = "TFXLABridge";
-
 // Run the TF XLA Bridge based on the input pipeline, which can be either TPU
 // bridge pipeline or non TPU bridge pipeline.
-tensorflow::Status RunTFXLABridge(
+absl::Status RunTFXLABridge(
     ModuleOp module,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder,
     llvm::StringRef module_name = llvm::StringRef(),
@@ -112,17 +112,16 @@ tensorflow::Status RunTFXLABridge(
   return diag_handler.ConsumeStatus();
 }
 
-tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
-                                       bool fallback_enabled,
-                                       std::string device_type,
-                                       absl::Status status) {
+absl::Status RecordIfErrorStatus(const std::string error_prefix,
+                                 bool fallback_enabled, std::string bridge_type,
+                                 std::string device_type, absl::Status status) {
   if (status.ok()) {
     return status;
   }
 
   VLOG(2) << error_prefix << " " << status;
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      device_type, /*bridge_version=*/"v2",
+      /*bridge_type*/ bridge_type, /*bridge_version=*/"v2", device_type,
       /*fallback_enabled=*/fallback_enabled,
       /*result=*/"failure");
 
@@ -135,7 +134,7 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
     bridge_subcomponent = "TFXLA_PHASE_ONE_MLIR_CPU/GPU_BRIDGE";
   }
 
-  tsl::error_logging::Log(kBridgeComponent, bridge_subcomponent,
+  tsl::error_logging::Log(mlir::TF::kBridgeComponent, bridge_subcomponent,
                           status.ToString())
       .IgnoreError();
 
@@ -148,29 +147,30 @@ void CreateReplicatedClusteringPipeline(OpPassManager &pm,
   // TF2-only passes should go here. However, this should be very rare and
   // new passes generally should go into the internal
   // AddReplicatedBridgeClusteringPipelinePasses.
-  pm.addPass(mlir::TFTPU::CreateTPUValidateInputsPass());
+  pm.addPass(tensorflow::tf2xla::internal::CreateTPUValidateInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   tensorflow::tf2xla::internal::AddReplicatedBridgeClusteringPipelinePasses(
       pm, module_name);
 }
 
-void CreateTPUClusteringPipelineV2(OpPassManager &pm) {
+void CreateReplicatedClusteringPipelineV2(OpPassManager &pm) {
   CreateReplicatedClusteringPipeline(pm, /*module_name=*/"");
 }
 
-tensorflow::Status RunFunctionTf2xlaClusteringBridge(
+absl::Status RunFunctionTf2xlaClusteringBridge(
     ModuleOp module, bool is_supported_by_replicated_brige,
     bool is_in_fallback_enabled_mode, llvm::StringRef module_name) {
-  std::string device_type_filter =
-      is_supported_by_replicated_brige ? "tpu" : "cpu/gpu";
+  std::string device_type = is_supported_by_replicated_brige
+                                ? mlir::TF::kMlirPh1BridgeCounterTpu
+                                : mlir::TF::kMlirPh1BridgeCounterNonTpu;
 
   VLOG(2)
       << (is_supported_by_replicated_brige ? "Replicated" : "NonReplicated")
       << " Bridge called stack trace is "
       << "(NOTE: this is not an error; rather the stack trace for debugging) : "
       << tensorflow::CurrentStackTrace();
-  Status clustering_status =
+  absl::Status clustering_status =
       is_supported_by_replicated_brige
           ? RunTFXLABridge(
                 module,
@@ -186,25 +186,28 @@ tensorflow::Status RunFunctionTf2xlaClusteringBridge(
                 },
                 module_name, /*dump_prefix=*/"tf_xla_bridge_v2_nonreplicated");
 
+  std::string bridge_type = is_supported_by_replicated_brige
+                                ? mlir::TF::kMlirPh1BridgeCounterReplicated
+                                : mlir::TF::kMlirPh1BridgeCounterNonReplicated;
   // TODO(b/317798386): add is_supported_by_replicated_brige as a filter.
   TF_RETURN_IF_ERROR(RecordIfErrorStatus(
       /*error_prefix=*/"clustering_v2", is_in_fallback_enabled_mode,
-      device_type_filter, clustering_status));
+      bridge_type, device_type, clustering_status));
 
   // TODO(b/317798386): add is_supported_by_replicated_brige as a filter.
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      device_type_filter, /*bridge_version=*/"v2",
+      bridge_type, /*bridge_version=*/"v2", device_type,
       /*fallback_enabled=*/is_in_fallback_enabled_mode,
       /*result=*/"success");
 
   return absl::OkStatus();
 }
 
-mlir::PassPipelineRegistration<> clustering_tpu_pipeline_v2(
-    "tf-cluster-tpu-bridge-v2",
+mlir::PassPipelineRegistration<> replicated_clustering_bridge_v2(
+    "tf-replicated-clustering-bridge-v2",
     "Run all the passes involved in transforming a TensorFlow 2 graph before "
-    "execution so that it is suitable for targeting TPUs.",
-    CreateTPUClusteringPipelineV2);
+    "execution so that it is suitable for targeting devices.",
+    CreateReplicatedClusteringPipelineV2);
 
 }  // namespace v2
 }  // namespace tf2xla

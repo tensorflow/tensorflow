@@ -1,5 +1,6 @@
-# Placeholder: load py_proto_library
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
+
+# Placeholder: load py_proto_library
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -41,7 +42,6 @@ exports_files([
 tf_proto_library(
     name = "test_message_proto",
     srcs = ["test_message.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = [
         "//tensorflow/cc/saved_model:__subpackages__",
@@ -53,7 +53,6 @@ tf_proto_library(
 #
 # py_proto_library(
 #     name = "test_message_proto_py_pb2",
-#     api_version = 2,
 #     deps = [
 #         ":test_message_proto",
 #     ],

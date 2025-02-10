@@ -19,8 +19,8 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
+#include "xla/tsl/lib/monitoring/types.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/monitoring/types.h"
 
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {

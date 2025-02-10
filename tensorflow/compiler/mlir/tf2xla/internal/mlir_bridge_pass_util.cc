@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -30,10 +32,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -42,6 +44,8 @@ using ::mlir::LogicalResult;
 using ::mlir::success;
 
 namespace {
+constexpr absl::string_view kPartitionedCall = "TPUPartitionedCall";
+
 LogicalResult HasAttr(
     const Graph& graph, const FunctionLibraryDefinition* function_library,
     const std::function<bool(const Graph& graph)>& predicate) {
@@ -62,7 +66,7 @@ LogicalResult HasAttr(
     // This is not expected to happen in practice
     if (!status.ok()) {
       LOG(ERROR) << "Failed to parse " << func_name << ": "
-                 << tsl::NullTerminatedMessage(status);
+                 << absl::StatusMessageAsCStr(status);
       return failure();
     }
     if (predicate(*func_body->graph)) {
@@ -70,6 +74,36 @@ LogicalResult HasAttr(
     }
   }
   return failure();
+}
+
+// Check if the `graph` has parameter server jobs and resource variable
+// arguments that are on parameter servers
+bool HasPsWithResourceVariable(const Graph& graph) {
+  // Check parameter serverjobs and resource variable arguments that are
+  // on parameter servers.
+  const std::string jobType = "ps";
+  const std::string nodeType = "_Arg";
+  const std::string attrKey = "T";
+  for (const Node* node : graph.nodes()) {
+    if (node->type_string() == nodeType) {
+      auto device_name = node->assigned_device_name();
+      DeviceNameUtils::ParsedName device;
+      if (DeviceNameUtils::ParseFullName(device_name, &device) &&
+          device.has_job && device.job == jobType) {
+        for (const auto& attr : node->attrs()) {
+          auto attr_key = attr.first;
+          auto attr_value = attr.second;
+          if (attr_key == attrKey &&
+              attr_value.value_case() == AttrValue::kType &&
+              attr_value.type() == DT_RESOURCE) {
+            return true;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return false;
 }
 
 bool IsNonReplicatedGraph(const Graph& graph,
@@ -107,22 +141,6 @@ bool IsReplicatedGraph(const Graph& graph,
   return HasAttr(graph, function_library, predicate).succeeded();
 }
 
-bool IsSingleCoreTpuGraph(const Graph& graph,
-                          const FunctionLibraryDefinition* function_library) {
-  auto predicate = [](const Graph& graph) {
-    for (const Node* node : graph.nodes()) {
-      // _xla_compile_device_type=TPU is found in single-core TPU graphs.
-      auto attr =
-          node->attrs().FindByString(std::string(kCompileDeviceTypeAttr));
-      if (attr && attr->s() == kTpuDevice) {
-        return true;
-      }
-    }
-    return false;
-  };
-  return HasAttr(graph, function_library, predicate).succeeded();
-}
-
 bool IsReplicatedGraph(mlir::ModuleOp module) {
   auto walk_result = module.walk([&](mlir::Operation* op) {
     // TODO(b/223677572): Once the scope for new compilation and replication
@@ -140,40 +158,60 @@ bool IsReplicatedGraph(mlir::ModuleOp module) {
   return walk_result.wasInterrupted();
 }
 
-bool IsSingleCoreTPUGraph(mlir::ModuleOp module) {
-  auto walk_result = module.walk([&](mlir::Operation* op) {
-    // Check for ops with compile device type "TPU". This allows us to support
-    // TPU compilation without replication. Note that currently the compile
-    // device type is not set by default before bridge, only if eager context
-    // attribute `jit_compile_rewrite` is true.
-    // TODO(b/229028654): Remove string conversion once we have C++17.
-    const llvm::StringRef compile_device_type_attr_name(
-        kCompileDeviceTypeAttr.data(), kCompileDeviceTypeAttr.size());
-    auto compilation_attr =
-        op->getAttrOfType<mlir::StringAttr>(compile_device_type_attr_name);
-    if (compilation_attr && compilation_attr.getValue().str() == kTpuDevice) {
-      return mlir::WalkResult::interrupt();
+// Traverses each node in the graph and check if any of them is
+// TPUPartitionedCall. If so, return true. Otherwise, return false.
+bool DoesGraphContainTPUPartitionedCall(const Graph& graph) {
+  for (const Node* node : graph.nodes()) {
+    if (node->type_string() == kPartitionedCall) return true;
+  }
+  return false;
+}
+
+// Checks any reachable functions from `graph_def` in `flib_def`
+// for inference graphs.
+bool DoReachableFuncsContainTPUPartitionedCall(
+    const GraphDef& graph_def, const FunctionLibraryDefinition& flib_def) {
+  for (const std::string& func_name :
+       flib_def.ReachableDefinitions(graph_def).ListFunctionNames()) {
+    const FunctionDef* func_def = flib_def.Find(func_name);
+    std::unique_ptr<FunctionBody> func_body;
+    if (!FunctionDefToBodyHelper(*func_def, AttrSlice(&func_def->attr()),
+                                 &flib_def, &func_body)
+             .ok())
+      return false;
+    if (DoesGraphContainTPUPartitionedCall(*func_body->graph)) return true;
+  }
+  return false;
+}
+
+// Iterate all functions from the flib_def if there are any that belong to
+// the inference graph.
+bool AreFunctionsFromFlibDefInference(
+    const FunctionLibraryDefinition& flib_def) {
+  for (const std::string& func_name : flib_def.ListFunctionNames()) {
+    const FunctionDef* func_def = flib_def.Find(func_name);
+    for (const NodeDef& node_def : func_def->node_def()) {
+      if (node_def.op() == kPartitionedCall) return true;
     }
-    return mlir::WalkResult::advance();
-  });
-  return walk_result.wasInterrupted();
+  }
+  return false;
 }
 
 }  // namespace
 
 bool IsSupportedByNonReplicatedBridge(
     const Graph& graph, const FunctionLibraryDefinition* function_library) {
-  return IsNonReplicatedGraph(graph, function_library);
+  return IsNonReplicatedGraph(graph, function_library) &&
+         HasPsWithResourceVariable(graph);
 }
 
 bool IsSupportedByReplicatedBridge(
     const Graph& graph, const FunctionLibraryDefinition* function_library) {
-  return IsReplicatedGraph(graph, function_library) ||
-         IsSingleCoreTpuGraph(graph, function_library);
+  return IsReplicatedGraph(graph, function_library);
 }
 
 bool IsSupportedByReplicatedBridge(mlir::ModuleOp module) {
-  return IsReplicatedGraph(module) || IsSingleCoreTPUGraph(module);
+  return IsReplicatedGraph(module);
 }
 
 bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {
@@ -185,6 +223,21 @@ bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {
     if (has_tpu_partitioned_call) break;
   }
   return has_tpu_partitioned_call;
+}
+
+bool IsInferenceGraph(const Graph& graph,
+                      const FunctionLibraryDefinition* function_library) {
+  if (DoesGraphContainTPUPartitionedCall(graph)) return true;
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+  if (DoReachableFuncsContainTPUPartitionedCall(graph_def, graph.flib_def()))
+    return true;
+  if (AreFunctionsFromFlibDefInference(graph.flib_def())) return true;
+  if (function_library == nullptr) return false;
+  if (DoReachableFuncsContainTPUPartitionedCall(graph_def, *function_library))
+    return true;
+  if (AreFunctionsFromFlibDefInference(*function_library)) return true;
+  return false;
 }
 
 }  // namespace tensorflow

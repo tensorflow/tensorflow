@@ -19,21 +19,21 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/platform/status.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
+#include "xla/tsl/profiler/convert/post_process_single_host_xplane.h"
+#include "xla/tsl/profiler/utils/time_utils.h"
 #include "tsl/platform/host_info.h"
-#include "tsl/profiler/convert/post_process_single_host_xplane.h"
 #include "tsl/profiler/lib/profiler_collection.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/lib/profiler_lock.h"
-#include "tsl/profiler/utils/time_utils.h"
 #endif
 
 namespace tsl {
@@ -56,13 +56,13 @@ ProfileOptions GetOptions(const ProfileOptions& opts) {
   return absl::WrapUnique(new ProfilerSession(options));
 }
 
-Status ProfilerSession::Status() {
+absl::Status ProfilerSession::Status() {
   mutex_lock l(mutex_);
   return status_;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status ProfilerSession::CollectDataInternal(XSpace* space) {
+absl::Status ProfilerSession::CollectDataInternal(XSpace* space) {
   mutex_lock l(mutex_);
   TF_RETURN_IF_ERROR(status_);
   LOG(INFO) << "Profiler session collecting data.";
@@ -74,17 +74,17 @@ Status ProfilerSession::CollectDataInternal(XSpace* space) {
   }
   // Allow another session to start.
   profiler_lock_.ReleaseIfActive();
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif
 
-Status ProfilerSession::CollectData(XSpace* space) {
+absl::Status ProfilerSession::CollectData(XSpace* space) {
 #if !defined(IS_MOBILE_PLATFORM)
   space->add_hostnames(port::Hostname());
   TF_RETURN_IF_ERROR(CollectDataInternal(space));
   profiler::PostProcessSingleHostXSpace(space, start_time_ns_, stop_time_ns_);
 #endif
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 ProfilerSession::ProfilerSession(const ProfileOptions& options)

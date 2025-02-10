@@ -783,7 +783,7 @@ class MklDnnQuantizedMatMulReluOp
     MklDnnQuantizedMatMulOp<Device, quint8, qint8, Tbias, Toutput,
                             native_format>::ExtendMklDnnMatMulFwdParams(context,
                                                                         params);
-    params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+    params.post_op_params.push_back({"Relu", {1.0, 0.0, 0.0}});
   }
 };
 

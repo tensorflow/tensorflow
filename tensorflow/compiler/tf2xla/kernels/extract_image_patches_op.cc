@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -21,11 +22,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/matrix.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/matrix.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -119,12 +121,17 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     kernel_shape[num_spatial_dims + 1] = kernel_size * depth;
     xla::Shape iota_kernel_shape =
         xla::ShapeUtil::MakeShape(xla::S32, {kernel_size, depth, kernel_size});
-    xla::XlaOp filter =
-        xla::Reshape(xla::ConvertElementType(
-                         xla::Eq(xla::Iota(builder, iota_kernel_shape, 0),
-                                 xla::Iota(builder, iota_kernel_shape, 2)),
-                         type),
-                     kernel_shape);
+    xla::XlaOp pred_intermediate = xla::Eq(xla::Iota(builder, iota_kernel_shape,
+                                                     /* iota_dimension= */ 0),
+                                           xla::Iota(builder, iota_kernel_shape,
+                                                     /* iota_dimension= */ 2));
+    // In some cases TPU implementations give different results than CPU and GPU
+    // when doing the conversion directly from pred to the final type. Add an
+    // extra conversion to S32 here solves this.
+    xla::XlaOp int_intermediate =
+        xla::ConvertElementType(pred_intermediate, xla::S32);
+    xla::XlaOp filter = xla::Reshape(
+        xla::ConvertElementType(int_intermediate, type), kernel_shape);
 
     xla::ConvolutionDimensionNumbers dims;
     std::vector<int64_t> window_strides(num_spatial_dims);

@@ -33,9 +33,14 @@ namespace tensorflow {
 
 // Provide reasonable default values for the parameters. Note the WEAK attribute
 // on these methods: these can be (and in many cases are) overridden.
-ABSL_ATTRIBUTE_WEAK bool GetDisableTableStacking() {
+ABSL_ATTRIBUTE_WEAK bool GetDisableTableStacking(bool disable_table_stacking) {
+  bool should_disable_stacking = false;
+  // BEGIN GOOGLE-INTERNAL
   XlaSparseCoreFlags *sparse_core_flags = GetXlaSparseCoreFlags();
-  return sparse_core_flags->tf_xla_sparse_core_disable_table_stacking;
+  should_disable_stacking =
+      sparse_core_flags->tf_xla_sparse_core_disable_table_stacking;
+  // END GOOGLE-INTERNAL
+  return should_disable_stacking || disable_table_stacking;
 }
 
 ABSL_ATTRIBUTE_WEAK int64_t GetXlaSparseCoreStackingMemLimit() {
@@ -58,18 +63,19 @@ static int64_t NextLargestMultiple(int64_t n, int64_t factor) {
 }
 
 SparseCoreLayoutStacker::SparseCoreLayoutStacker(int num_partitions,
+                                                 bool disable_table_stacking,
                                                  int sparse_cores_per_partition)
     : num_partitions_(num_partitions),
       sparse_cores_per_partition_(sparse_cores_per_partition),
       num_sparse_cores_(num_partitions_ * sparse_cores_per_partition_),
-      stacking_enabled_(!GetDisableTableStacking()),
+      stacking_enabled_(!GetDisableTableStacking(disable_table_stacking)),
       activation_mem_bytes_limit_(GetXlaSparseCoreStackingMemLimit()),
       variable_shard_bytes_limit_(GetXlaSparseCoreStackingTableShardLimit()) {}
 
-absl::Status SparseCoreLayoutStacker::AddTable(tsl::StringPiece table_name,
+absl::Status SparseCoreLayoutStacker::AddTable(absl::string_view table_name,
                                                int64_t table_height,
                                                int64_t table_width,
-                                               tsl::StringPiece group,
+                                               absl::string_view group,
                                                int64_t output_samples) {
   if (stacks_by_group_.empty()) {  // First call?
     VLOG(1) << "Stacking parameters: stacking_enabled_ = " << stacking_enabled_

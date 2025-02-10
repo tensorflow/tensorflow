@@ -16,11 +16,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_transfer_manager.h"
 
 #include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
-#include "absl/base/casts.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/compiler.h"
@@ -28,7 +24,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_xfeed.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -43,19 +38,19 @@ CpuTransferManager::CpuTransferManager()
     : GenericTransferManager(se::host::kHostPlatformId,
                              /*pointer_size=*/sizeof(void*)) {}
 
-Status CpuTransferManager::TransferLiteralToInfeed(
+absl::Status CpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(executor->device_ordinal(), literal);
 }
 
-Status CpuTransferManager::TransferLiteralFromOutfeed(
+absl::Status CpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   return TransferLiteralFromOutfeedOnCpu(executor->device_ordinal(), literal);
 }
 
-Status CpuTransferManager::ReadDynamicShapes(se::Stream* stream,
-                                             const ShapedBuffer* device_buffer,
-                                             Shape* device_shape) {
+absl::Status CpuTransferManager::ReadDynamicShapes(
+    se::Stream* stream, const ShapedBuffer* device_buffer,
+    Shape* device_shape) {
   if (stream != nullptr) {
     // When a stream is presented, respect the stream dependency.
     return TransferManager::ReadDynamicShapes(stream, device_buffer,

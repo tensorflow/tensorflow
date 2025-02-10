@@ -49,7 +49,7 @@ int GetFirstElementIndexWithPredicate(const Predicate& predicate,
 }
 
 // Adds a node to the graph.
-NodeDef* AddNode(StringPiece name, StringPiece op,
+NodeDef* AddNode(absl::string_view name, absl::string_view op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  MutableGraphView* graph);
@@ -78,12 +78,12 @@ NodeDef* AddScalarConstNode(int v, MutableGraphView* graph);
 template <>
 NodeDef* AddScalarConstNode(int64_t v, MutableGraphView* graph);
 template <>
-NodeDef* AddScalarConstNode(StringPiece v, MutableGraphView* graph);
+NodeDef* AddScalarConstNode(absl::string_view v, MutableGraphView* graph);
 
 // Retrieves the value of a const node. Returns an error
 // if the node is not const, or its value is of a different type.
 template <typename T>
-Status GetScalarConstNodeValue(const NodeDef& node, T* value) {
+absl::Status GetScalarConstNodeValue(const NodeDef& node, T* value) {
   // is_same is an idiomatic hack for making it compile if not instantiated.
   // Replacing with false will result in a compile-time error.
   static_assert(!std::is_same<T, T>::value,
@@ -91,35 +91,35 @@ Status GetScalarConstNodeValue(const NodeDef& node, T* value) {
 }
 
 template <>
-Status GetScalarConstNodeValue(const NodeDef& node, int64_t* value);
+absl::Status GetScalarConstNodeValue(const NodeDef& node, int64_t* value);
 template <>
-Status GetScalarConstNodeValue(const NodeDef& node, bool* value);
+absl::Status GetScalarConstNodeValue(const NodeDef& node, bool* value);
 
 // Checks whether the two graphs are the same.
 bool Compare(const GraphDef& g1, const GraphDef& g2);
 
 // Checks whether the graph contains a node with the given name.
-bool ContainsGraphNodeWithName(StringPiece name, const GraphDef& graph);
+bool ContainsGraphNodeWithName(absl::string_view name, const GraphDef& graph);
 
 // Checks whether the library contains a function with the given name.
-bool ContainsGraphFunctionWithName(StringPiece name,
+bool ContainsGraphFunctionWithName(absl::string_view name,
                                    const FunctionDefLibrary& library);
 
 // Checks whether the graph contains a node with the given op.
-bool ContainsNodeWithOp(StringPiece op, const GraphDef& graph);
+bool ContainsNodeWithOp(absl::string_view op, const GraphDef& graph);
 
 // Returns the index of the node with the given name or -1 if the node does
 // not exist.
-int FindGraphNodeWithName(StringPiece name, const GraphDef& graph);
+int FindGraphNodeWithName(absl::string_view name, const GraphDef& graph);
 
 // Returns the index of the function with the given name or -1 if the function
 // does not exist.
-int FindGraphFunctionWithName(StringPiece name,
+int FindGraphFunctionWithName(absl::string_view name,
                               const FunctionDefLibrary& library);
 
 // Returns the index of the first node with the given op or -1 if no such  node
 // exists.
-int FindGraphNodeWithOp(StringPiece op, const GraphDef& graph);
+int FindGraphNodeWithOp(absl::string_view op, const GraphDef& graph);
 
 // Gets the 0th input to a node in the graph.
 NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph);
@@ -129,8 +129,8 @@ NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
                       int64_t i);
 
 // Gets the attr corresponding to a dataset node's output types, if it exists.
-Status GetDatasetOutputTypesAttr(const NodeDef& node,
-                                 DataTypeVector* output_types);
+absl::Status GetDatasetOutputTypesAttr(const NodeDef& node,
+                                       DataTypeVector* output_types);
 
 // Returns the list of indices of all nodes with the given op or empty list if
 // no such node exists.
@@ -139,11 +139,12 @@ std::vector<int> FindAllGraphNodesWithOp(const string& op,
 
 // Sets the node name using `prefix` as a prefix while guaranteeing the name
 // is unique across the graph.
-void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph, NodeDef* node);
+void SetUniqueGraphNodeName(absl::string_view prefix, GraphDef* graph,
+                            NodeDef* node);
 
 // Sets the function name using the `prefix` name as a prefix while guaranteeing
 // the name is unique across the function library.
-void SetUniqueGraphFunctionName(StringPiece prefix,
+void SetUniqueGraphFunctionName(absl::string_view prefix,
                                 const FunctionDefLibrary* library,
                                 FunctionDef* function);
 
@@ -163,12 +164,12 @@ void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
 // in tensorflow happens in other layers (for example, in the Scope class of the
 // C++ API). Note that the nodes in the graph are identified by their id,
 // and renaming nodes does not mutate any edges.
-Status EnsureNodeNamesUnique(Graph* g);
+absl::Status EnsureNodeNamesUnique(Graph* g);
 
 // Returns the item's fetch node, if there is exactly one. Otherwise, returns an
 // error.
-Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
-                    NodeDef** fetch_node);
+absl::Status GetFetchNode(const MutableGraphView& graph,
+                          const GrapplerItem& item, NodeDef** fetch_node);
 
 // Returns true if `item` is derived from a `FunctionDef`, false otherwise.
 // Currently, we determine this heuristically: If we don't have any fetch nodes
@@ -204,7 +205,7 @@ bool HasDeterministicAttr(const string& op);
 
 // Sets the `name` as the metadata name of the `node`. It returns an error if
 // the `node` already has a metadata name.
-Status SetMetadataName(const std::string& name, NodeDef* node);
+absl::Status SetMetadataName(const std::string& name, NodeDef* node);
 
 }  // namespace graph_utils
 }  // namespace grappler

@@ -242,8 +242,8 @@ def set_optimizer_experimental_options(options):
       - implementation_selector: Enable the swap of kernel implementations based
         on the device placement.
       - auto_mixed_precision: Change certain float32 ops to float16 on Volta
-        GPUs and above. Without the use of loss scaling, this can cause
-        numerical underflow (see
+        GPUs and above; and on CPUs with AMX FP16 support. Without the use of
+        loss scaling, this can cause numerical underflow (see
         `keras.mixed_precision.experimental.LossScaleOptimizer`).
       - disable_meta_optimizer: Disable the entire meta optimizer.
       - min_graph_nodes: The minimum number of nodes in a graph to optimizer.

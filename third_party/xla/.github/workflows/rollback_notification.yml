@@ -13,6 +13,8 @@
 # limitations under the License.
 # ============================================================================
 name: Rollback Notification
+permissions:
+  pull-requests: write
 on:
   push:
     branches:
@@ -21,8 +23,6 @@ on:
 jobs:
   rollback-notification:
     if: contains(github.event.head_commit.message, 'revert')
-    permissions:
-      pull-requests: write
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -30,7 +30,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-    timeout-minutes: 1
+    timeout-minutes: 6
     steps:
       - name: "Checking out repository"
         uses: actions/checkout@e2f20e631ae6d7dd3b768f56a5d2af784dd54791 # v2.5.0

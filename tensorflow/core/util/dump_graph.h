@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -29,16 +30,17 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Dumps 'graph_def' to a file, as a GraphDef text proto. Returns the file name
-// chosen.
+// Dumps 'graph_def' to a file, as a GraphDef text or binary proto. Returns the
+// file name chosen. The format is determined by the TF_DUMP_GRAPH_FMT
+// environment variable (TXT or BIN).
 //
 // If the TF_DUMP_GRAPH_PREFIX environment variable is "-", then instead the
 // GraphDef will be logged (using the LOG() macro).
 //
 // Automatically picks a file name. Prefixes 'name' with the value of the
 // TF_DUMP_GRAPH_PREFIX environment variable if 'dirname' is empty, and suffixes
-// 'name' with ".pbtxt" to form a name. If a graph has already been dumped by
-// this process with the same name, suffixes with "_n.pbtxt", where 'n' is a
+// 'name' with '.pbtxt' or '.pb'. If a graph has already been dumped by
+// this process with the same name, suffixes with "_n.pb(txt)", where 'n' is a
 // sequence number.
 string DumpGraphDefToFile(const string& name, GraphDef const& graph_def,
                           const string& dirname = "");
@@ -68,9 +70,9 @@ string DumpProtoToFile(const string& name,
 // instead via DumpGraphToFile. As the custom dumper may not produce protobufs,
 // allow specifying a file suffix/extension too.
 void SetGraphDumper(
-    std::function<Status(const Graph& graph,
-                         const FunctionLibraryDefinition* flib_def,
-                         WritableFile*)>
+    std::function<absl::Status(const Graph& graph,
+                               const FunctionLibraryDefinition* flib_def,
+                               WritableFile*)>
         dumper,
     string suffix = ".pbtxt");
 
@@ -78,8 +80,8 @@ void SetGraphDumper(
 // This function will create a WritableFile and pass it to the dumper.
 // The dumper callback will be responsible for writing data to the file.
 string DumpToFile(const string& name, const string& dirname,
-                  const string& suffix, const string& type_name,
-                  std::function<Status(WritableFile*)> dumper);
+                  const string& suffix, absl::string_view type_name,
+                  std::function<absl::Status(WritableFile*)> dumper);
 
 }  // namespace tensorflow
 

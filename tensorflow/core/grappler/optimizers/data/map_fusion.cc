@@ -68,16 +68,19 @@ bool IsAutotuneNode(const string& node_name, const MutableGraphView& graph) {
 // `determistic` attr value.
 bool SameDeterministicAttr(const NodeDef& parallel_map_node,
                            const NodeDef& parent_parallel_map_node) {
-  const auto* first_deterministic_val =
+  const auto* first_deterministic_attr =
       gtl::FindOrNull(parallel_map_node.attr(), kDeterministicAttr);
-  const auto* second_deterministic_val =
+  const auto* second_deterministic_attr =
       gtl::FindOrNull(parent_parallel_map_node.attr(), kDeterministicAttr);
-
-  if (first_deterministic_val && second_deterministic_val) {
-    return first_deterministic_val->s() == second_deterministic_val->s();
-  }
-
-  return false;
+  const bool first_deterministic_val =
+      (first_deterministic_attr == nullptr) ||
+      (first_deterministic_attr->s() == "true" ||
+       first_deterministic_attr->s() == "default");
+  const bool second_deterministic_val =
+      (second_deterministic_attr == nullptr) ||
+      (second_deterministic_attr->s() == "true" ||
+       second_deterministic_attr->s() == "default");
+  return first_deterministic_val == second_deterministic_val;
 }
 
 // Returns a name for a new node or function that fuses the inputs.
@@ -87,7 +90,6 @@ bool SameDeterministicAttr(const NodeDef& parallel_map_node,
 // optimizing each function in that graph and later aggregating any new
 // functions introduced during these individual optimizations into that single
 // graph's collective function library).
-// TODO(mpcallanan): Look at deduping names in a more generic fashion upstream.
 string GetFusedName(const NodeDef& parent, const NodeDef& child) {
   return absl::StrCat("map_fusion_nodes/", parent.name(), "/", child.name());
 }
@@ -153,10 +155,10 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
 
 }  // namespace
 
-Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
-                                          const GrapplerItem& item,
-                                          GraphDef* output,
-                                          OptimizationStats* stats) {
+absl::Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
+                                                const GrapplerItem& item,
+                                                GraphDef* output,
+                                                OptimizationStats* stats) {
   GraphDef sorted_old_graph = item.graph;
   TF_RETURN_IF_ERROR(TopologicalSort(&sorted_old_graph));
   *output = sorted_old_graph;
@@ -213,10 +215,22 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   for (const NodeDef& node : sorted_old_graph.node()) {
     const NodeDef* map_node = get_map_node(node);
     if (!map_node) continue;
+    // Do not fuse ParallelMap node that uses the unbounded thread pool.
+    if (map_node->attr().find("use_unbounded_threadpool") !=
+            map_node->attr().end() &&
+        map_node->attr().at("use_unbounded_threadpool").b()) {
+      continue;
+    }
 
     const NodeDef* parent_map_node =
         get_map_node(*graph_utils::GetInputNode(*map_node, graph));
     if (!parent_map_node) continue;
+    // Do not fuse ParallelMap node that uses the unbounded thread pool.
+    if (parent_map_node->attr().find("use_unbounded_threadpool") !=
+            parent_map_node->attr().end() &&
+        parent_map_node->attr().at("use_unbounded_threadpool").b()) {
+      continue;
+    }
 
     // TODO(b/148614504): Support fusing different types of map operations.
     if (parent_map_node->op() != map_node->op()) continue;

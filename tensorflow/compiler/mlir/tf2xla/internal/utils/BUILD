@@ -55,7 +55,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/jit:xla_tpu_device",
-        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/tf2xla:layout_util",
@@ -71,8 +71,9 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:errors",
         "@local_xla//xla:shape_util",
-        "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
+        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@local_xla//xla/tsl/platform:errors",
     ],
 )

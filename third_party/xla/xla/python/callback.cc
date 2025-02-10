@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/callback.h"
 
+#include <Python.h>
 #include <sys/types.h>
 
 #include <cstdint>
@@ -22,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -31,15 +31,17 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/string_view.h"  // IWYU pragma: keep
+#include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/primitive_util.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/service/custom_call_status.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace nb = nanobind;
 
@@ -57,8 +59,7 @@ CpuCallback::~CpuCallback() {
   GlobalPyRefManager()->AddGarbage(absl::MakeSpan(objects));
 }
 
-absl::Status CpuCallback::PrepareAndCallInternal(void* result,
-                                                 void** arg_ptrs) {
+absl::Status CpuCallback::PrepareAndCall(void* result, void** arg_ptrs) {
   absl::Span<void* const> inputs(arg_ptrs, args_.size());
   absl::Span<void* const> outputs(reinterpret_cast<void**>(result),
                                   results_.size());
@@ -69,18 +70,18 @@ absl::Status CpuCallback::PrepareAndCallInternal(void* result,
     if (args_[i].type == xla::TOKEN) {
       PyTuple_SET_ITEM(args.ptr(), i, nb::none().release().ptr());
     } else {
-      static_assert(sizeof(ssize_t) == sizeof(int64_t));
-      absl::Span<ssize_t> strides(
-          reinterpret_cast<ssize_t*>(args_[i].strides.data()),
-          args_[i].strides.size());
-      nb_numpy_ndarray array = nb_numpy_ndarray(
-          args_[i].dtype, args_[i].dims, strides, const_cast<void*>(inputs[i]));
+      nb_numpy_ndarray array =
+          nb_numpy_ndarray(args_[i].dtype, args_[i].dims, args_[i].strides,
+                           const_cast<void*>(inputs[i]));
       array.attr("flags").attr("writeable") = nb::bool_(false);
       PyTuple_SET_ITEM(args.ptr(), i, array.release().ptr());
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto result_tuple, CallInternal(std::move(args)));
+  EnterHostCallback();
+  absl::StatusOr<nb::tuple> maybe_result_tuple = Call(std::move(args));
+  LeaveHostCallback();
+  TF_ASSIGN_OR_RETURN(auto result_tuple, maybe_result_tuple);
 
   for (size_t i = 0; i < results_.size(); ++i) {
     if (results_[i].type == xla::TOKEN) {
@@ -114,34 +115,22 @@ absl::Status CpuCallback::PrepareAndCallInternal(void* result,
   return absl::OkStatus();
 }
 
-void CpuCallback::PrepareAndCall(void* result, void** arg_ptrs,
-                                 XlaCustomCallStatus* status) {
-  auto s = PrepareAndCallInternal(result, arg_ptrs);
-  if (!s.ok()) {
-    auto msg = s.message();
-    XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
-    return;
-  }
-}
-
-absl::Status CpuCallback::PrepareAndCall(void* result, void** arg_ptrs) {
-  return PrepareAndCallInternal(result, arg_ptrs);
-}
-
-absl::StatusOr<nb::tuple> CpuCallback::CallInternal(nb::tuple args) {
+absl::StatusOr<nb::tuple> CpuCallback::Call(nb::tuple args) {
+  auto py_error_to_status = [](nb::python_error& e) {
+    std::string error_message = e.what();
+    return absl::InternalError(
+        absl::StrFormat("CpuCallback error: %s", error_message));
+  };
   nb::object result_object;
   try {
     result_object = callable_(*nb::borrow<nb::args>(args));
   } catch (nb::python_error& e) {
-    PyErr_Clear();
-    std::string error_message = e.what();
-    return absl::InternalError(
-        absl::StrFormat("CpuCallback error: %s", error_message));
+    return py_error_to_status(e);
   }
   if (!PyTuple_Check(result_object.ptr())) {
     return absl::InternalError(
         absl::StrFormat("CPU callback expected a tuple result, got %s",
-                        nb::cast<std::string_view>(nb::repr(result_object))));
+                        nb::cast<absl::string_view>(nb::repr(result_object))));
   }
   if (PyTuple_Size(result_object.ptr()) != results_.size()) {
     return absl::InternalError(
@@ -156,11 +145,16 @@ absl::StatusOr<nb::tuple> CpuCallback::CallInternal(nb::tuple args) {
       if (!output.is_none()) {
         return absl::InternalError(absl::StrFormat(
             "Token output from Python callback should be None, got %s",
-            nb::cast<std::string_view>(nb::repr(output))));
+            nb::cast<absl::string_view>(nb::repr(output))));
       }
       continue;
     }
-    nb_numpy_ndarray array = nb_numpy_ndarray::ensure(output);
+    nb_numpy_ndarray array;
+    try {
+      array = nb_numpy_ndarray::from_any(output, NPY_ARRAY_ENSUREARRAY);
+    } catch (nb::python_error& e) {
+      return py_error_to_status(e);
+    }
     static_assert(sizeof(ssize_t) == sizeof(int64_t),
                   "Expected ssize_t to be of equal size to int64_t");
     absl::Span<int64_t const> dims(
@@ -176,26 +170,15 @@ absl::StatusOr<nb::tuple> CpuCallback::CallInternal(nb::tuple args) {
   return result_tuple;
 }
 
-absl::StatusOr<nb::tuple> CpuCallback::Call(nb::tuple args) {
-  return CallInternal(std::move(args));
-}
-
-std::optional<nb::tuple> CpuCallback::Call(nb::tuple args,
-                                           XlaCustomCallStatus* status) {
-  auto statusor = CallInternal(std::move(args));
-  if (!statusor.ok()) {
-    std::string_view msg = statusor.status().message();
-    XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
-    return std::nullopt;
-  }
-  return std::move(statusor).value();
-}
-
 void XlaPythonCpuCallback(void* output, void** inputs,
                           XlaCustomCallStatus* status) {
   CpuCallback* callback =
       absl::bit_cast<CpuCallback*>(*static_cast<uintptr_t*>(inputs[0]));
-  callback->PrepareAndCall(output, inputs + 1, status);
+  auto s = callback->PrepareAndCall(output, inputs + 1);
+  if (!s.ok()) {
+    auto msg = s.message();
+    XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
+  }
 }
 
 }  // namespace xla

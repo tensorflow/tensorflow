@@ -585,7 +585,7 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     EXPECT_EQ(padding_enum, dims.padding);
   }
 
-  StatusOr<OpLevelCostEstimator::ConvolutionDimensions>
+  absl::StatusOr<OpLevelCostEstimator::ConvolutionDimensions>
   CallOpDimensionsFromInputs(const int n, const int h, const int w, const int c,
                              const int kx, const int ky, const int sx,
                              const int sy, const string& data_format,
@@ -2363,6 +2363,15 @@ TEST_F(OpLevelCostEstimatorTest, CropAndResizeExecutionTime) {
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
   }
+}
+
+TEST_F(OpLevelCostEstimatorTest, GetDeviceInfo_EmptyCpu) {
+  OpLevelCostEstimator estimator;
+  DeviceProperties device_properties;
+  device_properties.set_type("CPU");
+  const auto device_info = estimator.GetDeviceInfo(device_properties);
+  EXPECT_GT(device_info.gigaops, 0);
+  EXPECT_GT(device_info.gb_per_sec, 0);
 }
 
 }  // end namespace grappler

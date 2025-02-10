@@ -94,7 +94,7 @@ void UpdateCompileOptions(AotOptions& options) {
       !options.graph_execution_options->enable_mlrt;
 }
 
-Status CompileTfGraphToHlo(
+absl::Status CompileTfGraphToHlo(
     const FunctionLibraryDefinition* flib_def, const NameAttrList& function,
     int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
     bool has_ref_vars, bool may_alias_resource_update,
@@ -132,7 +132,7 @@ std::string GetNodeName(const std::string& signature_node_name) {
   return signature_node_name.substr(0, node_name_len - 2);
 }
 
-Status UpdateGraphDefWithInputShapes(
+absl::Status UpdateGraphDefWithInputShapes(
     MetaGraphDef& meta_graph_def,
     const absl::flat_hash_map<std::string, tensorflow::TensorShapeProto>&
         input_shapes,
@@ -167,7 +167,7 @@ Status UpdateGraphDefWithInputShapes(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Constructs function and args in place using `xla_func_def`.
@@ -195,8 +195,8 @@ void ConstructFunctionAndArgs(const std::string& name,
 
 AotOptions::AotOptions() : graph_execution_options(nullptr) {}
 
-StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
-                                         AotOptions aot_options) {
+absl::StatusOr<AotResult> AotCompileSavedModel(
+    absl::string_view input_model_dir, AotOptions aot_options) {
   TF_ASSIGN_OR_RETURN(tensorflow::MetaGraphDef meta_graph_def,
                       ReadSavedModel(input_model_dir, aot_options.tags));
 
@@ -238,14 +238,17 @@ StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
                                     std::string(input_model_dir),
                                     resource_context.get());
 
-  {
-    model_context.set_meta_graph_def(&meta_graph_def);
-    TF_RETURN_IF_ERROR(
-        aot_options.graph_execution_options->runtime->CreateRuntimeResources(
-            model_context));
-
-    model_context.set_meta_graph_def(nullptr);
-  }
+  CallableOptions callable_options =
+      CombineSignatureDefs(meta_graph_def.signature_def());
+  model_context.set_graph_def(&meta_graph_def.graph_def());
+  model_context.set_callable_options(&callable_options);
+  TF_RETURN_IF_ERROR(
+      aot_options.graph_execution_options->runtime->CreateRuntimeResources(
+          model_context));
+  // These are only needed for `CreateRuntimeResources`, and also safer
+  // since meta_graph_def will be moved.
+  model_context.set_graph_def(nullptr);
+  model_context.set_callable_options(nullptr);
 
   tfrt::BefBuffer bef;
   std::vector<std::string> xla_function_names;
@@ -292,7 +295,8 @@ StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
   return AotResult{std::move(bef), std::move(xla_functions)};
 }
 
-StatusOr<std::unique_ptr<xla::PjRtExecutable>> AotCompileToGpuPjRtExecutable(
+absl::StatusOr<std::unique_ptr<xla::PjRtExecutable>>
+AotCompileToGpuPjRtExecutable(
     const FunctionLibraryDefinition* flib_def, const NameAttrList& function,
     int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
     bool has_ref_vars, bool may_alias_resource_update,
@@ -306,8 +310,8 @@ StatusOr<std::unique_ptr<xla::PjRtExecutable>> AotCompileToGpuPjRtExecutable(
   xla::Compiler::TargetConfig gpu_config(gpu_target_config);
   xla::StreamExecutorGpuCompiler pjrt_gpu_compiler;
   // Create a trivial topology, which won't be used.
-  xla::StreamExecutorGpuTopologyDescription topology(
-      xla::CudaId(), xla::CudaName(), "fake_device", {0});
+  xla::StreamExecutorGpuTopologyDescription topology(xla::CudaId(),
+                                                     xla::CudaName(), nullptr);
   xla::CompileOptions pjrt_options =
       GetPjRtCompileOptions(options, **compilation_result);
   pjrt_options.target_config = gpu_config;
@@ -315,7 +319,7 @@ StatusOr<std::unique_ptr<xla::PjRtExecutable>> AotCompileToGpuPjRtExecutable(
       pjrt_options, *((*compilation_result)->computation), topology, nullptr);
 }
 
-StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
+absl::StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
     const FunctionLibraryDefinition* flib_def, const NameAttrList& function,
     int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
     bool has_ref_vars, bool may_alias_resource_update,
@@ -338,7 +342,7 @@ StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
   return se_client->SerializeExecutable(*executable);
 }
 
-StatusOr<AotResult::ExecutableMap> AotCompileXlaFunctionsInMetaGraphDef(
+absl::StatusOr<AotResult::ExecutableMap> AotCompileXlaFunctionsInMetaGraphDef(
     const MetaGraphDef& meta_graph_def, const std::string& signature_name,
     const absl::flat_hash_map<std::string, tensorflow::TensorShapeProto>&
         input_shapes,
@@ -370,7 +374,9 @@ StatusOr<AotResult::ExecutableMap> AotCompileXlaFunctionsInMetaGraphDef(
   RETURN_IF_ERROR_IN_COMPILE(ConvertTfMlirToRuntimeExecutable(
       aot_options.graph_execution_options->compile_options, mlir_module.get(),
       [](mlir::PassManager& pm, mlir::ModuleOp module,
-         const tensorflow::TfrtPipelineOptions& options) { return OkStatus(); },
+         const tensorflow::TfrtPipelineOptions& options) {
+        return absl::OkStatus();
+      },
       model_context, fallback_state.get(), &xla_function_names));
 
   AotResult::ExecutableMap result;

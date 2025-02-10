@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_c_api.h"
 
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/nnapi/sl/public/NeuralNetworksSupportLibraryImpl.h"
 

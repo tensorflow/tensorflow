@@ -34,8 +34,8 @@
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/proto_util.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
-#include "xla/python/ifrt_proxy/server/ifrt_session_handler.h"
 #include "xla/python/ifrt_proxy/server/version.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace ifrt {
@@ -76,7 +76,8 @@ namespace proxy {
   const uint64_t session_id =
       next_session_id_.fetch_add(1, std::memory_order_relaxed);
 
-  VLOG(0) << "Starting a new IFRT session with session_id=" << session_id;
+  VLOG(0) << "Starting a new IFRT session with session_id=" << session_id
+          << ", version=" << metadata.version().ShortDebugString();
 
   // Create a host buffer store for the session.
   auto host_buffer_store =
@@ -90,21 +91,15 @@ namespace proxy {
     CHECK_GT(host_buffer_stores_.erase(session_id), 0);
   };
 
-  absl::Mutex writer_mu;
-
-  auto session_handler = IfrtSessionHandler::Create(
-      session_id,
-      [this, version = metadata.version(),
-       host_buffer_store = std::move(host_buffer_store)](uint64_t session_id) {
-        return backend_factory_(version, session_id, host_buffer_store);
-      });
-
-  if (!session_handler.ok()) {
-    LOG(INFO) << "Creating session " << session_id
-              << " failed: " << session_handler.status();
-    return xla::ToGrpcStatus(session_handler.status());
+  auto backend = backend_factory_(metadata.version(), session_id,
+                                  std::move(host_buffer_store));
+  if (!backend.ok()) {
+    LOG(INFO) << "Creating IFRT backend " << session_id
+              << " failed: " << backend.status();
+    return xla::ToGrpcStatus(backend.status());
   }
 
+  absl::Mutex writer_mu;
   bool first_request_read = false;
   while (true) {
     auto request = std::make_unique<IfrtRequest>();
@@ -115,14 +110,21 @@ namespace proxy {
       VLOG(0) << "First request read for session " << session_id;
       first_request_read = true;
     }
-    (*session_handler)
-        ->NewIncomingRequest(std::move(request),
-                             [&](std::shared_ptr<IfrtResponse> response) {
-                               absl::MutexLock l(&writer_mu);
-                               stream->Write(*response);
-                             });
+    const uint64_t op_id = request->request_metadata().op_id();
+    auto response = (*backend)->Process(std::move(request));
+    response.OnReady(
+        [op_id, stream,
+         &writer_mu](absl::StatusOr<std::shared_ptr<IfrtResponse>> response) {
+          absl::MutexLock l(&writer_mu);
+          if (response.ok()) {
+            stream->Write(**response);
+          } else {
+            stream->Write(*NewIfrtResponse(op_id, response.status()));
+          }
+        });
   }
 
+  backend->reset();  // Blocks until all response callbacks are called.
   VLOG(0) << "Finishing IFRT session " << session_id;
   return ::grpc::Status::OK;
 }
@@ -131,6 +133,7 @@ namespace proxy {
     ::grpc::ServerContext* context,
     ::grpc::ServerReader<GrpcHostBufferStoreRequest>* stream,
     GrpcHostBufferStoreResponse* response) {
+  tsl::profiler::TraceMe traceme("HostBufferStore");
   const auto it = context->client_metadata().find(
       "ifrt-proxy-grpc-host-buffer-store-metadata-bin");
   if (it == context->client_metadata().end()) {
@@ -146,6 +149,8 @@ namespace proxy {
                           "Unable to parse GrpcHostBufferStoreMetadata");
   }
 
+  VLOG(3) << "HostBufferStore starting to receive data "
+          << metadata.ShortDebugString();
   std::string data;
   data.reserve(metadata.buffer_size());
 
@@ -153,6 +158,8 @@ namespace proxy {
   while (stream->Read(&request)) {
     data.append(request.data());
   }
+  VLOG(3) << "HostBufferStore received all data "
+          << metadata.ShortDebugString();
   if (data.size() != metadata.buffer_size()) {
     return ::grpc::Status(
         ::grpc::StatusCode::DATA_LOSS,
@@ -171,6 +178,7 @@ namespace proxy {
 ::grpc::Status GrpcServiceImpl::HostBufferLookup(
     ::grpc::ServerContext* context, const GrpcHostBufferLookupRequest* request,
     ::grpc::ServerWriter<GrpcHostBufferLookupResponse>* stream) {
+  tsl::profiler::TraceMe traceme("HostBufferLookup");
   static constexpr int64_t kChunkSize = 1024 * 1024;
 
   auto store = GetHostBufferStore(request->session_id());
@@ -182,6 +190,12 @@ namespace proxy {
     return xla::ToGrpcStatus(data.status());
   }
 
+  VLOG(3) << "HostBufferLookup starting to send data "
+          << request->ShortDebugString();
+  tsl::profiler::TraceMe trace_me_send_data([size = data.value()->size()]() {
+    return tsl::profiler::TraceMeEncode("HostBufferLookup_Send",
+                                        {{"size", size}});
+  });
   GrpcHostBufferLookupResponse response;
   if (!(*data)->empty()) {
     for (int64_t offset = 0; offset < (*data)->size(); offset += kChunkSize) {
@@ -199,6 +213,8 @@ namespace proxy {
     // Send at least one response even if the buffer is empty.
     stream->Write(response);
   }
+  VLOG(3) << "HostBufferLookup done sending data "
+          << request->ShortDebugString();
 
   return ::grpc::Status::OK;
 }
@@ -206,6 +222,7 @@ namespace proxy {
 ::grpc::Status GrpcServiceImpl::HostBufferDelete(
     ::grpc::ServerContext* context, const GrpcHostBufferDeleteRequest* request,
     GrpcHostBufferDeleteResponse* response) {
+  tsl::profiler::TraceMe traceme("HostBufferDelete");
   auto store = GetHostBufferStore(request->session_id());
   if (!store.ok()) {
     return xla::ToGrpcStatus(store.status());

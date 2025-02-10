@@ -19,12 +19,17 @@ limitations under the License.
 #include <cstdint>
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 struct OpRegistrationData;
@@ -51,7 +56,7 @@ using ResultElementTypeFn = llvm::function_ref<Type(int)>;
 // Extracts the attributes of a MLIR operation and populates the converted
 // attributes in a proto map<string, AttrValue>. This is used by operation
 // defined in TF dialect which has different attributes format than TFG dialect.
-using GetAttrValuesFn = llvm::function_ref<tensorflow::Status(
+using GetAttrValuesFn = llvm::function_ref<absl::Status(
     Operation*, llvm::StringRef, const tensorflow::OpRegistrationData*, bool,
     tensorflow::AttrValueMap*)>;
 

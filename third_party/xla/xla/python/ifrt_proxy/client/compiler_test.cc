@@ -75,7 +75,8 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
     return "xla::ifrt::proxy::TestProgram";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     CHECK(llvm::isa<TestProgram>(serializable));
     return "";
   }
@@ -105,7 +106,8 @@ class TestCompileOptionsSerDes
     return "xla::ifrt::proxy::TestCompileOptions";
   }
 
-  absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
+  absl::StatusOr<std::string> Serialize(
+      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
     CHECK(llvm::isa<TestCompileOptions>(serializable));
     return "";
   }
@@ -160,8 +162,8 @@ TEST_F(CompilerTest, Compile) {
   std::vector<MockDevice> devices(2);
 
   MockClient client;
-  ON_CALL(client, LookupDevice(_)).WillByDefault(Invoke([&](int id) {
-    return &devices[id];
+  ON_CALL(client, LookupDevice(_)).WillByDefault(Invoke([&](DeviceId id) {
+    return &devices[id.value()];
   }));
 
   Compiler compiler(&client, rpc_helper_);
@@ -172,8 +174,6 @@ TEST_F(CompilerTest, Compile) {
              loaded_executable_handle: 1234
              name: "foo-executable"
              num_devices: 2
-             addressable_device_logical_ids { replica: 0 partition: 0 }
-             addressable_device_logical_ids { replica: 0 partition: 1 }
              addressable_device_ids: [ 0, 1 ]
              fingerprint_value: "fingerprint"
              ready_future_handle: 5678
@@ -208,8 +208,6 @@ TEST_F(CompilerTest, Compile) {
 
   EXPECT_EQ(executable->name(), "foo-executable");
   EXPECT_EQ(executable->num_devices(), 2);
-  EXPECT_THAT(executable->addressable_device_logical_ids(),
-              ElementsAre(FieldsAre(0, 0), FieldsAre(0, 1)));
   EXPECT_THAT(executable->addressable_devices(),
               ElementsAre(&devices[0], &devices[1]));
   EXPECT_THAT(executable->Fingerprint(),

@@ -23,10 +23,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
-#include "xla/python/ifrt/types.pb.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/python/ifrt/shape.pb.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -85,12 +86,40 @@ TEST(ShapeTest, NonZeroDimsNumElements) {
   }
 }
 
+TEST(ShapeTest, ToFromProto) {
+  {
+    Shape shape({});
+    ShapeProto proto = shape.ToProto();
+    TF_ASSERT_OK_AND_ASSIGN(Shape shape_copy, shape.FromProto(proto));
+    EXPECT_EQ(shape_copy, shape);
+  }
+  {
+    Shape shape({1, 2});
+    ShapeProto proto = shape.ToProto();
+    TF_ASSERT_OK_AND_ASSIGN(Shape shape_copy, shape.FromProto(proto));
+    EXPECT_EQ(shape_copy, shape);
+  }
+}
+
+TEST(ShapeTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      Shape({}),
+      Shape({1}),
+      Shape({2}),
+      Shape({1, 2}),
+      Shape({1, 3}),
+      Shape({2, 1}),
+      Shape({1, 2, 3}),
+      Shape({1, 2, 4}),
+  }));
+}
+
 TEST(BoundedDynamicShapeTagDeathTest, NoDynamicDim) {
   EXPECT_DEATH(BoundedDynamicShapeTag tag({false, false}),
                "At least one dimension needs to be dynamically sized");
 }
 
-TEST(BoundedDynamicShapeTagTest, FromToProto) {
+TEST(BoundedDynamicShapeTagTest, ToFromProto) {
   BoundedDynamicShapeTag tag({true, false});
   BoundedDynamicShapeTagProto proto = tag.ToProto();
   TF_ASSERT_OK_AND_ASSIGN(BoundedDynamicShapeTag tag_copy,
@@ -148,7 +177,7 @@ TEST(DynamicShapeTest, GetPaddedShape) {
   EXPECT_EQ(padded_shape, shape);
 }
 
-TEST(DynamicShapeTest, FromToProto) {
+TEST(DynamicShapeTest, ToFromProto) {
   TF_ASSERT_OK_AND_ASSIGN(
       DynamicShape shape,
       DynamicShape::Create(Shape({2, 4}),
@@ -177,6 +206,14 @@ TEST(DynamicShapeTest, ToString) {
     output << shape;
     EXPECT_EQ(output.str(), "[2,<=4]");
   }
+}
+
+TEST(DynamicShapeTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      DynamicShape::Create(Shape({1}), BoundedDynamicShapeTag({true})).value(),
+      DynamicShape::Create(Shape({1, 2}), BoundedDynamicShapeTag({true, false}))
+          .value(),
+  }));
 }
 
 }  // namespace

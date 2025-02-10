@@ -24,8 +24,8 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -49,8 +49,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
+#include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -88,13 +88,16 @@ FailureOr<TensorType> GetUniformQuantizedType(
   }
 
   auto original_element_type = getElementTypeOrSelf(original_type);
-  if (!original_element_type.isa<TF::Qint8Type, TF::Qint32Type>()) {
+  if (!mlir::isa<TF::Qint8Type, TF::Quint8Type, TF::Qint32Type>(
+          original_element_type)) {
     return rewriter.notifyMatchFailure(
-        op, "Quantized type must be qint8 or qint32.");
+        op, "Quantized type must be qint8, quint8 or qint32.");
   }
   auto storage_type = GetIntTypeFromTFQint(original_element_type);
 
-  const unsigned flags = quant::QuantizationFlags::Signed;
+  const unsigned flags = mlir::isa<TF::Quint8Type>(original_element_type)
+                             ? 0
+                             : quant::QuantizationFlags::Signed;
   Type elem_ty;
   if (quantized_dimension == -1) {
     elem_ty = quant::UniformQuantizedType::get(
@@ -112,7 +115,7 @@ FailureOr<TensorType> GetUniformQuantizedType(
         quantized_dimension, storage_type_min, storage_type_max);
   }
 
-  return original_type.cast<TensorType>().clone(elem_ty);
+  return mlir::cast<TensorType>(original_type).clone(elem_ty);
 }
 
 // If operand is TF const op, create MHLO constant op from the contents.
@@ -178,8 +181,8 @@ FailureOr<ElementsAttr> ConvertPaddingAttr(
     const xla::ConvolutionDimensionNumbers &dnums, PatternRewriter &rewriter) {
   StringAttr conv_padding = op.getPaddingAttr();
   SmallVector<int64_t> padding_nums;
-  ShapedType lhs_shape = op.getLhs().getType().template cast<ShapedType>();
-  ShapedType rhs_shape = op.getRhs().getType().template cast<ShapedType>();
+  ShapedType lhs_shape = mlir::cast<ShapedType>(op.getLhs().getType());
+  ShapedType rhs_shape = mlir::cast<ShapedType>(op.getRhs().getType());
 
   // Handle only static shape cases.
   // TODO(b/260284866): Handle dynamic shape cases.
@@ -192,26 +195,26 @@ FailureOr<ElementsAttr> ConvertPaddingAttr(
 
   const int64_t padding_nums_size = 2 * (rhs_shape.getRank() - 2);
   padding_nums.reserve(padding_nums_size);
-  if (conv_padding.strref().equals("EXPLICIT")) {
+  if (conv_padding.strref() == "EXPLICIT") {
     for (auto padding_elem :
          op.getExplicitPaddingAttr().template getAsRange<IntegerAttr>()) {
       padding_nums.push_back(padding_elem.getInt());
     }
-  } else if (conv_padding.strref().equals("VALID")) {
+  } else if (conv_padding.strref() == "VALID") {
     padding_nums.resize(padding_nums_size, 0);
   } else {
     padding_nums.resize(padding_nums_size);
     for (int i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
       const int64_t stride =
-          op.getWindowStridesAttr()[i].template cast<IntegerAttr>().getInt();
+          mlir::cast<IntegerAttr>(op.getWindowStridesAttr()[i]).getInt();
       const int64_t lhs_size_dilated =
           ::tensorflow::UniformQuantizedConvolutionParams::DilatedSize(
               lhs_shape.getDimSize(dnums.input_spatial_dimensions(i)),
-              op.getLhsDilationAttr()[i].template cast<IntegerAttr>().getInt());
+              mlir::cast<IntegerAttr>(op.getLhsDilationAttr()[i]).getInt());
       const int64_t rhs_size_dilated =
           ::tensorflow::UniformQuantizedConvolutionParams::DilatedSize(
               rhs_shape.getDimSize(dnums.kernel_spatial_dimensions(i)),
-              op.getRhsDilationAttr()[i].template cast<IntegerAttr>().getInt());
+              mlir::cast<IntegerAttr>(op.getRhsDilationAttr()[i]).getInt());
 
       const int64_t output_size = (lhs_size_dilated + stride - 1) / stride;
       const int64_t total_padding = std::max(
@@ -262,7 +265,7 @@ FailureOr<SmallVector<NamedAttribute>> ConvertToMhloConvolutionOpAttrs(
                attr.getName() == op.getLhsDilationAttrName() ||
                attr.getName() == op.getRhsDilationAttrName()) {
       attr.setValue(ConvertToDenseElementsAttr(
-          attr.getValue().template cast<ArrayAttr>(), rewriter));
+          mlir::cast<ArrayAttr>(attr.getValue()), rewriter));
       converted_attrs.push_back(attr);
     }
   }
@@ -362,9 +365,9 @@ class ConvertUniformQuantizeOp
         op->getLoc(), *output_type, op.getInput());
     rewriter.replaceOpWithNewOp<mhlo::BitcastConvertOp>(
         op,
-        output_type->clone(output_type->getElementType()
-                               .dyn_cast<quant::QuantizedType>()
-                               .getStorageType()),
+        output_type->clone(
+            mlir::dyn_cast<quant::QuantizedType>(output_type->getElementType())
+                .getStorageType()),
         result);
 
     return success();
@@ -438,9 +441,9 @@ class ConvertUniformRequantizeOp
         op->getLoc(), *output_type, input_quant);
     rewriter.replaceOpWithNewOp<mhlo::BitcastConvertOp>(
         op,
-        output_type->clone(output_type->getElementType()
-                               .dyn_cast<quant::QuantizedType>()
-                               .getStorageType()),
+        output_type->clone(
+            mlir::dyn_cast<quant::QuantizedType>(output_type->getElementType())
+                .getStorageType()),
         result);
     return success();
   }
@@ -502,9 +505,9 @@ class ConvertUniformQuantizedDotOp
                                      /*precision_config=*/nullptr);
     rewriter.replaceOpWithNewOp<mhlo::BitcastConvertOp>(
         op,
-        output_type->clone(output_type->getElementType()
-                               .dyn_cast<quant::QuantizedType>()
-                               .getStorageType()),
+        output_type->clone(
+            mlir::dyn_cast<quant::QuantizedType>(output_type->getElementType())
+                .getStorageType()),
         result);
     return success();
   }
@@ -564,9 +567,9 @@ class ConvertUniformQuantizedConvolutionOp
         op->getLoc(), *output_type, operands, *converted_attrs_or);
     rewriter.replaceOpWithNewOp<mhlo::BitcastConvertOp>(
         op,
-        output_type->clone(output_type->getElementType()
-                               .dyn_cast<quant::QuantizedType>()
-                               .getStorageType()),
+        output_type->clone(
+            mlir::dyn_cast<quant::QuantizedType>(output_type->getElementType())
+                .getStorageType()),
         result);
     return success();
   }
@@ -582,7 +585,7 @@ class ConvertUniformQuantizedAddOp
       ConversionPatternRewriter &rewriter) const override {
     Value lhs = adaptor.getLhs();
 
-    auto lhs_type = lhs.getType().cast<ShapedType>();
+    auto lhs_type = mlir::cast<ShapedType>(lhs.getType());
     if (!lhs_type.hasRank()) {
       return rewriter.notifyMatchFailure(
           op, "Legalization supports cases where only lhs rank known.");
@@ -632,9 +635,9 @@ class ConvertUniformQuantizedAddOp
         op->getLoc(), *output_type, lhs, *rhs_or, broadcast_dims);
     rewriter.replaceOpWithNewOp<mhlo::BitcastConvertOp>(
         op,
-        output_type->clone(output_type->getElementType()
-                               .dyn_cast<quant::QuantizedType>()
-                               .getStorageType()),
+        output_type->clone(
+            mlir::dyn_cast<quant::QuantizedType>(output_type->getElementType())
+                .getStorageType()),
         result);
     return success();
   }
@@ -692,9 +695,9 @@ class ConvertUniformQuantizedClipByValueOp
         op->getLoc(), *output_type, res_min_clipped, *max_or, broadcast_dims);
     rewriter.replaceOpWithNewOp<mhlo::BitcastConvertOp>(
         op,
-        output_type->clone(output_type->getElementType()
-                               .dyn_cast<quant::QuantizedType>()
-                               .getStorageType()),
+        output_type->clone(
+            mlir::dyn_cast<quant::QuantizedType>(output_type->getElementType())
+                .getStorageType()),
         res_max_clipped);
     return success();
   }

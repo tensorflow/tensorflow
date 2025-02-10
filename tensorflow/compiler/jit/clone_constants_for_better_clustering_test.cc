@@ -28,8 +28,8 @@ namespace tensorflow {
 namespace {
 using ::tensorflow::testing::FindNodeByName;
 
-Status CloneConstantsForBetterClustering(const Scope& s,
-                                         std::unique_ptr<Graph>* result) {
+absl::Status CloneConstantsForBetterClustering(const Scope& s,
+                                               std::unique_ptr<Graph>* result) {
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   SessionOptions session_options;
   session_options.config.mutable_graph_options()

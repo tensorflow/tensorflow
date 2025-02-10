@@ -26,10 +26,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,15 +42,12 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
-#include "xla/service/gpu/triton_support.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -106,6 +105,26 @@ absl::Status UncompilableMatmul(absl::string_view explanation) {
   absl::Status s = absl::CancelledError(explanation);
   s.SetPayload(kUncompilableFusion, absl::Cord(explanation));
   return s;
+}
+
+absl::StatusOr<HloInstruction*> MakeSparseMetaOperand(
+    HloDotInstruction& dot, const TritonGemmConfig& config) {
+  CHECK_EQ(dot.sparse_operands(), 1);
+  CHECK_EQ(dot.sparsity().front().index(), 0);
+
+  HloInstruction* meta = dot.mutable_operand(2);
+  const Shape& shape = meta->shape();
+  if (shape.dimensions().back() % config.split_k != 0) {
+    return UncompilableMatmul("Sparsity metadata has incorrect shape.");
+  }
+
+  std::vector<int64_t> dimensions(shape.dimensions().begin(),
+                                  shape.dimensions().end() - 1);
+  dimensions.push_back(config.split_k);
+  dimensions.push_back(shape.dimensions().back() / config.split_k);
+  Shape new_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      shape.element_type(), dimensions);
+  return MakeBitcastHlo(meta, new_shape);
 }
 
 }  // namespace
@@ -217,14 +236,15 @@ absl::StatusOr<HloInstruction*> MakeSplitKOperand(
 absl::Status MakeDotComputationSplitKBatch(
     HloComputation* computation, const TritonGemmConfig& config,
     bool disable_reduced_precision_reduction) {
-  HloInstruction* dot =
-      hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
+  HloDotInstruction* dot = Cast<HloDotInstruction>(
+      hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
   TF_ASSIGN_OR_RETURN(const auto analysis,
                       TritonFusionAnalysis::Execute(*computation));
   const DotDimensionNumbers& old_dim_numbers = dot->dot_dimension_numbers();
   DotDimensionNumbers new_dim_numbers;
 
-  const int64_t lhs_contracting_idx = ContractingDimensionIndex(*dot, 0);
+  TF_ASSIGN_OR_RETURN(const int64_t lhs_contracting_idx,
+                      ContractingDimensionIndex(*dot, 0));
   CopyIncrementingAboveThreshold(
       old_dim_numbers.lhs_contracting_dimensions(),
       *new_dim_numbers.mutable_lhs_contracting_dimensions(),
@@ -234,7 +254,8 @@ absl::Status MakeDotComputationSplitKBatch(
       old_dim_numbers.lhs_batch_dimensions(),
       *new_dim_numbers.mutable_lhs_batch_dimensions(), lhs_contracting_idx);
 
-  const int64_t rhs_contracting_idx = ContractingDimensionIndex(*dot, 1);
+  TF_ASSIGN_OR_RETURN(const int64_t rhs_contracting_idx,
+                      ContractingDimensionIndex(*dot, 1));
   CopyIncrementingAboveThreshold(
       old_dim_numbers.rhs_contracting_dimensions(),
       *new_dim_numbers.mutable_rhs_contracting_dimensions(),
@@ -243,6 +264,13 @@ absl::Status MakeDotComputationSplitKBatch(
   CopyIncrementingAboveThreshold(
       old_dim_numbers.rhs_batch_dimensions(),
       *new_dim_numbers.mutable_rhs_batch_dimensions(), rhs_contracting_idx);
+
+  // Make sure we have a supported sparse dot.
+  if (dot->sparse_operands()) {
+    if (dot->sparsity().size() != 1 || dot->sparsity().front().index() != 0) {
+      return UncompilableMatmul("Sparsity is only supported on left operand.");
+    }
+  }
 
   // Collect HLOs to transform between dot output and root. These will
   // get a new major most batch dimension sized as split K factor. Other inputs
@@ -259,7 +287,7 @@ absl::Status MakeDotComputationSplitKBatch(
     }
     CHECK_EQ(current->user_count(), 1);
     current = current->users()[0];
-    if (!IsDistributiveOverAddition(*current)) {
+    if (!legacy_triton::IsDistributiveOverAddition(*current)) {
       return Cancelled("Operation non-distributive over addition after dot.");
     }
   } while (true);
@@ -282,8 +310,17 @@ absl::Status MakeDotComputationSplitKBatch(
         CHECK_EQ(rhs->operand(0)->opcode(), HloOpcode::kPad);
         did_pad = true;
       }
+      std::vector<SparsityDescriptor> sparsity(dot->sparsity().begin(),
+                                               dot->sparsity().end());
+      std::vector<HloInstruction*> sparse_meta(sparsity.size());
+      for (int i = 0; i < sparsity.size(); ++i) {
+        // This is only correct for LHS sparse operand after dot decomposition.
+        sparsity[i].set_dimension(sparsity[i].dimension() + 1);
+        TF_ASSIGN_OR_RETURN(sparse_meta[i],
+                            MakeSparseMetaOperand(*dot, config));
+      }
       expanded = MakeDotHlo(lhs, rhs, new_dim_numbers, dot->precision_config(),
-                            dot->shape().element_type())
+                            dot->shape().element_type(), sparsity, sparse_meta)
                      .value();
       // Make the added batch dimension the major-most, keep the order of the
       // original dimensions.

@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/common_shape_fns.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -36,7 +35,7 @@ REGISTER_OP("XlaSparseDenseMatmul")
     .Attr("max_ids_per_partition: int >= 0")
     .Attr("max_unique_ids_per_partition: int >= 0")
     .Attr("input_size: int >= 0")
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       int input_size;
       TF_RETURN_IF_ERROR(c->GetAttr("input_size", &input_size));
       shape_inference::ShapeHandle rank;
@@ -60,7 +59,7 @@ REGISTER_OP("XlaSparseDenseMatmul")
       c->set_output(2, c->UnknownShapeOfRank(1));
       c->set_output(3, c->UnknownShapeOfRank(1));
       c->set_output(4, c->UnknownShapeOfRank(1));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseDenseMatmulWithCsrInput")
@@ -76,7 +75,7 @@ REGISTER_OP("XlaSparseDenseMatmulWithCsrInput")
     .Attr("quantization_config_high: float")
     .Attr("quantization_config_num_buckets: int >= 0")
     .Attr("table_name: string")
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       int input_size;
       TF_RETURN_IF_ERROR(c->GetAttr("input_size", &input_size));
       shape_inference::ShapeHandle rank;
@@ -93,7 +92,7 @@ REGISTER_OP("XlaSparseDenseMatmulWithCsrInput")
           c->ReplaceDim(c->input(4), 0, c->MakeDim(input_size), &output_shape));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &rank));
       c->set_output(0, output_shape);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseDenseMatmulGradWithSgdAndCsrInput")
@@ -109,9 +108,9 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithSgdAndCsrInput")
     .Attr("clip_weight_min: float = -inf")
     .Attr("clip_weight_max: float = inf")
     .Attr("table_name: string")
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradAndCsrInput")
@@ -129,10 +128,10 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradAndCsrInput")
     .Attr("clip_weight_min: float = -inf")
     .Attr("clip_weight_max: float = inf")
     .Attr("table_name: string")
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInput")
@@ -157,11 +156,11 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInput")
     .Attr("clip_weight_min: float = -inf")
     .Attr("clip_weight_max: float = inf")
     .Attr("table_name: string")
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
       c->set_output(2, c->input(8));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseDenseMatmulGradWithAdamAndCsrInput")
@@ -185,11 +184,11 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdamAndCsrInput")
     .Attr("clip_weight_min: float = -inf")
     .Attr("clip_weight_max: float = inf")
     .Attr("table_name: string")
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
       c->set_output(2, c->input(8));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseDenseMatmulGradWithFtrlAndCsrInput")
@@ -214,11 +213,11 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithFtrlAndCsrInput")
     .Attr("clip_weight_min: float = -inf")
     .Attr("clip_weight_max: float = inf")
     .Attr("table_name: string")
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
       c->set_output(2, c->input(8));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseCoreSgd")
@@ -229,9 +228,9 @@ REGISTER_OP("XlaSparseCoreSgd")
     .Output("updated_embedding_table: float32")
     .Attr("feature_width: int")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(3));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseCoreAdagrad")
@@ -244,10 +243,10 @@ REGISTER_OP("XlaSparseCoreAdagrad")
     .Output("updated_accumulator: float32")
     .Attr("feature_width: int")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(4));
       c->set_output(1, c->input(3));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseCoreAdagradMomentum")
@@ -267,11 +266,11 @@ REGISTER_OP("XlaSparseCoreAdagradMomentum")
     .Attr("beta_2: float")
     .Attr("exponent: float")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(7));
       c->set_output(1, c->input(5));
       c->set_output(2, c->input(6));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseCoreAdam")
@@ -291,11 +290,11 @@ REGISTER_OP("XlaSparseCoreAdam")
     .Attr("feature_width: int")
     .Attr("use_sum_inside_sqrt: bool")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(5));
       c->set_output(2, c->input(4));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("XlaSparseCoreFtrl")
@@ -315,19 +314,212 @@ REGISTER_OP("XlaSparseCoreFtrl")
     .Attr("multiply_linear_by_learning_rate: bool")
     .Attr("l1_regularization_strength: float")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(1));
       c->set_output(2, c->input(2));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("GlobalIterId")
     .Output("iter_id: int64")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       c->set_output(0, c->Scalar());
-      return OkStatus();
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("XlaSparseDenseMatmulWithStaticBufferSize")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_gains: float32")
+    .Input("embedding_table: float32")
+    .Input("num_minibatches_per_physical_sparse_core: int32")
+    .Output("activations: float32")
+    .Attr("input_size: int >= 0")
+    .Attr("quantization_config_low: float")
+    .Attr("quantization_config_high: float")
+    .Attr("quantization_config_num_buckets: int >= 0")
+    .Attr("max_ids_per_sparse_core: int >= 1")
+    .Attr("max_unique_ids_per_sparse_core: int >= 1")
+    .Attr("table_name: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      int input_size;
+      TF_RETURN_IF_ERROR(c->GetAttr("input_size", &input_size));
+      shape_inference::ShapeHandle rank;
+      for (int i = 0; i < 4; ++i) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &rank));
+      }
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 2, &rank));
+      for (int i = 2; i < 4; ++i) {
+        shape_inference::ShapeHandle merged;
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i), c->input(1), &merged));
+      }
+      shape_inference::ShapeHandle output_shape;
+      TF_RETURN_IF_ERROR(
+          c->ReplaceDim(c->input(4), 0, c->MakeDim(input_size), &output_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &rank));
+      c->set_output(0, output_shape);
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("XlaSparseDenseMatmulGradWithSgdAndStaticBufferSize")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_gains: float32")
+    .Input("activation_gradients: float32")
+    .Input("learning_rate: float32")
+    .Input("embedding_table: float32")
+    .Input("num_minibatches_per_physical_sparse_core: int32")
+    .Output("updated_embedding_table: float32")
+    .Attr("clip_weight_min: float = -inf")
+    .Attr("clip_weight_max: float = inf")
+    .Attr("max_ids_per_sparse_core: int >= 1")
+    .Attr("max_unique_ids_per_sparse_core: int >= 1")
+    .Attr("table_name: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      c->set_output(0, c->input(6));
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSize")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_gains: float32")
+    .Input("activation_gradients: float32")
+    .Input("learning_rate: float32")
+    .Input("embedding_table: float32")
+    .Input("accumulator: float32")
+    .Input("num_minibatches_per_physical_sparse_core: int32")
+    .Output("updated_embedding_table: float32")
+    .Output("updated_accumulator: float32")
+    .Attr("clip_weight_min: float = -inf")
+    .Attr("clip_weight_max: float = inf")
+    .Attr("max_ids_per_sparse_core: int >= 1")
+    .Attr("max_unique_ids_per_sparse_core: int >= 1")
+    .Attr("table_name: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      c->set_output(0, c->input(6));
+      c->set_output(1, c->input(7));
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradMomentumAndStaticBufferSize")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_gains: float32")
+    .Input("activation_gradients: float32")
+    .Input("learning_rate: float32")
+    .Input("embedding_table: float32")
+    .Input("accumulator: float32")
+    .Input("momenta: float32")
+    .Input("num_minibatches_per_physical_sparse_core: int32")
+    .Output("updated_embedding_table: float32")
+    .Output("updated_accumulator: float32")
+    .Output("updated_momenta: float32")
+    .Attr("use_nesterov: bool")
+    .Attr("exponent: float")
+    .Attr("beta1: float")
+    .Attr("beta2: float")
+    .Attr("epsilon: float")
+    .Attr("clip_weight_min: float = -inf")
+    .Attr("clip_weight_max: float = inf")
+    .Attr("max_ids_per_sparse_core: int >= 1")
+    .Attr("max_unique_ids_per_sparse_core: int >= 1")
+    .Attr("table_name: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      c->set_output(0, c->input(6));
+      c->set_output(1, c->input(7));
+      c->set_output(2, c->input(8));
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("XlaSparseDenseMatmulGradWithAdamAndStaticBufferSize")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_gains: float32")
+    .Input("activation_gradients: float32")
+    .Input("learning_rate: float32")
+    .Input("embedding_table: float32")
+    .Input("momenta: float32")
+    .Input("velocity: float32")
+    .Input("num_minibatches_per_physical_sparse_core: int32")
+    .Output("updated_embedding_table: float32")
+    .Output("updated_momenta: float32")
+    .Output("updated_velocity: float32")
+    .Attr("use_sum_inside_sqrt: bool")
+    .Attr("beta1: float")
+    .Attr("beta2: float")
+    .Attr("epsilon: float")
+    .Attr("clip_weight_min: float = -inf")
+    .Attr("clip_weight_max: float = inf")
+    .Attr("max_ids_per_sparse_core: int >= 1")
+    .Attr("max_unique_ids_per_sparse_core: int >= 1")
+    .Attr("table_name: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      c->set_output(0, c->input(6));
+      c->set_output(1, c->input(7));
+      c->set_output(2, c->input(8));
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSize")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_gains: float32")
+    .Input("activation_gradients: float32")
+    .Input("learning_rate: float32")
+    .Input("embedding_table: float32")
+    .Input("accumulator: float32")
+    .Input("linear: float32")
+    .Input("num_minibatches_per_physical_sparse_core: int32")
+    .Output("updated_embedding_table: float32")
+    .Output("updated_accumulator: float32")
+    .Output("updated_linear: float32")
+    .Attr("multiply_linear_by_learning_rate: bool")
+    .Attr("beta: float")
+    .Attr("learning_rate_power: float")
+    .Attr("l1_regularization_strength: float")
+    .Attr("l2_regularization_strength: float")
+    .Attr("clip_weight_min: float = -inf")
+    .Attr("clip_weight_max: float = inf")
+    .Attr("max_ids_per_sparse_core: int >= 1")
+    .Attr("max_unique_ids_per_sparse_core: int >= 1")
+    .Attr("table_name: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      c->set_output(0, c->input(6));
+      c->set_output(1, c->input(7));
+      c->set_output(2, c->input(8));
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("XlaSparseDenseMatmulGradWithCsrInput")
+    .Input("row_pointers: int32")
+    .Input("sorted_sample_ids: int32")
+    .Input("sorted_token_ids: int32")
+    .Input("sorted_gains: float32")
+    .Input("activation_gradients: float32")
+    .Input("tables: N * float32")
+    .Input("hyperparameters: M * float32")
+    .Input("num_minibatches_per_physical_sparse_core: int32")
+    .Output("updated_tables: N * float32")
+    .Attr("N: int >= 1")
+    .Attr("M: int >= 1")
+    .Attr("custom_computation: func")
+    .Attr("table_name: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      int num_tables;
+      TF_RETURN_IF_ERROR(c->GetAttr("N", &num_tables));
+      for (int i = 0; i < num_tables; ++i) {
+        c->set_output(i, c->input(5));
+      }
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

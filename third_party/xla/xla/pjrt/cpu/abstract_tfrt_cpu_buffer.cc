@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -39,6 +38,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -46,36 +46,33 @@ limitations under the License.
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
-#include "xla/runtime/cpu_event.h"
+#include "xla/service/cpu/cpu_event.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_xfeed.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/async_value.h"
-#include "tsl/concurrency/async_value_ref.h"
-#include "tsl/concurrency/ref_count.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace {
 
-using ::xla::runtime::CpuEvent;
-
 constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 
-// Unpacks and copies the int4 data at 'input' into the literal at the given
+// Unpacks and copies the packed data at `input` into the literal at the given
 // ShapeIndex.
-void UnpackInt4ToLiteral(const MaybeOwningCpuMemory& input,
+void UnpackIntNToLiteral(PrimitiveType input_element_type,
+                         const MaybeOwningCpuMemory& input,
                          MutableLiteralBase* literal,
                          const ShapeIndex& shape_index) {
   absl::Span<const char> input_span{static_cast<const char*>(input.data()),
@@ -84,17 +81,21 @@ void UnpackInt4ToLiteral(const MaybeOwningCpuMemory& input,
       ShapeUtil::GetSubshape(literal->shape(), shape_index)));
   absl::Span<char> output_span{
       static_cast<char*>(literal->untyped_data(shape_index)), output_size};
-  UnpackInt4(input_span, output_span);
+  primitive_util::UnpackIntN(input_element_type, input_span, output_span);
 }
 
+// `device_buffer`'s definition event must be ready before calling this
+// function.
 void CopyCpuBufferToLiteral(const Shape& device_shape,
                             TrackedTfrtCpuDeviceBuffer* device_buffer,
                             MutableLiteralBase* literal) {
   if (!device_shape.IsTuple()) {
-    const std::shared_ptr<MaybeOwningCpuMemory>& b =
+    const tsl::AsyncValueRef<MaybeOwningCpuMemory>& b =
         device_buffer->Buffers()[0];
-    if (primitive_util::Is4BitType(device_shape.element_type())) {
-      UnpackInt4ToLiteral(*b, literal, /*shape_index=*/{});
+    CHECK(b.IsConcrete());
+    if (primitive_util::IsSubByteNonPredType(device_shape.element_type())) {
+      UnpackIntNToLiteral(device_shape.element_type(), *b, literal,
+                          /*shape_index=*/{});
     } else {
       std::memcpy(literal->untyped_data(), b->data(),
                   ShapeUtil::ByteSizeOf(device_shape));
@@ -103,10 +104,11 @@ void CopyCpuBufferToLiteral(const Shape& device_shape,
     // Tuple case.
     int num_leaves = literal->shape().tuple_shapes().size();
     for (int i = 0; i < num_leaves; ++i) {
-      const std::shared_ptr<MaybeOwningCpuMemory>& b =
+      const tsl::AsyncValueRef<MaybeOwningCpuMemory>& b =
           device_buffer->Buffers()[i];
-      if (primitive_util::Is4BitType(device_shape.element_type())) {
-        UnpackInt4ToLiteral(*b, literal, {i});
+      CHECK(b.IsConcrete());
+      if (primitive_util::IsSubByteNonPredType(device_shape.element_type())) {
+        UnpackIntNToLiteral(device_shape.element_type(), *b, literal, {i});
       } else {
         std::memcpy(
             literal->untyped_data({i}), b->data(),
@@ -116,13 +118,15 @@ void CopyCpuBufferToLiteral(const Shape& device_shape,
   }
 }
 
+// `buffers` must be available.
 ShapedBuffer AsShapedBuffer(
     int device_ordinal, const Shape& on_device_shape,
-    absl::Span<const std::shared_ptr<MaybeOwningCpuMemory>> buffers) {
+    absl::Span<const tsl::AsyncValueRef<MaybeOwningCpuMemory>> buffers) {
   ShapedBuffer shaped_buffer(on_device_shape, device_ordinal);
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
       shaped_buffer.buffers().begin();
   for (const auto& buf : buffers) {
+    CHECK(buf.IsConcrete());
     CHECK(iterator != shaped_buffer.buffers().end());
     iterator->second = se::DeviceMemoryBase(buf->data(), buf->size());
     ++iterator;
@@ -132,14 +136,6 @@ ShapedBuffer AsShapedBuffer(
 }
 
 }  //  namespace
-
-UnpinnedHostMemorySpace::UnpinnedHostMemorySpace(int id, PjRtClient* client)
-    : id_(id), client_(client) {
-  debug_string_ = absl::StrFormat(
-      "UnpinnedHostMemorySpace(id=%i, process_index=%i, client=%s)", id_,
-      client_->process_index(), client_->platform_name());
-  to_string_ = absl::StrFormat("UNPINNED_HOST_%i", id_);
-}
 
 AbstractTfrtCpuBuffer::AbstractTfrtCpuBuffer(
     Shape on_device_shape,
@@ -171,8 +167,9 @@ absl::StatusOr<Shape> AbstractTfrtCpuBuffer::logical_on_device_shape() {
     return Internal("Error Execute: %s", error->message());
   }
 
+  // Safe to call `AsShapedBuffer` because the definition event is ready.
   ShapedBuffer shaped_buffer =
-      AsShapedBuffer(device()->local_hardware_id(), on_device_shape_,
+      AsShapedBuffer(device()->local_hardware_id().value(), on_device_shape_,
                      device_buffer->Buffers());
   Shape ret_shape = on_device_shape_;
   TF_RETURN_IF_ERROR(ReadDynamicShapesOnCpu(
@@ -188,10 +185,15 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
 AbstractTfrtCpuBuffer::AcquireExternalReference() {
   class ScopedExternalReference : public PjRtBuffer::ExternalReference {
    public:
-    explicit ScopedExternalReference(AbstractTfrtCpuBuffer* buffer,
-                                     std::shared_ptr<MaybeOwningCpuMemory> data)
+    explicit ScopedExternalReference(
+        AbstractTfrtCpuBuffer* buffer,
+        tsl::AsyncValueRef<MaybeOwningCpuMemory> data)
         : buffer_(buffer), data_(std::move(data)) {
       DCHECK(data_);
+      // We need to wait for the memory to be allocated before sharing it with
+      // external frameworks like NumPy.
+      tsl::BlockUntilReady(data_);
+      CHECK(data_.IsConcrete());
       data_ptr_ = data_->data();
     }
 
@@ -201,7 +203,7 @@ AbstractTfrtCpuBuffer::AcquireExternalReference() {
     AbstractTfrtCpuBuffer* buffer_ = nullptr;
     // Keep a reference to the underlying data used. Note that it is still
     // users' responsibility to synchronize reads and writes to the data.
-    std::shared_ptr<MaybeOwningCpuMemory> data_;
+    tsl::AsyncValueRef<MaybeOwningCpuMemory> data_;
   };
 
   absl::MutexLock lock(&mu_);
@@ -230,7 +232,12 @@ class TrackedCpuDeviceBufferExternalReference
   explicit TrackedCpuDeviceBufferExternalReference(
       std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer)
       : tracked_device_buffer_(std::move(tracked_device_buffer)) {
-    data_ptr_ = tracked_device_buffer_->Buffers()[0]->data();
+    // We need to wait for the memory to be allocated before sharing it with
+    // external frameworks like NumPy.
+    const auto& buffer = tracked_device_buffer_->Buffers()[0];
+    tsl::BlockUntilReady(buffer);
+    CHECK(buffer.IsConcrete());
+    data_ptr_ = buffer->data();
   }
 
   ~TrackedCpuDeviceBufferExternalReference() override = default;
@@ -342,12 +349,11 @@ AbstractTfrtCpuBuffer::Release(bool wait_for_operations_to_complete) {
     // Block the host until all usage events have completed. Usage events
     // dominate definition events, so this also waits for the buffer to be
     // defined. Return the first error encountered.
-    Status first_error;
+    absl::Status first_error;
     for (const auto& av : events) {
       BlockUntilReady(av.GetAsyncValue());
       if (auto* error = av.GetErrorIfPresent()) {
-        first_error.Update(
-            Internal("Error Execute: %s", error->message()));
+        first_error.Update(Internal("Error Execute: %s", error->message()));
       }
     }
     if (!first_error.ok()) return std::move(first_error);
@@ -388,78 +394,120 @@ AbstractTfrtCpuBuffer::AcquireDonation() {
   return DonationTransaction(this, std::move(tracked_device_buffer_));
 }
 
-PjRtFuture<Status> AbstractTfrtCpuBuffer::ToLiteralHelper(
-    MutableLiteralBase* literal, AsyncWorkRunner* async_work_runner) {
-  std::string message = absl::StrCat(buffer_name(), "::ToLiteral");
-  absl::string_view message_view(message);
-  tsl::profiler::TraceMe traceme(message_view);
+PjRtFuture<> AbstractTfrtCpuBuffer::DoAsyncWorkOnBuffer(
+    absl::string_view method_name,
+    absl::AnyInvocable<
+        absl::Status(const Shape& device_shape,
+                     TrackedTfrtCpuDeviceBuffer* device_buffer) &&>
+        work_on_buffer,
+    bool should_do_work_sync, AsyncWorkRunner* async_work_runner) {
+  auto name_generator = [buffer_name = buffer_name(), method_name]() {
+    return absl::StrCat(buffer_name, "::", method_name);
+  };
+  tsl::profiler::TraceMe traceme(name_generator);
   if (IsEmptyTuple()) {
-    return PjRtFuture<Status>(
-        InvalidArgument("ToLiteral called on empty tuple"));
+    return PjRtFuture<>(
+        InvalidArgument("%s called on empty tuple", method_name));
   }
   auto usage_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
   auto* device_buffer = AcquireUsage(usage_event);
   if (device_buffer == nullptr) {
-    return PjRtFuture<Status>(InvalidArgument(
+    return PjRtFuture<>(InvalidArgument(
         "CopyToHostAsync() called on deleted or donated buffer"));
   }
   MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
 
-  std::vector<tsl::RCReference<tsl::AsyncValue>> device_buffer_wait_avs = {
-      device_buffer->definition_event().CopyRCRef()};
-  std::vector<tsl::RCReference<tsl::AsyncValue>> device_buffer_wait_avs_copy = {
-      device_buffer->definition_event().CopyRCRef()};
+  tsl::RCReference<tsl::AsyncValue> device_buffer_wait_av =
+      device_buffer->definition_event().CopyRCRef();
 
-  bool should_sync_copy = device_buffer_wait_avs.empty() &&
-                          literal->size_bytes() < kSmallDataTransferByteSize;
   absl::StatusOr<Shape> device_shape = logical_on_device_shape();
   if (!device_shape.ok()) {
-    return PjRtFuture<Status>(device_shape.status());
+    return PjRtFuture<>(device_shape.status());
   }
-  if (should_sync_copy) {
-    CopyCpuBufferToLiteral(*device_shape, device_buffer, literal);
+  if (device_buffer_wait_av->IsConcrete() && should_do_work_sync) {
     // Unblock ToLiteral caller.
-    return PjRtFuture<Status>(OkStatus());
+    return PjRtFuture<>(
+        std::move(work_on_buffer)(*device_shape, device_buffer));
   } else {
-    auto ready_event = tsl::MakeUnconstructedAsyncValueRef<Status>();
+    std::vector<tsl::RCReference<tsl::AsyncValue>> device_buffer_wait_avs{
+        device_buffer_wait_av};
+    PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
     // Wait for buffer definition events to finish before d2h dispatch. D2H
     // dispatch should be in parallel, e.g. one Execute event finish may trigger
     // multiple outputs' D2H, they should happen in different threads in
     // parallel.
     async_work_runner->ScheduleWhenReady(
         device_buffer_wait_avs,
-        [device_buffer_wait_avs = std::move(device_buffer_wait_avs_copy),
-         literal, ready_event = ready_event.CopyRef(), device_buffer,
+        [device_buffer_wait_av = std::move(device_buffer_wait_av),
+         work_on_buffer = std::move(work_on_buffer), promise, device_buffer,
          device_shape, ready_on_exit = std::move(ready_on_exit)]() mutable {
           tsl::profiler::TraceMe traceme("D2H Dispatch");
           // Errors in src buffer are surfaced to user.
-          for (const auto& av : device_buffer_wait_avs) {
-            if (auto* error = av->GetErrorIfPresent()) {
-              ready_event.emplace(*error);
-              return;
-            }
+          if (auto* error = device_buffer_wait_av->GetErrorIfPresent()) {
+            promise.Set(*error);
+            return;
           }
-          CopyCpuBufferToLiteral(*device_shape, device_buffer, literal);
+          auto status = std::move(work_on_buffer)(*device_shape, device_buffer);
           // Unblock ToLiteral event.
-          ready_event.emplace(OkStatus());
+          if (!status.ok()) {
+            promise.Set(status);
+          } else {
+            promise.Set();
+          }
         });
-    return PjRtFuture<Status>(
-        std::move(ready_event),
+    return PjRtFuture<>(
+        std::move(promise),
         /*on_block_start=*/
-        [message]() {
-          absl::string_view message_view(message);
-          tsl::profiler::TraceMeProducer traceme(message_view);
-          VLOG(1) << message_view;
+        [name_generator]() {
+          tsl::profiler::TraceMeProducer traceme(name_generator);
           return PjRtFutureHelpers::ProfilingKeys(
               {/*traceme_context_id =*/traceme.GetContextId()});
         },
         /*on_block_end=*/
-        [message](PjRtFutureHelpers::ProfilingKeys keys) {
-          absl::string_view message_view(message);
-          tsl::profiler::TraceMeConsumer traceme(message_view,
+        [name_generator](PjRtFutureHelpers::ProfilingKeys keys) {
+          tsl::profiler::TraceMeConsumer traceme(name_generator,
                                                  keys.traceme_context_id);
         });
   }
+}
+
+PjRtFuture<> AbstractTfrtCpuBuffer::ToLiteralHelper(
+    MutableLiteralBase* literal, AsyncWorkRunner* async_work_runner) {
+  bool should_sync_copy = !literal->shape().IsTuple() &&
+                          literal->size_bytes() < kSmallDataTransferByteSize;
+  auto work_on_buffer =
+      [literal](const Shape& device_shape,
+                TrackedTfrtCpuDeviceBuffer* device_buffer) -> absl::Status {
+    CopyCpuBufferToLiteral(device_shape, device_buffer, literal);
+    return absl::OkStatus();
+  };
+  return DoAsyncWorkOnBuffer("ToLiteral", std::move(work_on_buffer),
+                             should_sync_copy, async_work_runner);
+}
+
+PjRtFuture<> AbstractTfrtCpuBuffer::CopyRawToHostHelper(
+    void* dst, int64_t offset, int64_t transfer_size,
+    AsyncWorkRunner* async_work_runner) {
+  bool should_sync_copy = transfer_size < kSmallDataTransferByteSize;
+  auto work_on_buffer =
+      [dst, offset, transfer_size](
+          const Shape& device_shape,
+          TrackedTfrtCpuDeviceBuffer* device_buffer) -> absl::Status {
+    if (device_shape.IsTuple()) {
+      return InvalidArgument("CopyRawToHost not implemented for tuples.");
+    } else if (offset < 0 ||
+               offset + transfer_size > ShapeUtil::ByteSizeOf(device_shape)) {
+      return InvalidArgument("CopyRawToHost out of bounds.");
+    }
+    const tsl::AsyncValueRef<MaybeOwningCpuMemory>& b =
+        device_buffer->Buffers()[0];
+    CHECK(b.IsConcrete());
+    std::memcpy(dst, reinterpret_cast<char*>(b->data()) + offset,
+                transfer_size);
+    return absl::OkStatus();
+  };
+  return DoAsyncWorkOnBuffer("CopyRawToHost", std::move(work_on_buffer),
+                             should_sync_copy, async_work_runner);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -471,11 +519,14 @@ AbstractTfrtCpuBuffer::CopyToDeviceAcrossClients(PjRtDevice* dst_device) {
       literal->shape().dimensions_size());
   TF_RETURN_IF_ERROR(
       ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
+  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * dst_memory_space,
+                      dst_device->default_memory_space());
   return dst_device->client()->BufferFromHostBuffer(
       literal_pointer->untyped_data(), literal_pointer->shape().element_type(),
       literal_pointer->shape().dimensions(), byte_strides,
-      PjRtClient::HostBufferSemantics::kZeroCopy,
-      [literal{std::move(literal)}]() { /* frees literal */ }, dst_device);
+      PjRtClient::HostBufferSemantics::kImmutableZeroCopy,
+      [literal{std::move(literal)}]() { /* frees literal */ }, dst_memory_space,
+      /*device_layout=*/nullptr);
 }
 
 absl::StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
@@ -489,20 +540,20 @@ AbstractTfrtCpuBuffer::CopyToDeviceHelper(AsyncWorkRunner* async_work_runner) {
   MarkEventReadyOnExit ready_on_exit(std::move(usage_event));
 
   int num_leaf_buffers = src_device_buffer->Buffers().size();
-  absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> src_buffers;
-  absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> dst_buffers;
+  absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> src_buffers;
+  absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> dst_buffers;
+  absl::InlinedVector<size_t, 4> dst_buffers_sizes;
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> dst_definition_events;
   src_buffers.reserve(num_leaf_buffers);
   dst_buffers.reserve(num_leaf_buffers);
+  dst_buffers_sizes.reserve(num_leaf_buffers);
   dst_definition_events.reserve(num_leaf_buffers);
 
   for (int i = 0; i < num_leaf_buffers; ++i) {
-    auto src_buffer = src_device_buffer->Buffers()[i];
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<MaybeOwningCpuMemory> dst_buffer,
-        MaybeOwningCpuMemory::AllocateShared(src_buffer->size()));
-    src_buffers.push_back(std::move(src_buffer));
-    dst_buffers.push_back(std::move(dst_buffer));
+    src_buffers.push_back(std::move(src_device_buffer->Buffers()[i]));
+    dst_buffers.push_back(
+        tsl::MakeUnconstructedAsyncValueRef<MaybeOwningCpuMemory>());
+    dst_buffers_sizes.push_back(src_device_buffer->BufferSizes()[i]);
     dst_definition_events.push_back(
         tsl::MakeConstructedAsyncValueRef<CpuEvent>());
   }
@@ -527,6 +578,15 @@ AbstractTfrtCpuBuffer::CopyToDeviceHelper(AsyncWorkRunner* async_work_runner) {
     }
 
     for (int i = 0; i < num_leaf_buffers; ++i) {
+      // `src_buffers` are available because `src_definition_event` should have
+      // been ready.
+      CHECK(src_buffers[i].IsConcrete());
+      auto dst_memory = MaybeOwningCpuMemory::Allocate(src_buffers[i]->size());
+      if (!dst_memory.ok()) {
+        dst_definition_events[i].SetError(dst_memory.status());
+        continue;
+      }
+      dst_buffers_copies[i].emplace(std::move(*dst_memory));
       std::memcpy(dst_buffers_copies[i]->data(), src_buffers[i]->data(),
                   src_buffers[i]->size());
       dst_definition_events[i].SetStateConcrete();
@@ -539,16 +599,16 @@ AbstractTfrtCpuBuffer::CopyToDeviceHelper(AsyncWorkRunner* async_work_runner) {
       });
 
   return std::make_unique<TrackedTfrtCpuDeviceBuffer>(
-      on_device_shape_.IsTuple(), std::move(dst_buffers),
-      std::move(dst_definition_events));
+      on_device_shape_.IsTuple(), /*owns_buffers=*/true, std::move(dst_buffers),
+      std::move(dst_buffers_sizes), std::move(dst_definition_events));
 }
 
-PjRtFuture<Status> AbstractTfrtCpuBuffer::GetReadyFuture() {
+PjRtFuture<> AbstractTfrtCpuBuffer::GetReadyFuture() {
   tsl::AsyncValueRef<CpuEvent> definition_event;
   {
     absl::MutexLock lock(&mu_);
     if (!tracked_device_buffer_) {
-      return PjRtFuture<Status>(InvalidArgument(
+      return PjRtFuture<>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
     }
     definition_event = tracked_device_buffer_->definition_event();
@@ -557,29 +617,26 @@ PjRtFuture<Status> AbstractTfrtCpuBuffer::GetReadyFuture() {
 
   if (definition_event.IsAvailable()) {
     if (definition_event.IsError()) {
-      return PjRtFuture<Status>(
+      return PjRtFuture<>(
           FailedPrecondition("Buffer Definition Event: %s",
                              definition_event.GetError().message()));
     }
-    return PjRtFuture<Status>(OkStatus());
+    return PjRtFuture<>(absl::OkStatus());
   } else {
-    tsl::AsyncValueRef<Status> status_event =
-        tsl::MakeUnconstructedAsyncValueRef<Status>();
-
-    definition_event.AndThen(
-        [definition_event = definition_event.AsPtr(), status_event]() {
-          if (definition_event.IsError()) {
-            status_event.emplace(
-                FailedPrecondition("Buffer Definition Event: %s",
-                                   definition_event.GetError().message()));
-          } else {
-            status_event.emplace(OkStatus());
-          }
-        });
+    PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+    definition_event.AndThen([definition_event = definition_event.AsPtr(),
+                              promise]() mutable {
+      if (definition_event.IsError()) {
+        promise.Set(FailedPrecondition("Buffer Definition Event: %s",
+                                       definition_event.GetError().message()));
+      } else {
+        promise.Set();
+      }
+    });
 
     std::string message = absl::StrCat(buffer_name(), "::Await");
-    return PjRtFuture<Status>(
-        std::move(status_event),
+    return PjRtFuture<>(
+        std::move(promise),
         /*on_block_start=*/
         [message]() {
           absl::string_view message_view(message);
@@ -597,6 +654,25 @@ PjRtFuture<Status> AbstractTfrtCpuBuffer::GetReadyFuture() {
   }
 }
 
+namespace {
+
+void PackOrCopy(PrimitiveType element_type, const LiteralSlice& literal,
+                void* data, int64_t size) {
+  if (primitive_util::IsSubByteNonPredType(element_type)) {
+    const int bit_width = primitive_util::BitWidth(element_type);
+    absl::Span<const char> src_data_span(
+        static_cast<const char*>(literal.untyped_data()), literal.size_bytes());
+    absl::Span<char> dst_data_span(static_cast<char*>(data), size);
+    PackIntN(bit_width, src_data_span, dst_data_span);
+  } else {
+    CHECK_EQ(literal.size_bytes(), size);
+    std::memcpy(data, literal.untyped_data(), size);
+  }
+}
+
+}  // namespace
+
+// The buffer's memory should have been allocated before calling this function.
 void AbstractTfrtCpuBuffer::CopyFromLiteral(
     const LiteralSlice& literal, const Shape& shape,
     absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
@@ -610,10 +686,10 @@ void AbstractTfrtCpuBuffer::CopyFromLiteral(
     async_work_runner->Schedule(
         [literal, av = (*avs)[0].CopyRef(), device_buffer, shape]() mutable {
           tsl::profiler::TraceMe traceme("H2D Dispatch");
-          const std::shared_ptr<MaybeOwningCpuMemory>& b =
+          const tsl::AsyncValueRef<MaybeOwningCpuMemory>& b =
               device_buffer->Buffers()[0];
-          CHECK_EQ(literal.size_bytes(), b->size());
-          std::memcpy(b->data(), literal.untyped_data(), b->size());
+          CHECK(b.IsConcrete());
+          PackOrCopy(shape.element_type(), literal, b->data(), b->size());
           // Signal copy is complete.
           av->SetStateConcrete();
         });
@@ -626,10 +702,10 @@ void AbstractTfrtCpuBuffer::CopyFromLiteral(
                                    device_buffer]() mutable {
         tsl::profiler::TraceMe traceme("H2D Dispatch");
         auto slice = LiteralSlice(literal, {i});
-        const std::shared_ptr<MaybeOwningCpuMemory>& b =
+        const tsl::AsyncValueRef<MaybeOwningCpuMemory>& b =
             device_buffer->Buffers()[i];
-        CHECK_EQ(slice.size_bytes(), b->size());
-        std::memcpy(b->data(), slice.untyped_data(), slice.size_bytes());
+        CHECK(b.IsConcrete());
+        PackOrCopy(slice.shape().element_type(), slice, b->data(), b->size());
         // Signal copy is complete.
         av->SetStateConcrete();
       });
@@ -641,32 +717,33 @@ void AbstractTfrtCpuBuffer::CopyFromLiteral(
 AbstractTfrtCpuBuffer::AllocateTrackedDeviceBuffer(
     const Shape& on_device_shape,
     absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events) {
-  absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers;
+  absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers;
   if (!on_device_shape.IsTuple()) {
     size_t byte_size = ShapeUtil::ByteSizeOf(on_device_shape);
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<MaybeOwningCpuMemory> device_buffer,
-                        MaybeOwningCpuMemory::AllocateShared(byte_size));
+    TF_ASSIGN_OR_RETURN(tsl::AsyncValueRef<MaybeOwningCpuMemory> device_buffer,
+                        MaybeOwningCpuMemory::AllocateAvailableAvr(byte_size));
     buffers.push_back(std::move(device_buffer));
     return std::make_unique<TrackedTfrtCpuDeviceBuffer>(
-        /*is_tuple=*/false, std::move(buffers), std::move(definition_events));
+        /*is_tuple=*/false, /*owns_buffers=*/true, std::move(buffers),
+        std::move(definition_events));
   }
   // Tuple case.
   buffers.reserve(on_device_shape.tuple_shapes().size());
   for (const auto& leaf_shape : on_device_shape.tuple_shapes()) {
     size_t byte_size = ShapeUtil::ByteSizeOf(leaf_shape);
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<MaybeOwningCpuMemory> device_buffer,
-                        MaybeOwningCpuMemory::AllocateShared(byte_size));
+    TF_ASSIGN_OR_RETURN(tsl::AsyncValueRef<MaybeOwningCpuMemory> device_buffer,
+                        MaybeOwningCpuMemory::AllocateAvailableAvr(byte_size));
     buffers.push_back(std::move(device_buffer));
   }
   return std::make_unique<TrackedTfrtCpuDeviceBuffer>(
-      /*is_tuple=*/true, std::move(buffers), std::move(definition_events));
+      /*is_tuple=*/true, /*owns_buffers=*/true, std::move(buffers),
+      std::move(definition_events));
 }
 
 /*static*/ void AbstractTfrtCpuBuffer::AllocateAvsAndEvents(
     const Shape& shape,
     absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
-    absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>*
-        definition_events) {
+    absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>* definition_events) {
   // Nested tuple shapes are not supported here.
   int num_leaf_buffers = shape.IsTuple() ? shape.tuple_shapes_size() : 1;
   for (int i = 0; i < num_leaf_buffers; ++i) {
@@ -687,34 +764,60 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
     TransposePlanCache* transpose_cache) {
   bool has_default_layout =
       !byte_strides || HasMajorToMinorLayout(type, dims, *byte_strides);
-  // Int4 arrays are unpacked on host and packed on device.
-  bool is_int4 = primitive_util::Is4BitType(type);
+  const int bit_width = primitive_util::BitWidth(type);
+  // Packed arrays are unpacked on host and packed on device.
+  bool is_packed = primitive_util::IsSubByteNonPredType(type);
+
   // If the input buffer has a default layout and is sufficiently aligned, we
   // can simply point to the input array's data without any further copies. At
   // the time of writing we require a 16-byte alignment because XLA may generate
   // code which requires it.
+  bool is_aligned_data = ((absl::bit_cast<std::uintptr_t>(data) &
+                           (cpu_function_runtime::MinAlign() - 1)) == 0);
+
+  using HostBufferSemantics = PjRtClient::HostBufferSemantics;
+  bool immutable_zero_copy_semantics =
+      host_buffer_semantics == HostBufferSemantics::kImmutableZeroCopy;
+  bool mutable_zero_copy_semantics =
+      host_buffer_semantics == HostBufferSemantics::kMutableZeroCopy;
+
   bool can_use_zero_copy =
-      has_default_layout && !is_int4 &&
-      host_buffer_semantics == PjRtClient::HostBufferSemantics::kZeroCopy &&
-      ((absl::bit_cast<std::uintptr_t>(data) &
-        (cpu_function_runtime::MinAlign() - 1)) == 0);
-  absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers;
+      has_default_layout && !is_packed && is_aligned_data &&
+      (immutable_zero_copy_semantics || mutable_zero_copy_semantics);
+
+  absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers;
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events;
   absl::AnyInvocable<void() &&> on_delete_callback;
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
-  if (can_use_zero_copy) {
-    auto device_buffer = std::make_shared<MaybeOwningCpuMemory>(
-        const_cast<void*>(data), byte_size);
-    buffers.push_back(std::move(device_buffer));
+  bool owns_buffers = true;
+
+  if (can_use_zero_copy && mutable_zero_copy_semantics) {
+    // For a mutable zero copy semantics we pass a no-op deleter because
+    // underlying buffer is owned by the caller and it will free it when
+    // PjRt will call `on_done_with_host_buffer` callback.
+    MaybeOwningCpuMemory::OwnedDataPtr::deleter_type no_op = +[](void*) {};
+    buffers.push_back(tsl::MakeAvailableAsyncValueRef<MaybeOwningCpuMemory>(
+        MaybeOwningCpuMemory::OwnedDataPtr(
+            reinterpret_cast<uint8_t*>(const_cast<void*>(data)), no_op),
+        byte_size));
     on_delete_callback = std::move(on_done_with_host_buffer);
+
+  } else if (can_use_zero_copy && immutable_zero_copy_semantics) {
+    // For immutable zero-copy semantics we pass non-owning cpu memory.
+    owns_buffers = false;
+    buffers.push_back(tsl::MakeAvailableAsyncValueRef<MaybeOwningCpuMemory>(
+        const_cast<void*>(data), byte_size));
+    on_delete_callback = std::move(on_done_with_host_buffer);
+
   } else {
     size_t dst_byte_size =
-        is_int4 ? CeilOfRatio(byte_size, size_t{2}) : byte_size;
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<MaybeOwningCpuMemory> device_buffer,
-                        MaybeOwningCpuMemory::AllocateShared(dst_byte_size));
+        is_packed ? CeilOfRatio<size_t>(byte_size, 8 / bit_width) : byte_size;
+    TF_ASSIGN_OR_RETURN(
+        tsl::AsyncValueRef<MaybeOwningCpuMemory> device_buffer,
+        MaybeOwningCpuMemory::AllocateAvailableAvr(dst_byte_size));
     auto dst_data_ptr = device_buffer->data();
     buffers.push_back(device_buffer);
-    if (!has_default_layout || is_int4) {
+    if (!has_default_layout || is_packed) {
       // If the input array does not have a major-to-minor layout, transpose it
       // into major-to-minor layout. Currently we choose to always do this
       // synchronously.
@@ -728,11 +831,13 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
         options.elem_size_in_bytes = primitive_util::ByteWidth(type);
         options.dims = dims;
         options.permutation = permutation;
-        options.input_layout = TransposePlan::Striding{*byte_strides};
+        if (byte_strides) {
+          options.input_layout = TransposePlan::Striding{*byte_strides};
+        }
         absl::MutexLock lock(transpose_mu);
         TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
       }
-      if (!is_int4) {
+      if (!is_packed) {
         transpose->Execute(data, dst_data_ptr);
       } else {
         // First transpose the unpacked data into a new temporary buffer, then
@@ -744,7 +849,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
         absl::Span<const char> src_data_span(data_transposed.get(), byte_size);
         absl::Span<char> dst_data_span(static_cast<char*>(dst_data_ptr),
                                        dst_byte_size);
-        PackInt4(src_data_span, dst_data_span);
+        PackIntN(bit_width, src_data_span, dst_data_span);
       }
       if (on_done_with_host_buffer) {
         std::move(on_done_with_host_buffer)();
@@ -783,8 +888,8 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
     }
   }
   return std::make_unique<TrackedTfrtCpuDeviceBuffer>(
-      /*is_tuple=*/false, std::move(buffers), std::move(definition_events),
-      std::move(on_delete_callback));
+      /*is_tuple=*/false, owns_buffers, std::move(buffers),
+      std::move(definition_events), std::move(on_delete_callback));
 }
 
 AbstractAsyncHostToHostMemoryTransferManager::
@@ -810,7 +915,7 @@ AbstractAsyncHostToHostMemoryTransferManager::
   // Wait for in-flight transfers to finish.
   absl::Condition transfers_finished(
       +[](int* t) { return *t == 0; }, &transfers_in_flight_);
-  LOG(INFO) << "Waiting for in-flight transfers to finish.";
+  VLOG(2) << "Waiting for in-flight transfers to finish.";
   absl::MutexLock l(&mu_);
   mu_.Await(transfers_finished);
   for (auto& avref : avs_) {
@@ -820,7 +925,7 @@ AbstractAsyncHostToHostMemoryTransferManager::
           "Async transfer object was deleted before transfers completed."));
     }
   }
-  LOG(INFO) << "In-flight transfers finished.";
+  VLOG(2) << "In-flight transfers finished.";
 }
 
 size_t AbstractAsyncHostToHostMemoryTransferManager::buffer_size(
@@ -838,16 +943,27 @@ AbstractAsyncHostToHostMemoryTransferManager::RetrieveBuffer(int buffer_index) {
   return std::move(buffers_[buffer_index]);
 }
 
-Status AbstractAsyncHostToHostMemoryTransferManager::TransferLiteralToBuffer(
+absl::Status
+AbstractAsyncHostToHostMemoryTransferManager::TransferLiteralToBuffer(
     int buffer_index, const LiteralSlice& literal,
     absl::AnyInvocable<void() &&> on_done) {
-  return TransferRawDataToSubBuffer(buffer_index, literal.untyped_data(),
-                                    /*offset=*/0, literal.size_bytes(),
-                                    /*is_last_transfer=*/true,
-                                    std::move(on_done));
+  const Shape& shape = literal.shape();
+  if (shape.has_layout() &&
+      !LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+    return absl::UnimplementedError(
+        "PjRt CPU's TransferLiteralToBuffer does not support "
+        "non-major-to-minor layout");
+  }
+  return FillRawDataToSubBuffer(
+      buffer_index,
+      [literal](void* b, int64_t size) {
+        PackOrCopy(literal.shape().element_type(), literal, b, size);
+      },
+      /*is_last_transfer=*/true, std::move(on_done));
 }
 
-Status AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToBuffer(
+absl::Status
+AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToBuffer(
     int buffer_index, absl::string_view data,
     absl::AnyInvocable<void() &&> on_done) {
   return TransferRawDataToSubBuffer(
@@ -855,8 +971,24 @@ Status AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToBuffer(
       /*is_last_transfer=*/true, std::move(on_done));
 }
 
-Status AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToSubBuffer(
+// The definition events of `device_buffers_` must be ready before calling this
+// function.
+absl::Status
+AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToSubBuffer(
     int buffer_index, const void* data, int64_t offset, int64_t transfer_size,
+    bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) {
+  return FillRawDataToSubBuffer(
+      buffer_index,
+      [offset, data, transfer_size](void* b, int64_t size) {
+        std::memcpy(reinterpret_cast<char*>(b) + offset, data, transfer_size);
+      },
+      is_last_transfer, std::move(on_done));
+}
+
+absl::Status
+AbstractAsyncHostToHostMemoryTransferManager::FillRawDataToSubBuffer(
+    int buffer_index,
+    absl::AnyInvocable<void(void* data, int64_t size)> fill_fn,
     bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) {
   {
     // We release the lock when out of scope because
@@ -866,22 +998,21 @@ Status AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToSubBuffer(
 
     CHECK_GE(buffer_index, 0);
     CHECK_LT(buffer_index, buffers_.size());
-    CHECK_LE(transfer_size + offset, buffer_sizes_[buffer_index]);
     CHECK(!last_transfer_finished_[buffer_index]);
     ++buffer_transfers_in_flight_[buffer_index];
     ++transfers_in_flight_;
   }
 
   CHECK(async_work_runner_ != nullptr);
-  async_work_runner_->Schedule([this, data, offset, transfer_size,
+  async_work_runner_->Schedule([this, fill_fn = std::move(fill_fn),
                                 is_last_transfer, on_done = std::move(on_done),
                                 buffer_index]() mutable -> void {
     tsl::RCReference<tsl::AsyncValue> event;
     {
       absl::MutexLock l(&mu_);
       const auto& b = device_buffers_[buffer_index]->Buffers()[0];
-      std::memcpy(reinterpret_cast<char*>(b->data()) + offset, data,
-                  transfer_size);
+      CHECK(b.IsConcrete());
+      fill_fn(reinterpret_cast<char*>(b->data()), b->size());
       if (is_last_transfer) {
         last_transfer_finished_[buffer_index] = true;
       }
@@ -899,16 +1030,16 @@ Status AbstractAsyncHostToHostMemoryTransferManager::TransferRawDataToSubBuffer(
       event->SetStateConcrete();
     }
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AbstractAsyncHostToHostMemoryTransferManager::SetBufferError(
-    int buffer_index, Status error) {
+    int buffer_index, absl::Status error) {
   absl::MutexLock l(&mu_);
   avs_[buffer_index]->SetError(error);
 }
 
-/*static*/ Status
+/*static*/ absl::Status
 AbstractAsyncHostToHostMemoryTransferManager::PopulateAsyncTransferManagerData(
     absl::Span<const std::unique_ptr<AbstractTfrtCpuBuffer>> buffers,
     absl::InlinedVector<TrackedTfrtCpuDeviceBuffer*, 4>& device_buffers,
@@ -934,7 +1065,7 @@ AbstractAsyncHostToHostMemoryTransferManager::PopulateAsyncTransferManagerData(
     buffer_sizes.push_back(buffer_size);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

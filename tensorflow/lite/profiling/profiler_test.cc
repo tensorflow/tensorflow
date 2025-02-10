@@ -20,8 +20,11 @@ limitations under the License.
 #include <cmath>
 #include <thread>  // NOLINT(build/c++11)
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/profiling/buffered_profiler.h"
+#include "tensorflow/lite/profiling/noop_profiler.h"
+#include "tensorflow/lite/profiling/profile_buffer.h"
 
 namespace tflite {
 namespace profiling {

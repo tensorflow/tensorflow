@@ -27,22 +27,38 @@ from absl import flags
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
+import ml_dtypes
 import numpy as np
 
 from xla.python import xla_client
 
 # pylint: disable=g-import-not-at-top
 try:
-  from xla.python import custom_call_for_test
+  from xla.python import custom_calls_testlib
 except ImportError:
-  custom_call_for_test = None
+  custom_calls_testlib = None
+
+try:
+  from xla.python import xla_extension
+  from xla.python import xla_gpu_extension
+
+  if not hasattr(xla_extension, "GpuAllocatorConfig"):
+    xla_extension.GpuAllocatorConfig = xla_gpu_extension.GpuAllocatorConfig
+  if not hasattr(xla_extension, "get_gpu_client"):
+    xla_extension.get_gpu_client = xla_gpu_extension.get_gpu_client
+except ImportError:
+  pass
 
 xla_client._xla.jax_jit.set_thread_local_state_initialization_callback(
     lambda: None
 )
-xla_client._xla.jax_jit.global_state().enable_memories = False
 
 bfloat16 = xla_client.bfloat16
+# TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+# float4_e2m1fn = xla_client.float4_e2m1fn
+# float8_e3m4 = xla_client.float8_e3m4
+# float8_e4m3 = xla_client.float8_e4m3
+# float8_e8m0fnu = xla_client.float8_e8m0fnu
 float8_e4m3fn = xla_client.float8_e4m3fn
 float8_e4m3fnuz = xla_client.float8_e4m3fnuz
 float8_e4m3b11fnuz = xla_client.float8_e4m3b11fnuz
@@ -53,9 +69,24 @@ xla_computation_to_mlir_module = (
     xla_client._xla.mlir.xla_computation_to_mlir_module)
 
 
+def execute_with_python_values(executable, arguments, backend):  # pylint: disable=invalid-name
+  """Execute on one replica with Python values as arguments and output."""
+
+  def put(arg):  # pylint: disable=invalid-name
+    return backend.buffer_from_pyval(arg, device=executable.local_devices()[0])
+
+  arguments = [put(arg) for arg in arguments]
+  outputs = executable.execute(arguments)
+  return [np.asarray(x) for x in outputs]
+
+
 # pylint: disable=invalid-name
-def jax_array_convert_to_array(self):
-  return self._single_device_array_to_np_array()
+def jax_array_convert_to_array(self, dtype=None, copy=None):
+  del copy
+  out = self._single_device_array_to_np_array()
+  if dtype is not None:
+    out = out.astype(dtype)
+  return out
 
 
 def jax_array_device(self):
@@ -85,6 +116,62 @@ FLAGS = flags.FLAGS
 _CUSTOM_CALLS_REGISTERED = False
 
 
+# XLA' alignment is 16 bytes at the moment, but it should match what Eigen
+# supports, and that can go up to 128 bytes on hardware with HVX.
+_XLA_CPU_MAX_ALIGNMENT = 128
+
+
+# Minimum possible alignment for XLA.
+_XLA_CPU_MIN_ALIGNMENT = 16
+
+
+# Return a copy of `x` with the given alignment. Does nothing if `x` is already
+# aligned. We do this manually, because numpy doesn't support custom alignment
+# value.
+def _Aligned(x, alignment=_XLA_CPU_MAX_ALIGNMENT):
+  if (x.ctypes.data % alignment) == 0:
+    return x
+
+  # Create temporary buffer with extra space for alignment.
+  assert alignment % x.itemsize == 0
+  extra = alignment // x.itemsize
+  buf = np.empty(x.size + extra, dtype=x.dtype)
+
+  # Create a view of the temporary buffer with such an offset, that the result
+  # buffer is aligned.
+  offset = (-buf.ctypes.data % alignment) // x.itemsize
+  result = buf[offset : offset + x.size].reshape(x.shape)
+
+  # Copy the data to the result buffer and return it.
+  np.copyto(result, x)
+  return result
+
+
+# Return an unaligned copy of `x`. The result buffer's memory address is
+# guaranteed to not be aligned to `alignment`. This function is useful for
+# testing failiures.
+def _Unaligned(x, alignment=_XLA_CPU_MIN_ALIGNMENT):
+  if (x.ctypes.data % alignment) != 0:
+    return x
+
+  # Create temporary buffer with extra space.
+  assert (x.itemsize % alignment) != 0
+  offset = 1
+  buf = np.empty(x.size + offset, dtype=x.dtype)
+
+  if (buf.ctypes.data % alignment) != 0:
+    # If the temporary buffer is already unaligned, return it.
+    result = buf
+  else:
+    # Otherwise, create a view of the temporary buffer with an offset.
+    result = buf[offset : offset + x.size].reshape(x.shape)
+    assert (result.ctypes.data % alignment) != 0
+
+  # Copy the data to the result buffer and return it.
+  np.copyto(result, x)
+  return result
+
+
 def TestFactory(xla_backend,
                 cloud_tpu=False,
                 tfrt_tpu=False,
@@ -101,7 +188,10 @@ def TestFactory(xla_backend,
   # TODO(zhangqiaorjc): test fp8 types when XLA support is complete.
   # standard_dtypes is only used for BufferProtocolTest so we only test fp8
   # round trip tests.
-  standard_dtypes += [float8_e4m3b11fnuz, float8_e4m3fn, float8_e5m2]
+  fp8_dtypes = [float8_e4m3b11fnuz, float8_e4m3fn, float8_e5m2]
+  standard_dtypes += fp8_dtypes
+  # TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+  # standard_dtypes += [float4_e2m1fn, float8_e3m4, float8_e4m3, float8_e8m0fnu]
   dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
@@ -113,8 +203,12 @@ def TestFactory(xla_backend,
 
       global _CUSTOM_CALLS_REGISTERED
       if self.backend.platform == "cpu" and not _CUSTOM_CALLS_REGISTERED:
-        for name, fn in custom_call_for_test.cpu_custom_call_targets.items():
-          xla_client.register_custom_call_target(name, fn, platform="cpu")
+        for name, fn in custom_calls_testlib.registrations().items():
+          xla_client.register_custom_call_target(
+              name, fn, platform="cpu", api_version=1
+          )
+        for name, val in custom_calls_testlib.type_ids().items():
+          xla_client.register_custom_type_id(name, val, platform="cpu")
         _CUSTOM_CALLS_REGISTERED = True
 
     def _NewComputation(self, name=None):
@@ -125,7 +219,7 @@ def TestFactory(xla_backend,
     def _Execute(self, c, arguments):
       compiled_c = self.backend.compile(
           xla_computation_to_mlir_module(c.build()))
-      return xla_client.execute_with_python_values(
+      return execute_with_python_values(
           compiled_c, arguments, backend=self.backend)
 
     def _ExecuteAndAssertWith(self, assert_func, c, arguments, expected):
@@ -232,7 +326,9 @@ def TestFactory(xla_backend,
           xla_computation_to_mlir_module(computation))
       fingerprint = executable.fingerprint
       if (
-          self.backend.platform == "tpu" or self.backend.platform == "gpu"
+          self.backend.platform == "tpu"
+          or self.backend.platform == "gpu"
+          or self.backend.platform == "cpu"
       ) and not (cloud_tpu or pathways or pathways_ifrt):
         logging.info("fingerprint: %s", fingerprint)
         self.assertNotEmpty(fingerprint)
@@ -413,7 +509,7 @@ def TestFactory(xla_backend,
       c = self._NewComputation()
       ops.CustomCallWithLayout(
           c,
-          b"test_subtract_f32",
+          b"subtract_f32",
           operands=[
               ops.Constant(c, np.float32(1.25)),
               ops.Constant(c, np.float32(0.5))
@@ -425,33 +521,121 @@ def TestFactory(xla_backend,
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
           ],
           api_version=xla_client.ops.CustomCallApiVersion
-          .API_VERSION_STATUS_RETURNING)
+          .API_VERSION_TYPED_FFI)
       self._ExecuteAndCompareClose(c, expected=[0.75])
 
-    def testCustomCallWithUnifiedApi(self):
+    def testCustomCallWithUnifiedApiUnknownTarget(self):
       if self.backend.platform != "cpu":
         self.skipTest("Test requires cpu platform")
       c = self._NewComputation()
 
-      opaque_str = b"foo"
       ops.CustomCallWithLayout(
           c,
-          b"test_add_input_and_opaque_len",
-          operands=[
-              ops.Constant(c, np.float32(1.25)),
-              ops.Constant(c, np.float32(0.5))
-          ],
+          b"not_existing",
+          operands=[],
           shape_with_layout=xla_client.Shape.array_shape(
-              np.dtype(np.float32), (), ()),
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion
+          .API_VERSION_STATUS_RETURNING_UNIFIED,
+      )
+      with self.assertRaisesRegex(
+          xla_client.XlaRuntimeError, expected_regex="NOT_FOUND"
+      ):
+        self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiUnknownTarget(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"not_existing",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+      with self.assertRaises(xla_client.XlaRuntimeError):
+        self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiAlwaysFail(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"always_fail",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+
+      with self.assertRaisesRegex(
+          Exception, expected_regex="Failed intentionally"
+      ):
+        self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiAlwaysSucceed(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"always_succeed",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+
+      self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiSubtract(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"subtract_f32_cst",
+          operands=[ops.Constant(c, np.float32(1.25))],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
           operand_shapes_with_layout=[
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
-              xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
           ],
-          # With opaque length = 3.0
-          opaque=opaque_str,
+          opaque=b"{cst = 3.0 : f32}",
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+      self._ExecuteAndCompareClose(c, expected=[-1.75])
+
+    def testStatefulCustomCall(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+      ops.CustomCallWithLayout(
+          c,
+          b"stateful",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.int32), (), ()),
+          operand_shapes_with_layout=[],
           api_version=xla_client.ops.CustomCallApiVersion
-          .API_VERSION_STATUS_RETURNING_UNIFIED)
-      self._ExecuteAndCompareClose(c, expected=[1.25 + len(opaque_str)])
+          .API_VERSION_TYPED_FFI)
+      self._ExecuteAndCompareClose(c, expected=[42])
 
     def testCustomCallLookup(self):
       if self.backend.platform != "cpu":
@@ -462,10 +646,7 @@ def TestFactory(xla_backend,
       self.assertTrue(_CUSTOM_CALLS_REGISTERED)
       xla_client.make_cpu_client()
       self.assertContainsSubset(
-          [
-              call.decode()
-              for call in custom_call_for_test.cpu_custom_call_targets.keys()
-          ],
+          list(custom_calls_testlib.registrations().keys()),
           xla_client.custom_call_targets("Host").keys(),
       )
 
@@ -487,7 +668,7 @@ def TestFactory(xla_backend,
       # Load and execute the proto
       c = xla_client.XlaComputation(serialized_proto)
       m = xla_computation_to_mlir_module(c)
-      ans, = xla_client.execute_with_python_values(
+      ans, = execute_with_python_values(
           self.backend.compile(m), (), backend=self.backend)
       np.testing.assert_equal(ans, np.int32(3))
 
@@ -503,7 +684,10 @@ def TestFactory(xla_backend,
     def testScalarTimesVector(self, dtype):
       c = self._NewComputation()
       arg0 = np.array(3, dtype=dtype)
-      arg1 = np.array([10, 15, -2, 7], dtype=dtype)
+      if np.issubdtype(dtype, np.unsignedinteger):
+        arg1 = np.array([10, 15, 2, 7], dtype=dtype)
+      else:
+        arg1 = np.array([10, 15, -2, 7], dtype=dtype)
       p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg0))
       p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(arg1))
       ops.Mul(p0, p1)
@@ -533,6 +717,12 @@ def TestFactory(xla_backend,
   class LayoutsTest(ComputationTest):
     """Tests related to getting and setting on-device memory layouts."""
 
+    def _minor_to_major(self, layout: xla_client.PjRtLayout):  # pylint: disable=invalid-name
+      m2m_str = re.search("{([0-9,]*)", str(layout)).group(1)
+      if not m2m_str:
+        return ()
+      return tuple(int(x) for x in m2m_str.split(","))
+
     @unittest.skipIf(pathways, "not implemented")
     def testGetArgumentLayouts(self):
       # Create computation with a few parameters.
@@ -557,9 +747,9 @@ def TestFactory(xla_backend,
       # Test that compiled executable returns plausible layouts.
       layouts: Sequence[xla_client.Layout] = executable.get_parameter_layouts()
       self.assertLen(layouts, 3)
-      self.assertLen(layouts[0].minor_to_major(), 3)
-      self.assertLen(layouts[1].minor_to_major(), 2)
-      self.assertEmpty(layouts[2].minor_to_major())
+      self.assertLen(self._minor_to_major(layouts[0]), 3)
+      self.assertLen(self._minor_to_major(layouts[1]), 2)
+      self.assertEmpty(self._minor_to_major(layouts[2]))
 
     @unittest.skipIf(pathways, "not implemented")
     def testGetArgumentLayoutsTupled(self):
@@ -590,9 +780,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # Test that compiled executable returns plausible layouts.
       layouts: Sequence[xla_client.Layout] = executable.get_parameter_layouts()
       self.assertLen(layouts, 3)
-      self.assertLen(layouts[0].minor_to_major(), 3)
-      self.assertEmpty(layouts[1].minor_to_major())
-      self.assertLen(layouts[2].minor_to_major(), 1)
+      self.assertLen(self._minor_to_major(layouts[0]), 3)
+      self.assertEmpty(self._minor_to_major(layouts[1]))
+      self.assertLen(self._minor_to_major(layouts[2]), 1)
 
     @unittest.skipIf(pathways, "not implemented")
     def testGetOutputLayouts(self):
@@ -616,9 +806,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # Test that compiled executable returns plausible layouts.
       layouts: Sequence[xla_client.Layout] = executable.get_output_layouts()
       self.assertLen(layouts, 3)
-      self.assertLen(layouts[0].minor_to_major(), 2)
-      self.assertEmpty(layouts[1].minor_to_major())
-      self.assertLen(layouts[2].minor_to_major(), 1)
+      self.assertLen(self._minor_to_major(layouts[0]), 2)
+      self.assertEmpty(self._minor_to_major(layouts[1]))
+      self.assertLen(self._minor_to_major(layouts[2]), 1)
 
     @unittest.skipIf(pathways, "not implemented")
     def testSetArgumentLayouts(self):
@@ -652,9 +842,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # Check input layouts.
       input_layouts = executable.get_parameter_layouts()
       self.assertLen(input_layouts, 3)
-      self.assertEqual(input_layouts[0].minor_to_major(), (0, 1, 2))
-      self.assertEqual(input_layouts[1].minor_to_major(), ())
-      self.assertEqual(input_layouts[2].minor_to_major(), (0,))
+      self.assertEqual(self._minor_to_major(input_layouts[0]), (0, 1, 2))
+      self.assertEqual(self._minor_to_major(input_layouts[1]), ())
+      self.assertEqual(self._minor_to_major(input_layouts[2]), (0,))
 
       # Compile a version with default arg0 layout so we can make sure we
       # actually set it above.
@@ -662,8 +852,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           module_str.replace('"{0,1,2}"', '"default"')
       )
       self.assertNotEqual(
-          input_layouts[0].minor_to_major(),
-          default_executable.get_parameter_layouts()[0].minor_to_major())
+          self._minor_to_major(input_layouts[0]),
+          self._minor_to_major(default_executable.get_parameter_layouts()[0]),
+      )
 
     @unittest.skipIf(pathways or pathways_ifrt, "not implemented")
     def testSetArgumentLayoutsLegacy(self):
@@ -706,8 +897,10 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           executable.get_parameter_layouts())
       self.assertEqual(len(actual_layouts), len(expected_layouts))
       for actual, expected in zip(actual_layouts, expected_layouts):
-        self.assertEqual(actual.minor_to_major(),
-                         expected.layout().minor_to_major())
+        self.assertEqual(
+            self._minor_to_major(actual),
+            expected.layout().minor_to_major(),
+        )
 
     @unittest.skipIf(pathways, "not implemented")
     def testSetOutputLayouts(self):
@@ -741,9 +934,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # Check output layouts.
       output_layouts = executable.get_output_layouts()
       self.assertLen(output_layouts, 3)
-      self.assertEqual(output_layouts[0].minor_to_major(), (0, 1, 2))
-      self.assertEqual(output_layouts[1].minor_to_major(), ())
-      self.assertEqual(output_layouts[2].minor_to_major(), (0,))
+      self.assertEqual(self._minor_to_major(output_layouts[0]), (0, 1, 2))
+      self.assertEqual(self._minor_to_major(output_layouts[1]), ())
+      self.assertEqual(self._minor_to_major(output_layouts[2]), (0,))
 
       # Compile a version with default first output layout so we can make sure
       # we actually set it above.
@@ -751,8 +944,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           module_str.replace('"{0,1,2}"', '"default"')
       )
       self.assertNotEqual(
-          output_layouts[0].minor_to_major(),
-          default_executable.get_output_layouts()[0].minor_to_major())
+          self._minor_to_major(output_layouts[0]),
+          self._minor_to_major(default_executable.get_output_layouts()[0]),
+      )
 
     @unittest.skipIf(pathways, "not implemented")
     def SetLayoutsSharded(self):
@@ -788,13 +982,13 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 8 : i32,
       # Check input layouts.
       input_layouts = executable.get_parameter_layouts()
       self.assertLen(input_layouts, 2)
-      self.assertEqual(input_layouts[0].minor_to_major(), (0, 1))
-      self.assertEqual(input_layouts[1].minor_to_major(), ())
+      self.assertEqual(self._minor_to_major(input_layouts[0]), (0, 1))
+      self.assertEqual(self._minor_to_major(input_layouts[1]), ())
 
       # Check output layout.
       output_layouts = executable.get_output_layouts()
       self.assertLen(output_layouts, 1)
-      self.assertEqual(input_layouts[0].minor_to_major(), (0, 1))
+      self.assertEqual(self._minor_to_major(input_layouts[0]), (0, 1))
 
       # Compile a version with default layouts so we can make sure we actually
       # set it above.
@@ -802,11 +996,13 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 8 : i32,
           module_str.replace('"{0,1}"', '"default"')
       )
       self.assertNotEqual(
-          input_layouts[0].minor_to_major(),
-          default_executable.get_parameter_layouts()[0].minor_to_major())
+          self._minor_to_major(input_layouts[0]),
+          self._minor_to_major(default_executable.get_parameter_layouts()[0]),
+      )
       self.assertNotEqual(
-          output_layouts[0].minor_to_major(),
-          default_executable.get_output_layouts()[0].minor_to_major())
+          self._minor_to_major(output_layouts[0]),
+          self._minor_to_major(default_executable.get_output_layouts()[0]),
+      )
 
     @unittest.skipIf(pathways, "not implemented")
     def testAutoArgumentLayouts(self):
@@ -838,8 +1034,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
 
       # Check input layouts.
       input_layouts = executable.get_parameter_layouts()
-      self.assertEqual(input_layouts[0].minor_to_major(), (1, 0))
-      self.assertEqual(input_layouts[1].minor_to_major(), (2, 0, 1))
+      self.assertEqual(self._minor_to_major(input_layouts[0]), (1, 0))
+      self.assertEqual(self._minor_to_major(input_layouts[1]), (2, 0, 1))
 
       # Compile a version with default layouts so we can make sure the compiler
       # is actually choosing above.
@@ -849,8 +1045,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # We expect the compiler to choose a non-default layout for the second
       # (1024,8,128) argument.
       self.assertNotEqual(
-          input_layouts[1].minor_to_major(),
-          default_executable.get_parameter_layouts()[1].minor_to_major(),
+          self._minor_to_major(input_layouts[1]),
+          self._minor_to_major(default_executable.get_parameter_layouts()[1]),
       )
 
     @unittest.skipIf(pathways, "not implemented")
@@ -881,7 +1077,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
 
       # Check output layout
       output_layout, = executable.get_output_layouts()
-      self.assertEqual(output_layout.minor_to_major(), (2, 0, 1))
+      self.assertEqual(self._minor_to_major(output_layout), (2, 0, 1))
 
       # Compile a version with default layouts so we can make sure the compiler
       # is actually choosing above.
@@ -890,8 +1086,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       )
       # We expect the compiler to choose a non-default output layout.
       self.assertNotEqual(
-          output_layout.minor_to_major(),
-          default_executable.get_output_layouts()[0].minor_to_major(),
+          self._minor_to_major(output_layout),
+          self._minor_to_major(default_executable.get_output_layouts()[0]),
       )
 
   tests.append(LayoutsTest)
@@ -1121,7 +1317,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       ops.ConvertElementType(
           ops.Constant(c, x), xla_client.dtype_to_etype(dst_dtype))
 
-      result = xla_client.execute_with_python_values(
+      result = execute_with_python_values(
           self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
           backend=self.backend)
       self.assertLen(result, 1)
@@ -1151,7 +1347,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       ops.BitcastConvertType(
           ops.Constant(c, x), xla_client.dtype_to_etype(dst_dtype))
 
-      result = xla_client.execute_with_python_values(
+      result = execute_with_python_values(
           self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
           backend=self.backend)
       self.assertLen(result, 1)
@@ -1424,6 +1620,14 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       c = self._NewComputation()
       arr = NumpyArrayF32([3.3, 12.1])
       ops.Exp(ops.Constant(c, arr))
+      self._ExecuteAndCompareClose(c, expected=[np.exp(arr)])
+
+    def testExpWithResultAccuracy(self):
+      c = self._NewComputation()
+      arr = NumpyArrayF32([3.3, 12.1])
+      accuracy = xla_client.ResultAccuracy()
+      accuracy.mode = xla_client.ResultAccuracyMode.DEFAULT
+      ops.Exp(ops.Constant(c, arr), accuracy)
       self._ExecuteAndCompareClose(c, expected=[np.exp(arr)])
 
     def testExpm1(self):
@@ -1735,7 +1939,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           ops.Constant(c, NumpyArrayF32([1.0, 2.0])),
           ops.Constant(c, NumpyArrayBool([True, False, False, True]))
       ])
-      result = xla_client.execute_with_python_values(
+      result = execute_with_python_values(
           self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
           backend=self.backend)
       self.assertLen(result, 3)
@@ -1775,7 +1979,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           ops.Constant(c, NumpyArrayF32(1.)),
           shape=xla_client.Shape.array_shape(xla_client.PrimitiveType.F32,
                                              shape))
-      result = xla_client.execute_with_python_values(
+      result = execute_with_python_values(
           self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
           backend=self.backend)
       # since the result is random, we just check shape and uniqueness
@@ -1792,7 +1996,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           ops.Constant(c, NumpyArrayF32(hi)),
           shape=xla_client.Shape.array_shape(xla_client.PrimitiveType.F32,
                                              shape))
-      result = xla_client.execute_with_python_values(
+      result = execute_with_python_values(
           self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
           backend=self.backend)
       # since the result is random, we just check shape, uniqueness, and range
@@ -1811,7 +2015,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           ops.Constant(c, NumpyArrayS32(hi)),
           shape=xla_client.Shape.array_shape(xla_client.PrimitiveType.S32,
                                              shape))
-      result = xla_client.execute_with_python_values(
+      result = execute_with_python_values(
           self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
           backend=self.backend)
       # since the result is random, we just check shape, integrality, and range
@@ -1841,7 +2045,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       values = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=np.int32)
       c = self._NewComputation()
       ops.Sort(c, (ops.Constant(c, keys), ops.Constant(c, values)), dimension=0)
-      result = xla_client.execute_with_python_values(
+      result = execute_with_python_values(
           self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
           backend=self.backend)
       self.assertLen(result, 2)
@@ -1864,7 +2068,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           c, (ops.Constant(c, keys), ops.Constant(c, values)),
           dimension=1,
           comparator=comparator)
-      result = xla_client.execute_with_python_values(
+      result = execute_with_python_values(
           self.backend.compile(xla_computation_to_mlir_module(c.build())), (),
           backend=self.backend)
       self.assertLen(result, 2)
@@ -2051,15 +2255,36 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           c, expected=[np.fft.irfftn(a, axes=(1, 2, 3))], rtol=2e-4
       )
 
-    def testNextAfter(self):
+    @parameterized.named_parameters({
+        "testcase_name": "_{}".format(dtype.__name__),
+        "dtype": dtype,
+    } for dtype in float_dtypes + fp8_dtypes)
+    def testNextAfter(self, dtype):
+      if dtype == np.float64 and self.backend.platform == "tpu":
+        self.skipTest("TPU doesn't support float64")
+      if dtype == bfloat16 and self.backend.platform == "tpu":
+        self.skipTest("b/371119032: Test fails on TPUs with bfloat16")
+      finfo = ml_dtypes.finfo(dtype)
+      eps = finfo.eps
       c = self._NewComputation()
-      ops.NextAfter(
-          ops.Constant(c, np.array([1, 2], dtype=np.float32)),
-          ops.Constant(c, np.array([2, 1], dtype=np.float32)))
+      # Each row is (value, direction, expected), where
+      # 'nextafter(value, direction)' should be 'expected'.
+      data = np.array(
+          [
+              [1, 2, 1 + finfo.eps],
+              [2, 1, 2 - eps],
+              [-0., 1, finfo.smallest_subnormal],
+              [0., -1, -finfo.smallest_subnormal],
+              [-finfo.smallest_subnormal, 1, -0.],
+              [finfo.smallest_subnormal, 1, 2 * finfo.smallest_subnormal],
+              [finfo.smallest_subnormal, -1, 0],
+          ],
+          dtype=dtype,
+      )
+
+      ops.NextAfter(ops.Constant(c, data[:, 0]), ops.Constant(c, data[:, 1]))
       out, = self._Execute(c, ())
-      eps = np.finfo(np.float32).eps
-      np.testing.assert_equal(
-          np.array([eps + 1, 2 - eps], dtype=np.float32), out)
+      np.testing.assert_equal(out, data[:, 2])
 
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),
@@ -2454,7 +2679,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
         device.transfer_to_infeed(item)
 
       for item in to_infeed:
-        result, = xla_client.execute_with_python_values(
+        result, = execute_with_python_values(
             compiled_c, (), backend=self.backend)
         self.assertEqual(result, item)
 
@@ -2473,7 +2698,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       device = self.backend.local_devices()[0]
       device.transfer_to_infeed(to_infeed)
 
-      result = xla_client.execute_with_python_values(
+      result = execute_with_python_values(
           compiled_c, (), backend=self.backend)
       self.assertLen(result, 2)
       np.testing.assert_equal(result[0], to_infeed[0])
@@ -2529,9 +2754,28 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
 
   class DeviceTest(ComputationTest):
 
+    def testDevices(self):
+      self.assertNotEmpty(self.backend.devices())
+
+    def testLocalDevices(self):
+      self.assertNotEmpty(self.backend.local_devices())
+      if self.backend.platform == "cpu":
+        self.assertLen(self.backend.local_devices(), 2)
+
+    def testGetAllDevices(self):
+      # TODO(hyeontaek): Remove this method once we have a unified API for
+      # enumerating devices with different criteria.
+      self.assertNotEmpty(self.backend._get_all_devices())  # pylint: disable=protected-access
+
     def testPlatform(self):
       for device in self.backend.local_devices():
         self.assertEqual(device.platform, self.backend.platform)
+
+    def testCoreCount(self):
+      if self.backend.platform != "gpu":
+        self.skipTest("core_count is only supported on GPU")
+      for device in self.backend.local_devices():
+        self.assertGreater(device.core_count, 0)
 
     def testLocalHardwareId(self):
       for device in self.backend.devices():
@@ -2548,6 +2792,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           self.assertEqual(lookup_device, device)
 
     @unittest.skipIf(pathways, "not implemented")
+    @unittest.skipIf(pathways_ifrt, "not implemented")
     def testMemoryStats(self):
       for device in self.backend.local_devices():
         stats = device.memory_stats()
@@ -2610,7 +2855,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       c.clear_op_metadata()
 
       def TestFun():
-        return xla_client.execute_with_python_values(
+        return execute_with_python_values(
             self.backend.compile(xla_computation_to_mlir_module(c.build())),
             [self.f32_scalar_2], self.backend)
 
@@ -2632,7 +2877,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       arg = NumpyArrayF32(1.0)
       compiled_c = self.backend.compile(
           xla_computation_to_mlir_module(c.build(result)))
-      ans, = xla_client.execute_with_python_values(
+      ans, = execute_with_python_values(
           compiled_c, [arg], backend=self.backend)
       np.testing.assert_allclose(ans, 4.14)
 
@@ -2656,7 +2901,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       arg = NumpyArrayF32(1.0)
       compiled_c = self.backend.compile(
           xla_computation_to_mlir_module(c.build(result)))
-      ans, = xla_client.execute_with_python_values(
+      ans, = execute_with_python_values(
           compiled_c, [arg], backend=self.backend)
       np.testing.assert_allclose(ans, 4.14)
 
@@ -2700,18 +2945,53 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       del self.cpu_backend
       del self.gpu_backend
 
+    @classmethod
+    def _GetStreamFromDevice(cls, device):
+      try:
+        return device.get_stream_for_external_ready_events()
+      except xla_client.XlaRuntimeError as err:  # type: ignore
+        if "UNIMPLEMENTED" in str(err):
+          return None
+        else:
+          raise
+
+    def _DLPackManagedTensorToBuffer(
+        self, tensor, use_legacy_api, backend=None
+    ):
+      if use_legacy_api:
+        return xla_client._xla.dlpack_managed_tensor_to_buffer(
+            tensor, self.cpu_backend, self.gpu_backend
+        )
+      else:
+        if not backend:
+          backend = self.backend
+        device = backend.local_devices()[0]
+        stream = DLPackTest._GetStreamFromDevice(device)
+        return xla_client._xla.dlpack_managed_tensor_to_buffer(
+            tensor, device, stream
+        )
+
     # pylint: disable=g-complex-comprehension
     # pyformat: disable
-    @parameterized.named_parameters({
-        "testcase_name": "{}_gpu={}".format(
-            FormatShapeAndDtype(shape, dtype), gpu),
-        "dtype": dtype,
-        "shape": shape,
-        "gpu": gpu
-    } for dtype in dlpack_dtypes for shape in testcase_shapes
-                                    for gpu in [False, True])
+    @parameterized.named_parameters(
+        {
+            "testcase_name": "{}_gpu={}{}".format(
+                FormatShapeAndDtype(shape, dtype),
+                gpu,
+                "_legacy" if use_legacy_api else "",
+            ),
+            "dtype": dtype,
+            "shape": shape,
+            "gpu": gpu,
+            "use_legacy_api": use_legacy_api,
+        }
+        for dtype in dlpack_dtypes
+        for shape in testcase_shapes
+        for gpu in [False, True]
+        for use_legacy_api in [False, True]
+    )
     # pyformat: enable
-    def testRoundTrip(self, dtype, shape, gpu):
+    def testRoundTrip(self, dtype, shape, gpu, use_legacy_api):
       if gpu and self.gpu_backend is None:
         raise unittest.SkipTest("Test not running with GPU support")
       backend = self.gpu_backend if gpu else self.cpu_backend
@@ -2723,40 +3003,129 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
       del buffer  # Free "buffer" to make sure dlt retains ownership.
       self.assertEqual(type(dlt).__name__, "PyCapsule")
-      y = xla_client._xla.dlpack_managed_tensor_to_buffer(
-          dlt, self.cpu_backend, self.gpu_backend)
+      y = self._DLPackManagedTensorToBuffer(dlt, use_legacy_api, backend)
       np.testing.assert_array_equal(
           x.astype(np.uint8) if dtype == np.bool_ else x, np.asarray(y))
 
-    def testTensorsCanBeConsumedOnceOnly(self):
+    @parameterized.named_parameters(
+        {
+            "testcase_name": "{}".format("_legacy" if use_legacy_api else ""),
+            "use_legacy_api": use_legacy_api,
+        }
+        for use_legacy_api in [False, True]
+    )
+    def testTensorsCanBeConsumedOnceOnly(self, use_legacy_api):
       x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
       buffer = self.backend.buffer_from_pyval(x)
       dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
 
       def ConsumeDLPackTensor():
-        _ = xla_client._xla.dlpack_managed_tensor_to_buffer(
-            dlt, self.cpu_backend, self.gpu_backend
-        )
+        _ = self._DLPackManagedTensorToBuffer(dlt, use_legacy_api)
 
       ConsumeDLPackTensor()
       self.assertRaisesRegex(
           RuntimeError, ".*a DLPack tensor may be consumed at most once.*",
           ConsumeDLPackTensor)
 
-    def testNonOwnedDlpackCanBeViewedTwice(self):
+    @parameterized.named_parameters(
+        {
+            "testcase_name": "{}".format("_legacy" if use_legacy_api else ""),
+            "use_legacy_api": use_legacy_api,
+        }
+        for use_legacy_api in [False, True]
+    )
+    def testNonOwnedDlpackCanBeViewedTwice(self, use_legacy_api):
       x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
       buffer = self.backend.buffer_from_pyval(x)
       d1 = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
       d2 = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
 
-      y = xla_client._xla.dlpack_managed_tensor_to_buffer(
-          d1, self.cpu_backend, self.gpu_backend)
-      z = xla_client._xla.dlpack_managed_tensor_to_buffer(
-          d2, self.cpu_backend, self.gpu_backend)
+      y = self._DLPackManagedTensorToBuffer(d1, use_legacy_api)
+      z = self._DLPackManagedTensorToBuffer(d2, use_legacy_api)
       del d1, d2
       np.testing.assert_array_equal(x, np.asarray(buffer))
       np.testing.assert_array_equal(x, np.asarray(y))
       np.testing.assert_array_equal(x, np.asarray(z))
+
+    @parameterized.parameters(False, True)
+    def testZeroCopyOnAlignedDlpackTensor(self, use_legacy_api):
+      # Using CPU only, since this test is about CPU memory alignment.
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires CPU")
+
+      # Create a numpy array that is aligned to XLA requirements.
+      x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
+      x = _Aligned(x)
+
+      # Convert it to a DLPack tensor, and then to an XLA buffer.
+      dlpack_tensor = x.__dlpack__()
+      buffer = self._DLPackManagedTensorToBuffer(dlpack_tensor, use_legacy_api)
+      y = np.array(buffer, copy=False)
+
+      # The input was sufficiently aligned, so input and output should alias.
+      x_ptr = x.__array_interface__["data"][0]
+      y_ptr = y.__array_interface__["data"][0]
+      self.assertEqual(
+          x_ptr,
+          y_ptr,
+          msg=f"Buffers are not aliased ({hex(x_ptr)} != {hex(y_ptr)}).",
+      )
+
+    @parameterized.named_parameters(
+        {
+            "testcase_name": "{}{}".format(
+                "_legacy" if use_legacy_api else "",
+                "_transpose" if transpose else "",
+            ),
+            "use_legacy_api": use_legacy_api,
+            "transpose": transpose,
+        }
+        for use_legacy_api in [False, True]
+        for transpose in [False, True]
+    )
+    def testReturnCopyOnUnalignedDlpackTensor(self, use_legacy_api, transpose):
+      # Using CPU only, since this test is about CPU memory alignment.
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires CPU")
+
+      if transpose and use_legacy_api:
+        self.skipTest("Non-default layout is not supported in legacy API")
+
+      # Create a numpy array that is not aligned to XLA requirements. XLA's
+      # alignment requirements differ for different hardware, so we use the
+      # smallest possible value. If we make sure the buffer is not aligned to
+      # this value (16 bytes), then it is also not aligned to its multiples (32,
+      # 64 etc.)
+      x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
+      x = _Unaligned(x, alignment=_XLA_CPU_MIN_ALIGNMENT)
+
+      # Transpose the array to test non-default layout with trivial striding.
+      if transpose:
+        x = x.transpose((0, 2, 1, 3))
+
+      # Convert it to a DLPack tensor, and then to an XLA buffer.
+      dlpack_tensor = x.__dlpack__()
+      buffer = self._DLPackManagedTensorToBuffer(dlpack_tensor, use_legacy_api)
+      y = np.array(buffer, copy=False)
+
+      # The input was not sufficiently aligned, so input and output should not
+      # alias (output should be a copy of input, and it should be aligned).
+      x_ptr = x.__array_interface__["data"][0]
+      y_ptr = y.__array_interface__["data"][0]
+      self.assertNotEqual(
+          x_ptr,
+          y_ptr,
+          msg=(
+              f"Buffers aliased, but should not be ({hex(x_ptr)} =="
+              f" {hex(y_ptr)})"
+          ),
+      )
+      self.assertEqual(
+          y_ptr % _XLA_CPU_MIN_ALIGNMENT,
+          0,
+          msg="Output buffer not aligned: {hex(y_ptr)}",
+      )
+      np.testing.assert_array_equal(y, x)
 
   tests.append(DLPackTest)
 
@@ -2777,15 +3146,17 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
                                     for shape in testcase_shapes)
     def testRoundTrip(self, dtype, shape):
       x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
+
+      x = _Aligned(x)
       x_ptr = x.__array_interface__["data"][0]
       buffer = self.backend.buffer_from_pyval(
           x, host_buffer_semantics=xla_client.HostBufferSemantics.ZERO_COPY)
       y = np.array(buffer, copy=False)
       y_ptr = y.__array_interface__["data"][0]
       np.testing.assert_array_equal(x, y)
-      # If the input was sufficiently aligned, the input and output should
-      # alias.
-      self.assertTrue((x_ptr & 15) != 0 or x_ptr == y_ptr)
+
+      # The input was sufficiently aligned, so input and output should alias.
+      self.assertEqual(x_ptr, y_ptr)
       self.assertEqual(y_ptr, buffer.unsafe_buffer_pointer())
 
       during_call = xla_client.HostBufferSemantics.IMMUTABLE_ONLY_DURING_CALL
@@ -2888,6 +3259,49 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       for frame, _ in traceback.walk_tb(python_tb):
         _ = frame.f_locals  # should not crash
 
+    def testTracebackFromFrames(self):
+      def FooFn(x):
+        return x + 1
+
+      def BarFn(y):
+        y = y + 1
+        y = y + 2
+        return y * 2
+
+      frame_foo = xla_client.Frame(
+          __file__,
+          FooFn.__code__.co_name,
+          FooFn.__code__.co_firstlineno,
+          FooFn.__code__.co_firstlineno + 1,
+      )
+      frame_bar = xla_client.Frame(
+          __file__,
+          BarFn.__code__.co_name,
+          BarFn.__code__.co_firstlineno,
+          BarFn.__code__.co_firstlineno + 2,
+      )
+      frames = [frame_foo, frame_bar]
+      tb = xla_client.Traceback.traceback_from_frames(frames)
+
+      with self.subTest("WalkDoesNotError"):
+        for frame, _ in traceback.walk_tb(tb):
+          _ = frame.f_locals  # should not crash
+
+      with self.subTest("TracebackCorrectness"):
+        tb_string = traceback.format_tb(tb)
+        # The traceback should have the format:
+        # File <this file>, line N in BarFn
+        #   y = y + 2
+        # File <this file>, line N in FooFn
+        #   return x + 1
+        self.assertLen(tb_string, len(frames))
+        bar_frame = tb_string[0].split("\n")
+        self.assertEndsWith(bar_frame[0], "BarFn")
+        self.assertEqual(bar_frame[1].strip(), "y = y + 2")
+        foo_frame = tb_string[1].split("\n")
+        self.assertEndsWith(foo_frame[0], "FooFn")
+        self.assertEqual(foo_frame[1].strip(), "return x + 1")
+
   tests.append(TracebackTest)
 
   class ClientTest(ComputationTest):
@@ -2900,7 +3314,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       version = self.backend.platform_version
       logging.info("platform_version:\n%s", version)
       if self.backend.platform == "cpu":
-        self.assertEqual(version, "<unknown>")
+        self.assertEqual(version, "cpu")
       elif self.backend.platform in ("gpu", "cuda", "rocm"):
         # Following is false if not built with --config=cuda
         if version != "<unknown>":
@@ -2919,14 +3333,53 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       self.assertGreaterEqual(self.backend.pjrt_c_api_major_version, 0)
       self.assertGreaterEqual(self.backend.pjrt_c_api_minor_version, 0)
 
+    @unittest.skipUnless(
+        not pjrt_c_api and tfrt_tpu,
+        "Test that attributes are zero for non-plugin tfrt_tpu",
+    )
+    def testStaticTfrtTpuAttributes(self):
+      self.assertEqual(self.backend.pjrt_c_api_major_version, 0)
+      self.assertEqual(self.backend.pjrt_c_api_minor_version, 0)
+      # CL number is defined as -1 when running as test.
+      self.assertEqual(self.backend.__getattr__("cl_number"), -1)
+
     @unittest.skipIf(
-        cloud_tpu or pjrt_c_api, "PJRT version only exist for plugins"
+        cloud_tpu or pjrt_c_api or (not pjrt_c_api and tfrt_tpu),
+        "PJRT version only exist for plugins",
     )
     def testNotExistPjRtCApiVersion(self):
       with self.assertRaises(AttributeError):
         self.backend.pjrt_c_api_major_version  # pylint: disable=pointless-statement
       with self.assertRaises(AttributeError):
         self.backend.pjrt_c_api_minor_version  # pylint: disable=pointless-statement
+
+    @unittest.skipIf(pathways or pathways_ifrt, "has different behavior")
+    def testPluginProgramDoesNotCompile(self):
+      program = xla_client.ifrt_programs.make_plugin_program("foobar")
+      options = xla_client.ifrt_programs.make_plugin_compile_options()
+      with self.assertRaisesRegex(
+          xla_client.XlaRuntimeError, "PjRtCompiler requires an HloProgram"
+      ):
+        self.backend.compile_ifrt_program(program, options)
+
+    @unittest.skipIf(pathways, "does not work with non-ifrt legacy pathways")
+    def testHloProgramViaIfrtProgram(self):
+      c = self._NewComputation()
+      ops.Iota(c, xla_client.PrimitiveType.F32, 10)
+      program = xla_client.ifrt_programs.make_hlo_program(
+          xla_computation_to_mlir_module(c.build())
+      )
+      options = xla_client.ifrt_programs.make_xla_compile_options(
+          xla_client.CompileOptions(), []
+      )
+
+      compiled_c = self.backend.compile_ifrt_program(program, options)
+      results = execute_with_python_values(
+          compiled_c, arguments=(), backend=self.backend
+      )
+
+      self.assertLen(results, 1)
+      np.testing.assert_equal(results[0], np.arange(10, dtype=np.float32))
 
     @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or tfrt_tpu,
                      "not implemented")
@@ -2947,10 +3400,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       serialized = self.backend.serialize_executable(executable)
       deserialized = self.backend.deserialize_executable(serialized, options)
 
-      expected, = xla_client.execute_with_python_values(executable, (),
-                                                        self.backend)
-      actual, = xla_client.execute_with_python_values(deserialized, (),
-                                                      self.backend)
+      expected, = execute_with_python_values(executable, (), self.backend)
+      actual, = execute_with_python_values(deserialized, (), self.backend)
       self.assertTrue(np.all(actual == expected))
 
     def testCompileOptionsSerialization(self):
@@ -2962,8 +3413,15 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       options.compile_portable_executable = True
       executable_build_options.num_replicas = 3
       executable_build_options.num_partitions = 2
-      executable_build_options.debug_options.xla_cpu_enable_fast_math = True
-      executable_build_options.debug_options.xla_test_all_input_layouts = True
+      deb_opt = executable_build_options.debug_options
+      deb_opt.xla_cpu_enable_fast_math = True
+      deb_opt.xla_test_all_input_layouts = True
+      deb_opt.xla_gpu_kernel_cache_file = "/foo/bar"
+      deb_opt.xla_gpu_enable_llvm_module_compilation_parallelism = True
+      deb_opt.xla_gpu_per_fusion_autotune_cache_dir = "/bar/foo/"
+      deb_opt.xla_gpu_experimental_autotune_cache_mode = (
+          xla_client.AutotuneCacheMode.READ
+      )
 
       b = options.SerializeAsString()
       restored = xla_client.CompileOptions.ParseFromString(b)
@@ -2978,7 +3436,14 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
                          getattr(restored.executable_build_options, name),
                          msg=name)
 
-      for name in ("xla_cpu_enable_fast_math", "xla_test_all_input_layouts"):
+      for name in (
+          "xla_cpu_enable_fast_math",
+          "xla_test_all_input_layouts",
+          "xla_gpu_kernel_cache_file",
+          "xla_gpu_enable_llvm_module_compilation_parallelism",
+          "xla_gpu_per_fusion_autotune_cache_dir",
+          "xla_gpu_experimental_autotune_cache_mode",
+      ):
         self.assertEqual(
             getattr(options.executable_build_options.debug_options, name),
             getattr(restored.executable_build_options.debug_options, name),
@@ -3130,8 +3595,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       options.num_replicas = num_replicas
       compiled_c = self.backend.compile(
           xla_computation_to_mlir_module(c.build()), compile_options=options)
-      results, sharded_token = compiled_c.execute_sharded_on_local_devices_with_tokens(
-          [])
+      results, sharded_token = (
+          compiled_c.execute_sharded_on_local_devices_with_tokens([])
+      )
       sharded_token.block_until_ready()
       self.assertLen(results, 1)
       self.assertLen(results[0], 1)
@@ -3241,7 +3707,7 @@ def InstantiateTests(globals_dict, backend_fn, test_prefix="", **kw):
 
 
 backends = {
-    "cpu": xla_client.make_cpu_client,
+    "cpu": functools.partial(xla_client.make_cpu_client, num_devices=2),
     "gpu": xla_client.make_gpu_client,
 }
 

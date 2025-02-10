@@ -16,13 +16,20 @@ limitations under the License.
 #ifndef XLA_HLO_IR_TILE_ASSIGNMENT_H_
 #define XLA_HLO_IR_TILE_ASSIGNMENT_H_
 
+#include <array>
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/printer.h"
@@ -53,11 +60,11 @@ class IotaTileAssignment {
   // `reshape_dims`: is the dimensions the 1D iota array is reshaped to.
   // `transpose_perm`: is the dimension permutation to transpose `reshape_dims`.
   //
-  // e.g. dims=[8,8,8] reshape_dims=[4,2,2], transpose_perm=[0,1,2] (no
-  // transpose) corresponds to [8,8,8]<=[16] which in full array V1 format is
+  // e.g. dims=[4,4,1] reshape_dims=[4,2,2], transpose_perm=[0,1,2] (no
+  // transpose) corresponds to [4,4,1]<=[16] which in full array V1 format is
   // [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].
-  // e.g. dims=[8,8,8] reshape_dims=[4,2,2], transpose_perm=[1,0,2] (swap dim 0
-  // and dim 1) corresponds to [8,8,8]<=[4,2,2]T(1,0,2) which in full array V1
+  // e.g. dims=[4,4,1] reshape_dims=[4,2,2], transpose_perm=[1,0,2] (swap dim 0
+  // and dim 1) corresponds to [4,4,1]<=[4,2,2]T(1,0,2) which in full array V1
   // format is [0,1,4,5,8,9,12,13,2,3,6,7,10,11,14,15].
   static IotaTileAssignment Create(absl::Span<const int64_t> dims,
                                    absl::Span<const int64_t> reshape_dims,
@@ -103,6 +110,9 @@ class IotaTileAssignment {
   void Print(Printer* printer) const;
 
   std::string ToString() const;
+
+  // Materializes array representation of IotaTileAssignment.
+  Array<int64_t> ToArray() const;
 
  private:
   friend class TileAssignment;
@@ -170,6 +180,8 @@ class TileAssignment {
       : TileAssignment(std::make_shared<const Array<int64_t>>(
             std::initializer_list<int64_t>{1}, device_id)) {}
   explicit TileAssignment(IotaTileAssignment iota) : iota_(std::move(iota)) {}
+  explicit TileAssignment(std::initializer_list<int64_t> dims)
+      : iota_(IotaTileAssignment::Create(dims)) {}
   explicit TileAssignment(absl::Span<const int64_t> dims)
       : iota_(IotaTileAssignment::Create(dims)) {}
   explicit TileAssignment(absl::Span<const int64_t> dims,
@@ -202,8 +214,9 @@ class TileAssignment {
   void Each(
       absl::FunctionRef<void(absl::Span<const int64_t>, int64_t)> f) const;
 
-  Status EachStatus(
-      absl::FunctionRef<Status(absl::Span<const int64_t>, int64_t)> f) const;
+  absl::Status EachStatus(
+      absl::FunctionRef<absl::Status(absl::Span<const int64_t>, int64_t)> f)
+      const;
 
   // Returns a tile assignment reshaped to the given dimensions.
   // REQUIRES: new shape has the same number of elements.

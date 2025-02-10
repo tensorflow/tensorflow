@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/executable_run_options.h"
 #include "xla/service/backend.h"
 #include "xla/service/stream_pool.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -37,10 +39,8 @@ namespace tpu {
 // individual nodes.
 class TpuNodeContext final {
  public:
-  template <typename T>
-  using StatusOr = absl::StatusOr<T>;
-
-  static StatusOr<std::unique_ptr<TpuNodeContext>> Create(int device_ordinal);
+  static absl::StatusOr<std::unique_ptr<TpuNodeContext>> Create(
+      int device_ordinal);
 
   explicit TpuNodeContext(int device_ordinal, XLA_TpuNodeContext* node_context)
       : device_ordinal_(device_ordinal), node_context_(node_context) {

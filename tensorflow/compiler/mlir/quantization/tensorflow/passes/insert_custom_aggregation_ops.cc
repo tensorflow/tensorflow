@@ -12,10 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -26,13 +32,17 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/calibration_parameters.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -43,9 +53,44 @@ namespace mlir {
 namespace quant {
 namespace {
 
-using ::tensorflow::quantization::CalibrationOptions;
+using ::stablehlo::quantization::CalibrationOptions;
+using ::stablehlo::quantization::Method;
 
 constexpr StringRef kQuantTraitAttrName = "_tfl_quant_trait";
+
+// Whether the op is a call op to lifted composite function.
+bool IsCallToQuantizableLiftedFunction(Operation *op) {
+  if (!op) return false;
+  if (auto xla_call_module_op = dyn_cast_or_null<TF::XlaCallModuleOp>(op);
+      xla_call_module_op != nullptr) {
+    absl::StatusOr<Method> method = GetQuantizationMethod(xla_call_module_op);
+    if (method.ok() && method->has_static_range_ptq()) return true;
+  }
+
+  TF::PartitionedCallOp call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
+  return call_op && call_op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&
+         call_op->getAttrOfType<StringAttr>(kQuantTraitAttrName).getValue() ==
+             llvm::StringRef(
+                 QuantTraitValues[QuantizationTrait::FullyQuantizable]);
+}
+
+// Returns the composite function name.
+std::optional<StringRef> GetCompsiteFunctionName(Operation *op) {
+  if (!IsCallToQuantizableLiftedFunction(op)) return std::nullopt;
+
+  if (auto xla_call_module_op = dyn_cast_or_null<TF::XlaCallModuleOp>(op);
+      xla_call_module_op != nullptr) {
+    auto entry_function_attr = xla_call_module_op->getAttrOfType<StringAttr>(
+        kOriginalStablehloEntryFunctionAttrName);
+    if (!entry_function_attr) return std::nullopt;
+    return entry_function_attr.getValue();
+  } else {
+    TF::PartitionedCallOp call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
+    const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+    if (!f_attr) return std::nullopt;
+    return f_attr.getValue();
+  }
+}
 
 class InsertCustomAggregationOpsPass
     : public PassWrapper<InsertCustomAggregationOpsPass,
@@ -139,7 +184,7 @@ class InsertCustomAggregationOpsPass
             CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE);
         auto calibration_parameters =
             CalibrationOptions::CalibrationParameters();
-        calibration_parameters.set_initial_num_bins(256);
+        calibration_parameters.set_num_bins(512);
         calibration_parameters.set_min_percentile(0.001);
         calibration_parameters.set_max_percentile(99.999);
         calib_opts_.mutable_calibration_parameters()->CopyFrom(
@@ -151,7 +196,7 @@ class InsertCustomAggregationOpsPass
             CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE);
         auto calibration_parameters =
             CalibrationOptions::CalibrationParameters();
-        calibration_parameters.set_initial_num_bins(256);
+        calibration_parameters.set_num_bins(512);
         calib_opts_.mutable_calibration_parameters()->CopyFrom(
             calibration_parameters);
         break;
@@ -161,7 +206,7 @@ class InsertCustomAggregationOpsPass
             CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY);
         auto calibration_parameters =
             CalibrationOptions::CalibrationParameters();
-        calibration_parameters.set_initial_num_bins(256);
+        calibration_parameters.set_num_bins(512);
         calib_opts_.mutable_calibration_parameters()->CopyFrom(
             calibration_parameters);
         break;
@@ -171,7 +216,7 @@ class InsertCustomAggregationOpsPass
             CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC);
         auto calibration_parameters =
             CalibrationOptions::CalibrationParameters();
-        calibration_parameters.set_initial_num_bins(256);
+        calibration_parameters.set_num_bins(512);
         calib_opts_.mutable_calibration_parameters()->CopyFrom(
             calibration_parameters);
         break;
@@ -198,17 +243,22 @@ class AddCustomAggregationOp : public RewritePattern {
 
     // The CustomAggregatorOp is only added after quantizable values.
     SmallVector<Value> quantizable_values;
-    if (isCallToLiftedFunction(op)) {
+    SmallVector<std::string> aggregator_ids;
+    if (IsCallToQuantizableLiftedFunction(op)) {
+      std::optional<StringRef> composite_function_name =
+          GetCompsiteFunctionName(op);
+      if (!composite_function_name.has_value()) return failure();
+
       // Quantize inputs of quantizable composite functions.
-      for (Value input : op->getOperands()) {
-        Type element_type = getElementTypeOrSelf(input.getType());
+      for (OpOperand &input : op->getOpOperands()) {
+        Type element_type = getElementTypeOrSelf(input.get().getType());
         // Non-float cases won't be calibrated.
         if (!element_type.isF32()) {
           continue;
         }
 
         // Skip when there is any already existing CustomAggregatorOp found.
-        Operation *defining_op = input.getDefiningOp();
+        Operation *defining_op = input.get().getDefiningOp();
         if (dyn_cast_or_null<TF::CustomAggregatorOp>(defining_op)) {
           continue;
         }
@@ -219,41 +269,51 @@ class AddCustomAggregationOp : public RewritePattern {
           continue;
         }
 
-        quantizable_values.push_back(input);
+        quantizable_values.push_back(input.get());
+        aggregator_ids.push_back(
+            (llvm::Twine(composite_function_name.value()) + "_arg_" +
+             llvm::Twine(input.getOperandNumber()) + "_calibration_method_" +
+             llvm::Twine(calib_opts_.calibration_method()))
+                .str());
       }
     } else {
       // Quantize output of fully quantizable composite functions.
       for (Value input : op->getOperands()) {
         auto defining_op = input.getDefiningOp();
-        if (!isCallToLiftedFunction(defining_op)) {
-          continue;
-        }
+        std::optional<StringRef> composite_function_name =
+            GetCompsiteFunctionName(defining_op);
+        if (!composite_function_name.has_value()) continue;
 
         // Do not add CustomAggregatorOp after Gather since it is a weight-only
         // quantizable op.
         if (auto call_op =
                 dyn_cast_or_null<TF::PartitionedCallOp>(defining_op)) {
           StringRef function_name =
-              call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+              mlir::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue();
           if (function_name.contains("gather")) continue;
         }
 
         quantizable_values.push_back(input);
+        // All composite functions have a single result at the moment.
+        aggregator_ids.push_back((llvm::Twine(composite_function_name.value()) +
+                                  "_calibration_method_" +
+                                  llvm::Twine(calib_opts_.calibration_method()))
+                                     .str());
       }
     }
     if (quantizable_values.empty()) return failure();
 
-    for (Value value : quantizable_values) {
+    int32_t effective_num_bins = GetNumBins(calib_opts_);
+    for (auto [value, aggregator_id] :
+         llvm::zip_equal(quantizable_values, aggregator_ids)) {
       // ID attribute will have empty value for now.
       SmallVector<NamedAttribute, 5> attributes{
-          rewriter.getNamedAttr("id", rewriter.getStringAttr("")),
+          rewriter.getNamedAttr("id", rewriter.getStringAttr(aggregator_id)),
           rewriter.getNamedAttr(
               "calibration_method",
               rewriter.getI32IntegerAttr(calib_opts_.calibration_method())),
-          rewriter.getNamedAttr(
-              "initial_num_bins",
-              rewriter.getI32IntegerAttr(
-                  calib_opts_.calibration_parameters().initial_num_bins())),
+          rewriter.getNamedAttr("num_bins",
+                                rewriter.getI32IntegerAttr(effective_num_bins)),
           rewriter.getNamedAttr(
               "min_percentile",
               rewriter.getF32FloatAttr(
@@ -264,14 +324,20 @@ class AddCustomAggregationOp : public RewritePattern {
                   calib_opts_.calibration_parameters().max_percentile())),
       };
 
+      SmallVector<Type, 4> output_types{
+          value.getType(),
+          RankedTensorType::get({}, rewriter.getF32Type()),
+          RankedTensorType::get({}, rewriter.getF32Type()),
+          RankedTensorType::get({effective_num_bins}, rewriter.getI64Type()),
+      };
+
       // Insert custom aggregation op between operand and operator.
       rewriter.setInsertionPointAfterValue(value);
       Operation *aggregator_op = rewriter.create<TF::CustomAggregatorOp>(
-          op->getLoc(), value.getType(), value, attributes);
+          op->getLoc(), output_types, value, attributes);
 
       Value aggregator_op_result = aggregator_op->getOpResult(0);
-      value.replaceAllUsesWith(aggregator_op_result);
-      aggregator_op->replaceUsesOfWith(aggregator_op_result, value);
+      value.replaceAllUsesExcept(aggregator_op_result, aggregator_op);
     }
 
     return success();
@@ -279,18 +345,6 @@ class AddCustomAggregationOp : public RewritePattern {
 
  private:
   CalibrationOptions calib_opts_;
-
-  // Whether the op is a call op to lifted composite function.
-  bool isCallToLiftedFunction(Operation *op) const {
-    if (!op) return false;
-    if (isa<TF::XlaCallModuleOp>(op)) return true;
-
-    TF::PartitionedCallOp call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
-    return call_op && call_op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&
-           call_op->getAttrOfType<StringAttr>(kQuantTraitAttrName)
-               .getValue()
-               .equals(QuantTraitValues[QuantizationTrait::FullyQuantizable]);
-  }
 };
 
 void InsertCustomAggregationOpsPass::runOnOperation() {
@@ -299,7 +353,7 @@ void InsertCustomAggregationOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
 
   patterns.add<AddCustomAggregationOp>(ctx, calib_opts_);
-  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+  if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     func.emitError() << "quant-insert-custom-aggregation-ops failed.";
     signalPassFailure();
   }

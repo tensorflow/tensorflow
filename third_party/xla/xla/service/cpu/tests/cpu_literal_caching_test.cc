@@ -13,10 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <string>
+#include <utility>
+
+#include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {

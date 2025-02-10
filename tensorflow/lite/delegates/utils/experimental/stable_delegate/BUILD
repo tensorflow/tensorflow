@@ -133,13 +133,13 @@ cc_library(
     srcs = ["kernel_test_main.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/kernels:acceleration_test_util",
         "//tensorflow/lite/kernels:acceleration_test_util_internal",
         "//tensorflow/lite/kernels:test_delegate_providers_lib",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/kernels:test_util_delegate_providers",
         "//tensorflow/lite/testing:util",
-        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
     ],
 )

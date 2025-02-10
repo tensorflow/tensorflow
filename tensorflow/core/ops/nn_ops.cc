@@ -36,7 +36,7 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-Status FractionalPoolShapeFn(InferenceContext* c) {
+absl::Status FractionalPoolShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
@@ -521,7 +521,7 @@ create these operators.
 
 namespace {
 
-Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
+absl::Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
@@ -1031,7 +1031,7 @@ REGISTER_OP("MaxPoolWithArgmax")
       for (int i = 0; i < ksize.size(); ++i) {
         if (ksize[i] <= 0) {
           return errors::InvalidArgument(
-              "ksize must be a postive int32 value, got:", ksize[i]);
+              "ksize must be a positive int32 value, got:", ksize[i]);
         }
       }
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
@@ -1397,7 +1397,7 @@ REGISTER_OP("InTopKV2")
 
 namespace {
 
-Status TopKShapeFn(InferenceContext* c) {
+absl::Status TopKShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
 
@@ -1443,7 +1443,7 @@ inline uint32_t log2_ceil(uint64_t value) {
   return value == 0 ? 0 : Log2Ceiling(value);
 }
 
-Status ApproxTopKShape(shape_inference::InferenceContext* c) {
+absl::Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   int64_t k;
   int64_t reduction_dimension;
   float recall_target;
@@ -1522,7 +1522,7 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   c->set_output(1, output_shape);
   return absl::OkStatus();
 }
-// LINT.ThenChange(//tensorflow/compiler/xla/client/lib/approx_topk_shape.cc)
+// LINT.ThenChange(//tensorflow/compiler/xla/hlo/builder/lib/approx_topk_shape.cc)
 
 }  // namespace
 
@@ -2625,63 +2625,6 @@ of MaxPool3D function.
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("_MklLRN")
-    .Input("input: T")
-    .Input("mkl_input: uint8")
-    .Output("output: T")
-    .Output("workspace: uint8")
-    .Output("mkl_output: uint8")
-    .Output("mkl_workspace: uint8")
-    .Attr("depth_radius: int = 5")
-    .Attr("bias: float = 1.0")
-    .Attr("alpha: float = 1.0")
-    .Attr("beta: float = 0.5")
-    .Attr("workspace_enabled: bool = false")
-    .Attr("T: {float, half} = DT_FLOAT")
-    .SetShapeFn([](InferenceContext* c) {
-      return UnchangedShapeWithRank(c, 4);
-    })
-    .Doc(R"doc(
-MKL version of LRN operator. Uses MKL DNN APIs to perform local response
-normalization.
-
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
-expected to invoke these operators.
-)doc");
-
-REGISTER_OP("_MklLRNGrad")
-    .Input("input_grads: T")
-    .Input("input_image: T")
-    .Input("output_image: T")
-    .Input("workspace: uint8")
-    .Input("mkl_input_grads: uint8")
-    .Input("mkl_input_image: uint8")
-    .Input("mkl_output_image: uint8")
-    .Input("mkl_workspace: uint8")
-    .Output("output: T")
-    .Output("mkl_output: uint8")
-    .Attr("depth_radius: int = 5")
-    .Attr("bias: float = 1.0")
-    .Attr("alpha: float = 1.0")
-    .Attr("beta: float = 0.5")
-    .Attr("workspace_enabled: bool = false")
-    .Attr("T: {float, half} = DT_FLOAT")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &s));  // input_grads
-      TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));     // input_image
-      TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));     // output_image
-      c->set_output(0, s);
-      return OkStatus();
-    })
-    .Doc(R"doc(
-MKL version of LRNGrad operator. Uses MKL DNN APIs to compute gradient for
-local response normalization.
-
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
-expected to invoke these operators.
-)doc");
-
 REGISTER_OP("_MklFusedBatchNorm")
     .Input("x: T")
     .Input("scale: T")
@@ -2807,44 +2750,6 @@ REGISTER_OP("_MklFusedBatchNormGradV2")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormGradShape);
-
-REGISTER_OP("_MklToTf")
-    .Input("input: T")
-    .Input("mkl_input: uint8")
-    .Output("output: T")
-    .Attr("T: {half, float, double, bfloat16, qint8, quint8, qint32}")
-    .Attr(GetConvnetDataFormat2D3DAttrString())
-    .SetShapeFn(shape_inference::UnknownShape)
-    .Doc(R"doc(
-MKL operator to convert a tensor from MKL layout to TensorFlow layout.
-
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
-expected to invoke these operators.
-)doc");
-
-REGISTER_OP("_MklInputConversion")
-    .Input("input_0: T")
-    .Input("input_1: T")
-    .Input("mkl_input_0: uint8")
-    .Input("mkl_input_1: uint8")
-    .Output("output_0: T")
-    .Output("output_1: T")
-    .Output("mkl_output_0: uint8")
-    .Output("mkl_output_1: uint8")
-    // All datatypes supported by element-wise ops
-    .Attr(
-        "T: {half, float, bfloat16, double, uint8, int8, uint16, int16, int32, "
-        "int64, complex64, complex128}")
-    .Attr(GetConvnetDataFormat2D3DAttrString())
-    .SetShapeFn(shape_inference::UnknownShape)
-    .Doc(R"doc(
-MKL operator to process the inputs to an elementwise MKL op. Both inputs
-need to be either in TF or in MKL format. This op is added before every
-element-wise MKL op.
-
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
-expected to invoke these operators.
-)doc");
 
 #endif  // INTEL_MKL
 REGISTER_OP("QuantizedConv2DAndRequantize")

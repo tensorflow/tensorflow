@@ -20,11 +20,14 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_XFEED_MANAGER_H_
 #define XLA_SERVICE_CPU_XFEED_MANAGER_H_
 
+#include <cstdint>
 #include <deque>
+#include <string>
 
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -51,13 +54,6 @@ class XfeedBuffer {
 class XfeedQueueManager {
  public:
   XfeedQueueManager(std::string queue_name) : queue_name_(queue_name) {}
-
-  // Calls the completion callback for any enqueued buffers that have
-  // not been dequeued by the runtime, and empties the
-  // queue. Reset may not be called while a runtime computation is
-  // processing a dequeued buffer. The only safe way to ensure this
-  // condition is to call Reset when no computation is taking place.
-  void Reset();
 
   // Adds a sequence of buffers to the queue atomically. buffer->Done will be
   // called when the buffer will no longer be accessed by the XfeedManager,
@@ -90,10 +86,6 @@ class XfeedQueueManager {
 
   absl::Mutex mu_;
 
-  // Condition variable that is signaled every time a buffer is
-  // enqueued to an empty queue.
-  absl::CondVar cv_;
-
   // XfeedBuffer* queue contents are not owned, but buffer->Done must
   // be called when the buffer is no longer needed by the runtime.
   std::deque<XfeedBuffer*> enqueued_buffers_;
@@ -107,8 +99,6 @@ class XfeedQueueManager {
 class XfeedManager {
  public:
   XfeedManager() = default;
-
-  void Reset();
 
   XfeedQueueManager* infeed() { return &infeed_; }
   XfeedQueueManager* outfeed() { return &outfeed_; }

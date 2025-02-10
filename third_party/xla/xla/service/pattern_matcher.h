@@ -16,34 +16,43 @@ limitations under the License.
 #ifndef XLA_SERVICE_PATTERN_MATCHER_H_
 #define XLA_SERVICE_PATTERN_MATCHER_H_
 
-#include <functional>
+#include <cstddef>
+#include <cstdint>
 #include <ios>
 #include <memory>
 #include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "absl/utility/utility.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/ptrvec.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -2427,7 +2436,7 @@ class HloInstructionPattern {
   }
 
   // Because we only specify the shape's element type and dims, this is
-  // effectivley checking shape-compatible-to, not shape-equal-to.  Perhaps this
+  // effectively checking shape-compatible-to, not shape-equal-to.  Perhaps this
   // function should be called WithShapeCompatibleTo, but the short name is
   // nice, and there's no ambiguity because there's no layout in the args!
   constexpr auto WithShape(PrimitiveType ty, absl::Span<const int64_t> dims) {
@@ -2669,10 +2678,10 @@ XLA_NULLOP_PATTERN(ReplicaId)
         .WithOperand(0, std::forward<Arg>(arg));                     \
   }
 XLA_UNOP_PATTERN(Abs)
-XLA_UNOP_PATTERN(RoundNearestAfz)
 XLA_UNOP_PATTERN(Bitcast)
 XLA_UNOP_PATTERN(BitcastConvert)
 XLA_UNOP_PATTERN(Broadcast)
+XLA_UNOP_PATTERN(Cbrt)
 XLA_UNOP_PATTERN(Ceil)
 XLA_UNOP_PATTERN(Convert)
 XLA_UNOP_PATTERN(Copy)
@@ -2680,12 +2689,16 @@ XLA_UNOP_PATTERN(Cos)
 XLA_UNOP_PATTERN(AllReduceStart)
 XLA_UNOP_PATTERN(AllReduceDone)
 XLA_UNOP_PATTERN(AllToAll)
+XLA_UNOP_PATTERN(RaggedAllToAll)
+XLA_UNOP_PATTERN(AsyncDone)
 XLA_UNOP_PATTERN(CollectiveBroadcast)
 XLA_UNOP_PATTERN(CollectivePermute)
 XLA_UNOP_PATTERN(CollectivePermuteStart)
 XLA_UNOP_PATTERN(CollectivePermuteDone)
 XLA_UNOP_PATTERN(Domain)
+XLA_UNOP_PATTERN(Erf)
 XLA_UNOP_PATTERN(Exp)
+XLA_UNOP_PATTERN(Expm1)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)
 XLA_UNOP_PATTERN(GetTupleElement)
@@ -2693,6 +2706,7 @@ XLA_UNOP_PATTERN(Imag)
 XLA_UNOP_PATTERN(Infeed)
 XLA_UNOP_PATTERN(IsFinite)
 XLA_UNOP_PATTERN(Log)
+XLA_UNOP_PATTERN(Logistic)
 XLA_UNOP_PATTERN(Not)
 XLA_UNOP_PATTERN(Negate)
 XLA_UNOP_PATTERN(OptimizationBarrier)
@@ -2702,6 +2716,8 @@ XLA_UNOP_PATTERN(RecvDone)
 XLA_UNOP_PATTERN(ReducePrecision)
 XLA_UNOP_PATTERN(Reshape)
 XLA_UNOP_PATTERN(Reverse)
+XLA_UNOP_PATTERN(RoundNearestAfz)
+XLA_UNOP_PATTERN(RoundNearestEven)
 XLA_UNOP_PATTERN(Rsqrt)
 XLA_UNOP_PATTERN(SendDone)
 XLA_UNOP_PATTERN(Sign)
@@ -2800,6 +2816,7 @@ XLA_COMMUTATIVE_BINOP_PATTERN(Xor)
         .WithOperand(2, std::forward<Arg2>(arg2));                     \
   }
 XLA_TERNOP_PATTERN(Clamp);
+XLA_TERNOP_PATTERN(RaggedDot);
 XLA_TERNOP_PATTERN(Select);
 XLA_TERNOP_PATTERN(SelectAndScatter);
 #undef XLA_TERNOP_PATTERN
@@ -2849,6 +2866,7 @@ inline auto WithOperands(Matcher&& m, int64_t operand_num, FirstArg&& first_arg,
 XLA_VARIADIC_OP_PATTERN(AfterAll);
 XLA_VARIADIC_OP_PATTERN(AllGather)
 XLA_VARIADIC_OP_PATTERN(AllReduce)
+XLA_VARIADIC_OP_PATTERN(AsyncStart)
 XLA_VARIADIC_OP_PATTERN(Concatenate);
 XLA_VARIADIC_OP_PATTERN(Conditional);
 XLA_VARIADIC_OP_PATTERN(DynamicSlice)

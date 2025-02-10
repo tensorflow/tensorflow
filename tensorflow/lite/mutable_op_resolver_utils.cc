@@ -21,18 +21,16 @@ limitations under the License.
 
 namespace tflite {
 
-void AddOp(MutableOpResolver* mutable_op_resolver,
-           const TfLiteRegistrationExternal* op, int min_version,
-           int max_version) {
+void AddOp(MutableOpResolver* mutable_op_resolver, const TfLiteOperator* op,
+           int min_version, int max_version) {
   TfLiteRegistration registration{};
-  registration.builtin_code = TfLiteRegistrationExternalGetBuiltInCode(op);
-  registration.custom_name = TfLiteRegistrationExternalGetCustomName(op);
-  registration.version = TfLiteRegistrationExternalGetVersion(op);
-  // This const cast is safe because TfLiteRegistrationExternal is an opaque
-  // type and TfLiteRegistrationExternal objects are always allocated with
-  // TfLiteRegistrationExternalCreate() which allocates non-const objects.
-  registration.registration_external =
-      const_cast<TfLiteRegistrationExternal*>(op);
+  registration.builtin_code = TfLiteOperatorGetBuiltInCode(op);
+  registration.custom_name = TfLiteOperatorGetCustomName(op);
+  registration.version = TfLiteOperatorGetVersion(op);
+  // This const cast is safe because TfLiteOperator is an opaque
+  // type and TfLiteOperator objects are always allocated with
+  // TfLiteOperatorCreate() which allocates non-const objects.
+  registration.registration_external = const_cast<TfLiteOperator*>(op);
   if (registration.custom_name != nullptr) {
     mutable_op_resolver->AddCustom(registration.custom_name, &registration,
                                    min_version, max_version);
@@ -42,9 +40,8 @@ void AddOp(MutableOpResolver* mutable_op_resolver,
   }
 }
 
-void AddOp(MutableOpResolver* mutable_op_resolver,
-           const TfLiteRegistrationExternal* op) {
-  int version = TfLiteRegistrationExternalGetVersion(op);
+void AddOp(MutableOpResolver* mutable_op_resolver, const TfLiteOperator* op) {
+  int version = TfLiteOperatorGetVersion(op);
   AddOp(mutable_op_resolver, op, version, version);
 }
 

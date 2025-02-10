@@ -75,7 +75,7 @@ void AllocToArgPass::runOnOperation() {
     // Case: shape-expanded alloc.
     if (auto expandOp =
             llvm::dyn_cast_or_null<memref::ExpandShapeOp>(resultDef)) {
-      Operation *expandDef = expandOp.getOperand().getDefiningOp();
+      Operation *expandDef = expandOp.getOperand(0).getDefiningOp();
       if (auto allocOp = llvm::dyn_cast_or_null<memref::AllocOp>(expandDef)) {
         resultsToErase.set(i);
         auto attrs = funcOp.getResultAttrDict(i);

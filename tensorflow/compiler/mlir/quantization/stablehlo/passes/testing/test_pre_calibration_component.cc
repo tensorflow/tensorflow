@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -34,8 +35,9 @@ namespace mlir::quant::stablehlo::testing {
 
 namespace {
 
+using ::stablehlo::quantization::ExpandPresets;
+using ::stablehlo::quantization::PopulateDefaults;
 using ::stablehlo::quantization::QuantizationConfig;
-using ::tensorflow::quantization::CalibrationOptions;
 
 class TestPreCalibrationComponentPass
     : public impl::TestPreCalibrationComponentPassBase<
@@ -52,9 +54,11 @@ void TestPreCalibrationComponentPass::runOnOperation() {
   MLIRContext& ctx = getContext();
 
   // Simply runs the PreCalibrationComponent with a default configuration.
-  PreCalibrationComponent component(&ctx,
-                                    CalibrationOptions::default_instance());
-  if (!component.Run(module_op, QuantizationConfig::default_instance()).ok()) {
+  PreCalibrationComponent component(&ctx);
+  QuantizationConfig quantization_config{};
+  quantization_config.mutable_static_range_ptq_preset();
+  quantization_config = ExpandPresets(PopulateDefaults(quantization_config));
+  if (!component.Run(module_op, quantization_config).ok()) {
     signalPassFailure();
   }
 }

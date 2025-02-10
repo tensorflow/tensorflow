@@ -31,5 +31,5 @@ void XlaCustomCallStatusSetSuccess(XlaCustomCallStatus* status) {
 
 void XlaCustomCallStatusSetFailure(XlaCustomCallStatus* status,
                                    const char* message, size_t message_len) {
-  status->message = std::string(message, strnlen(message, message_len));
+  status->message = std::string(message, 0, message_len);
 }

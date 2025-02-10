@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -45,11 +46,12 @@ _TfrtGetResourceOp::GetResourceHandleValueAndIdList(
 
   for (const auto &iter : llvm::enumerate(getResults())) {
     auto index = iter.index();
-    if (getElementTypeOrSelf(iter.value().getType()).isa<TF::ResourceType>()) {
+    if (mlir::isa<TF::ResourceType>(
+            getElementTypeOrSelf(iter.value().getType()))) {
       resource_vec.push_back(GetResourceHandleValueAndIdBase(
-          getContainer()[index].cast<mlir::StringAttr>().getValue(),
-          getSharedName()[index].cast<mlir::StringAttr>().getValue(), device,
-          getResults()[index], resource_handle_id_map, next_id));
+          mlir::cast<mlir::StringAttr>(getContainer()[index]).getValue(),
+          mlir::cast<mlir::StringAttr>(getSharedName()[index]).getValue(),
+          device, getResults()[index], resource_handle_id_map, next_id));
     }
   }
   return resource_vec;
@@ -100,16 +102,16 @@ mlir::LogicalResult IfrtCallOp::verify() {
   }
 
   for (mlir::Value arg : getArgs()) {
-    if (mlir::getElementTypeOrSelf(arg.getType())
-            .isa<mlir::TF::ResourceType>()) {
+    if (mlir::isa<mlir::TF::ResourceType>(
+            mlir::getElementTypeOrSelf(arg.getType()))) {
       return emitOpError()
              << "does not support passing '!tf.resource' values as arguments";
     }
   }
 
   for (mlir::Value result : getResults()) {
-    if (mlir::getElementTypeOrSelf(result.getType())
-            .isa<mlir::TF::ResourceType>()) {
+    if (mlir::isa<mlir::TF::ResourceType>(
+            mlir::getElementTypeOrSelf(result.getType()))) {
       return emitOpError()
              << "does not support returning '!tf.resource' values as results";
     }
@@ -118,12 +120,13 @@ mlir::LogicalResult IfrtCallOp::verify() {
   // Verify variable_arg_indices is sorted in ascending order.
   int64_t prev_index = -1;
   for (auto arg_index_attr : getVariableArgIndicesAttr()) {
-    if (!arg_index_attr.isa_and_nonnull<mlir::IntegerAttr>()) {
+    if (!mlir::isa_and_nonnull<mlir::IntegerAttr>(arg_index_attr)) {
       return emitOpError() << "variable_arg_indices must be an integer";
     }
 
-    int64_t index =
-        arg_index_attr.dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
+    int64_t index = mlir::dyn_cast<mlir::IntegerAttr>(arg_index_attr)
+                        .getValue()
+                        .getSExtValue();
     if (index < 0) {
       return emitOpError() << "variable_arg_indices must be positive";
     }

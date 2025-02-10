@@ -120,7 +120,7 @@ Status ReadSavedModel(absl::string_view export_dir,
     // Placeholder for protosplitter merger call.
   }
 
-  return Status(
+  return absl::Status(
       absl::StatusCode::kNotFound,
       strings::StrCat("Could not find SavedModel .pb or .pbtxt at supplied "
                       "export directory path: ",

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <set>
+#include <cstdint>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -22,8 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/types/span.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/protobuf_util.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
@@ -205,8 +206,7 @@ TEST_F(HloShardingTest, V1V2TileEquivalence) {
 TEST_F(HloShardingTest, V1V2PartialTileEquivalence) {
   {
     HloSharding v1 = HloSharding::PartialTile(MakeArray({2, 2}, {0, 1, 2, 3}));
-    HloSharding v2 = HloSharding::PartialTile(
-        TileAssignment((absl::Span<const int64_t>){2, 2}));
+    HloSharding v2 = HloSharding::PartialTile(TileAssignment({2, 2}));
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
   }
@@ -232,9 +232,8 @@ TEST_F(HloShardingTest, V1V2SubgroupEquivalence) {
     HloSharding v1 =
         HloSharding::Subgroup(MakeArray({2, 2}, {0, 1, 2, 3}),
                               {OpSharding::MANUAL, OpSharding::REPLICATED});
-    HloSharding v2 =
-        HloSharding::Subgroup(TileAssignment((absl::Span<const int64_t>){2, 2}),
-                              {OpSharding::MANUAL, OpSharding::REPLICATED});
+    HloSharding v2 = HloSharding::Subgroup(
+        TileAssignment({2, 2}), {OpSharding::MANUAL, OpSharding::REPLICATED});
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
   }

@@ -32,7 +32,7 @@ func.func @SelectV2_platform_elem_type_output_type(%arg0: tensor<*xi1>, %arg1: t
     %cast = tensor.cast %25 : tensor<?xelem_type> to tensor<*xelem_type>
     scf.yield %cast : tensor<*xelem_type>
   } else {
-    %20:3 = chlo.minimum_broadcast_shapes %8, %9, %10 : tensor<?xindex>, tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>, tensor<?xindex>
+    %20:3 = mhlo.minimum_broadcast_shapes %8, %9, %10 : tensor<?xindex>, tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>, tensor<?xindex>
     %21 = shape.rank %20#0 : tensor<?xindex> -> index
     %22 = shape.rank %20#1 : tensor<?xindex> -> index
     %23 = arith.cmpi sgt, %21, %22 : index

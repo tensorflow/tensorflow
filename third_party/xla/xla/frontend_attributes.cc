@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/frontend_attributes.h"
 
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/xla_data.pb.h"
+
 namespace xla {
 
 void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
-  FrontendAttributes attrs;
-  (*attrs.mutable_map())[xla::kXlaDisjointReadWriteRegions] = "true";
-  instruction->add_frontend_attributes(attrs);
+  instruction->set_frontend_attribute(xla::kXlaDisjointReadWriteRegions,
+                                      "true");
 }
 
 bool HasDisjointReadWriteRegionsAttr(HloInstruction* instruction) {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/stream_executor_util.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <limits>
@@ -23,42 +24,69 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <sstream>
-#include <string_view>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "Eigen/Core"
+#include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/primitive_util.h"
+#include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/data_type.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
+#include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/env_var.h"
-#include "tsl/util/proto/proto_utils.h"
 
 namespace xla {
 namespace gpu {
 
-se::dnn::VersionInfo GetDnnVersionInfo(
-    stream_executor::StreamExecutor* stream_exec,
-    se::dnn::VersionInfo fallback_version) {
+absl::StatusOr<se::dnn::VersionInfo> GetDnnVersionInfo(
+    stream_executor::StreamExecutor* stream_exec) {
   if (!stream_exec) {
-    return fallback_version;
+    return absl::InvalidArgumentError("StreamExecutor is null");
   }
   stream_executor::dnn::DnnSupport* dnn = stream_exec->AsDnn();
   if (!dnn) {
-    return fallback_version;
+    return absl::FailedPreconditionError(
+        "DNN library initialization failed. Look at the errors above for more "
+        "details.");
   }
-  return dnn->GetVersion().value_or(fallback_version);
+  return dnn->GetVersion();
+}
+
+se::dnn::VersionInfo GetDnnVersionInfoOrDefault(
+    stream_executor::StreamExecutor* stream_exec,
+    se::dnn::VersionInfo fallback_version) {
+  return GetDnnVersionInfo(stream_exec).value_or(fallback_version);
 }
 
 namespace {
@@ -330,7 +358,7 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
   absl::MutexLock global_lock(&mu);
   auto it = mutexes
                 ->emplace(std::piecewise_construct,
-                          std::make_tuple(stream_exec->platform(),
+                          std::make_tuple(stream_exec->GetPlatform(),
                                           stream_exec->device_ordinal()),
                           std::make_tuple())
                 .first;
@@ -350,7 +378,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
-                      se::Kernel::Create(stream_exec, loader_spec));
+                      stream_exec->LoadKernel(loader_spec));
 
   se::KernelMetadata m;
   m.set_shared_memory_bytes(shared_mem_bytes);
@@ -358,7 +386,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   return kernel;
 }
 
-absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+absl::Status ExecuteKernelOnStream(se::Kernel& kernel,
                                    absl::Span<const se::DeviceMemoryBase> args,
                                    const LaunchDimensions& dims,
                                    se::Stream* stream) {
@@ -366,11 +394,11 @@ absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
       std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
       se::PackKernelArgs(args, kernel.metadata()));
 
-  return stream->parent()->Launch(stream, dims.thread_counts_per_block(),
-                                  dims.block_counts(), kernel, *kernel_args);
+  return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
+                       stream, *kernel_args);
 }
 
-absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+absl::Status ExecuteKernelOnStream(se::Kernel& kernel,
                                    absl::Span<const se::DeviceMemoryBase> args,
                                    const LaunchDimensions& dims,
                                    const se::ClusterDim& cluster_dim,
@@ -379,9 +407,8 @@ absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
       std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
       se::PackKernelArgs(args, kernel.metadata()));
 
-  return stream->parent()->Launch(stream, dims.thread_counts_per_block(),
-                                  dims.block_counts(), cluster_dim, kernel,
-                                  *kernel_args);
+  return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
+                       cluster_dim, stream, *kernel_args);
 }
 
 // Unimplemented for integers yet.
@@ -398,15 +425,21 @@ typename std::enable_if<std::is_floating_point<T>::value,
   return std::uniform_real_distribution<T>(lhs, rhs)(*gen);
 }
 
+namespace repeat_buffer_kernel {
+void* kernel();
+}
+
 template <typename T>
 static void InitializeTypedBuffer(se::Stream* stream,
                                   se::DeviceMemoryBase buffer,
                                   int64_t* rng_state) {
   // Accesses to static variables are not locked, since the caller is already
   // in a critical section.
-  static std::vector<T>* host_buffer = [] {
-    // Use a large prime number to fragment the accesses.
-    auto* ret = new std::vector<T>(10069);
+
+  // Use a large prime number to fragment the accesses.
+  constexpr int host_buffer_size = 10069;
+  static std::vector<T>* host_buffer = [&] {
+    auto* ret = new std::vector<T>(host_buffer_size);
     // Default-seeded random numbers.
     std::mt19937 gen;
     for (auto& element : *ret) {
@@ -429,26 +462,57 @@ static void InitializeTypedBuffer(se::Stream* stream,
     }
     return ret;
   }();
-
-  int64_t& host_index = *rng_state;
-
-  char* current_addr = static_cast<char*>(buffer.opaque());
+  // The buffer of random numbers is treated as being circular, and the seed in
+  // *rng_state is the offset in host_buffer that is copied to the zeroth index
+  // on the device. For large buffers then repeatedly copying the data from the
+  // host is expensive, so we just copy it once and use a kernel to repeat the
+  // data as needed.
   CHECK_EQ(0, buffer.size() % sizeof(T));
-  int64_t elements_left = buffer.size() / sizeof(T);
-  while (elements_left > 0) {
-    CHECK_LE(host_index, host_buffer->size());
-    if (host_buffer->size() == host_index) {
-      host_index = 0;
-    }
-    int64_t elements_copied =
-        std::min<int64_t>(host_buffer->size() - host_index, elements_left);
-    se::DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
-    TF_CHECK_OK(stream->Memcpy(&mem, host_buffer->data() + host_index,
-                               elements_copied * sizeof(T)));
-    current_addr += elements_copied * sizeof(T);
-    elements_left -= elements_copied;
-    host_index += elements_copied;
+  int64_t elements_to_fill = buffer.size() / sizeof(T);
+  int64_t host_index = *rng_state;
+  CHECK_LT(host_index, host_buffer_size);
+  *rng_state = (*rng_state + elements_to_fill) % host_buffer_size;
+  // Copy the last part of `host_buffer` to the start of `buf` on the device
+  int64_t first_size =
+      std::min<int64_t>(host_buffer_size - host_index, elements_to_fill);
+  TF_CHECK_OK(stream->Memcpy(&buffer, host_buffer->data() + host_index,
+                             first_size * sizeof(T)));
+  elements_to_fill -= first_size;
+  if (elements_to_fill == 0) {
+    // Nothing more to do
+    return;
   }
+  // Issue a second host->device copy to transfer the rest of host_buffer
+  int64_t second_size = std::min<int64_t>(host_index, elements_to_fill);
+  CHECK_LE(first_size + second_size, host_buffer_size);
+  se::DeviceMemoryBase mem =
+      buffer.GetByteSlice(first_size * sizeof(T), second_size * sizeof(T));
+  TF_CHECK_OK(stream->Memcpy(&mem, host_buffer->data(), mem.size()));
+  elements_to_fill -= second_size;
+  if (elements_to_fill == 0) {
+    // Nothing more to do
+    return;
+  }
+  // Repeat the host_buffer_size elements at the start of `buf` to the end
+  CHECK_EQ(elements_to_fill, buffer.size() / sizeof(T) - host_buffer_size);
+  se::StreamExecutor* executor = stream->parent();
+  auto kernel =
+      se::TypedKernelFactory<se::DeviceMemoryBase, int64_t, int64_t>::Create(
+          executor, "RepeatBufferKernel", repeat_buffer_kernel::kernel());
+  if (!kernel.ok()) {
+    LOG(FATAL) << "Could not create RepeatBufferKernel: " << kernel.status();
+  }
+  // Launch the kernel with at least host_buffer_bytes threads. Each thread
+  // will read one byte of `host_buffer` from the start of `buffer`, where the
+  // Memcpy call(s) above put it, and scatter it through the rest of `buffer`.
+  constexpr int64_t host_buffer_bytes = host_buffer_size * sizeof(T);
+  constexpr int threads_per_block = 256;
+  constexpr int blocks_per_grid =
+      (host_buffer_bytes + threads_per_block - 1) / threads_per_block;
+  TF_CHECK_OK(kernel->Launch(se::ThreadDim(threads_per_block, 1, 1),
+                             se::BlockDim(blocks_per_grid, 1, 1), stream,
+                             buffer, host_buffer_bytes,
+                             static_cast<int64_t>(buffer.size())));
 }
 
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
@@ -512,33 +576,22 @@ absl::StatusOr<se::dnn::NormKind> GetDNNNormKindFromCudnnNormKind(
   }
 }
 
-absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
-    CudnnfMHAKind kind) {
+absl::StatusOr<se::dnn::FMHAMaskKind> GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(
+    CudnnfMHAMaskKind kind) {
   switch (kind) {
-    case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
-    case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
-    case CudnnfMHAKind::kBmmBmm:
-    case CudnnfMHAKind::kScaleBiasMaskSoftmax:
-    case CudnnfMHAKind::kScaleMaskSoftmax:
-    case CudnnfMHAKind::kScaleBiasSoftmax:
-    case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
-      return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
-    case CudnnfMHAKind::kSoftmaxDropout:
-    case CudnnfMHAKind::kSoftmax:
-      return se::dnn::FusedMHAKind::BMM1_OUTPUT_FLOAT;
-    // backward
-    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout:
-    case CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
-    case CudnnfMHAKind::kBackwardBmmBmm:
-    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
-    case CudnnfMHAKind::kBackwardScaleMaskSoftmax:
-    case CudnnfMHAKind::kBackwardScaleBiasSoftmax:
-    case CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
-    case CudnnfMHAKind::kBackwardSoftmaxDropout:
-    case CudnnfMHAKind::kBackwardSoftmax:
-      return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
+    case CudnnfMHAMaskKind::kNoMask:
+      return se::dnn::NO_MASK;
+    case CudnnfMHAMaskKind::kPadding:
+      return se::dnn::PADDING;
+    case CudnnfMHAMaskKind::kCausal:
+      return se::dnn::CAUSAL;
+    case CudnnfMHAMaskKind::kPaddingCausal:
+      return se::dnn::PADDING_CAUSAL;
+    case CudnnfMHAMaskKind::kAlibi:
+      return se::dnn::ALIBI;
+    default:
+      return Internal("Unexpected fmha mask kind");
   }
-  return Internal("Unexpected fMHA kind");
 }
 
 absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
@@ -560,6 +613,10 @@ absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
       return se::dnn::ToDataType<tsl::float8_e4m3fn>::value;
     case F8E5M2:
       return se::dnn::ToDataType<tsl::float8_e5m2>::value;
+    case F4E2M1FN:
+      return se::dnn::ToDataType<tsl::float4_e2m1fn>::value;
+    case F8E8M0FNU:
+      return se::dnn::ToDataType<tsl::float8_e8m0fnu>::value;
     default:
       break;
   }
@@ -567,16 +624,8 @@ absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
 }
 
 bool RequireDeterminism(const HloModuleConfig& config) {
-  static bool require_cudnn_determinism = [] {
-    // TODO(reedwm): Remove the TF_CUDNN_DETERMINISTIC env var.
-    bool cudnn_deterministic = false;
-    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
-                                        /*default_val=*/false,
-                                        &cudnn_deterministic));
-    return cudnn_deterministic;
-  }();
-  return require_cudnn_determinism ||
-         config.debug_options().xla_gpu_deterministic_ops();
+  return config.debug_options().xla_gpu_deterministic_ops() ||
+         config.debug_options().xla_gpu_exclude_nondeterministic_ops();
 }
 
 namespace {
@@ -596,7 +645,7 @@ std::vector<AutotuneResult> KeepNonFailures(
 }
 
 absl::Status AllAlgorithmsFailedInternalError(
-    std::optional<std::string_view> instr_str,
+    std::optional<absl::string_view> instr_str,
     absl::Span<AutotuneResult const> profile_results) {
   std::ostringstream msg;
   if (instr_str.has_value()) {
@@ -614,15 +663,15 @@ absl::Status AllAlgorithmsFailedInternalError(
 }
 
 absl::Status NoAlgorithmSuppliedInternalError(
-    std::optional<std::string_view> instr_str) {
+    std::optional<absl::string_view> instr_str) {
   std::ostringstream msg;
   if (instr_str.has_value()) {
-    msg << "There are no algorithm candiates for computing: \n  "
+    msg << "There are no algorithm candidates for computing: \n  "
         << instr_str.value()
         << "\nThis likely means that the instruction shape is not supported by "
            "the target GPU library.";
   } else {
-    msg << "There are no algorithm candiates for computing the instruction.\n"
+    msg << "There are no algorithm candidates for computing the instruction.\n"
            "This likely means that the instruction shape is not supported by "
            "the target GPU library.";
   }
@@ -642,7 +691,7 @@ absl::Span<AutotuneResult const> TopResultsWithinMeasurementError(
   // This value was picked by repeatedly running a few kernels that run for a
   // short time and observing the run-time variance. A more rigorous analysis
   // of the measurement error might yield a better error threshold.
-  constexpr absl::Duration kMeasurementError = absl::Microseconds(2);
+  constexpr absl::Duration kMeasurementError = absl::Microseconds(4);
 
   absl::Duration min_time = tsl::proto_utils::FromDurationProto(
       results_sorted_by_runtime.front().run_time());
@@ -658,7 +707,7 @@ absl::Span<AutotuneResult const> TopResultsWithinMeasurementError(
 
 absl::StatusOr<AutotuneResult> PickBestResult(
     absl::Span<AutotuneResult const> profile_results,
-    std::optional<std::string_view> instr_str,
+    std::optional<absl::string_view> instr_str,
     HloModuleConfig hlo_module_config) {
   if (profile_results.empty()) {
     return NoAlgorithmSuppliedInternalError(instr_str);

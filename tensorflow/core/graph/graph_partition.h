@@ -95,14 +95,14 @@ struct PartitionOptions {
 // generate node names.
 //
 // Stores the partitions in *partitions.
-Status Partition(const PartitionOptions& opts, Graph* input,
-                 std::unordered_map<string, GraphDef>* partitions);
+absl::Status Partition(const PartitionOptions& opts, Graph* input,
+                       std::unordered_map<string, GraphDef>* partitions);
 
 // Add control edges to the partitions to control the ordering
 // and timing of the recv nodes based on the start times calculated
 // using some scheduling algorithm.
-Status AddControlEdges(const PartitionOptions& opts,
-                       std::unordered_map<string, GraphDef>* partitions);
+absl::Status AddControlEdges(const PartitionOptions& opts,
+                             std::unordered_map<string, GraphDef>* partitions);
 
 }  // namespace tensorflow
 

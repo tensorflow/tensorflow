@@ -20,7 +20,6 @@
 LATEST_BAZEL_VERSION=6.5.0
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/.bazelversion,
-#   //tensorflow/opensource_only/ci/official/requirements_updater/.bazelversion
 #   //tensorflow/tools/ci_build/install/install_bazel.sh,
 #   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh,
 #   //tensorflow/tools/toolchains/cross_compile/cc/cc_toolchain_config.bzl)

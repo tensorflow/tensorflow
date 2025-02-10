@@ -24,14 +24,15 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/client/lib/comparators.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/builder/lib/comparators.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -39,19 +40,21 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/custom_call_sharding_helper.h"
-#include "xla/service/hlo_lexer.h"
+#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace spmd {
@@ -83,7 +86,8 @@ constexpr char kSPMDOpRotateRight[] = "_SPMDInternalOp_RotateRight";
 
 }  // namespace
 
-Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
+    HloInstruction* hlo) {
   if (!hlo->operand(0)->has_sharding()) {
     return DefaultAction(hlo);
   }
@@ -204,13 +208,8 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
   XlaComputation comparator = CreateScalarComparisonComputation(
       "compare-value-and-index", {input->shape().element_type(), S32}, {Gt, Lt},
       &b);
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, comparator.GetProgramShape());
-  HloModuleConfig config(program_shape);
-  TF_ASSIGN_OR_RETURN(auto new_module,
-                      HloModule::CreateFromProto(comparator.proto(), config));
-  HloCloneContext context(module_);
-  auto compare_computation =
-      module_->DeepCloneComputation(new_module->entry_computation(), &context);
+  TF_ASSIGN_OR_RETURN(HloComputation * compare_computation,
+                      XlaComputationToHloComputation(comparator, module_));
   // Each partition needs to do TopK separately, thus the base shape for sort
   // becomes [ceil(batch_size / batch_dim_partition), k * shard_count].
   const Shape sort_shape = ShapeUtil::MakeTupleShape(
@@ -250,10 +249,10 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
       hlo, PartitionedHlo(create_tuple, hlo->shape(), MakePartitioningState())
                .Reshard(hlo->sharding()));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
+absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
     HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(auto attrs, ParseOpaqueAsAttributes(hlo));
   auto dim_it = attrs.find("dimension");
@@ -280,7 +279,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   amount %= full_size;
   if (amount == 0) {
     SetPartitionedHlo(hlo, input);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // First step: rotate `amount` on padded data. E.g., before
@@ -343,7 +342,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
   HloInstruction* rotated0 = rotate_with_padding(amount);
   if (right_padding == 0) {
     SetPartitionedHlo(hlo, [&] { return rotated0; });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Second step: perform another rotate from input, with `right_padding` added
@@ -379,7 +378,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
     return b_.AddInstruction(HloInstruction::CreateTernary(
         rotated0->shape(), HloOpcode::kSelect, pred, rotated1, rotated0));
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
@@ -389,7 +388,7 @@ std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
                                           kSPMDOpRotateRight, opaque);
 }
 
-Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
+absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   if (auto* partitioner = GetCustomCallPartitioner(hlo->custom_call_target())) {
     return partitioner->Partition(this, hlo);
   }
@@ -407,7 +406,7 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     auto copy = b_.AddInstruction(
         HloInstruction::CreateUnary(input->shape(), HloOpcode::kCopy, input));
     SetPartitionedHlo(hlo, [&] { return copy; });
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (hlo->custom_call_target() == "SPMDShardToFullShape") {
     // This op switches from manual partitioning to auto partitioning.
@@ -418,7 +417,7 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     CHECK(ShapeUtil::Compatible(
         copy->shape(), MakePartitionedShape(hlo->shape(), hlo->sharding())));
     SetPartitionedHlo(hlo, [&] { return copy; });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (hlo->custom_call_target() == kSPMDOpRotateRight) {
@@ -450,11 +449,32 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
       }
       return instr;
     });
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (hlo->custom_call_target() == "TopK") {
     return HandleCustomCallTopK(hlo);
+  }
+
+  if (hlo->custom_call_target() ==
+      host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
+    return HandleElementwise(hlo);
+  }
+
+  if (hlo->custom_call_target() ==
+      host_memory_offload_annotations::kMoveToDeviceCustomCallTarget) {
+    // Use the operand's sharding to shard the move-to-device op. This avoids
+    // inserting any resharding before the custom call so that the
+    // host-offloader pass can pattern match the offloading sequences correctly.
+    const HloSharding& sharding = hlo->operand(0)->sharding();
+    HloInstruction* move_to_device = b_.AddInstruction(
+        hlo->CloneWithNewOperands(MakePartitionedShape(hlo->shape(), sharding),
+                                  {GetPartitionedHlo(hlo->operand(0)).hlo()}));
+    move_to_device->set_sharding(sharding);
+    SetPartitionedHlo(hlo, PartitionedHlo(move_to_device, hlo->shape(),
+                                          MakePartitioningState())
+                               .Reshard(hlo->sharding()));
+    return absl::OkStatus();
   }
 
   return DefaultAction(hlo);

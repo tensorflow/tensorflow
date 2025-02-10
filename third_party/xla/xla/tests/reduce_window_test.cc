@@ -15,46 +15,55 @@ limitations under the License.
 
 // Tests the reduce-window XLA operation.
 
-#include <limits>
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <iterator>
 #include <memory>
+#include <numeric>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/local_client.h"
-#include "xla/client/padding.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/padding.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/reference_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
-// Tests both F32 and BF16.
-static std::array<bool, 2> use_bfloat16_params{false, true};
-#else
-// Only tests F32.
-static std::array<bool, 1> use_bfloat16_params{false};
-#endif
+static std::array<PrimitiveType, 2> test_type_params = {F32, BF16};
 
 class ReduceWindowTestBase : public ClientLibraryTestBase {
  public:
   ErrorSpec DefaultErrorSpec() const {
-    if (use_bfloat16()) {
+    if (FloatType() == BF16) {
       return ErrorSpec(2e-1, 6e-2);
     } else {
       return ErrorSpec(1e-3, 1e-3);
@@ -62,10 +71,10 @@ class ReduceWindowTestBase : public ClientLibraryTestBase {
   }
 };
 
-class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
+class ReduceWindowTest : public ::testing::WithParamInterface<PrimitiveType>,
                          public ReduceWindowTestBase {
  public:
-  ReduceWindowTest() : builder_(TestName()) { set_use_bfloat16(GetParam()); }
+  ReduceWindowTest() : builder_(TestName()) { set_float_type(GetParam()); }
 
   void ReduceWindowAdd(const XlaOp input,
                        absl::Span<const int64_t> window_dimensions,
@@ -569,7 +578,7 @@ XLA_TEST_P(ReduceWindowTest, R2ReduceWindowNonOverlappingFromBroadcast) {
 }
 
 INSTANTIATE_TEST_CASE_P(ReduceWindowTestInstance, ReduceWindowTest,
-                        ::testing::ValuesIn(use_bfloat16_params));
+                        ::testing::ValuesIn(test_type_params));
 
 enum Reducer { kAdd, kMax };
 
@@ -586,7 +595,7 @@ struct R4ReduceWindowTestData {
 
 std::string R4ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
-        ::testing::tuple<R4ReduceWindowTestData, bool>>& data) {
+        ::testing::tuple<R4ReduceWindowTestData, PrimitiveType>>& data) {
   const auto& param = ::testing::get<0>(data.param);
   std::string str = absl::StrCat(
       "base_bounds_", absl::StrJoin(param.base_bounds, "x"),        //
@@ -600,17 +609,18 @@ std::string R4ReduceWindowTestDataToString(
 
   // Test names are not allowed to contain the '-' character.
   std::replace(str.begin(), str.end(), '-', 'n');
-  if (::testing::get<1>(data.param)) {
-    absl::StrAppend(&str, "_bfloat16");
-  }
+  absl::StrAppend(&str, "_",
+                  primitive_util::LowercasePrimitiveTypeName(
+                      ::testing::get<1>(data.param)));
   return str;
 }
 
-class R4ReduceWindowTest : public ReduceWindowTestBase,
-                           public ::testing::WithParamInterface<
-                               ::testing::tuple<R4ReduceWindowTestData, bool>> {
+class R4ReduceWindowTest
+    : public ReduceWindowTestBase,
+      public ::testing::WithParamInterface<
+          ::testing::tuple<R4ReduceWindowTestData, PrimitiveType>> {
  protected:
-  R4ReduceWindowTest() { set_use_bfloat16(::testing::get<1>(GetParam())); }
+  R4ReduceWindowTest() { set_float_type(::testing::get<1>(GetParam())); }
 
   void DoIt() {
     XlaBuilder b(TestName());
@@ -884,12 +894,15 @@ const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
 INSTANTIATE_TEST_CASE_P(
     R4ReduceWindowTestInstantiation, R4ReduceWindowTest,
     ::testing::Combine(::testing::ValuesIn(kR4ReduceWindowTestValues),
-                       ::testing::ValuesIn(use_bfloat16_params)),
+                       ::testing::ValuesIn(test_type_params)),
     R4ReduceWindowTestDataToString);
 
 class R4ReduceWindowLargeTest : public R4ReduceWindowTest {};
 
-XLA_TEST_P(R4ReduceWindowLargeTest, DISABLED_ON_INTERPRETER(DoIt)) { DoIt(); }
+XLA_TEST_P(R4ReduceWindowLargeTest,
+           OVERSIZE_ON_GRM(DISABLED_ON_INTERPRETER(DoIt))) {
+  DoIt();
+}
 
 // Test cases that are large/slow/failed.
 const R4ReduceWindowTestData kR4ReduceWindowLargeTestValues[] = {
@@ -970,7 +983,7 @@ const R4ReduceWindowTestData kR4ReduceWindowLargeTestValues[] = {
 INSTANTIATE_TEST_CASE_P(
     R4ReduceWindowLargeTestInstantiation, R4ReduceWindowLargeTest,
     ::testing::Combine(::testing::ValuesIn(kR4ReduceWindowLargeTestValues),
-                       ::testing::ValuesIn(use_bfloat16_params)),
+                       ::testing::ValuesIn(test_type_params)),
     R4ReduceWindowTestDataToString);
 
 struct R3ReduceWindowTestData {
@@ -980,7 +993,9 @@ struct R3ReduceWindowTestData {
   int64_t layout[3];
   Padding padding;
   Reducer reducer;
-} kR3TestCases[] = {
+};
+
+R3ReduceWindowTestData kR3TestCases[] = {
     {/*base_bounds=*/{2, 1, 2}, /*window_bounds=*/{1, 1, 2},
      /*strides=*/{1, 1, 1}, /*layout=*/{2, 1, 0},
      /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
@@ -1014,6 +1029,86 @@ struct R3ReduceWindowTestData {
     {/*base_bounds=*/{63, 261, 257}, /*window_bounds=*/{63, 261, 257},
      /*strides=*/{1, 1, 1}, /*layout=*/{2, 1, 0},
      /*padding=*/Padding::kValid, /*reducer=*/Reducer::kMax},
+};
+
+std::string R3ReduceWindowTestDataToString(
+    const ::testing::TestParamInfo<
+        ::testing::tuple<R3ReduceWindowTestData, PrimitiveType>>& data) {
+  const auto& param = ::testing::get<0>(data.param);
+  std::string str = absl::StrCat(
+      "base_bounds_", absl::StrJoin(param.base_bounds, "x"), "__window_bounds_",
+      absl::StrJoin(param.window_bounds, "x"), "__strides_",
+      absl::StrJoin(param.strides, "x"), "__padding_",
+      param.padding == Padding::kSame ? "same" : "valid", "__layout_",
+      param.layout[0], "_", param.layout[1], "_", param.layout[2], "__reducer_",
+      param.reducer == kAdd ? "add" : "max");
+  absl::StrAppend(&str, "_",
+                  primitive_util::LowercasePrimitiveTypeName(
+                      ::testing::get<1>(data.param)));
+  return str;
+}
+
+class R3ReduceWindowTest
+    : public ReduceWindowTestBase,
+      public ::testing::WithParamInterface<
+          ::testing::tuple<R3ReduceWindowTestData, PrimitiveType>> {
+ protected:
+  R3ReduceWindowTest() { set_float_type(::testing::get<1>(GetParam())); }
+
+  void DoIt() {
+    XlaBuilder b(TestName());
+    const auto& param = ::testing::get<0>(GetParam());
+
+    const float kInitValue = 0.0f;
+    Array3D<float> input(param.base_bounds[0], param.base_bounds[1],
+                         param.base_bounds[2]);
+    // Choose a prime iota length so that each window sees a unique set of
+    // values. (Technically, the requirement is that the iota length is
+    // relatively prime to all of the dimensions involved in the reduce-window.)
+    input.FillRepeatedIota(0, 137);
+    Literal input_literal = LiteralUtil::CreateR3FromArray3DWithLayout(
+        input, LayoutUtil::MakeLayout(param.layout));
+    auto reducer = param.reducer;
+    if (FloatType() == BF16) {
+      input_literal = LiteralUtil::ConvertF32ToBF16(input_literal);
+
+      // To avoid numerical issues, force the reducer to be kMax for bf16
+      // inputs.
+      reducer = kMax;
+    }
+
+    XlaOp parameter = Parameter(&b, 0, input_literal.shape(), "input");
+    auto init_value =
+        CreateConstantFromLiteral(LiteralUtil::CreateR0(kInitValue), &b);
+
+    auto computation = reducer == kAdd
+                           ? CreateScalarAddComputation(FloatType(), &b)
+                           : CreateScalarMaxComputation(FloatType(), &b);
+
+    ReduceWindow(/*operand=*/parameter,
+                 /*init_value=*/init_value,
+                 /*computation=*/computation,
+                 /*window_dimensions=*/param.window_bounds,
+                 /*window_strides=*/param.strides, /*padding=*/param.padding);
+
+    ComputeAndCompare(&b, {std::move(input_literal)}, DefaultErrorSpec());
+  }
+};
+
+XLA_TEST_P(R3ReduceWindowTest, DoIt) { DoIt(); }
+
+INSTANTIATE_TEST_CASE_P(
+    R3ReduceWindowTestInstantiation, R3ReduceWindowTest,
+    ::testing::Combine(::testing::ValuesIn(kR3TestCases),
+                       ::testing::ValuesIn(test_type_params)),
+    R3ReduceWindowTestDataToString);
+
+class R3ReduceWindowLargeTest : public R3ReduceWindowTest {};
+
+XLA_TEST_P(R3ReduceWindowLargeTest, OVERSIZE_ON_GRM(DoIt)) { DoIt(); }
+
+// Test cases that are large/slow/failed.
+const R3ReduceWindowTestData kR3ReduceWindowLargeTestValues[] = {
     {/*base_bounds=*/{10003, 10, 5}, /*window_bounds=*/{9999, 7, 3},
      /*strides=*/{1, 1, 1}, /*layout=*/{2, 1, 0},
      /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
@@ -1025,73 +1120,10 @@ struct R3ReduceWindowTestData {
      /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
 };
 
-std::string R3ReduceWindowTestDataToString(
-    const ::testing::TestParamInfo<
-        ::testing::tuple<R3ReduceWindowTestData, bool>>& data) {
-  const auto& param = ::testing::get<0>(data.param);
-  std::string str = absl::StrCat(
-      "base_bounds_", absl::StrJoin(param.base_bounds, "x"), "__window_bounds_",
-      absl::StrJoin(param.window_bounds, "x"), "__strides_",
-      absl::StrJoin(param.strides, "x"), "__padding_",
-      param.padding == Padding::kSame ? "same" : "valid", "__layout_",
-      param.layout[0], "_", param.layout[1], "_", param.layout[2], "__reducer_",
-      param.reducer == kAdd ? "add" : "max");
-  if (::testing::get<1>(data.param)) {
-    absl::StrAppend(&str, "_bfloat16");
-  }
-  return str;
-}
-
-class R3ReduceWindowTest : public ReduceWindowTestBase,
-                           public ::testing::WithParamInterface<
-                               ::testing::tuple<R3ReduceWindowTestData, bool>> {
- protected:
-  R3ReduceWindowTest() { set_use_bfloat16(::testing::get<1>(GetParam())); }
-};
-
-XLA_TEST_P(R3ReduceWindowTest, DoIt) {
-  XlaBuilder b(TestName());
-  const auto& param = ::testing::get<0>(GetParam());
-
-  const float kInitValue = 0.0f;
-  Array3D<float> input(param.base_bounds[0], param.base_bounds[1],
-                       param.base_bounds[2]);
-  // Choose a prime iota length so that each window sees a unique set of values.
-  // (Technically, the requirement is that the iota length is relatively prime
-  // to all of the dimensions involved in the reduce-window.)
-  input.FillRepeatedIota(0, 137);
-  Literal input_literal = LiteralUtil::CreateR3FromArray3DWithLayout(
-      input, LayoutUtil::MakeLayout(param.layout));
-  auto reducer = param.reducer;
-  if (use_bfloat16()) {
-    input_literal = LiteralUtil::ConvertF32ToBF16(input_literal);
-
-    // To avoid numerical issues, force the reducer to be kMax for bf16
-    // inputs.
-    reducer = kMax;
-  }
-
-  XlaOp parameter = Parameter(&b, 0, input_literal.shape(), "input");
-  auto init_value =
-      CreateConstantFromLiteral(LiteralUtil::CreateR0(kInitValue), &b);
-
-  auto computation = reducer == kAdd
-                         ? CreateScalarAddComputation(FloatType(), &b)
-                         : CreateScalarMaxComputation(FloatType(), &b);
-
-  ReduceWindow(/*operand=*/parameter,
-               /*init_value=*/init_value,
-               /*computation=*/computation,
-               /*window_dimensions=*/param.window_bounds,
-               /*window_strides=*/param.strides, /*padding=*/param.padding);
-
-  ComputeAndCompare(&b, {std::move(input_literal)}, DefaultErrorSpec());
-}
-
 INSTANTIATE_TEST_CASE_P(
-    R3ReduceWindowTestInstantiation, R3ReduceWindowTest,
-    ::testing::Combine(::testing::ValuesIn(kR3TestCases),
-                       ::testing::ValuesIn(use_bfloat16_params)),
+    R3ReduceWindowLargeTestInstantiation, R3ReduceWindowLargeTest,
+    ::testing::Combine(::testing::ValuesIn(kR3ReduceWindowLargeTestValues),
+                       ::testing::ValuesIn(test_type_params)),
     R3ReduceWindowTestDataToString);
 
 struct R2ReduceWindowTestData {
@@ -1253,7 +1285,7 @@ struct R2ReduceWindowTestData {
 
 std::string R2ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
-        ::testing::tuple<R2ReduceWindowTestData, bool>>& data) {
+        ::testing::tuple<R2ReduceWindowTestData, PrimitiveType>>& data) {
   const auto& param = ::testing::get<0>(data.param);
   std::string str = absl::StrCat(
       "base_bounds_", absl::StrJoin(param.base_bounds, "x"),            //
@@ -1268,24 +1300,25 @@ std::string R2ReduceWindowTestDataToString(
 
   // Test names are not allowed to contain the '-' character.
   std::replace(str.begin(), str.end(), '-', 'n');
-  if (::testing::get<1>(data.param)) {
-    absl::StrAppend(&str, "_bfloat16");
-  }
+  absl::StrAppend(&str, "_",
+                  primitive_util::LowercasePrimitiveTypeName(
+                      ::testing::get<1>(data.param)));
   return str;
 }
 
-class R2ReduceWindowTest : public ReduceWindowTestBase,
-                           public ::testing::WithParamInterface<
-                               ::testing::tuple<R2ReduceWindowTestData, bool>> {
+class R2ReduceWindowTest
+    : public ReduceWindowTestBase,
+      public ::testing::WithParamInterface<
+          ::testing::tuple<R2ReduceWindowTestData, PrimitiveType>> {
  protected:
-  R2ReduceWindowTest() { set_use_bfloat16(::testing::get<1>(GetParam())); }
+  R2ReduceWindowTest() { set_float_type(::testing::get<1>(GetParam())); }
 
   void DoIt() {
     XlaBuilder b(TestName());
     const auto& param = ::testing::get<0>(GetParam());
 
     Array2D<float> input(param.base_bounds[0], param.base_bounds[1], 1.0f);
-    if (!::testing::get<1>(GetParam())) {
+    if (FloatType() == F32) {
       // We only do this in F32 mode, to avoid precision issues with BF16.
       input = *MakeLinspaceArray2D(0, 100, param.base_bounds[0],
                                    param.base_bounds[1]);
@@ -1318,7 +1351,7 @@ class R2ReduceWindowTest : public ReduceWindowTestBase,
         /*window_dilations=*/param.window_dilation,
         /*padding=*/padding);
 
-    ComputeAndCompare(&b, {MaybeConvertLiteralToBfloat16(input_literal)},
+    ComputeAndCompare(&b, {MaybeConvertLiteralToTestType(input_literal)},
                       DefaultErrorSpec());
   }
 };
@@ -1328,7 +1361,7 @@ XLA_TEST_P(R2ReduceWindowTest, DoIt) { DoIt(); }
 INSTANTIATE_TEST_CASE_P(
     R2ReduceWindowTestInstantiation, R2ReduceWindowTest,
     ::testing::Combine(::testing::ValuesIn(kR2TestCases),
-                       ::testing::ValuesIn(use_bfloat16_params)),
+                       ::testing::ValuesIn(test_type_params)),
     R2ReduceWindowTestDataToString);
 
 struct R1ReduceWindowTestData {
@@ -1484,7 +1517,7 @@ struct R1ReduceWindowTestData {
 
 std::string R1ReduceWindowTestDataToString(
     const ::testing::TestParamInfo<
-        ::testing::tuple<R1ReduceWindowTestData, bool>>& data) {
+        ::testing::tuple<R1ReduceWindowTestData, PrimitiveType>>& data) {
   const auto& param = ::testing::get<0>(data.param);
   std::string str =
       absl::StrCat("base_bounds_", absl::StrJoin(param.base_bounds, "x"),
@@ -1496,17 +1529,18 @@ std::string R1ReduceWindowTestDataToString(
 
   // Test names are not allowed to contain the '-' character.
   std::replace(str.begin(), str.end(), '-', 'n');
-  if (::testing::get<1>(data.param)) {
-    absl::StrAppend(&str, "_bfloat16");
-  }
+  absl::StrAppend(&str, "_",
+                  primitive_util::LowercasePrimitiveTypeName(
+                      ::testing::get<1>(data.param)));
   return str;
 }
 
-class R1ReduceWindowTest : public ReduceWindowTestBase,
-                           public ::testing::WithParamInterface<
-                               ::testing::tuple<R1ReduceWindowTestData, bool>> {
+class R1ReduceWindowTest
+    : public ReduceWindowTestBase,
+      public ::testing::WithParamInterface<
+          ::testing::tuple<R1ReduceWindowTestData, PrimitiveType>> {
  protected:
-  R1ReduceWindowTest() { set_use_bfloat16(::testing::get<1>(GetParam())); }
+  R1ReduceWindowTest() { set_float_type(::testing::get<1>(GetParam())); }
 };
 
 XLA_TEST_P(R1ReduceWindowTest, DoIt) {
@@ -1560,7 +1594,7 @@ XLA_TEST_P(R1ReduceWindowTest, DoIt) {
 INSTANTIATE_TEST_CASE_P(
     R1ReduceWindowTestInstantiation, R1ReduceWindowTest,
     ::testing::Combine(::testing::ValuesIn(kR1TestCases),
-                       ::testing::ValuesIn(use_bfloat16_params)),
+                       ::testing::ValuesIn(test_type_params)),
     R1ReduceWindowTestDataToString);
 
 // Test class for text-based test cases. Note that this compares with the
@@ -1729,6 +1763,25 @@ ENTRY %reduce-window (parameter.0: s64[81,8], parameter.1: s64[]) -> s64[82,8] {
   %parameter.0 = s64[81,8]{1,0} parameter(0)
   %parameter.1 = s64[] parameter(1)
   ROOT %reduce-window = s64[82,8]{1,0} reduce-window(s64[81,8]{1,0} %parameter.0, s64[] %parameter.1), window={size=1x1 pad=0_1x0_0}, to_apply=%identity.pad_to_reduce_window
+}
+
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, std::nullopt));
+}
+
+XLA_TEST_F(HloTestBase, DISABLED_ON_TPU(ReduceWindowS4)) {
+  const std::string hlo_string = R"(
+HloModule reduce-window
+
+%identity.pad_to_reduce_window (param0: s4[], param1: s4[]) -> s4[] {
+  %param0 = s4[] parameter(0)
+  ROOT %param1 = s4[] parameter(1)
+}
+
+ENTRY %reduce-window (parameter.0: s4[81,8], parameter.1: s4[]) -> s4[82,8] {
+  %parameter.0 = s4[81,8]{1,0} parameter(0)
+  %parameter.1 = s4[] parameter(1)
+  ROOT %reduce-window = s4[82,8]{1,0} reduce-window(s4[81,8]{1,0} %parameter.0, s4[] %parameter.1), window={size=1x1 pad=0_1x0_0}, to_apply=%identity.pad_to_reduce_window
 }
 
 )";

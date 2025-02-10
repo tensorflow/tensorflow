@@ -24,10 +24,32 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "tsl/framework/serving_device_selector.h"
+#include "xla/tsl/framework/serving_device_selector.h"
+#include "tensorflow/core/framework/resource_base.h"
 
 namespace tensorflow {
 namespace gpu {
+class GpuServingDeviceSelector;
+const char kGpuServingDeviceSelectorResourceName[] =
+    "gpu_serving_device_selector";
+
+class GpuServingDeviceSelectorResource : public ResourceBase {
+ public:
+  explicit GpuServingDeviceSelectorResource(
+      int num_devices, std::unique_ptr<tsl::ServingDeviceSelector::Policy>
+                           device_selector_policy)
+      : selector_(std::make_unique<GpuServingDeviceSelector>(
+            num_devices, std::move(device_selector_policy))) {}
+
+  std::string DebugString() const override {
+    return "GpuServingDeviceSelectorResource";
+  };
+
+  GpuServingDeviceSelector* selector() const { return selector_.get(); }
+
+ private:
+  std::unique_ptr<GpuServingDeviceSelector> selector_;
+};
 
 class GpuServingDeviceSelector : public tsl::ServingDeviceSelector {
  public:
@@ -39,12 +61,12 @@ class GpuServingDeviceSelector : public tsl::ServingDeviceSelector {
       absl::string_view program_fingerprint) override;
 
   // Enqueues the program on the stream of index `index_on_host`.
-  void Enqueue(int32_t index_on_host, absl::string_view fingerprint);
+  void Enqueue(int32_t index_on_host, absl::string_view fingerprint) override;
 
   // Marks the completion of a program on the given stream.
   // If `had_error` is true, this function doesn't update program's execution
   // time stats to avoid incorrect estimates.
-  void Completed(int32_t index_on_host, bool had_error = false);
+  void Completed(int32_t index_on_host, bool had_error) override;
 
  private:
   friend class ServingDeviceSelectorTestHelper;

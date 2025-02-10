@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
@@ -93,7 +94,7 @@ LogicalResult SetMetadataProtoStepMarkerLocation(
 // Parses a xla::OpSharding from a string attribute.
 LogicalResult SetOpSharding(Operation* op, Attribute attr, llvm::StringRef name,
                             int index, xla::OpSharding* sharding_ptr) {
-  auto sharding_attr = attr.dyn_cast<StringAttr>();
+  auto sharding_attr = mlir::dyn_cast<StringAttr>(attr);
   if (!sharding_attr)
     return op->emitOpError(
         llvm::formatv(kBadStringArrayElementMsg, name, index));
@@ -130,7 +131,7 @@ LogicalResult SetMetadataProtoArgs(
   llvm::SmallSet<int, 4> dynamic_arg_idx_set;
   if (dynamic_arg_idx) {
     for (auto idx : dynamic_arg_idx.getValue()) {
-      dynamic_arg_idx_set.insert(idx.dyn_cast<IntegerAttr>().getInt());
+      dynamic_arg_idx_set.insert(mlir::dyn_cast<IntegerAttr>(idx).getInt());
     }
   }
 
@@ -139,8 +140,7 @@ LogicalResult SetMetadataProtoArgs(
     int index = operand_type_and_idx.index();
     tensorflow::tpu::TPUCompileMetadataProto::Arg* arg = metadata->add_args();
     tensorflow::DataType dtype;
-    tensorflow::Status status =
-        tensorflow::ConvertToDataType(operand_type, &dtype);
+    absl::Status status = tensorflow::ConvertToDataType(operand_type, &dtype);
     if (!status.ok())
       return op.emitOpError(
           llvm::formatv("failed to determine operand type at index {0}: {1}",
@@ -155,7 +155,8 @@ LogicalResult SetMetadataProtoArgs(
 
     // Populate argument shapes.
     *arg->mutable_shape() = tensorflow::TensorShapeProto();
-    if (auto ranked_tensor_type = operand_type.dyn_cast<RankedTensorType>()) {
+    if (auto ranked_tensor_type =
+            mlir::dyn_cast<RankedTensorType>(operand_type)) {
       tensorflow::TensorShapeProto shape_proto;
       ConvertToTensorShapeProto(ranked_tensor_type.getShape(), &shape_proto);
       *arg->mutable_shape() = std::move(shape_proto);

@@ -1,13 +1,14 @@
 # Description:
 # TensorFlow Lite Java API.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@rules_java//java:defs.bzl", "java_library", "java_test")
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
-load("//tensorflow/lite:build_def.bzl", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library_with_tflite", "cc_library_with_tflite", "java_library_with_tflite", "java_test_with_tflite", "jni_binary_with_tflite")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
-load("@build_bazel_rules_android//android:rules.bzl", "android_library")
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -129,21 +130,26 @@ filegroup(
 # C headers for the Native APIs.
 
 # TODO(b/277186081) Move this list to `../c/BUILD` when aar_with_jni supports filegroups in the headers parameter.
-# TODO(b/279573130): add `builtin_op_data.h` to this list, it will be needed for DBA delegates.
 # LINT.IfChange(TFLITE_HEADERS)
 TFLITE_HEADERS = [
     # TODO(b/175298345): Clean up and if possible remove c:common.h and core/c:common.h here.
     "//tensorflow/lite:builtin_ops.h",
+    "//tensorflow/lite/c:builtin_op_data.h",
     "//tensorflow/lite/c:c_api.h",
     "//tensorflow/lite/c:c_api_experimental.h",
     "//tensorflow/lite/c:c_api_opaque.h",
     "//tensorflow/lite/c:c_api_types.h",
     "//tensorflow/lite/c:common.h",
+    "//tensorflow/lite/core/async/c:types.h",
     "//tensorflow/lite/core/c:c_api.h",
     "//tensorflow/lite/core/c:c_api_opaque.h",
     "//tensorflow/lite/core/c:c_api_types.h",
+    "//tensorflow/compiler/mlir/lite/core/c:tflite_types.h",
+    "//tensorflow/lite/core/c:builtin_op_data.h",
+    "//tensorflow/compiler/mlir/lite/core/c:builtin_op_data.h",
     "//tensorflow/lite/core/c:c_api_experimental.h",
     "//tensorflow/lite/core/c:common.h",
+    "//tensorflow/lite/core/c:operator.h",
     "//tensorflow/lite/delegates/nnapi:nnapi_delegate_c_api.h",
 ]
 # LINT.ThenChange(../c/BUILD:exported_headers)
@@ -199,8 +205,10 @@ aar_with_jni(
         "//tensorflow/lite:builtin_ops.h",
         "//tensorflow/lite/c:c_api.h",
         "//tensorflow/lite/c:c_api_types.h",
+        "//tensorflow/lite/core/async/c:types.h",
         "//tensorflow/lite/core/c:c_api.h",
         "//tensorflow/lite/core/c:c_api_types.h",
+        "//tensorflow/lite/core/c:operator.h",
         # TODO(b/175298345): move the stable parts of common.h into
         # a separate header file that contains no experimental APIs
         # (perhaps also replacing concrete struct types with opaque types
@@ -687,6 +695,7 @@ java_test_with_tflite(
 #         "src/testdata/add.bin",
 #         "src/testdata/add_unknown_dimensions.bin",
 #         "src/testdata/mul_add_signature_def.bin",
+#         "src/testdata/multi_signature_def.bin",
 #         "src/testdata/tile_with_bool_input.bin",
 #         "//tensorflow/lite:testdata/dynamic_shapes.bin",
 #         "//tensorflow/lite:testdata/multi_add.bin",
@@ -878,6 +887,15 @@ java_test(
     ],
 )
 
+tflite_cc_library_with_c_headers_test(
+    name = "native_headers_lib_for_test",
+    testonly = True,
+    srcs = [],
+    hdrs = TFLITE_HEADERS,
+    visibility = ["//visibility:private"],
+    deps = [],
+)
+
 #-----------------------------------------------------------------------------
 # Test filegroup targets.
 
@@ -888,6 +906,7 @@ filegroup(
         "src/test/java/org/tensorflow/lite/DataTypeTest.java",
         "src/test/java/org/tensorflow/lite/InterpreterApiTest.java",
         "src/test/java/org/tensorflow/lite/NativeInterpreterWrapperTest.java",
+        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
         "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
         "src/test/java/org/tensorflow/lite/TensorTest.java",
         "src/test/java/org/tensorflow/lite/TestInit.java",

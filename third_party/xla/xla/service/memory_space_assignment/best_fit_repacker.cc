@@ -128,14 +128,14 @@ Step 5: Update AllocationBlocks with the repacking placements
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
-#include "xla/service/memory_space_assignment/repacking.h"
-#include "xla/statusor.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 
@@ -495,7 +495,7 @@ class BestFitRepacker
     LOG(FATAL) << "We should never get here.";
   }
 
-  StatusOr<Result> Finish() override {
+  absl::StatusOr<Result> Finish() override {
     std::vector<BufferInterval> sorted_buffer_intervals =
         GetSortedBufferIntervals();
 
@@ -509,7 +509,7 @@ class BestFitRepacker
 
     Result result;
     result.heap_size = result_.heap_size;
-    result.heap_results.emplace_back(result_);
+    result.heap_results.push_back(result_);
     return result;
   }
 
@@ -632,7 +632,7 @@ class BestFitRepacker
 
 namespace memory_space_assignment {
 
-StatusOr<bool> MemorySpaceAssignmentBestFitRepacker::Repack(
+absl::StatusOr<bool> MemorySpaceAssignmentBestFitRepacker::Repack(
     absl::Span<AllocationBlock*> allocations) {
   BestFitRepacker best_fit_repacker = BestFitRepacker(
       options_, slice_time_permutation_iterator_type_, max_size_, alignment_);

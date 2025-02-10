@@ -22,9 +22,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/service/backend.h"
-#include "xla/statusor.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -52,7 +58,7 @@ class AllocationTracker {
       const std::string& tag);
 
   // Unregister the allocation for the given data handle.
-  Status Unregister(const GlobalDataHandle& data);
+  absl::Status Unregister(const GlobalDataHandle& data);
 
   // Returns a vector of global data handles that point to the tuple elements.
   absl::StatusOr<std::vector<GlobalDataHandle>> DeconstructTuple(
@@ -103,8 +109,8 @@ class AllocationTracker {
 
   // Decrements the reference count of the given device memory. Then, if it is
   // zero, deallocate the memory.
-  Status DecrementRefCount(se::DeviceMemoryBase device_memory,
-                           int device_ordinal)
+  absl::Status DecrementRefCount(se::DeviceMemoryBase device_memory,
+                                 int device_ordinal)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // A map from device memory opaque value to allocation. One such map is

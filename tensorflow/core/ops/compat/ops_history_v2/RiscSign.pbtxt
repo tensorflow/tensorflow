@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RiscSign"
   input_arg {
     name: "x"

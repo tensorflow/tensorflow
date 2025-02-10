@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "XlaSparseDenseMatmul"
   input_arg {
     name: "row_ids"

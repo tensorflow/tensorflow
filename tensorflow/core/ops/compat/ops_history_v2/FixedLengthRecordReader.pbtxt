@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "FixedLengthRecordReader"
   output_arg {
     name: "reader_handle"

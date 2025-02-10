@@ -150,7 +150,9 @@ class ComposableSplitter(Splitter):
       self._built = True
     return self._chunks, self._chunked_message
 
-  def write(self, file_prefix: str) -> str:
+  def write(
+      self, file_prefix: str, writer_options: Optional[str] = None
+  ) -> str:
     """Serializes a proto to disk.
 
     The writer writes all chunks into a riegeli file. The chunk metadata
@@ -160,6 +162,9 @@ class ComposableSplitter(Splitter):
       file_prefix: string prefix of the filepath. The writer will automatically
         attach a `.pb` or `.cpb` (chunked pb) suffix depending on whether the
         proto is split.
+      writer_options: Optional writer options to pass to the riegeli writer. See
+        https://github.com/google/riegeli/blob/master/doc/record_writer_options.md
+        for options.
 
     Returns:
       The actual filepath the proto is written to. The filepath will be
@@ -185,7 +190,10 @@ class ComposableSplitter(Splitter):
       return path
 
     path = f"{file_prefix}.cpb"
-    with riegeli.RecordWriter(file_io.FileIO(path, "wb")) as f:
+    writer_kwargs = {}
+    if writer_options is not None:
+      writer_kwargs["options"] = writer_options
+    with riegeli.RecordWriter(file_io.FileIO(path, "wb"), **writer_kwargs) as f:
       metadata = chunk_pb2.ChunkMetadata(
           message=chunked_message, version=self.version_def
       )

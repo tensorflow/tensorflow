@@ -16,11 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_CONVOLUTION_HANDLER_H_
 #define XLA_SERVICE_SPMD_CONVOLUTION_HANDLER_H_
 
+#include <cstdint>
+
+#include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/service/spmd/spmd_partitioner.h"
+#include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace spmd {
@@ -29,7 +35,7 @@ namespace spmd {
 absl::StatusOr<HloInstruction*> PartitionConvolution(
     const PartitionedHlo& lhs, const PartitionedHlo& rhs,
     const Shape& output_base_shape, const HloSharding& output_sharding,
-    const DotConvDimsMapping& dims_mapping,
+    const dot_as_convolution_util::DotConvolutionDimsInfo& dims_mapping,
     absl::FunctionRef<absl::StatusOr<HloInstruction*>(
         HloInstruction*, HloInstruction*, SpmdBuilder*,
         const Window& conv_window)>

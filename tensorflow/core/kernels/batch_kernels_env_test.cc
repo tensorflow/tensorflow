@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gmock/gmock.h>
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/kernels/batch_kernel_test_util.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
@@ -31,7 +31,7 @@ TEST_P(BatchFunctionKernelEnvTest, Basic) {
   tensorflow::setenv("TF_NUM_BATCH_THREADS", "0", 1 /* overwrite */);
 
   const bool adaptive_scheduler_enabled = GetParam();
-  Status status = Init(adaptive_scheduler_enabled);
+  absl::Status status = Init(adaptive_scheduler_enabled);
   if (adaptive_scheduler_enabled) {
     EXPECT_THAT(status, tensorflow::testing::StatusIs(
                             error::FAILED_PRECONDITION,

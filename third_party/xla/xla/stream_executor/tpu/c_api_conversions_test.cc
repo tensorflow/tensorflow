@@ -18,23 +18,20 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -304,10 +301,8 @@ TEST(XlaHloModuleConfig, ToAndFromC) {
   XLA_HloModuleConfig c_config = ToC(in_config);
   xla::HloModuleConfig out_config = FromC(c_config);
 
-  TF_ASSERT_OK_AND_ASSIGN(xla::HloModuleConfigProto in_config_proto,
-                          in_config.ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(xla::HloModuleConfigProto out_config_proto,
-                          out_config.ToProto());
+  xla::HloModuleConfigProto in_config_proto = in_config.ToProto();
+  xla::HloModuleConfigProto out_config_proto = out_config.ToProto();
 
   tsl::protobuf::util::MessageDifferencer diff;
   diff.set_message_field_comparison(
@@ -329,10 +324,9 @@ TEST(XlaHloModule, ToAndFromC) {
   ASSERT_TRUE(out_module_ptr.ok());
   xla::HloModule& out_module = *out_module_ptr.value();
 
-  TF_ASSERT_OK_AND_ASSIGN(xla::HloModuleProtoWithConfig in_module_proto,
-                          in_module.ToProtoWithConfig());
-  TF_ASSERT_OK_AND_ASSIGN(xla::HloModuleProtoWithConfig out_module_proto,
-                          out_module.ToProtoWithConfig());
+  xla::HloModuleProtoWithConfig in_module_proto = in_module.ToProtoWithConfig();
+  xla::HloModuleProtoWithConfig out_module_proto =
+      out_module.ToProtoWithConfig();
 
   tsl::protobuf::util::MessageDifferencer diff;
   diff.set_message_field_comparison(

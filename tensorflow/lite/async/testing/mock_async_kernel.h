@@ -48,6 +48,11 @@ class MockAsyncKernel : public delegates::BackendAsyncKernelInterface {
               (TfLiteOpaqueContext*, TfLiteOpaqueNode*, int,
                const TfLiteAttributeMap*),
               (override));
+  MOCK_METHOD(TfLiteStatus, SetBufferAttributes,
+              (const TfLiteBackendBuffer*, const TfLiteAttributeMap*),
+              (override));
+  MOCK_METHOD(TfLiteStatus, GetBufferAttributes,
+              (const TfLiteBackendBuffer*, TfLiteAttributeMap*), (override));
   MOCK_METHOD(TfLiteStatus, Prepare, (TfLiteOpaqueContext*, TfLiteOpaqueNode*),
               (override));
   MOCK_METHOD(TfLiteStatus, Eval,

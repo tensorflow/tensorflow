@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_C_TF_STATUS_H_
 
 #include "tensorflow/c/c_api_macros.h"
-#include "tsl/c/tsl_status.h"
+#include "xla/tsl/c/tsl_status.h"
 
 #ifdef __cplusplus
 extern "C" {

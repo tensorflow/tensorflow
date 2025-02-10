@@ -28,13 +28,14 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace pjrt {
 namespace {
@@ -46,9 +47,11 @@ PJRT_Client* CreateClient(const PJRT_Api* api) {
   create_args.create_options = nullptr;
   create_args.num_options = 0;
   create_args.kv_get_callback = nullptr;
+  create_args.kv_get_user_arg = nullptr;
   create_args.kv_put_callback = nullptr;
   create_args.kv_put_user_arg = nullptr;
-  create_args.kv_get_user_arg = nullptr;
+  create_args.kv_try_get_callback = nullptr;
+  create_args.kv_try_get_user_arg = nullptr;
   PJRT_Error* error = api->PJRT_Client_Create(&create_args);
   CHECK_EQ(error, nullptr);
   CHECK_NE(create_args.client, nullptr);
@@ -172,12 +175,19 @@ PjrtCApiTestBase::CreateBufferFromHostBufferArgs(
 }
 
 std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
-          xla::PjRtFuture<absl::Status>>
+          xla::PjRtFuture<>>
 PjrtCApiTestBase::create_buffer(PJRT_Device* device) {
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
   std::vector<float> float_data(4);
   std::iota(float_data.begin(), float_data.end(), 41.0f);
+  return create_buffer_from_data(float_data, shape, device);
+}
 
+std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
+          xla::PjRtFuture<>>
+PjrtCApiTestBase::create_buffer_from_data(const std::vector<float>& float_data,
+                                          const xla::Shape& shape,
+                                          PJRT_Device* device) {
   PJRT_Client_BufferFromHostBuffer_Args args = CreateBufferFromHostBufferArgs(
       float_data, shape,
       xla::PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, device);
@@ -200,7 +210,7 @@ PjrtCApiTestBase::create_buffer(PJRT_Device* device) {
   auto ready_event_error =
       ToUniquePtr(api_->PJRT_Buffer_ReadyEvent(&get_event_args));
   EXPECT_EQ(ready_event_error, nullptr);
-  xla::PjRtFuture<absl::Status> buffer_ready_event =
+  xla::PjRtFuture<> buffer_ready_event =
       ::pjrt::ConvertCEventToCppFuture(get_event_args.event, api_);
 
   return std::make_pair(std::move(buffer), buffer_ready_event);
@@ -210,6 +220,55 @@ std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter>
 PjrtCApiTestBase::ToUniquePtr(PJRT_Error* error) {
   return std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter>{
       error, ::pjrt::MakeErrorDeleter(api_)};
+}
+
+std::unique_ptr<PJRT_AsyncHostToDeviceTransferManager,
+                ::pjrt::PJRT_AsyncHostToDeviceTransferManagerDeleter>
+PjrtCApiTestBase::create_transfer_manager(const xla::Shape& host_shape) {
+  PJRT_Client_CreateBuffersForAsyncHostToDevice_Args args;
+  args.struct_size =
+      PJRT_Client_CreateBuffersForAsyncHostToDevice_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = client_;
+
+  PJRT_ShapeSpec c_shape_spec;
+  c_shape_spec.element_type =
+      pjrt::ConvertToPjRtBufferType(host_shape.element_type());
+  c_shape_spec.dims = host_shape.dimensions().data();
+  c_shape_spec.num_dims = host_shape.dimensions().size();
+
+  args.shape_specs = &c_shape_spec;
+  args.num_shape_specs = 1;
+  absl::StatusOr<BufferMemoryLayoutData> result =
+      ConvertToBufferMemoryLayoutData(host_shape.layout());
+  CHECK_OK(result);
+  BufferMemoryLayoutData c_layout_data = result.value();
+  std::vector<PJRT_Buffer_MemoryLayout*> device_layout_list(1);
+  device_layout_list[0] = &(c_layout_data.c_layout);
+  args.device_layouts = device_layout_list.data();
+  args.num_device_layouts = device_layout_list.size();
+
+  PJRT_Client_AddressableMemories_Args memory_args;
+  memory_args.struct_size = PJRT_Client_AddressableMemories_Args_STRUCT_SIZE;
+  memory_args.extension_start = nullptr;
+  memory_args.client = client_;
+
+  PJRT_Error* memory_error =
+      api_->PJRT_Client_AddressableMemories(&memory_args);
+  CHECK_EQ(memory_error, nullptr);
+  CHECK_NE(memory_args.addressable_memories, nullptr);
+  CHECK_GT(memory_args.num_addressable_memories, 0);
+  args.memory = memory_args.addressable_memories[0];
+
+  PJRT_Error* error =
+      api_->PJRT_Client_CreateBuffersForAsyncHostToDevice(&args);
+  CHECK_EQ(error, nullptr);
+  std::unique_ptr<PJRT_AsyncHostToDeviceTransferManager,
+                  PJRT_AsyncHostToDeviceTransferManagerDeleter>
+      transfer_manager_out(
+          args.transfer_manager,
+          ::pjrt::MakeAsyncHostToDeviceTransferManagerDeleter(api_));
+  return transfer_manager_out;
 }
 
 }  // namespace pjrt

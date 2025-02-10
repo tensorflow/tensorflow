@@ -16,15 +16,18 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_jit_compiled_cpu_function.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 #include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/cpu/buffer_info_util.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/platform_util.h"
@@ -36,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -48,6 +52,18 @@ absl::StatusOr<size_t> ComputeResultIndex(
   TF_ASSIGN_OR_RETURN(const xla::BufferAllocation::Slice result_slice,
                       buffer_assignment.GetUniqueTopLevelOutputSlice());
   return result_slice.index();
+}
+
+// Returns the number of results.
+int CountResults(
+    absl::Span<const xla::cpu_function_runtime::BufferInfo> buffer_infos) {
+  int num_results = 0;
+  for (const auto& info : buffer_infos) {
+    if (info.is_result_parameter()) {
+      ++num_results;
+    }
+  }
+  return num_results;
 }
 
 // Collect names from `entries`, where T is one of
@@ -77,15 +93,6 @@ void CollectNames(const T& entries, std::vector<string>* nonempty_names,
     }
   }
   name_ptrs->push_back(nullptr);  // array terminator
-}
-
-bool RunXlaRuntime(const xla::cpu::CpuExecutable* cpu_executable,
-                   const std::vector<xla::cpu::BufferDesc>& descriptor_table,
-                   const xla::ExecutableRunOptions* run_options) {
-  assert(cpu_executable->IsXlaRuntime());
-  Status status =
-      cpu_executable->ExecuteXlaRuntime(descriptor_table, run_options);
-  return status.ok();
 }
 
 }  // namespace
@@ -124,11 +131,16 @@ XlaJitCompiledCpuFunction::Compile(
     arg_shapes.push_back(&program_shape->parameters(i));
   }
 
+  // TODO(b/342515164): Implement XLA jit compiled functions + thunks.
+  xla::ExecutableBuildOptions build_options_copy = build_options;
+  build_options_copy.mutable_debug_options()->set_xla_cpu_use_thunk_runtime(
+      false);
+
   // Compile the executable. The static_cast to the CpuExecutable subclass is
   // necessary since the raw function and buffer assignments are only available
   // there.
-  TF_ASSIGN_OR_RETURN(auto executables,
-                      client->Compile(computation, arg_shapes, build_options));
+  TF_ASSIGN_OR_RETURN(auto executables, client->Compile(computation, arg_shapes,
+                                                        build_options_copy));
   TF_RET_CHECK(executables.size() == 1);
   std::unique_ptr<xla::LocalExecutable> executable = std::move(executables[0]);
   const xla::cpu::CpuExecutable* cpu_executable =
@@ -146,6 +158,7 @@ XlaJitCompiledCpuFunction::Compile(
       xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
   TF_ASSIGN_OR_RETURN(size_t result_index,
                       ComputeResultIndex(buffer_assignment));
+  const int num_results = CountResults(buffer_infos);
 
   std::unique_ptr<XlaJitCompiledCpuFunction> jit_unique_ptr(
       new XlaJitCompiledCpuFunction);
@@ -157,12 +170,6 @@ XlaJitCompiledCpuFunction::Compile(
       std::make_unique<xla::ProgramShapeProto>(program_shape->ToProto());
   XlaCompiledCpuFunction::set_static_data_raw_function(&jit->static_data_,
                                                        raw_function);
-  if (cpu_executable->IsXlaRuntime()) {
-    XlaCompiledCpuFunction::set_static_data_external_run_function(
-        &jit->static_data_, RunXlaRuntime);
-    XlaCompiledCpuFunction::set_static_data_cpu_executable(&jit->static_data_,
-                                                           cpu_executable);
-  }
   XlaCompiledCpuFunction::set_static_data_buffer_infos(
       &jit->static_data_, jit->buffer_infos_.data());
   XlaCompiledCpuFunction::set_static_data_num_buffers(
@@ -173,6 +180,8 @@ XlaJitCompiledCpuFunction::Compile(
       &jit->static_data_, jit->arg_index_table_.size());
   XlaCompiledCpuFunction::set_static_data_num_variables(&jit->static_data_,
                                                         config.variable_size());
+  XlaCompiledCpuFunction::set_static_data_num_results(&jit->static_data_,
+                                                      num_results);
   XlaCompiledCpuFunction::set_static_data_result_index(&jit->static_data_,
                                                        result_index);
   // Optional metadata is collected and set below.

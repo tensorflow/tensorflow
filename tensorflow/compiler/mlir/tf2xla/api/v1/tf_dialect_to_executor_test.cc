@@ -27,10 +27,10 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/resource_loader.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -61,16 +61,16 @@ class TensorflowDialectToExecutorTest : public ::testing::Test {
     context_.loadAllAvailableDialects();
   }
 
-  tsl::Status CreateMlirModule(std::string mlir_module_filename) {
+  absl::Status CreateMlirModule(std::string mlir_module_filename) {
     std::string mlir_module_path = TestDataPath() + mlir_module_filename;
     mlir_module_ =
         mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
     if (!mlir_module_) {
-      return tsl::Status(
+      return absl::Status(
           absl::StatusCode::kNotFound,
           absl::StrCat("Could not find MLIR module at ", mlir_module_path));
     }
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   DialectRegistry registry_;

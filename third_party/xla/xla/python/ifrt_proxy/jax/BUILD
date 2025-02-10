@@ -23,16 +23,8 @@ package(
 pytype_strict_library(
     name = "ifrt_proxy_internal",
     srcs = ["ifrt_proxy_internal.py"],
-    # copybara:uncomment_begin
-    # visibility = [
-    # "//xla/python/ifrt_proxy/common/google:friends",
-    # "//xla/python/ifrt_proxy/common/google:jax_users",
-    # ],
-    # copybara:uncomment_end
     deps = [
         "//xla/python:xla_client",
-        "//xla/python/ifrt_proxy/client:py_module",
-        "@pybind11_abseil//pybind11_abseil:status",
     ],
 )
 
@@ -41,7 +33,7 @@ pytype_strict_library(
 #     name = "ifrt_proxy",
 #     srcs = ["ifrt_proxy.py"],
 #     visibility = [
-#         "//xla/python/ifrt_proxy/common/google:friends",
+#         "//xla/python/ifrt_proxy/common/google:internal",
 #         "//xla/python/ifrt_proxy/common/google:jax_users",
 #     ],
 #     deps = [

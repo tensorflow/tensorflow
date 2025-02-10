@@ -105,7 +105,7 @@ void BM_ValidateStridedSliceOp(::testing::benchmark::State& state) {
   for (auto s : state) {
     TensorShape processing_shape, final_shape;
     bool is_identity = true, slice_dim0 = true, is_simple_slice = true;
-    gtl::InlinedVector<int64_t, 4> begin_out, end_out, strides_out;
+    absl::InlinedVector<int64_t, 4UL> begin_out, end_out, strides_out;
     const int32_t begin_mask = 0;
     const int32_t end_mask = 0;
     const int32_t ellipsis_mask = 0;

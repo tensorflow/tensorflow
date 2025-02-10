@@ -19,26 +19,33 @@ limitations under the License.
 #include <ostream>
 #include <queue>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/map_util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
-#include "tsl/lib/gtl/map_util.h"
 
 namespace xla {
 
-/* static */ StatusOr<HloSchedule> HloSchedule::CreateFromProto(
+/* static */ absl::StatusOr<HloSchedule> HloSchedule::CreateFromProto(
     const HloModule* module, const HloScheduleProto& proto) {
   absl::flat_hash_map<int64_t, const HloComputation*> id_to_computation;
   for (const HloComputation* computation : module->computations()) {
@@ -76,7 +83,7 @@ namespace xla {
   return std::move(schedule);
 }
 
-StatusOr<HloScheduleProto> HloSchedule::ToProto() const {
+absl::StatusOr<HloScheduleProto> HloSchedule::ToProto() const {
   TF_RETURN_IF_ERROR(Verify());
   HloScheduleProto proto;
   for (const auto& id_sequence : sequences_) {
@@ -124,7 +131,7 @@ const HloInstructionSequence& HloSchedule::sequence(
   return sequences_.at(computation->unique_id());
 }
 
-Status HloSchedule::UpdateComputationSchedule(
+absl::Status HloSchedule::UpdateComputationSchedule(
     const HloComputation* computation) {
   // Map from unique ID to HloInstruction pointer for instructions in the
   // computation.
@@ -209,10 +216,10 @@ Status HloSchedule::UpdateComputationSchedule(
   }
 
   set_sequence(computation, std::move(new_sequence));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status HloSchedule::Update(
+absl::Status HloSchedule::Update(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // The schedule must contain a sequence for every non-fusion computation in
   // the module for the specified threads, but can have sequences for
@@ -268,7 +275,7 @@ Status HloSchedule::Update(
   }
 
   TF_RETURN_IF_ERROR(Verify());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::flat_hash_map<std::string, int64_t>
@@ -282,7 +289,7 @@ HloSchedule::num_sequences_by_execution_thread() const {
   return sequence_num_by_execution_threads;
 }
 
-Status HloSchedule::Verify() const {
+absl::Status HloSchedule::Verify() const {
   VLOG(2) << "VerifySchedule()";
   XLA_VLOG_LINES(2, ToString());
 
@@ -346,7 +353,7 @@ Status HloSchedule::Verify() const {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

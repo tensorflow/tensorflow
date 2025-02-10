@@ -62,9 +62,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_PLATFORM_MANAGER_H_
 
 #include <functional>
-#include <map>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -104,15 +102,11 @@ class PlatformManager {
   // Retrieves the platform registered with the given platform id (an opaque,
   // comparable value provided by the Platform's Id() method).
   //
-  // The platform will be initialized with the given options. If the platform
-  // was already initialized, an error will be returned.
-  //
   // If the requested platform is not registered, an error status is returned.
   // Ownership of the platform is NOT transferred to the caller --
   // the PlatformManager owns the platforms in a singleton-like fashion.
   static absl::StatusOr<Platform*> InitializePlatformWithId(
-      const Platform::Id& id,
-      const std::map<std::string, std::string>& options);
+      const Platform::Id& id);
 
   // Retrieves the platforms satisfying the given filter, i.e. returns true.
   // Returned Platforms are always initialized.

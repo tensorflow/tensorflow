@@ -16,14 +16,18 @@ limitations under the License.
 #include "xla/reference_util.h"
 
 #include <cmath>
+#include <cstdint>
 #include <memory>
 
+#include <gtest/gtest.h>
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/padding.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/builder/padding.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
-#include "xla/test.h"
+#include "xla/literal_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -83,6 +87,18 @@ TEST_F(ReferenceUtilTest, ReduceToRowArray2D) {
   auto actual_literal = LiteralUtil::CreateR1<float>(*result);
   LiteralTestUtil::ExpectR1Near<float>({5.f, 7.f, 9.f}, actual_literal,
                                        ErrorSpec(0.0001));
+}
+
+TEST_F(ReferenceUtilTest, Array2DF32ToF64Test) {
+  auto result = ReferenceUtil::Array2DF32ToF64(*matrix_);
+  ASSERT_EQ(result->height(), matrix_->height());
+  ASSERT_EQ(result->width(), matrix_->width());
+  for (int64_t rowno = 0; rowno < matrix_->height(); ++rowno) {
+    for (int64_t colno = 0; colno < matrix_->width(); ++colno) {
+      EXPECT_EQ(static_cast<double>((*matrix_)(rowno, colno)),
+                (*result)(rowno, colno));
+    }
+  }
 }
 
 TEST_F(ReferenceUtilTest, Reduce4Dto1DZeroSizedArray) {

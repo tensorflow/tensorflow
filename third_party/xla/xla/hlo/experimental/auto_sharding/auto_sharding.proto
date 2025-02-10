@@ -40,15 +40,23 @@ message AutoShardingSolverRequest {
   message Coeff {
     double coeff = 1;
   }
+  message Group {
+    repeated int64 prims = 1;  // Node or edge primitive indices.
+  }
 
   int64 num_nodes = 1;
   int64 memory_budget = 2;
   repeated int64 s_len = 3;
   repeated int64 s_follow = 4;
   repeated int64 s_hint = 5;
+  repeated int64 peak_times = 35;
   repeated Pair edges = 6;
   repeated Nodes live = 7;
   repeated Edges live_edges = 28;
+  repeated Pair node_intervals = 36;
+  repeated Pair edge_intervals = 37;
+  repeated Group node_groups = 38;
+  repeated Group edge_groups = 39;
   repeated Costs computation_costs = 8;
   repeated Costs communication_costs = 9;
   repeated Costs memory_costs = 10;
@@ -60,6 +68,7 @@ message AutoShardingSolverRequest {
   repeated Costs value_costs = 15;
   repeated string instruction_names = 16;
   repeated string opcodes = 33;
+  repeated string metadata_source_files = 40;
   repeated Names strategy_names = 32;
   optional SolverTimeout solver_timeout = 17;
   optional Coeff overbudget_coeff = 18;
@@ -75,4 +84,5 @@ message AutoShardingSolverRequest {
   string request_name = 30;
   bool enable_output = 31;
   bool enable_memory_edge_costs = 34;
+  bool minimize_departures = 41;
 }

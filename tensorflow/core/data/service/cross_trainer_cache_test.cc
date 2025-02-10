@@ -362,7 +362,7 @@ TEST(CrossTrainerCacheTest, Cancel) {
   EXPECT_FALSE(cache.IsCancelled());
 
   mutex mu;
-  Status status;  // Guarded by `mu`.
+  absl::Status status;  // Guarded by `mu`.
   std::vector<std::unique_ptr<Thread>> reader_threads;
   for (size_t i = 0; i < num_trainers; ++i) {
     reader_threads.push_back(absl::WrapUnique(Env::Default()->StartThread(
@@ -395,7 +395,7 @@ TEST(CrossTrainerCacheTest, Cancel) {
 
 TEST(CrossTrainerCacheTest, Errors) {
   auto elements = std::make_unique<ElementOrErrorDataset<std::string>>(
-      std::vector<StatusOr<std::string>>{
+      std::vector<absl::StatusOr<std::string>>{
           std::string("First element"),
           errors::Cancelled("Cancelled"),
           std::string("Second element"),

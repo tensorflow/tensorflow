@@ -1,5 +1,5 @@
 ################################################################################
-FROM ubuntu:20.04 as builder
+FROM ubuntu:20.04@sha256:8e5c4f0285ecbb4ead070431d29b576a530d3166df73ec44affc1cd27555141b as builder
 ################################################################################
 
 # Install devtoolset build dependencies
@@ -23,7 +23,7 @@ COPY apt.conf /etc/apt/
 RUN /build_patchelf.sh
 
 ################################################################################
-FROM nvidia/cuda:12.3.1-devel-ubuntu20.04 as devel
+FROM nvidia/cuda:12.3.2-devel-ubuntu20.04@sha256:cf1404fc25ae571d26e2185d37bfa3258124ab24eb96b6ac930ac71908970d0b as devel
 ################################################################################
 COPY --from=builder /dt10 /dt10
 COPY --from=builder /patchelf/patchelf_0.14.3-1_arm64.deb /patchelf/patchelf_0.14.3-1_arm64.deb
@@ -62,6 +62,9 @@ COPY devel.usertools /usertools
 COPY devel.bashrc /root/.bashrc
 COPY ld.so.conf /dt10/etc/
 
+# Make sure clang is on the path
+RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
+
 # Setup JAX Python environment.
 FROM devel as jax
 RUN /setup.packages.sh /cuda.packages.txt
@@ -71,6 +74,9 @@ RUN /setup.python.sh python3.9 devel.requirements.txt
 RUN /setup.python.sh python3.10 devel.requirements.txt
 RUN /setup.python.sh python3.11 devel.requirements.txt
 RUN /setup.python.sh python3.12 devel.requirements.txt
+RUN /setup.python.sh python3.13 devel.requirements.txt
+# python3.13-nogil is a free-threaded build of python3.13
+RUN /setup.python.sh python3.13-nogil devel.requirements.txt
 
 FROM devel as tf
 # Setup TF Python environment.
@@ -80,5 +86,6 @@ RUN /setup.python.sh python3.9 devel.requirements.txt
 RUN /setup.python.sh python3.10 devel.requirements.txt
 RUN /setup.python.sh python3.11 devel.requirements.txt
 RUN /setup.python.sh python3.12 devel.requirements.txt
+RUN /setup.python.sh python3.13 devel.requirements.txt
 # "python3" commands by default run under 3.10
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1

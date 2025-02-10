@@ -146,7 +146,7 @@ bazel build \
   --experimental_cc_shared_library \
   --config=release_cpu_windows ${EXTRA_BUILD_FLAGS} \
   --output_filter=^$ \
-  tensorflow/tools/pip_package:build_pip_package || exit $?
+  tensorflow/tools/pip_package:wheel || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
@@ -155,7 +155,7 @@ fi
 # Create a python test directory to avoid package name conflict
 create_python_test_dir "${PY_TEST_DIR}"
 
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}" ${EXTRA_PIP_FLAGS}
+cp ./bazel-bin/tensorflow/tools/pip_package/wheel_house/*.whl "$PWD/${PY_TEST_DIR}"
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
   exit 0

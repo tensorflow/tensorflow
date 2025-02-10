@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
-#include <utility>
 
 #include "absl/status/status.h"
 #include "tensorflow/lite/experimental/shlo/data_type.h"
@@ -81,23 +80,18 @@ IsFiniteOp Create(const IsFiniteOp::Attributes& attributes) {
   return IsFiniteOp();
 }
 
-absl::Status Prepare(IsFiniteOp& op, Tensor operand, Tensor result) {
-  if (absl::Status status = CheckParameters(operand, result); !status.ok()) {
-    return status;
-  }
-  op.operand = std::move(operand);
-  op.result = std::move(result);
-  return absl::OkStatus();
+absl::Status Prepare(IsFiniteOp& op, const Tensor& operand, Tensor& result) {
+  return CheckParameters(operand, result);
 }
 
-absl::Status Evaluate(IsFiniteOp& op) {
-  if (!op.operand.data) {
+absl::Status Evaluate(IsFiniteOp& op, const Tensor& operand, Tensor& result) {
+  if (!operand.data) {
     return absl::InvalidArgumentError("No operand.data");
   }
-  if (!op.result.data) {
+  if (!result.data) {
     return absl::InvalidArgumentError("No result.data");
   }
-  return EvaluateImpl(op.operand, op.result);
+  return EvaluateImpl(operand, result);
 }
 
 }  // namespace shlo_ref

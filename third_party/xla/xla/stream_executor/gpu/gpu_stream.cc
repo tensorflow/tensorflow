@@ -15,61 +15,18 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_stream.h"
 
-#include <variant>
-
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 
 namespace stream_executor {
 namespace gpu {
 
-bool GpuStream::Init() {
-  int priority = [&]() {
-    if (std::holds_alternative<int>(stream_priority_)) {
-      return std::get<int>(stream_priority_);
-    }
-    return GpuDriver::GetGpuStreamPriority(
-        parent_->gpu_context(), std::get<StreamPriority>(stream_priority_));
-  }();
-  if (!GpuDriver::CreateStream(parent_->gpu_context(), &gpu_stream_,
-                               priority)) {
-    return false;
-  }
-  return GpuDriver::InitEvent(parent_->gpu_context(), &completed_event_,
-                              GpuDriver::EventFlags::kDisableTiming)
-      .ok();
-}
-
-void GpuStream::Destroy() {
-  if (completed_event_ != nullptr) {
-    absl::Status status =
-        GpuDriver::DestroyEvent(parent_->gpu_context(), &completed_event_);
-    if (!status.ok()) {
-      LOG(ERROR) << status.message();
-    }
-  }
-
-  GpuDriver::DestroyStream(parent_->gpu_context(), &gpu_stream_);
-}
-
-bool GpuStream::IsIdle() const {
-  return GpuDriver::IsStreamIdle(parent_->gpu_context(), gpu_stream_);
-}
-
-GpuStream* AsGpuStream(Stream* stream) {
-  DCHECK(stream != nullptr);
-  return static_cast<GpuStream*>(stream->implementation());
-}
-
 GpuStreamHandle AsGpuStreamValue(Stream* stream) {
   DCHECK(stream != nullptr);
-  return AsGpuStream(stream)->gpu_stream();
+  return absl::bit_cast<GpuStreamHandle>(
+      stream->platform_specific_handle().stream);
 }
 
 }  // namespace gpu

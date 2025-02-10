@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_METRICS_HOOK_INTERFACE_H_
 #define XLA_SERVICE_METRICS_HOOK_INTERFACE_H_
 
+#include <cstdint>
+
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/service/metrics.pb.h"
 
 namespace xla {
@@ -48,10 +51,11 @@ class MetricsHookInterface {
   virtual void RecordStageError(absl::string_view stage,
                                 absl::string_view error_status) const = 0;
 
-  // Captures metrics for a given XLA compilation stage. The `pass_metrics` can
-  // be empty if no pass specific metrics are available.
+  // Captures metrics for a given XLA compilation stage and module_ids. The
+  // `pass_metrics` can be empty if no pass specific metrics are available.
   virtual void RecordCompilationMetrics(
       CompilationLogEntry::CompilationStage stage, absl::Duration latency,
+      absl::Span<const uint64_t> module_ids,
       absl::Span<const PassMetrics> pass_metrics) const = 0;
 };
 }  // namespace xla

@@ -93,14 +93,14 @@ tf_proto {
       number: 15
       label: LABEL_OPTIONAL
       type: TYPE_MESSAGE
-      type_name: ".tensorflow.quantization.CalibrationOptions"
+      type_name: ".stablehlo.quantization.CalibrationOptions"
     }
     field {
-      name: "debugger_options"
+      name: "debugger_config"
       number: 16
       label: LABEL_OPTIONAL
       type: TYPE_MESSAGE
-      type_name: ".tensorflow.quantization.DebuggerOptions"
+      type_name: ".stablehlo.quantization.DebuggerConfig"
     }
     nested_type {
       name: "RepresentativeDatasetsEntry"

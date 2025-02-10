@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_WHILE_LOOP_CONSTANT_SINKING_H_
 #define XLA_SERVICE_WHILE_LOOP_CONSTANT_SINKING_H_
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -48,24 +48,27 @@ namespace xla {
 //
 class WhileLoopConstantSinking : public HloModulePass {
  public:
-  explicit WhileLoopConstantSinking(bool sink_broadcast_of_constants = false)
-      : sink_broadcast_of_constants_(sink_broadcast_of_constants) {}
+  explicit WhileLoopConstantSinking(bool sink_broadcast_of_constants = false,
+                                    bool sink_only_scalar_constants = false)
+      : sink_broadcast_of_constants_(sink_broadcast_of_constants),
+        sink_only_scalar_constants_(sink_only_scalar_constants) {}
 
   ~WhileLoopConstantSinking() override = default;
 
-  absl::string_view name() const override {
-    return "while-loop-constant-sinking";
-  }
+  static constexpr absl::string_view kName = "while-loop-constant-sinking";
+  absl::string_view name() const override { return kName; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  StatusOr<bool> TrySinkingConstantsIntoWhileLoop(HloInstruction* while_instr);
+  absl::StatusOr<bool> TrySinkingConstantsIntoWhileLoop(
+      HloModule* module, HloInstruction* while_instr);
 
   const bool sink_broadcast_of_constants_;
+  const bool sink_only_scalar_constants_;
 };
 }  // namespace xla
 

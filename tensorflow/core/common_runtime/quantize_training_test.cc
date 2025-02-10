@@ -51,8 +51,8 @@ class QuantizeTrainingTest : public ::testing::Test {
     return test::graph::Constant(g_.get(), test::AsTensor(values, shape));
   }
 
-  Status Placeholder(Graph* g, const string& name, TensorShape shape,
-                     Node** out) {
+  absl::Status Placeholder(Graph* g, const string& name, TensorShape shape,
+                           Node** out) {
     TF_RETURN_IF_ERROR(NodeBuilder(name, "Placeholder")
                            .Attr("dtype", DT_FLOAT)
                            .Attr("shape", shape)
@@ -60,7 +60,7 @@ class QuantizeTrainingTest : public ::testing::Test {
     return absl::OkStatus();
   }
 
-  Status FindNode(Graph* g, const string& name, Node** out) {
+  absl::Status FindNode(Graph* g, const string& name, Node** out) {
     for (Node* node : g->nodes()) {
       if (node->name() == name) {
         *out = node;
@@ -214,8 +214,8 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes_QuantizeAndDequantize) {
 
   // Ensure that the backwards matmul input was not quantized.
   Node* found_node;
-  Status s = FindNode(g, strings::StrCat(d->name(), "/QuantizeAndDequantizeV2"),
-                      &found_node);
+  absl::Status s = FindNode(
+      g, strings::StrCat(d->name(), "/QuantizeAndDequantizeV2"), &found_node);
   EXPECT_TRUE(absl::StrContains(s.ToString(), "not found")) << s;
 
   // Ensure that m1 and m2's inputs were quantized.
@@ -268,8 +268,8 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes_FakeQuant) {
 
   // Ensure that the backwards matmul input was not quantized.
   Node* found_node;
-  Status s = FindNode(g, strings::StrCat(d->name(), "/FakeQuantWithMinMaxVars"),
-                      &found_node);
+  absl::Status s = FindNode(
+      g, strings::StrCat(d->name(), "/FakeQuantWithMinMaxVars"), &found_node);
   EXPECT_TRUE(absl::StrContains(s.ToString(), "not found")) << s;
 
   // Ensure that m1 and m2's inputs were quantized.

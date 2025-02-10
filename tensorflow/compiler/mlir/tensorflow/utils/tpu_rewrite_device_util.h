@@ -20,19 +20,24 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 using tsl::StatusOr;
@@ -80,7 +85,7 @@ struct TPUDeviceAssignment {
 };
 
 // Extracts device coordinates from a device assignment attribute on an op.
-StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
+absl::StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
     mlir::ArrayAttr device_assignment_attr);
 
 // Finds the TPU compilation device and execution devices from `devices` for a
@@ -234,9 +239,14 @@ StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
 //       replica_device_ids: 7
 //     }
 //   }
-StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
+absl::StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
     llvm::ArrayRef<DeviceNameUtils::ParsedName> devices, int num_replicas,
     int num_cores_per_replica, llvm::StringRef topology_attr,
+    llvm::ArrayRef<int64_t> device_assignment_attr);
+
+// Converts a device assignment attribute to an XLA device assignment proto.
+absl::StatusOr<xla::DeviceAssignmentProto> GetXlaDeviceAssignmentProto(
+    llvm::StringRef topology_attr, int num_replicas, int num_cores_per_replica,
     llvm::ArrayRef<int64_t> device_assignment_attr);
 
 // Virtual device name of the passed logical core. The logical core is the index

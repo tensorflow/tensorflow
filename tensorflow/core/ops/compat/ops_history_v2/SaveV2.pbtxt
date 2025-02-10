@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SaveV2"
   input_arg {
     name: "prefix"

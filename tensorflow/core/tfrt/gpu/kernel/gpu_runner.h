@@ -15,18 +15,24 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_GPU_KERNEL_GPU_RUNNER_H_
 #define TENSORFLOW_CORE_TFRT_GPU_KERNEL_GPU_RUNNER_H_
 
+#include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "llvm/ADT/SmallVector.h"
+#include "xla/tsl/framework/serving_device_selector.h"
+#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/gpu_variables_table.h"
-#include "tsl/framework/serving_device_selector.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace gpu {
@@ -34,15 +40,15 @@ namespace gpu {
 constexpr char kGpuRunnerResourceName[] = "GpuRunnerResource";
 
 struct GpuRunInputs {
-  llvm::SmallVector<tfrt_stub::FallbackTensor>* args;
+  std::vector<tfrt_stub::FallbackTensor> args;
   int num_outputs;
-  tfrt::ArrayRef<int64_t> resource_indices;
-  tfrt::ArrayRef<int64_t> used_output_indices;
+  std::vector<int64_t> resource_indices;
+  std::vector<int64_t> used_output_indices;
   std::string func_name;
   Device* cpu_device;
-  absl::flat_hash_map<int, Device*>* gpu_devices;
+  absl::flat_hash_map<int, Device*> gpu_devices;
   const tfd::KernelFallbackCompatRequestState* fallback_request_state;
-  const tfrt::ExecutionContext* exec_ctx;
+  tfrt::HostContext* host_ctx;
 };
 
 class GpuRunner {
@@ -54,7 +60,7 @@ class GpuRunner {
   // `run_inputs`, and returns the output tensor AsyncValues.
   absl::StatusOr<
       llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>>>
-  Run(const GpuRunInputs& run_inputs);
+  Run(GpuRunInputs run_inputs);
 
  private:
   tsl::ServingDeviceSelector* serving_device_selector_;

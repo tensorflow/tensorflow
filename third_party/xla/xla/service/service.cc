@@ -23,16 +23,21 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "xla/debug_options_flags.h"
-#include "xla/execution_options_util.h"
+#include "absl/types/span.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/literal.h"
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
@@ -41,27 +46,28 @@ limitations under the License.
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/dynamic_padder.h"
 #include "xla/service/executable.h"
-#include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_proto_util.h"
-#include "xla/service/platform_util.h"
-#include "xla/service/source_map_util.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
-#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
@@ -71,9 +77,9 @@ using absl::StrCat;
 using absl::StrFormat;
 
 // Records the arguments used to invoke a computation in an HloSnapshot proto.
-Status RecordArguments(const absl::Span<const ShapedBuffer* const> arguments,
-                       se::Stream* stream, TransferManager* transfer_manager,
-                       HloSnapshot* module) {
+absl::Status RecordArguments(
+    const absl::Span<const ShapedBuffer* const> arguments, se::Stream* stream,
+    TransferManager* transfer_manager, HloSnapshot* module) {
   module->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
     TF_ASSIGN_OR_RETURN(
@@ -81,18 +87,19 @@ Status RecordArguments(const absl::Span<const ShapedBuffer* const> arguments,
         transfer_manager->TransferLiteralFromDevice(stream, *argument));
     *module->add_arguments() = literal.ToProto();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Records the result of a computation in a HloSnapshot proto.
-Status RecordResult(const ShapedBuffer& result, se::Stream* stream,
-                    TransferManager* transfer_manager, HloSnapshot* module) {
+absl::Status RecordResult(const ShapedBuffer& result, se::Stream* stream,
+                          TransferManager* transfer_manager,
+                          HloSnapshot* module) {
   module->clear_result();
   TF_ASSIGN_OR_RETURN(
       Literal literal,
       transfer_manager->TransferLiteralFromDevice(stream, result));
   *module->mutable_result() = literal.ToProto();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -159,40 +166,30 @@ Service::Service(const ServiceOptions& options,
   }
 }
 
-Status Service::CreateChannelHandle(const CreateChannelHandleRequest* arg,
-                                    CreateChannelHandleResponse* result) {
-  TF_ASSIGN_OR_RETURN(*result->mutable_channel(),
-                      channel_tracker_.NewChannel(arg->channel_type()));
-  return OkStatus();
+absl::StatusOr<ChannelHandle> Service::CreateChannelHandle(
+    ChannelHandle::ChannelType type) {
+  return channel_tracker_.NewChannel(type);
 }
 
-Status Service::Unregister(const UnregisterRequest* arg,
-                           UnregisterResponse* result) {
-  Status status;
-  for (auto& data : arg->data()) {
-    Status unregister_status = allocation_tracker_.Unregister(data);
-    if (!unregister_status.ok() && status.ok()) {
-      status = unregister_status;
-    }
-  }
-  return status;
+absl::Status Service::Unregister(const GlobalDataHandle& data) {
+  return allocation_tracker_.Unregister(data);
 }
 
 // Deconstructs a previously-allocated global handle.
-Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
-                                 DeconstructTupleResponse* result) {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<GlobalDataHandle> elements,
-      allocation_tracker_.DeconstructTuple(arg->tuple_handle()));
-
-  for (auto& element : elements) {
-    *result->add_element_handles() = element;
+absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>>
+Service::DeconstructTuple(const GlobalData& data) {
+  TF_ASSIGN_OR_RETURN(std::vector<GlobalDataHandle> elements,
+                      allocation_tracker_.DeconstructTuple(data.handle()));
+  std::vector<std::unique_ptr<GlobalData>> out;
+  out.reserve(elements.size());
+  for (GlobalDataHandle& element : elements) {
+    out.push_back(std::make_unique<GlobalData>(this, element));
   }
-  return OkStatus();
+  return out;
 }
 
-Status Service::ValidateResultShape(const Shape& client_shape,
-                                    const Shape& result_shape) {
+absl::Status Service::ValidateResultShape(const Shape& client_shape,
+                                          const Shape& result_shape) {
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
   if (!ShapeUtil::Compatible(client_shape, result_shape)) {
     return InvalidArgument(
@@ -201,25 +198,19 @@ Status Service::ValidateResultShape(const Shape& client_shape,
         ShapeUtil::HumanStringWithLayout(client_shape),
         ShapeUtil::HumanString(result_shape));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
 Service::ResolveAndValidateArguments(
-    absl::Span<const GlobalDataHandle* const> arguments,
+    absl::Span<const GlobalData* const> arguments,
     absl::Span<se::StreamExecutor* const> stream_executors) const {
   CHECK_EQ(options_.number_of_replicas(), stream_executors.size());
   std::vector<std::vector<const ShapedBuffer*>> replicated_arguments;
   replicated_arguments.resize(options_.number_of_replicas());
   for (size_t i = 0; i < arguments.size(); ++i) {
-    auto buffer_status = allocation_tracker_.Resolve(*arguments[i]);
-    if (!buffer_status.ok()) {
-      return tsl::errors::CreateWithUpdatedMessage(
-          buffer_status.status(),
-          StrCat(buffer_status.status().message(), ", ",
-                 "failed to resolve allocation for parameter ", i));
-    }
-    auto replicated_buffers = buffer_status.value();
+    TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
+                        allocation_tracker_.Resolve(arguments[i]->handle()));
     CHECK_EQ(options_.number_of_replicas(), replicated_buffers.size());
     for (int replica = 0; replica < options_.number_of_replicas(); ++replica) {
       const ShapedBuffer* shaped_buffer = replicated_buffers[replica];
@@ -396,7 +387,12 @@ Service::ExecuteParallelAndRegisterResult(
       options.set_allocator(backend->memory_allocator());
       options.set_intra_op_thread_pool(
           backend->eigen_intra_op_thread_pool_device());
-      options.set_device_assignment(&device_assignment);
+      const DeviceAssignment* device_assignment_ptr = &device_assignment;
+      if (executables[i]->module_config().has_static_device_assignment()) {
+        device_assignment_ptr =
+            &executables[i]->module_config().static_device_assignment();
+      }
+      options.set_device_assignment(device_assignment_ptr);
       // Use run-time profile information from execution_profile on the 0th
       // device.
       if (i == 0) {
@@ -408,8 +404,7 @@ Service::ExecuteParallelAndRegisterResult(
       // Asynchronously launch the computation.
       TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                           executables[i]->ExecuteAsyncOnStream(
-                              &run_options, arguments[i][replica],
-                              /*hlo_execution_profile=*/nullptr));
+                              &run_options, arguments[i][replica]));
 
       result_buffers.push_back(std::move(result));
     }
@@ -421,7 +416,7 @@ Service::ExecuteParallelAndRegisterResult(
 
   // Wait for all executions to complete.
   for (int64_t i = 0, end = streams.size(); i < end; ++i) {
-    Status block_status = streams[i]->BlockHostUntilDone();
+    absl::Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
       return Internal("failed to complete execution for stream %d: %s", i,
                       block_status.message());
@@ -452,7 +447,11 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   for (int64_t replica = 0; replica < replicas.size(); ++replica) {
     device_assignment(replica, 0) = replicas[replica]->device_ordinal();
   }
-
+  const DeviceAssignment* device_assignment_ptr = &device_assignment;
+  if (executable->module_config().has_static_device_assignment()) {
+    device_assignment_ptr =
+        &executable->module_config().static_device_assignment();
+  }
   // Set up run options.
   std::vector<ServiceExecutableRunOptions> run_options;
   run_options.reserve(streams.size());
@@ -460,10 +459,11 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     ExecutableRunOptions options;
     options.set_stream(stream.get());
     options.set_device_ordinal(stream->parent()->device_ordinal());
+    options.set_local_device_count(backend->device_count());
     options.set_allocator(backend->memory_allocator());
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
-    options.set_device_assignment(&device_assignment);
+    options.set_device_assignment(device_assignment_ptr);
     options.set_execution_profile(profile);
     run_options.emplace_back(options, backend->StreamBorrowerWithPriority());
   }
@@ -514,9 +514,8 @@ absl::StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
 }
 
 absl::StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
-Service::GetArguments(
-    const ExecutionOptions& execution_options,
-    absl::Span<const GlobalDataHandle* const> arguments) const {
+Service::GetArguments(const ExecutionOptions& execution_options,
+                      absl::Span<const GlobalData* const> arguments) const {
   // Resolve the allocations for the arguments of the computation, and create
   // a vector of device memory offsets for the arguments from the allocations.
   // In the case of partitioned computations, assume all arguments go on the
@@ -530,8 +529,9 @@ Service::GetArguments(
   return replicated_arguments;
 }
 
-Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
-                                     ExecuteParallelResponse* result) {
+absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>>
+Service::ExecuteGraphParallel(
+    absl::Span<const XlaComputationInstance> computations) {
   VLOG(1) << "running execute-graph-parallel request";
 
   std::vector<std::vector<std::vector<const ShapedBuffer*>>> all_arguments;
@@ -542,10 +542,11 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   std::vector<DeviceHandle> device_handles;
 
   int num_requested_devices =
-      std::accumulate(arg->requests().begin(), arg->requests().end(), 0,
-                      [](int a, const ExecuteGraphRequest& r) -> int {
-                        return a + r.execution_options().device_handles_size();
+      std::accumulate(computations.begin(), computations.end(), 0,
+                      [](int a, const XlaComputationInstance& r) -> int {
+                        return a + r.execution_options.device_handles_size();
                       });
+
   if (num_requested_devices * options_.number_of_replicas() >
       execute_backend_->device_count()) {
     return FailedPrecondition(
@@ -553,23 +554,24 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
         num_requested_devices);
   }
 
-  for (int64_t i = 0; i < arg->requests_size(); ++i) {
+  for (int64_t i = 0; i < computations.size(); ++i) {
+    const XlaComputationInstance& computation = computations[i];
+
     // Get the stream executor for the i'th computation. This stream executor
     // is one of the executors to run the replicated computation.
-    const ExecutionOptions& execution_options =
-        arg->requests(i).execution_options();
-    const ExecuteGraphRequest& request = arg->requests(i);
-    TF_RET_CHECK(request.has_computation()) << "computations may not be empty";
-    TF_RET_CHECK(request.computation().has_host_program_shape())
+    const ExecutionOptions& execution_options = computation.execution_options;
+    TF_RET_CHECK(computation.computation.proto().has_host_program_shape())
         << "program shape may not be empty";
 
     // Get the executors.
-    TF_ASSIGN_OR_RETURN(auto executors, GetExecutors(execution_options,
-                                                     arg->requests_size(), i));
+    TF_ASSIGN_OR_RETURN(
+        std::vector<se::StreamExecutor*> executors,
+        GetExecutors(execution_options, computations.size(), i));
 
     // Get the replicated arguments.
-    TF_ASSIGN_OR_RETURN(auto replicated_arguments,
-                        GetArguments(execution_options, request.arguments()));
+    TF_ASSIGN_OR_RETURN(
+        std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
+        GetArguments(execution_options, computation.arguments));
 
     for (auto& args : replicated_arguments) {
       for (auto& arg : args) {
@@ -595,8 +597,8 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(
-            ProgramShape{request.computation().host_program_shape()},
-            replicated_arguments.front(), request.execution_options()));
+            ProgramShape{computation.computation.proto().host_program_shape()},
+            replicated_arguments.front(), computation.execution_options));
     VLOG(3)
         << "ExecuteGraphParallel created HloModuleConfig computation layout: "
         << module_config->entry_computation_layout().ToString();
@@ -604,10 +606,10 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     // Adds to the vectors to build and execute the computations after the loop.
     all_arguments.push_back(replicated_arguments);
     all_arguments.insert(all_arguments.end(), executors.size() - 1, {{}});
-    module_protos.push_back(&request.computation());
+    module_protos.push_back(&computation.computation.proto());
     module_configs.push_back(std::move(module_config));
     computation_names.insert(computation_names.end(), executors.size(),
-                             request.computation().name());
+                             computation.computation.name());
     all_executors.push_back(executors);
     device_handles.insert(device_handles.end(),
                           execution_options.device_handles().begin(),
@@ -655,7 +657,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   // basically the same thing.
   ExecutionProfile profile;
   std::vector<GlobalDataHandle> outputs;
-  Status execution_status = OkStatus();
+  absl::Status execution_status = absl::OkStatus();
 
   if (executable_ptrs.size() == 1) {
     absl::StatusOr<GlobalDataHandle> output_or_status =
@@ -679,6 +681,12 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     }
   }
 
+  for (int64_t i = 0; i < computations.size(); ++i) {
+    if (computations[i].execution_profile != nullptr) {
+      *computations[i].execution_profile = profile;
+    }
+  }
+
   if (!execution_status.ok()) {
     // Execution failed so we don't have the results.  Dump the HLO snapshot
     // with just the program arguments.
@@ -689,11 +697,11 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
 
   TF_RETURN_IF_ERROR(execution_status);
 
-  for (const GlobalDataHandle& output : outputs) {
-    ExecuteResponse response;
-    *response.mutable_output() = output;
-    *response.mutable_profile() = profile;
-    *result->add_responses() = response;
+  std::vector<std::unique_ptr<GlobalData>> out;
+
+  out.reserve(out.size());
+  for (GlobalDataHandle& output : outputs) {
+    out.push_back(std::make_unique<GlobalData>(this, output));
   }
 
   for (int i = 0, end = executable_ptrs.size(); i < end; i++) {
@@ -711,31 +719,32 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   }
 
   VLOG(1) << "successfully completed 'execute-graph-parallel' request";
-  return OkStatus();
+  return out;
 }
 
-Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
-                                 GetDeviceHandlesResponse* result) {
+absl::StatusOr<std::vector<DeviceHandle>> Service::GetDeviceHandles(
+    int64_t device_count) {
   const int64_t available_device_count = execute_backend_->device_count();
   const int64_t replica_count = options_.number_of_replicas();
   if (replica_count <= 0) {
     return FailedPrecondition("Replica count must be a positive integer");
   }
-  if (available_device_count < arg->device_count() * replica_count) {
+  if (available_device_count < device_count * replica_count) {
     return ResourceExhausted(
         "Requested logical device count (%d) with replica count (%d) exceeds "
         "the number of available physical devices on the target (%d)",
-        arg->device_count(), replica_count, available_device_count);
+        device_count, replica_count, available_device_count);
   }
 
-  for (int64_t i = 0; i < arg->device_count(); ++i) {
+  std::vector<DeviceHandle> out;
+
+  for (int64_t i = 0; i < device_count; ++i) {
     DeviceHandle device_handle;
     device_handle.set_handle(i);
-    device_handle.set_device_count(arg->device_count());
-    *result->add_device_handles() = device_handle;
+    device_handle.set_device_count(device_count);
+    out.push_back(device_handle);
   }
-
-  return OkStatus();
+  return out;
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
@@ -748,7 +757,8 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       module_proto.name());
 
   tsl::profiler::ScopedAnnotation annotation{[&] {
-    return absl::StrCat("XlaCompile:#module=", module_proto.name(), "#");
+    // module's unique_id is not available yet
+    return absl::StrFormat("XlaCompile:#module=%s#", module_proto.name());
   }};
 
   TF_ASSIGN_OR_RETURN(
@@ -771,9 +781,6 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                                     std::move(module), executor, options));
   }
 
-  tsl::profiler::ScopedAnnotation backend_annotation{[&] {
-    return absl::StrCat("XlaCompileBackend:#module=", module_proto.name(), "#");
-  }};
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       backend->compiler()->RunBackend(std::move(module), executor, options));
@@ -790,75 +797,72 @@ absl::StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       buffer_assignment_proto_after_opt != nullptr) {
     CHECK(DumpingEnabledForHloModule(executable->module()));
     *hlo_proto_before_opt->mutable_buffer_assignment() =
-        std::move(*buffer_assignment_proto_after_opt);
+        *buffer_assignment_proto_after_opt;
     executable->set_hlo_proto(std::move(hlo_proto_before_opt));
   }
-  return std::move(executable);
+  return executable;
 }
 
-Status Service::Compile(const CompileRequest* arg, CompileResponse* result) {
+absl::StatusOr<ExecutionHandle> Service::Compile(
+    const XlaComputation& computation, absl::Span<const Shape> argument_shapes,
+    const ExecutionOptions& execution_options) {
   VLOG(1) << "running compile request";
-  if (!arg->has_computation()) {
-    return InvalidArgument("computations may not be empty");
-  }
-  if (!arg->computation().has_host_program_shape()) {
+
+  if (!computation.proto().has_host_program_shape()) {
     return InvalidArgument("program shape may not be empty");
   }
 
-  if (arg->execution_options().device_handles_size() > 1) {
+  if (execution_options.device_handles_size() > 1) {
     return InvalidArgument(
         "The compile request does not support multiple device handles.");
   }
 
-  std::vector<Shape> argument_shapes;
-  argument_shapes.reserve(arg->input_shape_with_layout_size());
   std::vector<const Shape*> argument_shape_ptrs;
-  for (const ShapeProto& shape_proto : arg->input_shape_with_layout()) {
-    argument_shapes.push_back(Shape(shape_proto));
-    argument_shape_ptrs.push_back(&argument_shapes.back());
+  for (const Shape& shape : argument_shapes) {
+    argument_shape_ptrs.push_back(&shape);
   }
+
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(ProgramShape{arg->computation().host_program_shape()},
-                         argument_shape_ptrs, &arg->execution_options()));
+      CreateModuleConfig(ProgramShape{computation.proto().host_program_shape()},
+                         argument_shape_ptrs, &execution_options));
   VLOG(3) << "Compile created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      BuildExecutable(arg->computation(), std::move(module_config),
+      BuildExecutable(computation.proto(), std::move(module_config),
                       execute_backend_.get(),
                       execute_backend_->default_stream_executor(),
                       {/*device_allocator=*/nullptr}));
 
-  *result->mutable_handle() = compilation_cache_.Insert(std::move(executable));
-
   VLOG(1) << "successfully completed 'compile' request";
-  return OkStatus();
+  return compilation_cache_.Insert(std::move(executable));
 }
 
-Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
+absl::StatusOr<std::unique_ptr<GlobalData>> Service::Execute(
+    const ExecutionHandle& handle, absl::Span<GlobalData* const> arguments,
+    ExecutionProfile* execution_profile) {
   VLOG(1) << "running execute request";
-  if (!arg->has_handle()) {
-    return InvalidArgument("execution handle should not be empty");
-  }
-  TF_ASSIGN_OR_RETURN(auto executable,
-                      compilation_cache_.LookUp(arg->handle()));
 
-  TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*execute_backend_,
-                                              SingleComputationDeviceHandle()));
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<Executable> executable,
+                      compilation_cache_.LookUp(handle));
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<se::StreamExecutor*> replicas,
+      Replicas(*execute_backend_, SingleComputationDeviceHandle()));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
-      ResolveAndValidateArguments(arg->arguments(), replicas));
+      ResolveAndValidateArguments(arguments, replicas));
 
   // Check that the replicated_arguments has the same shape and layout as the
   // module config used when creating the executable.
   const int64_t num_module_args =
       executable->module_config().entry_computation_layout().parameter_count();
-  if (num_module_args != arg->arguments_size()) {
+  if (num_module_args != arguments.size()) {
     return InvalidArgument(
         "The executable expects %lld arguments, but sees %lld.",
-        num_module_args, arg->arguments_size());
+        num_module_args, arguments.size());
   }
   for (int64_t i = 0; i < num_module_args; i++) {
     const Shape& shape_module =
@@ -886,35 +890,32 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
   }
 
   TF_ASSIGN_OR_RETURN(
-      *result->mutable_output(),
-      ExecuteAndRegisterResult(executable.get(), replicated_arguments,
-                               execute_backend_.get(),
-                               SingleComputationDeviceHandle(),
-                               "result of " + executable->module().name(),
-                               result->mutable_profile()));
+      GlobalDataHandle output,
+      ExecuteAndRegisterResult(
+          executable.get(), replicated_arguments, execute_backend_.get(),
+          SingleComputationDeviceHandle(),
+          "result of " + executable->module().name(), execution_profile));
 
   if (executable->dumping_snapshot()) {
-    TF_ASSIGN_OR_RETURN(
-        const ShapedBuffer* result_buffer,
-        allocation_tracker_.ResolveForReplica(result->output(), 0));
+    TF_ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,
+                        allocation_tracker_.ResolveForReplica(output, 0));
     TF_RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
                                     execute_backend_->transfer_manager(),
                                     &snapshot));
     DumpHloSnapshotIfEnabled(executable->module(), snapshot);
   }
 
-  VLOG(1) << "successfully completed 'execute' request";
-  return OkStatus();
+  return std::make_unique<GlobalData>(this, output);
 }
 
-Status Service::TransferToClient(const TransferToClientRequest* arg,
-                                 TransferToClientResponse* result) {
+absl::StatusOr<Literal> Service::TransferToClient(
+    const GlobalData& data, const Shape* shape_with_layout) {
   TF_ASSIGN_OR_RETURN(const ShapedBuffer* shaped_buffer,
-                      allocation_tracker_.ResolveForReplica(arg->data(), 0));
+                      allocation_tracker_.ResolveForReplica(data.handle(), 0));
 
   Shape return_shape;
-  if (arg->has_shape_with_layout()) {
-    return_shape = Shape(arg->shape_with_layout());
+  if (shape_with_layout) {
+    return_shape = Shape(*shape_with_layout);
     if (!LayoutUtil::HasLayout(return_shape)) {
       return InvalidArgument("shape_with_layout must have layout if present.");
     }
@@ -933,8 +934,9 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(
-                                       shaped_buffer->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(
+      auto stream,
+      execute_backend_->BorrowStream(shaped_buffer->physical_device_ordinal()));
 
   TF_ASSIGN_OR_RETURN(
       Literal result_literal,
@@ -942,24 +944,17 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
           stream.get(), *shaped_buffer));
 
   if (LayoutUtil::LayoutsInShapesEqual(return_shape, result_literal.shape())) {
-    *result->mutable_literal() = result_literal.ToProto();
-  } else {
-    *result->mutable_literal() =
-        result_literal.Relayout(return_shape).ToProto();
+    return result_literal;
   }
-  return OkStatus();
+  return result_literal.Relayout(return_shape);
 }
 
-Status Service::TransferToServer(const TransferToServerRequest* arg,
-                                 TransferToServerResponse* result) {
-  TF_ASSIGN_OR_RETURN(Literal literal,
-                      Literal::CreateFromProto(arg->literal()));
-  const Shape& shape = literal.shape();
-
+absl::StatusOr<std::unique_ptr<GlobalData>> Service::TransferToServer(
+    const LiteralSlice& literal_slice, const DeviceHandle* device_handle) {
+  const Shape& shape = literal_slice.shape();
   std::vector<se::StreamExecutor*> replicas;
-  if (arg->has_device_handle()) {
-    TF_ASSIGN_OR_RETURN(replicas,
-                        Replicas(*execute_backend_, arg->device_handle()));
+  if (device_handle) {
+    TF_ASSIGN_OR_RETURN(replicas, Replicas(*execute_backend_, *device_handle));
   } else {
     TF_ASSIGN_OR_RETURN(
         replicas, Replicas(*execute_backend_, SingleComputationDeviceHandle()));
@@ -981,100 +976,93 @@ Status Service::TransferToServer(const TransferToServerRequest* arg,
     TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(executor));
     TF_RETURN_IF_ERROR(
         execute_backend_->transfer_manager()->TransferLiteralToDevice(
-            stream.get(), literal, shaped_buffer));
+            stream.get(), literal_slice, shaped_buffer));
     replicated_buffers.emplace_back(std::move(shaped_buffer));
   }
-  TF_ASSIGN_OR_RETURN(*result->mutable_data(),
+
+  TF_ASSIGN_OR_RETURN(GlobalDataHandle out,
                       allocation_tracker_.RegisterReplicatedBuffers(
                           std::move(replicated_buffers),
                           StrCat("TransferToServer literal of shape ",
                                  ShapeUtil::HumanString(shape))));
 
-  return OkStatus();
+  return std::make_unique<GlobalData>(this, out);
 }
 
-Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
-                                 TransferToInfeedResponse* result) {
+absl::Status Service::TransferToInfeed(const LiteralSlice& literal,
+                                       int64_t replica_id,
+                                       const DeviceHandle* device_handle) {
   const int64_t replica_count = options_.number_of_replicas();
-  if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
+  if (replica_id < 0 || replica_id >= replica_count) {
     return FailedPrecondition(
         "%s",
-        StrCat("The replica_id=", arg->replica_id(),
+        StrCat("The replica_id=", replica_id,
                " on TransferToInfeedRequest not in range [0, replica_count=",
                replica_count, ")."));
   }
 
   se::StreamExecutor* executor;
-  if (arg->has_device_handle()) {
+  if (device_handle) {
     TF_ASSIGN_OR_RETURN(auto replicas,
-                        Replicas(*execute_backend_, arg->device_handle()));
-    executor = replicas[arg->replica_id()];
+                        Replicas(*execute_backend_, *device_handle));
+    executor = replicas[replica_id];
   } else {
     TF_ASSIGN_OR_RETURN(
         auto replicas,
         Replicas(*execute_backend_, SingleComputationDeviceHandle()));
-    executor = replicas[arg->replica_id()];
+    executor = replicas[replica_id];
   }
 
-  TF_ASSIGN_OR_RETURN(Literal literal,
-                      Literal::CreateFromProto(arg->literal()));
   return execute_backend_->transfer_manager()->TransferLiteralToInfeed(executor,
                                                                        literal);
 }
 
-Status Service::TransferFromOutfeed(const TransferFromOutfeedRequest* arg,
-                                    TransferFromOutfeedResponse* result) {
+absl::StatusOr<Literal> Service::TransferFromOutfeed(
+    const Shape* shape_with_layout, int64_t replica_id,
+    const DeviceHandle* device_handle) {
   const int64_t replica_count = options_.number_of_replicas();
-  if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
+  if (replica_id < 0 || replica_id >= replica_count) {
     return FailedPrecondition(
         "The replica_id=%d on TransferFromOutfeedRequest not in range [0, %d)",
-        arg->replica_id(), replica_count);
+        replica_id, replica_count);
   }
 
   se::StreamExecutor* executor;
-  if (arg->has_device_handle()) {
+  if (device_handle) {
     TF_ASSIGN_OR_RETURN(auto replicas,
-                        Replicas(*execute_backend_, arg->device_handle()));
-    executor = replicas[arg->replica_id()];
+                        Replicas(*execute_backend_, *device_handle));
+    executor = replicas[replica_id];
   } else {
     TF_ASSIGN_OR_RETURN(
         auto replicas,
         Replicas(*execute_backend_, SingleComputationDeviceHandle()));
-    executor = replicas[arg->replica_id()];
+    executor = replicas[replica_id];
   }
 
-  auto literal = Literal::CreateFromShape(Shape(arg->shape_with_layout()));
+  auto literal = Literal::CreateFromShape(*shape_with_layout);
 
   TF_RETURN_IF_ERROR(
       execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
           executor, &literal));
-  *result->mutable_literal() = literal.ToProto();
-  return OkStatus();
+  return literal;
 }
 
-Status Service::ResetDevice(const ResetDeviceRequest* arg,
-                            ResetDeviceResponse* result) {
-  return execute_backend_->ResetDevices();
-}
+absl::Status Service::ResetDevice() { return execute_backend_->ResetDevices(); }
 
-Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
-                                     ComputeConstantResponse* result) {
-  if (!arg->has_computation()) {
-    return InvalidArgument("computations may not be empty");
-  }
-  if (!arg->computation().has_host_program_shape()) {
+absl::StatusOr<Literal> Service::ComputeConstantGraph(
+    const XlaComputation& computation, const Layout* output_layout) {
+  if (!computation.proto().has_host_program_shape()) {
     return InvalidArgument("program shape may not be empty");
   }
-  if (arg->computation().host_program_shape().parameters_size() != 0) {
+  if (computation.proto().host_program_shape().parameters_size() != 0) {
     return InvalidArgument(
         "constant computation may not depend on any parameters.");
   }
 
-  ProgramShape program_shape(arg->computation().host_program_shape());
+  ProgramShape program_shape(computation.proto().host_program_shape());
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
-  std::optional<Layout> output_layout;
-  if (arg->has_output_layout()) {
-    output_layout = Layout::CreateFromProto(arg->output_layout());
+
+  if (output_layout) {
     TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(
         *output_layout, program_shape.result()));
   }
@@ -1082,7 +1070,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   HloModuleConfig config(program_shape);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      CreateModuleFromProto(arg->computation(), config));
+                      CreateModuleFromProto(computation.proto(), config));
   DynamicPadder dynamic_padder;
   TF_RETURN_IF_ERROR(dynamic_padder.Run(module.get()).status());
 
@@ -1111,51 +1099,16 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   // relayout here.
   //
   // TODO(b/77824332): Make HloEvaluator take care of the re-layout.
-  if (output_layout.has_value()) {
+  if (output_layout) {
     result_literal = result_literal.Relayout(*output_layout);
   }
-  *result->mutable_literal() = result_literal.ToProto();
-
-  return OkStatus();
+  return result_literal;
 }
 
-Status Service::GetShape(const GetShapeRequest* arg, GetShapeResponse* result) {
+absl::StatusOr<Shape> Service::GetShape(const GlobalData& data) {
   TF_ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
-                      allocation_tracker_.ResolveForReplica(arg->data(), 0));
-  *result->mutable_shape() = buffer->on_device_shape().ToProto();
-  return OkStatus();
-}
-
-Status Service::GetComputationGraphStats(
-    const ComputationGraphStatsRequest* arg, ComputationStatsResponse* result) {
-  if (!arg->has_computation()) {
-    return InvalidArgument("Computations may not be empty.");
-  }
-  if (!arg->computation().has_host_program_shape()) {
-    return InvalidArgument("Program shape may not be empty.");
-  }
-
-  HloModuleConfig config(ProgramShape{arg->computation().host_program_shape()});
-  config.set_debug_options(arg->debug_options());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      CreateModuleFromProto(arg->computation(), config));
-  UpdateEntryComputationLayout(
-      module.get(),
-      std::bind(&Compiler::DefaultDeviceShapeRepresentation,
-                execute_backend_->compiler(), std::placeholders::_1));
-  DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
-
-  // Run HLO analysis to get the computation statistics.
-  HloCostAnalysis analysis(
-      execute_backend_->compiler()->ShapeSizeBytesFunction());
-
-  TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
-
-  ComputationStats stats;
-  stats.set_flop_count(analysis.flop_count());
-  stats.set_transcendental_count(analysis.transcendental_count());
-  *result->mutable_stats() = stats;
-  return OkStatus();
+                      allocation_tracker_.ResolveForReplica(data.handle(), 0));
+  return buffer->on_device_shape();
 }
 
 DeviceHandle Service::SingleComputationDeviceHandle() const {
@@ -1180,6 +1133,48 @@ absl::StatusOr<std::vector<se::StreamExecutor*>> Service::Replicas(
     replicas.push_back(executor);
   }
   return replicas;
+}
+
+namespace {
+
+// Releases a set of global data handles owned by the parent service
+// interface.
+void ReleaseHandles(Service* parent,
+                    const absl::Span<const GlobalDataHandle> handles) {
+  for (const GlobalDataHandle& handle : handles) {
+    VLOG(1) << "Requesting to unregister " << handle.ShortDebugString();
+    absl::Status status = parent->Unregister(handle);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to unregister handles: " << status
+                   << "; continuing anyway...";
+    }
+  }
+  VLOG(1) << "Done with request";
+}
+
+}  // namespace
+
+GlobalData::GlobalData(Service* parent, GlobalDataHandle handle)
+    : handle_(std::move(handle)), parent_(parent) {}
+
+GlobalData::~GlobalData() {
+  if (parent_ != nullptr) {
+    ReleaseHandles(parent_, {handle_});
+  }
+}
+
+/* static */ void GlobalData::Release(
+    std::vector<std::unique_ptr<GlobalData>> instances) {
+  absl::flat_hash_map<Service*, std::vector<GlobalDataHandle>>
+      parent_handles_map;
+  for (auto& instance : instances) {
+    if (instance->parent_ != nullptr) {
+      parent_handles_map[instance->parent_].push_back(instance->Release());
+    }
+  }
+  for (auto& parent_handles : parent_handles_map) {
+    ReleaseHandles(parent_handles.first, parent_handles.second);
+  }
 }
 
 }  // namespace xla

@@ -14,17 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/service/name_uniquer.h"
-
-#include <memory>
-#include <utility>
-#include <vector>
-
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class NameUniquerTest : public ::testing::Test {};
+using NameUniquerTest = ::testing::Test;
 
 TEST_F(NameUniquerTest, SimpleUniquer) {
   NameUniquer uniquer;
@@ -124,6 +119,14 @@ TEST_F(NameUniquerTest, AvoidKeywords) {
   EXPECT_EQ("F32", uniquer.GetUniqueName("F32"));
   EXPECT_EQ("S32", uniquer.GetUniqueName("S32"));
   EXPECT_EQ("Pred", uniquer.GetUniqueName("Pred"));
+}
+
+TEST_F(NameUniquerTest, DetectSeparator) {
+  NameUniquer uniquer;
+
+  EXPECT_EQ(uniquer.GetUniqueName("a__1"), "a__1");
+  EXPECT_EQ(uniquer.GetUniqueName("a"), "a");
+  EXPECT_EQ(uniquer.GetUniqueName("a"), "a__2");
 }
 
 }  // namespace

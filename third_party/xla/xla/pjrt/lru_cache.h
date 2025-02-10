@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PJRT_LRU_CACHE_H_
 
 #include <optional>
+#include <unordered_map>
 
 #include "absl/container/node_hash_map.h"
 #include "tsl/platform/logging.h"
@@ -86,6 +87,8 @@ class LRUCache {
   Value GetOrCreateIfAbsent(const Key& key,
                             const std::function<Value(const Key&)>& factory);
 
+  void Remove(const Key& key);
+
   // Removes all entries from the cache.
   void Clear();
 
@@ -101,16 +104,17 @@ class LRUCache {
   struct Entry : public LRUListEntry {
     Entry() = default;
 
-    // Pointer to the key in `entries_`. absl::node_hash_map<> promises
+    // Pointer to the key in `entries_`. std::unordered_map<> promises
     // pointer stability for keys.
     const Key* key;
     LRUCache* container;
     std::optional<Value> value;
   };
 
-  // We use `node_hash_map` because we want to guarantee pointer stability for
-  // keys and values.
-  absl::node_hash_map<Key, Entry, Hash, Eq> entries_;
+  // We use `unordered_map` because (a) we want to guarantee pointer stability
+  // for keys and values, and (b) we need exception safety so we can't use
+  // absl hashtables.
+  std::unordered_map<Key, Entry, Hash, Eq> entries_;
 };
 
 template <typename Key, typename Value, typename Hash, typename Eq>
@@ -138,11 +142,19 @@ LRUCache<Key, Value, Hash, Eq>::~LRUCache() {
 }
 
 template <typename Key, typename Value, typename Hash, typename Eq>
+void LRUCache<Key, Value, Hash, Eq>::Remove(const Key& key) {
+  LRUListEntry* l = &entries_[key];
+  l->next->prev = l->prev;
+  l->prev->next = l->next;
+  --lru_list_->size_;
+
+  entries_.erase(key);
+}
+
+template <typename Key, typename Value, typename Hash, typename Eq>
 Value LRUCache<Key, Value, Hash, Eq>::GetOrCreateIfAbsent(
     const Key& key, const std::function<Value(const Key&)>& factory) {
-  typename absl::node_hash_map<Key, Entry, Hash, Eq>::iterator it;
-  bool inserted;
-  std::tie(it, inserted) = entries_.try_emplace(key);
+  auto [it, inserted] = entries_.try_emplace(key);
   Entry& entry = it->second;
   if (inserted) {
     entry.key = &it->first;

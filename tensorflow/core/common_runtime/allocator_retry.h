@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_ALLOCATOR_RETRY_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_ALLOCATOR_RETRY_H_
 
+#include "xla/tsl/framework/allocator_retry.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/framework/allocator_retry.h"
 
 namespace tensorflow {
 using tsl::AllocatorRetry;  // NOLINT

@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/model.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/status.h"
@@ -43,7 +46,6 @@ namespace {
 
 using tsl::mutex;
 using tsl::mutex_lock;
-using tsl::OkStatus;
 using tsl::Status;
 using tsl::strings::StrCat;
 
@@ -71,7 +73,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
           if (batch_size_ < 0 && shape.dim_size(0) >= 0) {
             batch_size_ = shape.dim_size(0);
           }
-          gtl::InlinedVector<int64_t, 4> partial_dim_sizes;
+          absl::InlinedVector<int64_t, 4UL> partial_dim_sizes;
           for (int i = 1; i < shape.dims(); ++i) {
             partial_dim_sizes.push_back(shape.dim_size(i));
           }
@@ -121,6 +123,32 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
     Status CheckExternalState() const override {
       return input_->CheckExternalState();
+    }
+
+    absl::Status Get(OpKernelContext* ctx, int64_t index,
+                     std::vector<Tensor>* out_tensors) const override {
+      TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+      if (batch_size_ <= 0) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Random access for the `unbatch` dataset requires a known batch "
+            "size. Got ",
+            batch_size_, "."));
+      }
+
+      const int64_t input_index = index / batch_size_;
+      const int64_t input_offset = index % batch_size_;
+      std::vector<Tensor> input_tensors;
+      TF_RETURN_IF_ERROR(input_->Get(ctx, input_index, &input_tensors));
+      for (int64_t i = 0; i < input_tensors.size(); ++i) {
+        const DataType& dtype = input_tensors[i].dtype();
+        TensorShape shape = input_tensors[i].shape();
+        shape.RemoveDim(0);
+
+        out_tensors->emplace_back(ctx->get_allocator({}), dtype, shape);
+        TF_RETURN_IF_ERROR(batch_util::MaybeMoveSliceToElement(
+            &input_tensors[i], &out_tensors->back(), input_offset));
+      }
+      return absl::OkStatus();
     }
 
    protected:

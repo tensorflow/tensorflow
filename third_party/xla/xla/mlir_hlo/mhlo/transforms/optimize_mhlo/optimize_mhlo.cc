@@ -16,10 +16,7 @@ limitations under the License.
 // This file provides optional optimization patterns for mhlo, canonocalizing
 // operations to equivalent but potentially more efficient operations.
 
-#include <cstddef>
 #include <cstdint>
-#include <iterator>
-#include <numeric>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mhlo/IR/hlo_ops.h"
@@ -32,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/LLVM.h"
 #include "utils/hlo_utils.h"
 
 namespace mlir {
@@ -57,12 +55,11 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
     auto dimensionNumbers = gather.getDimensionNumbers();
 
     // Inputs need to be ranked to lower.
-    if (!gather.getOperand().getType().cast<ShapedType>().hasRank() ||
-        !gather.getOperand().getType().cast<ShapedType>().hasStaticShape() ||
-        !gather.getStartIndices().getType().cast<ShapedType>().hasRank() ||
-        !gather.getStartIndices()
-             .getType()
-             .cast<ShapedType>()
+    if (!mlir::cast<ShapedType>(gather.getOperand().getType()).hasRank() ||
+        !mlir::cast<ShapedType>(gather.getOperand().getType())
+             .hasStaticShape() ||
+        !mlir::cast<ShapedType>(gather.getStartIndices().getType()).hasRank() ||
+        !mlir::cast<ShapedType>(gather.getStartIndices().getType())
              .hasStaticShape()) {
       return rewriter.notifyMatchFailure(gather,
                                          "non-static operand or start_indices");
@@ -80,7 +77,8 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
                                          "start_index_map not empty or [0]");
     }
 
-    auto resultTy = gather.getResult().getType().dyn_cast<RankedTensorType>();
+    auto resultTy =
+        mlir::dyn_cast<RankedTensorType>(gather.getResult().getType());
 
     if (!resultTy) {
       return rewriter.notifyMatchFailure(gather, "unranked result");
@@ -110,7 +108,8 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
     }
 
     auto gatherStartIndices = gather.getStartIndices();
-    auto gatherStartIndicesTy = gatherStartIndices.getType().cast<ShapedType>();
+    auto gatherStartIndicesTy =
+        mlir::cast<ShapedType>(gatherStartIndices.getType());
 
     llvm::SmallVector<Value, 4> sliceStartIndices;
 
@@ -125,8 +124,9 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
             gather.getLoc(), gatherStartIndices, start, limit, stride);
         auto reshaped = rewriter.create<ReshapeOp>(
             gather.getLoc(),
-            RankedTensorType::get(
-                {}, indicesSlice.getType().cast<ShapedType>().getElementType()),
+            RankedTensorType::get({},
+                                  mlir::cast<ShapedType>(indicesSlice.getType())
+                                      .getElementType()),
             indicesSlice);
         sliceStartIndices.push_back(reshaped);
       }
@@ -165,8 +165,8 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
 
 }  // end anonymous namespace
 
-void populateOptimizeMhloPatterns(MLIRContext* context,
-                                  RewritePatternSet* patterns) {
+static void populateOptimizeMhloPatterns(MLIRContext* context,
+                                         RewritePatternSet* patterns) {
   patterns->add<GatherIsSlice>(context);
 }
 }  // end namespace mhlo

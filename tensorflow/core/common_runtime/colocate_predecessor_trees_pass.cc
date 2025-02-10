@@ -25,7 +25,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/device_name_utils.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/config/flag_defs.h"
+#include "tensorflow/core/config/flags.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -36,22 +39,17 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tsl/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace {
 
 constexpr absl::string_view kClassAttr = "_class";
+constexpr absl::string_view kFill = "Fill";
 
-// Check if the node is a valid tree node. Noticed this node must not be the
-// root of the tree. We find root of the tree in other place.
-// For a valid tree node, it must
-// 1. not a arg node
-// 2. not have device attr (neither assigned device nor requested device)
-// 3. not have colocation attr
-// 4. must register for CPU
-// 5. only have one output node
-bool IsValidTreeNode(const Node& node, bool in_node_mode) {
+bool IsValidFillOp(const Node& node) {
+  if (node.type_string() != kFill) {
+    return false;
+  }
   if (node.IsArg()) {
     return false;
   }
@@ -67,25 +65,13 @@ bool IsValidTreeNode(const Node& node, bool in_node_mode) {
   if (!KernelDefAvailable(DeviceType(DEVICE_CPU), node.def())) {
     return false;
   }
-
-  int num_parents_to_tree_nodes = 0;
-  auto parent_nodes = in_node_mode ? node.out_nodes() : node.in_nodes();
-  for (auto parent_node : parent_nodes) {
-    if (in_node_mode && (parent_node->IsExit() || parent_node->IsSink()))
-      continue;
-    if (!in_node_mode && parent_node->IsSource()) continue;
-    num_parents_to_tree_nodes++;
-  }
-  if (num_parents_to_tree_nodes != 1) return false;
   return true;
 }
 
-// Check if the node is potential root node. For a valid root node, it must
-// 1. have requested device attr
-// 2. not a arg node
-// 3. must register for CPU has device type must be CPU
-// 4. the output node can only be exit or sink node
-bool IsPotentialRootNode(const Node& node) {
+bool IsValidIdentityNode(const Node& node) {
+  if (!node.IsIdentity()) {
+    return false;
+  }
   if (node.requested_device().empty()) {
     return false;
   }
@@ -104,103 +90,123 @@ bool IsPotentialRootNode(const Node& node) {
   return true;
 }
 
-// Find all tree nodes for the root node. Otherwise, return false.
-std::optional<absl::flat_hash_set<Node*>> FindTreeNodes(Node* potential_root) {
-  absl::flat_hash_set<Node*> tree_nodes;
-  tree_nodes.insert(potential_root);
-
-  auto seek_tree_nodes = [&](bool in_node_mode) {
-    std::queue<Node*> pending_nodes;
-    auto nodes_to_potential_nodes =
-        in_node_mode ? potential_root->in_nodes() : potential_root->out_nodes();
-    for (Node* node : nodes_to_potential_nodes) {
-      if (in_node_mode && node->IsSource()) continue;
-      if (!in_node_mode && (node->IsSink() || node->IsExit())) continue;
-      pending_nodes.push(node);
+std::optional<std::string> GetColocateStringName(const Node& fill_node) {
+  std::string device = "";
+  std::string colocation_prefix = "loc:@";
+  std::string colocation_name = "";
+  for (auto output_node : fill_node.out_nodes()) {
+    if (!IsValidIdentityNode(*output_node)) return std::nullopt;
+    if (device.empty()) {
+      device = output_node->requested_device();
+      colocation_name = absl::StrCat(colocation_prefix, output_node->name());
+    } else if (device != output_node->requested_device()) {
+      return std::nullopt;
     }
-    while (!pending_nodes.empty()) {
-      Node* node = pending_nodes.front();
-      pending_nodes.pop();
-      if (tree_nodes.find(node) != tree_nodes.end()) {
-        return false;
-      }
-      if (!IsValidTreeNode(*node, in_node_mode)) {
-        return false;
-      }
-      tree_nodes.insert(node);
-      auto nodes_to_potential_node =
-          in_node_mode ? node->in_nodes() : node->out_nodes();
-      for (Node* node : nodes_to_potential_node) {
-        if (in_node_mode && node->IsSource()) continue;
-        if (!in_node_mode && (node->IsSink() || node->IsExit())) continue;
-        pending_nodes.push(node);
-      }
-    }
-    return true;
-  };
-
-  if (!seek_tree_nodes(/*in_node_mode=*/true)) {
-    return std::nullopt;
   }
-
-  // size of tree node must larger than one which means the tree contains at
-  // least one non root node.
-  if (tree_nodes.size() == 1) {
-    return std::nullopt;
-  }
-
-  return tree_nodes;
+  if (colocation_name.empty()) return std::nullopt;
+  return colocation_name;
 }
 
-// Propagate colocation info from root node to each tree nodes.
-void PropagateColocationInfo(Node* root_node,
-                             absl::flat_hash_set<Node*>& tree_nodes) {
-  VLOG(2) << "PropagateColocationInfo: tree root node is " << root_node->name();
-  std::string colocation_prefix = "loc:@";
-  std::string node_name = root_node->name();
-  for (auto node : tree_nodes) {
-    node->AddAttr(std::string(kClassAttr),
-                  {absl::StrCat(colocation_prefix, node_name)});
+bool AreAllInNodesQualifiedConst(const Node& node) {
+  for (auto in_node : node.in_nodes()) {
+    if (!in_node->IsConstant()) {
+      return false;
+    }
+    if (in_node->IsArg()) {
+      return false;
+    }
+    if (in_node->has_assigned_device_name()) {
+      return false;
+    }
+    if (!in_node->requested_device().empty()) {
+      return false;
+    }
+    if (HasNodeAttr(in_node->def(), kClassAttr)) {
+      return false;
+    }
+    if (!KernelDefAvailable(DeviceType(DEVICE_CPU), in_node->def())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ShouldRunPass(const GraphOptimizationPassOptions& options) {
+  if (!flags::Global().enable_tf2min_ici_weight.value()) {
+    VLOG(1) << "ColocatePredecessorTreesPass is disabled.";
+    return false;
+  }
+  VLOG(1) << "ColocatePredecessorTreesPass is enabled.";
+
+  // find all potential node.
+  if (options.graph == nullptr) {
+    LOG(INFO) << "No graph in colocate_predecessor_trees_pass.\n";
+    return false;
+  }
+  return true;
+}
+
+void LogGraphProperties(bool is_graph_changed, bool has_valid_fill_op,
+                        bool has_colocation_name, bool has_qualified_const,
+                        Graph* graph,
+                        const GraphOptimizationPassOptions& options) {
+  if (is_graph_changed) {
+    VLOG(1) << "Graph is changed by ColocatePredecessorTreesPass.";
+    VLOG(1) << DumpGraphToFile("graph_changed_after_colocate_predecessor_trees",
+                               *graph, options.flib_def);
+  } else {
+    VLOG(1) << "Graph is not changed by ColocatePredecessorTreesPass.";
+    VLOG(1) << "has_valid_fill_op: " << has_valid_fill_op;
+    VLOG(1) << "has_colocation_name: " << has_colocation_name;
+    VLOG(1) << "has_qualified_const: " << has_qualified_const;
+    VLOG(1) << DumpGraphToFile(
+        "graph_not_changed_after_colocate_predecessor_trees", *graph,
+        options.flib_def);
   }
 }
 
 }  // namespace
-
-Status ColocatePredecessorTreesPass::Run(
+absl::Status ColocatePredecessorTreesPass::Run(
     const GraphOptimizationPassOptions& options) {
-  // find all potential node.
-  if (options.graph == nullptr) {
-    VLOG(1) << "No graph in colocate_predecessor_trees_pass.\n";
+  if (!ShouldRunPass(options)) {
     return absl::OkStatus();
   }
-  Graph* graph = options.graph->get();
-  if (VLOG_IS_ON(1)) {
-    VLOG(1) << DumpGraphToFile("before_colocate_predecessor_trees", *graph,
-                               options.flib_def);
-  }
 
-  absl::flat_hash_map<Node*, absl::flat_hash_set<Node*>> tree_nodes_map;
+  Graph* graph = options.graph->get();
+  VLOG(1) << DumpGraphToFile("graph_before_colocate_predecessor_trees", *graph,
+                             options.flib_def);
+
+  bool is_graph_changed = false;
+  bool has_valid_fill_op = false;
+  bool has_colocation_name = false;
+  bool has_qualified_const = false;
   for (Node* node : graph->nodes()) {
-    if (IsPotentialRootNode(*node)) {
-      std::optional<absl::flat_hash_set<Node*>> nodes = FindTreeNodes(node);
-      if (nodes.has_value()) {
-        tree_nodes_map[node] = *std::move(nodes);
-      }
+    if (!IsValidFillOp(*node)) {
+      continue;
+    }
+    has_valid_fill_op = true;
+    auto colocation_name = GetColocateStringName(*node);
+    if (!colocation_name.has_value()) continue;
+    has_colocation_name = true;
+    if (!AreAllInNodesQualifiedConst(*node)) continue;
+    has_qualified_const = true;
+    is_graph_changed = true;
+    node->AddAttr(std::string(kClassAttr), {*colocation_name});
+    for (auto in_node : node->in_nodes()) {
+      in_node->AddAttr(std::string(kClassAttr), {*colocation_name});
+    }
+    for (auto out_node : node->out_nodes()) {
+      out_node->AddAttr(std::string(kClassAttr), {*colocation_name});
     }
   }
 
-  for (auto& [root_node, tree_nodes] : tree_nodes_map) {
-    PropagateColocationInfo(root_node, tree_nodes);
-  }
-
-  if (VLOG_IS_ON(1)) {
-    VLOG(1) << DumpGraphToFile("after_colocate_predecessor_trees", *graph,
-                               options.flib_def);
-  }
-
+  LogGraphProperties(is_graph_changed, has_valid_fill_op, has_colocation_name,
+                     has_qualified_const, graph, options);
   return absl::OkStatus();
 }
 
+// TODO(b/331245915): Fix the regression issue then set flag
+// enable_tf2min_ici_weight to true.
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 50,
                       ColocatePredecessorTreesPass);
 

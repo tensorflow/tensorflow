@@ -14,19 +14,31 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <functional>
+#include <memory>
+#include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/optional.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace {
@@ -39,17 +51,17 @@ TEST(StreamExecutor, SuccessfulRegistration) {
     test_util::PopulateDefaultPlatformRegistrationParams(params);
   };
   std::string device_type, platform_name;
-  tsl::Status status =
+  absl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   TF_ASSERT_OK(status);
-  tsl::StatusOr<Platform*> maybe_platform =
+  absl::StatusOr<Platform*> maybe_platform =
       PlatformManager::PlatformWithName("MY_DEVICE");
   TF_ASSERT_OK(maybe_platform.status());
   Platform* platform = std::move(maybe_platform).value();
   ASSERT_EQ(platform->Name(), test_util::kDeviceName);
   ASSERT_EQ(platform->VisibleDeviceCount(), test_util::kDeviceCount);
 
-  tsl::StatusOr<StreamExecutor*> maybe_executor =
+  absl::StatusOr<StreamExecutor*> maybe_executor =
       platform->ExecutorForDevice(0);
   TF_ASSERT_OK(maybe_executor.status());
 }
@@ -63,7 +75,7 @@ TEST(StreamExecutor, NameNotSet) {
   };
 
   std::string device_type, platform_name;
-  tsl::Status status =
+  absl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(status.message(), "'name' field in SP_Platform must be set.");
@@ -78,7 +90,7 @@ TEST(StreamExecutor, InvalidNameWithSemicolon) {
   };
 
   std::string device_type, platform_name;
-  tsl::Status status =
+  absl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   EXPECT_THAT(
@@ -95,7 +107,7 @@ TEST(StreamExecutor, InvalidNameWithSlash) {
   };
 
   std::string device_type, platform_name;
-  tsl::Status status =
+  absl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   EXPECT_THAT(status.message(),
@@ -111,7 +123,7 @@ TEST(StreamExecutor, CreateDeviceNotSet) {
   };
 
   std::string device_type, platform_name;
-  tsl::Status status =
+  absl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(status.message(),
@@ -127,7 +139,7 @@ TEST(StreamExecutor, UnifiedMemoryAllocateNotSet) {
   };
 
   std::string device_type, platform_name;
-  tsl::Status status =
+  absl::Status status =
       InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(
@@ -153,7 +165,7 @@ class StreamExecutorTest : public ::testing::Test {
           platform_, test_util::DestroyPlatform, platform_fns_,
           test_util::DestroyPlatformFns, device_fns_, se_, timer_fns_);
     }
-    tsl::StatusOr<StreamExecutor*> maybe_executor =
+    absl::StatusOr<StreamExecutor*> maybe_executor =
         cplatform_->ExecutorForDevice(ordinal);
     TF_CHECK_OK(maybe_executor.status());
     return std::move(maybe_executor).value();
@@ -185,7 +197,6 @@ TEST_F(StreamExecutorTest, Allocate) {
   ASSERT_NE(mem.opaque(), nullptr);
   ASSERT_EQ(mem.size(), 2 * sizeof(int));
   executor->Deallocate(&mem);
-  ASSERT_EQ(mem.opaque(), nullptr);
 }
 
 TEST_F(StreamExecutorTest, HostMemoryAllocate) {
@@ -209,6 +220,29 @@ TEST_F(StreamExecutorTest, HostMemoryAllocate) {
   ASSERT_TRUE(deallocate_called);
 }
 
+TEST_F(StreamExecutorTest, HostMemoryAllocator) {
+  static bool allocate_called = false;
+  static bool deallocate_called = false;
+  se_.host_memory_allocate = [](const SP_Device* const device, uint64_t size) {
+    allocate_called = true;
+    return malloc(size);
+  };
+  se_.host_memory_deallocate = [](const SP_Device* const device, void* mem) {
+    free(mem);
+    deallocate_called = true;
+  };
+  StreamExecutor* executor = GetExecutor(0);
+  ASSERT_FALSE(allocate_called);
+  TF_ASSERT_OK_AND_ASSIGN(auto allocator,
+                          executor->CreateMemoryAllocator(MemoryType::kHost));
+  TF_ASSERT_OK_AND_ASSIGN(auto mem, allocator->Allocate(8));
+  ASSERT_NE(mem->opaque(), nullptr);
+  ASSERT_TRUE(allocate_called);
+  ASSERT_FALSE(deallocate_called);
+  mem.reset();
+  ASSERT_TRUE(deallocate_called);
+}
+
 TEST_F(StreamExecutorTest, UnifiedMemoryAllocate) {
   static bool allocate_called = false;
   static bool deallocate_called = false;
@@ -223,11 +257,13 @@ TEST_F(StreamExecutorTest, UnifiedMemoryAllocate) {
   };
   StreamExecutor* executor = GetExecutor(0);
   ASSERT_FALSE(allocate_called);
-  void* mem = executor->UnifiedMemoryAllocate(8);
-  ASSERT_NE(mem, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto allocator, executor->CreateMemoryAllocator(MemoryType::kUnified));
+  TF_ASSERT_OK_AND_ASSIGN(auto mem, allocator->Allocate(8));
+  ASSERT_NE(mem->opaque(), nullptr);
   ASSERT_TRUE(allocate_called);
   ASSERT_FALSE(deallocate_called);
-  executor->UnifiedMemoryDeallocate(mem);
+  mem.reset();
   ASSERT_TRUE(deallocate_called);
 }
 
@@ -343,11 +379,10 @@ TEST_F(StreamExecutorTest, CreateEvent) {
 
   StreamExecutor* executor = GetExecutor(0);
   ASSERT_FALSE(event_created);
-  Event* event = new Event(executor);
-  event->Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto event, executor->CreateEvent());
   ASSERT_TRUE(event_created);
   ASSERT_FALSE(event_deleted);
-  delete event;
+  event.reset();
   ASSERT_TRUE(event_deleted);
 }
 
@@ -366,11 +401,10 @@ TEST_F(StreamExecutorTest, PollForEventStatus) {
   };
 
   StreamExecutor* executor = GetExecutor(0);
-  Event event(executor);
-  event.Init();
-  ASSERT_EQ(event.PollForStatus(), Event::Status::kComplete);
+  TF_ASSERT_OK_AND_ASSIGN(auto event, executor->CreateEvent());
+  ASSERT_EQ(event->PollForStatus(), Event::Status::kComplete);
   event_status = SE_EVENT_ERROR;
-  ASSERT_EQ(event.PollForStatus(), Event::Status::kError);
+  ASSERT_EQ(event->PollForStatus(), Event::Status::kError);
 }
 
 TEST_F(StreamExecutorTest, RecordAndWaitForEvent) {
@@ -404,14 +438,13 @@ TEST_F(StreamExecutorTest, RecordAndWaitForEvent) {
   };
 
   StreamExecutor* executor = GetExecutor(0);
-  Event event(executor);
-  event.Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto event, executor->CreateEvent());
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   ASSERT_FALSE(record_called);
-  TF_ASSERT_OK(stream->RecordEvent(&event));
+  TF_ASSERT_OK(stream->RecordEvent(event.get()));
   ASSERT_TRUE(record_called);
   ASSERT_FALSE(wait_called);
-  TF_ASSERT_OK(stream->WaitFor(&event));
+  TF_ASSERT_OK(stream->WaitFor(event.get()));
   ASSERT_TRUE(wait_called);
 }
 
@@ -515,25 +548,6 @@ TEST_F(StreamExecutorTest, SyncMemcpyFromHost) {
   ASSERT_EQ(dst_data, 18);
 }
 
-TEST_F(StreamExecutorTest, SyncMemcpyDeviceToDevice) {
-  se_.sync_memcpy_dtod = [](const SP_Device* const device,
-                            SP_DeviceMemoryBase* const device_dst,
-                            const SP_DeviceMemoryBase* const device_src,
-                            uint64_t size, TF_Status* const status) {
-    TF_SetStatus(status, TF_OK, "");
-    std::memcpy(device_dst->opaque, device_src->opaque, size);
-  };
-
-  StreamExecutor* executor = GetExecutor(0);
-  size_t size = sizeof(int);
-  int src_data = 18;
-  int dst_data = 0;
-  DeviceMemoryBase device_dst(&dst_data, size);
-  DeviceMemoryBase device_src(&src_data, size);
-  ASSERT_TRUE(executor->SynchronousMemcpy(&device_dst, device_src, size));
-  ASSERT_EQ(dst_data, 18);
-}
-
 TEST_F(StreamExecutorTest, BlockHostForEvent) {
   static bool block_host_for_event_called = false;
   se_.create_event = [](const SP_Device* const device, SP_Event* event,
@@ -625,7 +639,7 @@ TEST_F(StreamExecutorTest, HostCallbackError) {
   };
   StreamExecutor* executor = GetExecutor(0);
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
-  std::function<tsl::Status()> callback = []() -> tsl::Status {
+  std::function<absl::Status()> callback = []() -> absl::Status {
     return tsl::errors::Unimplemented("Unimplemented");
   };
   ASSERT_FALSE(stream->DoHostCallbackWithStatus(callback).ok());

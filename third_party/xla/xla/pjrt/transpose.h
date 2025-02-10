@@ -30,15 +30,17 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "xla/pjrt/lru_cache.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -98,7 +100,7 @@ class TransposePlan {
     int num_threads = 1;
   };
 
-  static StatusOr<std::unique_ptr<TransposePlan>> Create(
+  static absl::StatusOr<std::unique_ptr<TransposePlan>> Create(
       const Options& options);
 
   TransposePlan();
@@ -110,8 +112,8 @@ class TransposePlan {
   // Currently there are no alignment requirements on either `a` or `b`. However
   // performance may be better if either or both are aligned.
   void Execute(const void* a, void* b,
-               const std::function<void(std::function<void(void)>)>&
-                   schedule_work = {}) const;
+               std::optional<absl::FunctionRef<void(std::function<void(void)>)>>
+                   schedule_work = std::nullopt) const;
 
   // Returns a human-readable description of the plan.
   std::string ToString() const;
@@ -282,13 +284,14 @@ class TransposePlanCache {
   TransposePlanCache& operator=(TransposePlanCache&&) = delete;
 
   // Creates or returns a cached copy of a transpose plan.
-  StatusOr<std::shared_ptr<TransposePlan>> GetOrCreate(
+  absl::StatusOr<std::shared_ptr<TransposePlan>> GetOrCreate(
       const TransposePlan::Options& options);
 
  private:
   LRUCache<TransposePlanCacheKey,
-           StatusOr<std::shared_ptr<TransposePlan>>>::LRUList lru_list_;
-  LRUCache<TransposePlanCacheKey, StatusOr<std::shared_ptr<TransposePlan>>>
+           absl::StatusOr<std::shared_ptr<TransposePlan>>>::LRUList lru_list_;
+  LRUCache<TransposePlanCacheKey,
+           absl::StatusOr<std::shared_ptr<TransposePlan>>>
       cache_;
 };
 

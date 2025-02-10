@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/llvm_irgen_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 
 namespace xla {
 namespace gpu {

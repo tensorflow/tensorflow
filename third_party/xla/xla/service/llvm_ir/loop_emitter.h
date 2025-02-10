@@ -17,13 +17,18 @@ limitations under the License.
 #define XLA_SERVICE_LLVM_IR_LOOP_EMITTER_H_
 
 #include <functional>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -35,28 +40,28 @@ namespace llvm_ir {
 // llvm::Value*.
 using ElementGenerator =
     std::function<absl::StatusOr<llvm::Value*>(const IrArray::Index& index)>;
-using BodyEmitter = std::function<Status(const IrArray::Index& index)>;
+using BodyEmitter = std::function<absl::Status(const IrArray::Index& index)>;
 
 // Creates the body emitter from target arrays.
 BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
                             absl::Span<IrArray const> target_arrays,
-                            llvm::IRBuilder<>* b, bool is_tuple);
+                            llvm::IRBuilderBase* b, bool is_tuple);
 
 // Emits a loop for every element in the given shape.
 class LoopEmitter {
  public:
   LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
-              llvm::IRBuilder<>* b);
+              llvm::IRBuilderBase* b);
 
   // Constructs a LoopEmitter from an body_emitter that generates
   // element of the given target array in the dynamic dimension.
   LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
-              std::vector<llvm::Value*> dynamic_dims, llvm::IRBuilder<>* b);
+              std::vector<llvm::Value*> dynamic_dims, llvm::IRBuilderBase* b);
 
   // Constructs a LoopEmitter from an element generator that generates each
   // element of the given target array.
   LoopEmitter(const ElementGenerator& target_element_generator,
-              const IrArray& target_array, llvm::IRBuilder<>* b);
+              const IrArray& target_array, llvm::IRBuilderBase* b);
 
   // Constructs a LoopEmitter that emits one element into each of N separate
   // arrays on each iteration of the loop.
@@ -64,7 +69,7 @@ class LoopEmitter {
   // This is used for multi-output fusion.  target_element_generator must
   // produce an LLVM struct with N elements.
   LoopEmitter(const ElementGenerator& target_element_generator,
-              absl::Span<const IrArray> target_arrays, llvm::IRBuilder<>* b);
+              absl::Span<const IrArray> target_arrays, llvm::IRBuilderBase* b);
 
   LoopEmitter(const LoopEmitter&) = delete;
   LoopEmitter& operator=(const LoopEmitter&) = delete;
@@ -79,8 +84,8 @@ class LoopEmitter {
       llvm::Value* base_index);
 
   // Emits a complete loop nest for every element in the given shape.
-  Status EmitLoop(absl::string_view loop_name = "",
-                  llvm::Type* index_type = nullptr);
+  absl::Status EmitLoop(absl::string_view loop_name = "",
+                        llvm::Type* index_type = nullptr);
 
  protected:
   // An IR emitter that generates the loop body.
@@ -97,7 +102,7 @@ class LoopEmitter {
   // scalar, no loops are emitted and exit_bb_ is nullptr in that case.
   llvm::BasicBlock* exit_bb_;
 
-  llvm::IRBuilder<>* b_;
+  llvm::IRBuilderBase* b_;
 
  private:
   IrArray::Index EmitStaticIndex(ForLoopNest* loop_nest,

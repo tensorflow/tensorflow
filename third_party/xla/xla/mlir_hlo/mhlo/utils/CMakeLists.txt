@@ -78,7 +78,6 @@ add_mlir_library(HloToLinalgUtils
   Core
 
   LINK_LIBS PUBLIC
-  LmhloDialect
   MhloDialect
   MhloTypeConversion
   MLIRBufferizationDialect

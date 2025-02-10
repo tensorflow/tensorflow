@@ -22,16 +22,16 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -41,17 +41,17 @@ namespace memory_space_assignment {
 // elapsed times of each HLO and asynchronous copy.
 class FakeCostAnalysis : public CostAnalysis {
  public:
-  static StatusOr<std::unique_ptr<FakeCostAnalysis>> Create(
-      const HloCostAnalysis& cost_analysis, const HloModule& module,
+  static absl::StatusOr<std::unique_ptr<FakeCostAnalysis>> Create(
+      HloCostAnalysisCosts& cost_analysis_costs, const HloModule& module,
       const CostAnalysisOptions& options) {
     TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(&module));
     TF_ASSIGN_OR_RETURN(auto hlo_live_range,
                         HloLiveRange::Run(module.schedule(), *alias_analysis,
                                           module.entry_computation()));
     auto call_graph = CallGraph::Build(&module);
-    return absl::WrapUnique(
-        new FakeCostAnalysis(cost_analysis, options, std::move(alias_analysis),
-                             std::move(hlo_live_range), std::move(call_graph)));
+    return absl::WrapUnique(new FakeCostAnalysis(
+        cost_analysis_costs, options, std::move(alias_analysis),
+        std::move(hlo_live_range), std::move(call_graph)));
   }
 
   float GetInstructionElapsed(
@@ -104,12 +104,12 @@ class FakeCostAnalysis : public CostAnalysis {
   }
 
  protected:
-  FakeCostAnalysis(const HloCostAnalysis& cost_analysis,
+  FakeCostAnalysis(HloCostAnalysisCosts& cost_analysis_costs,
                    const CostAnalysisOptions& options,
                    std::unique_ptr<HloAliasAnalysis> alias_analysis,
                    std::unique_ptr<HloLiveRange> hlo_live_range,
                    std::unique_ptr<CallGraph> call_graph)
-      : CostAnalysis(cost_analysis, options, std::move(alias_analysis),
+      : CostAnalysis(cost_analysis_costs, options, std::move(alias_analysis),
                      std::move(hlo_live_range), std::move(call_graph)) {}
 
  private:

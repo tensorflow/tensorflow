@@ -21,13 +21,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
@@ -45,7 +46,7 @@ using ::testing::Test;
 class CreateI8F32UniformQuantizedTypeTest : public Test {
  protected:
   CreateI8F32UniformQuantizedTypeTest() : ctx_() {
-    ctx_.loadDialect<quant::QuantizationDialect>();
+    ctx_.loadDialect<quant::QuantDialect>();
   }
 
   MLIRContext ctx_;
@@ -105,7 +106,7 @@ TEST_F(CreateI8F32UniformQuantizedTypeTest, HasScaleAndZeroPointProperlySet) {
 class CreateI32F32UniformQuantizedTypeTest : public Test {
  protected:
   CreateI32F32UniformQuantizedTypeTest() : ctx_() {
-    ctx_.loadDialect<quant::QuantizationDialect>();
+    ctx_.loadDialect<quant::QuantDialect>();
   }
 
   MLIRContext ctx_;
@@ -160,7 +161,7 @@ TEST_F(CreateI32F32UniformQuantizedTypeTest, HasScaleAndZeroPointProperlySet) {
 class CreateI8F32UniformQuantizedPerAxisTypeTest : public Test {
  protected:
   CreateI8F32UniformQuantizedPerAxisTypeTest() : ctx_() {
-    ctx_.loadDialect<quant::QuantizationDialect>();
+    ctx_.loadDialect<quant::QuantDialect>();
   }
 
   MLIRContext ctx_;
@@ -255,7 +256,7 @@ TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest,
 class CreateI32F32UniformQuantizedPerAxisTypeTest : public Test {
  protected:
   CreateI32F32UniformQuantizedPerAxisTypeTest() : ctx_() {
-    ctx_.loadDialect<quant::QuantizationDialect>();
+    ctx_.loadDialect<quant::QuantDialect>();
   }
 
   MLIRContext ctx_;
@@ -327,7 +328,7 @@ TEST_F(CreateI32F32UniformQuantizedPerAxisTypeTest,
 class IsI8F32UniformQuantizedTypeTest : public Test {
  protected:
   IsI8F32UniformQuantizedTypeTest() : builder_(&ctx_) {
-    ctx_.loadDialect<quant::QuantizationDialect>();
+    ctx_.loadDialect<quant::QuantDialect>();
   }
 
   MLIRContext ctx_;
@@ -347,7 +348,8 @@ TEST_F(IsI8F32UniformQuantizedTypeTest, UniformQuantizedTypeSucceeds) {
       /*flags=*/QuantizationFlags::Signed, builder_.getI8Type(),
       builder_.getF32Type(), /*scale=*/1.0,
       /*zeroPoint=*/0, /*storageTypeMin=*/-128, /*storageTypeMax=*/127);
-  EXPECT_THAT(qi8_type.dyn_cast_or_null<UniformQuantizedType>(), NotNull());
+  EXPECT_THAT(mlir::dyn_cast_or_null<UniformQuantizedType>(qi8_type),
+              NotNull());
 }
 
 TEST_F(IsI8F32UniformQuantizedTypeTest, StorageTypeI8Succeeds) {
@@ -369,7 +371,7 @@ TEST_F(IsI8F32UniformQuantizedTypeTest, ExpressedTypeF32Succeeds) {
 class IsI8F32UniformQuantizedPerAxisTypeTest : public Test {
  protected:
   IsI8F32UniformQuantizedPerAxisTypeTest() : builder_(&ctx_) {
-    ctx_.loadDialect<quant::QuantizationDialect>();
+    ctx_.loadDialect<quant::QuantDialect>();
   }
 
   MLIRContext ctx_;
@@ -397,8 +399,9 @@ TEST_F(IsI8F32UniformQuantizedTypeTest, UniformQuantizedPerAxisTypeSucceeds) {
           /*scales=*/{1.0},
           /*zeroPoints=*/{0}, /*quantizedDimension=*/0, /*storageTypeMin=*/-128,
           /*storageTypeMax=*/127);
-  EXPECT_THAT(qi8_per_axis_type.dyn_cast_or_null<UniformQuantizedPerAxisType>(),
-              NotNull());
+  EXPECT_THAT(
+      mlir::dyn_cast_or_null<UniformQuantizedPerAxisType>(qi8_per_axis_type),
+      NotNull());
 }
 
 TEST_F(IsI8F32UniformQuantizedPerAxisTypeTest, StorageTypeI8Succeeds) {
@@ -426,7 +429,7 @@ TEST_F(IsI8F32UniformQuantizedPerAxisTypeTest, ExpressedTypeF32Succeeds) {
 class IsI32F32UniformQuantizedTypeTest : public Test {
  protected:
   IsI32F32UniformQuantizedTypeTest() : builder_(&ctx_) {
-    ctx_.loadDialect<quant::QuantizationDialect>();
+    ctx_.loadDialect<quant::QuantDialect>();
   }
 
   MLIRContext ctx_;
@@ -451,7 +454,8 @@ TEST_F(IsI32F32UniformQuantizedTypeTest, UniformQuantizedTypeSucceeds) {
       /*zeroPoint=*/0, /*storageTypeMin=*/-2147483647,
       /*storageTypeMax=*/2147483646);
   EXPECT_TRUE(IsI32F32UniformQuantizedType(qi32_type));
-  EXPECT_THAT(qi32_type.dyn_cast_or_null<UniformQuantizedType>(), NotNull());
+  EXPECT_THAT(mlir::dyn_cast_or_null<UniformQuantizedType>(qi32_type),
+              NotNull());
 }
 
 TEST_F(IsI32F32UniformQuantizedTypeTest, StorageTypeI32Succeeds) {
@@ -479,7 +483,7 @@ TEST_F(IsI32F32UniformQuantizedTypeTest, ExpressedTypeF32Succeeds) {
 class IsI32F32UniformQuantizedPerAxisTypeTest : public Test {
  protected:
   IsI32F32UniformQuantizedPerAxisTypeTest() : builder_(&ctx_) {
-    ctx_.loadDialect<quant::QuantizationDialect>();
+    ctx_.loadDialect<quant::QuantDialect>();
   }
 
   MLIRContext ctx_;
@@ -508,7 +512,7 @@ TEST_F(IsI32F32UniformQuantizedPerAxisTypeTest,
       /*storageTypeMax=*/127);
   EXPECT_FALSE(IsI32F32UniformQuantizedPerAxisType(qi8_type));
   EXPECT_FALSE(IsStorageTypeI32(qi8_type));
-  EXPECT_THAT(qi8_type.dyn_cast_or_null<UniformQuantizedPerAxisType>(),
+  EXPECT_THAT(mlir::dyn_cast_or_null<UniformQuantizedPerAxisType>(qi8_type),
               IsNull());
 }
 
@@ -522,7 +526,7 @@ TEST_F(IsI32F32UniformQuantizedTypeTest, UniformQuantizedPerAxisTypeSucceeds) {
           /*storageTypeMin=*/-2147483647, /*storageTypeMax=*/2147483646);
 
   EXPECT_THAT(
-      qi32_per_axis_type.dyn_cast_or_null<UniformQuantizedPerAxisType>(),
+      mlir::dyn_cast_or_null<UniformQuantizedPerAxisType>(qi32_per_axis_type),
       NotNull());
 }
 
@@ -552,7 +556,7 @@ TEST_F(IsI32F32UniformQuantizedPerAxisTypeTest, ExpressedTypeF32Succeeds) {
 class IsSupportedByTfliteQuantizeOrDequantizeOpsTest : public Test {
  protected:
   IsSupportedByTfliteQuantizeOrDequantizeOpsTest() : builder_(&ctx_) {
-    ctx_.loadDialect<quant::QuantizationDialect>();
+    ctx_.loadDialect<quant::QuantDialect>();
   }
 
   MLIRContext ctx_;
@@ -723,6 +727,28 @@ TEST_F(IsOpNotQuantizedTest, FalseIfOpPartiallyQuantized) {
   // `uniform_quantize` is considered partially quantized because its output is
   // a quantized tensor whereas its input is not quantized.
   EXPECT_FALSE(IsOpNotQuantized(*uniform_quantize_op_itr));
+}
+
+using UniformQuantizedTypeTest = QuantizationTestBase;
+
+TEST_F(UniformQuantizedTypeTest, GetElementTypeSucceeds) {
+  constexpr absl::string_view kQuantizeOp = R"mlir(
+    func.func @quantize(%arg0: tensor<2xf32>) -> tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>> {
+      %0 = stablehlo.uniform_quantize %arg0 : (tensor<2xf32>) -> tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>>
+      return %0 : tensor<2x!quant.uniform<i8:f32, 1.000000e+00:0>>
+    }
+  )mlir";
+
+  OwningOpRef<ModuleOp> module_op = ParseModuleOpString(kQuantizeOp);
+  ASSERT_TRUE(module_op);
+
+  auto func_op = module_op->lookupSymbol<func::FuncOp>("quantize");
+  ASSERT_THAT(func_op, NotNull());
+
+  auto uniform_quantize_op =
+      *func_op.getOps<::mlir::stablehlo::UniformQuantizeOp>().begin();
+  Value result = uniform_quantize_op.getResult();
+  EXPECT_THAT(GetElementType(result), NotNull());
 }
 
 }  // namespace

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "UniformQuantizedClipByValue"
   input_arg {
     name: "operand"

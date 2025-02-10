@@ -17,9 +17,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
+#include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
 
@@ -41,14 +42,17 @@ OptimizedFunctionGraph OptimizedFunctionGraphInfo::ToProto(
   return proto;
 }
 
-StatusOr<OptimizedFunctionGraphInfo> OptimizedFunctionGraphInfo::FromProto(
-    OptimizedFunctionGraph&& proto) {
+absl::StatusOr<OptimizedFunctionGraphInfo>
+OptimizedFunctionGraphInfo::FromProto(OptimizedFunctionGraph&& proto) {
   // Reconstruct the lib_def.
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(),
-                                    proto.function_graph().library());
+  FunctionLibraryDefinition lib_def(OpRegistry::Global());
+  FunctionDefLibrary proto_library;
+  std::swap(proto_library, *proto.mutable_function_graph()->mutable_library());
+  TF_RETURN_IF_ERROR(lib_def.AddLibrary(std::move(proto_library)));
 
   // Reconstruct the graph.
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
+  graph->mutable_flib_def()->set_default_registry(&lib_def);
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
   options.expect_device_spec = true;

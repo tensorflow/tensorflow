@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tsl/framework/real_time_in_memory_metric.h"
+#include "xla/tsl/framework/real_time_in_memory_metric.h"
 
 namespace tensorflow {
 

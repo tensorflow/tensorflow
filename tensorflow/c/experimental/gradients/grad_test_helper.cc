@@ -111,7 +111,7 @@ Model BuildGradModel(Model forward, GradientRegistry registry) {
           grad_registry = std::move(registry)](
              AbstractContext* ctx,
              absl::Span<AbstractTensorHandle* const> inputs,
-             absl::Span<AbstractTensorHandle*> outputs) -> Status {
+             absl::Span<AbstractTensorHandle*> outputs) -> absl::Status {
     Tape tape(/*persistent=*/false);
     for (size_t i{}; i < inputs.size(); ++i) {
       tape.Watch(inputs[i]);

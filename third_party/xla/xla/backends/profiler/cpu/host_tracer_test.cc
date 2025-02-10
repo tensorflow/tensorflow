@@ -14,22 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/profiler/cpu/host_tracer.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <string>
 
-#include "absl/strings/string_view.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/types/optional.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/types.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/platform/types.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/timespan.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace xla {
 namespace profiler {
@@ -38,13 +43,16 @@ namespace {
 using ::tsl::Env;
 using ::tsl::Thread;
 using ::tsl::ThreadOptions;
+using ::tsl::profiler::StatType;
+using ::tsl::profiler::Timespan;
 using ::tsl::profiler::TraceMe;
 using ::tsl::profiler::XEventVisitor;
+using ::tsl::profiler::XLineVisitor;
 using ::tsl::profiler::XPlaneVisitor;
 using ::tsl::profiler::XStatVisitor;
 
 TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
-  tsl::uint32 thread_id;
+  int64_t thread_id;
   std::string thread_name = "MyThreadName";
   tensorflow::profiler::XSpace space;
 
@@ -152,6 +160,73 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   EXPECT_EQ(e6.Name(), "Iterator::XXX::YYY::ParallelMap");
 
   EXPECT_EQ(e6.DisplayName(), "Iterator::ParallelMap");
+}
+
+TEST(HostTracerTest, CollectEventsFromThreadPool) {
+  auto thread_pool =
+      std::make_unique<tsl::thread::ThreadPool>(/*env=*/Env::Default(),
+                                                /*name=*/"HostTracerTest",
+                                                /*num_threads=*/1);
+  absl::BlockingCounter counter(1);
+  auto tracer = CreateHostTracer({});
+  TF_EXPECT_OK(tracer->Start());
+  thread_pool->Schedule([&counter] {
+    TraceMe traceme("hello");
+    counter.DecrementCount();
+  });
+  counter.Wait();
+  // Explicitly delete the thread_pool before trying to collect performance data
+  // to ensure that there's no window between the ThreadPool ending the region
+  // and collecting the trace data.  This was the cause of this test being racy
+  // in the past.
+  thread_pool.reset();
+  TF_EXPECT_OK(tracer->Stop());
+  tensorflow::profiler::XSpace space;
+  TF_EXPECT_OK(tracer->CollectData(&space));
+
+  EXPECT_THAT(space.planes(), testing::SizeIs(1));
+  XPlaneVisitor xplane = tsl::profiler::CreateTfXPlaneVisitor(&space.planes(0));
+
+  bool has_record_event = false;
+  bool has_start_region_event = false;
+  bool has_end_region_event = false;
+  int64_t record_region_id = 0;
+  int64_t start_region_id = 0;
+
+  Timespan region_timespan;
+  Timespan traceme_timespan;
+
+  xplane.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.Name() == tsl::profiler::kThreadpoolListenerRecord) {
+        has_record_event = true;
+        const auto& stat = event.GetStat(StatType::kProducerId);
+        EXPECT_TRUE(stat.has_value());
+        record_region_id = stat->IntOrUintValue();
+      } else if (event.Name() ==
+                 tsl::profiler::kThreadpoolListenerStartRegion) {
+        has_start_region_event = true;
+        const auto& stat = event.GetStat(StatType::kConsumerId);
+        EXPECT_TRUE(stat.has_value());
+        start_region_id = stat->IntOrUintValue();
+        region_timespan = event.GetTimespan();
+      } else if (event.Name() == tsl::profiler::kThreadpoolListenerStopRegion) {
+        has_end_region_event = true;
+        region_timespan = Timespan::FromEndPoints(region_timespan.begin_ps(),
+                                                  event.GetTimespan().end_ps());
+      } else if (event.Name() == "hello") {
+        traceme_timespan = event.GetTimespan();
+      }
+    });
+  });
+
+  EXPECT_TRUE(has_record_event);
+  EXPECT_TRUE(has_start_region_event);
+  EXPECT_TRUE(has_end_region_event);
+
+  EXPECT_EQ(record_region_id, start_region_id);
+
+  EXPECT_TRUE(region_timespan.Includes(traceme_timespan));
 }
 
 }  // namespace

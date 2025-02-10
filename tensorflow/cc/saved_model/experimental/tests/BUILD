@@ -15,6 +15,7 @@ tf_cc_test(
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     deps = [
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/cc/experimental/base/public:runtime",
         "//tensorflow/cc/experimental/base/public:runtime_builder",
         "//tensorflow/cc/experimental/base/public:status",

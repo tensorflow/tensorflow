@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -40,7 +40,7 @@ UniformQuantizedType CreateI8F32UniformQuantizedType(const Location loc,
   return UniformQuantizedType::getChecked(
       loc, /*flags=*/QuantizationFlags::Signed,
       /*storageType=*/IntegerType::get(&context, /*width=*/8),
-      /*expressedType=*/FloatType::getF32(&context), scale, zero_point,
+      /*expressedType=*/Float32Type::get(&context), scale, zero_point,
       /*storageTypeMin=*/llvm::minIntN(8) + (narrow_range ? 1 : 0),
       /*storageTypeMax=*/llvm::maxIntN(8));
 }
@@ -51,7 +51,7 @@ UniformQuantizedType CreateI32F32UniformQuantizedType(
   return UniformQuantizedType::getChecked(
       loc, /*flags=*/QuantizationFlags::Signed,
       /*storageType=*/IntegerType::get(&context, /*width=*/32),
-      /*expressedType=*/FloatType::getF32(&context), scale, zero_point,
+      /*expressedType=*/Float32Type::get(&context), scale, zero_point,
       /*storageTypeMin=*/llvm::minIntN(32),
       /*storageTypeMax=*/llvm::maxIntN(32));
 }
@@ -63,7 +63,7 @@ UniformQuantizedPerAxisType CreateI8F32UniformQuantizedPerAxisType(
   return UniformQuantizedPerAxisType::getChecked(
       loc, /*flags=*/QuantizationFlags::Signed,
       /*storageType=*/IntegerType::get(&context, /*width=*/8),
-      /*expressedType=*/FloatType::getF32(&context),
+      /*expressedType=*/Float32Type::get(&context),
       SmallVector<double>(scales), SmallVector<int64_t>(zero_points),
       quantization_dimension,
       /*storageTypeMin=*/llvm::minIntN(8) + (narrow_range ? 1 : 0),
@@ -76,7 +76,7 @@ UniformQuantizedPerAxisType CreateI32F32UniformQuantizedPerAxisType(
   return UniformQuantizedPerAxisType::getChecked(
       loc, /*flags=*/QuantizationFlags::Signed,
       /*storageType=*/IntegerType::get(&context, /*width=*/32),
-      /*expressedType=*/FloatType::getF32(&context),
+      /*expressedType=*/Float32Type::get(&context),
       SmallVector<double>(scales), SmallVector<int64_t>(zero_points),
       quantization_dimension, /*storageTypeMin=*/llvm::minIntN(32),
       /*storageTypeMax=*/llvm::maxIntN(32));
@@ -94,12 +94,12 @@ bool IsStorageTypeI32(const QuantizedType quantized_type) {
 
 bool IsExpressedTypeF32(const QuantizedType quantized_type) {
   const Type expressed_type = quantized_type.getExpressedType();
-  return expressed_type.isa<Float32Type>();
+  return mlir::isa<Float32Type>(expressed_type);
 }
 
 bool IsI8F32UniformQuantizedType(const Type type) {
   const UniformQuantizedType quantized_type =
-      type.dyn_cast_or_null<UniformQuantizedType>();
+      mlir::dyn_cast_or_null<UniformQuantizedType>(type);
   if (!quantized_type) {
     LLVM_DEBUG(llvm::dbgs()
                << "Expected a uniform quantized type. Got: " << type << ".\n");
@@ -123,7 +123,7 @@ bool IsI8F32UniformQuantizedType(const Type type) {
 
 bool IsI8F32UniformQuantizedPerAxisType(const Type type) {
   const UniformQuantizedPerAxisType quantized_per_axis_type =
-      type.dyn_cast_or_null<UniformQuantizedPerAxisType>();
+      mlir::dyn_cast_or_null<UniformQuantizedPerAxisType>(type);
   if (!quantized_per_axis_type) {
     LLVM_DEBUG(llvm::dbgs()
                << "Expected a uniform quantized type. Got: " << type << ".\n");
@@ -147,7 +147,7 @@ bool IsI8F32UniformQuantizedPerAxisType(const Type type) {
 
 bool IsI32F32UniformQuantizedType(const Type type) {
   const UniformQuantizedType quantized_type =
-      type.dyn_cast_or_null<UniformQuantizedType>();
+      mlir::dyn_cast_or_null<UniformQuantizedType>(type);
   if (!quantized_type) {
     LLVM_DEBUG(llvm::dbgs()
                << "Expected a uniform quantized type. Got: " << type << ".\n");
@@ -171,7 +171,7 @@ bool IsI32F32UniformQuantizedType(const Type type) {
 
 bool IsI32F32UniformQuantizedPerAxisType(const Type type) {
   const UniformQuantizedPerAxisType quantized_per_axis_type =
-      type.dyn_cast_or_null<UniformQuantizedPerAxisType>();
+      mlir::dyn_cast_or_null<UniformQuantizedPerAxisType>(type);
   if (!quantized_per_axis_type) {
     LLVM_DEBUG(llvm::dbgs()
                << "Expected a uniform quantized type. Got: " << type << ".\n");
@@ -208,11 +208,11 @@ bool IsSupportedByTfliteQuantizeOrDequantizeOps(IntegerType storage_type) {
 }
 
 bool IsQuantizedTensorType(Type type) {
-  if (!type.isa<TensorType>()) {
+  if (!mlir::isa<TensorType>(type)) {
     return false;
   }
-  Type element_type = type.cast<TensorType>().getElementType();
-  return element_type.isa<QuantizedType>();
+  Type element_type = mlir::cast<TensorType>(type).getElementType();
+  return mlir::isa<QuantizedType>(element_type);
 }
 
 bool IsOpFullyQuantized(Operation* op) {

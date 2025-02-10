@@ -13,10 +13,9 @@
 # limitations under the License.
 # ============================================================================
 
-load("//xla:pytype.default.bzl", "pytype_strict_library")
-
-# Placeholder: load py_test
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("@rules_python//python:py_test.bzl", "py_test")
+load("//xla:pytype.default.bzl", "pytype_strict_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -34,10 +33,15 @@ py_test(
     data = [
         "testdata/clang.bazelrc",
         "testdata/cuda_clang.bazelrc",
+        "testdata/default_cuda_clang.bazelrc",
         "testdata/gcc.bazelrc",
         "testdata/nvcc_clang.bazelrc",
         "testdata/nvcc_gcc.bazelrc",
     ],
+    # After https://github.com/openxla/xla/commit/7d3043283, this test is no
+    # longer hermetic. This works in OSS tests because the docker container has
+    # clang-17 and gcc, but it's a little sketchy.
+    tags = ["notap"],
     deps = [
         ":configure",
         "//build_tools:test_utils",

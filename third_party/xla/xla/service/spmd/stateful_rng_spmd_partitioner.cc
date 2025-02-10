@@ -15,16 +15,25 @@ limitations under the License.
 
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/service/call_graph.h"
+#include "xla/service/spmd/spmd_partitioner.h"
+#include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace spmd {
 
-Status StatefulRngSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
+absl::Status StatefulRngSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
     HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return HandleSingleDevice(hlo);
@@ -43,7 +52,7 @@ Status StatefulRngSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
   SetPartitionedHlo(
       hlo, spmd::PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                .Reshard(hlo->sharding()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<spmd::SpmdPartitioningVisitor>
@@ -57,7 +66,7 @@ StatefulRngSpmdPartitioner::CreateVisitor(
       next_channel_id, logger, std::move(options), this, call_graph);
 }
 
-Status StatefulRngSpmdPartitioner::PreprocessSharding(
+absl::Status StatefulRngSpmdPartitioner::PreprocessSharding(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // For rng-get-and-update-status with no sharding, set sharding to be
@@ -77,6 +86,22 @@ bool StatefulRngSpmdPartitioner::CanSideEffectingHaveReplicatedSharding(
     const HloInstruction* hlo) {
   if (hlo->opcode() == HloOpcode::kRngGetAndUpdateState) return true;
   return spmd::SpmdPartitioner::CanSideEffectingHaveReplicatedSharding(hlo);
+}
+
+absl::Status StatefulRngSpmdPartitioner::HandleRotateRightWhilePreprocessing(
+    HloComputation* computation) {
+  if (!computation->IsWhileBodyComputation()) {
+    return absl::OkStatus();
+  }
+  HloInstruction* while_loop = computation->WhileCallInstruction();
+  TF_RET_CHECK(while_loop);
+  if (computation->parent()
+          ->config()
+          .debug_options()
+          .xla_gpu_unsafe_pipelined_loop_annotator()) {
+    while_loop->set_frontend_attribute("is_pipelined_while_loop", "true");
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace spmd

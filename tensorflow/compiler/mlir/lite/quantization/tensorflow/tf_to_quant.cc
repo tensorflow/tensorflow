@@ -16,7 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
@@ -55,7 +55,7 @@ struct LegalizeTFToQuant
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<quant::QuantizationDialect,
+    registry.insert<quant::QuantDialect,
                     quantfork::QuantizationForkDialect>();
   }
 
@@ -133,7 +133,7 @@ struct InsertQuantOpsAfterTFFakeQuantOp
     if (PerAxis) {
       // This is a special case that the quant_dim is the last dimensions
       // according to the tf.FakeQuantWithMinMaxPerChannel.
-      quant_dim = res.getType().template cast<ShapedType>().getRank() - 1;
+      quant_dim = mlir::cast<ShapedType>(res.getType()).getRank() - 1;
     }
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
@@ -176,7 +176,7 @@ void LegalizeTFToQuant::runOnOperation() {
   auto func = getOperation();
   auto *ctx = func.getContext();
   patterns.add<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsGreedily(func, std::move(patterns));
 }
 }  // namespace
 

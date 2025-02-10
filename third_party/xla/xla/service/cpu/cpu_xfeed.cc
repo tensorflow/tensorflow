@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_xfeed.h"
 
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/cpu/cpu_runtime.h"
@@ -32,7 +35,6 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -102,8 +104,8 @@ absl::StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
   return queued_buffer;
 }
 
-Status TransferBufferToInfeed(int device_ordinal, int64_t size,
-                              const void* source) {
+absl::Status TransferBufferToInfeed(int device_ordinal, int64_t size,
+                                    const void* source) {
   TF_ASSIGN_OR_RETURN(cpu::runtime::XfeedBuffer * buffer,
                       TransferBufferToInfeedInternal(size, source));
 
@@ -111,7 +113,7 @@ Status TransferBufferToInfeed(int device_ordinal, int64_t size,
       cpu::runtime::GetXfeedManager(device_ordinal);
   xfeed_manager->infeed()->EnqueueBuffersAtomically({buffer});
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Shape> TransferBuffersFromOutfeedInternal(
@@ -175,8 +177,8 @@ absl::StatusOr<Shape> TransferTupleBuffersFromOutfeed(
 }
 }  // namespace
 
-Status TransferLiteralToInfeedOnCpu(int device_ordinal,
-                                    const LiteralSlice& literal) {
+absl::Status TransferLiteralToInfeedOnCpu(int device_ordinal,
+                                          const LiteralSlice& literal) {
   const Shape& shape = literal.shape();
   VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(shape);
@@ -218,11 +220,11 @@ Status TransferLiteralToInfeedOnCpu(int device_ordinal,
   xfeed_manager->infeed()->EnqueueBuffersAtomically(buffers);
 
   std::move(cleanup).Cancel();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
-                                       MutableBorrowingLiteral literal) {
+absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
+                                             MutableBorrowingLiteral literal) {
   if (!literal.shape().IsTuple()) {
     int64_t size =
         cpu::runtime::GetByteSizeRequirement(literal.shape(), sizeof(void*));
@@ -242,7 +244,7 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
     TF_RET_CHECK(size == cpu::runtime::GetByteSizeRequirement(received_shape,
                                                               sizeof(void*)));
     *literal.mutable_shape_do_not_use() = received_shape;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (ShapeUtil::IsNestedTuple(literal.shape())) {
@@ -272,25 +274,26 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
       cpu::runtime::GetByteSizeRequirement(received_shape, sizeof(void*)));
 
   TF_RET_CHECK(ShapeUtil::Equal(literal.shape(), literal.shape()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ReadDynamicShapesOnCpu(
+absl::Status ReadDynamicShapesOnCpu(
     const ShapedBuffer* device_buffer, Shape* device_shape,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
   TF_RET_CHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
   TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
-      [&](const ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
+      [&](const ShapeIndex& index,
+          const se::DeviceMemoryBase& buffer) -> absl::Status {
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         Shape& device_sub_shape =
             *ShapeUtil::GetMutableSubshape(device_shape, index);
         if (device_sub_shape.is_static()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         const void* memory = buffer.opaque();
 
@@ -309,12 +312,12 @@ Status ReadDynamicShapesOnCpu(
         for (int64_t i = 0; i < device_sub_shape.rank(); ++i) {
           device_sub_shape.mutable_dimensions()[i] = metadata_buffer[i];
         }
-        return OkStatus();
+        return absl::OkStatus();
       }));
   device_shape->clear_dynamic_dimensions();
 
   TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
                                                    original_device_shape));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace xla

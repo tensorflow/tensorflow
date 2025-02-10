@@ -15,39 +15,49 @@ limitations under the License.
 
 #include "xla/service/buffer_assignment.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/comparison_util.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
+#include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_memory_scheduler.h"
-#include "xla/service/hlo_ordering.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/service/hlo_proto_util.h"
+#include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_value.h"
+#include "xla/service/logical_buffer.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/types.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -62,12 +72,12 @@ class InstructionListVisitor : public DfsHloVisitorWithDefault {
  public:
   explicit InstructionListVisitor(const HloInstruction* root) : root_(root) {}
 
-  Status DefaultAction(HloInstruction* hlo) override {
+  absl::Status DefaultAction(HloInstruction* hlo) override {
     // For each instruction, just push it on the list after walking the
     // operands.
     instructions_.push_back(hlo);
     VLOG(0) << "List instruction " << hlo->ToString();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<const HloInstruction*> GetInstructions() { return instructions_; }
@@ -143,7 +153,8 @@ class BufferAssignmentTest : public HloTestBase {
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersReuseForAdd(
       HloModule* module, int64_t alignment = 1) {
-    auto must_not_live_out = [](const HloInstruction* instruction,
+    auto must_not_live_out = [](const HloAliasAnalysis& alias_analysis,
+                                const HloInstruction* instruction,
                                 const ShapeIndex&) {
       return instruction->opcode() == HloOpcode::kAdd;
     };
@@ -714,7 +725,7 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
       color_map[value.defining_instruction()] = color;
       value.set_color(BufferValue::Color(color++));
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   auto buffers = RunColoredBufferAssignment(module.get(), colorer);
@@ -788,7 +799,7 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
         value.set_color(LogicalBuffer::Color(0));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   auto buffers = RunColoredBufferAssignment(module.get(), colorer);
@@ -1618,6 +1629,67 @@ TEST_F(BufferAssignmentTest, CustomCallEmbeddedComputationBuffers) {
   EXPECT_FALSE(map_root_alloc.is_entry_computation_parameter());
   EXPECT_FALSE(map_root_alloc.maybe_live_out());
   EXPECT_TRUE(map_root_alloc.is_thread_local());
+}
+
+TEST_F(BufferAssignmentTest, CustomCallSubcomputationBuffers) {
+  // Verify that buffers for subcomputations in a custom call are properly
+  // marked as thread-local.
+  auto module = CreateNewVerifiedModule();
+  auto scalar_shape = ShapeUtil::MakeShape(F32, {});
+
+  auto subcomputation_builder =
+      HloComputation::Builder(TestName() + "_subcomputation");
+  auto subcomputation_param = subcomputation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "subcomputation_param"));
+  auto subcomputation_root =
+      subcomputation_builder.AddInstruction(HloInstruction::CreateUnary(
+          scalar_shape, HloOpcode::kNegate, subcomputation_param));
+  auto subcomputation =
+      module->AddEmbeddedComputation(subcomputation_builder.Build());
+
+  // Create a scalar computation to use in a map.
+  auto map_builder = HloComputation::Builder(TestName() + "_map");
+  auto map_param = map_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "map_param"));
+  auto map_root = map_builder.AddInstruction(
+      HloInstruction::CreateCall(scalar_shape, {map_param}, subcomputation));
+  auto map_computation = module->AddEmbeddedComputation(map_builder.Build());
+
+  // Create entry computation with a custom call on map_computation.
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "param"));
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      scalar_shape, {param}, map_computation, "call_name"));
+  module->AddEntryComputation(builder.Build());
+
+  auto assignment = RunBufferAssignment(module.get());
+
+  // Allocations for the map computation should be thread-local and not
+  // live-out.
+  auto& map_param_alloc = GetTopLevelAllocation(*assignment, map_param);
+  EXPECT_FALSE(map_param_alloc.is_entry_computation_parameter());
+  EXPECT_FALSE(map_param_alloc.maybe_live_out());
+  EXPECT_TRUE(map_param_alloc.is_thread_local());
+
+  auto& map_root_alloc = GetTopLevelAllocation(*assignment, map_root);
+  EXPECT_FALSE(map_root_alloc.is_entry_computation_parameter());
+  EXPECT_FALSE(map_root_alloc.maybe_live_out());
+  EXPECT_TRUE(map_root_alloc.is_thread_local());
+
+  // Allocations for the subcomputation should be thread-local and not
+  // live-out.
+  auto& subcomputation_param_alloc =
+      GetTopLevelAllocation(*assignment, subcomputation_param);
+  EXPECT_FALSE(subcomputation_param_alloc.is_entry_computation_parameter());
+  EXPECT_FALSE(subcomputation_param_alloc.maybe_live_out());
+  EXPECT_TRUE(subcomputation_param_alloc.is_thread_local());
+
+  auto& subcomputation_root_alloc =
+      GetTopLevelAllocation(*assignment, subcomputation_root);
+  EXPECT_FALSE(subcomputation_root_alloc.is_entry_computation_parameter());
+  EXPECT_FALSE(subcomputation_root_alloc.maybe_live_out());
+  EXPECT_TRUE(subcomputation_root_alloc.is_thread_local());
 }
 
 TEST_F(BufferAssignmentTest, TupleParameterAsOutput) {
@@ -2764,7 +2836,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 
   LOG(INFO) << buffers->ToString();
 
-  auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
+  auto get_slice = [&](absl::string_view hlo_name, const ShapeIndex& index) {
     return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
         .value();
   };
@@ -2847,7 +2919,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
             .set_color(BufferValue::Color(color));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   BufferAssigner::PrivateStacks private_stacks;
@@ -2857,7 +2929,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 
   LOG(INFO) << buffers->ToString();
 
-  auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
+  auto get_slice = [&](absl::string_view hlo_name, const ShapeIndex& index) {
     return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
         .value();
   };
@@ -2957,7 +3029,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
             .set_color(BufferValue::Color(color));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   BufferAssigner::PrivateStacks private_stacks;
@@ -2968,7 +3040,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 
   LOG(INFO) << buffers->ToString();
 
-  auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
+  auto get_slice = [&](absl::string_view hlo_name, const ShapeIndex& index) {
     return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
         .value();
   };
@@ -3032,7 +3104,7 @@ TEST_F(BufferAssignmentTest, AsyncCallImplicitSharding) {
 
   LOG(INFO) << buffers->ToString();
 
-  auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
+  auto get_slice = [&](absl::string_view hlo_name, const ShapeIndex& index) {
     return buffers
         ->GetUniqueSlice(FindInstruction(module.get(), hlo_name), index)
         .value();
@@ -3040,6 +3112,53 @@ TEST_F(BufferAssignmentTest, AsyncCallImplicitSharding) {
 
   EXPECT_EQ(get_slice("p0", {}).size(), 32);
   EXPECT_EQ(get_slice("dynamic-update-slice", {}).size(), 32);
+}
+
+TEST_F(BufferAssignmentTest, AsyncCustomCall) {
+  const char* hlo_text = R"(
+HloModule AsyncCustomCall, is_scheduled=true
+
+ENTRY %main (a: f32[4096]) -> f32[4096] {
+  %a = f32[4096]{0} parameter(0)
+  %neg_0 = f32[4096]{0} negate(f32[4096]{0} %a)
+  %async-start = ((f32[4096]{0}), f32[4096]{0}, u32[])
+                 custom-call-start(f32[4096]{0} %neg_0),
+                 custom_call_target="Foo"
+  %async-done = f32[4096]{0} custom-call-done(((f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
+  ROOT %neg_1 = f32[4096]{0} negate(f32[4096]{0} %async-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(m.get());
+
+  HloInstruction* neg_0 = FindInstruction(m.get(), "neg_0");
+  HloInstruction* async_done = FindInstruction(m.get(), "async-done");
+  EXPECT_FALSE(buffers->SharesTopLevelSlice(neg_0, async_done));
+}
+
+TEST_F(BufferAssignmentTest, AsyncCustomCallWithAliasing) {
+  const char* hlo_text = R"(
+HloModule AsyncCustomCall, is_scheduled=true
+
+ENTRY %main (a: f32[4096]) -> f32[4096] {
+  %a = f32[4096]{0} parameter(0)
+  %neg_0 = f32[4096]{0} negate(f32[4096]{0} %a)
+  %async-start = ((f32[4096]{0}), f32[4096]{0}, u32[])
+                 custom-call-start(f32[4096]{0} %neg_0),
+                 custom_call_target="Foo",
+                 output_to_operand_aliasing={{}: (0, {})}
+  %async-done = f32[4096]{0} custom-call-done(((f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
+  ROOT %neg_1 = f32[4096]{0} negate(f32[4096]{0} %async-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(m.get());
+
+  HloInstruction* neg_0 = FindInstruction(m.get(), "neg_0");
+  HloInstruction* async_done = FindInstruction(m.get(), "async-done");
+  EXPECT_TRUE(buffers->SharesTopLevelSlice(neg_0, async_done));
 }
 
 TEST_F(BufferAssignmentTest, BufferIsolation) {

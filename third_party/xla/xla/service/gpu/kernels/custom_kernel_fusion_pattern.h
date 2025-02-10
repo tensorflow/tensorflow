@@ -23,7 +23,6 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -138,7 +137,7 @@ class CustomKernelFusionPatternRegistry {
   XLA_REGISTER_CUSTOM_FUSION_PATTERN__(PATTERN, N)
 
 #define XLA_REGISTER_CUSTOM_FUSION_PATTERN__(PATTERN, N)         \
-  ABSL_ATTRIBUTE_UNUSED static const bool                        \
+  [[maybe_unused]] static const bool                             \
       xla_custom_fusion_pattern_##N##_registered_ = [] {         \
         ::xla::gpu::CustomKernelFusionPatternRegistry::Default() \
             ->Emplace<PATTERN>();                                \

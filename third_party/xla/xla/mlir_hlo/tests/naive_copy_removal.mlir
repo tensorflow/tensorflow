@@ -143,30 +143,3 @@ func.func @do_not_simplify_subview_with_other_use(%arg0: memref<8x8xf32>)
 // CHECK:         memref.subview
 // CHECK:         memref.copy
 // CHECK:         memref.copy
-
-// -----
-
-func.func @target_is_alloc_with_loads_stores(%arg0: memref<8x8xf32>)
-                                             -> memref<8x8xf32> {
-  %c4 = arith.constant 4 : index
-  %cst_0 = arith.constant 0.000000e+00 : f32
-  %alloc_4 = memref.alloc() {alignment = 64 : i64} : memref<8x8xf32>
-  memref.copy %arg0, %alloc_4: memref<8x8xf32> to memref<8x8xf32>
-  "lmhlo.custom_call"(%alloc_4, %alloc_4) ({
-  }) {
-    backend_config = "",
-    call_target_name = "foo",
-    has_side_effect = false,
-    operandSegmentSizes = array<i32: 1, 1>
-  } : (memref<8x8xf32>, memref<8x8xf32>) -> ()
-
-  return %arg0 : memref<8x8xf32>
-}
-
-// CHECK-LABEL: func @target_is_alloc_with_loads_stores(
-// CHECK-SAME:      %[[INPUT:.*]]: memref<8x8xf32>)
-
-// CHECK:         memref.alloc
-// CHECK:         memref.copy
-// CHECK:         "lmhlo.custom_call"
-// CHECK:         return %[[INPUT]]

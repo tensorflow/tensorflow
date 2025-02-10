@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "NegTrain"
   input_arg {
     name: "w_in"

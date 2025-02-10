@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "Eigen/Core"  // from @eigen_archive
-#include "xla/test.h"
+#include "Eigen/Core"
+#include "xla/hlo/testlib/test.h"
 #include "tsl/platform/bfloat16.h"
 
 namespace xla {

@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -39,22 +40,22 @@ TEST_F(TooManyBlocksTest, FailsWithInvalidStatus) {
 HloModule primitive_computation_mul.8
 
 ENTRY primitive_computation_mul.8 {
-  parameter.1 = f32[4,1048576,1,1]{3,2,1,0} parameter(0)
-  reshape.3 = f32[4,1048576,1]{2,1,0} reshape(parameter.1)
-  broadcast.4 = f32[4,1048576,1048576,1]{3,2,1,0} broadcast(reshape.3), dimensions={0,1,3}
-  parameter.2 = f32[4,1,1048576,1]{3,2,1,0} parameter(1)
-  reshape.5 = f32[4,1048576,1]{2,1,0} reshape(parameter.2)
-  broadcast.6 = f32[4,1048576,1048576,1]{3,2,1,0} broadcast(reshape.5), dimensions={0,2,3}
-  ROOT multiply.7 = f32[4,1048576,1048576,1]{3,2,1,0} multiply(broadcast.4, broadcast.6)
+  parameter.1 = s8[65536] parameter(0)
+  parameter.2 = s8[65536] parameter(1)
+  broadcast.3 = s8[65536,65536,65536,128,2] broadcast(parameter.1), dimensions={0}
+  broadcast.4 = s8[65536,65536,65536,128,2] broadcast(parameter.2), dimensions={1}
+  ROOT multiply.5 = s8[65536,65536,65536,128,2] multiply(broadcast.3, broadcast.4)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(hlo_text));
 
+  se::StreamExecutorMemoryAllocator allocator(
+      backend().default_stream_executor());
   absl::StatusOr<std::unique_ptr<Executable>> failed_executable =
-      backend().compiler()->RunBackend(
-          std::move(optimized_module), backend().default_stream_executor(),
-          backend().default_stream_executor()->GetAllocator());
+      backend().compiler()->RunBackend(std::move(optimized_module),
+                                       backend().default_stream_executor(),
+                                       &allocator);
 
   EXPECT_FALSE(failed_executable.ok());
   EXPECT_THAT(

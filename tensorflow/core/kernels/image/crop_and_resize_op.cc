@@ -41,12 +41,8 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_activation.h"
-using stream_executor::cuda::ScopedActivateExecutorContext;
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
-using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
 namespace tensorflow {
@@ -56,9 +52,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 using Callback = std::function<void()>;
 
-static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
-                                           const Tensor& box_index,
-                                           int* num_boxes) {
+static inline absl::Status ParseAndCheckBoxSizes(const Tensor& boxes,
+                                                 const Tensor& box_index,
+                                                 int* num_boxes) {
   if (boxes.NumElements() == 0 && box_index.NumElements() == 0) {
     *num_boxes = 0;
     return absl::OkStatus();
@@ -148,6 +144,11 @@ class CropAndResizeOp : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(
         context, image_height > 0 && image_width > 0,
         errors::InvalidArgument("image dimensions must be positive"), done);
+    OP_REQUIRES_ASYNC(
+        context, boxes.dims() == 2,
+        absl::InvalidArgumentError(absl::StrCat("boxes must be 2-D, got: ",
+                                                boxes.shape().DebugString())),
+        done);
     OP_REQUIRES_ASYNC(
         context, TensorShapeUtils::IsVector(box_index.shape()),
         errors::InvalidArgument("box_indices must be rank 1 but is shape ",
@@ -883,7 +884,8 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
                            compute, done]() {
     {
       auto stream = context->op_device_context()->stream();
-      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+      std::unique_ptr<se::ActivateContext> scoped_activation =
+          stream->parent()->Activate();
       const bool isvalid = isvalid_host_tensor.scalar<bool>()();
       isvalid_dev_ref.Unref();
       OP_REQUIRES_ASYNC(
@@ -891,7 +893,7 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
           errors::OutOfRange("box_index has values outside [0, batch_size)"),
           done);
       compute();
-    }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+    }  // Release ActivateContext to prevent deadlock when done
        // inlines another Op kernel, which may assume the original cuda Context.
 
     done();

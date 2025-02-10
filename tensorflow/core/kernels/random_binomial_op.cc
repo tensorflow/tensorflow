@@ -187,8 +187,6 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
                    &gen, &output](int64_t start_output, int64_t limit_output) {
       // Vectorized intermediate calculations for uniform rejection sampling.
       // We always generate at most 4 samples.
-      Eigen::array<T, 4> z;
-      Eigen::array<T, 4> g;
       const bool should_bcast = bcast.IsBroadcastingRequired();
       const auto& counts_batch_indices = bcast.x_batch_indices();
       const auto& probs_batch_indices = bcast.y_batch_indices();

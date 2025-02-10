@@ -34,7 +34,6 @@ tf_proto_library(
     name = "compare_test_proto",
     testonly = 1,
     srcs = ["compare_test.proto"],
-    cc_api_version = 2,
 )
 
 tf_py_strict_test(
@@ -61,7 +60,6 @@ filegroup(
 #     name = "compare_test_py_pb2",
 #     testonly = 1,
 #     has_services = 0,
-#     api_version = 2,
 #     deps = [":compare_test_proto"],
 # )
 # copybara:uncomment_end

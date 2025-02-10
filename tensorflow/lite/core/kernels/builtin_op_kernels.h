@@ -321,6 +321,18 @@ Register_STABLEHLO_TRANSPOSE();  // WARNING: not implemented, using this
 TfLiteRegistration* Register_DILATE();
 
 TfLiteRegistration* Register_REDUCE_WINDOW();
+
+TfLiteRegistration*
+Register_STABLEHLO_COMPOSITE();  // WARNING: not implemented, using this
+                                 // op will crash the runtime
+TfLiteRegistration* Register_STABLEHLO_SHIFT_LEFT();
+
+TfLiteRegistration*
+Register_STABLEHLO_CBRT();  // WARNING: not implemented, using this
+                            // op will crash the runtime
+
+TfLiteRegistration* Register_STABLEHLO_CASE();
+
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

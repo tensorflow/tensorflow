@@ -11,7 +11,7 @@ func.func @pack(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<2x1xf32> {
 // CHECK-DAG:       %[[VAL_4:.*]] = "tfl.pseudo_const"{{.*}}dense<[2, 1]> : tensor<2xi32>
 // CHECK:           %[[VAL_5:.*]] = "tfl.reshape"(%[[VAL_0]], %[[VAL_2]]) : (tensor<1xf32>, tensor<4xi32>) -> tensor<1x1x1x1xf32>
 // CHECK:           %[[VAL_6:.*]] = "tfl.reshape"(%[[VAL_1]], %[[VAL_2]]) : (tensor<1xf32>, tensor<4xi32>) -> tensor<1x1x1x1xf32>
-// CHECK:           %[[VAL_7:.*]] = "tfl.concatenation"(%[[VAL_5]], %[[VAL_6]]) {axis = 3 : i32, fused_activation_function = "NONE"} : (tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<1x1x1x2xf32>
+// CHECK:           %[[VAL_7:.*]] = "tfl.concatenation"(%[[VAL_5]], %[[VAL_6]]) <{axis = 3 : i32, fused_activation_function = "NONE"}> : (tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<1x1x1x2xf32>
 // CHECK:           %[[VAL_8:.*]] = "tfl.reshape"(%[[VAL_7]], %[[VAL_3]]) : (tensor<1x1x1x2xf32>, tensor<1xi32>) -> tensor<2xf32>
 // CHECK:           %[[VAL_9:.*]] = "tfl.reshape"(%[[VAL_8]], %[[VAL_4]]) : (tensor<2xf32>, tensor<2xi32>) -> tensor<2x1xf32>
 // CHECK:           return %[[VAL_9]] : tensor<2x1xf32>
@@ -124,8 +124,8 @@ func.func @sub(%arg0: tensor<1x384x384x3xf32>, %arg1: tensor<3xf32>) -> tensor<1
 
 // CHECK:       func @sub(%[[VAL_0:.*]]: tensor<1x384x384x3xf32>, %[[VAL_1:.*]]: tensor<3xf32>) -> tensor<1x384x384x3xf32> {
 // CHECK:           %[[VAL_2:.*]] = arith.constant dense<-1.000000e+00> : tensor<f32>
-// CHECK:           %[[VAL_3:.*]] = tfl.mul(%[[VAL_1]], %[[VAL_2]]) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
-// CHECK:           %[[VAL_4:.*]] = tfl.add(%[[VAL_0]], %[[VAL_3]]) {fused_activation_function = "NONE"} : (tensor<1x384x384x3xf32>, tensor<3xf32>) -> tensor<1x384x384x3xf32>
+// CHECK:           %[[VAL_3:.*]] = tfl.mul(%[[VAL_1]], %[[VAL_2]]) <{fused_activation_function = "NONE"}> : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+// CHECK:           %[[VAL_4:.*]] = tfl.add(%[[VAL_0]], %[[VAL_3]]) <{fused_activation_function = "NONE"}> : (tensor<1x384x384x3xf32>, tensor<3xf32>) -> tensor<1x384x384x3xf32>
 // CHECK:           return %[[VAL_4]] : tensor<1x384x384x3xf32>
 // CHECK:         }
 
@@ -139,7 +139,7 @@ func.func @ensureBiasForConv2d(%arg0: tensor<128x32x32x3xf32>, %arg1: tensor<32x
 
 // CHECK:       func @ensureBiasForConv2d(%[[VAL_0:.*]]: tensor<128x32x32x3xf32>, %[[VAL_1:.*]]: tensor<32x1x1x3xf32>) -> tensor<128x32x32x32xf32> {
 // CHECK:           %[[VAL_2:.*]] = "tfl.pseudo_const"{{.*}}dense<0.000000e+00> : tensor<32xf32>
-// CHECK:           %[[VAL_3:.*]] = "tfl.conv_2d"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<128x32x32x3xf32>, tensor<32x1x1x3xf32>, tensor<32xf32>) -> tensor<128x32x32x32xf32>
+// CHECK:           %[[VAL_3:.*]] = "tfl.conv_2d"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<128x32x32x3xf32>, tensor<32x1x1x3xf32>, tensor<32xf32>) -> tensor<128x32x32x32xf32>
 // CHECK:           return %[[VAL_3]] : tensor<128x32x32x32xf32>
 // CHECK:         }
 
@@ -156,7 +156,7 @@ func.func @padSliceTo4D(%arg0: tensor<4x384x32xf32>) -> tensor<1x384x32xf32> {
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() <{value = dense<0> : tensor<4xi32>}> : () -> tensor<4xi32>
 // CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() <{value = dense<[1, 1, 384, 32]> : tensor<4xi32>}> : () -> tensor<4xi32>
 // CHECK-DAG:       %[[VAL_3:.*]] = "tfl.pseudo_const"{{.*}}dense<[1, 4, 384, 32]> : tensor<4xi32>
-// CHECK-DAG:       %[[VAL_4:.*]] = "tfl.pseudo_const"() {value = dense<[1, 384, 32]> : tensor<3xi32>
+// CHECK-DAG:       %[[VAL_4:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 384, 32]> : tensor<3xi32>
 // CHECK:           %[[VAL_5:.*]] = "tfl.reshape"(%[[VAL_0]], %[[VAL_3]]) : (tensor<4x384x32xf32>, tensor<4xi32>) -> tensor<1x4x384x32xf32>
 // CHECK:           %[[VAL_6:.*]] = "tfl.slice"(%[[VAL_5]], %[[VAL_1]], %[[VAL_2]]) : (tensor<1x4x384x32xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x1x384x32xf32>
 // CHECK:           %[[VAL_7:.*]] = "tfl.reshape"(%[[VAL_6]], %[[VAL_4]]) : (tensor<1x1x384x32xf32>, tensor<3xi32>) -> tensor<1x384x32xf32>
@@ -189,7 +189,7 @@ func.func @fullyConnectedToConv(%arg0: tensor<384x384xf32>, %arg1: tensor<512x38
 // CHECK-DAG:       %[[VAL_5:.*]] = "tfl.pseudo_const"{{.*}}dense<[384, 512]> : tensor<2xi32>
 // CHECK:           %[[VAL_6:.*]] = "tfl.reshape"(%[[VAL_0]], %[[VAL_3]]) : (tensor<384x384xf32>, tensor<4xi32>) -> tensor<1x1x384x384xf32>
 // CHECK:           %[[VAL_7:.*]] = "tfl.reshape"(%[[VAL_1]], %[[VAL_4]]) : (tensor<512x384xf32>, tensor<4xi32>) -> tensor<512x1x1x384xf32>
-// CHECK:           %[[VAL_8:.*]] = "tfl.conv_2d"(%[[VAL_6]], %[[VAL_7]], %[[VAL_2]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x1x384x384xf32>, tensor<512x1x1x384xf32>, tensor<512xf32>) -> tensor<1x1x384x512xf32>
+// CHECK:           %[[VAL_8:.*]] = "tfl.conv_2d"(%[[VAL_6]], %[[VAL_7]], %[[VAL_2]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x1x384x384xf32>, tensor<512x1x1x384xf32>, tensor<512xf32>) -> tensor<1x1x384x512xf32>
 // CHECK:           %[[VAL_9:.*]] = "tfl.reshape"(%[[VAL_8]], %[[VAL_5]]) : (tensor<1x1x384x512xf32>, tensor<2xi32>) -> tensor<384x512xf32>
 // CHECK:           return %[[VAL_9]] : tensor<384x512xf32>
 // CHECK:         }
@@ -208,7 +208,7 @@ func.func @padConcatTo4D(%arg0: tensor<384x384xf32>, %arg1: tensor<384x384xf32>,
 // CHECK:           %[[VAL_7:.*]] = "tfl.reshape"(%[[VAL_1]], %[[VAL_4]]) : (tensor<384x384xf32>, tensor<4xi32>) -> tensor<1x1x384x384xf32>
 // CHECK:           %[[VAL_8:.*]] = "tfl.reshape"(%[[VAL_2]], %[[VAL_4]]) : (tensor<384x384xf32>, tensor<4xi32>) -> tensor<1x1x384x384xf32>
 // CHECK:           %[[VAL_9:.*]] = "tfl.reshape"(%[[VAL_3]], %[[VAL_4]]) : (tensor<384x384xf32>, tensor<4xi32>) -> tensor<1x1x384x384xf32>
-// CHECK:           %[[VAL_10:.*]] = "tfl.concatenation"(%[[VAL_6]], %[[VAL_7]], %[[VAL_8]], %[[VAL_9]]) {axis = 2 : i32, fused_activation_function = "NONE"} : (tensor<1x1x384x384xf32>, tensor<1x1x384x384xf32>, tensor<1x1x384x384xf32>, tensor<1x1x384x384xf32>) -> tensor<1x1x1536x384xf32>
+// CHECK:           %[[VAL_10:.*]] = "tfl.concatenation"(%[[VAL_6]], %[[VAL_7]], %[[VAL_8]], %[[VAL_9]]) <{axis = 2 : i32, fused_activation_function = "NONE"}> : (tensor<1x1x384x384xf32>, tensor<1x1x384x384xf32>, tensor<1x1x384x384xf32>, tensor<1x1x384x384xf32>) -> tensor<1x1x1536x384xf32>
 // CHECK:           %[[VAL_11:.*]] = "tfl.reshape"(%[[VAL_10]], %[[VAL_5]]) : (tensor<1x1x1536x384xf32>, tensor<2xi32>) -> tensor<1536x384xf32>
 // CHECK:           return %[[VAL_11]] : tensor<1536x384xf32>
 // CHECK:         }

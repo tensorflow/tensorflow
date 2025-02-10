@@ -20,14 +20,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_INFEED_MANAGER_H_
 #define XLA_SERVICE_GPU_INFEED_MANAGER_H_
 
-#include <cstdint>
 #include <memory>
 
 #include "absl/status/status.h"
 #include "xla/literal.h"
 #include "xla/service/gpu/xfeed_queue.h"
 #include "xla/shape_tree.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -47,7 +46,7 @@ namespace gpu {
 
 // Client-side class used to enqueue infeed buffers.
 class InfeedManager
-    : public BlockingXfeedQueue<ShapeTree<se::ScopedDeviceMemory<uint8_t>>> {
+    : public BlockingXfeedQueue<ShapeTree<se::DeviceMemoryHandle>> {
  public:
   explicit InfeedManager(se::StreamExecutor* executor);
 
@@ -60,9 +59,6 @@ class InfeedManager
   // Stream used to enqueue infeed device copies.
   std::unique_ptr<se::Stream> stream_;
 };
-
-// Returns the GPU infeed manager for the given stream executor,
-InfeedManager* GetOrCreateInfeedManager(se::StreamExecutor* executor);
 
 }  // namespace gpu
 }  // namespace xla

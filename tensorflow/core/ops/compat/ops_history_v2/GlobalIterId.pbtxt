@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "GlobalIterId"
   output_arg {
     name: "iter_id"

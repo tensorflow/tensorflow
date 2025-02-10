@@ -32,6 +32,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/timespan.h"
+#include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/profiler/protobuf/dcn_collective_info.pb.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
@@ -41,15 +49,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tsl/platform/regexp.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/math_utils.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tsl/profiler/utils/timespan.h"
-#include "tsl/profiler/utils/tpu_xplane_utils.h"
-#include "tsl/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/xplane_utils.h"
-#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -241,8 +241,9 @@ int DcnTracker::GetReplicaGroupSize(const std::string& rendezvous_name,
   return rendezvous_to_replica_group_size_map_[rendezvous_name];
 }
 
+// ComputeTransmittedDataSize is called with the buffer_size for recv-done.
 uint64_t DcnTracker::ComputeTransmittedDataSize(
-    const int64_t buffer_size, const int group_size,
+    const int64_t recv_buffer_size, const int group_size,
     const std::string& transfer_type) {
   uint64_t transmitted_bytes = 0;
   if (group_size == 0) {
@@ -251,17 +252,20 @@ uint64_t DcnTracker::ComputeTransmittedDataSize(
   }
 
   if (transfer_type == "ONE_TO_ONE") {
-    transmitted_bytes = group_size * buffer_size;
+    transmitted_bytes = group_size * recv_buffer_size;
   } else if (transfer_type == "ALL_GATHER") {
-    transmitted_bytes = (group_size - 1) * buffer_size;
+    transmitted_bytes =
+        SafeDivide((group_size - 1) * recv_buffer_size, group_size);
   } else if (transfer_type == "ALL_REDUCE") {
     // Since the reduced buffer now has to be sent back to the replicas,
     // the total bytes transmitted over the network is 2x the shape of the op.
     transmitted_bytes =
-        2 * SafeDivide(group_size - 1, group_size) * buffer_size;
-  } else if (transfer_type == "ALL_TO_ALL" ||
-             transfer_type == "REDUCE_SCATTER") {
-    transmitted_bytes = SafeDivide(group_size - 1, group_size) * buffer_size;
+        2 * SafeDivide(group_size - 1, group_size) * recv_buffer_size;
+  } else if (transfer_type == "ALL_TO_ALL") {
+    transmitted_bytes =
+        SafeDivide(group_size - 1, group_size) * recv_buffer_size;
+  } else if (transfer_type == "REDUCE_SCATTER") {
+    transmitted_bytes = recv_buffer_size * (group_size - 1);
   } else {
     LOG(ERROR) << "Unsupported transfer type: " << transfer_type;
   }

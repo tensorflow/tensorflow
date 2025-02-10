@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <string>
+#include <utility>
 
-#include "absl/strings/ascii.h"
-#include "absl/strings/str_cat.h"
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "llvm-c/Target.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {

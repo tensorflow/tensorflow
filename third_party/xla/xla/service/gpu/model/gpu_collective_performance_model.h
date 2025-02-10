@@ -26,7 +26,9 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 
 #if GOOGLE_CUDA
+#if defined(PLATFORM_POSIX) || defined(PLATFORM_GOOGLE)
 #include <dlfcn.h>
+#endif
 
 #include "third_party/gpus/cuda/nvml/include/nvml.h"
 // Below is a list of function pointers to be used
@@ -57,16 +59,16 @@ class GpuPerformanceWithCollectiveModel : public GpuPerformanceModelBase {
 
   // Table for max system bandwidths GB/s for using NCCL's low latency
   // algorithm. This is used for intra-node estimate.
-  static constexpr std::array<double, 3> kLowLatencyMaxBandwidths = {
-      39.0 /* Volta*/, 87.7 /* Ampere*/, 87.7 /* Hopper*/
+  static constexpr std::array<double, 5> kLowLatencyMaxBandwidths = {
+      39.0 /* Volta */,      87.7 /* Ampere */,    141.0 /* Hopper */,
+      141.0 /* Blackwell */, 141.0 /* next-gen */,
   };
 
   // Max bandwidth in GB/s for ring low latency 128 algorithm per channel on a
   // single-node
-  static constexpr std::array<double, 3> kPerChannelMaxRingLL128Bandwidths = {
-      20.0 /* Volta */,
-      20.0 /* Ampere */,
-      36.7 /* Hopper */,
+  static constexpr std::array<double, 5> kPerChannelMaxRingLL128Bandwidths = {
+      20.0 /* Volta */,     20.0 /* Ampere */,   36.7 /* Hopper */,
+      36.7 /* Blackwell */, 36.7 /* next-gen */,
   };
 
   // Nvlink unidirectional bandwidth for different compute cap. Note this is per

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -84,7 +84,7 @@ namespace xla {
       HloInstruction::CreateTuple(tuple_elements));
 }
 
-/*static*/ StatusOr<HloInstruction*> TupleUtil::ReplaceTupleWith(
+/*static*/ absl::StatusOr<HloInstruction*> TupleUtil::ReplaceTupleWith(
     HloInstruction* new_instruction, HloInstruction* tuple,
     ShapeIndex shape_index, bool insert_bitcast_if_different_shape) {
   const Shape& tuple_shape = tuple->shape();
@@ -244,6 +244,30 @@ HloInstruction* TupleUtil::AssembleTupleInstruction(
         }
       });
   return elements.element({});
+}
+
+HloInstruction* TupleUtil::GetTupleInstructionAtIndex(
+    HloInstruction& tuple, const ShapeIndex& target_index) {
+  HloInstruction* target_index_instr = &tuple;
+
+  for (int32_t tuple_index : target_index) {
+    bool found = false;
+    for (HloInstruction* user : target_index_instr->users()) {
+      if (user->opcode() == HloOpcode::kGetTupleElement &&
+          user->tuple_index() == tuple_index) {
+        target_index_instr = user;
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      // No GTE found at the target index.
+      return nullptr;
+    }
+  }
+
+  return target_index_instr;
 }
 
 }  // namespace xla

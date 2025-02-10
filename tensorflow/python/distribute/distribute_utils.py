@@ -260,7 +260,7 @@ def is_distributed_table(v):
 
 def _validate_colocate_extended(v, extended):
   variable_strategy = v._distribute_strategy  # pylint: disable=protected-access
-  if variable_strategy.extended is not extended:
+  if not variable_strategy or variable_strategy.extended is not extended:
     raise ValueError(
         "`colocate_vars_with` must only be passed a variable created in this "
         "tf.distribute.Strategy.scope(), not %s created in scope: %s" %

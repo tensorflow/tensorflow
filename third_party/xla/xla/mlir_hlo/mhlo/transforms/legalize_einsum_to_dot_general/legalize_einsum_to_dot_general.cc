@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -68,8 +69,8 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
       index++;
     }
 
-    auto lhsType = einsum.getLhs().getType().cast<RankedTensorType>();
-    auto rhsType = einsum.getRhs().getType().cast<RankedTensorType>();
+    auto lhsType = mlir::cast<RankedTensorType>(einsum.getLhs().getType());
+    auto rhsType = mlir::cast<RankedTensorType>(einsum.getRhs().getType());
     assert(static_cast<int64_t>(lhsTokens.size()) == lhsType.getRank());
     assert(static_cast<int64_t>(rhsTokens.size()) == rhsType.getRank());
 
@@ -158,7 +159,7 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
     auto dotGeneralOp = rewriter.create<DotGeneralOp>(
         einsum.getLoc(), dotGeneralResultType, einsum.getLhs(), einsum.getRhs(),
         dimNumbers,
-        /*precision_config=*/ArrayAttr{});
+        /*precision_config=*/ArrayAttr{}, /*dot_algorithm=*/DotAlgorithmAttr{});
 
     if (isNaturalOrder) {
       // The dot_general is already in an appropriate result order.
@@ -178,8 +179,7 @@ struct LegalizeEinsumToDotGeneralPass
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     populateEinsumToDotGeneralPatterns(&getContext(), &patterns);
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
   }

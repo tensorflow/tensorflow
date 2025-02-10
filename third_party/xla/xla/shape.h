@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SHAPE_H_
 #define XLA_SHAPE_H_
 
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <ostream>
@@ -24,13 +25,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -42,9 +44,9 @@ class Shape {
   Shape();
   ~Shape();
   Shape(const Shape&);
-  Shape(Shape&&);
+  Shape(Shape&&) noexcept;
   Shape& operator=(const Shape&);
-  Shape& operator=(Shape&&);
+  Shape& operator=(Shape&&) noexcept;
 
   // Construct a shape from a ShapeProto.
   explicit Shape(const ShapeProto& shape_proto);
@@ -60,6 +62,8 @@ class Shape {
 
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
+  // Sets a ShapeProto to the representation of the Shape.
+  void SetProto(ShapeProto& proto) const;
 
   // Prints a human-readable string that represents the given shape, with or
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
@@ -72,7 +76,6 @@ class Shape {
   // Returns the rank (number of dimensions) of the given shape. Shape must be
   // an array.
   int64_t rank() const {
-    DCHECK(IsArray()) << "Non-arrays do not have a rank, shape: " << ToString();
     return dimensions_.size();
   }
 
@@ -149,17 +152,10 @@ class Shape {
     return absl::MakeSpan(dynamic_dimensions_);
   }
 
-  // Add dimension_upper_bound().
-
   // Removes the given dimension from the shape. Layout, if it exists, is
   // adjusted to match the modified shape.
   void DeleteDimension(int64_t dim_to_delete);
-
-  // The following methods mirror the protobuf generated code interface for the
-  // message ShapeProto. This enabled easy migration of this data structure
-  // from a proto to a proper C++ class.
-  // TODO(b/29771030): Replace or augment these methods with a more ergonomic
-  // interface.
+  void DeleteDimensions(absl::Span<const int64_t> sorted_dims_to_delete);
 
   // Methods for accessing the primitive type.
   PrimitiveType element_type() const { return element_type_; }
@@ -233,11 +229,6 @@ class Shape {
     }
   }
 
-  void Swap(Shape* other) {
-    using std::swap;
-    swap(*this, *other);
-  }
-
   void Clear() {
     element_type_ = PRIMITIVE_TYPE_INVALID;
     clear_dimensions();
@@ -266,8 +257,8 @@ class Shape {
 
     bool operator()(const Shape& lhs, const Shape& rhs);
 
-    Equal& IgnoreLayout() {
-      ignore_layout_ = true;
+    Equal& IgnoreLayout(bool ignore_layout = true) {
+      ignore_layout_ = ignore_layout;
       return *this;
     }
     Equal& IgnoreTilesInLayout() {
@@ -287,6 +278,7 @@ class Shape {
       ignore_element_size_in_layout_ = true;
       ignore_memory_space_in_layout_ = true;
       ignore_tail_padding_alignment_in_elements_in_layout_ = true;
+      ignore_split_config_in_layout_ = true;
       return *this;
     }
     Equal& IgnoreElementType() {
@@ -309,6 +301,10 @@ class Shape {
       ignore_tail_padding_alignment_in_elements_in_layout_ = true;
       return *this;
     }
+    Equal& IgnoreSplitConfigInLayout() {
+      ignore_split_config_in_layout_ = true;
+      return *this;
+    }
 
    private:
     bool ignore_layout_ = false;
@@ -320,6 +316,7 @@ class Shape {
     bool ignore_dynamic_dimension_ = false;
     bool ignore_dimensions_ = false;
     bool ignore_tail_padding_alignment_in_elements_in_layout_ = false;
+    bool ignore_split_config_in_layout_ = false;
   };
 
   // Test that all fields of the shape are the same, equivalent to Equal().

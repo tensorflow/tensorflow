@@ -17,10 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_GPU_BUFFER_COMPARATOR_H_
 
 #include "absl/status/statusor.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
 
@@ -30,7 +29,8 @@ class BufferComparator {
   BufferComparator(const BufferComparator&) = delete;
   BufferComparator(BufferComparator&&) = default;
 
-  BufferComparator(const Shape& shape, const HloModuleConfig& config);
+  explicit BufferComparator(const Shape& shape, double tolerance = 0.1,
+                            bool verbose = true);
 
   // Returns true if the two buffers compare equal. The definition of "equal"
   // is:
@@ -44,23 +44,16 @@ class BufferComparator {
   absl::StatusOr<bool> CompareEqual(se::Stream* stream,
                                     se::DeviceMemoryBase current,
                                     se::DeviceMemoryBase expected) const;
-
  private:
   Shape shape_;
-  HloModuleConfig config_;
+  double relative_tol_;  // relative tolerance for comparison
+  bool verbose_;         // whether to print out error message on mismatch
 };
 
 namespace buffer_comparator {
 
 // Returns a pointer to CUDA C++ device function implementing comparison.
-void* fp8_e4m3fn_comparison();
-void* fp8_e5m2_comparison();
-void* fp16_comparison();
-void* bf16_comparison();
-void* fp32_comparison();
-void* fp64_comparison();
-void* int8_comparison();
-void* int32_comparison();
+void* comparison_fn(xla::PrimitiveType type);
 
 }  // namespace buffer_comparator
 }  // namespace xla::gpu

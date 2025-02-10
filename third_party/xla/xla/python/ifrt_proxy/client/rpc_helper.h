@@ -17,19 +17,19 @@
 #ifndef XLA_PYTHON_IFRT_PROXY_CLIENT_RPC_HELPER_H_
 #define XLA_PYTHON_IFRT_PROXY_CLIENT_RPC_HELPER_H_
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/types.h"
 
 namespace xla {
 namespace ifrt {
@@ -43,14 +43,13 @@ namespace proxy {
 // specify the necessary dependency.
 class RpcHelper {
  public:
-  RpcHelper(IfrtProxyVersion version, std::shared_ptr<ClientSession> session)
-      : version_(std::move(version)), session_(std::move(session)) {}
+  RpcHelper(IfrtProxyVersion version, std::shared_ptr<ClientSession> session);
 
   void Disconnect();
 
   RpcHelper(const RpcHelper&) = delete;
   RpcHelper& operator=(const RpcHelper&) = delete;
-  ~RpcHelper() { Disconnect(); }
+  ~RpcHelper();
 
   // IFRT Proxy version negotiated between the client and the server.
   const IfrtProxyVersion& version() const { return version_; }
@@ -69,7 +68,16 @@ class RpcHelper {
   }
 
   template <typename T>
-  using ResponseFuture = Future<absl::StatusOr<std::shared_ptr<T>>>;
+  using ResponseFuture = Future<std::shared_ptr<T>>;
+
+  class Batcher;
+  enum BatchOperation { kDeleteArray, kDestructArray, kSentinelDoNotUse };
+
+  // Adds the given operation to an impending batch of operations and returns
+  // immediately. The batch of operation is sent later (as a single logical
+  // RPC).  The RPC is guaranteed to be sent before any unbatched RPCs resulting
+  // from the wrapper functions below.
+  void Batch(BatchOperation op, ArrayHandle handle);
 
   // Wrapper function for various logical RPCs defined in ifrt_service.proto.
   // Whenever the RPC finishes, `on_done` will be called with the result or the
@@ -87,20 +95,23 @@ class RpcHelper {
 
   ResponseFuture<CheckFutureResponse> CheckFuture(
       std::unique_ptr<CheckFutureRequest> req);
+  ResponseFuture<CheckValueReadyResponse> CheckValueReady(
+      std::unique_ptr<CheckValueReadyRequest> req);
 
   ResponseFuture<MakeArrayFromHostBufferResponse> MakeArrayFromHostBuffer(
       std::unique_ptr<MakeArrayFromHostBufferRequest> req);
   ResponseFuture<AssembleArrayFromSingleDeviceArraysResponse>
   AssembleArrayFromSingleDeviceArrays(
       std::unique_ptr<AssembleArrayFromSingleDeviceArraysRequest> req);
+  ResponseFuture<RemapArraysResponse> RemapArrays(
+      std::unique_ptr<RemapArraysRequest> req);
   ResponseFuture<DisassembleIntoSingleDeviceArraysResponse>
   DisassembleIntoSingleDeviceArrays(
       std::unique_ptr<DisassembleIntoSingleDeviceArraysRequest> req);
   ResponseFuture<CopyToHostBufferResponse> CopyToHostBuffer(
       std::unique_ptr<CopyToHostBufferRequest> req);
-  ResponseFuture<CheckArrayReadyResponse> CheckArrayReady(
-      std::unique_ptr<CheckArrayReadyRequest> req);
-  ResponseFuture<ReshardResponse> Reshard(std::unique_ptr<ReshardRequest> req);
+  ResponseFuture<CopyArraysResponse> CopyArrays(
+      std::unique_ptr<CopyArraysRequest> req);
   ResponseFuture<FullyReplicatedShardResponse> FullyReplicatedShard(
       std::unique_ptr<FullyReplicatedShardRequest> req);
   ResponseFuture<IsArrayDeletedResponse> IsArrayDeleted(
@@ -128,16 +139,22 @@ class RpcHelper {
   ResponseFuture<LoadedHostCallbackReturnResponse> LoadedHostCallbackReturn(
       std::unique_ptr<LoadedHostCallbackReturnRequest> req);
 
-  // Utility functions for common functions.
+  // Utility functions.
 
-  Future<absl::Status> CheckFuture(uint64_t handle);
+  // Generates a handle for new arrays, array data stored in HostBufferStore,
+  // etc. Guarantees that the generated handle will not conflict with those
+  // generated at the server side by IfrtBackend.
+  uint64_t NextHandle();
+
+  Future<> CheckFuture(uint64_t handle);
 
  private:
-  RequestMetadata ManufactureRequestMetadata() ABSL_LOCKS_EXCLUDED(mu_);
+  const std::unique_ptr<Batcher> batcher_;
 
   const IfrtProxyVersion version_;
-  const std::shared_ptr<ClientSession> session_;
   std::shared_ptr<ClientHostBufferStore> host_buffer_store_;
+
+  std::atomic<uint64_t> next_handle_ = 1;
 
   absl::Mutex mu_;
   uint64_t next_op_id_ ABSL_GUARDED_BY(mu_) = 1;

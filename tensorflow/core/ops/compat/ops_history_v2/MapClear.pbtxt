@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "MapClear"
   attr {
     name: "capacity"

@@ -107,7 +107,8 @@ class SparseDenseBinaryOpShared : public OpKernel {
 
     // True iff (size(lhs) >= size(rhs)) and all dims in lhs is greater or equal
     // to dims in rhs (from right to left).
-    auto VecGreaterEq = [](ArraySlice<int64_t> lhs, ArraySlice<int64_t> rhs) {
+    auto VecGreaterEq = [](absl::Span<const int64_t> lhs,
+                           absl::Span<const int64_t> rhs) {
       if (lhs.size() < rhs.size()) return false;
       for (size_t i = 0; i < rhs.size(); ++i) {
         if (lhs[lhs.size() - 1 - i] < rhs[rhs.size() - 1 - i]) return false;

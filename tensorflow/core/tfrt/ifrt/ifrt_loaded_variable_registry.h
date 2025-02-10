@@ -16,14 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_LOADED_VARIABLE_REGISTRY_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_LOADED_VARIABLE_REGISTRY_H_
 
+#include <string>
+#include <vector>
+
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/python/ifrt/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -31,9 +39,40 @@ namespace ifrt_serving {
 // This class is thread safe.
 class IfrtLoadedVariableRegistry {
  public:
+  // The key is per variable tensor per device assignment. For single -device
+  // program, variables can be loaded on multiple devices with core selection.
+  // For SPMD program, we currently assume all devices will be used, so we use
+  // vector to make it compatible with SPMD.
+  struct Key {
+    // We use a vector to make it compatible with SPMD because the order of the
+    // devices used for sharding must match the order of the devices used for
+    // xla compilation.
+    std::vector<int> device_ids;
+    std::string input_name;
+    xla::HloSharding hlo_sharding;
+    template <typename H>
+    friend H AbslHashValue(H h, const Key& key) {
+      h = H::combine(std::move(h), key.input_name, key.device_ids,
+                     key.hlo_sharding);
+      return h;
+    }
+
+    friend bool operator==(const Key& x, const Key& y) {
+      return x.input_name == y.input_name && x.device_ids == y.device_ids &&
+             x.hlo_sharding == y.hlo_sharding;
+    }
+
+    std::string ToString() const {
+      return absl::StrCat(input_name, ":", absl::StrJoin(device_ids, ","), ":",
+                          hlo_sharding.ToString());
+    }
+  };
+
+  struct LoadedVariable {
+    xla::ifrt::Future<tsl::RCReference<xla::ifrt::Array>> array;
+  };
   using LoadedVariableConstructor =
-      absl::AnyInvocable<absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>()
-                             const>;
+      absl::AnyInvocable<absl::StatusOr<LoadedVariable>() const>;
 
   // Tries to register a loaded variable with the given name.
   // Returns an error if the named array does not already exists and
@@ -41,17 +80,16 @@ class IfrtLoadedVariableRegistry {
   // OK if the named array already exists.
   // loaded_variable_constructor is invoked in the caller thread.
   absl::Status TryRegisterLoadedVariable(
-      absl::string_view name,
-      LoadedVariableConstructor&& loaded_variable_constructor)
+      const Key& key, LoadedVariableConstructor&& loaded_variable_constructor)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> GetLoadedVariable(
-      absl::string_view name) const ABSL_LOCKS_EXCLUDED(mutex_);
+  absl::StatusOr<LoadedVariable> GetLoadedVariable(const Key& key) const
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<std::string, tsl::RCReference<xla::ifrt::Array>>
-      loaded_variable_map_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<Key, LoadedVariable> loaded_variable_map_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace ifrt_serving

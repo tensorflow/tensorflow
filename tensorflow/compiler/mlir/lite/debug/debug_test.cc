@@ -46,11 +46,10 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace debug_test {
@@ -120,7 +119,7 @@ class InitPassManagerTest : public testing::Test {
     builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
   }
 
-  tsl::Status GetDumpDir(std::string* dump_dir) {
+  absl::Status GetDumpDir(std::string* dump_dir) {
     std::vector<string> files;
     if (auto status = tsl::Env::Default()->GetChildren(path_, &files);
         !status.ok()) {
@@ -131,7 +130,7 @@ class InitPassManagerTest : public testing::Test {
           "Expecting directory to have one child.");
     }
     *dump_dir = tsl::io::JoinPath(path_, files[0]);
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   std::string path_;

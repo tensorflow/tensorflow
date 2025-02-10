@@ -47,7 +47,7 @@ def assert_next(transformations):
 def assert_prev(transformations):
   r"""Asserts which transformations, with which attributes, happened previously.
 
-    Each transformation is repesented as a tuple in the input.
+    Each transformation is represented as a tuple in the input.
 
     The first element is the base op name of the transformation, not including
     version suffix.  For example, use "BatchDataset" instead of

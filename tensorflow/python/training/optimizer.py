@@ -33,6 +33,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import base as trackable
@@ -169,7 +170,30 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
             "Cannot use a constraint function on a sparse variable.")
       return optimizer._resource_apply_sparse_duplicate_indices(
           g.values, self._v, g.indices)
-    update_op = optimizer._resource_apply_dense(g, self._v)
+
+    if context.xla_sharding_for_resource_variables_enabled():
+      # For each slot variable that is annotated with an XLA sharding, we read
+      # the variable and assign the value to itself. This is done to trigger the
+      # creation of an XlaShardingOp when a ReadVariableOp is created upon the
+      # call to `slot_var.read_value()`. This is needed to ensure that slot
+      # variables with XLA sharding are sharded correctly. Please see
+      # b/307541427 for more details.
+      assign_ops = []
+      for variable_dict in optimizer._slots.values():
+        for slot_var in variable_dict.values():
+          if (
+              isinstance(slot_var, resource_variable_ops.BaseResourceVariable)
+              and slot_var._get_xla_sharding() is not None
+          ):
+            assign_ops.append(slot_var.assign(slot_var.read_value()))
+
+      # The assign_ops created above are added as a control dependency for the
+      # update op to make sure these appear before the update_op.
+      with ops.control_dependencies(assign_ops):
+        update_op = optimizer._resource_apply_dense(g, self._v)
+    else:
+      update_op = optimizer._resource_apply_dense(g, self._v)
+
     if self._v.constraint is not None:
       with ops.control_dependencies([update_op]):
         return self._v.assign(self._v.constraint(self._v))
@@ -383,7 +407,9 @@ class Optimizer(
   GATE_OP = 1
   GATE_GRAPH = 2
 
-  def __init__(self, use_locking, name):
+  def __init__(
+      self, use_locking, name, use_own_namescope_for_non_slot_vars=False
+  ):
     """Create a new Optimizer.
 
     This must be called by the constructors of subclasses.
@@ -391,8 +417,10 @@ class Optimizer(
     Args:
       use_locking: Bool. If True apply use locks to prevent concurrent updates
         to variables.
-      name: A non-empty string.  The name to use for accumulators created
-        for the optimizer.
+      name: A non-empty string.  The name to use for accumulators created for
+        the optimizer.
+      use_own_namescope_for_non_slot_vars: If True, use a root namescope under
+        self._name for non-slot variables.
 
     Raises:
       ValueError: If name is malformed.
@@ -401,6 +429,13 @@ class Optimizer(
       raise ValueError("Must specify the optimizer name")
     self._use_locking = use_locking
     self._name = name
+    self._use_own_namescope_for_non_slot_vars = (
+        use_own_namescope_for_non_slot_vars
+    )
+    if self._use_own_namescope_for_non_slot_vars:
+      with variable_scope.variable_scope(None, default_name=self._name) as vs:
+        self._non_slot_variable_scope = vs
+
     # Dictionary of slots.
     #  {slot_name :
     #      {_var_key(variable_to_train): slot_for_the_variable, ... },
@@ -925,10 +960,26 @@ class Optimizer(
               name=name)
           if restored_initial_value is not None:
             initial_value = restored_initial_value
-        v = variable_v1.VariableV1(
-            initial_value, name=name, trainable=False,
-            use_resource=resource_variable_ops.is_resource_variable(
-                colocate_with))
+        if self._use_own_namescope_for_non_slot_vars:
+          with ops.name_scope("", skip_on_eager=False):
+            with variable_scope.variable_scope(self._non_slot_variable_scope):
+              v = variable_scope.get_variable(
+                  initializer=initial_value,
+                  name=name,
+                  trainable=False,
+                  use_resource=resource_variable_ops.is_resource_variable(
+                      colocate_with
+                  ),
+              )
+        else:
+          v = variable_v1.VariableV1(
+              initial_value,
+              name=name,
+              trainable=False,
+              use_resource=resource_variable_ops.is_resource_variable(
+                  colocate_with
+              ),
+          )
       # Restore this variable by name if necessary, but don't add a
       # Trackable dependency. Optimizers return the current graph's
       # non-slot variables from _checkpoint_dependencies explicitly rather

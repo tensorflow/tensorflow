@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_REDUCE_KEY_H_
 #define XLA_SERVICE_ALL_REDUCE_KEY_H_
 
+#include <cstdint>
+#include <optional>
 #include <tuple>
 #include <vector>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_domain_map.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

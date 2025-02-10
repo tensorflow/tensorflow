@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/test.h"
@@ -154,8 +155,7 @@ TEST_F(ConstantFoldingTest, FoldDepthwiseConvWeight) {
 
   RewritePatternSet patterns(ctx_.get());
   patterns.add<ConstantFoldQuantizableOperands>(ctx_.get());
-  EXPECT_TRUE(
-      succeeded(applyPatternsAndFoldGreedily(test_func, std::move(patterns))));
+  EXPECT_TRUE(succeeded(applyPatternsGreedily(test_func, std::move(patterns))));
 
   auto depthwise_conv_op =
       FindOperationOfType<TF::DepthwiseConv2dNativeOp>(test_func);
@@ -187,8 +187,7 @@ TEST_F(ConstantFoldingTest, DepthwiseConvWeightNotFoldable) {
 
   RewritePatternSet patterns(ctx_.get());
   patterns.add<ConstantFoldQuantizableOperands>(ctx_.get());
-  EXPECT_TRUE(
-      succeeded(applyPatternsAndFoldGreedily(test_func, std::move(patterns))));
+  EXPECT_TRUE(succeeded(applyPatternsGreedily(test_func, std::move(patterns))));
 
   auto depthwise_conv_op =
       FindOperationOfType<TF::DepthwiseConv2dNativeOp>(test_func);

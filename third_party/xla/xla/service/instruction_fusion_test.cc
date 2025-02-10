@@ -15,9 +15,19 @@ limitations under the License.
 
 #include "xla/service/instruction_fusion.h"
 
+#include <optional>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -119,9 +129,10 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusible) {
   HloInstruction* binary1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      binary1, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, /*channel_id=*/0, /*is_host_transfer=*/false));
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
@@ -318,9 +329,10 @@ TEST_F(InstructionFusionTest, AllowUnaryDuplication) {
   HloInstruction* unary1 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kFloor, param0));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(unary1, token, 0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      unary1, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, /*channel_id=*/0, /*is_host_transfer=*/false));
   HloInstruction* unary2 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, unary1));
 
@@ -346,9 +358,10 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
   HloInstruction* binary1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, broadcast, param1));
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto send =
-      builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
-  builder.AddInstruction(HloInstruction::CreateSendDone(send));
+  auto send = builder.AddInstruction(HloInstruction::CreateSend(
+      binary1, token, /*channel_id=*/0, /*is_host_transfer=*/false));
+  builder.AddInstruction(HloInstruction::CreateSendDone(
+      send, /*channel_id=*/0, /*is_host_transfer=*/false));
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
@@ -750,23 +763,53 @@ TEST_F(InstructionFusionTest, DontFuseAcrossRoot) {
       op::Add(op::Multiply(op::Parameter(), op::Parameter()), op::Parameter()));
 }
 
+TEST_F(InstructionFusionTest, DontFuseProducerIfInplaceConflict) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  func {
+    p0 = f32[200,200]{1,0} parameter(0)
+    p1 = f32[200,200]{1,0} parameter(1)
+    p2 = s32[72]{0} parameter(2)
+    bitcast0 = f32[200,200]{0,1} bitcast(p1)
+    bitcast1 = s32[72,1]{1,0} bitcast(p2)
+    gather = f32[72,1,200]{0,2,1} gather(bitcast0, bitcast1), offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,200}
+    bitcast2 = f32[200,72]{1,0} bitcast(gather)
+    constant0 = s32[] constant(128)
+    constant1 = s32[] constant(0)
+    ROOT dynamic-update-slice = f32[200,200]{1,0} dynamic-update-slice(p0, bitcast2, constant1, constant0)
+  }
+  ENTRY entry_computation {
+    p0 = f32[200,200]{1,0} parameter(0)
+    p1 = f32[200,200]{1,0} parameter(1)
+    p2 = s32[72]{0} parameter(2)
+    add = f32[200,200]{1,0} add(p0, p1)
+    ROOT fusion = f32[200,200]{1,0} fusion(p0, add, p2), kind=kLoop, calls=func
+  })")
+                    .value();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* add = root->mutable_operand(1);
+  FusionDecision fusion_decision =
+      InstructionFusion::ShouldFuseInPlaceOp(add, root, std::nullopt);
+  EXPECT_FALSE(fusion_decision.CanFuse());
+}
+
 class FusionDecisionTest : public HloTestBase {};
 
 TEST_F(FusionDecisionTest, NotFusionPossibleDisjunction) {
-  FusionDecision a = {};
-  FusionDecision b = "not possible";
+  FusionDecision a = FusionDecision::Allow();
+  FusionDecision b = FusionDecision::Forbid("not possible");
   EXPECT_TRUE(!a || !b);
 
-  a = "not possible";
-  b = {};
+  a = FusionDecision::Forbid("not possible");
+  b = FusionDecision::Allow();
   EXPECT_TRUE(!a || !b);
 
-  a = "impossible";
-  b = "very impossible";
+  a = FusionDecision::Forbid("impossible");
+  b = FusionDecision::Forbid("very impossible");
   EXPECT_TRUE(!a || !b);
 
-  a = {};
-  b = {};
+  a = FusionDecision::Allow();
+  b = FusionDecision::Allow();
   EXPECT_FALSE(!a || !b);
 }
 

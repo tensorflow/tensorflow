@@ -42,8 +42,8 @@ using shape_inference::UnchangedShape;
 
 namespace {
 
-Status GetAxisForPackAndUnpack(InferenceContext* c, int32_t rank_after_pack,
-                               int32* axis) {
+absl::Status GetAxisForPackAndUnpack(InferenceContext* c,
+                                     int32_t rank_after_pack, int32* axis) {
   TF_RETURN_IF_ERROR(c->GetAttr("axis", axis));
   if (*axis < -1 * rank_after_pack || *axis >= rank_after_pack) {
     return errors::InvalidArgument("Invalid axis: ", *axis, "; must be in [",
@@ -65,8 +65,8 @@ std::vector<int64_t> AsInt64(const Tensor* tensor, int64_t num_elements) {
 }
 
 template <typename T>
-Status PadKnown(InferenceContext* c, ShapeHandle input,
-                const Tensor* paddings_t, int64_t num_dims) {
+absl::Status PadKnown(InferenceContext* c, ShapeHandle input,
+                      const Tensor* paddings_t, int64_t num_dims) {
   // paddings_t is known.
   std::vector<DimensionHandle> dims(num_dims);
   auto paddings_data = paddings_t->matrix<T>();
@@ -82,7 +82,7 @@ Status PadKnown(InferenceContext* c, ShapeHandle input,
   return absl::OkStatus();
 }
 
-Status PadShapeFn(InferenceContext* c) {
+absl::Status PadShapeFn(InferenceContext* c) {
   // Paddings is a matrix of [input_rank, 2].
   ShapeHandle paddings;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &paddings));
@@ -122,7 +122,7 @@ Status PadShapeFn(InferenceContext* c) {
   }
 }
 
-Status TransposeShapeFn(InferenceContext* c) {
+absl::Status TransposeShapeFn(InferenceContext* c) {
   ShapeHandle input = c->input(0);
   ShapeHandle perm_shape = c->input(1);
   const Tensor* perm = c->input_tensor(1);
@@ -188,7 +188,7 @@ Status TransposeShapeFn(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status SetOutputShapeForReshape(InferenceContext* c) {
+absl::Status SetOutputShapeForReshape(InferenceContext* c) {
   ShapeHandle in = c->input(0);
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
@@ -1120,7 +1120,7 @@ REGISTER_OP("Fill")
     .Attr("index_type: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       DataType index_type = DT_INT32;
-      Status s = c->GetAttr("index_type", &index_type);
+      absl::Status s = c->GetAttr("index_type", &index_type);
       if (!s.ok() && s.code() != error::NOT_FOUND) {
         return s;
       }
@@ -1306,6 +1306,7 @@ REGISTER_OP("GatherNd")
     .Output("output: Tparams")
     .Attr("Tparams: type")
     .Attr("Tindices: {int16,int32,int64}")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(shape_inference::GatherNdShape);
 
 // --------------------------------------------------------------------------
@@ -1321,18 +1322,6 @@ REGISTER_OP("Snapshot")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn(shape_inference::UnchangedShape);
-
-#ifdef INTEL_MKL
-REGISTER_OP("_MklIdentity")
-    .Input("input: T")
-    .Input("mkl_input: uint8")
-    .Output("output: T")
-    .Output("mkl_output: uint8")
-    .Attr("T: type")
-    .SetShapeFn(shape_inference::UnchangedShape)
-    .Doc(R"Doc( Mkl implementation of IdentityOp
-)Doc");
-#endif
 
 REGISTER_OP("IdentityN")
     .Input("input: T")
@@ -1419,21 +1408,6 @@ REGISTER_OP("Reshape")
       return SetOutputShapeForReshape(c);
     });
 
-#ifdef INTEL_MKL
-REGISTER_OP("_MklReshape")
-    .Input("tensor: T")
-    .Input("shape: Tshape")
-    .Input("mkl_tensor: uint8")
-    .Input("mkl_shape: uint8")
-    .Output("output: T")
-    .Output("mkl_output: uint8")
-    .Attr("T: type")
-    .Attr("Tshape: {int32, int64} = DT_INT32")
-    .SetShapeFn([](InferenceContext* c) { return SetOutputShapeForReshape(c); })
-    .Doc(R"Doc( MKL implementation of ReshapeOp.
-)Doc");
-#endif  // INTEL_MKL
-
 // --------------------------------------------------------------------------
 REGISTER_OP("InvertPermutation")
     .Input("x: T")
@@ -1486,7 +1460,7 @@ REGISTER_OP("_MklConjugateTranspose")
 
 // --------------------------------------------------------------------------
 namespace {
-Status UniqueIdxShapeFn(InferenceContext* c) {
+absl::Status UniqueIdxShapeFn(InferenceContext* c) {
   ShapeHandle input = c->input(0);
   const Tensor* axis_t = c->input_tensor(1);
   if (axis_t == nullptr || !c->RankKnown(input)) {
@@ -1591,7 +1565,7 @@ REGISTER_OP("UniqueWithCountsV2")
 
 namespace {
 
-Status ShapeShapeFn(InferenceContext* c) {
+absl::Status ShapeShapeFn(InferenceContext* c) {
   for (int i = 0; i < c->num_inputs(); ++i) {
     DimensionHandle dim;
     if (c->RankKnown(c->input(i))) {
@@ -1728,21 +1702,6 @@ REGISTER_OP("Slice")
     .Attr("Index: {int32,int64}")
     .SetShapeFn(shape_inference::SliceShape);
 
-#ifdef INTEL_MKL
-REGISTER_OP("_MklSlice")
-    .Input("input: T")
-    .Input("begin: Index")
-    .Input("size: Index")
-    .Input("mkl_input: uint8")
-    .Input("mkl_begin: uint8")
-    .Input("mkl_size: uint8")
-    .Output("output: T")
-    .Output("mkl_output: uint8")
-    .Attr("T: type")
-    .Attr("Index: {int32,int64}")
-    .SetShapeFn(shape_inference::SliceShape);
-#endif
-
 REGISTER_OP("StridedSlice")
     .Input("input: T")
     .Input("begin: Index")
@@ -1794,7 +1753,7 @@ REGISTER_OP("StridedSlice")
 
       PartialTensorShape processing_shape, final_shape;
       bool is_identity, is_simple_slice, slice_dim0;
-      gtl::InlinedVector<int64, 4> begin, end, strides;
+      absl::InlinedVector<int64, 4UL> begin, end, strides;
       TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
           begin_value, end_value, *strides_value, input_shape, begin_mask,
           end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
@@ -2014,8 +1973,8 @@ REGISTER_OP("MirrorPad")
 // --------------------------------------------------------------------------
 namespace {
 template <typename T>
-Status MirrorPadKnown(InferenceContext* c, ShapeHandle input,
-                      const Tensor* paddings_t, int64_t input_rank) {
+absl::Status MirrorPadKnown(InferenceContext* c, ShapeHandle input,
+                            const Tensor* paddings_t, int64_t input_rank) {
   auto paddings_data = paddings_t->matrix<T>();
   std::vector<DimensionHandle> dims(input_rank);
   for (int64_t i = 0; i < input_rank; ++i) {
@@ -2285,11 +2244,12 @@ std::vector<int64_t> GetFlatInt64(const Tensor& t) {
   }
 }
 
-Status SpaceToBatchShapeHelper(InferenceContext* c, ShapeHandle input_shape,
-                               ShapeHandle block_shape_shape,
-                               const Tensor* block_shape_t,
-                               ShapeHandle paddings_shape,
-                               const Tensor* paddings_t) {
+absl::Status SpaceToBatchShapeHelper(InferenceContext* c,
+                                     ShapeHandle input_shape,
+                                     ShapeHandle block_shape_shape,
+                                     const Tensor* block_shape_t,
+                                     ShapeHandle paddings_shape,
+                                     const Tensor* paddings_t) {
   if (c->Rank(block_shape_shape) != 1) {
     return errors::InvalidArgument("block_shape must have rank 1.");
   }
@@ -2361,10 +2321,12 @@ Status SpaceToBatchShapeHelper(InferenceContext* c, ShapeHandle input_shape,
   return absl::OkStatus();
 }
 
-Status BatchToSpaceShapeHelper(InferenceContext* c, ShapeHandle input_shape,
-                               ShapeHandle block_shape_shape,
-                               const Tensor* block_shape_t,
-                               ShapeHandle crops_shape, const Tensor* crops_t) {
+absl::Status BatchToSpaceShapeHelper(InferenceContext* c,
+                                     ShapeHandle input_shape,
+                                     ShapeHandle block_shape_shape,
+                                     const Tensor* block_shape_t,
+                                     ShapeHandle crops_shape,
+                                     const Tensor* crops_t) {
   if (c->Rank(block_shape_shape) != 1) {
     return errors::InvalidArgument("block_shape must have rank 1.");
   }
@@ -3059,7 +3021,7 @@ REGISTER_OP("Dequantize")
     .Attr("dtype: {bfloat16, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       int axis = -1;
-      Status s = c->GetAttr("axis", &axis);
+      absl::Status s = c->GetAttr("axis", &axis);
       if (!s.ok() && s.code() != error::NOT_FOUND) {
         return s;
       }
@@ -3167,7 +3129,7 @@ REGISTER_OP("QuantizedInstanceNorm")
 
 namespace {
 
-Status ScatterNdTensorShape(InferenceContext* c) {
+absl::Status ScatterNdTensorShape(InferenceContext* c) {
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &output_shape));
   ShapeHandle indices_shape;
@@ -3215,6 +3177,7 @@ REGISTER_OP("ScatterNd")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int16, int32, int64}")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle indices_shape;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &indices_shape));
@@ -3233,6 +3196,7 @@ REGISTER_OP("TensorScatterUpdate")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int16, int32, int64, uint16}")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdTensorShape);
 
 REGISTER_OP("TensorScatterAdd")
@@ -3242,6 +3206,7 @@ REGISTER_OP("TensorScatterAdd")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdTensorShape);
 
 REGISTER_OP("TensorScatterSub")
@@ -3251,6 +3216,7 @@ REGISTER_OP("TensorScatterSub")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdTensorShape);
 
 REGISTER_OP("TensorScatterMin")
@@ -3260,6 +3226,7 @@ REGISTER_OP("TensorScatterMin")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdTensorShape);
 
 REGISTER_OP("TensorScatterMax")
@@ -3269,6 +3236,7 @@ REGISTER_OP("TensorScatterMax")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdTensorShape);
 
 REGISTER_OP("ScatterNdNonAliasingAdd")
@@ -3278,6 +3246,7 @@ REGISTER_OP("ScatterNdNonAliasingAdd")
     .Output("output: T")
     .Attr("T: {numbertype, bool}")
     .Attr("Tindices: {int32, int64}")
+    .Attr("bad_indices_policy: string = ''")
     .SetShapeFn(ScatterNdTensorShape);
 
 REGISTER_OP("FakeQuantWithMinMaxArgs")

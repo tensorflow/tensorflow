@@ -15,13 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_TFR_DECOMPOSE_CTX_H_
 #define TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_TFR_DECOMPOSE_CTX_H_
 
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tsl/platform/statusor.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 namespace tfr {
@@ -46,16 +49,16 @@ class TFRDecomposeContext {
   // Constructs the decompose context from the tfr text module and the mlir
   // context. The tfr text module is added to the mlir context.
   static std::unique_ptr<TFRDecomposeContext> GetFromText(
-      StringPiece tfr_raw_text, mlir::MLIRContext* mlir_ctx);
+      absl::string_view tfr_raw_text, mlir::MLIRContext* mlir_ctx);
 
   // Decomposes the op in the NodeDef to a set of primitive ops according to the
   // decompose library in the context. Wrap the decomposed result in a
   // FunctionDef.
   absl::StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
-                                         StringPiece func_name);
+                                         absl::string_view func_name);
 
   // Runs the decompose passes on the user_module.
-  Status DecomposeGraph(mlir::ModuleOp user_module);
+  absl::Status DecomposeGraph(mlir::ModuleOp user_module);
 
   // Erases the tfr_module created.
   void Destroy();
@@ -70,11 +73,11 @@ class TFRDecomposeContext {
 // Decomposes the NodeDef to a set of primitive ops according to the decompose
 // library loaded. Wrap the decomposed result in a FunctionDef.
 absl::StatusOr<FunctionDef> ExpandNode(const NodeDef& node_def,
-                                       StringPiece func_name);
+                                       absl::string_view func_name);
 
 // Decomposes the ops in the ModuleOp to a set of primitive ops according to
 // decompose library in the context.
-Status DecomposeGraph(mlir::ModuleOp user_module);
+absl::Status DecomposeGraph(mlir::ModuleOp user_module);
 
 }  // namespace tfr
 }  // namespace tensorflow

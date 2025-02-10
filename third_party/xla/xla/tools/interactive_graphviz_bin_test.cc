@@ -17,8 +17,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/subprocess.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/subprocess.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -43,7 +44,7 @@ TEST(InteractiveGraphviz, CPU) {
                                    "--platform=Host"};
 
   // Logging to stderr is the default externally.
-  if (!tsl::testing::kIsOpenSource) args.push_back("--logtostderr");
+  if (!tsl::kIsOpenSource) args.push_back("--logtostderr");
 
   tsl::SubProcess proc;
   proc.SetProgram(interactive_graphviz_bin, args);
@@ -57,8 +58,12 @@ TEST(InteractiveGraphviz, CPU) {
   std::string out, err;
 
   int status = proc.Communicate(&in, &out, &err);
+#if defined(_WIN32) || defined(_WIN64)
+  EXPECT_EQ(0, status);
+#else
   EXPECT_TRUE(WIFEXITED(status));
   EXPECT_EQ(0, WEXITSTATUS(status));
+#endif  // defined(_WIN32) || defined(_WIN64)
   ASSERT_THAT(err, testing::HasSubstr("Compiling module for Host"));
 }
 

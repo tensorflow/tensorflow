@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
@@ -49,6 +50,7 @@ enum class GpuApi {
 
 enum class AdrenoGpu {
   // Adreno 7xx series
+  kAdreno750,
   kAdreno740,
   kAdreno730,
   // Adreno 6xx series
@@ -173,11 +175,20 @@ enum class AppleGpu {
   kA15,
   kA16,
   kA17Pro,
+  kA18,
+  kA18Pro,
   kM1,
   kM1Pro,
   kM1Max,
   kM1Ultra,
   kM2,
+  kM2Pro,
+  kM2Max,
+  kM2Ultra,
+  kM3,
+  kM3Pro,
+  kM3Max,
+  kM4,
 };
 
 struct AppleInfo {
@@ -214,6 +225,9 @@ struct AppleInfo {
 
   bool IsBionic() const;
   bool IsM1Series() const;
+  bool IsM2Series() const;
+  bool IsM3Series() const;
+  bool IsM4Series() const;
 
   bool IsSIMDMatMulSupported() const;
   // Often, fp32 alu performance is 1/2 of fp16 alu performance
@@ -446,6 +460,8 @@ struct OpenClInfo {
   bool supports_fp32_rtn;
   bool supports_fp16_rtn;
 
+  bool supports_register_allocation_arm = false;
+
   struct SupportedImage2dTypes {
     absl::flat_hash_set<DataType> r_layout;
     absl::flat_hash_set<DataType> rg_layout;
@@ -523,6 +539,7 @@ struct GpuInfo {
   // returns true if device have fixed wave size equal to 32
   bool IsWaveSizeEqualTo32() const;
   bool SupportsSubGroupWithSize(int sub_group_size) const;
+  absl::Status GetMinSubGroupSize(int& min_sub_group_size) const;
 
   bool SupportsFloatImage2D(DataType data_type, int channels) const;
   bool SupportsExtension(const std::string& extension) const;

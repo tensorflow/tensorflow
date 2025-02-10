@@ -15,10 +15,10 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 
@@ -28,7 +28,7 @@ namespace {
 class MatmulTestWithCublas : public HloTestBase,
                              public ::testing::WithParamInterface<bool> {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(use_cublas_lt_);
     return debug_options;
@@ -50,6 +50,45 @@ class MatmulTestWithCublas : public HloTestBase,
  private:
   const bool use_cublas_lt_{GetParam()};
 };
+
+TEST_P(MatmulTestWithCublas, GemmRewriter_NonCanonicalDots) {
+  const char* module_str = R"(
+    HloModule m
+    a {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+    test {
+      p0 = f32[32,8,5,6] parameter(0)
+      p1 = f32[8,32,6,7] parameter(1)
+      d = f32[32,8,5,7] dot(p0, p1),
+        lhs_batch_dims={0,1},
+        rhs_batch_dims={1,0},
+        rhs_contracting_dims={2},
+        lhs_contracting_dims={3}
+     c = f32[] constant(0)
+     ROOT r = f32[8,5,7] reduce(d,c), dimensions={0}, to_apply=a
+    }
+  )";
+  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-4, 1e-4}));
+}
+
+TEST_P(MatmulTestWithCublas, GemmRewriter_RegressionTestF64) {
+  const char* module_str = R"(
+HloModule GeneralMatMulActivation.7, entry_computation_layout={(f64[2,2,2]{2,1,0}, f64[2,2,2]{2,1,0})->f64[2,2,2]{2,1,0}}
+
+ENTRY GeneralMatMulActivation.7 {
+  x.1 = f64[2,2,2]{2,1,0} parameter(0)
+  y.2 = f64[2,2,2]{2,1,0} parameter(1)
+  dot.3 = f64[2,2,2]{2,1,0} dot(x.1, y.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  constant.4 = f64[] constant(0)
+  broadcast.5 = f64[2,2,2]{2,1,0} broadcast(constant.4), dimensions={}
+  ROOT maximum.6 = f64[2,2,2]{2,1,0} maximum(dot.3, broadcast.5)
+})";
+
+  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-4, 1e-4}));
+}
 
 // There was an issue where the compilation process of an Inverse operation was
 // resulting in a cached cuBLASLt matmul plan which was incorrectly fetched at

@@ -75,7 +75,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleParameter(HloInstruction* parameter) override;
   absl::Status HandleTuple(HloInstruction* tuple) override;
   absl::Status HandleScatter(HloInstruction* scatter) override;
-  absl::Status HandleFusion(HloInstruction* fusion) override;
   absl::Status HandleCall(HloInstruction* call) override;
   absl::Status HandleCustomCall(HloInstruction* custom_call) override;
   absl::Status HandleBatchNormInference(HloInstruction* batch_norm) override;
@@ -87,7 +86,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     return absl::OkStatus();
   }
 
-  llvm::IRBuilder<>* builder() { return &b_; }
+  llvm::IRBuilderBase* builder() { return &b_; }
 
  protected:
   // Constructs an IrEmitter with the given IrEmitter context.
@@ -138,14 +137,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Bind all argument IrArrays of `fusion` to `fused_emitter`.
   void BindFusionArguments(const HloInstruction* fusion,
                            FusedIrEmitter* fused_emitter);
-
-  // Emit a fence for AMDGPU if necessary.
-  void MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering atomic_ordering,
-                               const char* sync_scope_id);
-
- private:
-  // A convenience method to determine whether or not IR is emitted for AMDGPU.
-  bool IsEmittingForAMDGPU() const;
 };
 
 }  // namespace gpu

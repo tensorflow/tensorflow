@@ -28,6 +28,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <vector>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -102,6 +103,11 @@ Value LookThroughIdentity(Value result) {
   }
   return result;
 }
+
+bool IsWithinInt32Range(int64_t value) {
+  return (value >= std::numeric_limits<int32_t>::min() &&
+          value <= std::numeric_limits<int32_t>::max());
+};
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
@@ -416,10 +422,27 @@ struct ConvertPackToReshape : public OpRewritePattern<PackOp> {
       return failure();
     }
 
-    // Create constant shape for reshape.
-    auto type = tensorflow::GetTypeFromTFTensorShape(
+    auto output_int_type = tensorflow::GetTypeFromTFTensorShape(
         output_ty.getRank(), rewriter.getIntegerType(64));
-    auto shape_attr = DenseIntElementsAttr::get(type, output_ty.getShape());
+    auto shape_attr =
+        DenseIntElementsAttr::get(output_int_type, output_ty.getShape());
+
+    // use int32_t instead of int64_t if all elements are in the range of int32
+    // because int64 is not supported in dynamic reshape in XLA
+    bool elements_all_in_int32_range =
+        std::all_of(output_ty.getShape().begin(), output_ty.getShape().end(),
+                    IsWithinInt32Range);
+
+    if (elements_all_in_int32_range) {
+      std::vector<int32_t> output_shape(output_ty.getRank());
+      std::transform(output_ty.getShape().begin(), output_ty.getShape().end(),
+                     output_shape.begin(),
+                     [](int64_t val) { return static_cast<int32_t>(val); });
+      output_int_type = tensorflow::GetTypeFromTFTensorShape(
+          output_ty.getRank(), rewriter.getIntegerType(32));
+      shape_attr = DenseIntElementsAttr::get(output_int_type, output_shape);
+    }
+
     auto shape = rewriter.create<ConstOp>(pack_op.getLoc(), shape_attr);
 
     // TODO(b/173622615): Remove after fixed.
@@ -2351,8 +2374,8 @@ void TPUExecuteOp::getEffects(
   // effects on resources. For the MLIR bridge, this op will never be
   // populated with resource handles and tf.TPUExecuteAndUpdateVariables is
   // used instead.
-  for (Value value : getArgs()) {
-    MarkResourceAsReadAndWrite(value, effects);
+  for (OpOperand &op_operand : getArgsMutable()) {
+    MarkResourceAsReadAndWrite(op_operand, effects);
   }
 }
 
@@ -2370,8 +2393,8 @@ void _XlaRunOp::getEffects(
   // Conservatively mark resource handles as read and write, as without
   // analyzing _XlaCompile, there is not sufficient information to determine
   // effects on resources.
-  for (Value value : getArgs()) {
-    MarkResourceAsReadAndWrite(value, effects);
+  for (OpOperand &op_operand : getArgsMutable()) {
+    MarkResourceAsReadAndWrite(op_operand, effects);
   }
 }
 
@@ -2432,22 +2455,24 @@ void TPUExecuteAndUpdateVariablesOp::getEffects(
   effects.reserve(getDeviceVarReadsIndices().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUExecute::get());
-  auto resource_handles = llvm::make_filter_range(getArgs(), [](Value value) {
-    return value.getType()
-        .cast<TensorType>()
-        .getElementType()
-        .isa<ResourceType>();
-  });
+  auto resource_handles =
+      llvm::make_filter_range(getArgsMutable(), [](OpOperand &op_operand) {
+        return op_operand.get()
+            .getType()
+            .cast<TensorType>()
+            .getElementType()
+            .isa<ResourceType>();
+      });
 
-  for (const auto &entry : llvm::enumerate(resource_handles)) {
-    Value value = entry.value();
-    effects.emplace_back(MemoryEffects::Read::get(), value,
+  for (const auto& entry : llvm::enumerate(resource_handles)) {
+    OpOperand &op_operand = entry.value();
+    effects.emplace_back(MemoryEffects::Read::get(), &op_operand,
                          ResourceEffects::Variable::get());
     if (getDeviceVarUpdatesIndices()
             .getValue()[entry.index()]
             .cast<IntegerAttr>()
             .getInt() >= 0)
-      effects.emplace_back(MemoryEffects::Write::get(), value,
+      effects.emplace_back(MemoryEffects::Write::get(), &op_operand,
                            ResourceEffects::Variable::get());
   }
 }
@@ -2639,16 +2664,150 @@ LogicalResult TileOp::verify() {
 
 OpFoldResult TileOp::fold(FoldAdaptor) {
   DenseIntElementsAttr multiples_attr;
-  if (matchPattern(getMultiples(), m_Constant(&multiples_attr))) {
-    // Return input directly when multiples are all ones,
-    // regardless what input is.
-    if (multiples_attr.isSplat() &&
-        multiples_attr.getSplatValue<APInt>().getSExtValue() == 1 &&
-        getInput().getType() == getType()) {
-      return getInput();
-    }
+  if (!matchPattern(getMultiples(), m_Constant(&multiples_attr))) {
+    return {};
   }
+
+  // Return input directly when multiples are all ones,
+  // regardless what input is.
+  if (multiples_attr.isSplat() &&
+      multiples_attr.getSplatValue<APInt>().getSExtValue() == 1 &&
+      getInput().getType() == getType()) {
+    return getInput();
+  }
+
   return {};
+}
+
+namespace {
+
+mlir::Type getBroadcastedType(std::vector<mlir::Type> types,
+                              mlir::Type elementType) {
+  if (types.empty()) {
+    return mlir::Type();
+  }
+
+  mlir::Type result = types.front();
+  for (mlir::Type type : types) {
+    result = OpTrait::util::getBroadcastedType(result, type, elementType);
+  }
+  return result;
+}
+
+// If the consumer of a TileOp is broadcast compatible, and Tile solely
+// broadcasts a unit-dimension, then rewire TileOp's input to the consumer.
+class FuseWithBroadcastCompatibleOp
+    : public OpTraitRewritePattern<OpTrait::ResultsBroadcastableShape> {
+ public:
+  explicit FuseWithBroadcastCompatibleOp(MLIRContext *context)
+      : OpTraitRewritePattern(context) {}
+
+  LogicalResult matchAndRewrite(mlir::Operation *op,
+                                PatternRewriter &rewriter) const override {
+    if (op->getNumResults() > 1) {
+      return rewriter.notifyMatchFailure(op, "has multiple results.");
+    }
+
+    auto output_type =
+        mlir::dyn_cast<RankedTensorType>(op->getResultTypes().front());
+    if (!output_type) {
+      return rewriter.notifyMatchFailure(op, "not a ranked tensor.");
+    }
+
+    mlir::Type el_type = output_type.getElementType();
+    // Make sure all operand shapes are Ranked
+    std::vector<mlir::Type> input_types;
+    std::vector<llvm::SmallVector<int64_t, 6>> input_shapes;
+    for (mlir::Value operand : op->getOperands()) {
+      if (auto shape = mlir::dyn_cast<RankedTensorType>(operand.getType())) {
+        input_types.push_back(operand.getType());
+        input_shapes.push_back(llvm::SmallVector<int64_t, 6>(shape.getShape()));
+        continue;
+      }
+      return failure();
+    }
+
+    // Collect valid operands for rewiring, ensuring input_shapes are updated.
+    // Must be a TileOp, with ranked tensors, and broadcasting unit dimensions.
+    std::vector<mlir::OpOperand *> matched_operands;
+    for (mlir::OpOperand &operand : op->getOpOperands()) {
+      if (!operand.get().getDefiningOp()) {
+        continue;
+      }
+
+      auto tile = mlir::dyn_cast<TF::TileOp>(operand.get().getDefiningOp());
+      if (!tile) {
+        continue;
+      }
+
+      DenseIntElementsAttr multiples_attr;
+      if (!matchPattern(tile.getMultiples(), m_Constant(&multiples_attr))) {
+        continue;
+      }
+
+      auto shape = tile.getInput().getType().dyn_cast<RankedTensorType>();
+      if (!shape) {
+        continue;
+      }
+      llvm::ArrayRef<int64_t> input_shape = shape.getShape();
+
+      llvm::SmallVector<int64_t, 5> multiples;
+      for (APInt multiple : multiples_attr.getValues<APInt>()) {
+        multiples.push_back(multiple.getSExtValue());
+      }
+
+      if (input_shape.size() != multiples.size()) {
+        tile->emitOpError("input and multiples must be the same");
+        return failure();
+      }
+
+      std::vector<int> range(multiples.size());
+      absl::c_iota(range, 0);
+      if (!absl::c_all_of(range, [&multiples, &input_shape](int i) {
+            return multiples[i] == 1 ||
+                   (multiples[i] != 1 && input_shape[i] == 1);
+          })) {
+        continue;
+      }
+
+      // Check if the new shape breaks broadcast compatibility.
+      // In particular, check if broadcasting produces the same resulting shape.
+      unsigned pos = operand.getOperandNumber();
+      llvm::SmallVector<int64_t, 6> old_output_shape = input_shapes[pos];
+      mlir::Type old_input_type = input_types[pos];
+      input_shapes[pos] = llvm::SmallVector<int64_t, 6>(input_shape);
+      input_types[pos] = shape;
+      if (!OpTrait::util::staticallyKnownBroadcastable(
+              llvm::ArrayRef(input_shapes)) ||
+          getBroadcastedType(input_types, el_type) != output_type) {
+        input_shapes[pos] = old_output_shape;
+        input_types[pos] = old_input_type;
+        continue;
+      }
+      matched_operands.push_back(&operand);
+    }
+
+    // No valid tile ops to rewrite
+    if (matched_operands.empty()) {
+      return failure();
+    }
+
+    // Do the rewrite.
+    for (mlir::OpOperand *operand : matched_operands) {
+      rewriter.modifyOpInPlace(op, [&] {
+        op->setOperand(operand->getOperandNumber(),
+                       operand->get().getDefiningOp()->getOperand(0));
+      });
+    }
+    return success();
+  }
+};
+
+}  // namespace
+
+void TileOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                         MLIRContext *context) {
+  results.add<FuseWithBroadcastCompatibleOp>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2982,7 +3141,7 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
         llvm::to_vector<6>(tf_fused_batch_norm_op.getResultTypes());
     // reserve_space_3
     new_result_types.push_back(
-        UnrankedTensorType::get(FloatType::getF32(rewriter.getContext())));
+        UnrankedTensorType::get(Float32Type::get(rewriter.getContext())));
     auto tf_fused_batch_norm_op_v3 = CreateTfOp<TF::FusedBatchNormV3Op>(
         rewriter, tf_fused_batch_norm_op, new_result_types,
         tf_fused_batch_norm_op.getOperands(),
@@ -3047,8 +3206,8 @@ void XlaLaunchOp::getEffects(
   // Conservatively mark resource handles as read and write, as without
   // analyzing XlaLaunch, there is not sufficient information to determine
   // effects on resources.
-  for (Value value : getArgs()) {
-    MarkResourceAsReadAndWrite(value, effects);
+  for (OpOperand &op_operand : getArgsMutable()) {
+    MarkResourceAsReadAndWrite(op_operand, effects);
   }
 }
 

@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "xla/python/inspect_sharding.h"
 
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace jax {
 
@@ -56,8 +59,8 @@ std::optional<xla::HloSharding> InspectShardingReadArgs(
 
 class InspectShardingCallPartitioner : public xla::CustomCallPartitioner {
  public:
-  xla::Status Partition(xla::spmd::SpmdPartitioningVisitor* partitioner,
-                        HloInstruction* instruction) const override {
+  absl::Status Partition(xla::spmd::SpmdPartitioningVisitor* partitioner,
+                         HloInstruction* instruction) const override {
     const HloInstruction* operand = instruction->operand(0);
     if (!operand->has_sharding()) {
       return xla::Internal(
@@ -85,7 +88,7 @@ class InspectShardingCallPartitioner : public xla::CustomCallPartitioner {
     partitioner->SetPartitionedHlo(
         instruction,
         partitioner->GetPartitionedHlo(instruction->mutable_operand(0)));
-    return xla::OkStatus();
+    return absl::OkStatus();
   }
   HloSharding PropagateUserSharding(
       const HloInstruction* instruction, const HloInstruction* user,

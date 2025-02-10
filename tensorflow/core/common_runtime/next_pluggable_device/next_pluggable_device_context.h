@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_NEXT_PLUGGABLE_DEVICE_CONTEXT_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_NEXT_PLUGGABLE_DEVICE_CONTEXT_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/plugin_c_api.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/platform/status.h"

@@ -18,34 +18,37 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/slicing.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/slicing.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tsl/platform/macros.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
-#include "tsl/platform/macros.h"
 
 typedef tensorflow::monitoring::Gauge<int64_t, 2> TFGaugeMetric;
 static TFGaugeMetric* max_ids_per_partition_gauge_ = TFGaugeMetric::New(
@@ -55,12 +58,16 @@ static TFGaugeMetric* max_unique_ids_per_partition_gauge_ = TFGaugeMetric::New(
     "/tensorflow/tpu/embedding/maximum_unique_ids_per_partition",
     "Max unique_ids_per_partition limit for each table", "device", "table");
 
+constexpr char kUnknownProgramKey[] = "";
+
 namespace tensorflow {
 namespace {
 
 // Get the SparseCore logical replica count.
-// TODO(agagik): get it from the tpu topology.
-StatusOr<int64_t> GetSparseCoresPerChip() { return 4; }
+absl::StatusOr<int64_t> GetSparseCoresPerChip() {
+  return stream_executor::tpu::OpsApiFn()->TpuTopology_AvailableCoresPerChipFn(
+      /*tpu_core_type=*/TpuCoreTypeEnum::kEmbeddingV2);
+}
 
 // This TensorFlow op performs the embedding lookup on SparseCore. It takes the
 // embedding table and input sparse tensor represented by the `row_ids`,
@@ -204,7 +211,7 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     // Get and save quantization config params, if they were configured.
     // num_buckets == 0 indicate no quantization configs were provided.
     int check_num_buckets;
-    Status status =
+    absl::Status status =
         ctx->GetAttr("quantization_config_num_buckets", &check_num_buckets);
     if (status.ok() && check_num_buckets > 0) {
       quantization_config_num_buckets_ = check_num_buckets;
@@ -230,6 +237,14 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
 
   ~XlaSparseDenseMatmulWithCsrInputOp() override = default;
 
+  virtual absl::Status GetMaxIdsAndUniques(
+      int64_t num_samples_per_sparse_core, int64_t feature_width,
+      int64_t* max_ids_per_partition, int64_t* max_unique_ids_per_partition) {
+    return GetMaxIdsAndUniquesExternal(
+        kUnknownProgramKey, table_name_, num_samples_per_sparse_core,
+        feature_width, max_ids_per_partition, max_unique_ids_per_partition);
+  }
+
   void Compile(XlaOpKernelContext* ctx) override {
     int64_t per_sparse_core_batch_size =
         input_size_ / num_sparsecores_per_chip_;
@@ -248,9 +263,9 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     const int32_t feature_width = embedding_table_shape.dimensions(1);
 
     OP_REQUIRES_OK(
-        ctx, GetMaxIdsAndUniquesExternal(
-                 "", table_name_, per_sparse_core_batch_size, feature_width,
-                 &max_ids_per_partition, &max_unique_ids_per_partition));
+        ctx, GetMaxIdsAndUniques(per_sparse_core_batch_size, feature_width,
+                                 &max_ids_per_partition,
+                                 &max_unique_ids_per_partition));
     // Log max_ids and max_uniques for offline analysis. We do this here since
     // these values are fixed at TPU compile time and remain fixed during
     // training.
@@ -379,6 +394,14 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     return clipped_table;
   }
 
+  virtual absl::Status GetMaxIdsAndUniques(
+      int64_t num_samples_per_sparse_core, int64_t feature_width,
+      int64_t* max_ids_per_partition, int64_t* max_unique_ids_per_partition) {
+    return GetMaxIdsAndUniquesExternal(
+        kUnknownProgramKey, table_name_, num_samples_per_sparse_core,
+        feature_width, max_ids_per_partition, max_unique_ids_per_partition);
+  }
+
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
 
@@ -417,9 +440,9 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
 
     const int32_t feature_width = embedding_table_shape.dimensions(1);
     OP_REQUIRES_OK(
-        ctx, GetMaxIdsAndUniquesExternal(
-                 "", table_name_, per_sparse_core_batch_size, feature_width,
-                 &max_ids_per_partition, &max_unique_ids_per_partition));
+        ctx, GetMaxIdsAndUniques(per_sparse_core_batch_size, feature_width,
+                                 &max_ids_per_partition,
+                                 &max_unique_ids_per_partition));
     LOG(INFO) << "Lowering XlaSparseDenseMatmulGradWithCsrInputOp to HLO: "
               << "table_name = '" << table_name_
               << "', max_ids = " << max_ids_per_partition
@@ -492,6 +515,178 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
   void operator=(const XlaSparseDenseMatmulGradWithCsrInputBase&) = delete;
 };
 
+class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
+ public:
+  explicit XlaSparseDenseMatmulGradWithCsrInputOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    const NameAttrList* name_attr;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("custom_computation", &name_attr));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
+    custom_computation_ = *name_attr;
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* builder = ctx->builder();
+    xla::XlaOp row_pointers = ctx->Input("row_pointers");
+    xla::XlaOp sorted_sample_ids = ctx->Input("sorted_sample_ids");
+    xla::XlaOp sorted_token_ids = ctx->Input("sorted_token_ids");
+    xla::XlaOp sorted_gains = ctx->Input("sorted_gains");
+    xla::XlaOp activation_gradients = ctx->Input("activation_gradients");
+    xla::XlaOp num_minibatches_per_physical_sparse_core =
+        ctx->Input("num_minibatches_per_physical_sparse_core");
+
+    std::vector<xla::XlaOp> tables_inputs;
+    std::vector<TensorShape> tables_shapes;
+    OP_REQUIRES_OK(ctx,
+                   ctx->InputList("tables", &tables_inputs, &tables_shapes));
+
+    std::vector<xla::XlaOp> hyperparameters_inputs;
+    std::vector<TensorShape> hyperparameters_shapes;
+    OP_REQUIRES_OK(ctx,
+                   ctx->InputList("hyperparameters", &hyperparameters_inputs,
+                                  &hyperparameters_shapes));
+
+    // Get the shape of the gradient.
+    OP_REQUIRES_VALUE(xla::Shape activation_shape, ctx,
+                      ctx->InputXlaShape("activation_gradients"));
+    OP_REQUIRES(
+        ctx,
+        activation_shape.is_static() && activation_shape.dimensions_size() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "activations input has non static or non-rank 2 shape: ",
+            activation_shape.ToString())));
+    OP_REQUIRES_VALUE(int64_t num_sparsecores_per_chip, ctx,
+                      GetSparseCoresPerChip());
+    int64_t num_samples_per_chip = activation_shape.dimensions(0);
+    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_chip == 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "num_samples_per_chip ", num_samples_per_chip,
+                    " not divisible by the number of sparsecores per chip ",
+                    num_sparsecores_per_chip)));
+
+    int64_t per_sparse_core_batch_size =
+        num_samples_per_chip / num_sparsecores_per_chip;
+    int64_t max_ids_per_partition = 0;
+    int64_t max_unique_ids_per_partition = 0;
+
+    const int32_t feature_width = tables_shapes[0].dim_size(1);
+    OP_REQUIRES_OK(
+        ctx, GetMaxIdsAndUniquesExternal(kUnknownProgramKey, table_name_,
+                                         per_sparse_core_batch_size,
+                                         feature_width, &max_ids_per_partition,
+                                         &max_unique_ids_per_partition));
+    LOG(INFO) << "Lowering XlaSparseDenseMatmulGradWithCsrInputOp to HLO: "
+              << "table_name = '" << table_name_
+              << "', max_ids = " << max_ids_per_partition
+              << ", max_uniques = " << max_unique_ids_per_partition;
+
+    // Build the optimizer computation.
+    XlaCompiler::CompileOptions options;
+
+    // We don't use tuple args and always return tuple for this computation.
+    options.use_tuple_arg = false;
+    options.always_return_tuple = true;
+    options.is_entry_computation = false;
+
+    XlaCompiler* compiler = ctx->compiler();
+
+    XlaCompiler::CompilationResult custom_computation_result;
+
+    // The number of arguments is the number of tables + the number of
+    // hyperparameters + 1 for the activation gradients.
+    int32_t num_arguments =
+        1 + tables_inputs.size() + hyperparameters_inputs.size();
+
+    std::vector<XlaCompiler::Argument> arguments(num_arguments);
+
+    // For all the arguments, we use the float type and the shape is
+    // {1, feature_width}.
+    for (int32_t i = 0; i < num_arguments; ++i) {
+      arguments[i].kind = XlaCompiler::Argument::kParameter;
+      arguments[i].type = DT_FLOAT;
+      arguments[i].shape =
+          xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
+    }
+
+    CHECK_OK(compiler->CompileFunction(options, custom_computation_, arguments,
+                                       &custom_computation_result));
+
+    xla::XlaComputation optimizer =
+        std::move(*custom_computation_result.computation);
+
+    xla::FrontendAttributes original_frontend_attributes =
+        builder->frontend_attributes();
+
+    xla::FrontendAttributes tuple_frontend_attributes;
+
+    tuple_frontend_attributes.mutable_map()->insert(
+        {"_xla_compute_type", "sparse"});
+
+    builder->SetFrontendAttributes(tuple_frontend_attributes);
+
+    xla::XlaOp tables = xla::Tuple(ctx->builder(), tables_inputs);
+
+    xla::XlaOp hyperparameters =
+        xla::Tuple(ctx->builder(), hyperparameters_inputs);
+
+    std::vector<xla::Shape> xla_tables_shapes;
+
+    xla_tables_shapes.reserve(tables_shapes.size());
+    for (const auto& table_shape : tables_shapes) {
+      xla_tables_shapes.push_back(xla::ShapeUtil::MakeShape(
+          xla::F32, {table_shape.dim_size(0), table_shape.dim_size(1)}));
+    }
+
+    xla::Shape tables_shape = xla::ShapeUtil::MakeTupleShape(xla_tables_shapes);
+
+    xla::FrontendAttributes custom_call_frontend_attributes;
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_compute_type", "sparse"});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_sharding_strategy", "mod"});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_pad_value", absl::StrCat(kXlaPadValue)});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_max_ids_per_partition", absl::StrCat(max_ids_per_partition)});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_max_unique_ids_per_partition",
+         absl::StrCat(max_unique_ids_per_partition)});
+
+    builder->SetFrontendAttributes(custom_call_frontend_attributes);
+
+    xla::XlaOp updated_tables = xla::CustomCallWithComputation(
+        builder, "SparseDenseMatmulGradOptimizerUpdateWithMinibatchingOp",
+        {row_pointers, sorted_token_ids, sorted_sample_ids, sorted_gains,
+         num_minibatches_per_physical_sparse_core, tables, activation_gradients,
+         hyperparameters},
+        optimizer, tables_shape);
+
+    builder->SetFrontendAttributes(tuple_frontend_attributes);
+
+    // Updated embedding table.
+    for (int i = 0; i < tables_shape.tuple_shapes_size(); ++i) {
+      ctx->SetOutput(i, xla::GetTupleElement(updated_tables, i));
+    }
+
+    builder->SetFrontendAttributes(original_frontend_attributes);
+  }
+
+ private:
+  std::string table_name_;
+  NameAttrList custom_computation_;
+  XlaSparseDenseMatmulGradWithCsrInputOp(
+      const XlaSparseDenseMatmulGradWithCsrInputOp&) = delete;
+  void operator=(const XlaSparseDenseMatmulGradWithCsrInputOp&) = delete;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulGradWithCsrInput"),
+                XlaSparseDenseMatmulGradWithCsrInputOp);
+
 // This TensorFlow op calculates the gradients and performs SGD update on the
 // embedding table on SparseCore. It takes the activation gradients, input
 // sparse tensor represented by the `row_pointers`, `sorted_embedding_ids`,
@@ -518,17 +713,14 @@ class XlaSparseDenseMatmulGradWithSgdAndCsrInputOp
       xla::XlaOp gradient = xla::Parameter(sgd_optimizer_builder.get(), 0,
                                            per_row_shape, "gradient");
 
-      xla::XlaOp tables = xla::Parameter(
-          sgd_optimizer_builder.get(), 1,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape}), "tables");
+      xla::XlaOp embedding_table = xla::Parameter(
+          sgd_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
 
-      xla::XlaOp hyperparameters = xla::Parameter(
-          sgd_optimizer_builder.get(), 2,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape}), "hyperparameters");
+      xla::XlaOp learning_rate = xla::Parameter(sgd_optimizer_builder.get(), 2,
+                                                per_row_shape, "learning_rate");
 
       xla::XlaOp updated_embedding_table =
-          xla::GetTupleElement(tables, 0) -
-          xla::GetTupleElement(hyperparameters, 0) * gradient;
+          embedding_table - learning_rate * gradient;
 
       // Apply the weight clipping.
       xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
@@ -590,20 +782,14 @@ class XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp
       xla::XlaOp gradient = xla::Parameter(adagrad_optimizer_builder.get(), 0,
                                            per_row_shape, "gradient");
 
-      xla::XlaOp tables = xla::Parameter(
-          adagrad_optimizer_builder.get(), 1,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape, per_row_shape}),
-          "tables");
+      xla::XlaOp embedding_table = xla::Parameter(
+          adagrad_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
 
-      xla::XlaOp hyperparameters = xla::Parameter(
-          adagrad_optimizer_builder.get(), 2,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape}), "hyperparameters");
+      xla::XlaOp accumulator = xla::Parameter(adagrad_optimizer_builder.get(),
+                                              2, per_row_shape, "accumulator");
 
-      xla::XlaOp embedding_table = xla::GetTupleElement(tables, 0);
-
-      xla::XlaOp accumulator = xla::GetTupleElement(tables, 1);
-
-      xla::XlaOp learning_rate = xla::GetTupleElement(hyperparameters, 0);
+      xla::XlaOp learning_rate = xla::Parameter(
+          adagrad_optimizer_builder.get(), 3, per_row_shape, "learning_rate");
 
       xla::XlaOp new_accumulator = accumulator + gradient * gradient;
 
@@ -682,22 +868,18 @@ class XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp
       xla::XlaOp gradient =
           xla::Parameter(adagrad_momentum_optimizer_builder.get(), 0,
                          per_row_shape, "gradient");
-
-      xla::XlaOp tables =
+      xla::XlaOp embedding_table =
           xla::Parameter(adagrad_momentum_optimizer_builder.get(), 1,
-                         xla::ShapeUtil::MakeTupleShape(
-                             {per_row_shape, per_row_shape, per_row_shape}),
-                         "tables");
-
-      xla::XlaOp hyperparameters = xla::Parameter(
-          adagrad_momentum_optimizer_builder.get(), 2,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape}), "hyperparameters");
-
-      xla::XlaOp embedding_table = xla::GetTupleElement(tables, 0);
-      xla::XlaOp accumulator = xla::GetTupleElement(tables, 1);
-      xla::XlaOp momenta = xla::GetTupleElement(tables, 2);
-
-      xla::XlaOp learning_rate = xla::GetTupleElement(hyperparameters, 0);
+                         per_row_shape, "embedding_table");
+      xla::XlaOp accumulator =
+          xla::Parameter(adagrad_momentum_optimizer_builder.get(), 2,
+                         per_row_shape, "accumulator");
+      xla::XlaOp momenta =
+          xla::Parameter(adagrad_momentum_optimizer_builder.get(), 3,
+                         per_row_shape, "momenta");
+      xla::XlaOp learning_rate =
+          xla::Parameter(adagrad_momentum_optimizer_builder.get(), 4,
+                         per_row_shape, "learning_rate");
 
       xla::XlaOp beta1 =
           xla::ConstantR0(adagrad_momentum_optimizer_builder.get(), beta1_);
@@ -813,21 +995,14 @@ class XlaSparseDenseMatmulGradWithAdamAndCsrInputOp
 
       xla::XlaOp gradient = xla::Parameter(adam_optimizer_builder.get(), 0,
                                            per_row_shape, "gradient");
-      xla::XlaOp tables =
-          xla::Parameter(adam_optimizer_builder.get(), 1,
-                         xla::ShapeUtil::MakeTupleShape(
-                             {per_row_shape, per_row_shape, per_row_shape}),
-                         "tables");
-
-      xla::XlaOp hyperparameters = xla::Parameter(
-          adam_optimizer_builder.get(), 2,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape}), "hyperparameters");
-
-      xla::XlaOp embedding_table = xla::GetTupleElement(tables, 0);
-      xla::XlaOp momenta = xla::GetTupleElement(tables, 1);
-      xla::XlaOp velocity = xla::GetTupleElement(tables, 2);
-
-      xla::XlaOp learning_rate = xla::GetTupleElement(hyperparameters, 0);
+      xla::XlaOp embedding_table = xla::Parameter(
+          adam_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
+      xla::XlaOp momenta = xla::Parameter(adam_optimizer_builder.get(), 2,
+                                          per_row_shape, "momenta");
+      xla::XlaOp velocity = xla::Parameter(adam_optimizer_builder.get(), 3,
+                                           per_row_shape, "velocity");
+      xla::XlaOp learning_rate = xla::Parameter(adam_optimizer_builder.get(), 4,
+                                                per_row_shape, "learning_rate");
 
       xla::XlaOp beta1 = xla::ConstantR0(adam_optimizer_builder.get(), beta1_);
       xla::XlaOp beta2 = xla::ConstantR0(adam_optimizer_builder.get(), beta2_);
@@ -936,21 +1111,14 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
       xla::XlaOp gradient = xla::Parameter(ftrl_optimizer_builder.get(), 0,
                                            per_row_shape, "gradient");
 
-      xla::XlaOp tables =
-          xla::Parameter(ftrl_optimizer_builder.get(), 1,
-                         xla::ShapeUtil::MakeTupleShape(
-                             {per_row_shape, per_row_shape, per_row_shape}),
-                         "tables");
-
-      xla::XlaOp hyperparameters = xla::Parameter(
-          ftrl_optimizer_builder.get(), 2,
-          xla::ShapeUtil::MakeTupleShape({per_row_shape}), "hyperparameters");
-
-      xla::XlaOp embedding_table = xla::GetTupleElement(tables, 0);
-      xla::XlaOp accumulator = xla::GetTupleElement(tables, 1);
-      xla::XlaOp linear = xla::GetTupleElement(tables, 2);
-
-      xla::XlaOp learning_rate = xla::GetTupleElement(hyperparameters, 0);
+      xla::XlaOp embedding_table = xla::Parameter(
+          ftrl_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
+      xla::XlaOp accumulator = xla::Parameter(ftrl_optimizer_builder.get(), 2,
+                                              per_row_shape, "accumulator");
+      xla::XlaOp linear = xla::Parameter(ftrl_optimizer_builder.get(), 3,
+                                         per_row_shape, "linear");
+      xla::XlaOp learning_rate = xla::Parameter(ftrl_optimizer_builder.get(), 4,
+                                                per_row_shape, "learning_rate");
 
       // accumulator(t) = accumulator(t-1) + gradient(t) ^ 2
       xla::XlaOp new_accumulator = accumulator + gradient * gradient;
@@ -1469,5 +1637,248 @@ class XlaSparseCoreFtrlOp : public XlaSparseCoreOptimizerOpBase {
 
 REGISTER_XLA_OP(Name("XlaSparseCoreFtrl"), XlaSparseCoreFtrlOp);
 
+//***************************************************************************
+// Below is the SparseCore ops with static buffer size. They are the same as
+// the above ops except that they take the max_ids/uniques as input attributes.
+//***************************************************************************
+class XlaSparseDenseMatmulWithStaticBufferSizeOp
+    : public XlaSparseDenseMatmulWithCsrInputOp {
+ public:
+  explicit XlaSparseDenseMatmulWithStaticBufferSizeOp(OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulWithCsrInputOp(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_ids_per_sparse_core",
+                                     &max_ids_per_sparse_core_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_unique_ids_per_sparse_core",
+                                     &max_unique_ids_per_sparse_core_));
+
+    OP_REQUIRES(
+        ctx, max_ids_per_sparse_core_ > 0,
+        absl::InvalidArgumentError("max_ids_per_sparse_core must be > 0"));
+    OP_REQUIRES(ctx, max_unique_ids_per_sparse_core_ > 0,
+                absl::InvalidArgumentError(
+                    "max_unique_ids_per_sparse_core must be > 0"));
+  }
+
+  absl::Status GetMaxIdsAndUniques(
+      int64_t num_samples_per_sparse_core, int64_t feature_width,
+      int64_t* max_ids_per_partition,
+      int64_t* max_unique_ids_per_partition) override {
+    if (max_ids_per_partition == nullptr ||
+        max_unique_ids_per_partition == nullptr) {
+      return absl::InternalError("Setting the max ids/uniques failed.");
+    }
+    *max_ids_per_partition = max_ids_per_sparse_core_;
+    *max_unique_ids_per_partition = max_unique_ids_per_sparse_core_;
+    return absl::OkStatus();
+  }
+
+ private:
+  int32_t max_ids_per_sparse_core_;
+  int32_t max_unique_ids_per_sparse_core_;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulWithStaticBufferSize"),
+                XlaSparseDenseMatmulWithStaticBufferSizeOp);
+
+class XlaSparseDenseMatmulGradWithSgdAndStaticBufferSizeOp
+    : public XlaSparseDenseMatmulGradWithSgdAndCsrInputOp {
+ public:
+  explicit XlaSparseDenseMatmulGradWithSgdAndStaticBufferSizeOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulGradWithSgdAndCsrInputOp(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_ids_per_sparse_core",
+                                     &max_ids_per_sparse_core_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_unique_ids_per_sparse_core",
+                                     &max_unique_ids_per_sparse_core_));
+
+    OP_REQUIRES(
+        ctx, max_ids_per_sparse_core_ > 0,
+        absl::InvalidArgumentError("max_ids_per_sparse_core must be > 0"));
+    OP_REQUIRES(ctx, max_unique_ids_per_sparse_core_ > 0,
+                absl::InvalidArgumentError(
+                    "max_unique_ids_per_sparse_core must be > 0"));
+  }
+
+  absl::Status GetMaxIdsAndUniques(
+      int64_t num_samples_per_sparse_core, int64_t feature_width,
+      int64_t* max_ids_per_partition,
+      int64_t* max_unique_ids_per_partition) override {
+    if (max_ids_per_partition == nullptr ||
+        max_unique_ids_per_partition == nullptr) {
+      return absl::InternalError("Setting the max ids/uniques failed.");
+    }
+    *max_ids_per_partition = max_ids_per_sparse_core_;
+    *max_unique_ids_per_partition = max_unique_ids_per_sparse_core_;
+    return absl::OkStatus();
+  }
+
+ private:
+  int32_t max_ids_per_sparse_core_;
+  int32_t max_unique_ids_per_sparse_core_;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulGradWithSgdAndStaticBufferSize"),
+                XlaSparseDenseMatmulGradWithSgdAndStaticBufferSizeOp);
+
+class XlaSparseDenseMatmulGradWithAdamAndStaticBufferSizeOp
+    : public XlaSparseDenseMatmulGradWithAdamAndCsrInputOp {
+ public:
+  explicit XlaSparseDenseMatmulGradWithAdamAndStaticBufferSizeOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulGradWithAdamAndCsrInputOp(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_ids_per_sparse_core",
+                                     &max_ids_per_sparse_core_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_unique_ids_per_sparse_core",
+                                     &max_unique_ids_per_sparse_core_));
+
+    OP_REQUIRES(
+        ctx, max_ids_per_sparse_core_ > 0,
+        absl::InvalidArgumentError("max_ids_per_sparse_core must be > 0"));
+    OP_REQUIRES(ctx, max_unique_ids_per_sparse_core_ > 0,
+                absl::InvalidArgumentError(
+                    "max_unique_ids_per_sparse_core must be > 0"));
+  }
+
+  absl::Status GetMaxIdsAndUniques(
+      int64_t num_samples_per_sparse_core, int64_t feature_width,
+      int64_t* max_ids_per_partition,
+      int64_t* max_unique_ids_per_partition) override {
+    if (max_ids_per_partition == nullptr ||
+        max_unique_ids_per_partition == nullptr) {
+      return absl::InternalError("Setting the max ids/uniques failed.");
+    }
+    *max_ids_per_partition = max_ids_per_sparse_core_;
+    *max_unique_ids_per_partition = max_unique_ids_per_sparse_core_;
+    return absl::OkStatus();
+  }
+
+ private:
+  int32_t max_ids_per_sparse_core_;
+  int32_t max_unique_ids_per_sparse_core_;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulGradWithAdamAndStaticBufferSize"),
+                XlaSparseDenseMatmulGradWithAdamAndStaticBufferSizeOp);
+
+class XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSizeOp
+    : public XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp {
+ public:
+  explicit XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSizeOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_ids_per_sparse_core",
+                                     &max_ids_per_sparse_core_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_unique_ids_per_sparse_core",
+                                     &max_unique_ids_per_sparse_core_));
+
+    OP_REQUIRES(
+        ctx, max_ids_per_sparse_core_ > 0,
+        absl::InvalidArgumentError("max_ids_per_sparse_core must be > 0"));
+    OP_REQUIRES(ctx, max_unique_ids_per_sparse_core_ > 0,
+                absl::InvalidArgumentError(
+                    "max_unique_ids_per_sparse_core must be > 0"));
+  }
+
+  absl::Status GetMaxIdsAndUniques(
+      int64_t num_samples_per_sparse_core, int64_t feature_width,
+      int64_t* max_ids_per_partition,
+      int64_t* max_unique_ids_per_partition) override {
+    if (max_ids_per_partition == nullptr ||
+        max_unique_ids_per_partition == nullptr) {
+      return absl::InternalError("Setting the max ids/uniques failed.");
+    }
+    *max_ids_per_partition = max_ids_per_sparse_core_;
+    *max_unique_ids_per_partition = max_unique_ids_per_sparse_core_;
+    return absl::OkStatus();
+  }
+
+ private:
+  int32_t max_ids_per_sparse_core_;
+  int32_t max_unique_ids_per_sparse_core_;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSize"),
+                XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSizeOp);
+
+class XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSizeOp
+    : public XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp {
+ public:
+  explicit XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSizeOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_ids_per_sparse_core",
+                                     &max_ids_per_sparse_core_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_unique_ids_per_sparse_core",
+                                     &max_unique_ids_per_sparse_core_));
+
+    OP_REQUIRES(
+        ctx, max_ids_per_sparse_core_ > 0,
+        absl::InvalidArgumentError("max_ids_per_sparse_core must be > 0"));
+    OP_REQUIRES(ctx, max_unique_ids_per_sparse_core_ > 0,
+                absl::InvalidArgumentError(
+                    "max_unique_ids_per_sparse_core must be > 0"));
+  }
+
+  absl::Status GetMaxIdsAndUniques(
+      int64_t num_samples_per_sparse_core, int64_t feature_width,
+      int64_t* max_ids_per_partition,
+      int64_t* max_unique_ids_per_partition) override {
+    if (max_ids_per_partition == nullptr ||
+        max_unique_ids_per_partition == nullptr) {
+      return absl::InternalError("Setting the max ids/uniques failed.");
+    }
+    *max_ids_per_partition = max_ids_per_sparse_core_;
+    *max_unique_ids_per_partition = max_unique_ids_per_sparse_core_;
+    return absl::OkStatus();
+  }
+
+ private:
+  int32_t max_ids_per_sparse_core_;
+  int32_t max_unique_ids_per_sparse_core_;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSize"),
+                XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSizeOp);
+
+class XlaSparseDenseMatmulGradWithAdagradMomentumAndStaticBufferSizeOp
+    : public XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp {
+ public:
+  explicit XlaSparseDenseMatmulGradWithAdagradMomentumAndStaticBufferSizeOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_ids_per_sparse_core",
+                                     &max_ids_per_sparse_core_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_unique_ids_per_sparse_core",
+                                     &max_unique_ids_per_sparse_core_));
+
+    OP_REQUIRES(
+        ctx, max_ids_per_sparse_core_ > 0,
+        absl::InvalidArgumentError("max_ids_per_sparse_core must be > 0"));
+    OP_REQUIRES(ctx, max_unique_ids_per_sparse_core_ > 0,
+                absl::InvalidArgumentError(
+                    "max_unique_ids_per_sparse_core must be > 0"));
+  }
+
+  absl::Status GetMaxIdsAndUniques(
+      int64_t num_samples_per_sparse_core, int64_t feature_width,
+      int64_t* max_ids_per_partition,
+      int64_t* max_unique_ids_per_partition) override {
+    if (max_ids_per_partition == nullptr ||
+        max_unique_ids_per_partition == nullptr) {
+      return absl::InternalError("Setting the max ids/uniques failed.");
+    }
+    *max_ids_per_partition = max_ids_per_sparse_core_;
+    *max_unique_ids_per_partition = max_unique_ids_per_sparse_core_;
+    return absl::OkStatus();
+  }
+
+ private:
+  int32_t max_ids_per_sparse_core_;
+  int32_t max_unique_ids_per_sparse_core_;
+};
+
+REGISTER_XLA_OP(
+    Name("XlaSparseDenseMatmulGradWithAdagradMomentumAndStaticBufferSize"),
+    XlaSparseDenseMatmulGradWithAdagradMomentumAndStaticBufferSizeOp);
 }  // anonymous namespace
 }  // namespace tensorflow

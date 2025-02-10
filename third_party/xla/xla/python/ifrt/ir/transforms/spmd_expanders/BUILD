@@ -1,4 +1,4 @@
-load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,6 +17,7 @@ cc_library(
     visibility = ["//xla/python/ifrt:friends"],
     deps = [
         "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:sharding_param",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

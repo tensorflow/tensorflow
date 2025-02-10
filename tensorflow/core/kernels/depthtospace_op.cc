@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/depthtospace_op.h"
 
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -50,9 +52,13 @@ class DepthToSpaceOp : public OpKernel {
                 errors::InvalidArgument("Invalid data format"));
 
     OP_REQUIRES_OK(context, context->GetAttr("block_size", &block_size_));
-    OP_REQUIRES(context, block_size_ > 1,
-                errors::InvalidArgument("Block size should be > 1, but was: ",
-                                        block_size_));
+    // This upper bound is needed to avoid an overflow when the block size value
+    // is squared in the output computation.
+    int block_size_limit = sqrt(std::numeric_limits<int>::max());
+    OP_REQUIRES(context, block_size_ > 1 && block_size_ <= block_size_limit,
+                errors::InvalidArgument(
+                    "Block size should be > 1 and <= ", block_size_limit,
+                    " but was: ", block_size_));
 
     if (std::is_same<Device, CPUDevice>::value) {
       OP_REQUIRES(

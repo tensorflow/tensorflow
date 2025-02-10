@@ -18,12 +18,13 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/generic_transfer_manager.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -37,10 +38,10 @@ class CpuTransferManager : public GenericTransferManager {
   CpuTransferManager();
   ~CpuTransferManager() override {}
 
-  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                 const LiteralSlice& literal) override;
-  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
-                                    MutableBorrowingLiteral literal) override;
+  absl::Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                       const LiteralSlice& literal) override;
+  absl::Status TransferLiteralFromOutfeed(
+      se::StreamExecutor* executor, MutableBorrowingLiteral literal) override;
 
   bool CanShapedBufferBeAccessedNow(
       se::StreamExecutor* executor,
@@ -54,9 +55,9 @@ class CpuTransferManager : public GenericTransferManager {
     return true;
   }
 
-  Status ReadDynamicShapes(se::Stream* stream,
-                           const ShapedBuffer* device_buffer,
-                           Shape* device_shape) override;
+  absl::Status ReadDynamicShapes(se::Stream* stream,
+                                 const ShapedBuffer* device_buffer,
+                                 Shape* device_shape) override;
 
  private:
   bool PackSubbyteTypes() const override { return true; }

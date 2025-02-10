@@ -20,6 +20,9 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/status/statusor.h"
+#include "xla/python/ifrt/dtype.pb.h"
+
 namespace xla {
 namespace ifrt {
 
@@ -33,6 +36,7 @@ namespace ifrt {
 // * Add kString.
 class DType {
  public:
+  // LINT.IfChange
   enum Kind {
     // Invalid data type.
     kInvalid = 0,
@@ -41,6 +45,7 @@ class DType {
     kPred = 1,
 
     // Signed integral values of fixed width.
+    kS2 = 26,
     kS4 = 21,
     kS8 = 2,
     kS16 = 3,
@@ -48,6 +53,7 @@ class DType {
     kS64 = 5,
 
     // Unsigned integral values of fixed width.
+    kU2 = 27,
     kU4 = 22,
     kU8 = 6,
     kU16 = 7,
@@ -72,13 +78,22 @@ class DType {
     // dtype will have empty dimensions.
     kToken = 17,
 
+    // Opaque objects.
+    kOpaque = 14,
+
+    kF8E3M4 = 29,
+    kF8E4M3 = 28,
     kF8E4M3FN = 20,
     kF8E4M3B11FNUZ = 23,
     kF8E4M3FNUZ = 25,
     kF8E5M2 = 19,
     kF8E5M2FNUZ = 24,
+    kF8E8M0FNU = 33,
 
-    // Next = 26
+    // MX floating point types.
+    kF4E2M1FN = 32,
+
+    // Next = 34
 
     // Variable-length string represented as raw bytes, as in `bytes` in Python,
     // i.e., no encoding enforcement. String is not support in XLA. DType.Kind
@@ -86,6 +101,7 @@ class DType {
     // collision.
     kString = 99,
   };
+  // LINT.ThenChange(dtype.proto:DTypeProtoKind)
 
   explicit DType(Kind kind) : kind_(kind) {}
   DType(const DType&) = default;
@@ -112,7 +128,19 @@ class DType {
   // std::nullopt if there is no fixed size.
   std::optional<int> bit_size() const;
 
+  // Constructs `DType` from `DTypeProto`.
+  static absl::StatusOr<DType> FromProto(const DTypeProto& proto);
+
+  // Returns a `DTypeProto` representation.
+  DTypeProto ToProto() const;
+
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const DType& dtype) {
+    sink.Append(dtype.DebugString());
+  }
 
  private:
   Kind kind_;

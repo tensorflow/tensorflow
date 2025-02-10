@@ -38,7 +38,7 @@ namespace tensorflow {
 // XlaLaunch operators.
 class EncapsulateXlaComputationsPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 
   // The following methods are public only for unit tests.
 
@@ -48,13 +48,13 @@ class EncapsulateXlaComputationsPass : public GraphOptimizationPass {
   //    functions contain the computations to be passed to XlaLaunch. During
   //    encapsulation, we sort the arguments into the order expected by
   //    XlaLaunch.
-  static Status Encapsulate(std::unique_ptr<Graph>* graph,
-                            FunctionLibraryDefinition* flib_def);
+  static absl::Status Encapsulate(std::unique_ptr<Graph>* graph,
+                                  FunctionLibraryDefinition* flib_def);
 
   // b) we rewrite the function calls generated in phase (a) into XlaLaunch
   //    operators. We also convert the XlaClusterOutput output nodes of the
   //    function call into the outputs of the XlaLaunch operator.
-  static Status BuildXlaLaunchOps(Graph* graph);
+  static absl::Status BuildXlaLaunchOps(Graph* graph);
 
   struct XlaFunctionInfo {
     int variable_start_index = -1;
@@ -71,7 +71,7 @@ class EncapsulateXlaComputationsPass : public GraphOptimizationPass {
   // The output graph of this function would look like the following when
   // add_edges_to_output_of_downstream_nodes is true:
   // XlaLaunch -> NodeA
-  static Status BuildXlaLaunchOps(
+  static absl::Status BuildXlaLaunchOps(
       Graph* graph,
       const std::function<absl::StatusOr<bool>(const Node&)>&
           is_xla_launch_node,

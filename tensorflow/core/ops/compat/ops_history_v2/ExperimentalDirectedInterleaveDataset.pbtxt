@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ExperimentalDirectedInterleaveDataset"
   input_arg {
     name: "selector_input_dataset"

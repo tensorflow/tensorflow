@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -50,10 +51,10 @@ const TfLiteRegistration* GetNoOpRegistration() {
   return &registration;
 }
 
-const TfLiteRegistrationExternal* GetNoOpRegistrationExternal() {
-  static TfLiteRegistrationExternal* registration =
-      TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "NoOp", 1);
-  TfLiteRegistrationExternalSetInvoke(
+const TfLiteOperator* GetNoOpOperator() {
+  static TfLiteOperator* registration = TfLiteOperatorCreate(
+      kTfLiteBuiltinCustom, "NoOp", 1, /* user_data */ nullptr);
+  TfLiteOperatorSetInvoke(
       registration,
       /*invoke=*/[](TfLiteOpaqueContext*, TfLiteOpaqueNode*) {
         return kTfLiteOk;
@@ -188,21 +189,20 @@ TEST(CApiExperimentalTest, SetOpResolver) {
   TfLiteModelDelete(model);
 }
 
-const TfLiteRegistrationExternal* MyFindBuiltinOpExternal(void* user_data,
-                                                          int op, int version) {
+const TfLiteOperator* MyFindBuiltinOpExternal(void* user_data, int op,
+                                              int version) {
   OpResolverData* my_data = static_cast<OpResolverData*>(user_data);
   if (op == kTfLiteBuiltinAdd && version == 1) {
     my_data->called_for_add = true;
-    return GetNoOpRegistrationExternal();
+    return GetNoOpOperator();
   }
   return nullptr;
 }
 
-const TfLiteRegistrationExternal* MyFindCustomOpExternal(void*,
-                                                         const char* custom_op,
-                                                         int version) {
+const TfLiteOperator* MyFindCustomOpExternal(void*, const char* custom_op,
+                                             int version) {
   if (absl::string_view(custom_op) == "foo" && version == 1) {
-    return GetNoOpRegistrationExternal();
+    return GetNoOpOperator();
   }
   return nullptr;
 }
@@ -244,14 +244,14 @@ TfLiteStatus SinhEval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-const TfLiteRegistrationExternal* SinhFindCustomOpExternal(
-    void*, const char* custom_op, int version) {
+const TfLiteOperator* SinhFindCustomOpExternal(void*, const char* custom_op,
+                                               int version) {
   if (absl::string_view(custom_op) == "Sinh" && version == 1) {
-    static TfLiteRegistrationExternal* registration = []() {
-      TfLiteRegistrationExternal* reg =
-          TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "Sinh", 1);
-      TfLiteRegistrationExternalSetPrepare(reg, &SinhPrepareOpaque);
-      TfLiteRegistrationExternalSetInvoke(reg, &SinhEvalOpaque);
+    static TfLiteOperator* registration = []() {
+      TfLiteOperator* reg = TfLiteOperatorCreate(kTfLiteBuiltinCustom, "Sinh",
+                                                 1, /* user_data */ nullptr);
+      TfLiteOperatorSetPrepare(reg, &SinhPrepareOpaque);
+      TfLiteOperatorSetInvoke(reg, &SinhEvalOpaque);
       return reg;
     }();
     return registration;
@@ -301,7 +301,7 @@ TEST(CApiExperimentalTest, SetOpResolverExternal) {
 // Test using TfLiteInterpreterOptionsSetOpResolverExternalWithFallback and
 // TfLiteInterpreterCreateWithSelectedOps, for a builtin op, for the normal
 // case where the op is found with the primary op resolver callback that returns
-// a TfLiteRegistrationExternal pointer.
+// a TfLiteOperator pointer.
 TEST(CApiExperimentalTest,
      SetOpResolverExternalWithFallback_BuiltinOp_NormalCase) {
   TfLiteModel* model =
@@ -348,10 +348,11 @@ TEST(CApiExperimentalTest,
   OpResolverData my_data;
   TfLiteInterpreterOptionsSetOpResolverExternalWithFallback(
       options,
-      [](void* user_data, int op,
-         int version) -> const TfLiteRegistrationExternal* { return nullptr; },
+      [](void* user_data, int op, int version) -> const TfLiteOperator* {
+        return nullptr;
+      },
       [](void* user_data, const char* custom_op,
-         int version) -> const TfLiteRegistrationExternal* { return nullptr; },
+         int version) -> const TfLiteOperator* { return nullptr; },
       MyFindBuiltinOp, MyFindCustomOp, &my_data);
   EXPECT_FALSE(my_data.called_for_add);
 
@@ -371,7 +372,7 @@ TEST(CApiExperimentalTest,
 // Test using TfLiteInterpreterOptionsSetOpResolverExternalWithFallback and
 // TfLiteInterpreterCreateWithSelectedOps, for a custom op, for the normal
 // case where the op is found with the primary op resolver callback that returns
-// a TfLiteRegistrationExternal pointer.
+// a TfLiteOperator pointer.
 TEST(CApiExperimentalTest,
      SetOpResolverExternalWithFallback_CustomOp_NormalCase) {
   TfLiteModel* model = TfLiteModelCreateFromFile(
@@ -427,10 +428,11 @@ TEST(CApiExperimentalTest,
   OpResolverData my_data;
   TfLiteInterpreterOptionsSetOpResolverExternalWithFallback(
       options,
-      [](void* user_data, int op,
-         int version) -> const TfLiteRegistrationExternal* { return nullptr; },
+      [](void* user_data, int op, int version) -> const TfLiteOperator* {
+        return nullptr;
+      },
       [](void* user_data, const char* custom_op,
-         int version) -> const TfLiteRegistrationExternal* { return nullptr; },
+         int version) -> const TfLiteOperator* { return nullptr; },
       MyFindBuiltinOp, SinhFindCustomOp, &my_data);
   EXPECT_FALSE(my_data.called_for_add);
 
@@ -654,16 +656,16 @@ struct OpaqueTestDelegate {
     delegate_state->buffer_handle++;
 
     TfLiteRegistration registration{};
-    registration.registration_external = TfLiteRegistrationExternalCreate(
+    registration.registration_external = TfLiteOperatorCreate(
         kTfLiteBuiltinDelegate, "OpaqueTestDelegate delegate kernel",
-        /* version = */ 1);
+        /* version = */ 1, /* user_data = */ nullptr);
 
-    TfLiteRegistrationExternalSetPrepare(
+    TfLiteOperatorSetPrepare(
         registration.registration_external,
         [](TfLiteOpaqueContext* context,
            TfLiteOpaqueNode* node) -> TfLiteStatus { return kTfLiteOk; });
 
-    TfLiteRegistrationExternalSetInvoke(
+    TfLiteOperatorSetInvoke(
         registration.registration_external,
         [](TfLiteOpaqueContext*, TfLiteOpaqueNode*) -> TfLiteStatus {
           return kTfLiteOk;

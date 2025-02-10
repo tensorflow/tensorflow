@@ -20,6 +20,7 @@ limitations under the License.
 #include <atomic>
 
 #include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/tsl/framework/device_id.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -70,8 +70,12 @@ class TEST_EventMgrHelper {
 
   void PollEvents() {
     while (queue_size() > 0) {
-      mutex_lock l(em_->mu_);
-      em_->PollEvents();
+      EventMgr::ToFreeVector to_free;
+      {
+        mutex_lock l(em_->mu_);
+        em_->PollEvents(nullptr, &to_free);
+      }
+      em_->FreeMemory(to_free);
     }
   }
 

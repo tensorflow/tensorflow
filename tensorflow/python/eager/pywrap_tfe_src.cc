@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -71,7 +72,6 @@ limitations under the License.
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/stack_trace.h"
 #include "tensorflow/python/util/util.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/stringprintf.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -152,8 +152,7 @@ typedef std::function<PyObject*(PyObject*, const std::vector<int64_t>&)>
     PyBackwardFunction;
 
 using AttrToInputsMap =
-    tensorflow::gtl::FlatMap<string,
-                             tensorflow::gtl::InlinedVector<InputInfo, 4>>;
+    tensorflow::gtl::FlatMap<string, absl::InlinedVector<InputInfo, 4UL>>;
 
 tensorflow::gtl::FlatMap<string, AttrToInputsMap*>* GetAllAttrToInputsMaps() {
   static auto* all_attr_to_input_maps =
@@ -913,8 +912,8 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TFE_CancellationManager* cancellation_manager,
                               TFE_OutputTensorHandles* outputs,
                               TF_Status* out_status) {
-  tensorflow::profiler::TraceMe activity(
-      "TFE_Py_ExecuteCancelable", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TFE_Py_ExecuteCancelable",
+                                  tsl::profiler::TraceMeLevel::kInfo);
 
   TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
 
@@ -1040,7 +1039,7 @@ void RaiseFallbackException(const char* message) {
 
 // Format and return `status`' error message with the attached stack trace if
 // available. `status` must have an error.
-std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
+std::string FormatErrorStatusStackTrace(const absl::Status& status) {
   tensorflow::DCheckPyGilState();
   DCHECK(!status.ok());
 
@@ -1117,10 +1116,10 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
 
 }  // namespace tensorflow
 
-int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
+int MaybeRaiseExceptionFromStatus(const absl::Status& status,
                                   PyObject* exception) {
   if (status.ok()) return 0;
-  const char* msg = tsl::NullTerminatedMessage(status);
+  const char* msg = absl::StatusMessageAsCStr(status);
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
@@ -1270,7 +1269,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     Py_INCREF(py_vspace_);
   }
 
-  tensorflow::Status Initialize() {
+  absl::Status Initialize() {
     num_elements_ = PyObject_GetAttrString(py_vspace_, "num_elements_fn");
     if (num_elements_ == nullptr) {
       return absl::InvalidArgumentError("invalid vspace");
@@ -1320,7 +1319,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     }
     PyObject* arglist =
         Py_BuildValue("(O)", reinterpret_cast<PyObject*>(tensor));
-    PyObject* result = PyEval_CallObject(num_elements_, arglist);
+    PyObject* result = PyObject_Call(num_elements_, arglist, nullptr);
     Py_DECREF(arglist);
     if (result == nullptr) {
       // The caller detects whether a python exception has been raised.
@@ -1332,7 +1331,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   }
 
   PyObject* AggregateGradients(
-      tensorflow::gtl::ArraySlice<PyObject*> gradient_tensors) const final {
+      absl::Span<PyObject* const> gradient_tensors) const final {
     PyObject* list = PyList_New(gradient_tensors.size());
     for (int i = 0; i < gradient_tensors.size(); ++i) {
       // Note: stealing a reference to the gradient tensors.
@@ -1343,7 +1342,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     }
     PyObject* arglist = Py_BuildValue("(O)", list);
     CHECK(arglist != nullptr);
-    PyObject* result = PyEval_CallObject(aggregate_fn_, arglist);
+    PyObject* result = PyObject_Call(aggregate_fn_, arglist, nullptr);
     Py_DECREF(arglist);
     Py_DECREF(list);
     return result;
@@ -1360,7 +1359,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
       return nullptr;
     }
     PyObject* arg_list = Py_BuildValue("OO", shape, dtype);
-    PyObject* result = PyEval_CallObject(ones_fn_, arg_list);
+    PyObject* result = PyObject_Call(ones_fn_, arg_list, nullptr);
     Py_DECREF(arg_list);
     return result;
   }
@@ -1384,7 +1383,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
       return nullptr;
     }
     PyObject* arg_list = Py_BuildValue("OO", shape, dtype);
-    PyObject* result = PyEval_CallObject(zeros_fn_, arg_list);
+    PyObject* result = PyObject_Call(zeros_fn_, arg_list, nullptr);
     Py_DECREF(arg_list);
     return result;
   }
@@ -1398,15 +1397,15 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
 
   PyObject* GraphShape(PyObject* tensor) const {
     PyObject* arg_list = Py_BuildValue("(O)", tensor);
-    PyObject* result = PyEval_CallObject(graph_shape_fn_, arg_list);
+    PyObject* result = PyObject_Call(graph_shape_fn_, arg_list, nullptr);
     Py_DECREF(arg_list);
     return result;
   }
 
-  tensorflow::Status CallBackwardFunction(
+  absl::Status CallBackwardFunction(
       const string& op_type, PyBackwardFunction* backward_function,
       const std::vector<int64_t>& unneeded_gradients,
-      tensorflow::gtl::ArraySlice<PyObject*> output_gradients,
+      absl::Span<PyObject* const> output_gradients,
       absl::Span<PyObject*> result) const final {
     PyObject* grads = PyTuple_New(output_gradients.size());
     for (int i = 0; i < output_gradients.size(); ++i) {
@@ -2206,7 +2205,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
 
     tensorflow::TensorShape tensor_shape;
     int num_dims;
-    tensorflow::Status status = handle->NumDims(&num_dims);
+    absl::Status status = handle->NumDims(&num_dims);
     if (status.ok()) {
       for (int i = 0; i < num_dims; ++i) {
         int64_t dim_size;
@@ -2486,7 +2485,7 @@ bool TapeSetRecordForwardprop(
       input_info.push_back(TapeTensorFromTensor(input_seq_array[i]));
     }
     for (TFE_Py_ForwardAccumulator* accumulator : accumulator_set) {
-      tensorflow::Status status = accumulator->accumulator->Accumulate(
+      absl::Status status = accumulator->accumulator->Accumulate(
           op_type, input_info, output_info, input_ids, input_dtypes,
           forward_function, backward_function_getter, backward_function_killer);
       if (PyErr_Occurred()) return false;  // Don't swallow Python exceptions.
@@ -2520,8 +2519,8 @@ PyObject* TangentsAsPyTuple(const std::vector<PyObject*>& input_tangents) {
   return py_input_tangents;
 }
 
-tensorflow::Status ParseTangentOutputs(
-    PyObject* user_output, std::vector<PyObject*>* output_tangents) {
+absl::Status ParseTangentOutputs(PyObject* user_output,
+                                 std::vector<PyObject*>* output_tangents) {
   if (user_output == Py_None) {
     // No connected gradients.
     return absl::OkStatus();
@@ -2552,11 +2551,11 @@ tensorflow::Status ParseTangentOutputs(
 //
 // `op_name`, `attrs`, `inputs`, and `results` describe the operation for which
 // the forward function is being called.
-tensorflow::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
-                                   PyObject* inputs, PyObject* results,
-                                   const std::vector<PyObject*>& input_tangents,
-                                   std::vector<PyObject*>* output_tangents,
-                                   bool use_batch) {
+absl::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
+                             PyObject* inputs, PyObject* results,
+                             const std::vector<PyObject*>& input_tangents,
+                             std::vector<PyObject*>* output_tangents,
+                             bool use_batch) {
   if (forward_gradient_function == nullptr) {
     return tensorflow::errors::Internal(
         "No forward gradient function registered.");
@@ -2582,7 +2581,7 @@ tensorflow::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
 
 // Like CallJVPFunction, but calls a pre-bound forward function.
 // These are passed in from a record_gradient argument.
-tensorflow::Status CallOpSpecificJVPFunction(
+absl::Status CallOpSpecificJVPFunction(
     PyObject* op_specific_forward_function,
     const std::vector<PyObject*>& input_tangents,
     std::vector<PyObject*>* output_tangents) {
@@ -3680,8 +3679,8 @@ bool RunCallbacks(
 }  // namespace
 
 PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
-  tensorflow::profiler::TraceMe activity(
-      "TFE_Py_FastPathExecute_C", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TFE_Py_FastPathExecute_C",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   Py_ssize_t args_size = PyTuple_GET_SIZE(args);
   if (args_size < FAST_PATH_EXECUTE_ARG_INPUT_START) {
     PyErr_SetString(
@@ -3899,7 +3898,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
       const string& attr_name = input_arg.type_list_attr();
       Py_ssize_t len = PySequence_Fast_GET_SIZE(fast_input.get());
       PyObject** fast_input_array = PySequence_Fast_ITEMS(fast_input.get());
-      tensorflow::gtl::InlinedVector<TF_DataType, 4> attr_value(len);
+      absl::InlinedVector<TF_DataType, 4UL> attr_value(len);
       PyObject* py_attr_value = nullptr;
       if (op_exec_info.run_callbacks) {
         py_attr_value = PyTuple_New(len);
@@ -3973,7 +3972,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   }
   int num_retvals = num_outputs;
 
-  tensorflow::gtl::InlinedVector<TFE_TensorHandle*, 2> retvals(num_retvals);
+  absl::InlinedVector<TFE_TensorHandle*, 2UL> retvals(num_retvals);
 
   Py_BEGIN_ALLOW_THREADS;
   TFE_Execute(op, retvals.data(), &num_retvals, status);

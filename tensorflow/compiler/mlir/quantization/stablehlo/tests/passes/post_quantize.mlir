@@ -37,7 +37,7 @@ func.func @remove_volatile_qdq_with_requantization(%arg0: tensor<3x2xf32>) -> te
 // CHECK-LABEL: @quantize_constant
 // CHECK-SAME: %[[ARG0:.*]]: tensor<1x3xf32>
 func.func @quantize_constant(%arg0: tensor<1x3xf32>) -> tensor<1x2xf32> {
-  // CHECK-DAG: %[[QCST:.*]] = stablehlo.constant() {value = dense<-78> : tensor<3x2xi8>} : () -> tensor<3x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
+  // CHECK-DAG: %[[QCST:.*]] = stablehlo.constant() <{value = dense<-78> : tensor<3x2xi8>}> : () -> tensor<3x2x!quant.uniform<i8<-127:127>:f32, 5.000000e-03>>
   // CHECK-DAG: %[[Q1:.*]] = stablehlo.uniform_quantize %[[ARG0]]
   // CHECK-NOT: "quantfork.qcast"
   // CHECK: %[[DOT:.*]] = stablehlo.dot %[[Q1]], %[[QCST]]

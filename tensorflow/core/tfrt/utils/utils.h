@@ -41,8 +41,8 @@ class BEFFile;
 class ExecutionContext;
 class HostContext;
 
-typedef tensorflow::gtl::InlinedVector<tfrt::DType, 4> TfrtDataTypeVector;
-typedef tensorflow::gtl::ArraySlice<tfrt::DType> TfrtDataTypeSlice;
+typedef absl::InlinedVector<tfrt::DType, 4UL> TfrtDataTypeVector;
+typedef absl::Span<const tfrt::DType> TfrtDataTypeSlice;
 
 DType ConvertTfDTypeToTfrtDType(tensorflow::DataType dtype);
 
@@ -52,9 +52,9 @@ DType ConvertTfDTypeToTfrtDType(tensorflow::DataType dtype);
 //
 // TODO(b/178714905): We should avoid special handling on initialization by
 // letting compiler to handle it.
-tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
-                                         tfrt::BEFFile* bef_file,
-                                         absl::string_view fallback_init_func);
+absl::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
+                                   tfrt::BEFFile* bef_file,
+                                   absl::string_view fallback_init_func);
 
 // Creates dummy TF devices from the input device names. Currently this method
 // is used to create the TPU_SYSTEM device for worker server.

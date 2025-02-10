@@ -22,13 +22,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -36,9 +40,9 @@ namespace xla {
 Shape::Shape() = default;
 Shape::~Shape() = default;
 Shape::Shape(const Shape&) = default;
-Shape::Shape(Shape&&) = default;
+Shape::Shape(Shape&&) noexcept = default;
 Shape& Shape::operator=(const Shape&) = default;
-Shape& Shape::operator=(Shape&&) = default;
+Shape& Shape::operator=(Shape&&) noexcept = default;
 
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
@@ -80,8 +84,8 @@ Shape::Shape(const ShapeProto& shape_proto) {
   }
 }
 
-ShapeProto Shape::ToProto() const {
-  ShapeProto proto;
+void Shape::SetProto(ShapeProto& proto) const {
+  proto.Clear();
   proto.set_element_type(element_type_);
   proto.mutable_dimensions()->Reserve(dimensions_size());
   for (const int64_t dimension : dimensions()) {
@@ -92,11 +96,16 @@ ShapeProto Shape::ToProto() const {
   }
   proto.mutable_tuple_shapes()->Reserve(tuple_shapes_size());
   for (const Shape& shape : tuple_shapes()) {
-    *proto.add_tuple_shapes() = shape.ToProto();
+    shape.SetProto(*proto.add_tuple_shapes());
   }
   if (has_layout()) {
-    *proto.mutable_layout() = layout().ToProto();
+    layout().SetProto(*proto.mutable_layout());
   }
+}
+
+ShapeProto Shape::ToProto() const {
+  ShapeProto proto;
+  SetProto(proto);
   return proto;
 }
 
@@ -165,6 +174,20 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
   }
 }
 
+void Shape::DeleteDimensions(absl::Span<const int64_t> sorted_dims_to_delete) {
+  CHECK(IsArray());
+  CHECK(absl::c_is_sorted(sorted_dims_to_delete));
+  dimensions_ = RemoveElements(sorted_dims_to_delete, dimensions_);
+  dynamic_dimensions_ =
+      RemoveElements(sorted_dims_to_delete, dynamic_dimensions_);
+  if (LayoutUtil::HasLayout(*this)) {
+    for (auto it = sorted_dims_to_delete.rbegin();
+         it != sorted_dims_to_delete.rend(); ++it) {
+      layout_->DeleteDimension(*it);  // NOLINT: optional-access
+    }
+  }
+}
+
 const Shape& Shape::tuple_shapes(int index) const {
   return tuple_shapes_[index];
 }
@@ -200,9 +223,20 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
   }
 
   if (!ignore_dimensions_) {
-    if (!ShapeUtil::SameDimensions(lhs, rhs)) {
-      VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
+    if (!ShapeUtil::SameRank(lhs, rhs)) {
+      VLOG(3) << "CompareShapes: lhs rank != rhs rank";
       return false;
+    }
+    for (int i = 0; i < lhs.rank(); ++i) {
+      if (ignore_dynamic_dimension_ &&
+          (lhs.is_unbounded_dynamic_dimension(i) ||
+           rhs.is_unbounded_dynamic_dimension(i))) {
+        continue;
+      }
+      if (lhs.dimensions(i) != rhs.dimensions(i)) {
+        VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
+        return false;
+      }
     }
   } else {
     if (!ShapeUtil::SameRank(lhs, rhs)) {
@@ -230,6 +264,9 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
         }
         if (ignore_tail_padding_alignment_in_elements_in_layout_) {
           equal.IgnoreTailPaddingAlignmentInElements();
+        }
+        if (ignore_split_config_in_layout_) {
+          equal.IgnoreSplitConfigs();
         }
         if (!equal(lhs.layout(), rhs.layout())) {
           VLOG(3) << "CompareShapes: lhs layout != rhs layout";

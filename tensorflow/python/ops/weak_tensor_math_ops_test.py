@@ -1004,7 +1004,7 @@ class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (dtypes.complex128),
   )
   def testNonFiniteInNumerator(self, dtype):
-    nums = _get_weak_tensor([np.nan, np.inf, np.NINF], dtype=dtype)
+    nums = _get_weak_tensor([np.nan, np.inf, -np.inf], dtype=dtype)
     zeros = _get_weak_tensor([0, 0, 0], dtype=dtype)
     ones = _get_weak_tensor([1, 1, 1], dtype=dtype)
     with test_util.use_gpu():

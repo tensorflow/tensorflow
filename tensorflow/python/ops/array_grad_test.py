@@ -147,6 +147,41 @@ class ArrayGradTest(test.TestCase):
 
     self._testGrad(f, x)
 
+  def test_reshape_simple(self):
+    x = constant_op.constant([1., 2., 3.], dtype=dtypes.float64)
+    y = constant_op.constant([3, 1], dtype=dtypes.int64)
+
+    def f(x):
+      return array_ops.reshape(x, y)
+
+    self._testGrad(f, x)
+
+  def test_reshape_one_unknown_dim(self):
+    def f(x):
+      x_without_shape = array_ops.placeholder_with_default(x, shape=[None, 2])
+      return array_ops.reshape(x_without_shape, [3, 2])
+
+    x = constant_op.constant([[1., 2.], [3., 4.], [5., 6.]],
+                             dtype=dtypes.float64)
+    self._testGrad(f, x)
+
+  def test_reshape_two_unknown_dims(self):
+    def f(x):
+      x_without_shape = array_ops.placeholder_with_default(x,
+                                                           shape=[None, None])
+      return array_ops.reshape(x_without_shape, [6])
+
+    x = constant_op.constant([[1., 2., 3.], [4., 5., 6.]], dtype=dtypes.float64)
+    self._testGrad(f, x)
+
+  def test_reshape_one_unknown_dim_and_zero_elements(self):
+    def f(x):
+      x_without_shape = array_ops.placeholder_with_default(x, shape=[None, 0])
+      return array_ops.reshape(x_without_shape, [0])
+
+    x = constant_op.constant([], shape=[3, 0], dtype=dtypes.float64)
+    self._testGrad(f, x)
+
 
 if __name__ == "__main__":
   test.main()

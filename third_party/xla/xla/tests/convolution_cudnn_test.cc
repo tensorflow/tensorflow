@@ -20,12 +20,13 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class ConvolutionHloTest : public HloTestBase {};
+using ConvolutionHloTest = HloTestBase;
 
 XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32) {
   // This convolution should be transformed to "cudnn-conv" and vectorized as
@@ -272,6 +273,13 @@ ENTRY TestComputation {
 
 INSTANTIATE_TEST_SUITE_P(CudnnReorderSuite, ReorderFilterAndBiasHloTest,
                          /*bias_size=*/::testing::Values(32, 64, 96));
+
+// Regression test for algorithm 14.
+XLA_TEST_F(ConvolutionHloTest, TestCudnnConvBiasActivationForward) {
+  const std::string& filename = tsl::io::JoinPath(
+      tsl::testing::XlaSrcRoot(), "tests", "data", "cudnn_reproducer.hlo");
+  EXPECT_TRUE(RunAndCompareFromFile(filename, ErrorSpec{1e-3, 1e-3}));
+}
 
 }  // namespace
 }  // namespace xla
