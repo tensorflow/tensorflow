@@ -389,6 +389,10 @@ absl::StatusOr<bool> ShardyXLA::Run(
     mlir::sdy::PropagationOptions options;
     options.dumpDirectory = shardyDir;
     options.conservativePropagation = hloModule->use_auto_spmd_partitioning();
+    options.enableInsertExplicitCollectives =
+        hloModule->config()
+            .debug_options()
+            .xla_shardy_enable_insert_explicit_collectives();
     mlir::sdy::addPropagationPipeline(pm, options);
   }
   addStablehloExportPipeline(pm);

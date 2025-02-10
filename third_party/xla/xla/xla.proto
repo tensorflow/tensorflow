@@ -1078,6 +1078,8 @@ message DebugOptions {
   int64 xla_reduce_window_rewrite_base_length = 293;
 
   reserved 302;  // was xla_use_shardy
+                 // TODO(enver): Consider a sub-message for sharding flags.
+  bool xla_shardy_enable_insert_explicit_collectives = 368;
 
   // The command buffer trace cache size, increasing the cache size may
   // sometimes reduces the chances of doing command buffer tracing for
@@ -1145,7 +1147,7 @@ message DebugOptions {
 
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
-  // Next id: 368
+  // Next id: 369
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
