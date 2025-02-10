@@ -32,6 +32,7 @@ limitations under the License.
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -1836,6 +1837,19 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     VLOG(1) << "Compiling ahead-of-time: " << module->name();
 
     if (!module->has_schedule()) {
+      const bool is_thunk_runtime =
+          module->config().debug_options().xla_cpu_use_thunk_runtime();
+      // AOT compilation is incompatible with thunks; temporarily disable them.
+      if (is_thunk_runtime) {
+        module->mutable_config()
+            .mutable_debug_options()
+            .set_xla_cpu_use_thunk_runtime(false);
+      }
+      absl::Cleanup restore_thunk_runtime_value = [&] {
+        module->mutable_config()
+            .mutable_debug_options()
+            .set_xla_cpu_use_thunk_runtime(is_thunk_runtime);
+      };
       TF_RETURN_IF_ERROR(RunHloPasses(module, /*is_aot_compile=*/true,
                                       target_machine.get(),
                                       /*dummy*/ CompileOptions{}));
