@@ -91,7 +91,10 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
       const auto& config = backend_config.custom_fusion_config();
       if (absl::StrContains(config.name(), "address_computation")) {
-        return std::make_unique<DynamicSliceFusion>(analysis);
+        const HloFusionInfo* hlo_fusion_info =
+            dynamic_cast<const HloFusionInfo*>(&fusion_info);
+        return std::make_unique<DynamicSliceFusion>(
+            analysis, hlo_fusion_info->GetCallGraph());
       }
       return std::make_unique<CustomFusion>();
     }
