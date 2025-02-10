@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -46,6 +45,7 @@ limitations under the License.
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
