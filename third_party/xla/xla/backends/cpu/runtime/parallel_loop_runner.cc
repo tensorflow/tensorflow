@@ -203,6 +203,16 @@ static Task3DTile2DIndex Delinearize(size_t task_index, size_t range_i,
   return {task_i, offset_j, offset_k, extent_j, extent_k};
 }
 
+// XNNPACK tends to choose too small tile sizes that create too many tasks. For
+// dynamic versions of parallel loops we can choose tile size to be any multiple
+// of the original tile size. This function ensures that the tile size is at
+// least `min_tile_size`.
+static size_t AdjustTileSize(size_t tile_size, size_t min_tile_size) {
+  size_t adjusted_tile_size = tile_size;
+  while (adjusted_tile_size < min_tile_size) adjusted_tile_size += tile_size;
+  return adjusted_tile_size;
+}
+
 // In the `Parallelize` implementations below:
 //
 // (1) If done event is already available, execute the task immediately in the
@@ -280,7 +290,7 @@ void ParallelLoopRunner::Parallelize(size_t range, size_t tile,
 
 void ParallelLoopRunner::ParallelizeDynamic(size_t range, size_t tile,
                                             Task1DTile1DDynamic task) {
-  Parallelize(range, tile, std::move(task));
+  Parallelize(range, AdjustTileSize(tile, 128), std::move(task));
 }
 
 struct ParallelLoopRunner::ParallelTask2DTile1D {
@@ -320,7 +330,7 @@ void ParallelLoopRunner::Parallelize(size_t range_i, size_t range_j,
 void ParallelLoopRunner::ParallelizeDynamic(size_t range_i, size_t range_j,
                                             size_t tile_j,
                                             Task2DTile1DDynamic task) {
-  Parallelize(range_i, range_j, tile_j, std::move(task));
+  Parallelize(range_i, range_j, AdjustTileSize(tile_j, 128), std::move(task));
 }
 
 struct ParallelLoopRunner::ParallelTask3DTile2D {
@@ -366,7 +376,8 @@ void ParallelLoopRunner::ParallelizeDynamic(size_t range_i, size_t range_j,
                                             size_t range_k, size_t tile_j,
                                             size_t tile_k,
                                             Task3DTile2DDynamic task) {
-  Parallelize(range_i, range_j, range_k, tile_j, tile_k, std::move(task));
+  Parallelize(range_i, range_j, range_k, AdjustTileSize(tile_j, 128),
+              AdjustTileSize(tile_k, 128), std::move(task));
 }
 
 }  // namespace xla::cpu
