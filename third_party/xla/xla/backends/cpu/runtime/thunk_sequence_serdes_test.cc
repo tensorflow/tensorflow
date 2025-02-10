@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 
 namespace xla::cpu {
 namespace {
@@ -751,8 +752,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     return true;
   }
 
-  bool VerifyCollectiveThunkEquality(const CollectiveThunk& thunk_1,
-                                     const CollectiveThunk& thunk_2) {
+  bool VerifyCollectiveThunkEqualityCommon(const CollectiveThunk& thunk_1,
+                                           const CollectiveThunk& thunk_2) {
     const auto& op_params_1 = thunk_1.op_params();
     const auto& op_params_2 = thunk_2.op_params();
 
@@ -797,19 +798,18 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
 
   bool VerifyAllGatherThunkEquality(const AllGatherThunk& thunk_1,
                                     const AllGatherThunk& thunk_2) {
-    return VerifyCollectiveThunkEquality(thunk_1, thunk_2);
+    return true;
   }
 
   bool VerifyAllReduceThunkEquality(const AllReduceThunk& thunk_1,
                                     const AllReduceThunk& thunk_2) {
     return thunk_1.single_replica() == thunk_2.single_replica() &&
-           thunk_1.reduction_kind() == thunk_2.reduction_kind() &&
-           VerifyCollectiveThunkEquality(thunk_1, thunk_2);
+           thunk_1.reduction_kind() == thunk_2.reduction_kind();
   }
 
   bool VerifyAllToAllThunkEquality(const AllToAllThunk& thunk_1,
                                    const AllToAllThunk& thunk_2) {
-    return VerifyCollectiveThunkEquality(thunk_1, thunk_2);
+    return true;
   }
 
   bool VerifyCallThunkEquality(const CallThunk& thunk_1,
@@ -826,8 +826,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
       const CollectivePermuteThunk& thunk_1,
       const CollectivePermuteThunk& thunk_2) {
     return absl::c_equal(thunk_1.source_target_pairs(),
-                         thunk_2.source_target_pairs()) &&
-           VerifyCollectiveThunkEquality(thunk_1, thunk_2);
+                         thunk_2.source_target_pairs());
   }
 
   bool VerifyCopyThunkEquality(const CopyThunk& thunk_1,
@@ -1044,6 +1043,13 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
            thunk_1.trip_count() == thunk_2.trip_count();
   }
 
+  bool VerifyXnnFusionThunkEquality(const XnnFusionThunk& thunk_1,
+                                    const XnnFusionThunk& thunk_2) {
+    // TODO(basioli) assume this is always false until we implement
+    // serialization of XnnFusionThunk.
+    return false;
+  }
+
   bool VerifyXnnDotThunkEquality(const XnnDotThunk& thunk_1,
                                  const XnnDotThunk& thunk_2) {
     const bool are_dot_dimensions_equal =
@@ -1211,8 +1217,39 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
 
   bool VerifyReduceScatterThunkEquality(const ReduceScatterThunk& thunk_1,
                                         const ReduceScatterThunk& thunk_2) {
-    return thunk_1.reduction_kind() == thunk_2.reduction_kind() &&
-           VerifyCollectiveThunkEquality(thunk_1, thunk_2);
+    return thunk_1.reduction_kind() == thunk_2.reduction_kind();
+  }
+
+  bool VerifyCollectiveThunkEquality(const CollectiveThunk& thunk_1,
+                                     const CollectiveThunk& thunk_2) {
+    if (thunk_1.collective_kind() != thunk_2.collective_kind()) {
+      return false;
+    }
+    if (!VerifyCollectiveThunkEqualityCommon(thunk_1, thunk_2)) {
+      return false;
+    }
+    switch (thunk_1.collective_kind()) {
+      case CollectiveThunk::CollectiveKind::kAllGather:
+        return VerifyAllGatherThunkEquality(
+            tsl::down_cast<const AllGatherThunk&>(thunk_1),
+            tsl::down_cast<const AllGatherThunk&>(thunk_2));
+      case CollectiveThunk::CollectiveKind::kAllReduce:
+        return VerifyAllReduceThunkEquality(
+            tsl::down_cast<const AllReduceThunk&>(thunk_1),
+            tsl::down_cast<const AllReduceThunk&>(thunk_2));
+      case CollectiveThunk::CollectiveKind::kAllToAll:
+        return VerifyAllToAllThunkEquality(
+            tsl::down_cast<const AllToAllThunk&>(thunk_1),
+            tsl::down_cast<const AllToAllThunk&>(thunk_2));
+      case CollectiveThunk::CollectiveKind::kReduceScatter:
+        return VerifyReduceScatterThunkEquality(
+            tsl::down_cast<const ReduceScatterThunk&>(thunk_1),
+            tsl::down_cast<const ReduceScatterThunk&>(thunk_2));
+      case CollectiveThunk::CollectiveKind::kCollectivePermute:
+        return VerifyCollectivePermuteThunkEquality(
+            tsl::down_cast<const CollectivePermuteThunk&>(thunk_1),
+            tsl::down_cast<const CollectivePermuteThunk&>(thunk_2));
+    }
   }
 
   bool VerifyThunkEquality(const Thunk& thunk_1, const Thunk& thunk_2) {
@@ -1227,108 +1264,109 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     }
 
     switch (thunk_1.kind()) {
-      case Thunk::Kind::kAllGather:
-        return VerifyAllGatherThunkEquality(
-            static_cast<const AllGatherThunk&>(thunk_1),
-            static_cast<const AllGatherThunk&>(thunk_2));
-      case Thunk::Kind::kAllReduce:
-        return VerifyAllReduceThunkEquality(
-            static_cast<const AllReduceThunk&>(thunk_1),
-            static_cast<const AllReduceThunk&>(thunk_2));
-      case Thunk::Kind::kAllToAll:
-        return VerifyAllToAllThunkEquality(
-            static_cast<const AllToAllThunk&>(thunk_1),
-            static_cast<const AllToAllThunk&>(thunk_2));
+      case Thunk::Kind::kCollective:
+        return VerifyCollectiveThunkEquality(
+            tsl::down_cast<const CollectiveThunk&>(thunk_1),
+            tsl::down_cast<const CollectiveThunk&>(thunk_2));
       case Thunk::Kind::kCall:
-        return VerifyCallThunkEquality(static_cast<const CallThunk&>(thunk_1),
-                                       static_cast<const CallThunk&>(thunk_2));
-      case Thunk::Kind::kCollectivePermute:
-        return VerifyCollectivePermuteThunkEquality(
-            static_cast<const CollectivePermuteThunk&>(thunk_1),
-            static_cast<const CollectivePermuteThunk&>(thunk_2));
+        return VerifyCallThunkEquality(
+            tsl::down_cast<const CallThunk&>(thunk_1),
+            tsl::down_cast<const CallThunk&>(thunk_2));
       case Thunk::Kind::kCopy:
-        return VerifyCopyThunkEquality(static_cast<const CopyThunk&>(thunk_1),
-                                       static_cast<const CopyThunk&>(thunk_2));
+        return VerifyCopyThunkEquality(
+            tsl::down_cast<const CopyThunk&>(thunk_1),
+            tsl::down_cast<const CopyThunk&>(thunk_2));
       case Thunk::Kind::kConditional:
         return VerifyConditionalThunkEquality(
-            static_cast<const ConditionalThunk&>(thunk_1),
-            static_cast<const ConditionalThunk&>(thunk_2));
+            tsl::down_cast<const ConditionalThunk&>(thunk_1),
+            tsl::down_cast<const ConditionalThunk&>(thunk_2));
       case Thunk::Kind::kCustomCall:
         return VerifyCustomCallThunkEquality(
-            static_cast<const CustomCallThunk&>(thunk_1),
-            static_cast<const CustomCallThunk&>(thunk_2));
+            tsl::down_cast<const CustomCallThunk&>(thunk_1),
+            tsl::down_cast<const CustomCallThunk&>(thunk_2));
       case Thunk::Kind::kDot:
-        return VerifyDotThunkEquality(static_cast<const DotThunk&>(thunk_1),
-                                      static_cast<const DotThunk&>(thunk_2));
+        return VerifyDotThunkEquality(tsl::down_cast<const DotThunk&>(thunk_1),
+                                      tsl::down_cast<const DotThunk&>(thunk_2));
       case Thunk::Kind::kFft:
-        return VerifyFftThunkEquality(static_cast<const FftThunk&>(thunk_1),
-                                      static_cast<const FftThunk&>(thunk_2));
+        return VerifyFftThunkEquality(tsl::down_cast<const FftThunk&>(thunk_1),
+                                      tsl::down_cast<const FftThunk&>(thunk_2));
       case Thunk::Kind::kInfeed:
         return VerifyInfeedThunkEquality(
-            static_cast<const InfeedThunk&>(thunk_1),
-            static_cast<const InfeedThunk&>(thunk_2));
+            tsl::down_cast<const InfeedThunk&>(thunk_1),
+            tsl::down_cast<const InfeedThunk&>(thunk_2));
       case Thunk::Kind::kOutfeed:
         return VerifyOutfeedThunkEquality(
-            static_cast<const OutfeedThunk&>(thunk_1),
-            static_cast<const OutfeedThunk&>(thunk_2));
+            tsl::down_cast<const OutfeedThunk&>(thunk_1),
+            tsl::down_cast<const OutfeedThunk&>(thunk_2));
       case Thunk::Kind::kPartitionId:
         return VerifyPartitionIdThunkEquality(
-            static_cast<const PartitionIdThunk&>(thunk_1),
-            static_cast<const PartitionIdThunk&>(thunk_2));
+            static_cast<const PartitionIdThunk&>(
+                tsl::down_cast<const internal::LogicalIdThunk<
+                    internal::LogicalIdKind::kPartitionId>&>(thunk_1)),
+            static_cast<const PartitionIdThunk&>(
+                tsl::down_cast<const internal::LogicalIdThunk<
+                    internal::LogicalIdKind::kPartitionId>&>(thunk_2)));
       case Thunk::Kind::kReplicaId:
         return VerifyReplicaIdThunkEquality(
-            static_cast<const ReplicaIdThunk&>(thunk_1),
-            static_cast<const ReplicaIdThunk&>(thunk_2));
+            static_cast<const ReplicaIdThunk&>(
+                tsl::down_cast<const internal::LogicalIdThunk<
+                    internal::LogicalIdKind::kReplicaId>&>(thunk_1)),
+            static_cast<const ReplicaIdThunk&>(
+                tsl::down_cast<const internal::LogicalIdThunk<
+                    internal::LogicalIdKind::kReplicaId>&>(thunk_2)));
       case Thunk::Kind::kRngGetAndUpdateState:
         return VerifyRngGetAndUpdateStateThunkEquality(
-            static_cast<const RngGetAndUpdateStateThunk&>(thunk_1),
-            static_cast<const RngGetAndUpdateStateThunk&>(thunk_2));
+            tsl::down_cast<const RngGetAndUpdateStateThunk&>(thunk_1),
+            tsl::down_cast<const RngGetAndUpdateStateThunk&>(thunk_2));
       case Thunk::Kind::kSort:
-        return VerifySortThunkEquality(static_cast<const SortThunk&>(thunk_1),
-                                       static_cast<const SortThunk&>(thunk_2));
+        return VerifySortThunkEquality(
+            tsl::down_cast<const SortThunk&>(thunk_1),
+            tsl::down_cast<const SortThunk&>(thunk_2));
       case Thunk::Kind::kTopK:
-        return VerifyTopKThunkEquality(static_cast<const TopKThunk&>(thunk_1),
-                                       static_cast<const TopKThunk&>(thunk_2));
+        return VerifyTopKThunkEquality(
+            tsl::down_cast<const TopKThunk&>(thunk_1),
+            tsl::down_cast<const TopKThunk&>(thunk_2));
       case Thunk::Kind::kWhile:
         return VerifyWhileThunkEquality(
-            static_cast<const WhileThunk&>(thunk_1),
-            static_cast<const WhileThunk&>(thunk_2));
+            tsl::down_cast<const WhileThunk&>(thunk_1),
+            tsl::down_cast<const WhileThunk&>(thunk_2));
       case Thunk::Kind::kXnnFusion: {
-        auto* xnn_dot_1 = dynamic_cast<const XnnDotThunk*>(&thunk_1);
-        auto* xnn_dot_2 = dynamic_cast<const XnnDotThunk*>(&thunk_2);
-        auto* xnn_conv_1 = dynamic_cast<const XnnConvolutionThunk*>(&thunk_1);
-        auto* xnn_conv_2 = dynamic_cast<const XnnConvolutionThunk*>(&thunk_2);
-        if (xnn_dot_1 && xnn_dot_2) {
-          return VerifyXnnDotThunkEquality(
-              static_cast<const XnnDotThunk&>(thunk_1),
-              static_cast<const XnnDotThunk&>(thunk_2));
-        } else if (xnn_conv_1 && xnn_conv_2) {
-          return VerifyXnnConvolutionThunkEquality(
-              static_cast<const XnnConvolutionThunk&>(thunk_1),
-              static_cast<const XnnConvolutionThunk&>(thunk_2));
-        } else {
-          CHECK(false) << "Unsupported XnnFusion thunk type";
+        const XnnFusionThunk& xnn_fusion_thunk_1 =
+            tsl::down_cast<const XnnFusionThunk&>(thunk_1);
+        const XnnFusionThunk& xnn_fusion_thunk_2 =
+            tsl::down_cast<const XnnFusionThunk&>(thunk_2);
+        if (xnn_fusion_thunk_1.xnn_fusion_kind() !=
+            xnn_fusion_thunk_2.xnn_fusion_kind()) {
           return false;
+        }
+        switch (xnn_fusion_thunk_1.xnn_fusion_kind()) {
+          case XnnFusionThunk::XnnFusionKind::kFusion:
+            return VerifyXnnFusionThunkEquality(
+                tsl::down_cast<const XnnFusionThunk&>(thunk_1),
+                tsl::down_cast<const XnnFusionThunk&>(thunk_2));
+          case XnnFusionThunk::XnnFusionKind::kDot:
+            return VerifyXnnDotThunkEquality(
+                tsl::down_cast<const XnnDotThunk&>(thunk_1),
+                tsl::down_cast<const XnnDotThunk&>(thunk_2));
+          case XnnFusionThunk::XnnFusionKind::kConvolution:
+            return VerifyXnnConvolutionThunkEquality(
+                tsl::down_cast<const XnnConvolutionThunk&>(thunk_1),
+                tsl::down_cast<const XnnConvolutionThunk&>(thunk_2));
         }
       }
       case Thunk::Kind::kKernel:
         return VerifyKernelThunkEquality(
-            static_cast<const KernelThunkBase&>(thunk_1),
-            static_cast<const KernelThunkBase&>(thunk_2));
+            tsl::down_cast<const KernelThunkBase&>(thunk_1),
+            tsl::down_cast<const KernelThunkBase&>(thunk_2));
       case Thunk::Kind::kConvolution:
         return VerifyConvolutionThunkEquality(
-            static_cast<const ConvolutionThunk&>(thunk_1),
-            static_cast<const ConvolutionThunk&>(thunk_2));
-      case Thunk::Kind::kReduceScatter:
-        return VerifyReduceScatterThunkEquality(
-            static_cast<const ReduceScatterThunk&>(thunk_1),
-            static_cast<const ReduceScatterThunk&>(thunk_2));
-      case Thunk::Kind::kUnknown:
-        return false;
+            tsl::down_cast<const ConvolutionThunk&>(thunk_1),
+            tsl::down_cast<const ConvolutionThunk&>(thunk_2));
     }
 
     return true;
   }
+
   std::unique_ptr<SerDesBase<ThunkSequence>> thunk_sequence_serdes_;
   FixedCapacityVector<BufferAllocation> buffer_allocations_;
   std::vector<Literal> literals_;

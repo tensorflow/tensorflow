@@ -40,16 +40,10 @@ namespace xla::cpu {
 
 absl::string_view Thunk::KindToString(Kind kind) {
   switch (kind) {
-    case Kind::kAllGather:
-      return "all-gather";
-    case Kind::kAllReduce:
-      return "all-reduce";
-    case Kind::kAllToAll:
-      return "all-to-all";
     case Kind::kCall:
       return "call";
-    case Kind::kCollectivePermute:
-      return "collective-permute";
+    case Kind::kCollective:
+      return "collective";
     case Kind::kConditional:
       return "conditional";
     case Kind::kConvolution:
@@ -70,8 +64,6 @@ absl::string_view Thunk::KindToString(Kind kind) {
       return "outfeed";
     case Kind::kPartitionId:
       return "partition-id";
-    case Kind::kReduceScatter:
-      return "reduce-scatter";
     case Kind::kReplicaId:
       return "replica-id";
     case Kind::kRngGetAndUpdateState:
@@ -84,8 +76,6 @@ absl::string_view Thunk::KindToString(Kind kind) {
       return "while";
     case Kind::kXnnFusion:
       return "xnn-fusion";
-    case Kind::kUnknown:
-      return "unknown";
   }
 }
 

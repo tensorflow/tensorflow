@@ -20,6 +20,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/collectives/cpu_clique_key.h"
@@ -57,13 +59,34 @@ limitations under the License.
 
 namespace xla::cpu {
 
-CollectiveThunk::CollectiveThunk(Kind kind, Thunk::Info info,
-                                 OpParams op_params, OpBuffers op_buffers,
-                                 OpResources op_resources)
-    : Thunk(kind, info),
+absl::string_view CollectiveThunk::CollectiveKindToString(CollectiveKind kind) {
+  switch (kind) {
+    case CollectiveKind::kAllGather:
+      return "all-gather";
+    case CollectiveKind::kAllReduce:
+      return "all-reduce";
+    case CollectiveKind::kAllToAll:
+      return "all-to-all";
+    case CollectiveKind::kCollectivePermute:
+      return "collective-permute";
+    case CollectiveKind::kReduceScatter:
+      return "reduce-scatter";
+  }
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         CollectiveThunk::CollectiveKind kind) {
+  return os << CollectiveThunk::CollectiveKindToString(kind);
+}
+
+CollectiveThunk::CollectiveThunk(CollectiveKind collective_kind,
+                                 Thunk::Info info, OpParams op_params,
+                                 OpBuffers op_buffers, OpResources op_resources)
+    : Thunk(Thunk::Kind::kCollective, info),
       op_params_(std::move(op_params)),
       op_buffers_(std::move(op_buffers)),
-      op_resources_(std::move(op_resources)) {}
+      op_resources_(std::move(op_resources)),
+      collective_kind_(collective_kind) {}
 
 Thunk::BufferUses CollectiveThunk::buffer_uses() const {
   BufferUses uses;

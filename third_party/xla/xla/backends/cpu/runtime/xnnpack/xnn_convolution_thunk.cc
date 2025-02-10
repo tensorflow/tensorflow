@@ -154,8 +154,8 @@ XnnConvolutionThunk::XnnConvolutionThunk(
     Options options, Info info, ConvolutionSlices convolution_slices,
     ConvolutionCanonicalDims convolution_canonical_dims,
     ConvolutionDimensionNumbers dnums, Window window)
-    : XnnFusionThunk(std::move(options), std::move(info),
-                     ConvolutionArguments(convolution_slices),
+    : XnnFusionThunk(XnnFusionKind::kConvolution, std::move(options),
+                     std::move(info), ConvolutionArguments(convolution_slices),
                      ConvolutionResults(convolution_slices),
                      OneUseBuilder(std::bind(
                          &XnnConvolutionThunk::BuildConvolutionSubgraph, this,

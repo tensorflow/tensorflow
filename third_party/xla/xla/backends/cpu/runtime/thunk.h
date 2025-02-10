@@ -66,12 +66,8 @@ namespace xla::cpu {
 class Thunk {
  public:
   enum class Kind {
-    kUnknown,
-    kAllGather,
-    kAllReduce,
-    kAllToAll,
     kCall,
-    kCollectivePermute,
+    kCollective,
     kCopy,
     kConditional,
     kConvolution,
@@ -82,7 +78,6 @@ class Thunk {
     kKernel,
     kOutfeed,
     kPartitionId,
-    kReduceScatter,
     kReplicaId,
     kRngGetAndUpdateState,
     kSort,

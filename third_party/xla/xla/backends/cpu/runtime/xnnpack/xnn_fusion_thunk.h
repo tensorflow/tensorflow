@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/object_pool.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -47,6 +49,14 @@ namespace xla::cpu {
 // operation, where each HLO op has a corresponding XNNPACK operator.
 class XnnFusionThunk : public Thunk {
  public:
+  enum class XnnFusionKind {
+    kFusion,
+    kDot,
+    kConvolution,
+  };
+
+  static absl::string_view XnnFusionKindToString(XnnFusionKind kind);
+
   ~XnnFusionThunk() override;
 
   struct Options {
@@ -92,12 +102,16 @@ class XnnFusionThunk : public Thunk {
 
   Options options() const { return options_; }
 
- protected:
-  XnnFusionThunk(Options options, Info info, std::vector<Argument> arguments,
-                 std::vector<Result> results, Builder builder);
+  XnnFusionKind xnn_fusion_kind() const { return xnn_fusion_kind_; }
 
-  XnnFusionThunk(Options options, Info info, std::vector<Argument> arguments,
-                 std::vector<Result> results, OneUseBuilder one_use_builder,
+ protected:
+  XnnFusionThunk(XnnFusionKind kind, Options options, Info info,
+                 std::vector<Argument> arguments, std::vector<Result> results,
+                 Builder builder);
+
+  XnnFusionThunk(XnnFusionKind kind, Options options, Info info,
+                 std::vector<Argument> arguments, std::vector<Result> results,
+                 OneUseBuilder one_use_builder,
                  absl::Span<const int64_t> by_value_arguments,
                  absl::Span<const int64_t> by_value_results);
 
@@ -134,6 +148,8 @@ class XnnFusionThunk : public Thunk {
   Builder builder_;
   OneUseBuilder one_use_builder_;
 
+  XnnFusionKind xnn_fusion_kind_;
+
   // Indices of arguments and results that are captured by XNNPACK subgraph by
   // value (can be captured by one-use builder only).
   absl::flat_hash_set<int64_t> by_value_arguments_;
@@ -146,6 +162,8 @@ class XnnFusionThunk : public Thunk {
   // The number of XNNPACK runtimes created for one-use only.
   std::atomic<int64_t> num_one_use_created_{0};
 };
+
+std::ostream& operator<<(std::ostream& os, XnnFusionThunk::XnnFusionKind kind);
 
 }  // namespace xla::cpu
 

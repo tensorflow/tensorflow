@@ -19,12 +19,14 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/resource_use.h"
@@ -42,6 +44,16 @@ class CollectiveThunk : public Thunk {
   using Thunk::Thunk;
 
  public:
+  enum class CollectiveKind {
+    kAllGather,
+    kAllReduce,
+    kAllToAll,
+    kCollectivePermute,
+    kReduceScatter,
+  };
+
+  static absl::string_view CollectiveKindToString(CollectiveKind kind);
+
   // Parameters of the collective operation behind the collective thunk. We rely
   // on them to construct the rendezvous key and to find a thunk "location" in
   // the collective operation "clique" (group of communicating devices).
@@ -72,14 +84,17 @@ class CollectiveThunk : public Thunk {
     absl::InlinedVector<se::DeviceMemoryBase, 4> destination;
   };
 
-  CollectiveThunk(Kind kind, Thunk::Info info, OpParams op_params,
-                  OpBuffers op_buffers, OpResources op_resources);
+  CollectiveThunk(CollectiveKind collective_kind, Thunk::Info info,
+                  OpParams op_params, OpBuffers op_buffers,
+                  OpResources op_resources);
 
   const OpParams& op_params() const { return op_params_; }
 
   const OpBuffers& op_buffers() const { return op_buffers_; }
 
   const OpResources& op_resources() const { return op_resources_; }
+
+  CollectiveKind collective_kind() const { return collective_kind_; }
 
   // Resolves operation's device memory from the buffers and buffer allocations.
   absl::StatusOr<OpDeviceMemory> GetOpDeviceMemory(const ExecuteParams& params);
@@ -120,7 +135,11 @@ class CollectiveThunk : public Thunk {
   OpParams op_params_;
   OpBuffers op_buffers_;
   OpResources op_resources_;
+  CollectiveKind collective_kind_;
 };
+
+std::ostream& operator<<(std::ostream& os,
+                         CollectiveThunk::CollectiveKind kind);
 
 }  // namespace xla::cpu
 

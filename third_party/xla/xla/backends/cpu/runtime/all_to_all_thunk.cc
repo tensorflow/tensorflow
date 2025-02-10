@@ -49,8 +49,9 @@ absl::StatusOr<std::unique_ptr<AllToAllThunk>> AllToAllThunk::Create(
 
 AllToAllThunk::AllToAllThunk(Info info, OpParams op_params,
                              OpBuffers op_buffers, OpResources op_resources)
-    : CollectiveThunk(Kind::kAllToAll, std::move(info), std::move(op_params),
-                      std::move(op_buffers), std::move(op_resources)) {}
+    : CollectiveThunk(CollectiveKind::kAllToAll, std::move(info),
+                      std::move(op_params), std::move(op_buffers),
+                      std::move(op_resources)) {}
 
 tsl::AsyncValueRef<AllToAllThunk::ExecuteEvent> AllToAllThunk::Execute(
     const ExecuteParams& params) {

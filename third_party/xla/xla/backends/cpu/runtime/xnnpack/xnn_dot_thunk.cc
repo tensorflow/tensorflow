@@ -117,8 +117,8 @@ XnnDotThunk::XnnDotThunk(Options options, Info info,
                          DotSlices dot_slices, DotShape dot_shape,
                          DotCanonicalDims dot_canonical_dims)
     : XnnFusionThunk(
-          std::move(options), std::move(info), DotArguments(dot_slices),
-          DotResults(dot_slices),
+          XnnFusionKind::kDot, std::move(options), std::move(info),
+          DotArguments(dot_slices), DotResults(dot_slices),
           Builder(std::bind(&XnnDotThunk::BuildDotSubgraph, this,
                             std::placeholders::_1, std::placeholders::_2))),
       dot_dimensions_(std::move(dot_dimensions)),
