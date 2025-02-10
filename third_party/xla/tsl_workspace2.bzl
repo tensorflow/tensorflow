@@ -156,35 +156,22 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
-        build_file = "@local_tsl//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        patch_file = [
-            "@local_tsl//third_party/mkl_dnn:onednn_acl_threadcap.patch",
-            "@local_tsl//third_party/mkl_dnn:onednn_acl_reorder.patch",
-            "@local_tsl//third_party/mkl_dnn:onednn_acl_thread_local_scheduler.patch",
-            "@local_tsl//third_party/mkl_dnn:onednn_acl_fp32_bf16_reorder.patch",
-            "@local_tsl//third_party/mkl_dnn:onednn_acl_bf16_capability_detection_for_ubuntu20.04.patch",
-            "@local_tsl//third_party/mkl_dnn:onednn_acl_indirect_conv.patch",
-            "@local_tsl//third_party/mkl_dnn:onednn_acl_allow_blocked_weight_format_for_matmul_primitive.patch",
-            "@local_tsl//third_party/mkl_dnn:onednn_acl_fix_segfault_during_postop_execute.patch",
-            "@local_tsl//third_party/mkl_dnn:onednn_acl_add_bf16_platform_support_check.patch",
-            "@local_tsl//third_party/mkl_dnn:onednn_acl_add_sbgemm_matmul_primitive_definition.patch",
-        ],
-        sha256 = "2f76b407ef8893cca71340f88cd800019a1f14f8ac1bbdbb89a84be1370b52e3",
-        strip_prefix = "oneDNN-3.2.1",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.1.tar.gz"),
+        build_file = "//third_party/tensorflow/third_party/mkl_dnn:mkldnn_acl.BUILD",
+        sha256 = "68acf81dea6764297b73eb35fe520340b02d032b8b6c14f7f08199e37f36950b",
+        strip_prefix = "oneDNN-3.7-rc",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.7-rc.zip"),
     )
 
     tf_http_archive(
         name = "compute_library",
         patch_file = [
-            "@local_tsl//third_party/compute_library:compute_library.patch",
-            "@local_tsl//third_party/compute_library:acl_thread_local_scheduler.patch",
-            "@local_tsl//third_party/compute_library:exclude_omp_scheduler.patch",
-            "@local_tsl//third_party/compute_library:include_string.patch",
+            "//third_party/compute_library:compute_library.patch",
+            "//third_party/compute_library:exclude_omp_scheduler.patch",
+            "//third_party/compute_library:include_string.patch",
         ],
-        sha256 = "c4ca329a78da380163b2d86e91ba728349b6f0ee97d66e260a694ef37f0b0d93",
-        strip_prefix = "ComputeLibrary-23.05.1",
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v23.05.1.tar.gz"),
+        sha256 = "8273f68cd0bb17e9231a11a6618d245eb6d623884ae681c00e7a4eabca2dad42",
+        strip_prefix = "ComputeLibrary-24.12",
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/refs/tags/v24.12.tar.gz"),
     )
 
     tf_http_archive(
