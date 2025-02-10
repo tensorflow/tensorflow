@@ -72,7 +72,8 @@ litert::Expected<void> NeuronAdapterApi::LoadSymbols(
       shared_library_dir.has_value()
           ? absl::StrCat(*shared_library_dir, "/", kLibNeuronAdapterLib)
           : kLibNeuronAdapterLib};
-  if (auto status = litert::internal::OpenLib(so_paths, &dlib_handle_, true);
+  if (auto status = litert::internal::OpenLib(so_paths, &dlib_handle_,
+                                              /*log_failure=*/false);
       status != kLiteRtStatusOk) {
     return litert::Error(status, "Failed to load NeuronAdapter shared library");
   }
