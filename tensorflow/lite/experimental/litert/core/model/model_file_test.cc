@@ -249,6 +249,13 @@ TEST(ModelLoadTest, WithOffsetTensorBuffer) {
   const auto& weights_buffer =
       litert_model->get()->Subgraph(0).Tensor(0).Weights();
   EXPECT_EQ(weights_buffer.Buffer().StrView(), kTensorData);
+
+  // All tensors in the first subgraph should have the same buffer manager as
+  // the model.
+  for (auto* tensor : litert_model->get()->Subgraph(0).Tensors()) {
+    EXPECT_EQ(tensor->Weights().GetBufferManager(),
+              litert_model->get()->Buffers());
+  }
 }
 
 TEST(ModelSerializeTest, WithOffsetTensorBuffer) {

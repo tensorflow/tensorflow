@@ -367,6 +367,8 @@ class LiteRtTensorT {
 
   // IR is generally, default constructible and movable but not copyable.
   LiteRtTensorT() = default;
+  LiteRtTensorT(::litert::internal::BufferManager* buffer_manager)
+      : weights_(buffer_manager) {}
   LiteRtTensorT(const LiteRtTensorT&) = delete;
   LiteRtTensorT(LiteRtTensorT&&) = default;
   LiteRtTensorT& operator=(const LiteRtTensorT&) = delete;
@@ -556,7 +558,10 @@ class LiteRtSubgraphT {
   // reference to it.
   template <class... Args>
   LiteRtTensorT& EmplaceTensor(Args&&... args) {
-    return tensors_.EmplaceBack(std::forward<Args>(args)...);
+    if (buffer_manager_ == nullptr) {
+      return tensors_.EmplaceBack(std::forward<Args>(args)...);
+    }
+    return tensors_.EmplaceBack(buffer_manager_, std::forward<Args>(args)...);
   }
 
   // Construct a new op which will be owned by this subgraph and get a
@@ -579,12 +584,17 @@ class LiteRtSubgraphT {
 
   // IR is generally, default constructible and movable but not copyable.
   LiteRtSubgraphT() = default;
+  LiteRtSubgraphT(::litert::internal::BufferManager* buffer_manager)
+      : buffer_manager_(buffer_manager) {};
   LiteRtSubgraphT(const LiteRtSubgraphT&) = delete;
   LiteRtSubgraphT(LiteRtSubgraphT&&) = default;
   LiteRtSubgraphT& operator=(const LiteRtSubgraphT&) = delete;
   LiteRtSubgraphT& operator=(LiteRtSubgraphT&&) = default;
 
  private:
+  // If null, tensors emplaced will own their own buffer managers.
+  ::litert::internal::BufferManager* buffer_manager_ = nullptr;
+
   LiteRtTensorT::Alloc tensors_;
 
   LiteRtOpT::Alloc ops_;
@@ -719,11 +729,12 @@ class LiteRtModelT {
   // Build a new subgraph and get a stable reference to it.
   template <class... Args>
   LiteRtSubgraphT& EmplaceSubgraph(Args&&... args) {
-    return subgraphs_.EmplaceBack(std::forward<Args>(args)...);
+    return subgraphs_.EmplaceBack(Buffers(), std::forward<Args>(args)...);
   }
 
   // Transfers given subgraphs into this model.
   void TransferSubgraphs(LiteRtSubgraphT::Alloc&& subgraphs) {
+    // TODO: Consider mergeing buffer managers here.
     subgraphs_.Transfer(std::move(subgraphs));
   }
 

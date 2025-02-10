@@ -60,8 +60,10 @@ TEST(ModelTest, MetadataDNE) {
 
 TEST(ModelTest, EmplaceSubgraph) {
   LiteRtModelT model;
-  model.EmplaceSubgraph();
+  auto& sg = model.EmplaceSubgraph();
   EXPECT_EQ(model.Subgraphs().size(), 1);
+  auto& tensor = sg.EmplaceTensor();
+  EXPECT_EQ(tensor.Weights().GetBufferManager(), model.Buffers());
 }
 
 TEST(ModelTest, Signature) {

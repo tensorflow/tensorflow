@@ -165,10 +165,6 @@ Expected<BufferRef<uint8_t>> ReadBuffer(FlatbufferContext& context,
 LiteRtStatus UnpackTensor(FlatbufferContext& context,
                           const TflPackedTensor& tfl_tensor,
                           LiteRtTensorT& litert_tensor) {
-  // WEIGHTS
-
-  litert_tensor.Weights().SetBufferManager(context.GetBufferManager());
-
   const auto buffer_ind = tfl_tensor.buffer();
   if (buffer_ind != 0) {
     auto buffer = ReadBuffer(context, buffer_ind);
