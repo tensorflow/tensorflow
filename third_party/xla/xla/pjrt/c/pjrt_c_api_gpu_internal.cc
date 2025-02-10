@@ -336,6 +336,7 @@ PJRT_Custom_Partitioner_Extension custom_partitioner{
     /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner,
     /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension),
     /*register_custom_partitioner=*/PJRT_Register_Custom_Partitioner,
+    /*register_batch_partitionable=*/PJRT_Register_Batch_Partitionable,
 };
 
 PJRT_Error* PJRT_Get_Stream_For_External_Ready_Events(

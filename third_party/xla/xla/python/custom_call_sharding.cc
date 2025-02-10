@@ -320,10 +320,7 @@ Args:
         args.struct_size = PJRT_Register_Batch_Partitionable_Args_STRUCT_SIZE;
         args.name = target_name.c_str();
         args.name_size = target_name.size();
-        PJRT_Error* error =
-            reinterpret_cast<const PJRT_Custom_Partitioner_Extension*>(
-                extension)
-                ->register_batch_partitionable(&args);
+        PJRT_Error* error = extension->register_batch_partitionable(&args);
         std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error_ptr(
             error, pjrt::MakeErrorDeleter(c_api_value));
         ThrowIfError(pjrt::PjrtErrorToStatus(error_ptr.get(), c_api_value));
