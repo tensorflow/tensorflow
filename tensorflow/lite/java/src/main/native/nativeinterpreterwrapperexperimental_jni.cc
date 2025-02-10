@@ -18,11 +18,6 @@ limitations under the License.
 #include <stdio.h>
 #include <time.h>
 
-#include <atomic>
-#include <map>
-#include <utility>
-#include <vector>
-
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 
