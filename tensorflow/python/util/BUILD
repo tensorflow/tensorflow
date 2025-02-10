@@ -1267,6 +1267,16 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
+    name = "numpy_compat_test",
+    srcs = ["numpy_compat_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":numpy_compat",
+        "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+tf_py_strict_test(
     name = "variable_utils_test",
     srcs = ["variable_utils_test.py"],
     deps = [

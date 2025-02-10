@@ -29,6 +29,7 @@
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_compiled_model.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_environment.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
@@ -240,7 +241,7 @@ TEST(DispatchDelegate, CompiledModel) {
 #endif
   auto options = CompiledModel::Options::Create();
   ASSERT_TRUE(options);
-  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAccelatorCpu));
+  ASSERT_TRUE(options->SetHardwareAccelerators(kLiteRtHwAcceleratorCpu));
 
   auto env = litert::Environment::Create({});
   ASSERT_TRUE(env);

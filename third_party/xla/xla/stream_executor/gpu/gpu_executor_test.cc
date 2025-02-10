@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -20,8 +22,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -51,6 +52,16 @@ TEST_F(GetPointerMemorySpaceTest, Device) {
   TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
                           executor->GetPointerMemorySpace(mem.opaque()))
   EXPECT_EQ(memory_space, MemoryType::kDevice);
+  executor->Deallocate(&mem);
+}
+
+TEST_F(GetPointerMemorySpaceTest, Collective) {
+  // TODO (rocm) Remove this once https://github.com/openxla/xla/pull/22532 is merged
+  GTEST_SKIP() << "Collectives are not enabled for ROCm";
+  StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
+  auto mem =
+      executor->Allocate(64, static_cast<int64_t>(MemoryType::kCollective));
+  ASSERT_NE(mem, nullptr);
   executor->Deallocate(&mem);
 }
 

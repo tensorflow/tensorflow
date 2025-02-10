@@ -727,7 +727,7 @@ py_strict_library(
     name = "function",
     srcs = ["function.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/eager/polymorphic_function:atomic_function",
         "//tensorflow/python/eager/polymorphic_function:concrete_function",

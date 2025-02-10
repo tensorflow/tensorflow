@@ -41,7 +41,7 @@ func.func @main(
 // -----
 
 // Test that a sharding on the result of a function is kept around. Due to how
-// MHLO->HLO conversion works discarding any frontend attributes on the function
+// StableHLO->HLO conversion works discarding any frontend attributes on the function
 // results, we copy the sharding to a temporary custom call before discarding it
 // after the round-trip.
 
@@ -86,7 +86,7 @@ func.func @main(
 // -----
 
 // Test that a result sharding whose value is the function argument. Due to how
-// MHLO->HLO conversion works discarding any frontend attributes on the function
+// StableHLO->HLO conversion works discarding any frontend attributes on the function
 // results, we copy the sharding to a temporary custom call before discarding it
 // after the round-trip.
 

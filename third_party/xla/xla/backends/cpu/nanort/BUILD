@@ -113,6 +113,9 @@ cc_library(
     name = "ifrt_client",
     srcs = ["ifrt_client.cc"],
     hdrs = ["ifrt_client.h"],
+    visibility = internal_visibility([
+        "//xla/backends/cpu/nanort:nanort_users",
+    ]),
     deps = [
         ":nanort_client",
         ":nanort_executable",
@@ -162,6 +165,9 @@ cc_library(
     name = "register_nanort_for_ifrt_tests",
     testonly = True,
     srcs = ["register_nanort_for_ifrt_tests.cc"],
+    visibility = internal_visibility([
+        "//xla/backends/cpu/nanort:nanort_users",
+    ]),
     deps = [
         ":ifrt_client",
         "//xla/python/ifrt:test_util",

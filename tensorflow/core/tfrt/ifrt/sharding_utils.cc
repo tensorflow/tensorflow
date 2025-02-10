@@ -51,6 +51,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -58,9 +61,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tpu/kernels/sharding_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace ifrt_serving {

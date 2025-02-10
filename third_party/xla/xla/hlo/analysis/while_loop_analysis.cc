@@ -48,13 +48,34 @@ limitations under the License.
 #include "xla/service/value_range.h"
 #include "xla/shape_util.h"
 #include "xla/tools/hlo_extractor.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/status.h"
 
 namespace xla {
 
 using std::nullopt;
 using std::optional;
 namespace m = match;
+
+namespace {
+
+// Traces through a chain of copy instructions and a GTE-tuple pair until a
+// non-copy or a non-GTE-tuple pair is found.
+const HloInstruction* TraceThroughCopyAndGteTupleChain(
+    const HloInstruction* instr) {
+  if (instr->opcode() == HloOpcode::kGetTupleElement &&
+      instr->operand(0)->opcode() == HloOpcode::kTuple) {
+    return TraceThroughCopyAndGteTupleChain(
+        instr->operand(0)->operand(instr->tuple_index()));
+  }
+  if (instr->opcode() == HloOpcode::kCopy ||
+      instr->opcode() == HloOpcode::kCopyStart ||
+      instr->opcode() == HloOpcode::kCopyDone) {
+    return TraceThroughCopyAndGteTupleChain(instr->operand(0));
+  }
+
+  return instr;
+}
+}  // namespace
 
 // Finds and returns the non-constant operand in instr, if there is only one
 // such operand.
@@ -426,7 +447,8 @@ optional<int64_t> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
     return nullopt;
   }
   const HloInstruction* while_body_inc;
-  while_body_inc = while_body_root->operand(*indvar_tuple_idx);
+  while_body_inc = TraceThroughCopyAndGteTupleChain(
+      while_body_root->operand(*indvar_tuple_idx));
   auto* while_body_param = while_body->parameter_instruction(0);
   optional<int64_t> while_body_indvar_tuple_idx =
       GetUniqueGTEDependenceIndex(while_body_inc, while_body_param);
@@ -654,10 +676,11 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
   // number.
   auto* while_body = while_op->while_body();
   auto* while_body_indvar_update =
-      while_body->root_instruction()->mutable_operand(indvar_tuple_idx);
+      const_cast<HloInstruction*>(TraceThroughCopyAndGteTupleChain(
+          while_body->root_instruction()->mutable_operand(indvar_tuple_idx)));
   auto* while_body_indvar = NonConstantOperand(while_body_indvar_update);
   if (while_body_indvar == nullptr ||
-      while_body_indvar !=
+      TraceThroughCopyAndGteTupleChain(while_body_indvar) !=
           hlo_query::GetUniqueGteInstruction(
               while_body->parameter_instruction(0), indvar_tuple_idx)) {
     return std::nullopt;
@@ -806,7 +829,9 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
   HloEvaluator evaluator(/*max_loop_iterations=*/0);
   auto* while_init = while_op->operand(0);
   auto* indvar_init = while_init->operand(*indvar_tuple_idx);
-  absl::StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
+  absl::StatusOr<Literal> indvar_init_result =
+      evaluator.Evaluate(TraceThroughCopyAndGteTupleChain(indvar_init));
+  VLOG(2) << "indvar_init_result: " << indvar_init_result.status();
   if (!indvar_init_result.ok()) {
     VLOG(2) << "Couldn't evaluate induction variable init, "
             << indvar_init_result.status() << ", " << indvar_init->ToString();

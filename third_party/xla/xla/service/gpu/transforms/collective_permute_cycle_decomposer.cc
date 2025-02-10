@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -35,11 +34,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -51,8 +50,7 @@ namespace xla {
 
 namespace {
 
-using SourceTargetPair = std::pair<int64_t, int64_t>;
-using SourceTargetPairs = std::vector<SourceTargetPair>;
+using CycleType = SourceTargetPairs::CycleType;
 
 // Returns the cycle type and indices of the vertices that form cycles. If the
 // cycle type is kUnknown, the set of indices will be empty.
@@ -74,7 +72,8 @@ std::pair<CycleType, std::set<int>> GetCycleTypeAndIndicesArray(
     return std::make_pair(CycleType::kUnknown, std::set<int>{});
   }
 
-  const SourceTargetPairs& pairs = collective_permute.source_target_pairs();
+  const std::vector<std::pair<int64_t, int64_t>>& pairs =
+      collective_permute.source_target_pairs();
   if (pairs.size() == 1) {
     return std::make_pair(CycleType::kUnknown, std::set<int>{});
   }
@@ -82,104 +81,100 @@ std::pair<CycleType, std::set<int>> GetCycleTypeAndIndicesArray(
   return GetCycleTypeAndIndices(pairs);
 }
 
-// Constructs the frontend attributes for the two decomposed CollectivePermute
-// instructions.
-absl::Status GetFrontendAttributes(HloCollectivePermuteInstruction* cp,
-                                   CycleType cycle_type,
-                                   xla::FrontendAttributes& cp1_attr,
-                                   xla::FrontendAttributes& cp2_attr) {
-  cp1_attr = cp->frontend_attributes();
-  cp2_attr = cp->frontend_attributes();
-  auto validation_it =
-      cp->frontend_attributes().map().find(kSendRecvValidationAttr);
-  if (validation_it == cp->frontend_attributes().map().end() ||
-      validation_it->second == "invalid") {
-    return absl::OkStatus();
+// Copies the frontend attributes from the original CP and splits the
+// _xla_send_recv_validation attribute;
+absl::StatusOr<std::pair<FrontendAttributes, FrontendAttributes>>
+DecomposeFrontendAttributes(const FrontendAttributes& orig,
+                            const CycleType cycle_type) {
+  FrontendAttributes attr1 = orig, attr2 = orig;
+  auto it = orig.map().find(kSendRecvValidationAttr);
+  if (it == orig.map().end() || it->second == "invalid") {
+    return std::make_pair(attr1, attr2);
   }
 
-  auto statusor_bounds = ParseReplicaGroupsOnly(validation_it->second);
-  if (!statusor_bounds.ok()) {
-    return statusor_bounds.status();
-  }
-  const std::vector<ReplicaGroup>& bounds = statusor_bounds.value();
-  if (bounds.size() < 2) {
+  TF_ASSIGN_OR_RETURN(SourceTargetPairs bounds,
+                      SourceTargetPairs::FromString(it->second));
+  int64_t num_pairs = bounds.size();
+  if (num_pairs < 2) {
     return Internal("Invalid number of replica groups");
   }
 
-  int64_t num_pairs = bounds.size();
-  // A forward cycle has its backedge at the end while a backward cycle has its
-  // backedge at the beginning.
-  auto backedge_start = cycle_type == CycleType::kBackward
-                            ? bounds.begin()
-                            : bounds.begin() + num_pairs - 1;
-  auto other_edges_start =
-      cycle_type == CycleType::kBackward ? bounds.begin() + 1 : bounds.begin();
-  std::vector<ReplicaGroup> cp1_bounds(backedge_start, backedge_start + 1);
-  std::vector<ReplicaGroup> cp2_bounds(other_edges_start,
-                                       other_edges_start + num_pairs - 1);
-  auto bounds_to_string = [](const std::vector<ReplicaGroup> groups) {
-    return "{" +
-           absl::StrJoin(groups, ",",
-                         [](std::string* out, const ReplicaGroup& value) {
-                           absl::StrAppend(out, "{", value.replica_ids(0), ",",
-                                           value.replica_ids(1), "}");
-                         }) +
-           "}";
-  };
-  std::string cp1_validation_str = bounds_to_string(cp1_bounds);
-  std::string cp2_validation_str = bounds_to_string(cp2_bounds);
-  (*cp1_attr.mutable_map())[kSendRecvValidationAttr] = cp1_validation_str;
-  (*cp2_attr.mutable_map())[kSendRecvValidationAttr] = cp2_validation_str;
-  return absl::OkStatus();
+  // TODO: b/391377472 - this also need to be able to work with multiple cycles.
+  auto [cp1_bounds, cp2_bounds] = bounds.SplitEdges(cycle_type);
+  (*attr1.mutable_map())[kSendRecvValidationAttr] = cp1_bounds.ToString();
+  (*attr2.mutable_map())[kSendRecvValidationAttr] = cp2_bounds.ToString();
+  return std::make_pair(attr1, attr2);
 }
 
-// Decomposes a CollectivePermute instruction with cycles in its source-target
-// pairs into cycle-free CollectivePermute instructions.
+// Adds a CollectivePermute instruction based on the original CP.
+HloInstruction* AddCP(HloCollectivePermuteInstruction* orig,
+                      HloComputation* computation,
+                      const std::vector<std::pair<int64_t, int64_t>>& pairs,
+                      absl::string_view name_suffix,
+                      const FrontendAttributes& attrs,
+                      const std::optional<int64_t> channel_id) {
+  HloInstruction* cp1 = computation->AddInstruction(
+      HloInstruction::CreateCollectivePermute(
+          orig->shape(), orig->mutable_operand(0), pairs, channel_id),
+      absl::StrCat(orig->name(), name_suffix));
+  cp1->set_metadata(orig->metadata());
+  cp1->set_frontend_attributes(attrs);
+  return cp1;
+}
+
+// Creates a partition-id or replica-id instruction based on the collective
+// group mode.
+absl::StatusOr<HloInstruction*> CreatePartitionOrReplicaId(
+    HloComputation* computation, CollectiveOpGroupMode mode,
+    absl::string_view cp_name) {
+  switch (mode) {
+    case CollectiveOpGroupMode::kCrossReplica:
+      return computation->AddInstruction(HloInstruction::CreateReplicaId(),
+                                         absl::StrCat(cp_name, "-rep-id"));
+    case CollectiveOpGroupMode::kCrossPartition:
+      return computation->AddInstruction(HloInstruction::CreatePartitionId(),
+                                         absl::StrCat(cp_name, "-part-id"));
+    case CollectiveOpGroupMode::kCrossReplicaAndPartition:
+    case CollectiveOpGroupMode::kFlattenedID:
+      return absl::InternalError(
+          absl::StrFormat("Unexpected collective group mode for %s", cp_name));
+  }
+}
+
+// Decomposes a CollectivePermute instruction with a cycle in its source-target
+// pairs into two CollectivePermute instructions.
 absl::Status DecomposeCollectivePermuteCycle(
     HloCollectivePermuteInstruction* cp, HloComputation* computation,
     HloModule* module, int64_t next_channel_id, CycleType cycle_type,
     std::set<int> indices_to_break_out) {
-  const SourceTargetPairs& pairs = cp->source_target_pairs();
-  const OpMetadata& metadata = cp->metadata();
+  const std::vector<std::pair<int64_t, int64_t>>& pairs =
+      cp->source_target_pairs();
   absl::string_view cp_name = cp->name();
-  int64_t num_pairs = pairs.size();
-  Shape shape = cp->shape();
-  HloInstruction* data = cp->mutable_operand(0);
-  SourceTargetPairs backedge, other_edges;
-  for (int i = 0; i < num_pairs; ++i) {
+  std::vector<std::pair<int64_t, int64_t>> back_pairs, fwd_pairs;
+  for (int i = 0; i < pairs.size(); ++i) {
     if (indices_to_break_out.find(i) != indices_to_break_out.end()) {
-      backedge.push_back(pairs[i]);
+      back_pairs.push_back(pairs[i]);
     } else {
-      other_edges.push_back(pairs[i]);
+      fwd_pairs.push_back(pairs[i]);
     }
   }
-
-  xla::FrontendAttributes cp1_attr, cp2_attr;
-  TF_RETURN_IF_ERROR(GetFrontendAttributes(cp, cycle_type, cp1_attr, cp2_attr));
-
   TF_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode mode,
       GetCollectiveOpGroupMode(cp->channel_id().has_value(), std::nullopt));
 
+  TF_ASSIGN_OR_RETURN(auto attrs, DecomposeFrontendAttributes(
+                                      cp->frontend_attributes(), cycle_type));
+
   // Backward edge.
-  HloInstruction* cp1 =
-      computation->AddInstruction(HloInstruction::CreateCollectivePermute(
-                                      shape, data, backedge, cp->channel_id()),
-                                  absl::StrCat(cp_name, "-bwd"));
-  cp1->set_metadata(metadata);
-  cp1->set_frontend_attributes(cp1_attr);
-  int64_t bwd_recv_id = backedge.back().second;
+  HloInstruction* back_cp =
+      AddCP(cp, computation, back_pairs, "-bwd", attrs.first, cp->channel_id());
 
   // Forward edge.
   bool is_cross_partition = (mode == CollectiveOpGroupMode::kCrossPartition);
-  HloInstruction* cp2 = computation->AddInstruction(
-      HloInstruction::CreateCollectivePermute(
-          cp->shape(), cp->mutable_operand(0), other_edges,
-          is_cross_partition ? std::optional(next_channel_id) : std::nullopt),
-      absl::StrCat(cp_name, "-fwd"));
-
-  cp2->set_metadata(metadata);
-  cp2->set_frontend_attributes(cp2_attr);
+  std::optional<int64_t> fwd_channel_id =
+      is_cross_partition ? std::optional(next_channel_id) : std::nullopt;
+  HloInstruction* fwd_cp =
+      AddCP(cp, computation, fwd_pairs, "-fwd", attrs.second, fwd_channel_id);
 
   // Calculate the received data as follows:
   //   %partition = u32[] partition-id()
@@ -188,22 +183,9 @@ absl::Status DecomposeCollectivePermuteCycle(
   //   recv-data = type[?] select(compare, cp1_done, cp2_done)
   // If the collective is across replicas, then `partition` is replaced by
   // `replica = u32[] replica-id()`.
-  HloInstruction* partition_or_replica = nullptr;
-  switch (mode) {
-    case CollectiveOpGroupMode::kCrossReplica:
-      partition_or_replica = computation->AddInstruction(
-          HloInstruction::CreateReplicaId(), absl::StrCat(cp_name, "-rep-id"));
-      break;
-    case CollectiveOpGroupMode::kCrossPartition:
-      partition_or_replica =
-          computation->AddInstruction(HloInstruction::CreatePartitionId(),
-                                      absl::StrCat(cp_name, "-part-id"));
-      break;
-    case CollectiveOpGroupMode::kCrossReplicaAndPartition:
-    case CollectiveOpGroupMode::kFlattenedID:
-      return absl::InternalError(absl::StrFormat(
-          "Unexpected collective group mode for %s", cp->name()));
-  };
+  TF_ASSIGN_OR_RETURN(HloInstruction * partition_or_replica,
+                      CreatePartitionOrReplicaId(computation, mode, cp_name));
+  int64_t bwd_recv_id = back_pairs.back().second;
   HloInstruction* constant = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0(U32, bwd_recv_id)),
       absl::StrCat(cp_name, "-bwd-recv-id"));
@@ -212,9 +194,14 @@ absl::Status DecomposeCollectivePermuteCycle(
                                     partition_or_replica, constant,
                                     Comparison::Direction::kEq),
       absl::StrCat(cp_name, "-cmp"));
+
+  // Later in the pipeline, CollectivePermuteDecomposer uses post order
+  //  to chain the send/recv instructions. It's important that the back
+  //  edge is placed before forward edge in select operands for more optimal
+  //  chaining.
   HloInstruction* recv_data = computation->AddInstruction(
-      HloInstruction::CreateTernary(cp1->shape(), HloOpcode::kSelect, compare,
-                                    cp1, cp2),
+      HloInstruction::CreateTernary(cp->shape(), HloOpcode::kSelect, compare,
+                                    back_cp, fwd_cp),
       absl::StrCat(cp_name, "-sel"));
 
   TF_RETURN_IF_ERROR(cp->ReplaceAllUsesWith(recv_data));

@@ -275,7 +275,7 @@ def xla_test(
 
     for backend in backends:
         test_name = "%s_%s" % (name, backend)
-        this_backend_tags = ["xla_%s" % backend]
+        this_backend_tags = ["xla_%s" % backend] + tags + backend_tags.get(backend, [])
         this_backend_copts = []
         this_backend_args = backend_args.get(backend, [])
         this_backend_kwargs = dict(kwargs) | backend_kwargs.get(backend, {})
@@ -288,7 +288,7 @@ def xla_test(
             ]
 
             # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
-            if "test_migrated_to_hlo_runner_pjrt" in tags:
+            if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
                 backend_deps.append("//xla/tests:pjrt_cpu_client_registry")
         elif backend in NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS:
             backend_deps += [
@@ -302,7 +302,7 @@ def xla_test(
             this_backend_copts.append("-DXLA_TEST_BACKEND_GPU=1")
 
             # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
-            if "test_migrated_to_hlo_runner_pjrt" in tags:
+            if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
                 backend_deps.append("//xla/tests:pjrt_gpu_client_registry")
         elif backend == "interpreter":
             backend_deps += [
@@ -311,7 +311,7 @@ def xla_test(
             ]
 
             # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
-            if "test_migrated_to_hlo_runner_pjrt" in tags:
+            if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
                 backend_deps.append("//xla/tests:pjrt_interpreter_client_registry")
         elif backend in plugins:
             backend_deps += plugins[backend]["deps"]
@@ -329,7 +329,7 @@ def xla_test(
         xla_cc_test(
             name = test_name,
             srcs = srcs,
-            tags = tags + backend_tags.get(backend, []) + this_backend_tags,
+            tags = this_backend_tags,
             copts = copts + ["-DXLA_TEST_BACKEND_%s=1" % backend.upper()] +
                     this_backend_copts,
             args = args + this_backend_args,

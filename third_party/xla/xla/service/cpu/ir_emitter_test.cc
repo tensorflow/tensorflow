@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/Target/TargetOptions.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
@@ -233,10 +234,9 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
   };
 
   // Definition generator to link with XLA:CPU host runtime symbols.
-  JitCompiler::DefinitionGenerator definition_generator =
-      [](llvm::TargetMachine* target_machine) {
-        return std::make_unique<RuntimeSymbolGenerator>(
-            target_machine->createDataLayout());
+  ExecutionEngine::DefinitionGenerator definition_generator =
+      [](const llvm::DataLayout& data_layout) {
+        return std::make_unique<RuntimeSymbolGenerator>(data_layout);
       };
 
   // Options for orchestrating the JIT compilation process.

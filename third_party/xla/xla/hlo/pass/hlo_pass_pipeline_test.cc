@@ -38,8 +38,8 @@ limitations under the License.
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

@@ -59,8 +59,11 @@ namespace xla {
 //
 class CollectivePermuteDecomposer : public HloModulePass {
  public:
-  explicit CollectivePermuteDecomposer(int64_t threshold_in_bytes)
-      : threshold_in_bytes_(threshold_in_bytes) {}
+  explicit CollectivePermuteDecomposer(
+      int64_t threshold_in_bytes,
+      DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level)
+      : threshold_in_bytes_(threshold_in_bytes),
+        pipeline_parallelism_opt_level_(pipeline_parallelism_opt_level) {}
   absl::string_view name() const override {
     return "collective-permute-decomposer";
   }
@@ -74,6 +77,8 @@ class CollectivePermuteDecomposer : public HloModulePass {
  private:
   // Transform only if the size of the collective permute is >= threshold.
   int64_t threshold_in_bytes_;
+
+  DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level_;
 };
 
 }  // namespace xla

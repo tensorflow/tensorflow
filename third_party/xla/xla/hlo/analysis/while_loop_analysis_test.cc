@@ -37,8 +37,8 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/value_range.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -554,6 +554,72 @@ TEST_F(WhileLoopAnalysisTest, NonScalarUpdateOp) {
   const HloInstruction* while_op =
       module->entry_computation()->root_instruction();
   EXPECT_EQ(ComputeWhileLoopTripCount(while_op), std::nullopt);
+}
+
+TEST_F(WhileLoopAnalysisTest, UpdateOnIndVarCopySuccess) {
+  const char* hlo = R"(
+    HloModule test, replica_count=2
+    body {
+      param.0 = (s32[], s32[]) parameter(0)
+      p0.1 = s32[] get-tuple-element(param.0), index=0
+      p1.1 = s32[] get-tuple-element(param.0), index=1
+      copy0.1 = s32[] copy(p0.1)
+      const = s32[] constant(1)
+      add = s32[] add(copy0.1, const)
+      ROOT tuple = (s32[], s32[]) tuple(add, p1.1)
+    }
+    condition {
+      param.2 = (s32[], s32[]) parameter(0)
+      p0.2 = s32[] get-tuple-element(param.2), index=0
+      c4 = s32[] constant(4)
+      ROOT compare = pred[] compare(p0.2, c4), direction=LT
+    }
+    ENTRY entry {
+      c0 = s32[] constant(0)
+      data = s32[] parameter(0)
+      tuple = (s32[], s32[]) tuple(c0, data)
+      ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  const HloInstruction* while_op =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(*ComputeWhileLoopTripCount(while_op), 4);
+}
+
+TEST_F(WhileLoopAnalysisTest, IndVarInitialiationNotConstantSuccess) {
+  const char* hlo = R"(
+    HloModule test, replica_count=2
+    body {
+      param.0 = (s32[], s32[]) parameter(0)
+      p0.1 = s32[] get-tuple-element(param.0), index=0
+      p1.1 = s32[] get-tuple-element(param.0), index=1
+      const = s32[] constant(1)
+      add = s32[] add(p0.1, const)
+      ROOT tuple = (s32[], s32[]) tuple(add, p1.1)
+    }
+    condition {
+      param.2 = (s32[], s32[]) parameter(0)
+      p0.2 = s32[] get-tuple-element(param.2), index=0
+      c4 = s32[] constant(4)
+      ROOT compare = pred[] compare(p0.2, c4), direction=LT
+    }
+    ENTRY entry {
+      c0 = s32[] constant(0)
+      copy0.0 = s32[] copy(c0)
+      data = s32[] parameter(0)
+      tuple = (s32[], s32[]) tuple(copy0.0, data)
+      ROOT while = (s32[], s32[]) while(tuple), body=body, condition=condition
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  const HloInstruction* while_op =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(*ComputeWhileLoopTripCount(while_op), 4);
 }
 
 TEST_F(WhileLoopAnalysisTest, FusedUpdateOp) {

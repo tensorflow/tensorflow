@@ -700,12 +700,11 @@ HloInstructionIndexing ComputeOutputToInputPadOpIndexing(
 }
 
 HloInstructionIndexing ComputeOutputToInputReduceOpIndexing(
-    const HloReduceInstruction* reduce, int output_id,
-    MLIRContext* mlir_context) {
+    const HloReduceInstruction* reduce, MLIRContext* mlir_context) {
   absl::flat_hash_set<int64_t> reduce_dims_ids(reduce->dimensions().begin(),
                                                reduce->dimensions().end());
 
-  const Shape& input_shape = reduce->operand(output_id)->shape();
+  const Shape& input_shape = reduce->operand(0)->shape();
   const Shape& output_shape = GetOutputShape(reduce, 0);
 
   std::vector<int64_t> parallel_dims_sizes;
@@ -849,7 +848,7 @@ IndexingMap ComposeIndexingMapsForWindow(
 // represented as a composition of pad op and reduce-window that never goes out
 // of bounds.
 HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
-    const HloReduceWindowInstruction* reduce_window, int output_id,
+    const HloReduceWindowInstruction* reduce_window,
     MLIRContext* mlir_context) {
   const Shape& input_shape = reduce_window->operand(0)->shape();
   const Shape& output_shape = GetOutputShape(reduce_window, 0);
@@ -1614,11 +1613,10 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
     return ComputeOutputToInputPadOpIndexing(pad, ctx);
   }
   if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
-    return ComputeOutputToInputReduceOpIndexing(reduce, output_id, ctx);
+    return ComputeOutputToInputReduceOpIndexing(reduce, ctx);
   }
   if (auto reduce_window = DynCast<HloReduceWindowInstruction>(instr)) {
-    return ComputeOutputToInputReduceWindowOpIndexing(reduce_window, output_id,
-                                                      ctx);
+    return ComputeOutputToInputReduceWindowOpIndexing(reduce_window, ctx);
   }
   if (auto convolution = DynCast<HloConvolutionInstruction>(instr)) {
     return ComputeOutputToInputConvolutionOpIndexing(convolution, ctx);

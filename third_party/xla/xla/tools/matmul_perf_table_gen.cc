@@ -26,12 +26,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
@@ -49,8 +49,10 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiler.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -72,12 +74,37 @@ template <class... Ts>
 VariantVisitor(Ts...) -> VariantVisitor<Ts...>;
 
 struct StaticSpec {
+  int b;
   int m;
   int n;
   int k;
   std::string dtype_lhs;
   std::string dtype_rhs;
   std::string dtype_out;
+};
+
+struct ProfilingResult {
+  std::string device_info;
+  HloInstructionProto hlo_proto;
+  std::vector<HloInstructionProto> operands;
+  std::string fingerprint;
+  int64_t clock_cycles;
+  int64_t flops;
+
+  struct Hash {
+    size_t operator()(const ProfilingResult& profiling_result) const {
+      return absl::HashOf(profiling_result.device_info,
+                          profiling_result.fingerprint);
+    }
+  };
+
+  struct Eq {
+    bool operator()(const ProfilingResult& lhs,
+                    const ProfilingResult& rhs) const {
+      return lhs.device_info == rhs.device_info &&
+             lhs.fingerprint == rhs.fingerprint;
+    }
+  };
 };
 
 struct ExplicitSpec {
@@ -98,18 +125,20 @@ void ReportProgress(absl::string_view prefix, int i, int size) {
 
 std::unique_ptr<HloModule> GetModule(absl::string_view lhs_dtype,
                                      absl::string_view rhs_dtype,
-                                     absl::string_view out_dtype, int m, int n,
-                                     int k) {
-  std::string text = absl::Substitute(R"(
+                                     absl::string_view out_dtype, int b, int m,
+                                     int n, int k) {
+  std::string text =
+      absl::Substitute(R"(
     HloModule m
 
     ENTRY e {
-      lhs = $0[$3,$5] parameter(0)
-      rhs = $1[$5,$4] parameter(1)
-      ROOT _ = $2[$3,$4] dot(lhs,rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      lhs = $0[$6,$3,$5] parameter(0)
+      rhs = $1[$6,$5,$4] parameter(1)
+      ROOT _ = $2[$6,$3,$4] dot(lhs,rhs), lhs_contracting_dims={2},
+        rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
     }
   )",
-                                      lhs_dtype, rhs_dtype, out_dtype, m, n, k);
+                       lhs_dtype, rhs_dtype, out_dtype, m, n, k, b);
 
   auto parsed = ParseAndReturnUnverifiedModule(text);
   CHECK_OK(parsed.status());
@@ -135,21 +164,25 @@ void AddDotsFromStaticSpec(const MatmulPerfTableGen::Config& config,
     return i;
   };
 
+  MatmulPerfTableGen::StepSpec b_spec = config.b_spec;
   MatmulPerfTableGen::StepSpec m_spec = config.m_spec;
   MatmulPerfTableGen::StepSpec n_spec = config.n_spec;
   MatmulPerfTableGen::StepSpec k_spec = config.k_spec;
   for (const MatmulPerfTableGen::DataTypeSpec& dtype : config.dtypes) {
-    for (int m = m_spec.start; m <= m_spec.stop; m = inc(m, m_spec)) {
-      for (int n = n_spec.start; n <= n_spec.stop; n = inc(n, n_spec)) {
-        for (int k = k_spec.start; k <= k_spec.stop; k = inc(k, k_spec)) {
-          StaticSpec spec;
-          spec.m = m;
-          spec.k = k;
-          spec.n = n;
-          spec.dtype_lhs = dtype.lhs_dtype;
-          spec.dtype_rhs = dtype.rhs_dtype;
-          spec.dtype_out = dtype.out_dtype;
-          specs.push_back(spec);
+    for (int b = b_spec.start; b <= b_spec.stop; b = inc(b, b_spec)) {
+      for (int m = m_spec.start; m <= m_spec.stop; m = inc(m, m_spec)) {
+        for (int n = n_spec.start; n <= n_spec.stop; n = inc(n, n_spec)) {
+          for (int k = k_spec.start; k <= k_spec.stop; k = inc(k, k_spec)) {
+            StaticSpec spec;
+            spec.b = b;
+            spec.m = m;
+            spec.k = k;
+            spec.n = n;
+            spec.dtype_lhs = dtype.lhs_dtype;
+            spec.dtype_rhs = dtype.rhs_dtype;
+            spec.dtype_out = dtype.out_dtype;
+            specs.push_back(spec);
+          }
         }
       }
     }
@@ -162,15 +195,21 @@ void AddDotsFromHlos(const std::string& hlo_scan_path,
     return;
   }
 
+  // `IsDirectory` returns FAILED_PRECONDITION if file exists but is not a
+  // directory. Add it to scanning.
+  if (auto is_dir = tsl::Env::Default()->IsDirectory(hlo_scan_path);
+      absl::IsFailedPrecondition(is_dir)) {
+    PathSpec spec;
+    spec.filepath = hlo_scan_path;
+    specs.push_back(spec);
+    return;
+  }
+
   std::vector<std::string> filenames;
   CHECK_OK(tsl::Env::Default()->GetChildren(hlo_scan_path, &filenames));
   for (const std::string& filename : filenames) {
-    // Read file.
-    std::string hlo_data;
-    std::string hlo_path = absl::StrJoin({hlo_scan_path, filename}, "/");
-
     PathSpec spec;
-    spec.filepath = hlo_path;
+    spec.filepath = absl::StrCat(hlo_scan_path, "/", filename);
     specs.push_back(spec);
   }
 }
@@ -210,28 +249,28 @@ std::vector<ExplicitSpec> GetExplicitSpecs(
   std::vector<ExplicitSpec> specs;
   for (int i = 0; i < entry_specs.size(); i++) {
     const EntrySpec& entry_spec = entry_specs[i];
-    std::visit(VariantVisitor{[&specs](const PathSpec& spec) {
-                                std::string hlo;
-                                CHECK_OK(tsl::ReadFileToString(
-                                    tsl::Env::Default(), spec.filepath, &hlo));
-                                std::unique_ptr<HloModule> model_module =
-                                    GetModule(hlo);
-                                if (model_module == nullptr) {
-                                  return;
-                                }
-                                hlo_query::ForEachInstructionWithOpcode(
-                                    *model_module, HloOpcode::kDot,
-                                    [&specs](HloInstruction* instr) {
-                                      specs.emplace_back(
-                                          ExplicitSpec{CreateDotModule(instr)});
-                                    });
-                              },
-                              [&specs](const StaticSpec spec) {
-                                specs.emplace_back(ExplicitSpec{GetModule(
-                                    spec.dtype_lhs, spec.dtype_rhs,
-                                    spec.dtype_out, spec.m, spec.n, spec.k)});
-                              }},
-               entry_spec);
+    std::visit(
+        VariantVisitor{
+            [&specs](const PathSpec& spec) {
+              std::string hlo;
+              CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), spec.filepath,
+                                             &hlo));
+              std::unique_ptr<HloModule> model_module = GetModule(hlo);
+              if (model_module == nullptr) {
+                return;
+              }
+              hlo_query::ForEachInstructionWithOpcode(
+                  *model_module, HloOpcode::kDot,
+                  [&specs](HloInstruction* instr) {
+                    specs.emplace_back(ExplicitSpec{CreateDotModule(instr)});
+                  });
+            },
+            [&specs](const StaticSpec spec) {
+              specs.emplace_back(ExplicitSpec{
+                  GetModule(spec.dtype_lhs, spec.dtype_rhs, spec.dtype_out,
+                            spec.b, spec.m, spec.n, spec.k)});
+            }},
+        entry_spec);
     ReportProgress("Parsing modules progress", i + 1, entry_specs.size());
   }
   return specs;
@@ -253,6 +292,45 @@ std::vector<ExplicitSpec> Deduplicate(std::vector<ExplicitSpec>& specs) {
     deduplicated_specs.push_back(std::move(spec));
   }
   return deduplicated_specs;
+}
+
+// Gets # of FMAs instructions from a `dot`.
+int64_t GetFlops(const HloDotInstruction& dot) {
+  int64_t fmas = 1;
+
+  auto dim_size = [](const HloInstruction& instr, int idx) {
+    return ShapeUtil::GetDimension(instr.shape(), idx);
+  };
+
+  // Get non-contracting dims
+  auto get_non_contracting_dim_sizes =
+      [&dot, &dim_size](const absl::flat_hash_set<int>& contracting_dims,
+                        int operand_id) {
+        int64_t fmas = 1;
+        for (int dim = 0; dim < dot.operand(operand_id)->shape().rank();
+             ++dim) {
+          if (contracting_dims.contains(dim)) {
+            continue;
+          }
+          fmas *= dim_size(*dot.operand(operand_id), dim);
+        }
+        return fmas;
+      };
+  fmas *= get_non_contracting_dim_sizes(
+      {dot.dot_dimension_numbers().lhs_contracting_dimensions().begin(),
+       dot.dot_dimension_numbers().lhs_contracting_dimensions().end()},
+      0);
+  fmas *= get_non_contracting_dim_sizes(
+      {dot.dot_dimension_numbers().rhs_contracting_dimensions().begin(),
+       dot.dot_dimension_numbers().rhs_contracting_dimensions().end()},
+      1);
+
+  // Get contracting dim.
+  for (int dim : dot.dot_dimension_numbers().lhs_contracting_dimensions()) {
+    fmas *= dim_size(*dot.operand(0), dim);
+  }
+
+  return fmas * 2;  // Every FMA is 2 floating point ops.
 }
 
 }  // namespace
@@ -288,7 +366,7 @@ absl::Duration MatmulPerfTableGen::Profile(std::unique_ptr<HloModule> module) {
     for (int i = 0; i < kNumProfilingRuns; i++) {
       Measure(runner_, compiled.get(), args_small, args_large);
     }
-    return absl::ZeroDuration();
+    return absl::Nanoseconds(42);
   }
 
   // Trace `kNumProfilingRuns` times to get decent measurement.
@@ -301,7 +379,77 @@ absl::Duration MatmulPerfTableGen::Profile(std::unique_ptr<HloModule> module) {
   return absl::Nanoseconds(std::move(*tracer).getMedianKernelTimeNs());
 }
 
-gpu::DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
+absl::StatusOr<DeviceHloInstructionProfiles> MatmulPerfTableGen::Merge(
+    absl::string_view filepath) {
+  DeviceHloInstructionProfiles result;
+  std::vector<std::string> filenames;
+  CHECK_OK(tsl::Env::Default()->GetChildren(std::string(filepath), &filenames));
+
+  absl::flat_hash_set<ProfilingResult, ProfilingResult::Hash,
+                      ProfilingResult::Eq>
+      profiling_results;
+  uint64_t profiling_results_counter = 0;
+  for (const std::string& filename : filenames) {
+    // Read file.
+    std::string profile_path = absl::StrCat(filepath, "/", filename);
+    DeviceHloInstructionProfiles partial_profile;
+
+    CHECK_OK(tsl::Env::Default()->FileExists(profile_path));
+    if (!tsl::ReadTextOrBinaryProto(tsl::Env::Default(), profile_path,
+                                    &partial_profile)
+             .ok()) {
+      LOG(WARNING) << "Cannot read :" << profile_path;
+      continue;
+    }
+
+    for (auto& [device_descriptor, data] : partial_profile.entries()) {
+      for (const HloInstructionProfile& profile : data.entries()) {
+        CHECK(!profile.fingerprint().empty())
+            << "Expected fingerprint to deduplicate: " << profile.DebugString();
+
+        ProfilingResult profiling_result{
+            device_descriptor,
+            std::move(profile.instruction()),
+            {
+                profile.operands().begin(),
+                profile.operands().end(),
+            },
+            std::move(profile.fingerprint()),
+            profile.clock_cycles(),
+            profile.flops(),
+        };
+        profiling_results.insert(profiling_result);
+        profiling_results_counter++;
+      }
+    }
+  }
+  LOG(INFO) << "Merging and deduplication entries count. Before "
+            << profiling_results_counter << ", after "
+            << profiling_results.size() << ".";
+  for (const ProfilingResult& profiling_result : profiling_results) {
+    std::string device_descriptor = profiling_result.device_info;
+    if (!result.mutable_entries()->contains(device_descriptor)) {
+      result.mutable_entries()->insert({device_descriptor, {}});
+    }
+
+    HloInstructionProfile profile_proto;
+    *profile_proto.mutable_instruction() =
+        std::move(profiling_result.hlo_proto);
+    for (auto op : profiling_result.operands) {
+      *profile_proto.add_operands() = std::move(op);
+    }
+    profile_proto.set_flops(profiling_result.flops);
+    profile_proto.set_clock_cycles(profiling_result.clock_cycles);
+    profile_proto.set_fingerprint(profiling_result.fingerprint);
+
+    *result.mutable_entries()->at(device_descriptor).add_entries() =
+        std::move(profile_proto);
+  }
+
+  return result;
+}
+
+DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
   gpu::DeviceHloInstructionProfiles device_profiles;
   gpu::HloInstructionProfileList profile_list;
 
@@ -335,16 +483,22 @@ gpu::DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
     CHECK_EQ(module->entry_computation()->root_instruction()->opcode(),
              HloOpcode::kDot);
 
-    HloInstructionProto instr =
-        module->entry_computation()->root_instruction()->ToProto();
+    HloInstruction* instr = module->entry_computation()->root_instruction();
+    HloInstructionProto instr_proto = instr->ToProto();
 
-    gpu::HloInstructionProfile entry;
+    HloInstructionProfile entry;
     *entry.mutable_fingerprint() = CanonicalKey(*module);
-    *entry.mutable_instruction() = instr;
+    *entry.mutable_instruction() = instr_proto;
+    for (auto* operand : instr->operands()) {
+      *entry.add_operands() = operand->ToProto();
+    }
 
+    HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
+    int64_t fmas = GetFlops(*dot);
     absl::Duration time = Profile(std::move(module));
     entry.set_clock_cycles(device_info.clock_rate_ghz() *
                            absl::ToInt64Nanoseconds(time));
+    entry.set_flops(fmas * 1e9 / absl::ToInt64Nanoseconds(time));
 
     *profile_list.add_entries() = entry;
 
@@ -368,24 +522,28 @@ absl::Status MatmulPerfTableGen::Dump(
         tsl::ReadTextOrBinaryProto(tsl::Env::Default(), config_.output, &file));
   }
 
-  CHECK_EQ(table.entries_size(), 1)
-      << "Expecting one program run, for one device config";
-  std::string sm_ver = table.entries().begin()->first;
-  if (file.entries().contains(sm_ver)) {
-    file.mutable_entries()->at(sm_ver).MergeFrom(table.entries().at(sm_ver));
-  } else {
-    file.MergeFrom(table);
-  }
+  for (const auto& [sm_ver, entries] : table.entries()) {
+    if (file.entries().contains(sm_ver)) {
+      file.mutable_entries()->at(sm_ver).MergeFrom(entries);
+    } else {
+      file.MergeFrom(table);
+    }
 
-  if (absl::StrContains(config_.output, ".pbtxt")) {
-    return tsl::WriteTextProto(tsl::Env::Default(), config_.output, file);
+    if (absl::StrContains(config_.output, ".pbtxt")) {
+      TF_RETURN_IF_ERROR(
+          tsl::WriteTextProto(tsl::Env::Default(), config_.output, file));
+      continue;
+    }
+    if (absl::StrContains(config_.output, ".pb")) {
+      TF_RETURN_IF_ERROR(
+          tsl::WriteBinaryProto(tsl::Env::Default(), config_.output, file));
+      continue;
+    }
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unsupported file: ", config_.output,
+                     ". Expecting .pb or .pbtxt suffix."));
   }
-  if (absl::StrContains(config_.output, ".pb")) {
-    return tsl::WriteBinaryProto(tsl::Env::Default(), config_.output, file);
-  }
-  return absl::InvalidArgumentError(
-      absl::StrCat("Unsupported file: ", config_.output,
-                   ". Expecting .pb or .pbtxt suffix."));
+  return absl::OkStatus();
 }
 
 }  // namespace xla::gpu

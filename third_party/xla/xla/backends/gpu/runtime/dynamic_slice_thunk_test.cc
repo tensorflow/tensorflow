@@ -35,6 +35,8 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/resource_requests.h"
+#include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
@@ -48,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
@@ -63,6 +66,13 @@ namespace xla::gpu {
 
 namespace {
 
+class DynamicSliceThunkTest : public HloRunnerAgnosticTestBase {
+ public:
+  DynamicSliceThunkTest()
+      : HloRunnerAgnosticTestBase(std::make_unique<HloRunner>(
+            PlatformUtil::GetDefaultPlatform().value())) {}
+};
+
 static se::StreamExecutor* GpuExecutor() {
   auto name =
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
@@ -72,7 +82,7 @@ static se::StreamExecutor* GpuExecutor() {
 
 }  // namespace
 
-TEST(DynamicSliceThunkTest, SlicedGemm) {
+TEST_F(DynamicSliceThunkTest, SlicedGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -212,7 +222,7 @@ TEST(DynamicSliceThunkTest, SlicedGemm) {
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
 
-TEST(DynamicSliceThunkTest, MulipleSlicedOperandsGemm) {
+TEST_F(DynamicSliceThunkTest, MulipleSlicedOperandsGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -404,7 +414,7 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
                          kMemcpy);
 
-TEST(DynamicSliceThunkTest, SlicedMemcpy) {
+TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -540,7 +550,7 @@ TEST(DynamicSliceThunkTest, SlicedMemcpy) {
   ASSERT_EQ(out, ref);
 }
 
-TEST(DynamicSliceThunkTest, SlicedOutputMemcpy) {
+TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -736,7 +746,7 @@ TEST(DynamicSliceThunkTest, SlicedOutputMemcpy) {
   ASSERT_EQ(out, ref);
 }
 
-TEST(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
+TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -885,7 +895,7 @@ TEST(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
 
-TEST(DynamicSliceThunkTest, SlicedGemmArbitraryNumberOfArguments) {
+TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryNumberOfArguments) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -1036,7 +1046,7 @@ TEST(DynamicSliceThunkTest, SlicedGemmArbitraryNumberOfArguments) {
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
 
-TEST(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
+TEST_F(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -1184,7 +1194,7 @@ TEST(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
   ASSERT_EQ(dst, std::vector<float>({9}));
 }
 
-TEST(DynamicSliceThunkTest, SlicedMemcpyOOB) {
+TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -1383,7 +1393,7 @@ TEST(DynamicSliceThunkTest, SlicedMemcpyOOB) {
   ASSERT_EQ(out, ref);
 }
 
-TEST(DynamicSliceThunkTest, SlicedOperandsSameBufferGemm) {
+TEST_F(DynamicSliceThunkTest, SlicedOperandsSameBufferGemm) {
   se::StreamExecutor* executor = GpuExecutor();
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
@@ -1535,6 +1545,213 @@ TEST(DynamicSliceThunkTest, SlicedOperandsSameBufferGemm) {
   TF_ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
 
   ASSERT_EQ(dst, std::vector<float>({9}));
+}
+
+TEST_F(DynamicSliceThunkTest,
+       HostInductionVariableAndOffsetEvaluationExecutesCorrectly) {
+  std::vector<std::unique_ptr<HloModule>> offset_modules;
+  const char* offset = R"(
+    HloModule offset
+    ENTRY main {
+      p0 = s32[] parameter(0)
+      c32 = s32[] constant(32)
+      c0 = s32[] constant(0)
+      add = s32[] add(p0, c32)
+      compare = pred[] compare(add, c0), direction=LT
+      ROOT select = s32[] select(compare, add, p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(offset_modules.emplace_back(),
+                          ParseAndReturnVerifiedModule(offset));
+  HloModule* offset_module = offset_modules.back().get();
+  const char* indvar_init = R"(
+    HloModule indvar_init
+    ENTRY main {
+      ROOT c0 = s32[] constant(0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> indvar_init_module,
+                          ParseAndReturnVerifiedModule(indvar_init));
+  const char* indvar_update = R"(
+    HloModule indvar_update
+    ENTRY main {
+      p0 = s32[] parameter(0)
+      c1 = s32[] constant(1)
+      ROOT add = s32[] add(p0, c1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> indvar_update_module,
+                          ParseAndReturnVerifiedModule(indvar_update));
+
+  se::StreamExecutor* executor = GpuExecutor();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<stream_executor::Stream> stream,
+                          executor->CreateStream());
+
+  int64_t lhs_length = sizeof(float) * 2 * 4;
+  int64_t rhs_length = sizeof(float) * 4 * 1;
+  int64_t out_length = sizeof(float) * 1 * 1;
+
+  // Step 1:
+  // Prepare embedded and address computation thunks.
+
+  // Preparing buffer allocation slices for thunk creations.
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
+
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/0, /*size=*/rhs_length, /*color=*/0));
+  BufferAllocation::Slice slice_lhs_fake(
+      /*allocation=*/fake_allocations.back().get(), /*offset=*/0,
+      /*size=*/rhs_length);
+
+  BufferAllocation alloc_lhs(/*index=*/0, /*size=*/lhs_length, /*color=*/0);
+  BufferAllocation::Slice slice_lhs(&alloc_lhs, /*offset=*/0,
+                                    /*size=*/lhs_length);
+
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/1, /*size=*/rhs_length, /*color=*/0));
+  BufferAllocation::Slice slice_rhs(
+      /*allocation=*/fake_allocations.back().get(), /*offset=*/0,
+      /*size=*/rhs_length);
+
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/2, /*size=*/out_length, /*color=*/0));
+  BufferAllocation::Slice slice_out(
+      /*allocation=*/fake_allocations.back().get(), /*offset=*/0,
+      /*size=*/out_length);
+
+  fake_allocations.push_back(std::make_unique<BufferAllocation>(
+      /*index=*/3, /*size=*/1024 * 1024, /*color=*/0));
+  BufferAllocation::Slice slice_workspace(
+      /*allocation=*/fake_allocations.back().get(), /*offset=*/0,
+      /*size=*/1024 * 1024);
+
+  // Preparing config for GEMM thunk.
+  absl::StatusOr<GemmConfig> config = GemmConfig::For(
+      /*lhs_shape=*/ShapeUtil::MakeShape(/*element_type=*/PrimitiveType::F32,
+                                         /*dimensions=*/{1, 4}),
+      /*lhs_batch_dims=*/{}, /*lhs_contracting_dims=*/{1},
+      /*rhs_shape=*/
+      ShapeUtil::MakeShape(/*element_type=*/PrimitiveType::F32,
+                           /*dimensions=*/{4, 1}),
+      /*rhs_batch_dims=*/{}, /*rhs_contracting_dims=*/{0},
+      /*output_shape=*/
+      ShapeUtil::MakeShape(/*element_type=*/PrimitiveType::F32,
+                           /*dimensions=*/{1, 1}),
+      /*alpha_real=*/1.0, /*alpha_imag=*/0.0, /*beta=*/0.0,
+      /*precision_algorithm=*/PrecisionConfig::ALG_UNSET,
+      /*algorithm=*/std::nullopt,
+      /*compute_precision=*/se::blas::kDefaultComputePrecision,
+      /*grad_x=*/false, /*grad_y=*/false,
+      /*gpu_version=*/
+      executor->GetDeviceDescription().gpu_compute_capability());
+  ASSERT_TRUE(config.ok());
+
+  // Creating embedded GEMM thunk.
+  ThunkSequence seq;
+  seq.emplace_back(std::make_unique<GemmThunk>(
+      /*thunk_info*/ Thunk::ThunkInfo(), /*config=*/config.value(),
+      /*lhs_buffer=*/slice_lhs_fake, /*rhs_buffer=*/slice_rhs,
+      /*output_buffer=*/slice_out,
+      /*workspace=*/slice_workspace, /*deterministic=*/true));
+
+  // Wrapping address computation thunk around the GEMM thunk.
+  std::vector<DynamicSliceThunk::Offset> lhs_offsets{offset_module, 0l};
+  DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata
+      offset_as_function_of_indvar_modules_metadata(
+          std::move(indvar_init_module), std::move(indvar_update_module),
+          std::move(offset_modules));
+  DynamicSliceThunk thunk(
+      /*thunk_info=*/Thunk::ThunkInfo(),
+      /*embedded_thunk=*/std::make_unique<ThunkSequence>(std::move(seq)),
+      /*arguments=*/{slice_lhs, slice_rhs, slice_out, slice_workspace},
+      /*fake_allocations=*/std::move(fake_allocations),
+      /*offsets=*/{lhs_offsets, std::nullopt, std::nullopt, std::nullopt},
+      /*orig_shapes=*/
+      {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
+       std::nullopt, std::nullopt},
+      /*sliced_shapes=*/
+      {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 4}), std::nullopt,
+       std::nullopt, std::nullopt},
+      /*offset_byte_sizes=*/
+      {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt},
+      /*offset_as_function_of_indvar_metadata=*/
+      std::move(offset_as_function_of_indvar_modules_metadata));
+
+  // Step 2:
+  // Execute address computation thunk.
+  //
+  // Given a `lhs` tensor of shape f32[2,4]{1,0}
+  // The `lhs` slice that we want to use will be equivalent to this static
+  // slice op:
+  // f32[1,3]{1,0} slice(lhs), slice={[0:1], [0:4]}
+
+  // Preparing memory for thunk arguments.
+  // lhs = [1.0, 2.0, 3.0, 4.0,
+  //        5.0, 6.0, 7.0, 8.0]
+  se::DeviceMemory<float> lhs =
+      executor->AllocateArray<float>(/*element_count=*/2 * 4);
+  std::vector<float> lhs_arr{1, 2, 3, 4, 5, 6, 7, 8};
+  TF_ASSERT_OK(stream->Memcpy(/*gpu_dst=*/&lhs, /*host_src=*/lhs_arr.data(),
+                              /*size=*/lhs_length));
+
+  // rhs = [4.0,
+  //        3.0,
+  //        2.0,
+  //        1.0]
+  se::DeviceMemory<float> rhs =
+      executor->AllocateArray<float>(/*element_count=*/4 * 1);
+  std::vector<float> rhs_arr{4, 3, 2, 1};
+  TF_ASSERT_OK(stream->Memcpy(/*gpu_dst=*/&rhs, /*host_src=*/rhs_arr.data(),
+                              /*size=*/rhs_length));
+
+  se::DeviceMemory<float> out =
+      executor->AllocateArray<float>(/*element_count=*/1 * 1);
+  TF_ASSERT_OK(stream->MemZero(/*location=*/&out, /*size=*/out_length));
+
+  se::DeviceMemory<float> workspace =
+      executor->AllocateArray<float>(/*element_count=*/1024 * 1024);
+  TF_ASSERT_OK(stream->MemZero(/*location=*/&workspace, /*size=*/1024 * 1024));
+
+  // Preparing parameters for thunk execution.
+  ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(executor);
+  BufferAllocations allocations(/*buffers=*/{lhs, rhs, out, workspace},
+                                /*device_ordinal=*/0,
+                                /*memory_allocator=*/&allocator);
+
+  Thunk::PrepareParams prepare_params{nullptr};
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, /*buffer_allocations=*/allocations, stream.get(),
+      /*command_buffer_trace_stream=*/stream.get(),
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr);
+
+  Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+  TF_ASSERT_OK(thunk.Initialize(
+      {executor, source, &allocations, stream.get(), stream.get()}));
+
+  // Executing address computation thunk.
+  ResourceRequests resource_requests;
+  TF_ASSERT_OK(thunk.Prepare(prepare_params, resource_requests));
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copying `out` data back to host for verification.
+  std::vector<float> dst(1, 0);
+  TF_ASSERT_OK(stream->Memcpy(/*host_dst=*/dst.data(), /*gpu_src=*/out,
+                              /*size=*/out_length));
+
+  ASSERT_EQ(dst, std::vector<float>({1 * 4 + 2 * 3 + 3 * 2 + 4 * 1}));
+
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copying `out` data back to host for verification.
+  TF_ASSERT_OK(stream->Memcpy(/*host_dst=*/dst.data(), /*gpu_src=*/out,
+                              /*size=*/out_length));
+
+  EXPECT_EQ(dst, std::vector<float>({5 * 4 + 6 * 3 + 7 * 2 + 8 * 1}));
 }
 
 }  // namespace xla::gpu

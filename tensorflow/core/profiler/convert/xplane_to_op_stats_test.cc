@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/platform/test.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/platform/status.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {

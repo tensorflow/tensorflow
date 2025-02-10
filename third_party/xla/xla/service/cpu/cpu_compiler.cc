@@ -32,10 +32,10 @@ limitations under the License.
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
 
-#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -78,11 +78,15 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/codegen/object_loader.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/thunk.pb.h"
+#include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/analysis/indexed_array_analysis.h"
@@ -205,17 +209,16 @@ limitations under the License.
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
@@ -671,8 +674,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   // Run the following passes to a fixed point.
-  [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification"),
-   this] {
+  [&pipeline =
+       pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
     AddHloVerifier(&pipeline, HloVerifierOpts{},
                    /*debug_only=*/true);
 
@@ -808,8 +811,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   // Run this to a fixed point.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-       "simplification after layout assignment"),
-   this] {
+       "simplification after layout assignment")] {
     AddHloVerifier(
         &pipeline,
         HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
@@ -886,21 +888,6 @@ llvm::TargetOptions CompilerTargetOptions(
   // Always allow FMA fusion. This increases precision instead of decreasing it.
   target_options.AllowFPOpFusion = llvm::FPOpFusion::Fast;
   return target_options;
-}
-
-llvm::CodeGenOptLevel CodeGenOptLevel(const HloModuleConfig& module_config) {
-  VLOG(2) << "backend_optimization_level: "
-          << module_config.debug_options().xla_backend_optimization_level();
-  switch (module_config.debug_options().xla_backend_optimization_level()) {
-    case 1:
-      return llvm::CodeGenOptLevel::Less;
-    case 2:
-      return llvm::CodeGenOptLevel::Default;
-    case 3:
-      return llvm::CodeGenOptLevel::Aggressive;
-    default:
-      return llvm::CodeGenOptLevel::None;
-  }
 }
 
 std::pair<LLVMCompiler::ModuleHook, LLVMCompiler::ModuleHook> GetIRModuleHooks(
@@ -997,7 +984,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<llvm::TargetMachine> jit_target_machine,
       JitCompiler::InferTargetMachine(
-          CompilerTargetOptions(config), CodeGenOptLevel(config),
+          CompilerTargetOptions(config), IrCompiler::GetCodeGenOptLevel(config),
           CpuFeatureFromString(config.debug_options().xla_cpu_max_isa())));
 
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
@@ -1361,12 +1348,13 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
 
   // Options for compiling LLVM IR to machine code.
   IrCompiler::Options ir_compiler_options{
-      /*optimization_level=*/CodeGenOptLevel(config),
+      /*optimization_level=*/IrCompiler::GetCodeGenOptLevel(config),
       /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
       /*disable_expensive_passes=*/
       debug_options.xla_llvm_disable_expensive_passes(),
       /*slp_vectorizer_disabled=*/options::SlpVectorizerDisabled(config),
+      /*enable_loop_unrolling=*/options::EnableLoopUnrolling(config),
   };
 
   // Compiler hooks to intercept compiled LLVM IR modules.
@@ -1377,10 +1365,9 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
   };
 
   // Definition generator to link with XLA:CPU host runtime symbols.
-  JitCompiler::DefinitionGenerator definition_generator =
-      [](llvm::TargetMachine* target_machine) {
-        return std::make_unique<RuntimeSymbolGenerator>(
-            target_machine->createDataLayout());
+  ExecutionEngine::DefinitionGenerator definition_generator =
+      [](const llvm::DataLayout& data_layout) {
+        return std::make_unique<RuntimeSymbolGenerator>(data_layout);
       };
 
   // Options for orchestrating the JIT compilation process.
@@ -1459,7 +1446,6 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
       /*emit_code_for_msan=*/false
 #endif
   );
-
 
   // If we use Thunk runtime then instead of emitting LLVM function for the
   // entry computation we emit a sequence of thunks that implement the
@@ -1570,12 +1556,17 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
     // Collect compiled symbols from all LLVM module parts.
     std::vector<FunctionLibrary::Symbol> compiled_symbols;
 
+    absl::flat_hash_map<FunctionLibrary::TypeId, SymbolProto::FunctionTypeId>
+        symbol_type_id_to_function_type_id;
+
     VLOG(3) << "Adding " << thunk_emitter.kernels().size()
             << " kernels to the JIT compiler";
     int kernel_dylib_index = 0;
     for (auto& [name, module] : thunk_emitter.kernels()) {
       compiled_symbols.push_back(
           FunctionLibrary::Sym<FunctionLibrary::Kernel>(name));
+      symbol_type_id_to_function_type_id.emplace(
+          compiled_symbols.back().type_id, SymbolProto::KERNEL);
       TF_CHECK_OK(
           jit_compiler.AddModule(std::move(module), kernel_dylib_index));
       // Simply roundrobin the kernel dylibs
@@ -1586,10 +1577,14 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
       for (const IrEmitter2::KernelInfo& kernel : part.kernels) {
         compiled_symbols.push_back(
             FunctionLibrary::Sym<FunctionLibrary::Kernel>(kernel.name));
+        symbol_type_id_to_function_type_id.emplace(
+            compiled_symbols.back().type_id, SymbolProto::KERNEL);
       }
       for (const IrEmitter2::ComparatorInfo& comparator : part.comparators) {
         compiled_symbols.push_back(
             FunctionLibrary::Sym<FunctionLibrary::Comparator>(comparator.name));
+        symbol_type_id_to_function_type_id.emplace(
+            compiled_symbols.back().type_id, SymbolProto::COMPARATOR);
       }
     }
 
@@ -1620,6 +1615,15 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
     // Save object files to be able to export them to AOT compilation
     // result.
     cpu_executable->set_obj_files(std::move(obj_files));
+
+    // Save compiled symbols to be able to export them to AOT compilation
+    // result.
+    cpu_executable->set_compiled_symbols(std::move(compiled_symbols));
+
+    // Save mapping between symbol type id and function type id to be able to
+    // export them to AOT compilation result.
+    cpu_executable->set_symbol_type_id_to_function_type_id(
+        symbol_type_id_to_function_type_id);
 
     if (embed_ir_in_executable) {
       cpu_executable->set_ir_module_string(ir_module_string);
@@ -1806,7 +1810,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       pie_level = llvm::PIELevel::Large;
       break;
   }
-  llvm::CodeGenOptLevel opt_level = CodeGenOptLevel(modules[0]->config());
+  llvm::CodeGenOptLevel opt_level =
+      IrCompiler::GetCodeGenOptLevel(modules[0]->config());
   std::shared_ptr<llvm::TargetMachine> target_machine =
       absl::WrapUnique(target->createTargetMachine(
           triple.getTriple(), options.cpu_name(), options.features(),
@@ -1951,6 +1956,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           module->config().debug_options().xla_llvm_disable_expensive_passes(),
           /*disable_slp_vectorizer=*/
           options::SlpVectorizerDisabled(module->config()),
+          /*enable_loop_unrolling=*/
+          options::EnableLoopUnrolling(module->config()),
           /*dfsan_enabled=*/aot_options.sanitize_dataflow(),
           /*dfsan_abilists_enabled=*/aot_options.sanitize_abilists_dataflow()};
 
@@ -1997,20 +2004,22 @@ namespace {
 // result that can be saved on disk and shipped over the wire.
 class CpuExecutableAotCompilationResult : public AotCompilationResult {
  public:
-  CpuExecutableAotCompilationResult(
-      const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-      absl::string_view function_name, std::vector<std::string> obj_files,
-      CompilationResultProto::ObjFileKind obj_file_kind) {
-    *proto_.mutable_hlo_module()->mutable_hlo_module() = hlo_module->ToProto();
-    *proto_.mutable_hlo_module()->mutable_config() =
-        hlo_module->config().ToProto();
-    *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
-    proto_.set_entry_function_name(std::string(function_name));
-    for (std::string& obj_file : obj_files) {
-      proto_.add_obj_files(std::move(obj_file));
+  static absl::StatusOr<std::unique_ptr<CpuExecutableAotCompilationResult>>
+  Create(const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
+         absl::string_view function_name, std::vector<std::string> obj_files,
+         std::vector<SymbolProto> symbols, const ThunkSequence* thunks,
+         CompilationResultProto::ObjFileKind obj_file_kind) {
+    std::optional<ThunkSequenceProto> thunk_proto;
+
+    if (thunks != nullptr) {
+      ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
+          &buffer_assignment->Allocations());
+      TF_ASSIGN_OR_RETURN(thunk_proto, thunk_sequence_serdes.ToProto(*thunks));
     }
-    proto_.set_obj_files_kind(obj_file_kind);
-    module_ = hlo_module->Clone();
+
+    return absl::WrapUnique(new CpuExecutableAotCompilationResult(
+        hlo_module, buffer_assignment, function_name, std::move(obj_files),
+        std::move(symbols), thunk_proto, obj_file_kind));
   }
 
   absl::StatusOr<std::string> SerializeAsString() const override {
@@ -2043,6 +2052,35 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
   }
 
  private:
+  CpuExecutableAotCompilationResult(
+      const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
+      absl::string_view function_name, std::vector<std::string> obj_files,
+      std::vector<SymbolProto> symbols,
+      const std::optional<ThunkSequenceProto>& thunks,
+      CompilationResultProto::ObjFileKind obj_file_kind) {
+    *proto_.mutable_hlo_module()->mutable_hlo_module() = hlo_module->ToProto();
+    *proto_.mutable_hlo_module()->mutable_config() =
+        hlo_module->config().ToProto();
+    *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
+    proto_.set_entry_function_name(std::string(function_name));
+    for (std::string& obj_file : obj_files) {
+      proto_.add_obj_files(std::move(obj_file));
+    }
+
+    for (const auto& symbol : symbols) {
+      auto* symbol_proto = proto_.add_compiled_symbols();
+      *symbol_proto = symbol;
+    }
+    proto_.set_obj_files_kind(obj_file_kind);
+    module_ = hlo_module->Clone();
+
+    if (thunks.has_value()) {
+      ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
+          &buffer_assignment->Allocations());
+      *proto_.mutable_thunk_sequence() = *thunks;
+    }
+  }
+
   explicit CpuExecutableAotCompilationResult(CompilationResultProto proto,
                                              std::unique_ptr<HloModule> module)
       : proto_(std::move(proto)), module_(std::move(module)) {}
@@ -2074,39 +2112,29 @@ CpuExecutableAotCompilationResult::LoadExecutable(
   VlogMaxIsa(debug_options.xla_cpu_max_isa());
   const HloModuleConfig& config = module->config();
 
-  // Options for compiling LLVM IR to machine code.
-  IrCompiler::Options ir_compiler_options{
-      /*optimization_level=*/CodeGenOptLevel(config),
-      /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
-      /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
-      /*disable_expensive_passes=*/
-      debug_options.xla_llvm_disable_expensive_passes(),
-      /*slp_vectorizer_disabled=*/options::SlpVectorizerDisabled(config),
-  };
-
-  // We don't need any hooks when loading AOT compilation result.
-  IrCompiler::CompilationHooks ir_compiler_hooks = {};
+  // Infer target machine from the current host CPU.
+  IrCompiler::TargetMachineBuilder target_machine_builder =
+      JitCompiler::InferTargetMachineBuilder(
+          std::move(CompilerTargetOptions(module->config())),
+          IrCompiler::GetCodeGenOptLevel(config),
+          CpuFeatureFromString(debug_options.xla_cpu_max_isa()));
+  TF_ASSIGN_OR_RETURN(auto target_machine, target_machine_builder());
 
   // Definition generator to link with XLA:CPU host runtime symbols.
-  JitCompiler::DefinitionGenerator definition_generator =
-      [](llvm::TargetMachine* target_machine) {
-        return std::make_unique<RuntimeSymbolGenerator>(
-            target_machine->createDataLayout());
+  ExecutionEngine::DefinitionGenerator definition_generator =
+      [](const llvm::DataLayout& data_layout) {
+        return std::make_unique<RuntimeSymbolGenerator>(data_layout);
       };
 
-  // Options for orchestrating the JIT compilation process.
-  JitCompiler::Options jit_compiler_options{
-      std::move(ir_compiler_options),
-      std::move(ir_compiler_hooks),
-      /*num_dylibs=*/1,
-      /*definition_generator=*/std::move(definition_generator),
-      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
-  };
+  ObjectLoader object_loader(/*num_dylibs=*/1,
+                             target_machine->createDataLayout(),
+                             definition_generator);
 
-  TF_ASSIGN_OR_RETURN(
-      JitCompiler jit_compiler,
-      JitCompiler::Create(CompilerTargetOptions(module->config()),
-                          std::move(jit_compiler_options)));
+  for (size_t i = 0; i < object_loader.num_dylibs(); ++i) {
+    object_loader.dylib(i).value()->addGenerator(
+        std::make_unique<RuntimeSymbolGenerator>(
+            target_machine->createDataLayout()));
+  }
 
   // We might have an XLA:CPU executable that has only runtime thunks and
   // doesn't have any corresponding object files, and it's absolutely fine.
@@ -2117,61 +2145,47 @@ CpuExecutableAotCompilationResult::LoadExecutable(
   size_t obj_file_index = 0;
   for (auto& obj_file : proto_.obj_files()) {
     llvm::StringRef data(obj_file.data(), obj_file.size());
-    TF_RETURN_IF_ERROR(jit_compiler.AddObjFile(llvm::MemoryBuffer::getMemBuffer(
-        data,
-        absl::StrCat(proto_.entry_function_name(), "_", obj_file_index++))));
+    TF_RETURN_IF_ERROR(
+        object_loader.AddObjFile(llvm::MemoryBuffer::getMemBuffer(
+            data, absl::StrCat(proto_.entry_function_name(), "_",
+                               obj_file_index++))));
   }
 
   std::unique_ptr<CpuExecutable> cpu_executable;
 
   if (proto_.obj_files_kind() == CompilationResultProto::KERNELS) {
-    // We emit thunks for the HLO module and ignore emitted LLVM IR as we
-    // already have it compiled to object file.
-    //
-    // See `CpuCompiler::CompileCpuExecutable` for the jit-compilation
-    // version that actually compiles emitted LLVM IR.
-    //
-    // TODO(ezhulenev): We should make it less wasteful and instead serialize
-    // Thunks directly into the proto. Today we have to emit LLVM IR to get
-    // required metadata to instantiate host kernel thunks.
-    auto llvm_context = std::make_unique<llvm::LLVMContext>();
-    auto llvm_module =
-        std::make_unique<llvm::Module>(kXlaModuleIdentifier, *llvm_context);
+    ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
+        &buffer_assignment->Allocations());
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<ThunkSequence> thunks,
+        thunk_sequence_serdes.FromProto(proto_.thunk_sequence()));
 
-    TargetMachineFeatures target_machine_features(
-        jit_compiler.target_machine());
+    VLOG(3) << "Loaded " << thunks->size() << " thunks.";
 
-    IrEmitter nested_ir_emitter(
-        nullptr, *module, *buffer_assignment, llvm_module.get(), {}, {},
-        ModuleComputationsTransitivelyContainCustomCall(*module),
-        &target_machine_features, /*emit_code_for_msan=*/false);
-
-    IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
-
-    ThunkEmitter thunk_emitter(ir_emitter2, *buffer_assignment,
-                               target_machine_features, module->config());
-    TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
-                        thunk_emitter.EmitEntryComputation(*module));
-
-    // Collect compiled symbols from IrEmitter2.
     std::vector<FunctionLibrary::Symbol> compiled_symbols;
 
-    for (auto& [name, module] : thunk_emitter.kernels()) {
-      compiled_symbols.push_back(
-          FunctionLibrary::Sym<FunctionLibrary::Kernel>(name));
-    }
-    for (const auto& kernel : ir_emitter2.kernels()) {
-      compiled_symbols.push_back(
-          FunctionLibrary::Sym<FunctionLibrary::Kernel>(kernel.name));
-    }
-    for (const auto& comparator : ir_emitter2.comparators()) {
-      compiled_symbols.push_back(
-          FunctionLibrary::Sym<FunctionLibrary::Comparator>(comparator.name));
+    for (const auto& symbol_proto : proto_.compiled_symbols()) {
+      switch (symbol_proto.function_type_id()) {
+        case SymbolProto::KERNEL:
+          compiled_symbols.push_back(
+              FunctionLibrary::Sym<FunctionLibrary::Kernel>(
+                  symbol_proto.name()));
+          break;
+        case SymbolProto::COMPARATOR:
+          compiled_symbols.push_back(
+              FunctionLibrary::Sym<FunctionLibrary::Comparator>(
+                  symbol_proto.name()));
+          break;
+        default:
+          return Internal(
+              "Unknown function type id %s",
+              SymbolProto_FunctionTypeId_Name(symbol_proto.function_type_id()));
+      }
     }
 
     VLOG(3) << "Collected " << compiled_symbols.size() << " compiled symbols";
     TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> function_library,
-                        std::move(jit_compiler).Compile(compiled_symbols));
+                        std::move(object_loader).Load(compiled_symbols));
 
     // Create constant allocations from the buffer assignment.
     TF_ASSIGN_OR_RETURN(
@@ -2182,15 +2196,15 @@ CpuExecutableAotCompilationResult::LoadExecutable(
         cpu_executable,
         CpuExecutable::Create(std::move(function_library),
                               std::move(buffer_assignment), std::move(module),
-                              std::move(thunks), std::move(constants), nullptr,
+                              std::move(*thunks), std::move(constants), nullptr,
                               nullptr));
 
   } else if (proto_.obj_files_kind() == CompilationResultProto::CLASSIC) {
     // Create a "classic" CPU executable.
     using ComputeFn = std::remove_pointer_t<CpuExecutable::ComputeFunctionType>;
     TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> function_library,
-                        std::move(jit_compiler)
-                            .Compile({FunctionLibrary::Sym<ComputeFn>(
+                        std::move(object_loader)
+                            .Load({FunctionLibrary::Sym<ComputeFn>(
                                 proto_.entry_function_name())}));
 
     TF_ASSIGN_OR_RETURN(
@@ -2228,10 +2242,17 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
 
   auto kind = cpu_executable->has_thunks() ? CompilationResultProto::KERNELS
                                            : CompilationResultProto::CLASSIC;
+  const ThunkSequence* thunk_sequence =
+      cpu_executable->has_thunks() ? &cpu_executable->thunks().thunk_sequence()
+                                   : nullptr;
 
-  return {std::make_unique<CpuExecutableAotCompilationResult>(
+  std::vector<SymbolProto> compiled_symbols =
+      cpu_executable->get_compiled_symbols_proto();
+
+  return CpuExecutableAotCompilationResult::Create(
       &cpu_executable->module(), &cpu_executable->buffer_assignment(),
-      cpu_executable->module_name(), std::move(obj_files), kind)};
+      cpu_executable->module_name(), std::move(obj_files),
+      std::move(compiled_symbols), thunk_sequence, kind);
 }
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>

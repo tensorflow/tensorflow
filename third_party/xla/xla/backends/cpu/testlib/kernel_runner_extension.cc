@@ -29,6 +29,7 @@ limitations under the License.
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/backends/cpu/codegen/dot_kernel_emitter.h"
+#include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::cpu {
@@ -129,18 +131,27 @@ NB_MODULE(_extension, kernel_runner_module) {
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
+  nb::class_<ConcatenateKernelEmitter, KernelEmitter>(
+      kernel_runner_module, "ConcatenateKernelEmitter")
+      .def(nb::init<const HloInstruction*, const BufferAssignment*,
+                    const TargetMachineFeatures*>(),
+           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
+           nb::keep_alive<1, 4>());
+
   nb::class_<JitCompiler>(kernel_runner_module, "JitCompiler")
-      .def(nb::new_([]() {
-        absl::StatusOr<JitCompiler> compiler =
-            KernelRunner::CreateJitCompiler();
+      .def(nb::new_([](const HloModuleConfig& config) {
+             absl::StatusOr<JitCompiler> compiler =
+                 KernelRunner::CreateJitCompiler(config);
 
-        if (!compiler.ok()) {
-          throw std::runtime_error(std::string(compiler.status().message()));
-        }
+             if (!compiler.ok()) {
+               throw std::runtime_error(
+                   std::string(compiler.status().message()));
+             }
 
-        return std::make_unique<JitCompiler>(
-            JitCompiler(std::move(compiler).value()));
-      }))
+             return std::make_unique<JitCompiler>(
+                 JitCompiler(std::move(compiler).value()));
+           }),
+           nb::arg("config"))
       .def(
           "get_target_machine",
           [](JitCompiler* self) {

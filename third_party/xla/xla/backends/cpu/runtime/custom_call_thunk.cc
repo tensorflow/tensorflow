@@ -274,9 +274,11 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
   // Forward ExecutableRunOptions to the FFI handlers via the call options.
   CustomCallExecuteParams* custom_call_params = params.custom_call_params;
   ffi::CallOptions call_options = {
+      custom_call_params->run_id,
       custom_call_params->device_ordinal,
       ffi::CallOptions::CpuOptions{custom_call_params->intra_op_thread_pool},
-      /*called_computation=*/nullptr, custom_call_params->ffi_execution_context,
+      /*called_computation=*/nullptr,
+      custom_call_params->ffi_execution_context,
       execution_state_.get()};
 
   return ffi::CallAsync(handler->bundle.execute, call_frame, call_options);

@@ -229,7 +229,9 @@ NB_MODULE(_extension, kernel_runner_module) {
       .def_static("create_variadic", &HloInstruction::CreateVariadic,
                   nb::keep_alive<0, 3>())
       .def_static("create_compare", &CreateComparisonHloInstruction,
-                  nb::keep_alive<0, 2>(), nb::keep_alive<0, 3>());
+                  nb::keep_alive<0, 2>(), nb::keep_alive<0, 3>())
+      .def_static("create_concatenate", &HloInstruction::CreateConcatenate,
+                  nb::keep_alive<0, 2>());
 
   // Accessors
   hlo_instruction.def("opcode", &HloInstruction::opcode);
@@ -244,6 +246,9 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   nb::class_<HloSchedule>(kernel_runner_module, "HloSchedule")
       .def("__str__", &HloSchedule::ToString);
+
+  nb::class_<HloModuleConfig>(kernel_runner_module, "HloModuleConfig")
+      .def(nb::new_(&DefaultHloModuleConfigWithDebugOptions));
 
   nb::class_<HloModule>(kernel_runner_module, "HloModule")
       .def_static("parse_from_string",
@@ -296,6 +301,7 @@ NB_MODULE(_extension, kernel_runner_module) {
             return self->entry_computation()->root_instruction();
           },
           nb::rv_policy::reference_internal)
+      .def("get_config", &HloModule::config)
       .def("__str__", nb::overload_cast<>(&HloModule::ToString, nb::const_));
 }
 

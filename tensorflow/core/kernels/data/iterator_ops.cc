@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/time/time.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/activity_watcher/activity_utils.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {

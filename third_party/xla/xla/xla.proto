@@ -127,8 +127,9 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // XLA:CPU options.
   //--------------------------------------------------------------------------//
-  // go/keep-sorted start newline_separated=yes skip_lines=1
-
+  // clang-format off
+  // go/keep-sorted start newline_separated=yes skip_lines=1 ignore_prefixes=["bool","int32","string"]
+  // clang-format on
   // Use region analysis in copy insertion pass.
   bool xla_cpu_copy_insertion_use_region_analysis = 337;
 
@@ -176,14 +177,10 @@ message DebugOptions {
   // false.
   bool xla_cpu_fast_math_honor_nans = 120;
 
-  // When true, XLA:CPU uses the thunk runtime to execute compiled program.
-  bool xla_cpu_use_thunk_runtime = 298;
-
-  // When true, XLA:CPU uses XNNPACK to execute supported operations.
-  bool xla_cpu_use_xnnpack = 359;
-
-  // Enabling this will enable optimizations that ignore the possibility of NaN.
-  bool xla_enable_fast_math = 335;
+  // When set, XLA:CPU will only generate code up to the specified ISA.
+  // (It will not use newer ISAs.) Using the string format allows us to extend
+  // the flag for more flexible control if necessary.
+  string xla_cpu_max_isa = 333;
 
   // The number of parts to split the LLVM module into before codegen. This
   // allows XLA to compile all parts in parallel, and resolve kernel symbols
@@ -194,10 +191,14 @@ message DebugOptions {
   // value is `256` (AVX2 on x86 platforms).
   int32 xla_cpu_prefer_vector_width = 308;
 
-  // When set, XLA:CPU will only generate code up to the specified ISA.
-  // (It will not use newer ISAs.) Using the string format allows us to extend
-  // the flag for more flexible control if necessary.
-  string xla_cpu_max_isa = 333;
+  // When true, XLA:CPU uses the thunk runtime to execute compiled program.
+  bool xla_cpu_use_thunk_runtime = 298;
+
+  // When true, XLA:CPU uses XNNPACK to execute supported operations.
+  bool xla_cpu_use_xnnpack = 359;
+
+  // Enabling this will enable optimizations that ignore the possibility of NaN.
+  bool xla_enable_fast_math = 335;
 
   // go/keep-sorted end
 
@@ -207,6 +208,24 @@ message DebugOptions {
   // clang-format off
   // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["AutotuneCacheMode","bool","float","int32","int64","LibNvJitLinkMode","map<string, string>","PGLEStrictnessLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","ShapeChecks","string","WhileLoopUnrolling"] // NOLINT
   // clang-format on
+
+  PipelineParallelismOptLevel
+      xla_gpu_experimental_pipeline_parallelism_opt_level = 351;
+
+  // Experimental optimizations for SPMD-based pipeline parallelism on GPU.
+  enum PipelineParallelismOptLevel {
+    PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE = 0;
+    // Enable only collective-permute decomposer to overlap send and recv
+    // separately, allowing to reveive data in the previous iteration while
+    // sending the current iteration.
+    PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE = 1;
+    // Additionally, enable collective-permute cycle decomposer. This set of
+    // optimizations will lead to best overlap for trivial pipeline parallelism
+    // implementation.
+    // TODO(b/393127848): Remove these optimizations when all users implement
+    // cycle decomposition at the JAX level.
+    PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER = 2;
+  }
 
   // Denylist for cuDNN convolutions.
   string xla_gpu_algorithm_denylist_path = 128;
@@ -357,8 +376,6 @@ message DebugOptions {
   // Whether to use cuBLASLt for GEMMs on GPUs.
   bool xla_gpu_enable_cublaslt = 166;
 
-  bool xla_gpu_enable_cudnn_fmha = 218;
-
   // Whether to use the cuDNN frontend API for convolutions when possible.
   bool xla_gpu_enable_cudnn_frontend = 160;
 
@@ -502,9 +519,6 @@ message DebugOptions {
   //
   // Pre-existing block-level fusions are left unmodified.
   bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
-
-  // Experimental optimizations for SPMD-based pipeline parallelism on GPU.
-  bool xla_gpu_experimental_enable_pipeline_parallelism_opt = 351;
 
   // When enabled, the PriorityFusion pass will try to make Triton fusions first
   // and foremost where it is possible.
@@ -1139,8 +1153,9 @@ message DebugOptions {
   // xla_gpu_triton_fusion_level
   // xla_gpu_enable_bf16_3way_gemm
   // xla_gpu_enable_bf16_6way_gemm
+  // xla_gpu_enable_cudnn_fmha
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332, 361, 270, 229, 271, 279;
+      325, 326, 332, 361, 270, 229, 271, 279, 218;
 }
 
 // Contains flags which affects the GPU compilation result.

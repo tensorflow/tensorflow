@@ -25,12 +25,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "xla/tsl/platform/file_system.h"
 #include "tensorflow/core/platform/file_statistics.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/file_system.h"
 
 /// This file builds classes needed to hold a filesystem implementation in the
 /// modular world. Once all TensorFlow filesystems are converted to use the

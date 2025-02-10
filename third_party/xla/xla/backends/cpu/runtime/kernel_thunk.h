@@ -24,6 +24,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/base/call_once.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
@@ -45,6 +47,24 @@ namespace xla::cpu {
 // Forward declare thunk defined below.
 class KernelThunk;
 
+// Base class for kernel thunks required for serialization.
+// A base class is needed so that we can serialize KernelThunk and
+// SmallKernelThunk via the same interface.
+class KernelThunkBase : public Thunk {
+ public:
+  virtual ~KernelThunkBase() = default;  // NOLINT: clang-tidy complains that
+                                         // `override` should be used here.
+  KernelThunkBase(Kind kind, Info info) : Thunk(kind, std::move(info)) {}
+  virtual absl::string_view kernel_name() const = 0;
+  virtual const se::ThreadDim& thread_dim() const = 0;
+  virtual const std::optional<uint64_t>& min_alignment() const = 0;
+
+  virtual absl::Span<const BufferAllocation::Slice> arguments_buffers()
+      const = 0;
+
+  virtual absl::Span<const BufferAllocation::Slice> results_buffers() const = 0;
+};
+
 namespace internal {
 
 // If the number of kernel parameters (arguments and results) is unknown at
@@ -57,22 +77,22 @@ inline constexpr int64_t kDynamicKernelParameter = -1;
 // overheads for the smallest HLO modules.
 template <int64_t num_arguments = kDynamicKernelParameter,
           int64_t num_results = kDynamicKernelParameter>
-class KernelThunk : public Thunk {
+class KernelThunk : public KernelThunkBase {
  public:
   BufferUses buffer_uses() const final;
 
-  const std::string& kernel_name() const { return kernel_name_; }
-  const se::ThreadDim& thread_dim() const { return thread_dim_; }
-  const std::optional<uint64_t>& min_alignment() const {
+  absl::string_view kernel_name() const final { return kernel_name_; }
+  const se::ThreadDim& thread_dim() const final { return thread_dim_; }
+  const std::optional<uint64_t>& min_alignment() const final {
     return min_alignment_;
   }
 
-  const std::vector<BufferAllocation::Slice>& arguments_buffers() const {
-    return arguments_buffers_;
+  absl::Span<const BufferAllocation::Slice> arguments_buffers() const final {
+    return absl::MakeSpan(arguments_buffers_);
   }
 
-  const std::vector<BufferAllocation::Slice>& results_buffers() const {
-    return results_buffers_;
+  absl::Span<const BufferAllocation::Slice> results_buffers() const final {
+    return absl::MakeSpan(results_buffers_);
   }
 
  protected:

@@ -17,11 +17,11 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_NCCL_ALL_TO_ALL_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -56,8 +57,6 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
 
   absl::Status Initialize(const InitializeParams& params) override;
 
-  absl::Status Cleanup(const CleanupParams& params) override;
-
   static const char* GetHloOpName() { return "all-to-all-start"; }
 
   static CollectiveOpGroupMode GetGroupMode(
@@ -82,9 +81,15 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
   int64_t device_count_ = 1;
   bool p2p_memcpy_enabled_ = false;
   absl::Mutex pointer_maps_mutex_;
-  absl::node_hash_map<int64_t, absl::flat_hash_map<int64_t, uint64_t>>
+  // Maps from a device to a uint64_t array of size num_devices. The array is
+  // written to and used in each call to RunNcclCollective(), but is
+  // preallocated as CUDA host memory in the first call to Initialize(), since
+  // allocating CUDA host memory every call to RunNcclCollective() is expensive.
+  absl::flat_hash_map<se::StreamExecutor*,
+                      std::unique_ptr<se::MemoryAllocation>>
       send_pointer_maps_ ABSL_GUARDED_BY(pointer_maps_mutex_);
-  absl::node_hash_map<int64_t, absl::flat_hash_map<int64_t, uint64_t>>
+  absl::flat_hash_map<se::StreamExecutor*,
+                      std::unique_ptr<se::MemoryAllocation>>
       receive_pointer_maps_ ABSL_GUARDED_BY(pointer_maps_mutex_);
 };
 
@@ -92,12 +97,12 @@ absl::Status RunAllToAll(GpuCollectives* collectives, bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
                          se::Stream& stream, Communicator* comm);
 
-absl::Status RunMemCpyAllToAll(
-    GpuCollectives* collectives, bool has_split_dimension,
-    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    Communicator* comm,
-    absl::flat_hash_map<int64_t, uint64_t>& send_pointer_map,
-    absl::flat_hash_map<int64_t, uint64_t>& receive_pointer_map);
+absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
+                               bool has_split_dimension,
+                               std::vector<DeviceBufferPair>& buffers,
+                               se::Stream& stream, Communicator* comm,
+                               uint64_t send_pointer_map[],
+                               uint64_t receive_pointer_map[]);
 
 }  // namespace gpu
 }  // namespace xla

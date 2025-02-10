@@ -31,15 +31,15 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {

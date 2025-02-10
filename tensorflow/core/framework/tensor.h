@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <iosfwd>
 #include <string>
@@ -1063,9 +1064,8 @@ void Tensor::ValueAndTensorBuffer<T>::HostScalarTensorBuffer::operator delete(
   // NOTE(mrry): Using `sizeof(Tensor::ValueAndTensorBuffer<T>)` here requires
   // us to define this method outside the class definition, so that it is not
   // considered an incomplete type.
-  typename std::aligned_storage<sizeof(Tensor::ValueAndTensorBuffer<T>),
-                                alignof(Tensor::ValueAndTensorBuffer<T>)>::type
-      dummy_storage_;
+  alignas(Tensor::ValueAndTensorBuffer<T>)
+      std::byte dummy_storage_[sizeof(Tensor::ValueAndTensorBuffer<T>)];
   Tensor::ValueAndTensorBuffer<T>* dummy_object =
       reinterpret_cast<Tensor::ValueAndTensorBuffer<T>*>(&dummy_storage_);
   intptr_t offset = reinterpret_cast<intptr_t>(&dummy_object->tensor_buffer) -

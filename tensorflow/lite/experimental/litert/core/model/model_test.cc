@@ -29,7 +29,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/core/model/buffer_manager.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
-#include "tensorflow/lite/experimental/litert/test/test_macros.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace litert::internal {
@@ -46,7 +46,7 @@ TEST(ModelTest, GetMetadata) {
   static constexpr absl::string_view kKey = "KEY";
 
   LiteRtModelT model;
-  LITERT_ASSERT_STATUS_OK(model.PushMetadata(kKey, kMetadata));
+  LITERT_ASSERT_OK(model.PushMetadata(kKey, kMetadata));
   auto found_metadata = model.FindMetadata(kKey);
   ASSERT_TRUE(found_metadata);
   EXPECT_EQ(found_metadata->StrView(), kMetadata);
@@ -56,20 +56,6 @@ TEST(ModelTest, MetadataDNE) {
   LiteRtModelT model;
   auto res = model.FindMetadata("FOO");
   ASSERT_FALSE(res.HasValue());
-}
-
-TEST(ModelTest, PopMetadata) {
-  static constexpr absl::string_view kMetadata = "VALUE";
-  static constexpr absl::string_view kKey = "KEY";
-
-  LiteRtModelT model;
-  LITERT_ASSERT_STATUS_OK(model.PushMetadata(kKey, kMetadata));
-
-  auto popped_metadata = model.PopMetadata(kKey);
-  ASSERT_TRUE(popped_metadata);
-  EXPECT_EQ(popped_metadata->StrView(), kMetadata);
-
-  EXPECT_FALSE(model.FindMetadata(kKey));
 }
 
 TEST(ModelTest, EmplaceSubgraph) {
@@ -114,17 +100,17 @@ TEST(ModelTest, AttachExternalBufferToOp) {
 
   OwningBufferRef<uint8_t> external_buf(kBufferData);
 
-  auto buf1_id = model.RegisterExternalBuffer(std::move(external_buf));
+  auto buf1_id = model.Buffers()->RegisterOwnedBuffer(std::move(external_buf));
 
-  model.AttachExternalBufferToOp(&op, buf1_id, std::string(kOpName));
-  model.AttachExternalBufferToOp(&op2, buf1_id, std::string(kOp2Name));
+  model.AttachAssetToOp(&op, buf1_id, std::string(kOpName));
+  model.AttachAssetToOp(&op2, buf1_id, std::string(kOp2Name));
 
-  auto op_1_res = model.FindExternalBuffer(&op);
+  auto op_1_res = model.FindOpAsset(&op);
   ASSERT_TRUE(op_1_res);
   EXPECT_EQ(op_1_res->second, kOpName);
   EXPECT_EQ(op_1_res->first, buf1_id);
 
-  auto op_2_res = model.FindExternalBuffer(&op2);
+  auto op_2_res = model.FindOpAsset(&op2);
   ASSERT_TRUE(op_2_res);
   EXPECT_EQ(op_2_res->second, kOp2Name);
   EXPECT_EQ(op_2_res->first, buf1_id);
@@ -133,7 +119,7 @@ TEST(ModelTest, AttachExternalBufferToOp) {
 TEST(ModelTest, ExternalBufferNotFound) {
   LiteRtModelT model;
   LiteRtOpT op;
-  ASSERT_FALSE(model.FindExternalBuffer(&op));
+  ASSERT_FALSE(model.FindOpAsset(&op));
 }
 
 //

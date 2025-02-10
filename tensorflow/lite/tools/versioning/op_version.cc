@@ -14,14 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/versioning/op_version.h"
 
-#include <algorithm>
-#include <string>
-#include <utility>
+#include <cstdint>
+#include <cstdlib>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_split.h"
+#include "absl/log/log.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/core/platform/logging.h"

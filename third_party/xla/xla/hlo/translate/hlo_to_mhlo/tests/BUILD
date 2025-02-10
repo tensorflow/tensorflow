@@ -22,6 +22,7 @@ lit_test_suite(
             "if_conditional.hlo",
             "import.hlo",
             "import_async.hlo",
+            "import_bounded_dynamism.hlo",
             "import_entry_computation_layout.hlo",
             "layouts_and_names.hlo",
             "location.hlo",
@@ -41,6 +42,7 @@ lit_test_suite(
     ),
     cfg = "//xla:lit.cfg.py",
     tools = [
+        "//xla/hlo/tools:hlo-translate",
         "//xla/hlo/translate:xla-translate",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",

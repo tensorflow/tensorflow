@@ -43,6 +43,10 @@ class LogicalIdThunk : public Thunk {
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
+  const BufferAllocation::Slice& logical_id_buffer() const {
+    return logical_id_buffer_;
+  }
+
   BufferUses buffer_uses() const final;
 
  private:

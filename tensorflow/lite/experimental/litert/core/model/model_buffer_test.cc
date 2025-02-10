@@ -69,7 +69,7 @@ TEST(GetModelBufWithByteCode, CheckAppended) {
   auto* op = model->get()->Subgraphs().front()->Ops().front();
   ASSERT_EQ(op->OpCode(), kLiteRtOpCodeTflCustom);
   auto dispatch_opts = GetDispatchOpOptions(op->CustomOptions());
-  EXPECT_EQ(dispatch_opts.name, "CUSTOM_DISPATCH");
+  EXPECT_EQ(dispatch_opts.name, "");
   EXPECT_LE(dispatch_opts.bytecode_offset + dispatch_opts.bytecode_size,
             model_with_byte_code->Size());
 }

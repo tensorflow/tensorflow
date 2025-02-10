@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -101,6 +102,8 @@ class HloSharding final
  private:
   HloSharding(tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
               xla::HloSharding xla_hlo_sharding);
+
+  void Hash(absl::HashState state) const override;
 
   xla::HloSharding xla_hlo_sharding_;
 };

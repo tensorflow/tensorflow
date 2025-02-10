@@ -316,5 +316,6 @@ xla_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:protobuf",
+        "@stablehlo//:stablehlo_ops",
     ],
 )

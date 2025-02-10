@@ -1886,7 +1886,7 @@ cc_library(
 # Main program for tests
 alias(
     name = "test_main",
-    actual = "@com_google_googletest//:gtest_main",
+    actual = "@local_xla//xla/tsl/platform:test_main",
     visibility = ["//tensorflow:internal"],
 )
 

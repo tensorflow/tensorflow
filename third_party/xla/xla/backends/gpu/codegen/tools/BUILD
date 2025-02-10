@@ -1,3 +1,4 @@
+load("//xla:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//xla:xla.bzl", "xla_cc_binary")
 
 package(
@@ -104,5 +105,36 @@ xla_cc_binary(
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+py_strict_binary(
+    name = "ncu_rep",
+    srcs = ["ncu_rep.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":ncu_rep_lib",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
+)
+
+py_strict_library(
+    name = "ncu_rep_lib",
+    srcs = ["ncu_rep_lib.py"],
+    srcs_version = "PY3",
+    deps = [
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
+)
+
+py_strict_test(
+    name = "ncu_rep_test",
+    srcs = ["ncu_rep_test.py"],
+    deps = [
+        ":ncu_rep_lib",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/testing:absltest",
     ],
 )

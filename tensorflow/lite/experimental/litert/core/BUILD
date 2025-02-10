@@ -44,7 +44,7 @@ cc_test(
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/cc:litert_buffer_ref",
         "//tensorflow/lite/experimental/litert/cc:litert_expected",
-        "//tensorflow/lite/experimental/litert/test:common",
+        "//tensorflow/lite/experimental/litert/test:matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
@@ -56,6 +56,7 @@ cc_library(
     hdrs = ["dynamic_loading.h"],
     linkopts = ["-ldl"],
     deps = [
+        ":filesystem",
         "//tensorflow/lite/experimental/litert/c:litert_common",
         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
         "@com_google_absl//absl/strings:str_format",
@@ -168,11 +169,11 @@ cc_test(
 #     deps = [
 #         ":dynamic_loading",
 #         ":filesystem",
+#         "@com_google_googletest//:gtest_main",
 #         "@com_google_absl//absl/strings:string_view",
 #         "//tensorflow/lite/experimental/litert/c:litert_logging",  # buildcleaner: keep
 #         "//tensorflow/lite/experimental/litert/test:common",
-#         "//tensorflow/lite/experimental/litert/test:test_macros",
-#         "@com_google_googletest//:gtest_main",
+#         "//tensorflow/lite/experimental/litert/test:matchers",
 #     ],
 # )
 # copybara:uncomment_end

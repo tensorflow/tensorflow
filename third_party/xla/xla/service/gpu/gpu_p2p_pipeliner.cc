@@ -211,14 +211,14 @@ absl::Status PostprocessRotatedP2P(HloInstruction* instr) {
 }  // anonymous namespace
 
 void AddP2PPipeliner(HloPassPipeline& pipeline,
-                     bool enable_experimental_pipeline_parallelism_opt) {
+                     bool enable_partial_send_recv_pipelining) {
   auto should_process = ShouldPipeline;
   CollectivePipeliner::HloPostprocessor postprocess_backward_peeled_op =
       PostprocessPeeledP2P;
   CollectivePipeliner::HloPostprocessor postprocess_backward_rotated_op =
       PostprocessRotatedP2P;
 
-  if (enable_experimental_pipeline_parallelism_opt) {
+  if (enable_partial_send_recv_pipelining) {
     should_process = PipelineOnlySendRecvStart;
     postprocess_backward_peeled_op = std::nullopt;
     postprocess_backward_rotated_op = std::nullopt;

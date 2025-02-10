@@ -23,15 +23,15 @@ func.func @func_and_op_shardings(
   %arg2: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh2, [{"a"}, {"b"}]>}
 ) -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"e"}, {"c", ?}]>},
       tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"a", "b", "c"}, {}], replicated={"e"}>}) {
-  // CHECK-NEXT:   %[[ADD1:.*]] = mhlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{"d", ?}, {?}]>]>}
-  // CHECK-NEXT:   %[[ADD2:.*]] = mhlo.add %arg2, %arg2
+  // CHECK-NEXT:   %[[ADD1:.*]] = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{"d", ?}, {?}]>]>}
+  // CHECK-NEXT:   %[[ADD2:.*]] = stablehlo.add %arg2, %arg2
   // CHECK-NOT:    sdy.sharding
-  // CHECK-NEXT:   %[[ADD3:.*]] = mhlo.add %[[ADD2]], %[[ADD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{}, {}], replicated={"d"}>]>}
+  // CHECK-NEXT:   %[[ADD3:.*]] = stablehlo.add %[[ADD2]], %[[ADD2]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{}, {}], replicated={"d"}>]>}
   // CHECK-NEXT:   return %[[ADD1]], %[[ADD3]]
   // CHECK-NEXT: }
-  %0 = mhlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{"d", ?}, {"e", ?}]>]>} : tensor<8x8xf32>
-  %1 = mhlo.add %arg2, %arg2 : tensor<8x8xf32>
-  %2 = mhlo.add %1, %1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{"c"}, {}], replicated={"d"}>]>} : tensor<8x8xf32>
+  %0 = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{"d", ?}, {"e", ?}]>]>} : tensor<8x8xf32>
+  %1 = stablehlo.add %arg2, %arg2 : tensor<8x8xf32>
+  %2 = stablehlo.add %1, %1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{"c"}, {}], replicated={"d"}>]>} : tensor<8x8xf32>
   return %0, %2 : tensor<8x8xf32>, tensor<8x8xf32>
 }
 
@@ -42,8 +42,8 @@ func.func @func_and_op_shardings(
 func.func @inlined_mesh(
   %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<mesh<["a"=1, "b"=2, "c"=1, "d"=2], device_ids=[3, 1, 2, 0]>, [{"a", "b"}, {"c", ?}]>}
 ) -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<mesh<["a"=2, "b"=2]>, [{"a", "b"}, {}]>}) {
-  // CHECK-NEXT: mhlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<mesh<[]>, [{?}, {?}]>]>}
-  %0 = mhlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<mesh<["a"=1, "b"=1]>, [{"a", ?}, {"b", ?}]>]>} : tensor<8x8xf32>
+  // CHECK-NEXT: stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<mesh<[]>, [{?}, {?}]>]>}
+  %0 = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<mesh<["a"=1, "b"=1]>, [{"a", ?}, {"b", ?}]>]>} : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
 
@@ -56,13 +56,13 @@ func.func @shardings_with_priorities(
   %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"a", "b"}p0, {"c", ?}p3], replicated={"d", "e"}>},
   %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh2, [{"a", ?}p2, {}]>}
 ) -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh3, [{"x"}p1, {"y", ?}p2]>}) {
-  // CHECK-NEXT:   %[[ADD1:.*]] = mhlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{"d", ?}p1, {?}]>]>}
-  // CHECK-NEXT:   %[[ADD2:.*]] = mhlo.add %[[ADD1]], %[[ADD1]]
+  // CHECK-NEXT:   %[[ADD1:.*]] = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{"d", ?}p1, {?}]>]>}
+  // CHECK-NEXT:   %[[ADD2:.*]] = stablehlo.add %[[ADD1]], %[[ADD1]]
   // CHECK-NOT:    sdy.sharding
   // CHECK-NEXT:   return %[[ADD2]]
   // CHECK-NEXT: }
-  %0 = mhlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{"d", ?}p1, {"e", ?}]>]>} : tensor<8x8xf32>
-  %1 = mhlo.add %0, %0 : tensor<8x8xf32>
+  %0 = stablehlo.add %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{"d", ?}p1, {"e", ?}]>]>} : tensor<8x8xf32>
+  %1 = stablehlo.add %0, %0 : tensor<8x8xf32>
   return %1 : tensor<8x8xf32>
 }
 

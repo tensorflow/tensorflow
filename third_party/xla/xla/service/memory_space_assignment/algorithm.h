@@ -340,7 +340,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   struct RequiredMemoryAssignment {
     MemorySpace memory_space;
     int64_t time;
-    AliasedOffset* offset;
+    AliasedOffset* offset = nullptr;
 
     bool equals_ignoring_time(const RequiredMemoryAssignment& other) const {
       return memory_space == other.memory_space && offset == other.offset;
@@ -527,6 +527,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     return result_is(result, AllocationResult::kFailOutOfAsyncCopies) ||
            result_is(result, AllocationResult::kFailViolatesAsyncCopyResource);
   }
+
+  // Converts an std::optional<RequiredMemoryAssignment> to a string for
+  // logging.
+  static std::string OptionalRequiredMemoryAssignmentToString(
+      const std::optional<RequiredMemoryAssignment>& assignment);
 
   // For the given loop with the start and end index and loop size, run the
   // MemoryBoundLoopOptimizer and record its outputs into

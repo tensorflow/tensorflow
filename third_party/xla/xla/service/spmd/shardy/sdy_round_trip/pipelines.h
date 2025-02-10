@@ -22,7 +22,7 @@ namespace xla {
 namespace sdy {
 
 // Add the xla-sdy-round-trip-export-pipeline in `pm`. The pipeline,
-// including a sequence of passes, exports the Shardy dialect into an MHLO
+// including a sequence of passes, exports the Shardy dialect into an StableHLO
 // module with no XLA shardings, but SDY shardings and meshes saved as string
 // frontend attributes.
 //
@@ -34,8 +34,9 @@ namespace sdy {
 // MLIR (see b/335666088). So this pass will eventually be removed.
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm);
 
-// Add the xla-sdy-round-trip-import-pipeline in `pm`. The pipeline, including a
-// sequence of passes, imports an MHLO module into the SDY (Shardy) dialect.
+// Add the xla-sdy-round-trip-import-pipeline in `pm`. The pipeline,
+// including a sequence of passes, imports an StableHLO module into the
+// SDY (Shardy) dialect.
 //
 // The module is assumed to have `kShardingRoundTripAttr` and
 // `kMeshesRoundTripAttr`.
@@ -48,8 +49,8 @@ void registerSdyRoundTripExportPipeline();
 void registerSdyRoundTripImportPipeline();
 
 // Register the xla-sdy-round-trip-testing-pipeline.
-// This takes an SDY module, exports it to MHLO while saving the SDY attrs
-// and meshes, goes to HLO, back to MHLO, and then back to SDY.
+// This takes an SDY module, exports it to StableHLO while saving the SDY attrs
+// and meshes, goes to HLO, back to StableHLO, and then back to SDY.
 // This is for testing roundtripping SDY modules, but should be eventually
 // removed as part of b/335666088.
 void registerSdyRoundTripTestingPipeline();

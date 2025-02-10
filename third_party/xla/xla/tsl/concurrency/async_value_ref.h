@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <new>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -33,6 +32,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -53,7 +53,7 @@ class AsyncValuePtr;
 RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::Status status);
 
 ABSL_DEPRECATED("Use the error async value constructor that takes absl::Status")
-RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(std::string_view message);
+RCReference<ErrorAsyncValue> MakeErrorAsyncValueRef(absl::string_view message);
 
 // Constructs an IndirectAsyncValue without forwarding it to anything.
 RCReference<IndirectAsyncValue> MakeIndirectAsyncValue();
@@ -347,8 +347,11 @@ class AsyncValueRef {
   }
 
   ABSL_DEPRECATED("Use SetError with absl::Status argument")
-  void SetError(std::string_view message) const {
-    SetError(absl::InternalError(message));
+  void SetError(absl::string_view message) const {
+    // Converting to `absl::string_view` because implicit conversion is not
+    // supported in android builds.
+    absl::string_view message_view(message.data(), message.size());
+    SetError(absl::InternalError(message_view));
   }
 
   explicit operator bool() const { return value_.get() != nullptr; }
@@ -927,6 +930,8 @@ class CountDownAsyncValueRef {
 
   // Returns the number of count down operations left.
   int64_t count() const { return state_->cnt.load(std::memory_order_acquire); }
+
+  explicit operator bool() const { return state_ != nullptr; }
 
  private:
   static constexpr size_t kAtomicAlignment =

@@ -375,6 +375,8 @@ const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
        {"num_actions", kMegaScaleNumActions},
        {"collective_type", kMegaScaleCollectiveType},
        {"input_size", kMegaScaleInputSize},
+       {"send_channel_id", kMegaScaleSendChannelId},
+       {"recv_channel_id", kMegaScaleRecvChannelId},
        {"slack_us", kMegaScaleSlackUs},
        {"action_type", kMegaScaleActionType},
        {"start_end_type", kMegaScaleStartEndType},

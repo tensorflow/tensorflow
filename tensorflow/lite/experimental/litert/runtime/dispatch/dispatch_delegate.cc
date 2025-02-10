@@ -27,6 +27,7 @@
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/c/litert_logging.h"
+#include "tensorflow/lite/experimental/litert/cc/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/litert/core/build_stamp.h"
 #include "tensorflow/lite/experimental/litert/core/environment.h"
 #include "tensorflow/lite/experimental/litert/runtime/dispatch/dispatch_delegate_kernel.h"

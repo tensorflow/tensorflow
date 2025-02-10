@@ -4,7 +4,7 @@
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
 # Import TSL Workspaces
-load("@local_tsl//:workspace2.bzl", "tsl_workspace2")
+load("//:tsl_workspace2.bzl", "tsl_workspace2")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 
@@ -91,9 +91,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "7be8afebc693f0ef75bbc673ce5c1cf422673e84ea7d53e488201756c046496e",
-        strip_prefix = "cudnn-frontend-1.9.0",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.9.0.zip"),
+        sha256 = "59fb63e273c845cb85996d536194a7e2b22012810983cbbf06c4a46b09d17a32",
+        strip_prefix = "cudnn-frontend-1.10.0",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.10.0.zip"),
     )
 
     tf_http_archive(

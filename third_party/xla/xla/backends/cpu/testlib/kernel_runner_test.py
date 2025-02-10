@@ -17,6 +17,7 @@ from absl.testing import absltest
 import numpy as np
 
 from xla.backends.cpu import testlib as cpu_testlib
+from xla.codegen import testlib as base_testlib
 from xla.codegen.testlib import utilities as testlib_utilities
 
 create_literal = testlib_utilities.create_literal_from_np
@@ -56,7 +57,8 @@ class LLvmKernelRunnerTest(absltest.TestCase):
     kernel_definition = llvm_emitter.emit_kernel_definition()
 
     runner = cpu_testlib.KernelRunner.create(
-        kernel_definition, cpu_testlib.JitCompiler()
+        kernel_definition,
+        cpu_testlib.JitCompiler(base_testlib.HloModuleConfig()),
     )
     a = create_literal(np.array([1, 2, 3, 4], dtype=np.int32))
     b = create_literal(np.array([5, 6, 7, 8], dtype=np.int32))

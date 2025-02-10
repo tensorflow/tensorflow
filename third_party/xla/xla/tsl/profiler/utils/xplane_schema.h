@@ -359,6 +359,8 @@ enum MegaScaleStatType : uint8_t {
   kMegaScaleNumActions,
   kMegaScaleCollectiveType,
   kMegaScaleInputSize,
+  kMegaScaleSendChannelId,
+  kMegaScaleRecvChannelId,
   kMegaScaleSlackUs,
   kMegaScaleActionType,
   kMegaScaleStartEndType,

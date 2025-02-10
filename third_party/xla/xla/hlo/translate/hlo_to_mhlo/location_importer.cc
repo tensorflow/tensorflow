@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/hlo_to_mhlo/stack_location_utils.h"
 
 namespace mlir {
@@ -34,7 +35,8 @@ mlir::Location GenerateInstructionLocation(
 
   const std::string& op_name = instruction->metadata().op_name();
   if (op_name.empty()) {
-    return mlir::NameLoc::get(b.getStringAttr(instruction->name()));
+    return mlir::NameLoc::get(
+        b.getStringAttr(xla::ToStringRef(instruction->name())));
   }
 
   if (instruction->metadata().stack_frame_id() != 0) {

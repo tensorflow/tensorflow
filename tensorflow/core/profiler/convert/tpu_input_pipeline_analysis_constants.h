@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_CONVERT_TPU_INPUT_PIPELINE_ANALYSIS_CONSTANTS_H_
 
 #include "absl/strings/string_view.h"
-#include "tsl/platform/macros.h"
+#include "xla/tsl/platform/macros.h"
 
 namespace tensorflow {
 namespace profiler {

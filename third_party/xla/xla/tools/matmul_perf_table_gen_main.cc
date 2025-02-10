@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/tools/matmul_perf_table_gen.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 
@@ -34,11 +33,11 @@ constexpr absl::string_view kUsageText = R"(
 This tool runs specified matrix shapes and datatypes (HLO dots) on given hardware and
 saves clock cycles for each. Matrix shapes can be specified by defining a search space.
 
-Assume matrix multiplication dims: [n,k] @ [k,m] -> [n,m].
+Assume matrix multiplication dims: [b,n,k] @ [b,k,m] -> [b,n,m].
 
 The specification has a format
 
-{m,n,k}_spec='start=<start>,stop=<stop>,step=<step>'
+{b,m,n,k}_spec='start=<start>,stop=<stop>,step=<step>'
 
 Which means for a particular spec we will generate a set
   {<start> + n * <step> | n * <step> <= <stop> - <start> for every n w/ {0}}
@@ -56,6 +55,7 @@ Usage:
 
 bazel run matmul_perf_table_gen_main --config=cuda -- \
   --alsologtostderr \
+  --b_spec='start=1,stop=1,step=1' \
   --m_spec='start=256,stop=256,step=1' \
   --n_spec='start=256,stop=256,step=1' \
   --k_spec='start=256,stop=256,step=1' \
@@ -99,6 +99,7 @@ entries {
   shape:{8x16x16 and 16x16x16 and 24x16x16} x dtype:{bf16,bf16->bf16} and print to stdout.
 bazel run matmul_perf_table_gen_main --config=cuda -- \
   --alsologtostderr \
+  --b_spec='start=1,stop=1,step=1' \
   --m_spec='start=8,stop=24,step=8' \
   --n_spec='start=16,stop=16,step=1' \
   --k_spec='start=16,stop=16,step=1' \
@@ -148,6 +149,32 @@ entries {
     }
   }
 }
+
+3. Parallelize file generation on 8 GPUs easily using GNU parallel.
+
+Make sure you have GNU parallel installed.
+
+```
+user@host:~$ parallel --version
+GNU parallel 20240222
+...
+```
+
+Then run the following command to read HLOs from `path/to/hlos` and split the work on 8 GPUs.
+
+user@host:~$ find `realpath path/to/hlos/` -type f -print0 | parallel -u -j 8 -0 -a - 'CUDA_VISIBLE_DEVICES=$(({%}-1)) bazel --output_base=/tmp/out-$(({%}-1)) run matmul_perf_table_gen_main --config=cuda -- --alsologtostderr --output=/tmp/out-$(({%}-1)).pbtxt --hlo_scan_path={}'
+
+You will end up with a set of files in /tmp
+
+```
+out-0.pbtxt
+out-1.pbtxt
+...
+out-7.pbtxt
+```
+
+Each containing profiled ops supporting `xla.gpu.DeviceHloInstructionProfiles` proto format.
+
 )";
 
 using ::xla::gpu::MatmulPerfTableGen;
@@ -216,24 +243,20 @@ std::vector<MatmulPerfTableGen::DataTypeSpec> ParseDataTypes(
   return result;
 }
 
-std::string ValidateFilepath(absl::string_view filepath) {
-  std::string path = std::string(filepath);
-  CHECK_OK(tsl::Env::Default()->IsDirectory(path));
-  return path;
-}
-
 MatmulPerfTableGen::Config CreateConfig(
-    absl::string_view m_spec, absl::string_view n_spec,
-    absl::string_view k_spec, absl::string_view dtypes,
-    absl::string_view output, absl::string_view hlo_scan_path, bool dry_run) {
+    absl::string_view b_spec, absl::string_view m_spec,
+    absl::string_view n_spec, absl::string_view k_spec,
+    absl::string_view dtypes, absl::string_view output,
+    absl::string_view hlo_scan_path, bool dry_run) {
   MatmulPerfTableGen::Config cfg;
 
   // Search space.
+  cfg.b_spec = ParseSpec(b_spec);
   cfg.m_spec = ParseSpec(m_spec);
   cfg.n_spec = ParseSpec(n_spec);
   cfg.k_spec = ParseSpec(k_spec);
   cfg.dtypes = ParseDataTypes(dtypes);
-  cfg.hlo_scan_path = ValidateFilepath(hlo_scan_path);
+  cfg.hlo_scan_path = hlo_scan_path;
 
   // Execution opts.
   cfg.dry_run = dry_run;
@@ -242,17 +265,21 @@ MatmulPerfTableGen::Config CreateConfig(
 }
 
 // TODO(b/390097558): Sweep through minor and major dimensions for dots.
-// TODO(b/390097558): Implement sharding on devices.
 int main(int argc, char* argv[]) {
+  std::string b_spec;
   std::string m_spec;
   std::string n_spec;
   std::string k_spec;
   std::string dtypes;
   std::string out;
   std::string hlo_scan_path;
+  std::string merge_path;
   bool dry_run = false;
 
   std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("b_spec", &b_spec,
+                "Spec for 'B' (batch) dimension. Format example: "
+                "start=1,stop=4,step=2 generates {1,2,4}.'"),
       tsl::Flag("m_spec", &m_spec,
                 "Spec for 'M' dimension. Format example: start=1,stop=4,step=2 "
                 "generates {1,2,4}.'"),
@@ -273,6 +300,8 @@ int main(int argc, char* argv[]) {
       tsl::Flag("hlo_scan_path", &hlo_scan_path,
                 "Path to HLO files. Tool will scan provided HLOs for dot "
                 "ops and use those for gathering profiling data."),
+      tsl::Flag("merge_path", &merge_path,
+                "Path to DeviceHloInstructionProfiles files."),
       tsl::Flag("dry_run", &dry_run,
                 "For a defined search space does not perform measurements but "
                 "runs everything else."),
@@ -285,9 +314,18 @@ int main(int argc, char* argv[]) {
     LOG(QFATAL) << kUsageString;
   }
 
-  MatmulPerfTableGen::Config cfg =
-      CreateConfig(m_spec, n_spec, k_spec, dtypes, out, hlo_scan_path, dry_run);
+  MatmulPerfTableGen::Config cfg = CreateConfig(
+      b_spec, m_spec, n_spec, k_spec, dtypes, out, hlo_scan_path, dry_run);
   MatmulPerfTableGen table_gen(std::move(cfg));
+
+  if (!merge_path.empty()) {
+    LOG(INFO) << "Merging profiling data from: " << merge_path;
+    auto profile_data = table_gen.Merge(merge_path);
+    CHECK_OK(profile_data);
+    CHECK_OK(table_gen.Dump(*profile_data));
+    return 0;
+  }
+
   xla::gpu::DeviceHloInstructionProfiles result = table_gen.ComputeTable();
   CHECK_OK(table_gen.Dump(result));
 

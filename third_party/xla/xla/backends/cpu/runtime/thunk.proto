@@ -31,6 +31,32 @@ message ResourceProto {
   Kind kind = 1;
 }
 
+enum SortDirectionProto {
+  UNKNOWN = 0;
+  ASCENDING = 1;
+  DESCENDING = 2;
+}
+
+message BoolOptional {
+  bool value = 1;
+  bool contains_value = 2;
+}
+
+message ResourceOptional {
+  ResourceProto value = 1;
+  bool contains_value = 2;
+}
+
+message Int64Optional {
+  int64 value = 1;
+  bool contains_value = 2;
+}
+
+message SortDirectionOptional {
+  SortDirectionProto value = 1;
+  bool contains_value = 2;
+}
+
 message BufferAllocationSliceProto {
   int64 offset = 1;
   int64 size = 2;
@@ -45,7 +71,7 @@ message ShapeBufferAllocationSliceProto {
 message OpParamsProto {
   int64 op_id = 1;
   bool has_channel_id = 2;
-  bool use_global_device_ids = 3;  // TODO(basioli) optional
+  BoolOptional use_global_device_ids = 3;
   repeated ReplicaGroup replica_group = 4;
 }
 
@@ -55,7 +81,7 @@ message OpBuffersProto {
 }
 
 message OpResourcesProto {
-  ResourceProto communicator_resource = 1;  // TODO(basioli) optional
+  ResourceOptional communicator_resource = 1;
 }
 
 message AllGatherThunkProto {}  // NOTE(basioli) empty for now
@@ -104,7 +130,6 @@ message ConditionalThunkProto {
 message ConvolutionThunkProto {
   message Options {
     bool multi_threaded = 1;
-    bool use_acl = 2;
   }
   ConvolutionDimensionNumbers dimension_numbers = 1;
   Window window = 2;
@@ -116,14 +141,9 @@ message ConvolutionThunkProto {
 }
 
 message SortThunkProto {
-  enum SortDirection {
-    UNKNOWN = 0;
-    ASCENDING = 1;
-    DESCENDING = 2;
-  }
   int64 dimension = 1;
   bool is_stable = 2;
-  SortDirection direction = 3;  // TODO(basioli) optional
+  SortDirectionOptional direction = 3;
   string comparator_name = 4;
   repeated ShapeBufferAllocationSliceProto inputs_shapes = 5;
 }
@@ -135,6 +155,15 @@ message XnnDotThunkProto {
   ShapeBufferAllocationSliceProto out_buffer_shape = 4;
 }
 
+message XnnConvolutionThunkProto {
+  ConvolutionDimensionNumbers dimension_numbers = 1;
+  Window window = 2;
+  int64 feature_group_count = 3;
+  ShapeBufferAllocationSliceProto input_buffer_shape = 4;
+  ShapeBufferAllocationSliceProto kernel_buffer_shape = 5;
+  ShapeBufferAllocationSliceProto output_buffer_shape = 6;
+}
+
 message XnnFusionThunkProto {
   message Options {
     bool use_threadpool = 1;
@@ -144,6 +173,7 @@ message XnnFusionThunkProto {
 
   oneof impl {
     XnnDotThunkProto xnn_dot_thunk = 2;
+    XnnConvolutionThunkProto xnn_convolution_thunk = 3;
   }
 }
 
@@ -171,7 +201,7 @@ message TopKThunkProto {
 message WhileThunkProto {
   ThunkSequenceProto cond_sequence = 1;
   ThunkSequenceProto body_sequence = 2;
-  int64 trip_count = 3;  // TODO(basioli) optional
+  Int64Optional trip_count = 3;
   BufferAllocationSliceProto cond_buffer = 4;
 }
 
@@ -183,10 +213,8 @@ message KernelThunkProto {
   }
   string kernel_name = 1;
   ThreadDim thread_dim = 2;
-  // TODO(basioli) maybe optional? NOTE this is a set in C++
   repeated int64 invariant_arguments = 3;
-  // TODO(basioli) maybe optional?
-  int64 min_alignment = 4;
+  Int64Optional min_alignment = 4;
   repeated BufferAllocationSliceProto arguments_buffers = 5;
   repeated BufferAllocationSliceProto results_buffers = 6;
 }
@@ -206,9 +234,8 @@ message FftThunkProto {
 
 message InfeedThunkProto {
   message InfeedResource {
-    // TODO(basioli) these are pointers in C++, maybe optional?
-    ResourceProto consume_token = 1;
-    ResourceProto produce_token = 2;
+    ResourceOptional consume_token = 1;
+    ResourceOptional produce_token = 2;
   }
 
   InfeedResource infeed_resources = 1;
@@ -217,9 +244,8 @@ message InfeedThunkProto {
 
 message OutfeedThunkProto {
   message OutfeedResource {
-    // TODO(basioli) these are pointers in C++, maybe optional?
-    ResourceProto consume_token = 1;
-    ResourceProto produce_token = 2;
+    ResourceOptional consume_token = 1;
+    ResourceOptional produce_token = 2;
   }
 
   OutfeedResource outfeed_resources = 1;
@@ -235,6 +261,14 @@ message CustomCallThunkProto {
   string target_name = 2;
   string backend_config = 3;
   OpBuffers op_buffers = 4;
+}
+
+message PartitionIdThunkProto {
+  BufferAllocationSliceProto logical_id_buffer = 1;
+}
+
+message ReplicaIdThunkProto {
+  BufferAllocationSliceProto logical_id_buffer = 1;
 }
 
 message InfoProto {
@@ -263,6 +297,8 @@ message ThunkProto {
     CustomCallThunkProto custom_call_thunk = 16;
     ConvolutionThunkProto convolution_thunk = 17;
     CollectiveThunkProto collective_thunk = 18;
+    PartitionIdThunkProto partition_id_thunk = 19;
+    ReplicaIdThunkProto replica_id_thunk = 20;
   }
 }
 

@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/tensor_or_memref.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace mlir {
 namespace interpreter {

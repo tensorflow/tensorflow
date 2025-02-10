@@ -42,6 +42,10 @@ third_party/python_runtime/BUILD:
 third_party/repo.bzl:
 third_party/spirv_llvm_translator/spirv_llvm_translator.BUILD:
 third_party/stablehlo/BUILD:
+tools/def_file_filter/BUILD.tpl:
+tools/def_file_filter/BUILD:
+tools/def_file_filter/def_file_filter.py.tpl:
+tools/def_file_filter/def_file_filter_configure.bzl:
 tools/toolchains/BUILD:
 tools/toolchains/clang6/BUILD:
 tools/toolchains/cpus/py/BUILD:

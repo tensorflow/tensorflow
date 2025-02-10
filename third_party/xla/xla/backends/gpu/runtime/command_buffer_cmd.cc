@@ -1507,13 +1507,15 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
   builder.AddAttributes(attrs.Build());
   ffi::CallFrame call_frame = builder.Build();
 
+  RunId run_id = execute_params.collective_params->run_id;
+
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
       se::TraceCommandBufferFactory::Create(
           execute_params.stream->parent(),
           execute_params.command_buffer_trace_stream, [&](se::Stream* stream) {
             ffi::CallOptions options = {
-                execute_params.buffer_allocations->device_ordinal(),
+                run_id, execute_params.buffer_allocations->device_ordinal(),
                 ffi::CallOptions::GpuOptions{
                     stream,
                     execute_params.buffer_allocations->memory_allocator()},

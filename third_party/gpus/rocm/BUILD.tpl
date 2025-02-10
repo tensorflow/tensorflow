@@ -56,6 +56,19 @@ cc_library(
     }),
 )
 
+# This target is required to
+# add includes that are used by rocm headers themself 
+# through the virtual includes
+# cleaner solution would be to adjust the xla code
+# and remove include prefix that is used to include rocm headers.
+cc_library(
+    name = "rocm_headers_includes",
+    hdrs = glob([
+        "%{rocm_root}/include/**",
+    ]),
+    strip_include_prefix = "%{rocm_root}/include",
+)
+
 cc_library(
     name = "rocm_headers",
     hdrs = glob([
@@ -63,15 +76,11 @@ cc_library(
         "%{rocm_root}/lib/llvm/lib/**/*.h",
     ]),
     include_prefix = "rocm",
-    includes = [
-        "%{rocm_root}/include",
-        "%{rocm_root}/include/rocrand",
-        "%{rocm_root}/include/roctracer",
-    ],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
         ":rocm_rpath",
+        ":rocm_headers_includes",
     ],
 )
 
@@ -91,8 +100,8 @@ cc_library(
         ":rocm_config",
         ":rocprofiler_register",
         ":rocsolver",
-        ":roctracer",
         ":rocsparse",
+        ":roctracer",
     ] + select_threshold(
         above_or_eq = [":hipfft"],
         below = [":rocfft"],
@@ -138,7 +147,7 @@ cc_library(
 
 cc_library(
     name = "rocm_hip",
-    srcs = glob(["%{rocm_root}/lib/libamdhip*.so*"]),
+    srcs = glob(["%{rocm_root}/lib/libamdhip*.so"]),
     hdrs = glob(["%{rocm_root}/include/hip/**"]),
     include_prefix = "rocm",
     includes = [
@@ -194,6 +203,7 @@ cc_library(
         "%{rocm_root}/include",
     ],
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [":rocm_config"],
 )
 
@@ -214,7 +224,7 @@ cc_library(
 
 cc_library(
     name = "miopen",
-    hdrs = glob(["%{rocm_root}/include/rccl/**"]),
+    hdrs = glob(["%{rocm_root}/include/miopen/**"]),
     data = glob([
         "%{rocm_root}/lib/libMIOpen*.so*",
         "%{rocm_root}/share/miopen/**",

@@ -96,6 +96,20 @@ cc_library(
 )
 
 cc_library(
+    name = "host_stream_factory",
+    srcs = [
+        "host_stream_factory.cc",
+    ],
+    hdrs = [
+        "host_stream_factory.h",
+    ],
+    deps = [
+        ":host_stream",
+        "@local_tsl//tsl/platform:mutex",
+    ],
+)
+
+cc_library(
     name = "host_executor",
     srcs = [
         "host_executor.cc",
@@ -106,16 +120,20 @@ cc_library(
     deps = [
         ":host_event",
         ":host_stream",
+        ":host_stream_factory",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:event",
-        "//xla/stream_executor:host_memory_allocation",
+        "//xla/stream_executor:generic_memory_allocation",
+        "//xla/stream_executor:generic_memory_allocator",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_allocator",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_common",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "@com_google_absl//absl/log",
@@ -123,6 +141,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:platform_port",
     ],
     alwayslink = True,

@@ -275,7 +275,7 @@ class TfPjRtClient : public PjRtClient {
   }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtDevice* device) override {
+      const Shape& shape, PjRtMemorySpace* memory_space) override {
     return Unimplemented(
         "CreateUninitializedBuffer not supported for TfPjRtClient.");
   }
@@ -296,24 +296,16 @@ class TfPjRtClient : public PjRtClient {
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtDevice* device) override {
+      PjRtMemorySpace* memory_space, const Layout* device_layout) override {
     return WrapBuffer(wrapped_->BufferFromHostBuffer(
         data, type, dims, byte_strides, host_buffer_semantics,
-        std::move(on_done_with_host_buffer), device));
-  }
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtDevice* device, const Layout* device_layout) override {
-    return WrapBuffer(wrapped_->BufferFromHostBuffer(
-        data, type, dims, byte_strides, host_buffer_semantics,
-        std::move(on_done_with_host_buffer), device, device_layout));
+        std::move(on_done_with_host_buffer), memory_space, device_layout));
   }
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device) override {
-    return WrapBuffer(wrapped_->BufferFromHostLiteral(literal, device));
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+      const Layout* device_layout) override {
+    return WrapBuffer(
+        wrapped_->BufferFromHostLiteral(literal, memory_space, device_layout));
   }
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,

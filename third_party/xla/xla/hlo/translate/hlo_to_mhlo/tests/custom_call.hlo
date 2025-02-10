@@ -1,4 +1,4 @@
-// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: hlo-translate -hlo-to-mlir -emit-mhlo -split-input-file %s -o - | FileCheck %s
 
 // CHECK: module @foobar
 HloModule foobar

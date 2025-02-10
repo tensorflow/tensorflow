@@ -44,6 +44,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -58,9 +61,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace mhlo {

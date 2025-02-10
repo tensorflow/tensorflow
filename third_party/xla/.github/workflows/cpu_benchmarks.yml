@@ -1,4 +1,4 @@
-# Copyright 2024 The OpenXLA Authors. All Rights Reserved.
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,21 +18,33 @@ on:
   workflow_dispatch:  # Allows manual triggering
   schedule:
     - cron: '0 */6 * * *'  # Run every 6 hours (at minute 0 of hours 0, 6, 12, 18)
-  push:
-    branches:
-      - main
 
 jobs:
-  benchmark:
-    runs-on: "linux-x86-n2-16"
-    container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest"
+  Tests:
+    strategy:
+      # Don't fail fast - want to see results for all builds even if one fails.
+      fail-fast: false
+      matrix:
+        job_info: [
+          {
+            os: "linux-x86-n2-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            pretty_name: "XLA Linux x86 CPU",
+          },
+          {
+            os: "linux-arm64-c4a-16",
+            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
+            pretty_name: "XLA Linux ARM64 CPU",
+          }
+        ]
+    name: ${{ matrix.job_info.pretty_name }}
+    runs-on: ${{ matrix.job_info.os }}
+    container: ${{ matrix.job_info.container }}
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 30
     steps:
-      - name: Checkout OpenXLA
-        uses: actions/checkout@v3
-        with:
-          repository: 'openxla/xla'
-          path: openxla
-
       - name: Print machine specs
         run: |
           lscpu
@@ -40,74 +52,86 @@ jobs:
           df -h    # Disk space information
           uname -a # Kernel information
 
-      - name: Set up Bazel
-        uses: bazelbuild/setup-bazel@v2
+      - name: Check Python Version in Container
+        run: python3 --version
+
+      - name: Install Python 3.10 if not present (IN CONTAINER)
+        run: |
+          if ! python3 --version > /dev/null 2>&1; then # check for python3
+            echo "Python 3 not found, installing..."
+            apt-get update
+            apt-get install -y python3.10 python3-pip
+          else
+            echo "Python 3 found."
+          fi
+
+      - name: Checkout OpenXLA
+        uses: actions/checkout@v3
         with:
-          bazel-version: 'latest'
-
-      - name: Install updates and Python env
-        working-directory: xla/xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
-        run: |
-          sudo apt-get update
-          sudo apt install python3.10-venv
-
-      - name: Run setup.sh for E2E benchmarks flax_2b
-        working-directory: xla/xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
-        run: bash setup.sh
-
-      - name: Run run.sh for E2E benchmarks flax_2b
-        working-directory: xla/xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
-        run: bash run.sh
-
-      - name: Build run_hlo_module
-        working-directory: openxla
-        run: bazelisk build -c opt --dynamic_mode=off xla/tools:run_hlo_module
-
-      - name: Run HLO Module Benchmarks
-        working-directory: openxla
-        continue-on-error: true
-        run: |
-          for file in xla/tests/fuzz/*.hlo; do
-            filename=$(basename "$file")
-            # Skip expected failed hlo files.
-            if [[ "$filename" == "rand_000060.hlo" || "$filename" == "rand_000067.hlo" || "$filename" == "rand_000072.hlo" ]]; then
-              echo "Skipping benchmark on $file"
-              continue
-            fi
-            echo "Running benchmark on $file"
-            ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU "$file"
-          done
+          repository: openxla/xla
 
       - name: Create results directory
-        working-directory: openxla
-        run: mkdir results
+        working-directory: xla
+        run:
+          mkdir results
 
-      - name: Build CPU Benchmarks
-        working-directory: openxla
-        run: bazelisk build -c opt --dynamic_mode=off //xla/backends/cpu/benchmarks:*
-
-      - name: Run CPU benchmarks
-        working-directory: openxla
-        continue-on-error: true
+      - name: Run setup.sh for E2E benchmarks flax_2b
+        working-directory: xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
+        timeout-minutes: 60
         run: |
-          find ./bazel-bin/xla/backends/cpu/benchmarks/ -maxdepth 1 -type f -executable -name "*_test" -print0 | while IFS= read -r -d $'\0' benchmark; do
-            benchmark_name=$(basename "$benchmark" | sed 's/_test$//') 
-            echo "Running benchmark: $benchmark_name"
+          bash setup.sh
 
-            # Run the benchmark with default parameters.
-            $benchmark --benchmark_filter=".*"
-            $benchmark --benchmark_filter=".*" > "results/$benchmark_name.log" 2>&1
+      - name: Run run.sh for E2E benchmarks flax_2b
+        working-directory: xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
+        timeout-minutes: 30
+        run: |
+          bash run.sh | tee -a ../../../../../../results/flax_2b.log
 
-            # Check the exit code of the benchmark
-            if [ $? -ne 0 ]; then
-              echo "Error: Benchmark '$benchmark_name' failed. Check the log file: results/$benchmark_name.log"
-            else
-              echo "Benchmark '$benchmark_name' completed successfully."
-            fi
-          done
+      # TODO(juliagmt): Re-enable once the build is fixed.
+      # - name: Build run_hlo_module
+      #   working-directory: xla
+      #   run: bazel build -c opt --dynamic_mode=off //xla/tools:run_hlo_module
 
-      - name: Upload Results
+      # - name: Run HLO Module Benchmarks
+      #   working-directory: xla
+      #   continue-on-error: true
+      #   run: |
+      #     for file in tests/fuzz/*.hlo; do
+      #       filename=$(basename "$file")
+      #       # Skip expected failed hlo files.
+      #       if [[ "$filename" == "rand_000060.hlo" || "$filename" == "rand_000067.hlo" || "$filename" == "rand_000072.hlo" ]]; then
+      #         echo "Skipping benchmark on $file"
+      #         continue
+      #       fi
+      #       echo "Running benchmark on $file"
+      #       ./bazel-bin/xla/tools/run_hlo_module --input_format=hlo --platform=CPU "$file"
+      #     done
+
+      # - name: Build CPU Benchmarks
+      #   working-directory: xla
+      #   run: bazel build -c opt --dynamic_mode=off //xla/backends/cpu/benchmarks:*
+
+      # - name: Run CPU benchmarks
+      #   working-directory: xla
+      #   continue-on-error: true
+      #   run: |
+      #     find ./bazel-bin/xla/backends/cpu/benchmarks/ -maxdepth 1 -type f -executable -name "*_test" -print0 | while IFS= read -r -d $'\0' benchmark; do
+      #       benchmark_name=$(basename "$benchmark" | sed 's/_test$//') 
+      #       echo "Running benchmark: $benchmark_name"
+
+      #       # Run the benchmark with default parameters.
+      #       $benchmark --benchmark_filter=".*"
+      #       $benchmark --benchmark_filter=".*" > "results/$benchmark_name.log" 2>&1
+
+      #       # Check the exit code of the benchmark
+      #       if [ $? -ne 0 ]; then
+      #         echo "Error: Benchmark '$benchmark_name' failed. Check the log file: results/$benchmark_name.log"
+      #       else
+      #         echo "Benchmark '$benchmark_name' completed successfully."
+      #       fi
+      #     done
+      - name: Upload Results ${{ matrix.build_target }}
         uses: actions/upload-artifact@v4
         with:
-          name: cpu-xla-benchmarks
-          path: openxla/results
+          name: cpu-xla-benchmarks-${{ matrix.job_info.os }}
+          path: xla/results

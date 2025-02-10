@@ -30,20 +30,21 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_buffer_ref.h"
 #include "tensorflow/lite/experimental/litert/core/model/model.h"
 #include "tensorflow/lite/experimental/litert/core/util/flatbuffer_tools.h"
-#include "tensorflow/lite/experimental/litert/test/test_macros.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 
 namespace {
 
 using ::litert::BufferRef;
 using ::litert::OwningBufferRef;
 using ::testing::ElementsAreArray;
+using ::testing::litert::IsError;
 
 TEST(LiteRtWeightsTest, GetNullWeights) {
   LiteRtWeightsT weights = {};
 
   const void* addr;
   size_t size;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetWeightsBytes(&weights, &addr, &size));
+  LITERT_ASSERT_OK(LiteRtGetWeightsBytes(&weights, &addr, &size));
 
   EXPECT_EQ(addr, nullptr);
   EXPECT_EQ(size, 0);
@@ -60,7 +61,7 @@ TEST(LiteRtWeightsTest, GetWeights) {
 
   const void* addr;
   size_t size;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetWeightsBytes(&weights, &addr, &size));
+  LITERT_ASSERT_OK(LiteRtGetWeightsBytes(&weights, &addr, &size));
 
   EXPECT_NE(addr, nullptr);
   EXPECT_EQ(size, 3 * sizeof(int32_t));
@@ -81,11 +82,11 @@ TEST(LiteRtTensorTest, GetUnrankedType) {
   tensor.SetType(std::move(type));
 
   LiteRtTensorTypeId id;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetTensorTypeId(&tensor, &id));
+  LITERT_ASSERT_OK(LiteRtGetTensorTypeId(&tensor, &id));
   ASSERT_EQ(id, kId);
 
   LiteRtUnrankedTensorType unranked;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetUnrankedTensorType(&tensor, &unranked));
+  LITERT_ASSERT_OK(LiteRtGetUnrankedTensorType(&tensor, &unranked));
   EXPECT_EQ(unranked.element_type, kElementType);
 }
 
@@ -97,11 +98,11 @@ TEST(LiteRtTensorTest, GetRankedTensorType) {
   tensor.SetType(MakeRankedTensorType(kElementType, {3, 3}));
 
   LiteRtTensorTypeId id;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetTensorTypeId(&tensor, &id));
+  LITERT_ASSERT_OK(LiteRtGetTensorTypeId(&tensor, &id));
   ASSERT_EQ(id, kId);
 
   LiteRtRankedTensorType ranked;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetRankedTensorType(&tensor, &ranked));
+  LITERT_ASSERT_OK(LiteRtGetRankedTensorType(&tensor, &ranked));
   EXPECT_EQ(ranked.element_type, kElementType);
   ASSERT_EQ(ranked.layout.rank, 2);
   EXPECT_THAT(absl::MakeConstSpan(ranked.layout.dimensions, 2),
@@ -120,18 +121,18 @@ TEST(LiteRtTensorTest, GetUses) {
   tensor.UserArgInds().push_back(1);
 
   LiteRtParamIndex num_uses;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetNumTensorUses(&tensor, &num_uses));
+  LITERT_ASSERT_OK(LiteRtGetNumTensorUses(&tensor, &num_uses));
   ASSERT_EQ(num_uses, 2);
 
   LiteRtOp actual_user;
   LiteRtParamIndex actual_user_arg_index;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetTensorUse(
-      &tensor, /*use_index=*/0, &actual_user, &actual_user_arg_index));
+  LITERT_ASSERT_OK(LiteRtGetTensorUse(&tensor, /*use_index=*/0, &actual_user,
+                                      &actual_user_arg_index));
   ASSERT_EQ(actual_user, &user);
   ASSERT_EQ(actual_user_arg_index, 0);
 
-  LITERT_ASSERT_STATUS_OK(LiteRtGetTensorUse(
-      &tensor, /*use_index=*/1, &actual_user, &actual_user_arg_index));
+  LITERT_ASSERT_OK(LiteRtGetTensorUse(&tensor, /*use_index=*/1, &actual_user,
+                                      &actual_user_arg_index));
   ASSERT_EQ(actual_user, &other_user);
   ASSERT_EQ(actual_user_arg_index, 1);
 }
@@ -144,7 +145,7 @@ TEST(LiteRtTensorTest, GetDefiningOp) {
 
   LiteRtTensorDefiningOp actual_def_op;
   bool has_defining_op;
-  LITERT_ASSERT_STATUS_OK(
+  LITERT_ASSERT_OK(
       LiteRtGetTensorDefiningOp(&tensor, &has_defining_op, &actual_def_op));
   ASSERT_TRUE(has_defining_op);
   EXPECT_EQ(actual_def_op.op, &def_op);
@@ -156,7 +157,7 @@ TEST(LiteRtTensorTest, NoDefiningOp) {
 
   LiteRtTensorDefiningOp actual_def_op;
   bool has_defining_op;
-  LITERT_ASSERT_STATUS_OK(
+  LITERT_ASSERT_OK(
       LiteRtGetTensorDefiningOp(&tensor, &has_defining_op, &actual_def_op));
   ASSERT_FALSE(has_defining_op);
 }
@@ -168,7 +169,7 @@ TEST(LiteRtTensorTest, Name) {
   tensor.SetName(std::string(kName));
 
   const char* name;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetTensorName(&tensor, &name));
+  LITERT_ASSERT_OK(LiteRtGetTensorName(&tensor, &name));
   EXPECT_STREQ(name, kName);
 }
 
@@ -176,7 +177,7 @@ TEST(LiteRtTensorTest, QuantizationNone) {
   LiteRtTensorT tensor;
 
   LiteRtQuantizationTypeId q_type_id;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
+  LITERT_ASSERT_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
   EXPECT_EQ(q_type_id, kLiteRtQuantizationNone);
 
   LiteRtQuantizationPerTensor per_tensor_quantization;
@@ -192,11 +193,11 @@ TEST(LiteRtTensorTest, QuantizationPerTensor) {
   tensor.SetQarams(MakePerTensorQuantization(kScale, kZeroPoint));
 
   LiteRtQuantizationTypeId q_type_id;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
+  LITERT_ASSERT_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
   ASSERT_EQ(q_type_id, kLiteRtQuantizationPerTensor);
 
   LiteRtQuantizationPerTensor per_tensor_quantization;
-  LITERT_ASSERT_STATUS_OK(
+  LITERT_ASSERT_OK(
       LiteRtGetPerTensorQuantization(&tensor, &per_tensor_quantization));
 
   EXPECT_EQ(per_tensor_quantization.scale, kScale);
@@ -218,11 +219,11 @@ TEST(LiteRtTensorTest, QuantizationPerChannel) {
   }
 
   LiteRtQuantizationTypeId q_type_id;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
+  LITERT_ASSERT_OK(LiteRtGetQuantizationTypeId(&tensor, &q_type_id));
   ASSERT_EQ(q_type_id, kLiteRtQuantizationPerChannel);
 
   LiteRtQuantizationPerChannel per_channel_quantization;
-  LITERT_ASSERT_STATUS_OK(
+  LITERT_ASSERT_OK(
       LiteRtGetPerChannelQuantization(&tensor, &per_channel_quantization));
 
   EXPECT_THAT(
@@ -242,7 +243,7 @@ TEST(LiteRtOpTest, GetOpCode) {
   op.SetOpCode(kCode);
 
   LiteRtOpCode code;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetOpCode(&op, &code));
+  LITERT_ASSERT_OK(LiteRtGetOpCode(&op, &code));
   EXPECT_EQ(code, kCode);
 }
 
@@ -255,16 +256,14 @@ TEST(LiteRtOpTest, GetInputs) {
   op.Inputs().push_back(&input2);
 
   LiteRtParamIndex num_inputs;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetNumOpInputs(&op, &num_inputs));
+  LITERT_ASSERT_OK(LiteRtGetNumOpInputs(&op, &num_inputs));
   ASSERT_EQ(num_inputs, 2);
 
   LiteRtTensor actual_input;
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetOpInput(&op, /*input_index=*/0, &actual_input));
+  LITERT_ASSERT_OK(LiteRtGetOpInput(&op, /*input_index=*/0, &actual_input));
   EXPECT_EQ(actual_input, &input1);
 
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetOpInput(&op, /*input_index=*/1, &actual_input));
+  LITERT_ASSERT_OK(LiteRtGetOpInput(&op, /*input_index=*/1, &actual_input));
   EXPECT_EQ(actual_input, &input2);
 }
 
@@ -277,16 +276,14 @@ TEST(LiteRtOpTest, GetOutputs) {
   op.Outputs().push_back(&output2);
 
   LiteRtParamIndex num_outputs;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetNumOpOutputs(&op, &num_outputs));
+  LITERT_ASSERT_OK(LiteRtGetNumOpOutputs(&op, &num_outputs));
   ASSERT_EQ(num_outputs, 2);
 
   LiteRtTensor actual_output;
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetOpOutput(&op, /*output_index=*/0, &actual_output));
+  LITERT_ASSERT_OK(LiteRtGetOpOutput(&op, /*output_index=*/0, &actual_output));
   EXPECT_EQ(actual_output, &output1);
 
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetOpOutput(&op, /*output_index=*/1, &actual_output));
+  LITERT_ASSERT_OK(LiteRtGetOpOutput(&op, /*output_index=*/1, &actual_output));
   EXPECT_EQ(actual_output, &output2);
 }
 
@@ -299,14 +296,14 @@ TEST(LiteRtSubgraphTest, GetInputs) {
   subgraph.Inputs().push_back(&input2);
 
   LiteRtParamIndex num_inputs;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetNumSubgraphInputs(&subgraph, &num_inputs));
+  LITERT_ASSERT_OK(LiteRtGetNumSubgraphInputs(&subgraph, &num_inputs));
 
   LiteRtTensor actual_input;
-  LITERT_ASSERT_STATUS_OK(
+  LITERT_ASSERT_OK(
       LiteRtGetSubgraphInput(&subgraph, /*input_index=*/0, &actual_input));
   EXPECT_EQ(actual_input, &input1);
 
-  LITERT_ASSERT_STATUS_OK(
+  LITERT_ASSERT_OK(
       LiteRtGetSubgraphInput(&subgraph, /*input_index=*/1, &actual_input));
   EXPECT_EQ(actual_input, &input2);
 }
@@ -320,14 +317,14 @@ TEST(LiteRtSubgraphTest, GetOutputs) {
   subgraph.Outputs().push_back(&output2);
 
   LiteRtParamIndex num_outputs;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetNumSubgraphOutputs(&subgraph, &num_outputs));
+  LITERT_ASSERT_OK(LiteRtGetNumSubgraphOutputs(&subgraph, &num_outputs));
 
   LiteRtTensor actual_output;
-  LITERT_ASSERT_STATUS_OK(
+  LITERT_ASSERT_OK(
       LiteRtGetSubgraphOutput(&subgraph, /*output_index=*/0, &actual_output));
   EXPECT_EQ(actual_output, &output1);
 
-  LITERT_ASSERT_STATUS_OK(
+  LITERT_ASSERT_OK(
       LiteRtGetSubgraphOutput(&subgraph, /*output_index=*/1, &actual_output));
   EXPECT_EQ(actual_output, &output2);
 }
@@ -338,16 +335,14 @@ TEST(LiteRtSubgraphTest, GetOps) {
   auto& op2 = subgraph.EmplaceOp();
 
   LiteRtParamIndex num_ops;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetNumSubgraphOps(&subgraph, &num_ops));
+  LITERT_ASSERT_OK(LiteRtGetNumSubgraphOps(&subgraph, &num_ops));
   ASSERT_EQ(num_ops, 2);
 
   LiteRtOp actual_op;
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetSubgraphOp(&subgraph, /*op_index=*/0, &actual_op));
+  LITERT_ASSERT_OK(LiteRtGetSubgraphOp(&subgraph, /*op_index=*/0, &actual_op));
   ASSERT_EQ(actual_op, &op1);
 
-  LITERT_ASSERT_STATUS_OK(
-      LiteRtGetSubgraphOp(&subgraph, /*op_index=*/1, &actual_op));
+  LITERT_ASSERT_OK(LiteRtGetSubgraphOp(&subgraph, /*op_index=*/1, &actual_op));
   ASSERT_EQ(actual_op, &op2);
 }
 
@@ -360,7 +355,7 @@ TEST(LiteRtModelTest, GetMetadata) {
 
   const void* metadata;
   size_t metadata_size;
-  LITERT_ASSERT_STATUS_OK(
+  LITERT_ASSERT_OK(
       LiteRtGetModelMetadata(&model, kKey.data(), &metadata, &metadata_size));
   EXPECT_EQ(BufferRef(metadata, metadata_size).StrView(), kData);
 }
@@ -370,7 +365,7 @@ TEST(LiteRtModelTest, GetSubgraph) {
   auto& subgraph = model.EmplaceSubgraph();
 
   LiteRtSubgraph actual_subgraph;
-  LITERT_ASSERT_STATUS_OK(LiteRtGetModelSubgraph(&model, 0, &actual_subgraph));
+  LITERT_ASSERT_OK(LiteRtGetModelSubgraph(&model, 0, &actual_subgraph));
   EXPECT_EQ(actual_subgraph, &subgraph);
 }
 
@@ -378,16 +373,15 @@ TEST(LiteRtModelTest, GetSubgraphOOB) {
   LiteRtModelT model;
 
   LiteRtSubgraph actual_subgraph;
-  LITERT_ASSERT_STATUS_HAS_CODE(
-      LiteRtGetModelSubgraph(&model, 0, &actual_subgraph),
-      kLiteRtStatusErrorIndexOOB);
+  EXPECT_THAT(LiteRtGetModelSubgraph(&model, 0, &actual_subgraph),
+              IsError(kLiteRtStatusErrorIndexOOB));
 }
 
 TEST(LiteRtOpListTest, PushOps) {
   LiteRtOpListT op_list;
   LiteRtOpT op;
 
-  LITERT_ASSERT_STATUS_OK(LiteRtPushOp(&op_list, &op));
+  LITERT_ASSERT_OK(LiteRtPushOp(&op_list, &op));
   auto vec = op_list.Vec();
   ASSERT_EQ(vec.size(), 1);
   EXPECT_EQ(vec.front(), &op);

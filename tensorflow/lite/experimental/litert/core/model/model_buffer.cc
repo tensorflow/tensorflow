@@ -35,22 +35,26 @@ Expected<OwningBufferRef<uint8_t>> GetModelBufWithByteCode(
   if (model.NumSubgraphs() != 1) {
     return Error(kLiteRtStatusErrorUnsupported);
   }
-
+  LiteRtOpT* custom_op = nullptr;
   auto* subgraph = model.Subgraphs().front();
-  if (subgraph->Ops().size() != 1) {
-    return Error(kLiteRtStatusErrorUnsupported);
-  }
+  int num_custom_ops = 0;
 
-  auto* op = subgraph->Ops().front();
-  if (op->OpCode() != kLiteRtOpCodeTflCustom) {
+  for (auto op : subgraph->Ops()) {
+    if (op->OpCode() == kLiteRtOpCodeTflCustom) {
+      custom_op = op;
+      num_custom_ops++;
+    }
+  }
+  if (custom_op == nullptr || num_custom_ops != 1) {
     return Error(kLiteRtStatusErrorUnsupported);
   }
 
   OwningBufferRef<uint8_t> byte_code(npu_byte_code.Data(),
                                      npu_byte_code.Size());
-  const auto buf_id = model.RegisterExternalBuffer(std::move(byte_code));
+  const auto buf_id =
+      model.Buffers()->RegisterOwnedBuffer(std::move(byte_code));
 
-  model.AttachExternalBufferToOp(op, buf_id, "CUSTOM_DISPATCH");
+  model.AttachAssetToOp(custom_op, buf_id, "");
 
   return SerializeModel(std::move(model));
 }

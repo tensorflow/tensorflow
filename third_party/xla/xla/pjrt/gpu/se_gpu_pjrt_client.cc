@@ -545,6 +545,7 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     std::shared_ptr<const GpuTopology> gpu_topology)
     : xla::PjRtStreamExecutorClient(
           platform_name, client, std::move(devices), process_index,
+          /*memory_spaces=*/{},  // Initialized below.
           std::move(allocator), std::move(host_memory_allocator),
           should_stage_host_to_device_transfers, std::move(gpu_run_options)),
       topology_(xla::StreamExecutorGpuTopologyDescription(
@@ -560,7 +561,7 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     auto memory_space =
         std::make_unique<StreamExecutorGpuHbmMemorySpace>(id, device);
     tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
-        memory_space.get());
+        memory_space.get(), /*is_default=*/true);
     owned_memory_spaces_.push_back(std::move(memory_space));
     auto pinned =
         std::make_unique<PinnedHostMemorySpace>(basePinnedId + id, device);
@@ -1024,8 +1025,9 @@ GetStreamExecutorGpuDeviceAllocator(
   }
 
   for (const auto& ordinal_and_device : addressable_devices) {
-    auto host_allocator =
-        GetGpuHostAllocator(ordinal_and_device.second->executor());
+    TF_ASSIGN_OR_RETURN(
+        auto host_allocator,
+        GetGpuHostAllocator(ordinal_and_device.second->executor()));
     allocators.emplace_back(std::move(host_allocator),
                             ordinal_and_device.second->compute_stream(),
                             /*memory_space=*/
@@ -1309,8 +1311,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
                       GetStreamExecutorGpuDeviceAllocator(
                           xla_client->platform(), options.allocator_config,
                           local_device_states));
-  auto host_memory_allocator =
-      GetGpuHostAllocator(local_device_states.begin()->second->executor());
+  TF_ASSIGN_OR_RETURN(
+      auto host_memory_allocator,
+      GetGpuHostAllocator(local_device_states.begin()->second->executor()));
 
   auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
   if (options.enable_mock_nccl) {

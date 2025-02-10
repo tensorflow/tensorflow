@@ -1,0 +1,610 @@
+[//tensorflow/python/util:cpp_python_util] # util tfe
+tensorflow::swig::IsNested
+tensorflow::swig::IsNestedOrComposite
+tensorflow::swig::IsCompositeTensor
+tensorflow::swig::IsTypeSpec
+tensorflow::swig::IsNamedtuple
+tensorflow::swig::IsMapping
+tensorflow::swig::IsMutableMapping
+tensorflow::swig::IsMappingView
+tensorflow::swig::IsAttrs
+tensorflow::swig::IsTensor
+tensorflow::swig::IsResourceVariable
+tensorflow::swig::IsVariable
+tensorflow::swig::SameNamedtuples
+tensorflow::swig::AssertSameStructure
+tensorflow::swig::Flatten
+tensorflow::swig::IsNestedForData
+tensorflow::swig::FlattenForData
+tensorflow::swig::AssertSameStructureForData
+tensorflow::swig::RegisterPyObject
+tensorflow::swig::RegisterType
+tensorflow::swig::IsEagerTensorSlow
+tensorflow::swig::GetRegisteredPyObject
+tensorflow::swig::IsTensorProtocol
+tensorflow::swig::IsCoreTypeValue
+
+[//tensorflow/python/util:cpp_nest] # nest
+tensorflow::FlattenDictItems
+
+[//tensorflow/core/util:port] # util_port
+tensorflow::IsGoogleCudaEnabled
+tensorflow::IsBuiltWithROCm
+tensorflow::IsBuiltWithNvcc
+tensorflow::IsAArch32Available
+tensorflow::IsAArch64Available
+tensorflow::IsPowerPCAvailable
+tensorflow::IsSystemZAvailable
+tensorflow::IsX86Available
+tensorflow::GpuSupportsHalfMatMulAndConv
+tensorflow::IsMklEnabled
+
+[//tensorflow/compiler/tf2xla:tf2xla_opset] # tf2xla_opset
+tensorflow::GetRegisteredXlaOpsForDevice
+
+[//external/local_xla/xla/stream_executor:stream_executor_pimpl] # stat_summarizer
+stream_executor::StreamExecutor::EnablePeerAccessTo
+stream_executor::StreamExecutor::CanEnablePeerAccessTo
+
+[//tensorflow/core/profiler/internal:print_model_analysis] # tfprof
+tensorflow::tfprof::NewProfiler
+tensorflow::tfprof::DeleteProfiler
+tensorflow::tfprof::AddStep
+tensorflow::tfprof::WriteProfile
+tensorflow::tfprof::ProfilerFromFile
+tensorflow::tfprof::Profile
+tensorflow::tfprof::PrintModelAnalysis
+tensorflow::tfprof::SerializeToString
+
+[//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool] # graph_analyze
+tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
+
+[//external/local_xla/xla/tsl/python/lib/core:ml_dtypes_lib] # bfloat16, float8
+tsl::ml_dtypes::RegisterTypes
+tsl::ml_dtypes::GetBfloat16Dtype
+tsl::ml_dtypes::GetFloat8E4m3b11fnuzDtype
+tsl::ml_dtypes::GetFloat8E4m3fnDtype
+tsl::ml_dtypes::GetFloat8E5m2Dtype
+tsl::ml_dtypes::GetBfloat16TypeNum
+tsl::ml_dtypes::GetFloat8E4m3b11fnuzTypeNum
+tsl::ml_dtypes::GetFloat8E4m3fnTypeNum
+tsl::ml_dtypes::GetFloat8E5m2TypeNum
+
+[//tensorflow/python:py_func_lib] # py_func
+tensorflow::InitializePyTrampoline
+
+[//tensorflow/core:framework_internal_impl] # op_def_registry, dtypes
+tensorflow::BaseType
+tensorflow::DataTypeString
+tensorflow::DataTypeIsComplex
+tensorflow::DataTypeIsFloating
+tensorflow::DataTypeIsInteger
+tensorflow::DataTypeIsQuantized
+tensorflow::DataTypeIsUnsigned
+tensorflow::DataTypeSize
+tensorflow::OpRegistry::Global
+tensorflow::OpRegistry::LookUpOpDef
+tensorflow::RemoveNonDeprecationDescriptionsFromOpDef
+
+[//tensorflow/core:lib_internal_impl]  # device_lib
+tensorflow::Status::code
+tensorflow::Status::error_message
+tensorflow::Status::ok()
+
+[//tensorflow/core/common_runtime:device_factory]  # device_lib, tfe, tf_session
+tensorflow::DeviceFactory::AddDevices
+tensorflow::DeviceFactory::ListAllPhysicalDevices
+tensorflow::DeviceFactory::GetAnyDeviceDetails
+
+[//tensorflow/core/common_runtime:session_options]  # device_lib, tfe, tf_session
+tensorflow::SessionOptions::SessionOptions
+
+[//tensorflow/core/common_runtime:quantize_training]  # quantize_training
+tensorflow::DoQuantizeTrainingOnSerializedGraphDef
+
+[//tensorflow/core/common_runtime:session_state]  # tf_session
+tensorflow::SessionState::kTensorHandleResourceTypeName
+
+[//tensorflow/core/data/service:dispatcher_client] # dispatcher_client
+tensorflow::data::DataServiceDispatcherClient::EnsureInitialized
+tensorflow::data::DataServiceDispatcherClient::GetDataServiceMetadata
+tensorflow::data::DataServiceDispatcherClient::GetSnapshotSplit
+tensorflow::data::DataServiceDispatcherClient::Initialize
+
+[//tensorflow/core/data/service:grpc_util] # grpc_util
+tensorflow::data::grpc_util::Retry
+
+[//tensorflow/core/data/service:server_lib] # server_lib
+tensorflow::data::GrpcDataServerBase::Join
+tensorflow::data::GrpcDataServerBase::Start
+tensorflow::data::GrpcDataServerBase::Stop
+tensorflow::data::GrpcDataServerBase::BoundPort
+tensorflow::data::DispatchGrpcDataServer::NumWorkers
+tensorflow::data::DispatchGrpcDataServer::SnapshotStreams
+tensorflow::data::WorkerGrpcDataServer::NumTasks
+tensorflow::data::WorkerGrpcDataServer::SnapshotTaskProgresses
+tensorflow::data::NewDispatchServer
+tensorflow::data::NewWorkerServer
+
+[//tensorflow/python:py_exception_registry] # py_exception_registry
+tensorflow::PyExceptionRegistry::Init
+tensorflow::PyExceptionRegistry::Lookup
+
+[//tensorflow/python:kernel_registry] # kernel_registry
+tensorflow::swig::TryFindKernelClass
+
+[//tensorflow/lite/toco/python:toco_python_api] # toco_python_api
+toco::TocoConvert
+toco::MlirQuantizeModel
+toco::MlirSparsifyModel
+toco::RegisterCustomOpdefs
+toco::RetrieveCollectedErrors
+toco::FlatBufferFileToMlir
+
+[//tensorflow/tools/graph_transforms:transform_graph_lib] # transform_graph
+tensorflow::graph_transforms::TransformGraph
+tensorflow::graph_transforms::ParseTransformParameters
+
+[//tensorflow/c:checkpoint_reader] # py_checkpoint_reader
+tensorflow::checkpoint::CheckpointReader
+tensorflow::checkpoint::CheckpointReader::Init
+tensorflow::checkpoint::CheckpointReader::DebugString
+tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap
+tensorflow::checkpoint::CheckpointReader::GetVariableToDataTypeMap
+tensorflow::checkpoint::CheckpointReader::GetTensor
+tensorflow::checkpoint::CheckpointReader::HasTensor
+
+[//tensorflow/core/util/tensor_bundle] # py_checkpoint_reader
+tensorflow::BundleReader::BundleReader
+tensorflow::BundleReader::~BundleReader
+
+[//tensorflow/python:ndarray_tensor] # py_checkpoint_reader
+tensorflow::TensorToNdarray
+
+[//tensorflow/python:safe_pyobject_ptr] # py_checkpoint_reader
+tensorflow::detail::PyDecrefDeleter
+tensorflow::make_safe
+
+[//tensorflow/python/framework:python_op_gen] # python_op_gen
+tensorflow::GetPythonWrappers
+
+[//tensorflow/python/eager:pywrap_tfe_lib] # tfe
+tensorflow::TFE_TensorHandleCache
+tensorflow::TFE_TensorHandleCache::Clear
+EagerTensor_CheckExact
+EagerTensorFromHandle
+EagerTensor_Handle
+TFE_Py_ExecuteCancelable
+TFE_Py_RegisterExceptionClass
+TFE_Py_RegisterVSpace
+TFE_Py_RegisterFallbackExceptionClass
+TFE_Py_RegisterGradientFunction
+TFE_Py_RegisterJVPFunction
+TFE_GetPythonString
+TFE_Py_UID
+TFE_DeleteContextCapsule
+TFE_Py_InitEagerTensor
+TFE_Py_SetEagerTensorProfiler
+TFE_Py_TapeSetNew
+TFE_Py_TapeSetRemove
+TFE_Py_TapeSetAdd
+TFE_Py_TapeSetIsEmpty
+TFE_Py_TapeSetShouldRecordBackprop
+TFE_Py_TapeSetPossibleGradientTypes
+TFE_Py_TapeWatch
+TFE_Py_TapeSetDeleteTrace
+TFE_Py_TapeSetStopOnThread
+TFE_Py_TapeSetRestartOnThread
+TFE_Py_TapeSetIsStopped
+TFE_Py_TapeSetRecordOperation
+TFE_Py_TapeSetRecordOperationBackprop
+TFE_Py_TapeSetRecordOperationForwardprop
+TFE_Py_TapeVariableAccessed
+TFE_Py_TapeWatchVariable
+TFE_Py_TapeGradient
+TFE_Py_FastPathExecute_C
+TFE_Py_RecordGradient
+TFE_Py_TapeWatchedVariables
+TFE_Py_VariableWatcherNew
+TFE_Py_VariableWatcherRemove
+TFE_Py_VariableWatcherVariableAccessed
+TFE_Py_VariableWatcherWatchedVariables
+TFE_Py_ForwardAccumulatorNew
+TFE_Py_ForwardAccumulatorSetAdd
+TFE_Py_ForwardAccumulatorSetRemove
+TFE_Py_ForwardAccumulatorWatch
+TFE_Py_ForwardAccumulatorJVP
+TFE_Py_ForwardAccumulatorPushState
+TFE_Py_ForwardAccumulatorPopState
+TFE_Py_PackJVPs
+TFE_Py_TensorShapeSlice
+TFE_Py_TensorShapeOnDevice
+TFE_Py_EnableInteractivePythonLogging
+TFE_Py_SetEagerContext
+TFE_Py_SetCEagerContext
+tensorflow::MakeEagerContextThreadLocalData
+tensorflow::GetEagerContextThreadLocalData
+tensorflow::DestroyEagerContextThreadLocalData
+tensorflow::MaybeRaiseExceptionFromTFStatus
+tensorflow::ConvertToEagerTensor
+
+[//tensorflow/core/common_runtime/eager:eager_executor] # tfe
+tensorflow::EagerExecutor::~EagerExecutor
+tensorflow::EagerContext::WaitForAndCloseRemoteContexts
+
+[//tensorflow/c:tf_status_helper] # tfe
+tsl::Set_TF_Status_from_Status
+
+[//tensorflow/c:safe_ptr] # tfe
+tensorflow::detail::TFBufferDeleter
+tensorflow::detail::TFETensorHandleDeleter
+tensorflow::detail::TFStatusDeleter
+tensorflow::detail::TFTensorDeleter
+tensorflow::make_safe
+
+[//tensorflow/core/common_runtime/eager:context] # tfe
+tensorflow::EagerContext::WaitForAndCloseRemoteContexts
+tensorflow::SetCEagerContext
+tensorflow::GetCEagerContext
+
+[//tensorflow/compiler/mlir/python:mlir] # mlir
+tensorflow::ExperimentalRunPassPipeline
+tensorflow::ExperimentalConvertSavedModelV1ToMlirLite
+tensorflow::ExperimentalConvertSavedModelV1ToMlir
+tensorflow::ExperimentalConvertSavedModelToMlir
+tensorflow::ExperimentalWriteBytecode
+tensorflow::ExperimentalTFLiteToTosaBytecode
+tensorflow::ImportGraphDef
+tensorflow::ImportFunction
+
+[//tensorflow/compiler/mlir/lite/python:converter_python_api] # converter_python_api
+tflite::Convert
+tflite::MlirQuantizeModel
+tflite::MlirSparsifyModel
+tflite::RegisterCustomOpdefs
+tflite::RetrieveCollectedErrors
+tflite::FlatBufferFileToMlir
+
+[//tensorflow/core:op_gen_lib] # tf_session
+tensorflow::ApiDefMap::~ApiDefMap
+
+[//tensorflow/core/framework:attr_value_proto_cc_impl] # tf_text
+tensorflow::AttrValue::`vftable'
+
+[//tensorflow/core/framework:op_def_proto_cc_impl] # tf_text
+tensorflow::OpDef::`vftable'
+
+[//tensorflow/lite/kernels/shim:shape] # tf_text
+tflite::shim::Shape::AddDims
+tflite::shim::Shape::Compatible
+tflite::shim::Shape::Dim
+tflite::shim::Shape::ToString
+
+[//tensorflow/lite/kernels/shim:tf_op_shim] # tf_text
+tflite::shim::FromAbslStatus
+tflite::shim::TfInitContext::GetAttr
+tflite::shim::TfInitContext::TfInitContext
+tflite::shim::TfInvokeContext::GetInput
+tflite::shim::TfInvokeContext::GetOutput
+tflite::shim::TfInvokeContext::NumInputs
+tflite::shim::TfInvokeContext::NumOutputs
+tflite::shim::TfInvokeContext::TfInvokeContext
+tflite::shim::TfShapeInferenceContext::GetAttr
+tflite::shim::TfShapeInferenceContext::GetInputShape
+tflite::shim::TfShapeInferenceContext::NumOutputs
+tflite::shim::TfShapeInferenceContext::SetInputShape
+tflite::shim::TfShapeInferenceContext::SetOutputShape
+tflite::shim::TfShapeInferenceContext::TfShapeInferenceContext
+
+[//tensorflow/core/common_runtime:graph_constructor] # tf_session
+tensorflow::ShapeRefiner::~ShapeRefiner
+
+[//tensorflow/c:python_api] # tf_session
+tensorflow::AddControlInput
+tensorflow::SetAttr
+tensorflow::ClearAttr
+tensorflow::SetFullType
+tensorflow::SetRequestedDevice
+tensorflow::UpdateEdge
+tensorflow::RemoveAllControlInputs
+tensorflow::SetRequireShapeInferenceFns
+tensorflow::ExtendSession
+tensorflow::GetHandleShapeAndType
+tensorflow::SetHandleShapeAndType
+tensorflow::AddWhileInputHack
+tensorflow::RecordMutation
+tensorflow::Graph::IsControlEdge
+
+[//external/local_xla/xla/tsl/python/lib/core:numpy] # tf_session
+tsl::ImportNumpy
+_tsl_numpy_api
+
+[//tensorflow/python/client:tf_session_helper] # tf_session
+tensorflow::TF_NewSessionRef
+tensorflow::TF_SessionMakeCallable
+tensorflow::TF_SessionRunCallable
+tensorflow::TF_SessionReleaseCallable
+tensorflow::TF_Reset_wrapper
+tensorflow::EqualGraphDefWrapper
+tensorflow::EqualAttrValueWrapper
+tensorflow::TF_GraphGetTensorShapeHelper
+tensorflow::TF_SessionRun_wrapper
+tensorflow::TF_SessionPRunSetup_wrapper
+tensorflow::TF_SessionPRun_wrapper
+tensorflow::GetOperationInputs
+tensorflow::TF_OperationGetControlInputs_wrapper
+tensorflow::TF_OperationGetControlOutputs_wrapper
+tensorflow::TF_OperationOutputConsumers_wrapper
+tensorflow::TF_GraphToFunction_wrapper
+tensorflow::TF_GraphSetOutputHandleShapesAndTypes_wrapper
+tensorflow::TF_CreatePlaceholders
+tensorflow::TF_GraphSetTensorShape_wrapper
+tensorflow::TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper
+tensorflow::TF_TryEvaluateConstant_wrapper
+
+[//tensorflow/core/grappler:grappler_item] # tf_item
+tensorflow::grappler::GrapplerItem::MainOpsFanin
+tensorflow::grappler::GrapplerItem::EnqueueOpsFanin
+
+[//tensorflow/core/grappler/costs:graph_properties] # tf_item
+tensorflow::grappler::GraphProperties::InferStatically
+tensorflow::grappler::GraphProperties::GetOutputProperties
+
+[//tensorflow/core/grappler:grappler_item_builder] # tf_item
+tensorflow::grappler::GrapplerItemFromMetaGraphDef
+
+[//tensorflow/core/grappler/utils:topological_sort] # tf_item
+tensorflow::grappler::TopologicalSort
+
+[//tensorflow/core/grappler/clusters:utils] # tf_cluster tf_optimizer
+tensorflow::grappler::GetDeviceInfo
+
+[//tensorflow/core/grappler/costs:utils] # tf_optimizer tf_cluster
+tensorflow::grappler::CostGraphToOpPerformanceData
+tensorflow::grappler::GetDeviceInfo
+
+[//tensorflow/core/grappler/optimizers:meta_optimizer] # tf_optimizer
+tensorflow::grappler::MetaOptimizer::MetaOptimizer
+tensorflow::grappler::MetaOptimizer::Optimize
+tensorflow::grappler::MetaOptimizer::PrintResult
+
+[//tensorflow/core/grappler/clusters:cluster] # tf_cluster
+tensorflow::grappler::Cluster::AllowSoftPlacement
+tensorflow::grappler::Cluster::SetNumWarmupSteps
+tensorflow::grappler::Cluster::DisableDetailedStats
+tensorflow::grappler::Cluster::DetailedStatsEnabled
+
+[//tensorflow/core/grappler/clusters:single_machine] # tf_cluster
+tensorflow::grappler::SingleMachine::SingleMachine
+
+[//tensorflow/core/grappler/costs:op_level_cost_estimator] # tf_cluster
+tensorflow::grappler::OpLevelCostEstimator::OpLevelCostEstimator
+tensorflow::grappler::OpLevelCostEstimator::PredictCosts
+tensorflow::grappler::OpLevelCostEstimator::GetDeviceInfo
+
+[//tensorflow/core/grappler/clusters:virtual_cluster] # tf_cluster
+tensorflow::grappler::VirtualCluster::VirtualCluster
+
+[//tensorflow/core/grappler/costs:graph_memory] # tf_cluster
+tensorflow::grappler::GraphMemory::InferStatically
+tensorflow::grappler::GraphMemory::InferDynamically
+
+[//tensorflow/core/grappler/costs:measuring_cost_estimator] # tf_cluster
+tensorflow::grappler::MeasuringCostEstimator::MeasuringCostEstimator
+tensorflow::grappler::MeasuringCostEstimator::Initialize
+tensorflow::grappler::MeasuringCostEstimator::PredictCosts
+
+[//tensorflow/core/grappler:devices] # tf_cluster
+tensorflow::grappler::GetNumAvailableGPUs
+tensorflow::grappler::GetNumAvailableLogicalCPUCores
+
+[//tensorflow/core/profiler/internal:traceme_recorder_impl] # profiler
+tensorflow::profiler::TraceMeRecorder::Record
+
+[//external/local_tsl/tsl/profiler/lib:profiler_session_impl] # profiler
+tsl::ProfilerSession::Create
+tsl::ProfilerSession::CollectData
+tsl::ProfilerSession::Status
+tsl::ProfilerSession::~ProfilerSession
+
+[//external/local_xla/xla/tsl/profiler/rpc:profiler_server_impl] # profiler
+tsl::profiler::ProfilerServer::StartProfilerServer
+tsl::profiler::ProfilerServer::~ProfilerServer
+
+[//tensorflow/core/profiler/rpc/client:profiler_client_impl] # profiler
+tensorflow::profiler::ProfileGrpc
+tensorflow::profiler::NewSessionGrpc
+tensorflow::profiler::MonitorGrpc
+tensorflow::profiler::RemoteProfilerSession::Create
+tensorflow::profiler::RemoteProfilerSession::GetServiceAddress
+tensorflow::profiler::RemoteProfilerSession::WaitForCompletion
+tensorflow::profiler::RemoteProfilerSession::~RemoteProfilerSession
+
+[//external/local_xla/xla/tsl/profiler/rpc/client:profiler_client_impl] # profiler
+tsl::profiler::ProfileGrpc
+tsl::profiler::NewSessionGrpc
+tsl::profiler::MonitorGrpc
+tsl::profiler::RemoteProfilerSession::Create
+tsl::profiler::RemoteProfilerSession::GetServiceAddress
+tsl::profiler::RemoteProfilerSession::WaitForCompletion
+tsl::profiler::RemoteProfilerSession::~RemoteProfilerSession
+
+[//external/local_xla/xla:status_macros] # tfcompile
+xla::status_macros::MakeErrorStream::Impl::Impl
+xla::status_macros::MakeErrorStream::Impl::~Impl
+xla::status_macros::MakeErrorStream::Impl::GetStatus
+xla::status_macros::MakeErrorStream::CheckNotDone
+xla::status_macros::MakeErrorStream::add_ret_check_failure
+
+[//external/local_xla/xla/hlo/ir:hlo] # tfcompile
+xla::DfsHloVisitorBase::SetVisited
+xla::DfsHloVisitorBase<class xla::HloInstruction.*>::SetVisited
+xla::HloComputation::Accept
+xla::HloComputation::AcceptOrdered
+xla::HloComputation::CollectUnreachableRoots
+xla::HloInstruction::ToString
+xla::HloInstruction::Accept
+xla::HloInstruction::Visit
+
+[//tensorflow/compiler/aot:tfcompile_lib] # tfcompile
+tensorflow::tfcompile::Main
+
+[//tensorflow/python:model_analyzer_lib] # model_analyzer
+tensorflow::grappler::ModelAnalyzer::GenerateReport
+tensorflow::grappler::ModelAnalyzer::ModelAnalyzer
+
+[//tensorflow/core/grappler/costs:analytical_cost_estimator] # cost_analyzer
+tensorflow::grappler::AnalyticalCostEstimator::Initialize
+tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
+
+[//tensorflow/python:cost_analyzer_lib] # cost_analyzer
+tensorflow::grappler::CostAnalyzer::CostAnalyzer
+tensorflow::grappler::CostAnalyzer::GenerateReport
+
+[//tensorflow/cc/saved_model:metrics_impl] # SavedModel and Checkpoint metrics
+tensorflow::metrics::SavedModelWrite
+tensorflow::metrics::SavedModelRead
+tensorflow::metrics::SavedModelWriteApi
+tensorflow::metrics::SavedModelReadApi
+tensorflow::metrics::SavedModelWriteFingerprint
+tensorflow::metrics::SavedModelReadFingerprint
+tensorflow::metrics::SavedModelWritePath
+tensorflow::metrics::SavedModelReadPath
+tensorflow::metrics::SavedModelWritePathAndSingleprint
+tensorflow::metrics::SavedModelReadPathAndSingleprint
+tensorflow::metrics::MakeFingerprintJson
+tensorflow::metrics::MakeSavedModelPathAndSingleprint
+tensorflow::metrics::ParseSavedModelPathAndSingleprint
+tensorflow::metrics::SavedModelFoundFingerprintOnLoad
+tensorflow::metrics::CheckpointReadDuration
+tensorflow::metrics::CheckpointWriteDuration
+tensorflow::metrics::AsyncCheckpointWriteDuration
+tensorflow::metrics::TrainingTimeSaved
+tensorflow::metrics::CheckpointSize
+tensorflow::metrics::ShardingCallbackDuration
+tensorflow::metrics::NumCheckpointShardsWritten
+tensorflow::metrics::ShardingCallbackDescription
+
+[//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
+tensorflow::saved_model::fingerprinting::CreateFingerprintDef
+tensorflow::saved_model::fingerprinting::ReadSavedModelFingerprint
+tensorflow::saved_model::fingerprinting::Singleprint
+
+
+[//tensorflow/compiler/jit:flags] # tfe
+tensorflow::IsXlaEnabled
+tensorflow::GetMlirCommonFlags
+tensorflow::GetXlaDeviceFlags
+tensorflow::ResetJitCompilerFlags
+
+[//external/local_tsl/tsl/platform:tensor_float_32_utils] # tensor_float_32
+tsl::enable_tensor_float_32_execution
+tsl::tensor_float_32_execution_enabled
+
+[//tensorflow/core/util:determinism] # determinism
+tensorflow::OpDeterminismRequired
+tensorflow::EnableOpDeterminism
+
+[//tensorflow/compiler/jit:get_compiler_ir] # tfe
+tensorflow::GetCompilerIr
+
+[//tensorflow/core/common_runtime/eager:tensor_handle] # tfe
+tensorflow::TensorHandle::Tensor
+
+[//tensorflow/python:python_api_dispatcher] # python_api_dispatcher
+tensorflow::py_dispatch::PythonAPIDispatcher
+tensorflow::py_dispatch::PySignatureChecker
+tensorflow::py_dispatch::PyTypeChecker::MatchType
+tensorflow::py_dispatch::PyInstanceChecker::PyInstanceChecker
+tensorflow::py_dispatch::PyInstanceChecker::Check
+tensorflow::py_dispatch::PyInstanceChecker::cost
+tensorflow::py_dispatch::PyInstanceChecker::DebugString
+tensorflow::py_dispatch::PyListChecker::PyListChecker
+tensorflow::py_dispatch::PyListChecker::Check
+tensorflow::py_dispatch::PyListChecker::cost
+tensorflow::py_dispatch::PyListChecker::DebugString
+tensorflow::py_dispatch::PyUnionChecker::PyUnionChecker
+tensorflow::py_dispatch::PyUnionChecker::Check
+tensorflow::py_dispatch::PyUnionChecker::cost
+tensorflow::py_dispatch::PyUnionChecker::DebugString
+tensorflow::py_dispatch::RegisterDispatchableType
+
+[//tensorflow/python:python_tensor_converter] # python_tensor_converter
+tensorflow::PythonTensorConverter
+
+[//tensorflow/python:python_api_info] # python_api_info
+tensorflow::PythonAPIInfo
+
+[//tensorflow/python:python_api_parameter_converter] # python_api_parameter_converter
+tensorflow::ConvertPythonAPIParameters
+tensorflow::CopyPythonAPITensorLists
+
+[//tensorflow/core/platform:statusor] # tfe
+tensorflow::internal_statusor::Helper::Crash
+
+[//tensorflow/core/platform:cpu_feature_guard] # cpu_feature_guard
+tensorflow::port::InfoAboutUnusedCPUFeatures
+
+[//tensorflow/core/function:runtime_client_cc] # runtime_client
+tensorflow::core::function::GlobalEagerContext
+tensorflow::core::function::GlobalPythonEagerContext
+tensorflow::core::function::Runtime::CreateFunction
+tensorflow::core::function::Runtime::GetFunctionProto
+
+[//tensorflow/core/config:flag_defs] # flags_api
+tensorflow::flags::Global
+tensorflow::flags::Flags::GetExportedFlag
+
+[//tensorflow/core/config:flags] # flags_api
+tensorflow::config::Flag::value
+tensorflow::config::Flag::reset
+
+[//tensorflow/python/framework:op_def_util_cc] # op_def_util
+tensorflow::AttributeTypeFromName
+tensorflow::AttrValueToPyObject
+tensorflow::ConvertPyObjectToAttributeType
+tensorflow::DataTypeToPyObject
+tensorflow::Safe_PyObjectPtr
+
+[//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc] # quantization
+tensorflow::quantization::QuantizeQatModel
+tensorflow::quantization::QuantizePtqModelPreCalibration
+tensorflow::quantization::QuantizePtqModelPostCalibration
+tensorflow::quantization::QuantizeStaticRangePtq
+tensorflow::quantization::QuantizeDynamicRangePtq
+tensorflow::quantization::QuantizeWeightOnly
+
+[//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo_lib_impl] # tensorflow_to_stablehlo
+mlir::tensorflow_to_stablehlo::pywrap::PywrapSavedModelToStablehlo
+mlir::tensorflow_to_stablehlo::pywrap::PywrapTfModuleToStablehlo
+
+[//tensorflow/dtensor/cc:dtensor_device_cc] # DTensor
+tensorflow::dtensor::AllocateDTensorDevice
+tensorflow::dtensor::AddMesh
+tensorflow::dtensor::ExperimentalSetDefaultLayout
+tensorflow::dtensor::ExperimentalClearDefaultLayout
+tensorflow::dtensor::ExperimentalSetDefaultMesh
+tensorflow::dtensor::ExperimentalClearDefaultMesh
+tensorflow::dtensor::SetTPUCoreIDs
+tensorflow::dtensor::ClearTPUCoreIDs
+tensorflow::dtensor::TPUCoreIDsToLocations
+tensorflow::dtensor::TPUCoreLocationsToIDs
+tensorflow::dtensor::Pack
+tensorflow::dtensor::Unpack
+tensorflow::dtensor::FetchLayout
+tensorflow::dtensor::IsDTensor
+tensorflow::dtensor::SparsePack
+tensorflow::dtensor::IsSparseDTensor
+tensorflow::dtensor::GetStats
+tensorflow::dtensor::SetIteratorElementLayouts
+
+[//tensorflow/dtensor/cc:tensor_layout] # DTensor
+tensorflow::dtensor::Mesh
+tensorflow::dtensor::Layout
+tensorflow::dtensor::Layout::LayoutType
+
+[//tensorflow/core/tpu/kernels:sparse_core_layout] #SparseCoreLayoutStacker
+tensorflow::tpu::SparseCoreLayoutStacker::AddTable
+tensorflow::tpu::SparseCoreLayoutStacker::SparseCoreLayoutStacker
+tensorflow::tpu::SparseCoreLayoutStacker::AddTable
+tensorflow::tpu::SparseCoreLayoutStacker::GetLayouts

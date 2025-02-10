@@ -70,6 +70,10 @@ CUDA_REDIST_JSON_DICT = {
         "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.6.3.json",
         "9c598598457a6463eb92889080c16b2b9dc04150e501b8bfc1536d403ba70aaf",
     ],
+    "12.8.0": [
+        "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.8.0.json",
+        "daa0d766b36feaa933592162c27be5fb63b68fc547ca6886c160a35d96ee8891",
+    ],
 }
 
 CUDNN_REDIST_JSON_DICT = {
@@ -121,6 +125,10 @@ CUDNN_REDIST_JSON_DICT = {
         "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.6.0.json",
         "6dd9a931d981fe5afc7e7ed0c422a4035b1411db4e28a39cf2429e62e3efcd3e",
     ],
+    "9.7.0": [
+        "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.7.0.json",
+        "e715c1d028585d228c4678c2cdc5ad9a34fde54515a1c52aa60e36021a90dd90",
+    ],
 }
 
 CUDA_12_NCCL_WHEEL_DICT = {
@@ -159,12 +167,14 @@ CUDA_NCCL_WHEELS = {
     "12.6.1": CUDA_12_NCCL_WHEEL_DICT,
     "12.6.2": CUDA_12_NCCL_WHEEL_DICT,
     "12.6.3": CUDA_12_NCCL_WHEEL_DICT,
+    "12.8.0": CUDA_12_NCCL_WHEEL_DICT,
 }
 
 REDIST_VERSIONS_TO_BUILD_TEMPLATES = {
     "nvidia_driver": {
         "repo_name": "cuda_driver",
         "version_to_template": {
+            "570": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
             "560": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
             "555": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
             "550": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",

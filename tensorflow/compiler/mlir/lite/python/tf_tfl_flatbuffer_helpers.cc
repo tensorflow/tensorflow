@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace internal {

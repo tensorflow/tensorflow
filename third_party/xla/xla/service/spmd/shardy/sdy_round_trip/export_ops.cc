@@ -153,7 +153,7 @@ class SdyRoundTripExportOpsPass
   }
 
   StringRef getDescription() const override {
-    return "Exports Shardonnay ops to MHLO ops.";
+    return "Exports Shardonnay ops to StableHLO ops.";
   }
 };
 

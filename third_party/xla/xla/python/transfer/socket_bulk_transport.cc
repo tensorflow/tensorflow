@@ -630,10 +630,7 @@ class SocketBulkTransportFactory : public BulkTransportFactory {
     auto bulk_transport = std::make_unique<SocketBulkTransport>(
         thread_states_, send_work_queues_);
     for (auto& listener : listeners_) {
-      auto& tmp = listener->addr();
-      auto address = absl::string_view(reinterpret_cast<const char*>(&tmp),
-                                       sizeof(SocketAddress));
-      result.request.add_bulk_transport_address(address.data(), address.size());
+      result.request.add_bulk_transport_address(listener->addr().ToString());
     }
     result
         .start_bulk_transport = [conns = bulk_transport->connections(),
@@ -645,10 +642,10 @@ class SocketBulkTransportFactory : public BulkTransportFactory {
       for (uint64_t i = 0;
            i < remote_bulk_transport_info.bulk_transport_address_size(); ++i) {
         uint64_t uuid = next_id + i;
-        SocketAddress addr;
-        memcpy(&addr,
-               remote_bulk_transport_info.bulk_transport_address(i).data(),
-               sizeof(SocketAddress));
+        SocketAddress addr =
+            SocketAddress::Parse(
+                remote_bulk_transport_info.bulk_transport_address(i))
+                .value();
         int cfd =
             socket(addrs[i].address().sa_family, SOCK_STREAM | SOCK_CLOEXEC, 0);
         CHECK_EQ(bind(cfd, reinterpret_cast<const struct sockaddr*>(&addrs[i]),
@@ -684,10 +681,7 @@ class SocketBulkTransportFactory : public BulkTransportFactory {
     auto bulk_transport = std::make_unique<SocketBulkTransport>(
         thread_states_, send_work_queues_);
     for (auto& listener : listeners_) {
-      auto& tmp = listener->addr();
-      auto address = absl::string_view(reinterpret_cast<const char*>(&tmp),
-                                       sizeof(SocketAddress));
-      result.request.add_bulk_transport_address(address.data(), address.size());
+      result.request.add_bulk_transport_address(listener->addr().ToString());
     }
     uint64_t next_uuid =
         recv_state_->AllocateUUIDs(bulk_transport->connections());
@@ -705,7 +699,7 @@ class SocketBulkTransportFactory : public BulkTransportFactory {
     result->addrs_ = addrs;
     for (auto& addr : addrs) {
       auto listener_or = SocketListener::Listen(
-          SocketAddress(addr),
+          addr,
           [state = result->recv_state_](int sockfd, const SocketAddress& addr) {
             uint64_t uuid;
             if (recv(sockfd, &uuid, sizeof(uuid), 0) != sizeof(uuid)) {

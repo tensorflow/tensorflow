@@ -32,15 +32,15 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 namespace tensorflow {
 namespace ifrt_serving {

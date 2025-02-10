@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/tpu_configuration_ops.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -48,8 +50,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_configuration_rewrite_pass.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_helpers.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 

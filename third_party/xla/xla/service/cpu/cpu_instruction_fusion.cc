@@ -74,10 +74,43 @@ bool CanBeOutputFusedIntoSomeOperand(const HloInstruction* consumer) {
          (CanBeOutputFused(consumer->operand(0), consumer) ||
           CanBeOutputFused(consumer->operand(1), consumer));
 }
+
 }  // namespace
+
+void CpuInstructionFusion::ComputeInstructionsToSkip(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  const auto computations_list =
+      module->MakeComputationPostOrder(execution_threads);
+  instructions_to_skip_.clear();
+  for (auto* computation : computations_list) {
+    for (auto* instruction : computation->MakeInstructionPostOrder()) {
+      if (instruction->IsCustomFusion() ||
+          instruction->opcode() == HloOpcode::kCustomCall) {
+        HloCallableInstruction* callable =
+            Cast<HloCallableInstruction>(instruction);
+        if (callable->called_computations().empty()) {
+          continue;
+        }
+        for (HloInstruction* instr :
+             callable->called_computation()->instructions())
+          instructions_to_skip_.insert(instr);
+      }
+    }
+  }
+}
+
+bool CpuInstructionFusion::ShouldSkip(const HloInstruction* inst) const {
+  return instructions_to_skip_.contains(inst);
+}
 
 FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                                 int64_t operand_index) {
+  if (ShouldSkip(consumer)) {
+    return FusionDecision::Forbid(
+        "Don't fuse instructions from custom fusions/calls");
+  }
+
   HloInstruction* producer = consumer->mutable_operand(operand_index);
   VLOG(2) << "Considering for fusion: operand " << operand_index << " of "
           << consumer->ToString();

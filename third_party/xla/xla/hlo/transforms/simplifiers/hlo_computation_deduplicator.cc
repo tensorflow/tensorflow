@@ -58,6 +58,7 @@ absl::StatusOr<bool> HloComputationDeduplicator::Run(
   options.set_print_only_essential_constants(true);
   options.set_print_operand_shape(true);
   options.set_print_ids(false);
+  options.set_print_backend_config(true);
   options.set_canonicalize_computations(true);
 
   // This comparison function will be used to compare called subcomputations.

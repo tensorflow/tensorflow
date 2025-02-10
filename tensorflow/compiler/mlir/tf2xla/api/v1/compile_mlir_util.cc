@@ -92,6 +92,8 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -103,8 +105,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {

@@ -1,6 +1,10 @@
+<<<<<<< HEAD:tensorflow/tools/tf_sig_build_dockerfiles/setup.packages.rocm.cs7.sh
 #!/usr/bin/env bash
 #
 # Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+=======
+# Copyright 2024 Google LLC.
+>>>>>>> upstream/master:tensorflow/lite/experimental/litert/vendors/google_tensor/BUILD
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +24,14 @@
 set -e
 set -x
 
+<<<<<<< HEAD:tensorflow/tools/tf_sig_build_dockerfiles/setup.packages.rocm.cs7.sh
 yum clean all
 yum update -y
 PKG_LIST=$(sed -e '/^\s*#.*$/d' -e '/^\s*$/d' "$1" | sort -u)
 yum --enablerepo=extras install -y $PKG_LIST
+=======
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+)
+>>>>>>> upstream/master:tensorflow/lite/experimental/litert/vendors/google_tensor/BUILD

@@ -799,10 +799,16 @@ py_strict_library(
     name = "saver",
     srcs = ["saver.py"],
     srcs_version = "PY3",
+    # copybara:uncomment_begin(google-only)
+    # visibility = [
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
     visibility = [
-        "//tensorflow:internal",
-        "//third_party/py/tf_slim:__subpackages__",
+        "//visibility:public",
     ],
+    # copybara:comment_end
     deps = [
         ":py_checkpoint_reader",
         ":training_util",

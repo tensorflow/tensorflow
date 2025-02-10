@@ -148,7 +148,7 @@ class GemmFusionAutotunerImpl {
       absl::Span<const ExecutableCandidate> candidates);
 
   // Autotune and save the results to the autotuning cache.
-  absl::StatusOr<AutotuneCacheKeySet> Autotune(
+  absl::Status Autotune(
       AutotunerCompileUtil& compile_util,
       const BackendConfigs& gemm_config_sets,
       absl::flat_hash_map<AutotuneCacheKey, uint64_t> fusion_count_map);

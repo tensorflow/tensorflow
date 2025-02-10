@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
@@ -82,16 +83,15 @@ class ExpiringLRUCache {
       return compute_func(key, value);
     }
 
-    // Note: we hold onto mu_ for the rest of this function. In practice, this
-    // is okay, as stat requests are typically fast, and concurrent requests are
-    // often for the same file. Future work can split this up into one lock per
-    // key if this proves to be a significant performance bottleneck.
-    mutex_lock lock(mu_);
-    if (LookupLocked(key, value)) {
-      return absl::OkStatus();
+    {
+      mutex_lock lock(mu_);
+      if (LookupLocked(key, value)) {
+        return absl::OkStatus();
+      }
     }
     absl::Status s = compute_func(key, value);
     if (s.ok()) {
+      mutex_lock lock(mu_);
       InsertLocked(key, *value);
     }
     return s;

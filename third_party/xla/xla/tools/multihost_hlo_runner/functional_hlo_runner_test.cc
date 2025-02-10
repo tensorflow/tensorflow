@@ -37,21 +37,22 @@ limitations under the License.
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
 using ::testing::SizeIs;
+using ::tsl::testing::StatusIs;
 
 bool IsTestingCpu() {
 #ifdef XLA_TEST_BACKEND_CPU
@@ -91,6 +92,23 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHlo) {
       running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
 }
 
+TEST_F(FunctionalHloRunnerTest, SingleDeviceHloThroughStableHlo) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  preproc_options.compile_as_stablehlo = true;
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 1;
+  FunctionalHloRunner::RunningOptions running_options;
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
 TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithExecutionProfile) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
                           GetPjRtClient());
@@ -109,6 +127,76 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithExecutionProfile) {
     EXPECT_GT(profiles[0].compute_time_ns(), 0);
     EXPECT_GT(profiles[1].compute_time_ns(), 0);
   }
+}
+
+TEST_F(FunctionalHloRunnerTest, GPUProfilerWithEmptyDumpPathReturnsError) {
+  if (IsTestingCpu()) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+  std::string empty_profile_dump_path = "";
+  EXPECT_THAT(
+      GPURunnerProfiler::Create(empty_profile_dump_path, /*keep_xspace=*/true),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(FunctionalHloRunnerTest, GPUProfilerKeepXSpaceReturnsNonNullXSpace) {
+  if (IsTestingCpu()) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+  std::string profile_dump_path =
+      tsl::io::JoinPath(testing::TempDir(), "xspace.pb");
+  tsl::Env* env = tsl::Env::Default();
+  tsl::FileSystem* fs = nullptr;
+  TF_ASSERT_OK(env->GetFileSystemForFile(profile_dump_path, &fs));
+
+  FunctionalHloRunner::RunningOptions running_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto profiler,
+      GPURunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/true));
+  running_options.profiler = profiler.get();
+
+  profiler->CreateSession();
+  profiler->UploadSession();
+  EXPECT_NE(profiler->GetXSpace(), nullptr);
+  EXPECT_GT(profiler->GetXSpace()->planes_size(), 0);
+  TF_EXPECT_OK(env->FileExists(profile_dump_path));
+}
+
+TEST_F(FunctionalHloRunnerTest,
+       SingleDeviceHloWithGPUProfilerSavesXSpaceToDisk) {
+  if (IsTestingCpu()) {
+    GTEST_SKIP() << "GPU-only test";
+  }
+
+  GpuClientOptions gpu_options;
+  gpu_options.node_id = 0;
+  gpu_options.num_nodes = 16;
+  gpu_options.enable_mock_nccl = true;
+
+  std::string profile_dump_path =
+      tsl::io::JoinPath(testing::TempDir(), "xspace.pb");
+  tsl::Env* env = tsl::Env::Default();
+  tsl::FileSystem* fs = nullptr;
+  TF_ASSERT_OK(env->GetFileSystemForFile(profile_dump_path, &fs));
+
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.xla_gpu_dump_xspace_to = profile_dump_path;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::PjRtEnvironment pjrt_env,
+      GetPjRtEnvironmentForGpu("", gpu_options, absl::Seconds(120)));
+  FunctionalHloRunner::RunningOptions running_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto profiler,
+      GPURunnerProfiler::Create(profile_dump_path, /*keep_xspace=*/false));
+  running_options.profiler = profiler.get();
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *pjrt_env.client,
+      /* debug_options= */ {}, /* preproc_options= */ {}, raw_compile_options,
+      running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
+  EXPECT_EQ(profiler->GetXSpace(), nullptr);
+  TF_EXPECT_OK(env->FileExists(profile_dump_path));
 }
 
 TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
@@ -326,6 +414,7 @@ TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
     GTEST_SKIP() << "GPU-only test.";
   }
 
+  tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=2", /*overwrite=*/true);
   tsl::SubProcess child[kNumNodes];
   for (int node_id = 0; node_id < kNumNodes; ++node_id) {
     std::vector<std::string> argv;
@@ -381,13 +470,13 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
     TF_ASSIGN_OR_RETURN(
         std::string results0,
         env.kv_store->Get("gemm_fusion_autotuning_results_"
-                          "3rICV5olU4JYmrEsiWSstWM0ew6jr1f60ikmjvPhwUc_0",
+                          "iuhMRX2JY-YpaUJD3Pw0h3H3HNGWEzN4xA0s9Q3CoK8_0",
                           absl::Seconds(1)));
     CHECK(absl::StrContains(results0, "run_time"));
     TF_ASSIGN_OR_RETURN(
         std::string results1,
         env.kv_store->Get("gemm_fusion_autotuning_results_"
-                          "3rICV5olU4JYmrEsiWSstWM0ew6jr1f60ikmjvPhwUc_1",
+                          "iuhMRX2JY-YpaUJD3Pw0h3H3HNGWEzN4xA0s9Q3CoK8_1",
                           absl::Seconds(1)));
     CHECK(absl::StrContains(results1, "run_time"));
     // The nodes autotune different fusions.

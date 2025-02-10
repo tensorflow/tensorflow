@@ -33,11 +33,11 @@
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch_api.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/dispatch/litert_dispatch_device_context.h"
 #include "tensorflow/lite/experimental/litert/vendors/mediatek/dispatch/litert_dispatch_invocation_context.h"
-#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter.h"
+#include "tensorflow/lite/experimental/litert/vendors/mediatek/neuron_adapter_api.h"
 
 namespace {
 
-litert::mediatek::NeuronAdapter* TheNeuronAdapter;
+litert::mediatek::NeuronAdapterApi* TheNeuronAdapter;
 char BuildId[256];
 
 }  // namespace
@@ -67,14 +67,14 @@ LiteRtStatus LiteRtInitialize(const LiteRtDispatchOption* options,
       shared_library_dir ? std::make_optional(std::string(shared_library_dir))
                          : std::nullopt;
 
-  if (auto neuron_adapter =
-          litert::mediatek::NeuronAdapter::Create(shared_library_dir_opt);
-      neuron_adapter) {
-    TheNeuronAdapter = neuron_adapter->release();
+  if (auto neuron_adapter_api =
+          litert::mediatek::NeuronAdapterApi::Create(shared_library_dir_opt);
+      neuron_adapter_api) {
+    TheNeuronAdapter = neuron_adapter_api->release();
   } else {
     LITERT_LOG(LITERT_INFO, "Initialization failure: %s",
-               neuron_adapter.Error().Message().c_str());
-    return neuron_adapter.Error().Status();
+               neuron_adapter_api.Error().Message().c_str());
+    return neuron_adapter_api.Error().Status();
   }
 
   auto get_version = TheNeuronAdapter->api().get_version;

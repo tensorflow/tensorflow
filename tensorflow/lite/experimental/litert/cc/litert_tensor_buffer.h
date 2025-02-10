@@ -208,8 +208,13 @@ class TensorBuffer
     return Event(event, /*owned=*/false);
   }
 
-  Expected<void> SetEvent(Event e) {
-    if (auto status = LiteRtSetTensorBufferEvent(Get(), e.Get());
+  // The function takes ownership of the passed event e.
+  Expected<void> SetEvent(Event&& e) {
+    if (!e.IsOwned()) {
+      return Error(kLiteRtStatusErrorInvalidArgument,
+                   "Expected an owned event");
+    }
+    if (auto status = LiteRtSetTensorBufferEvent(Get(), e.Release());
         status != kLiteRtStatusOk) {
       return Error(status, "Failed to set tensor buffer event");
     }

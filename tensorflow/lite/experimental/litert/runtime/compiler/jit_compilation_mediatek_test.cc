@@ -13,8 +13,6 @@
 // limitations under the License.
 
 #include <array>
-#include <utility>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -28,6 +26,7 @@
 #include "tensorflow/lite/experimental/litert/cc/litert_model.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/litert/test/common.h"
+#include "tensorflow/lite/experimental/litert/test/matchers.h"
 #include "tensorflow/lite/experimental/litert/test/testdata/simple_model_test_vectors.h"
 
 constexpr const char* kCompilerPluginLibSearchPath = "/data/local/tmp";
@@ -42,14 +41,14 @@ TEST(JitCompilation, MediaTek) {
           /*.value=*/kCompilerPluginLibSearchPath,
       },
   };
-  auto env = litert::Environment::Create(environment_options);
-  ASSERT_TRUE(env);
+  LITERT_ASSERT_OK_AND_ASSIGN(auto environment,
+                              litert::Environment::Create(environment_options));
 
   auto model_path = litert::testing::GetTestFilePath(kModelFileName);
-  auto model = litert::Model::CreateFromFile(model_path);
-  ASSERT_TRUE(model);
+  LITERT_ASSERT_OK_AND_ASSIGN(auto model,
+                              litert::Model::CreateFromFile(model_path));
 
-  auto num_signatures = model->GetNumSignatures();
+  auto num_signatures = model.GetNumSignatures();
   ASSERT_EQ(num_signatures, 1);
 
 #if !defined(__ANDROID__)
@@ -57,39 +56,34 @@ TEST(JitCompilation, MediaTek) {
                   "MediaTek NPU";
 #endif
 
-  auto compilation_options = litert::CompiledModel::Options::Create();
-  ASSERT_TRUE(compilation_options);
-  ASSERT_TRUE(
-      compilation_options->SetHardwareAccelerators(kLiteRtHwAccelatorNpu));
+  LITERT_ASSERT_OK_AND_ASSIGN(auto compiled_model,
+                              litert::CompiledModel::Create(
+                                  environment, model, kLiteRtHwAcceleratorNpu));
 
-  auto compiled_model = litert::CompiledModel::Create(
-      *env, *model, std::move(*compilation_options));
-  ASSERT_TRUE(compiled_model);
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      auto input_buffers,
+      compiled_model.CreateInputBuffers(/*signature_index=*/0));
+  EXPECT_EQ(input_buffers.size(), 2);
 
-  auto input_buffers =
-      compiled_model->CreateInputBuffers(/*signature_index=*/0);
-  ASSERT_TRUE(input_buffers);
-  EXPECT_EQ(input_buffers->size(), 2);
+  LITERT_ASSERT_OK_AND_ASSIGN(
+      auto output_buffers,
+      compiled_model.CreateOutputBuffers(/*signature_index=*/0));
+  EXPECT_EQ(output_buffers.size(), 1);
 
-  auto output_buffers =
-      compiled_model->CreateOutputBuffers(/*signature_index=*/0);
-  ASSERT_TRUE(output_buffers);
-  EXPECT_EQ(output_buffers->size(), 1);
-
-  ASSERT_TRUE((*input_buffers)[0].Write<float>(
+  LITERT_ASSERT_OK(input_buffers[0].Write<float>(
       absl::MakeConstSpan(kTestInput0Tensor, kTestInput0Size)));
-  ASSERT_TRUE((*input_buffers)[1].Write<float>(
+  LITERT_ASSERT_OK(input_buffers[1].Write<float>(
       absl::MakeConstSpan(kTestInput1Tensor, kTestInput1Size)));
 
   // Execute model.
-  compiled_model->Run(/*signature_index=*/0, *input_buffers, *output_buffers);
+  compiled_model.Run(/*signature_index=*/0, input_buffers, output_buffers);
 
   // Check model output.
   {
-    auto lock_and_addr = litert::TensorBufferScopedLock::Create<const float>(
-        (*output_buffers)[0]);
-    ASSERT_TRUE(lock_and_addr);
-    auto output = absl::MakeSpan(lock_and_addr->second, kTestOutputSize);
+    LITERT_ASSERT_OK_AND_ASSIGN(
+        auto lock_and_addr,
+        litert::TensorBufferScopedLock::Create<const float>(output_buffers[0]));
+    auto output = absl::MakeSpan(lock_and_addr.second, kTestOutputSize);
     for (auto i = 0; i < kTestOutputSize; ++i) {
       ABSL_LOG(INFO) << "Result: " << output[i] << "\t" << kTestOutputTensor[i];
     }

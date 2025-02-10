@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable_test_util.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/tstring.h"
 
 namespace tensorflow {

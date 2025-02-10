@@ -301,8 +301,8 @@ TEST(TensorBuffer, Event) {
             kLiteRtStatusOk);
   EXPECT_FALSE(has_event);
 
-  LiteRtEventT event;
-  ASSERT_EQ(LiteRtSetTensorBufferEvent(tensor_buffer, &event), kLiteRtStatusOk);
+  LiteRtEvent event = new LiteRtEventT;
+  ASSERT_EQ(LiteRtSetTensorBufferEvent(tensor_buffer, event), kLiteRtStatusOk);
 
   has_event = false;
   ASSERT_EQ(LiteRtHasTensorBufferEvent(tensor_buffer, &has_event),
@@ -312,10 +312,10 @@ TEST(TensorBuffer, Event) {
   LiteRtEvent actual_event;
   ASSERT_EQ(LiteRtGetTensorBufferEvent(tensor_buffer, &actual_event),
             kLiteRtStatusOk);
-  ASSERT_EQ(actual_event, &event);
+  ASSERT_EQ(actual_event, event);
 
   ASSERT_EQ(LiteRtClearTensorBufferEvent(tensor_buffer), kLiteRtStatusOk);
-  ASSERT_EQ(actual_event, &event);
+  ASSERT_EQ(actual_event, event);
 
   has_event = true;
   ASSERT_EQ(LiteRtHasTensorBufferEvent(tensor_buffer, &has_event),
@@ -327,8 +327,8 @@ TEST(TensorBuffer, Event) {
 
 TEST(TensorBuffer, OpenCL) {
 // MSAN does not support GPU tests.
-#if defined(MEMORY_SANITIZER)
-  GTEST_SKIP() << "GPU tests are not supported In msan";
+#if defined(MEMORY_SANITIZER) || defined(THREAD_SANITIZER)
+  GTEST_SKIP() << "GPU tests are not supported In msan or tsan";
 #endif
 
   if (!litert::internal::OpenClBuffer::IsSupported()) {

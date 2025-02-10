@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -24,7 +25,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/substitute.h"
@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -119,55 +120,21 @@ absl::Status NcclAllToAllStartThunk::Initialize(
                     *params.collective_cliques, config().replica_groups,
                     config().group_mode, stream_id, stream_kind));
     TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
-    int local_id = params.stream->parent()->device_ordinal() % num_ranks;
+    se::StreamExecutor* executor = params.executor;
     {
       absl::MutexLock lock(&pointer_maps_mutex_);
-      if (!send_pointer_maps_.count(local_id)) {
-        for (int i = 0; i < num_ranks; ++i) {
-          if (!params.stream->parent()->HostMemoryRegister(
-                  &send_pointer_maps_[local_id][i], sizeof(void*))) {
-            VLOG(5) << "Registering host send pointer for memcpy failed.";
-          }
-          if (!params.stream->parent()->HostMemoryRegister(
-                  &receive_pointer_maps_[local_id][i], sizeof(void*))) {
-            VLOG(5) << "Registering host recv pointer for memcpy failed.";
-          }
-        }
-      }
-    }
-  }
-  return absl::OkStatus();
-}
-
-absl::Status NcclAllToAllStartThunk::Cleanup(const CleanupParams& params) {
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
-
-  if (p2p_memcpy_enabled_) {
-    const CollectiveStreamId stream_id = nccl_stream_id();
-    AsyncStreamKind stream_kind = GetAsyncStreamKind();
-    TF_ASSIGN_OR_RETURN(
-        CommunicatorHandle comm_handle,
-        GetNcclComm(collectives, *params.collective_params,
-                    *params.collective_cliques, config().replica_groups,
-                    config().group_mode, stream_id, stream_kind));
-    TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
-
-    int local_id = params.executor->device_ordinal() % num_ranks;
-    {
-      absl::MutexLock lock(&pointer_maps_mutex_);
-      if (send_pointer_maps_.count(local_id)) {
-        for (auto& [id, value] : send_pointer_maps_[local_id]) {
-          if (!params.executor->HostMemoryUnregister((void*)value)) {
-            VLOG(5) << "Unregistering host send pointer for memcpy failed.";
-          }
-        }
-      }
-      if (receive_pointer_maps_.count(local_id)) {
-        for (auto& [id, value] : receive_pointer_maps_[local_id]) {
-          if (!params.executor->HostMemoryUnregister((void*)value)) {
-            VLOG(5) << "Unregistering host recv pointer for memcpy failed.";
-          }
-        }
+      if (!send_pointer_maps_.count(executor)) {
+        TF_ASSIGN_OR_RETURN(
+            std::unique_ptr<se::MemoryAllocation> alloc,
+            executor->HostMemoryAllocate(num_ranks * sizeof(uint64_t)));
+        bool inserted =
+            send_pointer_maps_.insert({executor, std::move(alloc)}).second;
+        CHECK(inserted);
+        TF_ASSIGN_OR_RETURN(
+            alloc, executor->HostMemoryAllocate(num_ranks * sizeof(uint64_t)));
+        inserted =
+            receive_pointer_maps_.insert({executor, std::move(alloc)}).second;
+        CHECK(inserted);
       }
     }
   }
@@ -181,22 +148,22 @@ absl::Status NcclAllToAllStartThunk::RunNcclCollective(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm_handle.comm->NumRanks());
 
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
 
   if (is_local() && p2p_memcpy_enabled_) {
-    int local_id = stream.parent()->device_ordinal() % num_ranks;
-    absl::flat_hash_map<int64_t, uint64_t>* send_pointer_map = nullptr;
-    absl::flat_hash_map<int64_t, uint64_t>* receive_pointer_map = nullptr;
+    uint64_t* send_pointer_map = nullptr;
+    uint64_t* receive_pointer_map = nullptr;
     {
       absl::MutexLock lock(&pointer_maps_mutex_);
-      send_pointer_map = &send_pointer_maps_[local_id];
-      receive_pointer_map = &receive_pointer_maps_[local_id];
+      send_pointer_map = reinterpret_cast<uint64_t*>(
+          send_pointer_maps_[stream.parent()]->opaque());
+      receive_pointer_map = reinterpret_cast<uint64_t*>(
+          receive_pointer_maps_[stream.parent()]->opaque());
     }
     return xla::gpu::RunMemCpyAllToAll(collectives, config_.has_split_dimension,
                                        device_buffers, stream, comm_handle.comm,
-                                       *send_pointer_map, *receive_pointer_map);
+                                       send_pointer_map, receive_pointer_map);
   }
   return xla::gpu::RunAllToAll(collectives, config_.has_split_dimension,
                                device_buffers, stream, comm_handle.comm);
@@ -305,12 +272,12 @@ static absl::Status RecvPtrFromPeer(void* ptr, RankId peer, Communicator* comm,
 
 // TODO(b/380457503): Memcpy AllToAll implementation must be moved to
 // NcclCommunicator implementation.
-absl::Status RunMemCpyAllToAll(
-    GpuCollectives* collectives, bool has_split_dimension,
-    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    Communicator* comm,
-    absl::flat_hash_map<int64_t, uint64_t>& send_pointer_map,
-    absl::flat_hash_map<int64_t, uint64_t>& receive_pointer_map) {
+absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
+                               bool has_split_dimension,
+                               std::vector<DeviceBufferPair>& buffers,
+                               se::Stream& stream, Communicator* comm,
+                               uint64_t send_pointer_map[],
+                               uint64_t receive_pointer_map[]) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing mem-copy-all-to-all from device ordinal: "
           << device_ordinal;

@@ -630,6 +630,7 @@ cc_library(
     deps = [
         "//xla:debug_options_flags",
         "//xla:literal",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
@@ -637,6 +638,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:gpu_plugin",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_runner",
         "//xla/service:platform_util",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
@@ -647,6 +649,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -665,6 +668,7 @@ xla_test(
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     deps = [
         ":matmul_perf_table_gen",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "@com_google_googletest//:gtest_main",

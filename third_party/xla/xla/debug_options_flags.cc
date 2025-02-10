@@ -102,14 +102,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_fast_math_honor_functions(true);
   opts.set_xla_cpu_fast_math_honor_division(true);
 
-  // TODO(AyanmoI): Remove this flag when cuDNN FMHA is fully supported.
-  //
-  // cuDNN FMHA currently rewrites attention layers to use FlashAttention by
-  // default. This reassociation is not semantics-preserving, and the user
-  // should explicitly opt in if they wish to use this feature. cuDNN FMHA can
-  // not be turned on by default.
-  opts.set_xla_gpu_enable_cudnn_fmha(false);
-
   opts.set_xla_gpu_fused_attention_use_cudnn_rng(false);
 
   // By default, copy TF's Eigen style min_max behavior with nans.
@@ -205,7 +197,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_collective_permute_decomposer_threshold(
       std::numeric_limits<int64_t>::max());
-  opts.set_xla_gpu_experimental_enable_pipeline_parallelism_opt(false);
+  opts.set_xla_gpu_experimental_pipeline_parallelism_opt_level(
+      DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE);
 
   opts.set_xla_partitioning_algorithm(
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
@@ -491,6 +484,19 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
             debug_options
                 ->mutable_xla_gpu_analytical_latency_estimator_options();
         parse_xla_backend_extra_options(options_map, comma_separated_values);
+        return true;
+      };
+
+  // Custom "sub-parser" lambda for
+  // xla_gpu_experimental_pipeline_parallelism_opt_level.
+  auto setter_for_xla_gpu_experimental_pipeline_parallelism_opt_level =
+      [debug_options](const std::string& value) {
+        DebugOptions::PipelineParallelismOptLevel level;
+        if (!DebugOptions::PipelineParallelismOptLevel_Parse(value, &level)) {
+          return false;
+        }
+        debug_options->set_xla_gpu_experimental_pipeline_parallelism_opt_level(
+            level);
         return true;
       };
 
@@ -942,7 +948,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_cpu_prefer_vector_width",
       int32_setter_for(&DebugOptions::set_xla_cpu_prefer_vector_width),
       debug_options->xla_cpu_prefer_vector_width(),
-      "Preferred vector with for the XLA:CPU LLVM backend."));
+      "Preferred vector width for the XLA:CPU LLVM backend."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_max_isa",
       uppercase_string_setter_for(&DebugOptions::set_xla_cpu_max_isa),
@@ -1369,14 +1375,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_frontend),
       debug_options->xla_gpu_enable_cudnn_frontend(),
       "Use the cuDNN frontend API for convolutions when possible."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_cudnn_fmha",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_fmha),
-      debug_options->xla_gpu_enable_cudnn_fmha(),
-      "Use the cuDNN Fused Attention runtime fusion when possible. Note "
-      "that dropout support and the development of this feature as a whole is "
-      "in progress. Attention with dropout may cause results to diverge with "
-      "and without this  flag turned on."));
+  flag_list->push_back(tsl::Flag("xla_gpu_enable_cudnn_fmha",
+                                 noop_flag_setter<bool>, false,
+                                 "[Deprecated, do not use]"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_fused_attention_use_cudnn_rng",
       bool_setter_for(&DebugOptions::set_xla_gpu_fused_attention_use_cudnn_rng),
@@ -1667,11 +1668,10 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_collective_permute_decomposer_threshold(),
       "Collective permute decomposer threshold."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_pipeline_parallelism_opt",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_gpu_experimental_enable_pipeline_parallelism_opt),
-      debug_options->xla_gpu_experimental_enable_pipeline_parallelism_opt(),
+      "xla_gpu_experimental_pipeline_parallelism_opt_level",
+      setter_for_xla_gpu_experimental_pipeline_parallelism_opt_level,
+      DebugOptions::PipelineParallelismOptLevel_Name(
+          debug_options->xla_gpu_experimental_pipeline_parallelism_opt_level()),
       "Experimental optimizations for SPMD-based pipeline parallelism on "
       "GPU."));
   flag_list->push_back(tsl::Flag(

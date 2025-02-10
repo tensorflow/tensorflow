@@ -20,6 +20,9 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -35,9 +38,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {

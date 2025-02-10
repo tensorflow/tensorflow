@@ -60,7 +60,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
-#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -451,16 +450,31 @@ void DeviceDeallocate(Context* context, void* location) {
 }
 
 // Allocates memory on the host.
-void* HostAllocate(Context* context, uint64_t bytes) {
+absl::StatusOr<void*> HostAllocate(Context* context, uint64_t bytes) {
   ScopedActivateContext activation(context);
   void* host_mem = nullptr;
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
-  hipError_t res = wrap::hipHostMalloc(&host_mem, bytes, hipHostMallocPortable);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to alloc " << bytes
-               << " bytes on host: " << ToString(res);
-  }
+  TF_RETURN_IF_ERROR(
+      ToStatus(wrap::hipHostMalloc(&host_mem, bytes, hipHostMallocPortable),
+               "failed to allocate host memory"));
   return host_mem;
+}
+
+absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
+    RocmContext* rocm_context, uint64_t size) {
+  TF_ASSIGN_OR_RETURN(void* ptr, HostAllocate(rocm_context, size));
+  VLOG(2) << "allocated " << ptr << " for context " << rocm_context << " of "
+          << size << " bytes of host memory";
+  return std::make_unique<GenericMemoryAllocation>(
+      ptr, size, [rocm_context](void* location, uint64_t size) {
+        hipError_t res = wrap::hipHostFree(location);
+        if (res != hipSuccess) {
+          LOG(ERROR) << "error deallocating host memory at " << location << ": "
+                     << ToString(res);
+        }
+        VLOG(2) << "deallocated host memory at " << location << " for context "
+                << rocm_context;
+      });
 }
 
 }  // namespace
@@ -720,28 +734,18 @@ absl::StatusOr<ModuleHandle> RocmExecutor::LoadModuleFromHsaco(
 DeviceMemoryBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_space ==
       static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
-    return DeviceMemoryBase(HostAllocate(rocm_context_, size), size);
+    auto result = HostAllocate(rocm_context_, size);
+    if (!result.ok()) {
+      return DeviceMemoryBase(nullptr, 0);
+    }
+    return DeviceMemoryBase(*result, size);
   }
   CHECK_EQ(memory_space, 0);
   return DeviceMemoryBase(DeviceAllocate(rocm_context_, size), size);
 }
 absl::StatusOr<std::unique_ptr<MemoryAllocation>>
 RocmExecutor::HostMemoryAllocate(uint64_t size) {
-  auto* buffer = HostAllocate(rocm_context_, size);
-  if (buffer == nullptr && size > 0) {
-    return absl::InternalError(
-        absl::StrFormat("Failed to allocate HostMemory of size %d", size));
-  }
-  return std::make_unique<HostMemoryAllocation>(buffer, size, this);
-}
-
-void RocmExecutor::HostMemoryDeallocate(void* location) {
-  std::unique_ptr<ActivateContext> activation = Activate();
-  hipError_t res = wrap::hipHostFree(location);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "error deallocating host memory at " << location << ": "
-               << ToString(res);
-  }
+  return AllocateHostMemory(rocm_context_, size);
 }
 
 void RocmExecutor::Deallocate(DeviceMemoryBase* mem) {
@@ -778,6 +782,37 @@ RocmExecutor::CreateMemoryAllocator(MemoryType type) {
                 }
               });
         });
+  } else if (type == MemoryType::kCollective) {
+    return std::make_unique<GenericMemoryAllocator>(
+        [this](uint64_t size)
+            -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+          void* ptr = nullptr;
+          auto hipResult = wrap::hipMalloc(&ptr, size);
+          if (hipResult != hipSuccess) {
+            return absl::InternalError(absl::StrFormat(
+                "failed to allocate %s (%llu bytes) from device collective "
+                "memory: %s, "
+                "Last NCCL warning(error)",
+                tsl::strings::HumanReadableNumBytes(size), size,
+                hipGetErrorString(hipResult)));
+          }
+          VLOG(2) << "allocated " << ptr << " of " << size
+                  << " bytes of collective memory";
+          return std::make_unique<GenericMemoryAllocation>(
+              ptr, size, [this](void* location, uint64_t size) {
+                auto status = wrap::hipFree(location);
+                if (status != hipSuccess) {
+                  LOG(ERROR) << "failed to free collective memory at "
+                             << location << "; result: " << status;
+                } else {
+                  VLOG(2) << "deallocated collective memory at " << location;
+                }
+              });
+        });
+  } else if (type == MemoryType::kHost) {
+    return std::make_unique<GenericMemoryAllocator>([this](uint64_t size) {
+      return AllocateHostMemory(rocm_context_, size);
+    });
   }
   return absl::UnimplementedError(
       absl::StrFormat("Unsupported memory type %d", type));
@@ -1032,7 +1067,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
 
   {
     TF_ASSIGN_OR_RETURN(std::string device_name, GetDeviceName(device));
-    desc.set_name(device_name);
+    desc.set_name(device_name.empty() ? gcn_arch_name : device_name);
   }
 
   desc.set_platform_version(

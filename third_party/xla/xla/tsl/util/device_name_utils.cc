@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "xla/tsl/platform/errors.h"
+#include "tsl/platform/str_util.h"
 
 namespace tsl {
 

@@ -603,7 +603,7 @@ absl::Status TensorShapeFromString(const string& shape_string,
   std::vector<int64_t> dims;
   for (const string& dim : dims_as_str) {
     int64_t tmp;
-    if (strings::safe_strto64(dim, &tmp)) {
+    if (absl::SimpleAtoi(dim, &tmp)) {
       dims.push_back(tmp);
     } else {
       return errors::InvalidArgument("Could parse as shape: '", shape_string,
@@ -648,7 +648,7 @@ absl::Status TransformFuncContext::GetOneInt32Parameter(const string& name,
   }
   string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
-  if (!strings::safe_strto32(StringPiece(string_value), result)) {
+  if (!absl::SimpleAtoi(StringPiece(string_value), result)) {
     return errors::InvalidArgument("Couldn't interpret the ", name,
                                    " argument as a number:", string_value);
   }
@@ -665,7 +665,7 @@ absl::Status TransformFuncContext::GetOneInt64Parameter(const string& name,
   }
   string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
-  if (!strings::safe_strto64(StringPiece(string_value), result)) {
+  if (!absl::SimpleAtoi(StringPiece(string_value), result)) {
     return errors::InvalidArgument("Couldn't interpret the ", name,
                                    " argument as a number:", string_value);
   }
@@ -682,7 +682,7 @@ absl::Status TransformFuncContext::GetOneFloatParameter(const string& name,
   }
   string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
-  if (!strings::safe_strtof(string_value.c_str(), result)) {
+  if (!absl::SimpleAtof(string_value.c_str(), result)) {
     return errors::InvalidArgument(
         "Couldn't interpret the ", name,
         " argument as a float number:", string_value);

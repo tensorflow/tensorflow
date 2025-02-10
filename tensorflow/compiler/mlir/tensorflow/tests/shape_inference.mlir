@@ -1323,46 +1323,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %1#1 : tensor<*x!quant.uniform<u8:f32, 0.007:128>>
   }
 
-  // CHECK-LABEL: func @xla_call_module
-  // CHECK-SAME: (%arg0: tensor<f32>) -> tensor<f32>
-  func.func @xla_call_module(%arg0: tensor<f32>) -> tensor<*xf32> {
-    // Equivalent to the following:
-    //
-    // module @jit_sin {
-    //   func.func public @main(%arg0: tensor<f32>) -> tensor<f32> {
-    //     %0 = stablehlo.sine %arg0 : tensor<f32>
-    //     return %0 : tensor<f32>
-    //   }
-    // }
-    %0 = "tf.XlaCallModule"(%arg0) {Sout = [#tf_type.shape<*>], device = "", dim_args_spec = [], module = "ML\EFR\03MLIRxxx-trunk\00\01\17\05\01\05\01\03\05\03\07\07\t\0B\03K5\07\01\1B\07\0B\13\0B3\0B\0B\0B\0B\0F\0B\13\0B\03\1B\0F\1B\0B\0B\0B\0B\0B\0F\13\0B\0B\0B\0B\03\07\0F\17\07\02\A7\1F\05\0D\03\03\03\07\05\0F\03\0B\0B\1B\0D'\0F)\031\113\05\11\05\13\05\15\05\17\1D\15\17\05\19\17\19\EF\01\05\1B\03\03\1D\0D\05\1F!#%\1D\1D\1D\1F\1D!\1D##\03\03\03+\0D\03-/\1D%\1D'\1D)\1D+)\01\05\11\03\01\03\01\t\04A\05\01\11\01\05\07\03\01\05\03\11\01\t\05\03\05\0B\03\01\01\05\06\13\03\01\03\01\07\04\01\03\03\06\03\01\05\01\00\9A\04-\0F\0B\03!\1B\1D\05\1B\83/\1F\15\1D\15\11\13\15\11\11\0F\0B\11builtin\00vhlo\00module\00func_v1\00sine_v1\00return_v1\00sym_name\00jit_sin\00arg_attrs\00function_type\00res_attrs\00sym_visibility\00jit(sin)/jit(main)/sin\00third_party/py/jax/experimental/jax2tf/tests/back_compat_test.py\00jax.arg_info\00x\00mhlo.sharding\00{replicated}\00jax.result_info\00\00main\00public\00", platforms = ["cpu"], version = 6 : i64} : (tensor<f32>) -> tensor<*xf32>
-    func.return %0 : tensor<*xf32>
-  }
-
-  // CHECK-LABEL: func.func private @main_00(%arg0: tensor<?x1024xf32>) -> tensor<?x3xf32>
-  func.func private @main_00(%arg0: tensor<?x1024xf32>) -> tensor<*xf32> attributes {tf._original_func_name = "main_0"} {
-    %cst = "tf.Const"() <{value = dense<1.000000e+00> : tensor<1024x3xf32>}> : () -> tensor<1024x3xf32>
-    // Infer dynamic shape for XlaCallModule op.
-    // Original StablehHLO function:
-    //
-    // func.func private @composite_dot_general_fn_1(%arg0: tensor<i32>, %arg1: tensor<?x1024xf32>, %arg2: tensor<1024x3xf32>) -> tensor<?x3xf32> attributes {_from_xla_call_module} {
-    //     %0 = stablehlo.constant dense<0> : tensor<i32>
-    //     %1 = stablehlo.get_dimension_size %arg1, dim = 0 : (tensor<?x1024xf32>) -> tensor<i32>
-    //     %2 = stablehlo.compare  EQ, %0, %1 : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    //     stablehlo.custom_call @shape_assertion(%2) {error_message = "Shape assertion failed", has_side_effect = true} : (tensor<i1>) -> ()
-    //     %3 = stablehlo.dot_general %arg1, %arg2,
-    //         batching_dims = [] x [], contracting_dims = [1] x [0]
-    //         {mhlo.frontend_attributes = {grad_x = "false", grad_y = "false"}}
-    //       : (tensor<?x1024xf32>, tensor<1024x3xf32>) -> tensor<?x3xf32>
-    //     return %3 : tensor<?x3xf32>
-    //   }
-    //
-    // CHECK: tf.XlaCallModule
-    // CHECK-SAME: (tensor<?x1024xf32>, tensor<1024x3xf32>) -> tensor<?x3xf32>
-    %0 = "tf.XlaCallModule"(%arg0, %cst) <{Sout = [#tf_type.shape<?x3>], dim_args_spec = [], disabled_checks = [], function_list = [], has_token_input_output = false, module = "ML\EFR\0DStableHLO_v0.17.1\00\01!\05\01\05\11\01\03\0B\03\0F\0F\13\17\1B\1F#'\03\7FQ\1B\01'\0B\13\0B\0F\13\13\13\13\13\13\13\13\13\0B\13\13\0B\13\13\03+\0B\0B\0B\0F\0B\0B\0B\1F\0F\0B\0B\0B\0B\0B\0B\1B\0B\0B/\13/\01\03\0B\03\19\0F\07\07;\1B7\13\1F\07\0F\07\13\02\22\03\05\15\03\03\05\07\05\17\11\01\01\17\01!\15\17\01\05\07\17\01\05c\17\01\05\8B\17\01\05\C1\17\01\07\15\17\01\09\15\17\01\0B\15\03\03\1B=\05\19\17\01\0D\0B\03\03!E\05\1B\17\01\0F\15\17\01\17\0B\03\01\1D\1D\1D\1F\1F\19\01\17\01#\11\1D!\1F\03\09\00\00\00\00\13\07\01\09\01\07\01\1D#\0B\03\1D%\05\03\0D\05G+I+\1D'\1D)\1F\0F\11\01\00\00\00\00\00\00\00\03\05//\1F\0F\11\00\00\00\00\00\00\00\00\01\09)\01\13\09\1D)\05\00\FF\FF\FF\FF\FF\FF\FF\FF\02 \05)\05\02 \0D\05)\05\00\FF\FF\FF\FF\FF\FF\FF\FF\0D\05)\03\05\07\11\07\03\09\0B\03\0D\1B)\01\17\01)\03\01\07\04\97\05\01Q\09\03\01\07\04\85\03\01\05\03P\0B\03\07\04q\03\0F\1B\07\07\0D\13\0F\17\11\00\05B\13\05\03\03\07F\15\07\03\03\03\03\09F\17\09\03\15\05\07\09\0BE\1D\19\0B\03\0B\0DG#\1F\0D\03\0D\05\03\05\0F\04%\03\0D\06\03\01\05\01\00^\04+\0F\0F!/\0B\0D\033\1D9\19\15\1F\1F\17-\19\11\0F\0B\11builtin\00vhlo\00module\00func_v1\00constant_v1\00get_dimension_size_v1\00compare_v1\00custom_call_v1\00dot_general_v1\00return_v1\00/tmp/t.mlir\00jax.uses_shape_polymorphism\00error_message\00mhlo.frontend_attributes\00\00false\00main\00Shape assertion failed\00shape_assertion\00grad_x\00grad_y\00\08A\0F\05\01\01\0B'1'3)\035\037\059;\11?)A'C'''\0B-KM-O", platforms = ["CPU", "TPU"], version = 9 : i64}> {_original_entry_function = "composite_dot_general_fn_1", _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<?x1024xf32>, tensor<1024x3xf32>) -> tensor<*xf32>
-    // CHECK: return %0 : tensor<?x3xf32>
-    return %0 : tensor<*xf32>
-  }
-
   func.func @xla_call_module_parsing_error(%arg0: tensor<f32>) -> tensor<*xf32> {
     %0 = "tf.Identity"(%arg0) : (tensor<f32>) -> tensor<*xf32>
     %1 = "tf.XlaCallModule"(%arg0, %0) {Sout = [#tf_type.shape<*>], device = "", dim_args_spec = [], module = "invalid-stablehlo-module", platforms = [], version = 6 : i64} : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>

@@ -2773,22 +2773,11 @@ absl::Status SpmdPartitioningVisitor::HandleElementwiseWithDimsToReplicate(
     return DefaultAction(hlo);
   }
 
-  // 1. Obtain the temp_sharding by moving or replicating the sharding tiles.
-  HloSharding temp_sharding = sharding;
-  std::function<bool(int64_t)> not_in_dims_to_replicate = [&](int64_t dim) {
-    return !absl::c_linear_search(dims_to_replicate, dim);
-  };
-  for (int64_t dim : dims_to_replicate) {
-    if (std::optional<int64_t> target_dim =
-            hlo_sharding_util::GetFirstTargetDimToMoveShardingTiles(
-                hlo->shape(), temp_sharding, dim, not_in_dims_to_replicate)) {
-      temp_sharding = hlo_sharding_util::MoveAndMergeShardingTiles(
-          temp_sharding, dim, *target_dim);
-    } else {
-      temp_sharding = hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-          temp_sharding, {dim});
-    }
-  }
+  // 1. Replicate the final sharding along `dims_to_replicate` to get
+  // temp_sharding.
+  const HloSharding temp_sharding =
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+          sharding, dims_to_replicate);
 
   // 2. Reshard the operands to temp_sharding.
   std::vector<HloInstruction*> new_operands;
@@ -5460,22 +5449,24 @@ absl::Status SpmdPartitioner::PreprocessSharding(
   return absl::OkStatus();
 }
 
+namespace {
+
+HloInstruction* SkipCopyOperands(HloInstruction* operand,
+                                 bool check_single_use = true) {
+  while (operand->user_count() == 1 && operand->opcode() == HloOpcode::kCopy) {
+    operand = operand->mutable_operand(0);
+  }
+  if (check_single_use && operand->user_count() != 1) {
+    return nullptr;
+  }
+  return operand;
+};
+
+}  // namespace
+
 absl::Status SpmdPartitioner::PreprocessHlos(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  auto skip_copy_operands = [](HloInstruction* operand,
-                               bool check_single_use =
-                                   true) -> HloInstruction* {
-    while (operand->user_count() == 1 &&
-           operand->opcode() == HloOpcode::kCopy) {
-      operand = operand->mutable_operand(0);
-    }
-    if (check_single_use && operand->user_count() != 1) {
-      return nullptr;
-    }
-    return operand;
-  };
-
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
       if (hlo->sharding().IsTileMaximal() || hlo->sharding().IsManual()) {
@@ -5484,7 +5475,7 @@ absl::Status SpmdPartitioner::PreprocessHlos(
       }
 
       if (hlo->opcode() == HloOpcode::kSlice) {
-        HloInstruction* operand = skip_copy_operands(hlo->mutable_operand(0));
+        HloInstruction* operand = SkipCopyOperands(hlo->mutable_operand(0));
         if (operand == nullptr || operand->sharding() != hlo->sharding()) {
           continue;
         }
@@ -5533,40 +5524,27 @@ absl::Status SpmdPartitioner::PreprocessHlos(
         if (hlo->sharding().tile_assignment().dim(dim) == 1) {
           continue;
         }
-        if (hlo->operand_count() == 2) {
-          // Find a pattern of "rotate right on one dimension":
-          // concat(slice(input), slice(input)).
-          HloInstruction* lhs = skip_copy_operands(hlo->mutable_operand(0));
-          HloInstruction* rhs = skip_copy_operands(hlo->mutable_operand(1));
-          if (lhs == nullptr || rhs == nullptr) {
-            continue;
-          }
-          const int64_t amount = FindRotateRightPattern(hlo, lhs, rhs);
-          if (amount < 0) {
-            continue;
-          }
+
+        if (std::optional<int64_t> amount = FindRotateRightPattern(hlo)) {
+          HloInstruction* lhs = SkipCopyOperands(hlo->mutable_operand(0));
           TF_RETURN_IF_ERROR(HandleRotateRightWhilePreprocessing(computation));
           HloInstruction* to_rotate = lhs->mutable_operand(0);
           HloInstruction* rotate = computation->AddInstruction(
-              CreateCustomCallSPMDInternal_RotateRight(to_rotate, dim, amount));
+              CreateCustomCallSPMDInternal_RotateRight(to_rotate, dim,
+                                                       *amount));
           rotate->set_metadata(hlo->metadata());
           rotate->set_sharding(hlo->sharding());
           TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rotate));
           TF_RETURN_IF_ERROR(
               computation->RemoveInstructionAndUnusedOperands(hlo));
-        } else if (hlo->operand_count() == 3) {
-          // Find the pattern for "pad with wrap": concat(slice(x), x, slice(x))
-          // All involved values with same sharding.
-          HloInstruction* lhs = skip_copy_operands(hlo->mutable_operand(0));
-          HloInstruction* mid = skip_copy_operands(hlo->mutable_operand(1),
-                                                   /*check_single_use=*/false);
-          HloInstruction* rhs = skip_copy_operands(hlo->mutable_operand(2));
-          std::optional<PadWithWrapPattern> pad_pattern =
-              FindPadWithWrapPattern(hlo, lhs, mid, rhs);
-          if (!pad_pattern) {
-            continue;
-          }
+        }
 
+        if (std::optional<PadWithWrapPattern> pad_pattern =
+                spmd::FindPadWithWrapPattern(hlo)) {
+          HloInstruction* lhs = SkipCopyOperands(hlo->mutable_operand(0));
+          HloInstruction* mid = SkipCopyOperands(hlo->mutable_operand(1),
+                                                 /*check_single_use=*/false);
+          HloInstruction* rhs = SkipCopyOperands(hlo->mutable_operand(2));
           // Since the concat requires that the size of all operands along the
           // non-concat dimension is the same, it implies that the lhs/rhs slice
           // is slicing along the concat dims.

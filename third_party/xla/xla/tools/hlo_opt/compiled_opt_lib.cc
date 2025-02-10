@@ -58,8 +58,8 @@ limitations under the License.
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 

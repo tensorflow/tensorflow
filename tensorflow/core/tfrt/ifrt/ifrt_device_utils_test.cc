@@ -26,8 +26,8 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/service/computation_placer.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace ifrt_serving {

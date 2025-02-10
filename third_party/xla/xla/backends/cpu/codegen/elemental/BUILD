@@ -1,3 +1,4 @@
+load("//xla:strict.default.bzl", "py_strict_test")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -11,6 +12,53 @@ package_group(
     name = "friends",
     includes = [
         "//xla:friends",
+    ],
+)
+
+cc_library(
+    name = "concatenate_kernel_emitter",
+    srcs = ["concatenate_kernel_emitter.cc"],
+    hdrs = ["concatenate_kernel_emitter.h"],
+    deps = [
+        ":elemental_kernel_emitter",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/backends/cpu/codegen:kernel_api_ir_builder",
+        "//xla/backends/cpu/codegen:target_machine_features",
+        "//xla/codegen:kernel_definition",
+        "//xla/codegen:kernel_emitter",
+        "//xla/codegen:kernel_spec",
+        "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "//xla/service/cpu:ir_emitter",
+        "//xla/service/llvm_ir:ir_array",
+        "//xla/stream_executor:launch_dim",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+py_strict_test(
+    name = "concatenate_kernel_emitter_test",
+    srcs = ["concatenate_kernel_emitter_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        "//third_party/py/numpy",
+        "//xla/backends/cpu/testlib",
+        "//xla/codegen/testlib",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
