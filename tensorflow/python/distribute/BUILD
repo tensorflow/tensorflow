@@ -14,7 +14,6 @@ package(
 
 py_strict_library(
     name = "distribute_test_lib_pip",
-    srcs_version = "PY3",
     deps = [
         ":combinations",
         ":multi_worker_test_base",
@@ -30,7 +29,6 @@ py_strict_library(
 py_strict_library(
     name = "cross_device_ops",
     srcs = ["cross_device_ops.py"],
-    srcs_version = "PY3",
     deps = [
         ":collective_util",
         ":cross_device_utils",
@@ -64,7 +62,6 @@ py_strict_library(
 pytype_strict_library(
     name = "cross_device_utils",
     srcs = ["cross_device_utils.py"],
-    srcs_version = "PY3",
     deps = [
         ":collective_util",
         ":values",
@@ -88,7 +85,6 @@ pytype_strict_library(
 py_strict_library(
     name = "device_util",
     srcs = ["device_util.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
@@ -100,7 +96,6 @@ py_strict_library(
 cuda_py_strict_test(
     name = "device_util_test",
     srcs = ["device_util_test.py"],
-    python_version = "PY3",
     deps = [
         ":combinations",
         ":device_util",
@@ -118,7 +113,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "distribute",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     deps = [
         ":cross_device_ops",
         ":distribute_lib",
@@ -141,7 +135,6 @@ py_strict_library(
     srcs = [
         "distribute_lib.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":collective_util",
         ":device_util",
@@ -186,8 +179,6 @@ py_strict_test(
     name = "distribute_lib_test",
     size = "small",
     srcs = ["distribute_lib_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":combinations",
         ":distribute_lib",
@@ -216,7 +207,6 @@ py_strict_library(
     srcs = [
         "distribute_config.py",
     ],
-    srcs_version = "PY3",
     deps = [],
 )
 
@@ -225,7 +215,6 @@ py_strict_library(
     srcs = [
         "distribute_coordinator.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":distribute_coordinator_context",
         ":multi_worker_util",
@@ -242,8 +231,6 @@ py_strict_test(
     name = "distribute_coordinator_test",
     size = "medium",
     srcs = ["distribute_coordinator_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "notsan",  # TODO(b/220133218)
     ],
@@ -272,14 +259,12 @@ py_strict_library(
     srcs = [
         "distribute_coordinator_context.py",
     ],
-    srcs_version = "PY3",
     deps = [],
 )
 
 py_strict_library(
     name = "mirrored_run",
     srcs = ["mirrored_run.py"],
-    srcs_version = "PY3",
     deps = [
         ":distribute_lib",
         ":distribute_utils",
@@ -302,7 +287,6 @@ py_strict_library(
 py_strict_library(
     name = "distribute_utils",
     srcs = ["distribute_utils.py"],
-    srcs_version = "PY3",
     deps = [
         ":distribute_lib",
         ":reduce_util",
@@ -340,7 +324,6 @@ py_strict_library(
 py_strict_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
-    srcs_version = "PY3",
     deps = [
         ":collective_util",
         ":cross_device_ops",
@@ -379,7 +362,6 @@ py_strict_library(
 py_strict_library(
     name = "parameter_server_strategy",
     srcs = ["parameter_server_strategy.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":cross_device_ops",
@@ -412,7 +394,6 @@ py_strict_library(
 py_strict_library(
     name = "central_storage_strategy",
     srcs = ["central_storage_strategy.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":device_util",
@@ -425,7 +406,6 @@ py_strict_library(
 py_strict_library(
     name = "one_device_strategy",
     srcs = ["one_device_strategy.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":device_util",
@@ -448,7 +428,6 @@ py_strict_library(
 py_strict_library(
     name = "collective_all_reduce_strategy",
     srcs = ["collective_all_reduce_strategy.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":collective_util",
@@ -488,7 +467,6 @@ py_strict_library(
     srcs = [
         "multi_worker_util.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":distribute_coordinator_context",
         "//tensorflow/core:protos_all_py",
@@ -501,7 +479,6 @@ cuda_py_strict_test(
     srcs = [
         "multi_worker_continuous_run_test.py",
     ],
-    python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/266520226)
         "no_windows",  # TODO(b/184424727): Re-enable this.
@@ -530,7 +507,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "numpy_dataset",
     srcs = ["numpy_dataset.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
@@ -548,8 +524,6 @@ py_strict_test(
     name = "numpy_dataset_test",
     size = "small",
     srcs = ["numpy_dataset_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":numpy_dataset",
         "//tensorflow/python/eager:test",
@@ -562,7 +536,6 @@ py_strict_test(
 py_strict_library(
     name = "input_lib",
     srcs = ["input_lib.py"],
-    srcs_version = "PY3",
     deps = [
         ":device_util",
         ":distribute_lib",
@@ -605,7 +578,6 @@ py_strict_library(
 py_strict_library(
     name = "input_ops",
     srcs = ["input_ops.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -621,7 +593,6 @@ py_strict_library(
 cuda_py_strict_test(
     name = "input_ops_test",
     srcs = ["input_ops_test.py"],
-    python_version = "PY3",
     deps = [
         ":input_ops",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -641,8 +612,6 @@ cuda_py_strict_test(
 py_strict_test(
     name = "multi_worker_util_test",
     srcs = ["multi_worker_util_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":multi_worker_util",
         "//tensorflow/core:protos_all_py",
@@ -654,8 +623,6 @@ py_strict_test(
 cuda_py_strict_test(
     name = "mwms_pjrt_gpu_test",
     srcs = ["mwms_pjrt_gpu_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -680,7 +647,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "tpu_strategy",
     srcs = ["tpu_strategy.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         ":cross_device_ops",
@@ -783,7 +749,6 @@ tpu_py_strict_test(
     srcs = ["tpu_strategy_test.py"],
     args = ["--tpu_use_tfrt=true"],
     disable_experimental = True,
-    python_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":distribute_lib",
@@ -844,7 +809,6 @@ tpu_py_strict_test(
     srcs = ["tpu_strategy_compilation_test.py"],
     disable_experimental = True,
     disable_mlir_bridge = False,
-    python_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":tpu_strategy",
@@ -860,7 +824,6 @@ tpu_py_strict_test(
 py_strict_library(
     name = "reduce_util",
     srcs = ["reduce_util.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/util:tf_export",
@@ -870,7 +833,6 @@ py_strict_library(
 py_strict_library(
     name = "collective_util",
     srcs = ["collective_util.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
@@ -889,14 +851,11 @@ tf_py_strict_test(
 py_strict_library(
     name = "shared_variable_creator",
     srcs = ["shared_variable_creator.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_test(
     name = "shared_variable_creator_test",
     srcs = ["shared_variable_creator_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":shared_variable_creator",
         "//tensorflow/python/eager:test",
@@ -909,7 +868,6 @@ py_strict_test(
 py_strict_library(
     name = "summary_op_util",
     srcs = ["summary_op_util.py"],
-    srcs_version = "PY3",
     deps = [
         ":distribute_lib",
         "//tensorflow/python/framework:tensor",
@@ -920,7 +878,6 @@ py_strict_library(
 py_strict_library(
     name = "packed_distributed_variable",
     srcs = ["packed_distributed_variable.py"],
-    srcs_version = "PY3",
     deps = [
         ":device_util",
         "//tensorflow/python/eager:context",
@@ -934,7 +891,6 @@ py_strict_library(
 py_strict_library(
     name = "values",
     srcs = ["values.py"],
-    srcs_version = "PY3",
     deps = [
         ":device_util",
         ":distribute_lib",
@@ -1011,7 +967,6 @@ distribute_py_strict_test(
 py_strict_library(
     name = "ps_values",
     srcs = ["ps_values.py"],
-    srcs_version = "PY3",
     deps = [
         ":distribute_lib",
         ":distribute_utils",
@@ -1038,7 +993,6 @@ py_strict_library(
 py_strict_library(
     name = "values_util",
     srcs = ["values_util.py"],
-    srcs_version = "PY3",
     deps = [
         ":distribute_lib",
         ":reduce_util",
@@ -1057,7 +1011,6 @@ py_strict_library(
 py_strict_library(
     name = "tpu_values",
     srcs = ["tpu_values.py"],
-    srcs_version = "PY3",
     visibility = [
         "//smartass/brain/ops:__subpackages__",
         "//tensorflow:internal",
@@ -1080,7 +1033,6 @@ py_strict_library(
 py_strict_library(
     name = "tpu_replicated_variable",
     srcs = ["tpu_replicated_variable.py"],
-    srcs_version = "PY3",
     deps = [
         ":tpu_util",
         "//tensorflow/python/compiler/xla/experimental:xla_sharding",
@@ -1101,8 +1053,6 @@ py_strict_library(
 tpu_py_strict_test(
     name = "tpu_replicated_variable_test",
     srcs = ["tpu_replicated_variable_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         ":tpu_replicated_variable",
         "//tensorflow/python/checkpoint",
@@ -1119,7 +1069,6 @@ tpu_py_strict_test(
 py_strict_library(
     name = "combinations",
     srcs = ["combinations.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -1150,7 +1099,6 @@ py_strict_library(
 distribute_py_strict_test(
     name = "combinations_test",
     srcs = ["combinations_test.py"],
-    python_version = "PY3",
     tags = ["multi_gpu"],
     deps = [
         ":combinations",
@@ -1166,7 +1114,6 @@ distribute_py_strict_test(
 py_strict_library(
     name = "strategy_combinations",
     srcs = ["strategy_combinations.py"],
-    srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -1204,7 +1151,6 @@ distribute_py_strict_test(
     name = "strategy_combinations_test",
     srcs = ["strategy_combinations_test.py"],
     disable_mlir_bridge = False,
-    python_version = "PY3",
     tags = [
         "no_cuda_asan",  # TODO(b/195246941) b/196591124
         "no_gpu",  # b/276511061
@@ -1232,7 +1178,6 @@ distribute_py_strict_test(
 py_strict_library(
     name = "multi_worker_test_base",
     srcs = ["multi_worker_test_base.py"],
-    srcs_version = "PY3",
     visibility = [
         "//smartass/brain/ops:__subpackages__",
         "//tensorflow:internal",
@@ -1264,7 +1209,6 @@ py_strict_library(
 tf_py_strict_test(
     name = "multi_worker_test_base_test",
     srcs = ["multi_worker_test_base_test.py"],
-    srcs_version = "PY3",
     tags = [
         "no_oss",  # TODO(b/170834611)
     ],
@@ -1281,7 +1225,6 @@ cuda_py_strict_test(
     name = "checkpoint_utils_test",
     size = "medium",
     srcs = ["checkpoint_utils_test.py"],
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -1407,7 +1350,6 @@ distribute_py_strict_test(
 cuda_py_strict_test(
     name = "cross_device_utils_test",
     srcs = ["cross_device_utils_test.py"],
-    python_version = "PY3",
     deps = [
         ":combinations",
         ":cross_device_utils",
@@ -1427,7 +1369,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
-    python_version = "PY3",
     shard_count = 4,
     tags = [
         # "multi_and_single_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
@@ -1470,7 +1411,6 @@ cuda_py_strict_test(
     name = "one_device_strategy_test",
     srcs = ["one_device_strategy_test.py"],
     grpc_enabled = True,
-    python_version = "PY3",
     deps = [
         ":combinations",
         ":distribute_lib",
@@ -1488,7 +1428,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "sharded_variable",
     srcs = ["sharded_variable.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
@@ -1566,7 +1505,6 @@ tf_py_strict_test(
 py_strict_library(
     name = "strategy_test_lib",
     srcs = ["strategy_test_lib.py"],
-    srcs_version = "PY3",
     deps = [
         ":collective_all_reduce_strategy",
         ":distribute_lib",
@@ -1939,7 +1877,6 @@ distribute_py_strict_test(
 py_strict_library(
     name = "single_loss_example",
     srcs = ["single_loss_example.py"],
-    srcs_version = "PY3",
     deps = [
         ":step_fn",
         ":strategy_test_lib",
@@ -1955,7 +1892,6 @@ py_strict_library(
 py_strict_library(
     name = "step_fn",
     srcs = ["step_fn.py"],
-    srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/eager:backprop",
@@ -1967,7 +1903,6 @@ cuda_py_strict_test(
     name = "warm_starting_util_test",
     size = "medium",
     srcs = ["warm_starting_util_test.py"],
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -1987,7 +1922,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "remote_mirrored_strategy_eager_test",
     srcs = ["remote_mirrored_strategy_eager_test.py"],
-    python_version = "PY3",
     tags = [
         "no_windows",  # TODO(b/197981388): Re-enable this.
     ],
@@ -2004,7 +1938,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "mirrored_strategy_test",
     srcs = ["mirrored_strategy_test.py"],
-    python_version = "PY3",
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
@@ -2058,7 +1991,6 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "mirrored_variable_test",
     srcs = ["mirrored_variable_test.py"],
-    python_version = "PY3",
     tags = [
         "guitar",
         "multi_and_single_gpu",
@@ -2146,7 +2078,6 @@ distribute_py_strict_test(
 cuda_py_strict_test(
     name = "collective_all_reduce_strategy_test",
     srcs = ["collective_all_reduce_strategy_test.py"],
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/283098184)
@@ -2197,7 +2128,6 @@ tpu_py_strict_test(
     name = "collective_all_reduce_strategy_test_tpu",
     srcs = ["collective_all_reduce_strategy_test.py"],
     main = "collective_all_reduce_strategy_test.py",
-    python_version = "PY3",
     deps = [
         ":collective_all_reduce_strategy",
         ":collective_util",
@@ -2243,7 +2173,6 @@ tpu_py_strict_test(
 cuda_py_strict_test(
     name = "parameter_server_strategy_test",
     srcs = ["parameter_server_strategy_test.py"],
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
         "no_windows",  # TODO(b/284496291)
@@ -2293,7 +2222,6 @@ cuda_py_strict_test(
 py_strict_library(
     name = "multi_process_runner",
     srcs = ["multi_process_runner.py"],
-    srcs_version = "PY3",
     tags = [
         "no_oss",  # b/241013307 disable flaky under docker
     ],
@@ -2319,7 +2247,6 @@ py_strict_library(
 py_strict_library(
     name = "multi_process_lib",
     srcs = ["multi_process_lib.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:test",
         "@absl_py//absl:app",
@@ -2354,7 +2281,6 @@ py_strict_test(
 cuda_py_strict_test(
     name = "multi_process_runner_test",
     srcs = ["multi_process_runner_test.py"],
-    python_version = "PY3",
     shard_count = 35,
     tags = [
         "multi_gpu",
@@ -2374,7 +2300,6 @@ cuda_py_strict_test(
 py_strict_test(
     name = "multi_process_runner_no_init_test",
     srcs = ["multi_process_runner_no_init_test.py"],
-    python_version = "PY3",
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",
@@ -2386,7 +2311,6 @@ distribute_py_strict_test(
     name = "strategy_common_test",
     srcs = ["strategy_common_test.py"],
     disable_mlir_bridge = False,
-    python_version = "PY3",
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
@@ -2421,7 +2345,6 @@ distribute_py_strict_test(
     name = "strategy_gather_test",
     srcs = ["strategy_gather_test.py"],
     disable_mlir_bridge = False,
-    python_version = "PY3",
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
@@ -2487,7 +2410,6 @@ distribute_py_strict_test(
 py_strict_library(
     name = "test_util",
     srcs = ["test_util.py"],
-    srcs_version = "PY3",
     deps = [
         ":collective_all_reduce_strategy",
         ":multi_process_runner",
@@ -2531,7 +2453,6 @@ distribute_py_strict_test(
 pytype_strict_library(
     name = "parameter_server_strategy_v2",
     srcs = ["parameter_server_strategy_v2.py"],
-    srcs_version = "PY3",
     visibility = [
         "//smartass/brain/ops:__subpackages__",
         "//tensorflow:internal",
@@ -2573,7 +2494,6 @@ pytype_strict_library(
 distribute_py_strict_test(
     name = "parameter_server_strategy_v2_test",
     srcs = ["parameter_server_strategy_v2_test.py"],
-    python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
         "nomac",  # TODO(b/201788023): Attempt MultiProcessCluster to fix this.
@@ -2619,7 +2539,6 @@ distribute_py_strict_test(
 distribute_py_strict_test(
     name = "distributed_table_test",
     srcs = ["distributed_table_test.py"],
-    python_version = "PY3",
     shard_count = 12,
     tags = [
         "multi_and_single_gpu",
@@ -2662,7 +2581,6 @@ tpu_py_strict_test(
     disable_experimental = True,  # b/202779350
     disable_mlir_bridge = False,
     disable_v3_4chips = False,
-    python_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":distribute_lib",
@@ -2702,7 +2620,6 @@ tpu_py_strict_test(
 pytype_strict_library(
     name = "input_util",
     srcs = ["input_util.py"],
-    srcs_version = "PY3",
     deps = [
         ":input_lib",
         "//tensorflow/python:tf2",
@@ -2721,7 +2638,6 @@ py_strict_library(
     srcs = [
         "merge_call_interim.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":distribute_lib",
         "//tensorflow/python/util:tf_export",
