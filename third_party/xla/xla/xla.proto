@@ -739,6 +739,10 @@ message DebugOptions {
   // the code that emits a particular instruction.
   bool xla_gpu_unsupported_annotate_with_emitter_loc = 358;
 
+  // Enable experimental tiling for Triton GEMM fusions.
+  // TODO(b/393299275): remove the flag once the feature is stable.
+  bool xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms = 367;
+
   // Internal testing flag to switch RaggedAllToAllDecomposer on or off.
   bool xla_gpu_unsupported_enable_ragged_all_to_all_decomposer = 350;
 
@@ -1141,7 +1145,7 @@ message DebugOptions {
 
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
-  // Next id: 367
+  // Next id: 368
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
