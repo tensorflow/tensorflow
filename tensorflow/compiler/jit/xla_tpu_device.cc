@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_platform.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/stream_executor/tpu/tpu_stream_interface.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_node_device_util.h"
 #include "tensorflow/core/tpu/virtual_device.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
