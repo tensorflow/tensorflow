@@ -67,8 +67,6 @@ py_strict_binary(
     name = "make_test_graphs",
     testonly = 1,
     srcs = ["make_test_graphs.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",

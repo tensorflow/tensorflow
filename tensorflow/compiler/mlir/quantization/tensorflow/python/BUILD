@@ -291,7 +291,6 @@ pytype_strict_library(
     srcs = [
         "quantize_model.py",
     ],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":py_function_lib_py",

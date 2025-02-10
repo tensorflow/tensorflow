@@ -14,7 +14,6 @@ generate_backend_suites()
 py_strict_library(
     name = "types",
     srcs = ["types_.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         "//third_party/py/numpy",
@@ -26,7 +25,6 @@ py_strict_library(
 py_strict_library(
     name = "xla_shape",
     srcs = ["xla_shape.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":types",
@@ -38,7 +36,6 @@ py_strict_library(
 py_strict_library(
     name = "xla_literal",
     srcs = ["xla_literal.py"],
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":types",
@@ -51,8 +48,6 @@ py_strict_library(
 py_strict_test(
     name = "xla_shape_test",
     srcs = ["xla_shape_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "optonly",
     ],
@@ -67,8 +62,6 @@ py_strict_test(
 py_strict_test(
     name = "xla_literal_test",
     srcs = ["xla_literal_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "optonly",
     ],

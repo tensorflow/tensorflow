@@ -134,7 +134,6 @@ pytype_strict_library(
         "__init__.py",
         "utilities.py",
     ],
-    srcs_version = "PY3",
     deps = [
         ":_extension",
         "//xla/codegen/testlib",  # buildcleaner: keep
@@ -166,8 +165,6 @@ py_strict_test(
     name = "kernel_runner_test_py",
     srcs = ["kernel_runner_test.py"],
     main = "kernel_runner_test.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_oss",
     ],
@@ -183,8 +180,6 @@ py_strict_test(
     name = "elemental_kernel_emitter_test",
     srcs = ["elemental_kernel_emitter_test.py"],
     main = "elemental_kernel_emitter_test.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
     tags = [
         "no_oss",
     ],

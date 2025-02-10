@@ -10,7 +10,6 @@ package(
 py_strict_library(
     name = "common",
     srcs = ["common.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:pywrap_mlir",
@@ -24,7 +23,6 @@ py_strict_library(
 py_strict_library(
     name = "common_v1",
     srcs = ["common_v1.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:pywrap_mlir",

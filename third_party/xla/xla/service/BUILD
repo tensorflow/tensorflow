@@ -5762,13 +5762,11 @@ xla_py_proto_library(
 py_strict_library(
     name = "generate_test_hlo_checks",
     srcs = ["generate_test_hlo_checks.py"],
-    srcs_version = "PY3",
 )
 
 py_strict_test(
     name = "generate_test_hlo_checks_test",
     srcs = ["generate_test_hlo_checks_test.py"],
-    python_version = "PY3",
     tags = [
         "no_oss",
     ],
