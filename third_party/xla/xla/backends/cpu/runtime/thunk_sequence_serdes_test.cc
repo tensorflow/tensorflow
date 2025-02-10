@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
@@ -63,18 +64,52 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 namespace {
+
+template <typename T>
+class FixedCapacityVector {
+ public:
+  explicit FixedCapacityVector(size_t capacity) : capacity_(capacity) {
+    vector_.reserve(capacity_);
+  }
+
+  absl::Status push_back(T&& value) {
+    if (vector_.size() >= capacity_) {
+      return Internal("FixedCapacityVector is full. Capacity: %d", capacity_);
+    }
+    vector_.push_back(std::move(value));
+    return absl::OkStatus();
+  }
+
+  size_t size() const { return vector_.size(); }
+
+  T& operator[](size_t index) { return vector_[index]; }
+  const T& operator[](size_t index) const { return vector_[index]; }
+
+  const std::vector<T>& GetUnderlyingVector() const { return vector_; }
+
+ private:
+  std::vector<T> vector_;
+  size_t capacity_;
+};
 
 // Thunk sequence serdes test base.
 // This is independent of the serialization format.
 template <typename T>
 class ThunkSequenceSerdesTest : public ::testing::Test {
  protected:
-  explicit ThunkSequenceSerdesTest() = default;
+  explicit ThunkSequenceSerdesTest()
+      // HACK(basioli): allocations are created on thunk creation and are pushed
+      // back into this vector. If we don't reserve enough space, reallocation
+      // will get triggered which will invalidate the pointers to the
+      // allocations owned by the thunks.
+      : buffer_allocations_(10000) {};
 
   absl::StatusOr<ThunkSequence> CreateThunkSequenceFromAllThunkTypes() {
     // NOTE create buffer allocations using thunk_testlib
@@ -137,25 +172,23 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
 
  public:
   void SetUp() override {
-    // HACK(basioli): allocations are created on thunk creation and are pushed
-    // back into this vector. If we don't reserve enough space, reallocation
-    // will get triggered which will invalidate the pointers to the allocations
-    // owned by the thunks.
-    buffer_allocations_.reserve(10000);
-    thunk_sequence_serdes_ = std::make_unique<T>(&buffer_allocations_);
+    thunk_sequence_serdes_ =
+        std::make_unique<T>(&buffer_allocations_.GetUnderlyingVector());
   }
 
  private:
-  void AddBufferAllocations(const size_t no_of_allocations_to_add) {
+  absl::Status AddBufferAllocations(const size_t no_of_allocations_to_add) {
     for (size_t i = 0; i < no_of_allocations_to_add; ++i) {
       literals_.push_back(LiteralUtil::CreateFull<float>({2, 4}, 0.0));
-      buffer_allocations_.push_back(
-          CreateBufferAllocation(buffer_allocations_.size(), literals_.back()));
+      TF_RETURN_IF_ERROR(buffer_allocations_.push_back(CreateBufferAllocation(
+          buffer_allocations_.size(), literals_.back())));
     }
+
+    return absl::OkStatus();
   }
   // Thunk creation helper functions.
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllGatherThunk() {
-    AddBufferAllocations(2);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllGatherThunk::Create(
         Thunk::Info(),
@@ -183,7 +216,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllReduceThunk() {
-    AddBufferAllocations(2);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllReduceThunk::Create(
         Thunk::Info(), ReductionKind::SUM,
@@ -212,7 +245,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllToAllThunk() {
-    AddBufferAllocations(2);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllToAllThunk::Create(
         Thunk::Info(),
@@ -240,7 +273,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateReduceScatterThunk() {
-    AddBufferAllocations(2);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return ReduceScatterThunk::Create(
         Thunk::Info(), ReductionKind::SUM,
@@ -278,7 +311,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateCollectivePermuteThunk() {
-    AddBufferAllocations(2);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return CollectivePermuteThunk::Create(
         Thunk::Info(),
@@ -307,7 +340,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateCopyThunk() {
-    AddBufferAllocations(2);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return CopyThunk::Create(
         Thunk::Info(),
@@ -334,7 +367,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
       branch_sequences.push_back(std::move(called_sequence));
     }
 
-    AddBufferAllocations(1);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(1));
 
     return ConditionalThunk::Create(
         Thunk::Info(),
@@ -345,7 +378,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateCustomCallThunk() {
-    AddBufferAllocations(2);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return CustomCallThunk::Create(
         Thunk::Info(), "custom_call_thunk_test",
@@ -365,7 +398,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateDotThunk() {
-    AddBufferAllocations(3);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(3));
     DotDimensionNumbers dot_dimensions;
     dot_dimensions.add_lhs_contracting_dimensions(1);
     dot_dimensions.add_rhs_contracting_dimensions(0);
@@ -387,7 +420,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateFftThunk() {
-    AddBufferAllocations(2);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return FftThunk::Create(
         Thunk::Info(),
@@ -404,7 +437,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateInfeedThunk() {
-    AddBufferAllocations(2);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return InfeedThunk::Create(
         Thunk::Info(),
@@ -423,7 +456,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateOutfeedThunk() {
-    AddBufferAllocations(2);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return OutfeedThunk::Create(
         Thunk::Info(),
@@ -442,7 +475,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreatePartitionIdThunk() {
-    AddBufferAllocations(1);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(1));
     return PartitionIdThunk::Create(
         Thunk::Info(),
         /*logical_id_buffer=*/
@@ -451,7 +484,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateReplicaIdThunk() {
-    AddBufferAllocations(1);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(1));
     return ReplicaIdThunk::Create(
         Thunk::Info(),
         /*logical_id_buffer=*/
@@ -460,7 +493,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateRngGetAndUpdateStateThunk() {
-    AddBufferAllocations(1);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(1));
     return RngGetAndUpdateStateThunk::Create(
         Thunk::Info(),
         /*state_buffer=*/
@@ -470,7 +503,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateTopKThunk() {
-    AddBufferAllocations(3);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(3));
     return TopKThunk::Create(
         Thunk::Info(),
         /*values=*/
@@ -497,7 +530,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     TF_ASSIGN_OR_RETURN(body_sequence.emplace_back(), CreateAllReduceThunk());
     TF_ASSIGN_OR_RETURN(body_sequence.emplace_back(), CreateAllToAllThunk());
 
-    AddBufferAllocations(1);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(1));
     return WhileThunk::Create(
         Thunk::Info(),
         /*cond_buffer=*/
@@ -509,7 +542,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateXnnDotThunk() {
-    AddBufferAllocations(3);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(3));
     DotDimensionNumbers dot_dimensions;
     dot_dimensions.add_lhs_contracting_dimensions(1);
     dot_dimensions.add_rhs_contracting_dimensions(0);
@@ -557,12 +590,12 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     literals_.push_back(
         LiteralUtil::CreateFull<float>(output_dims, 0.0));  // output
 
-    buffer_allocations_.push_back(CreateBufferAllocation(
-        buffer_allocations_.size(), literals_[literals_.size() - 3]));
-    buffer_allocations_.push_back(CreateBufferAllocation(
-        buffer_allocations_.size(), literals_[literals_.size() - 2]));
-    buffer_allocations_.push_back(CreateBufferAllocation(
-        buffer_allocations_.size(), literals_[literals_.size() - 1]));
+    TF_RETURN_IF_ERROR(buffer_allocations_.push_back(CreateBufferAllocation(
+        buffer_allocations_.size(), literals_[literals_.size() - 3])));
+    TF_RETURN_IF_ERROR(buffer_allocations_.push_back(CreateBufferAllocation(
+        buffer_allocations_.size(), literals_[literals_.size() - 2])));
+    TF_RETURN_IF_ERROR(buffer_allocations_.push_back(CreateBufferAllocation(
+        buffer_allocations_.size(), literals_[literals_.size() - 1])));
 
     return XnnConvolutionThunk::Create(
         XnnFusionThunk::Options(), Thunk::Info(),
@@ -582,7 +615,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateKernelThunk() {
-    AddBufferAllocations(2);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
     return KernelThunk::Create(
         Thunk::Info(),
         /*arguments_buffers=*/
@@ -617,12 +650,12 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     literals_.push_back(
         LiteralUtil::CreateFull<float>(output_dims, 0.0));  // output
 
-    buffer_allocations_.push_back(CreateBufferAllocation(
-        buffer_allocations_.size(), literals_[literals_.size() - 3]));
-    buffer_allocations_.push_back(CreateBufferAllocation(
-        buffer_allocations_.size(), literals_[literals_.size() - 2]));
-    buffer_allocations_.push_back(CreateBufferAllocation(
-        buffer_allocations_.size(), literals_[literals_.size() - 1]));
+    TF_RETURN_IF_ERROR(buffer_allocations_.push_back(CreateBufferAllocation(
+        buffer_allocations_.size(), literals_[literals_.size() - 3])));
+    TF_RETURN_IF_ERROR(buffer_allocations_.push_back(CreateBufferAllocation(
+        buffer_allocations_.size(), literals_[literals_.size() - 2])));
+    TF_RETURN_IF_ERROR(buffer_allocations_.push_back(CreateBufferAllocation(
+        buffer_allocations_.size(), literals_[literals_.size() - 1])));
 
     ConvolutionThunk::Options options;
 
@@ -641,7 +674,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateSortThunk() {
-    AddBufferAllocations(2);
+    TF_RETURN_IF_ERROR(AddBufferAllocations(2));
     return SortThunk::Create(
         Thunk::Info(),
         /*inputs=*/
@@ -1297,7 +1330,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     return true;
   }
   std::unique_ptr<SerDesBase<ThunkSequence>> thunk_sequence_serdes_;
-  std::vector<BufferAllocation> buffer_allocations_;
+  FixedCapacityVector<BufferAllocation> buffer_allocations_;
   std::vector<Literal> literals_;
 };
 
