@@ -37,6 +37,8 @@ cc_library(
         ":functional_hlo_runner",
         "//xla:debug_options_flags",
         "//xla:status_macros",
+        "//xla/backends/profiler/gpu:cupti_tracer",
+        "//xla/backends/profiler/gpu:device_tracer",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
@@ -141,6 +143,8 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/profiler:profiler_backends",  # To register the Host Tracers for GPU Plugin.
+        "//xla/backends/profiler/gpu:cupti_tracer",
+        "//xla/backends/profiler/gpu:device_tracer",
         "//xla/backends/profiler/plugin:plugin_tracer",  # To register the GPU Tracers with the GPU Plugin.
         "//xla/client:executable_build_options",
         "//xla/hlo/builder:xla_computation",
