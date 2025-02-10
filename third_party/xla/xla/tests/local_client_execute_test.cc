@@ -1061,6 +1061,54 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateMemoryFittingEffort) {
   EXPECT_FLOAT_EQ(proto.config().memory_fitting_effort(), 2.0f);
 }
 
+XLA_TEST_F(LocalClientExecuteTest, ValidateOptimizationLevel) {
+  XlaBuilder builder(TestName());
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
+  auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
+  Add(x, y);
+  Shape argument_layout =
+      local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
+          ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0}));
+
+  ExecutableBuildOptions build_options;
+  build_options.set_optimization_level(ExecutionOptions::EFFORT_O1);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables,
+      local_client_->Compile(builder.Build().value(), {&argument_layout},
+                             build_options));
+  EXPECT_EQ(1, executables.size());
+  const HloModule& compiled_module =
+      executables.front()->executable()->module();
+  EXPECT_EQ(compiled_module.config().optimization_level(),
+            ExecutionOptions::EFFORT_O1);
+  auto proto = compiled_module.ToProtoWithConfig();
+  EXPECT_EQ(proto.config().optimization_level(), ExecutionOptions::EFFORT_O1);
+}
+
+XLA_TEST_F(LocalClientExecuteTest, ValidateMemoryFittingLevel) {
+  XlaBuilder builder(TestName());
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
+  auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
+  Add(x, y);
+  Shape argument_layout =
+      local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
+          ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0}));
+
+  ExecutableBuildOptions build_options;
+  build_options.set_memory_fitting_level(ExecutionOptions::EFFORT_O3);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables,
+      local_client_->Compile(builder.Build().value(), {&argument_layout},
+                             build_options));
+  EXPECT_EQ(1, executables.size());
+  const HloModule& compiled_module =
+      executables.front()->executable()->module();
+  EXPECT_EQ(compiled_module.config().memory_fitting_level(),
+            ExecutionOptions::EFFORT_O3);
+  auto proto = compiled_module.ToProtoWithConfig();
+  EXPECT_EQ(proto.config().memory_fitting_level(), ExecutionOptions::EFFORT_O3);
+}
+
 BENCHMARK(BM_LocalClientOverhead);
 
 }  // namespace

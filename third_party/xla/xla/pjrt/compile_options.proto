@@ -7,7 +7,7 @@ import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 24.
+// Next id: 26.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -62,6 +62,21 @@ message ExecutableBuildOptionsProto {
   // possible instead. Positive values, on the other hand, might enable costly
   // algorithms to reduce memory usage that are off by default.
   float memory_fitting_effort = 21;
+
+  // The amount of effort to spend on optimizing for minimizing program
+  // execution time. As a general guideline, O2 strongly prioritizes execution
+  // time, and is typically suitable for production workloads. O3 may enable
+  // costly or experimental optimizations that may greatly increase compile
+  // time.
+  ExecutionOptions.EffortLevel optimization_level = 24;
+
+  // The amount of effort to spend on making the program fit in memory (where
+  // "fit in memory" here has a backend-dependent meaning). As a general
+  // guideline, O2 will expend significant effort on attempting to make the
+  // program fit. O0 will spend minimal effort and fail as quickly as possible
+  // instead. O3 might enable costly algorithms to reduce memory usage that may
+  // greatly increase compile time.
+  ExecutionOptions.EffortLevel memory_fitting_level = 25;
 
   // Whether HLOs should be deduplicated.
   bool deduplicate_hlo = 8;
