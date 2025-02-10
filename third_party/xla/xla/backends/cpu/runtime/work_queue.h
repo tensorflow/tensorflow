@@ -144,13 +144,14 @@ inline std::optional<size_t> WorkQueue::Pop(size_t partition_index) {
 
   // Check if partition is already empty.
   if (size_t index = partition.index.load(std::memory_order_relaxed);
-      index >= partition.end) {
+      ABSL_PREDICT_FALSE(index >= partition.end)) {
     return std::nullopt;
   }
 
   // Try to acquire the next task in the partition.
   size_t index = partition.index.fetch_add(1, std::memory_order_relaxed);
-  return index >= partition.end ? std::nullopt : std::make_optional(index);
+  return ABSL_PREDICT_FALSE(index >= partition.end) ? std::nullopt
+                                                    : std::make_optional(index);
 }
 
 inline Worker::Worker(size_t worker_index, WorkQueue* queue)
@@ -160,7 +161,7 @@ inline Worker::Worker(size_t worker_index, WorkQueue* queue)
 
 inline std::optional<size_t> Worker::Pop() {
   std::optional<size_t> task = queue_->Pop(partition_index_);
-  if (task) return task;
+  if (ABSL_PREDICT_TRUE(task)) return task;
 
   while (!task.has_value() && !queue_->empty()) {
     // Wrap around to the first partition.
