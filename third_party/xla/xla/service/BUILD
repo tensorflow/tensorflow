@@ -324,6 +324,7 @@ cc_library(
     hdrs = ["collective_permute_decomposer.h"],
     deps = [
         ":call_graph",
+        ":collective_conflict_analysis",
         ":collective_ops_utils",
         ":collective_permute_cycle",
         ":pattern_matcher",
@@ -361,6 +362,20 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "collective_conflict_analysis",
+    srcs = ["collective_conflict_analysis.cc"],
+    hdrs = ["collective_conflict_analysis.h"],
+    deps = [
+        ":collective_ops_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ],
 )
 
