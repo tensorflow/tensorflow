@@ -8,6 +8,7 @@ package(
     default_visibility = internal_visibility([
         "//third_party/golang/github_com/gomlx/gomlx:__subpackages__",
         "//xla:internal",
+        "//third_party/py/jax/_src/pallas/google/xla_export:__subpackages__",
         "//learning/infra/mira/experimental/orbax_model:__subpackages__",  # For ConvertPrimitiveTypeToMlirType
     ]),
     licenses = ["notice"],
