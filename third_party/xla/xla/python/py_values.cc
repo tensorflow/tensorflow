@@ -292,8 +292,18 @@ absl::StatusOr<DevicePutResultFn> HandleStringNumpyArray(
 
   // Assemble all the parameters of MakeArrayFromHostBuffer
   void* data = cords.data();
-  ifrt::Shape shape(
-      absl::MakeSpan(static_cast<const int64_t*>(array.shape()), array.ndim()));
+
+  // Make an explicit copy of the shape elements so we won't run into complex
+  // endianness and precision issues that might arise if we reinterpret-casted
+  // from npy_intp, that can be just 32 bits-wide in some environments
+  // such as macos_arm64 to const int64_t* that must be 64 bits-wide.
+  ifrt::Shape::Dimensions dims;
+  dims.reserve(array.ndim());
+  for (int i = 0; i < array.ndim(); ++i) {
+    dims.push_back(array.shape(i));
+  }
+  ifrt::Shape shape(std::move(dims));
+
   std::shared_ptr<xla::ifrt::Sharding> sharding =
       xla::ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind);
 
