@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/types.h"
