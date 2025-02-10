@@ -1406,6 +1406,11 @@ absl::StatusOr<ifrt::Device*> NanoIfrtClient::LookupAddressableDevice(
   return device_.get();
 }
 
+tsl::RCReference<ifrt::DeviceList> NanoIfrtClient::MakeDeviceList(
+    absl::Span<ifrt::Device* const> devices) const {
+  return xla::ifrt::BasicDeviceList::Create(devices);
+}
+
 ifrt::Compiler* NanoIfrtClient::GetDefaultCompiler() { return compiler_.get(); }
 
 absl::StatusOr<std::shared_ptr<ifrt::Topology>>

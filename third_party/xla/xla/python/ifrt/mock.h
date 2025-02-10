@@ -171,6 +171,8 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (const, final));
   MOCK_METHOD(absl::StatusOr<Device*>, LookupAddressableDevice,
               (int local_hardware_id), (const, final));
+  MOCK_METHOD(tsl::RCReference<DeviceList>, MakeDeviceList,
+              (absl::Span<Device* const> devices), (const));
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<Topology>>, GetTopologyForDevices,
               (const tsl::RCReference<xla::ifrt::DeviceList>& devices),

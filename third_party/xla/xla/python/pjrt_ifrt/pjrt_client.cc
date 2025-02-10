@@ -858,6 +858,11 @@ absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
   return LookupPjRtDevice(pjrt_device);
 }
 
+tsl::RCReference<DeviceList> PjRtClient::MakeDeviceList(
+    absl::Span<Device* const> devices) const {
+  return xla::ifrt::BasicDeviceList::Create(devices);
+}
+
 const AttributeMap& PjRtClient::Attributes() const { return attributes_; }
 
 absl::StatusOr<tsl::RCReference<PjRtCompatibleArray>>

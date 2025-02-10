@@ -327,6 +327,11 @@ class CompileOnlyIfRtClient final
         "LookupAddressableDevice not available with compile-only client.");
   }
 
+  tsl::RCReference<ifrt::DeviceList> MakeDeviceList(
+      absl::Span<ifrt::Device* const> devices) const override {
+    return ifrt::BasicDeviceList::Create(devices);
+  }
+
   ifrt::Compiler* GetDefaultCompiler() override { return &default_compiler_; }
 
   static char ID;  // NOLINT
